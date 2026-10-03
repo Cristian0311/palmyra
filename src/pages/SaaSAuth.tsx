@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ArrowRight, Check, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Sparkles, Users, Warehouse } from "lucide-react";
+import { ArrowRight, Check, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Sparkles, Users, Warehouse, MonitorSmartphone } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getSupabase } from "../lib/supabase";
 import {
