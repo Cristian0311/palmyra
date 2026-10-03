@@ -10,6 +10,7 @@ export interface SaaSContext {
   company: { id: string; name: string; slug: string; account_status: string; default_currency_code: string } | null;
   membershipStatus: string | null;
   isOwner: boolean;
+  deviceActive: boolean;
   roleKey: string;
   warehouseIds: string[];
   subscription: {
@@ -99,6 +100,7 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
       company: null,
       membershipStatus,
       isOwner: Boolean(fallbackMembership?.is_owner),
+      deviceActive: true,
       roleKey: 'admin',
       warehouseIds: [],
       subscription: null
@@ -121,6 +123,10 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
   const permissions = granularPermissions.length > 0 ? granularPermissions : (roleKey === 'admin'
     ? ['pos.access','reports.view','inventory.manage','products.manage','customers.manage','employees.manage','suppliers.manage','settings.manage','roles.manage','cash.open']
     : ['pos.access']);
+
+  const { data: deviceActiveData, error: deviceActiveError } = await supabase.rpc('is_current_device_active', { p_company_id: companyId });
+  if (deviceActiveError) throw deviceActiveError;
+  const deviceActive = deviceActiveData !== false;
 
   const user: User = {
     id: authUser.id,
@@ -151,6 +157,7 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     company: effectiveCompany,
     membershipStatus,
     isOwner,
+    deviceActive,
     roleKey,
     warehouseIds,
     subscription: subscription && plan ? {
