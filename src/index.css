@@ -9,6 +9,7 @@
 }
 
 :root {
+  --palmyra-font-scale: 1;
   /* Light Mode Palette - Enterprise SaaS Style */
   --bg-primary: #F8F7FC;
   --bg-secondary: #FFFFFF;
@@ -148,6 +149,7 @@ body {
 
 @layer base {
   body {
+    font-size: calc(1rem * var(--palmyra-font-scale));
     background-color: var(--bg-primary);
     color: var(--text-primary);
     @apply font-sans antialiased tabular-nums;
