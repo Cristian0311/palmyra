@@ -1,6 +1,6 @@
 import { useShallow } from 'zustand/react/shallow';
 import React, { useMemo, useState, useEffect } from "react";
-import { Settings as SettingsIcon, Save, DollarSign, Building2, Users, Plus, Trash2, Edit, LayoutGrid, Store, AlertTriangle, RefreshCw, Usb, Bluetooth, Wifi, Printer, CheckCircle2, ExternalLink, AlertCircle, Sparkles, ChevronRight, Package, Search, X, Database, CreditCard, CloudUpload, CloudDownload, Check, Sun, Moon } from "lucide-react";
+import { Settings as SettingsIcon, Save, DollarSign, Building2, Users, Plus, Trash2, Edit, LayoutGrid, Store, AlertTriangle, RefreshCw, Usb, Bluetooth, Wifi, Printer, CheckCircle2, ExternalLink, AlertCircle, Sparkles, ChevronRight, Package, Search, X, Database, CreditCard, CloudUpload, CloudDownload, Check, Sun, Moon, Type, Palette } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { Branch, Category, User } from "../types";
@@ -144,7 +144,9 @@ export default function Settings() {
 
   const [selectedUserForConfig, setSelectedUserForConfig] = useState<User | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'connectivity' | 'company' | 'branches' | 'categories' | 'employees' | 'advanced'>('connectivity');
+  const [activeTab, setActiveTab] = useState<'connectivity' | 'company' | 'branches' | 'categories' | 'employees' | 'visual' | 'advanced'>('connectivity');
+  const [fontScale, setFontScale] = useState(() => { try { const saved = Number(localStorage.getItem('palmyra-font-scale') || '1'); return [0.9,1,1.1,1.2].includes(saved) ? saved : 1; } catch { return 1; } });
+  useEffect(() => { document.documentElement.style.setProperty('--palmyra-font-scale', String(fontScale)); try { localStorage.setItem('palmyra-font-scale', String(fontScale)); } catch {} }, [fontScale]);
 
   const handleClearData = async () => {
     if (resetInput.trim().toUpperCase() !== 'ELIMINAR' || resetSections.length === 0) return;
@@ -372,6 +374,7 @@ export default function Settings() {
             { id: 'branches', label: 'Almacenes', icon: Building2 },
             { id: 'categories', label: 'Categorías', icon: LayoutGrid },
             { id: 'employees', label: 'Empleados', icon: Users },
+            { id: 'visual', label: 'Estilo visual', icon: Palette },
             { id: 'advanced', label: 'Avanzado', icon: AlertTriangle },
           ].map(tab => {
             const Icon = tab.icon;
@@ -670,6 +673,46 @@ export default function Settings() {
                   <button onClick={() => { const nc = {...config, darkMode:false}; setConfig(nc); updateStoreConfig(nc); }} className={cn("px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all cursor-pointer", !config.darkMode ? "bg-rose-600 text-white" : "text-muted")}>Luz</button>
                   <button onClick={() => { const nc = {...config, darkMode:true}; setConfig(nc); updateStoreConfig(nc); }} className={cn("px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all cursor-pointer", config.darkMode ? "bg-rose-600 text-white" : "text-muted")}>Noche</button>
                 </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Estilo visual */}
+        {activeTab === 'visual' && (
+          <div className="space-y-4">
+            <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-5">
+              <div className="flex items-center gap-3 border-b border-base pb-3">
+                <div className="bg-violet-100 dark:bg-violet-950/40 p-2.5 rounded-xl text-violet-700 dark:text-violet-300"><Palette size={18} /></div>
+                <div><h3 className="text-xs font-black text-primary uppercase tracking-wider">Estilo visual del software</h3><p className="text-[9px] font-bold text-muted uppercase tracking-tight">Personaliza la lectura sin cambiar la estructura de PALMYRA</p></div>
+              </div>
+              <div className="p-4 rounded-2xl border border-base bg-subtle">
+                <div className="flex items-start gap-3">
+                  <Type className="w-5 h-5 text-violet-600 mt-0.5 shrink-0" />
+                  <div className="flex-1">
+                    <h4 className="text-sm font-black text-primary">Tamaño de las letras</h4>
+                    <p className="text-xs text-muted mt-1">El cambio se aplica inmediatamente a toda la interfaz y se conserva en este dispositivo.</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
+                      {[
+                        {value:0.9,label:'Pequeña',sample:'Aa'},
+                        {value:1,label:'Normal',sample:'Aa'},
+                        {value:1.1,label:'Grande',sample:'Aa'},
+                        {value:1.2,label:'Muy grande',sample:'Aa'}
+                      ].map(option => (
+                        <button key={option.value} type="button" onClick={() => setFontScale(option.value)}
+                          className={cn("rounded-xl border p-3 text-left transition-all", fontScale === option.value ? "border-violet-500 bg-violet-50 dark:bg-violet-950/30 ring-2 ring-violet-500/15" : "border-base bg-primary hover:bg-subtle")}>
+                          <span className="block text-lg font-black text-primary" style={{fontSize: (18 * option.value) + 'px'}}>{option.sample}</span>
+                          <span className="block text-[10px] font-black text-primary mt-1">{option.label}</span>
+                          <span className="block text-[9px] text-muted">{Math.round(option.value*100)}%</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 rounded-2xl border border-base bg-primary flex items-center justify-between gap-4">
+                <div><h4 className="text-xs font-black text-primary">Vista recomendada</h4><p className="text-[10px] text-muted mt-1">Normal es el tamaño equilibrado para POS, tablets y escritorio.</p></div>
+                <button type="button" onClick={() => setFontScale(1)} className="px-4 py-2 rounded-xl bg-violet-600 text-white text-[10px] font-black uppercase">Restablecer</button>
               </div>
             </div>
           </div>
