@@ -119,18 +119,14 @@ export default function SaaSInvite() {
   }
 
   return (
-    <main className="min-h-screen bg-[#F7F5FC] px-4 py-8 flex items-center justify-center">
-      <div className="w-full max-w-3xl bg-white rounded-[2rem] border border-violet-100 shadow-xl p-6 sm:p-10">
+    <main className="min-h-screen bg-[#F7F5FC] px-3 sm:px-5 py-5 flex items-center justify-center">
+      <div className="w-full max-w-3xl bg-white rounded-[26px] border border-violet-100 shadow-[0_30px_90px_-52px_rgba(59,27,110,.55)] p-4 sm:p-6">
         <div className="flex items-center gap-3 mb-5"><img src="/palmyra-logo.svg" alt="PALMYRA" className="w-[140px] h-8 object-contain object-left"/>
-          <div className="w-11 h-11 rounded-2xl bg-rose-500 text-white flex items-center justify-center"><Store className="w-6 h-6" /></div>
-          <div>
-            <p className="text-lg font-black text-[#21182F]">PALMYRA</p>
-            <p className="text-[10px] uppercase tracking-widest text-slate-400 font-black">Invitación de empresa</p>
-          </div>
+          <div className="text-[9px] uppercase tracking-[.18em] text-[#8B63E6] font-black">Invitación de empresa</div>
         </div>
 
         <div className="grid md:grid-cols-[0.9fr_1.1fr] gap-8">
-          <section className="bg-[#3B1B6E] text-white rounded-3xl p-6">
+          <section className="bg-[#3B1B6E] text-white rounded-3xl p-5 sm:p-6">
             <ShieldCheck className="w-8 h-8 text-rose-300" />
             <h1 className="text-2xl font-black mt-4">Tu acceso es personal</h1>
             <p className="text-sm text-slate-300 mt-3 leading-6">
@@ -144,7 +140,7 @@ export default function SaaSInvite() {
             </div>
           </section>
 
-          <section>
+          <section className="p-1 md:p-0">
             <div className="grid grid-cols-2 p-1 bg-[#F0EBFA] rounded-xl">
               <button type="button" onClick={() => { setMode("signup"); setError(""); }} className={`py-2.5 rounded-lg text-sm font-bold ${mode === "signup" ? "bg-white shadow" : "text-[#6F647B]"}`}>Crear cuenta</button>
               <button type="button" onClick={() => { setMode("signin"); setError(""); }} className={`py-2.5 rounded-lg text-sm font-bold ${mode === "signin" ? "bg-white shadow" : "text-[#6F647B]"}`}>Ya tengo cuenta</button>
