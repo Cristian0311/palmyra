@@ -27,6 +27,7 @@ const Customers = lazy(() => import("./pages/Customers"));
 const Transfers = lazy(() => import("./pages/Transfers"));
 const Reports = lazy(() => import("./pages/Reports"));
 const CustomerShop = lazy(() => import("./pages/CustomerShop"));
+const PublicShop = lazy(() => import("./pages/PublicShop"));
 const SaaSAuth = lazy(() => import("./pages/SaaSAuth"));
 const SaaSOnboarding = lazy(() => import("./pages/SaaSOnboarding"));
 const AccountStatus = lazy(() => import("./pages/AccountStatus"));
@@ -256,6 +257,7 @@ export default function App() {
       <Router>
         <Suspense fallback={<PageLoading />}>
           <Routes>
+          <Route path="/shop/:slug" element={<PublicShop />} />
           <Route path="/shop" element={<CustomerShop />} />
           <Route path="/invite" element={<SaaSInvite />} />
           <Route path="/auth" element={accessState === "signed_out" ? <SaaSAuth /> : <Navigate to={accessState === "needs_onboarding" ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/"} replace />} />
