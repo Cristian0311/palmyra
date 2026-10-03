@@ -10,7 +10,7 @@ import {
   pushCurrencyToSupabase, clearSupabaseData, pushBankCardToSupabase, updateBankCardMetadataToSupabase, setBankCardBalanceToSupabase, deleteBankCardFromSupabase, pushBankTransactionToSupabase, pushAllToSupabase,
   pushSupplierToSupabase, deleteSupplierFromSupabase, pushSupplierOrderToSupabase, pushCustomerToSupabase,
   applyInventoryAdjustmentToSupabase, reconcileInventoryToSupabase,
-  pushReceiptConfigToSupabase, pushStoreConfigToSupabase, pushCatalogConfigToSupabase, deleteTransactionFromSupabase, deleteCustomerFromSupabase, callReserveNCFRangeRPC, callTransferInventoryBulkRPC,
+  pushReceiptConfigToSupabase, pushStoreConfigToSupabase, deleteTransactionFromSupabase, deleteCustomerFromSupabase, callReserveNCFRangeRPC, callTransferInventoryBulkRPC,
   deleteBankTransactionFromSupabase, clearSelectedDataFromSupabase, callOpenSessionRPCWithId, callProcessTransactionRPC, callVoidTransactionRPC, callCompleteReturnRPC, callTransferInventoryRPC, callReceiveSupplierOrderRPC, callCompleteInventoryAuditRPC, callCloseSessionRPC, callCancelSessionRPC, callDeleteBankInternalTransferRPC, callDeleteBankTransactionRPC, callDeleteBankCardRPC, callProcessBankTransactionRPC
 } from '../services/supabaseSync';
 import { getSupabaseCredentials } from '../lib/supabase';
@@ -489,7 +489,6 @@ export const useStore = create<AppState>()(
       patch.currencies = INITIAL_CURRENCIES;
       patch.fiscalConfigs = INITIAL_FISCAL_CONFIGS;
       patch.storeConfig = { storeName: 'Mi Tienda POS', address: 'Calle Principal 123', phone: '+53 51234567', receiptNotes: '¡Gracias por su compra!', darkMode: false, manualOfflineSync: false };
-      patch.catalogConfig = { pageSize: 20, showImages: true, compactMode: false };
     }
 
     patch.cart = []; patch.currentCustomerId = undefined; patch.activeSessionId = null;
@@ -564,7 +563,6 @@ export const useStore = create<AppState>()(
         timeShifts: state.timeShifts,
         pendingOrders: state.pendingOrders,
         receiptConfig: state.receiptConfig,
-        catalogConfig: state.catalogConfig,
         storeConfig: state.storeConfig
       }
     };
@@ -614,7 +612,6 @@ export const useStore = create<AppState>()(
         timeShifts: get().timeShifts,
         pendingOrders: get().pendingOrders,
         receiptConfig: get().receiptConfig,
-        catalogConfig: get().catalogConfig,
         storeConfig: get().storeConfig
       };
 
@@ -644,7 +641,6 @@ export const useStore = create<AppState>()(
         timeShifts: d.timeShifts || [],
         pendingOrders: d.pendingOrders || [],
         receiptConfig: d.receiptConfig || get().receiptConfig,
-        catalogConfig: d.catalogConfig || get().catalogConfig,
         storeConfig: d.storeConfig || get().storeConfig
       });
 
@@ -734,19 +730,6 @@ export const useStore = create<AppState>()(
     pushStoreConfigToSupabase(nextStoreConfig as any).catch(() => {});
   },
 
-
-  catalogConfig: { 
-    themeColor: '#4f46e5', 
-    bannerText: '¡Bienvenidos a nuestra tienda virtual!', 
-    whatsappNumber: '+5351234567', 
-    showPrices: true,
-    visibleBranches: ['b1']
-  },
-  
-  updateCatalogConfig: (config) => {
-    set({ catalogConfig: config });
-    pushCatalogConfigToSupabase(config).catch(() => {});
-  },
 
 
   branches: INITIAL_BRANCHES,
@@ -3289,7 +3272,6 @@ export const useStore = create<AppState>()(
           storeConfig: pendingStoreConfig
             ? { ...state.storeConfig, ...(d.settings?.store_config || {}), ...pendingStoreConfig }
             : (d.settings?.store_config ? { ...state.storeConfig, ...d.settings.store_config } : state.storeConfig),
-          catalogConfig: d.settings?.catalog_config ? { ...state.catalogConfig, ...d.settings.catalog_config } : state.catalogConfig
         };
       });
       return true;
@@ -3407,9 +3389,6 @@ export const useStore = create<AppState>()(
         receiptConfig: d.settings?.receipt_config
           ? { ...state.receiptConfig, ...d.settings.receipt_config }
           : state.receiptConfig,
-        catalogConfig: d.settings?.catalog_config
-          ? { ...state.catalogConfig, ...d.settings.catalog_config }
-          : state.catalogConfig,
         transactions: (() => {
           const pending = new Set(getOfflineQueue().filter(i => i.type === 'transaction' || i.type === 'void_transaction').map(i => String(i.data?.id || i.actionId)));
           const map = new Map<string, Transaction>();
@@ -3798,7 +3777,6 @@ export const useStore = create<AppState>()(
             salarySettlements: mergedSalarySettlements,
             receiptConfig: data.receiptConfig ? { ...state.receiptConfig, ...data.receiptConfig } : state.receiptConfig,
             storeConfig: data.storeConfig ? { ...state.storeConfig, ...data.storeConfig } : state.storeConfig,
-            catalogConfig: data.catalogConfig ? { ...state.catalogConfig, ...data.catalogConfig } : state.catalogConfig,
             lastTurnNumber: data.lastTurnNumber !== undefined ? Math.max(state.lastTurnNumber, data.lastTurnNumber) : state.lastTurnNumber,
             lastSyncTime: new Date().toISOString(),
             syncResult: result,
@@ -3932,7 +3910,7 @@ export const useStore = create<AppState>()(
   },
   partialize: (state) => ({
     users: state.users, currentUser: state.currentUser,
-    currencies: state.currencies, storeConfig: state.storeConfig, catalogConfig: state.catalogConfig,
+    currencies: state.currencies, storeConfig: state.storeConfig,
     branches: state.branches, currentBranchId: state.currentBranchId, activeSessionId: state.activeSessionId, categories: state.categories,
     products: state.products, inventory: state.inventory, cart: state.cart, currentCustomerId: state.currentCustomerId,
     transactions: state.transactions, returns: state.returns, warranties: state.warranties,
