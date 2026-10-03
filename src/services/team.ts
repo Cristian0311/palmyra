@@ -236,6 +236,14 @@ export async function updateEmployee(input: {
   return data as { id: string };
 }
 
+async function sendInvitationEmail(payload: { companyId: string; employeeId: string; email: string; name: string; token: string }) {
+  const supabase = getSupabase();
+  if (!supabase) return { sent: false, reason: "supabase_not_configured" };
+  const { data, error } = await supabase.functions.invoke("send-company-invitation", { body: payload });
+  if (error) return { sent: false, reason: "provider_error", error };
+  return data as { sent: boolean; reason?: string };
+}
+
 export async function createEmployeeWithInvitation(input: {
   companyId: string;
   employeeCode: string;
@@ -257,13 +265,17 @@ export async function createEmployeeWithInvitation(input: {
     p_email: input.email.trim().toLowerCase()
   });
   if (error) throwRpcError(error);
-  return data as {
-    employee_id: string;
-    invitation_id: string;
-    token: string;
-    expires_at: string;
-    email: string;
+  const invite = data as {
+    employee_id: string; invitation_id: string; token: string; expires_at: string; email: string;
   };
+  const delivery = await sendInvitationEmail({
+    companyId: input.companyId,
+    employeeId: invite.employee_id,
+    email: invite.email,
+    name: input.fullName,
+    token: invite.token
+  });
+  return { ...invite, email_sent: delivery.sent, email_reason: delivery.reason || null };
 }
 
 export async function resendEmployeeInvitation(input: {
@@ -272,6 +284,7 @@ export async function resendEmployeeInvitation(input: {
   email: string;
   roleId: string;
   warehouseIds: string[];
+  name?: string;
 }) {
   const supabase = getSupabase();
   if (!supabase) throw new Error("Supabase no está configurado.");
@@ -283,7 +296,15 @@ export async function resendEmployeeInvitation(input: {
     p_warehouse_ids: input.warehouseIds
   });
   if (error) throwRpcError(error);
-  return data as { id: string; token: string; expires_at: string };
+  const invite = data as { id: string; token: string; expires_at: string };
+  const delivery = await sendInvitationEmail({
+    companyId: input.companyId,
+    employeeId: input.employeeId,
+    email: input.email.trim().toLowerCase(),
+    name: input.name || "Trabajador",
+    token: invite.token
+  });
+  return { ...invite, email_sent: delivery.sent, email_reason: delivery.reason || null };
 }
 
 export async function revokeEmployeeInvitation(invitationId: string) {
