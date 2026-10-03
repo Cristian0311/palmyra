@@ -18,6 +18,7 @@ import { loadSaaSContext, signInSaaSAccount, signOutSaaSAccount } from '../servi
 import { getOfflineQueue, enqueueOfflineItem, removeFromOfflineQueue, waitForOfflineQueueReady } from '../services/offlineQueue';
 import { normalizeSemanticText, areSemanticallyEqual } from '../utils/textUtils';
 import { localStateStorage, clearLocalStateStorage, flushLocalStateStorage } from '../services/localStateStorage';
+import { getPalmyraScopedStorageKey } from '../services/localScope';
 import type { AppState } from './storeTypes';
 
 import {
@@ -41,7 +42,8 @@ let ncfRangesMemory: Record<string, LocalNcfRange> = {};
 function getNcfDeviceId(): string {
   if (typeof window === 'undefined') return 'server';
   try {
-    const key = 'palmyra-pos-device-id';
+    const key = getPalmyraScopedStorageKey('palmyra-pos-device-id');
+    if (!key) return 'anonymous-device';
     const existing = window.localStorage.getItem(key);
     if (existing) return existing;
     const created = crypto.randomUUID();
@@ -54,20 +56,31 @@ function getNcfDeviceId(): string {
 }
 
 function loadNcfRanges(): Record<string, LocalNcfRange> {
+  const key = getPalmyraScopedStorageKey(NCF_RANGE_STORAGE_KEY);
+  if (!key) {
+    ncfRangesMemory = {};
+    return ncfRangesMemory;
+  }
   try {
-    const raw = typeof window !== 'undefined' ? window.localStorage.getItem(NCF_RANGE_STORAGE_KEY) : null;
+    const raw = typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object') ncfRangesMemory = parsed;
+      else ncfRangesMemory = {};
+    } else {
+      ncfRangesMemory = {};
     }
-  } catch {}
+  } catch {
+    ncfRangesMemory = {};
+  }
   return ncfRangesMemory;
 }
 
 function saveNcfRanges(ranges: Record<string, LocalNcfRange>): void {
   ncfRangesMemory = ranges;
+  const key = getPalmyraScopedStorageKey(NCF_RANGE_STORAGE_KEY);
   try {
-    if (typeof window !== 'undefined') window.localStorage.setItem(NCF_RANGE_STORAGE_KEY, JSON.stringify(ranges));
+    if (key && typeof window !== 'undefined') window.localStorage.setItem(key, JSON.stringify(ranges));
   } catch {}
 }
 
@@ -3847,7 +3860,8 @@ export const useStore = create<AppState>()(
       }
 
       // Respaldo legacy: solo recupera una venta que siga representada por el outbox.
-      const backupRaw = localStorage.getItem('mare_sales_backup_v1');
+      const backupKey = getPalmyraScopedStorageKey('palmyra-sales-backup-v1');
+      const backupRaw = backupKey ? localStorage.getItem(backupKey) : null;
       if (!backupRaw) return;
       const backupList = JSON.parse(backupRaw);
       if (!Array.isArray(backupList) || backupList.length === 0) return;
