@@ -27,8 +27,6 @@ const Settings = lazy(() => import("./pages/Settings"));
 const Customers = lazy(() => import("./pages/Customers"));
 const Transfers = lazy(() => import("./pages/Transfers"));
 const Reports = lazy(() => import("./pages/Reports"));
-const CustomerShop = lazy(() => import("./pages/CustomerShop"));
-const PublicShop = lazy(() => import("./pages/PublicShop"));
 const SaaSAuth = lazy(() => import("./pages/SaaSAuth"));
 const SaaSOnboarding = lazy(() => import("./pages/SaaSOnboarding"));
 const AccountStatus = lazy(() => import("./pages/AccountStatus"));
@@ -54,7 +52,6 @@ function PageLoading() {
     "/returns": "Cargando Devoluciones…",
     "/reports": "Cargando Reportes…",
     "/settings": "Cargando Configuración…",
-    "/shop": "Cargando tienda…",
     "/team": "Cargando equipo…",
     "/invite": "Cargando invitación…",
   };
@@ -266,8 +263,6 @@ export default function App() {
         <Suspense fallback={<PageLoading />}>
           <Routes>
           <Route path="/platform-admin" element={<PlatformAdmin />} />
-          <Route path="/shop/:slug" element={<PublicShop />} />
-          <Route path="/shop" element={<CustomerShop />} />
           <Route path="/invite" element={<SaaSInvite />} />
           <Route path="/auth" element={accessState === "signed_out" ? <SaaSAuth /> : <Navigate to={accessState === "needs_onboarding" ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/"} replace />} />
           <Route path="/onboarding" element={accessState === "needs_onboarding" ? <SaaSOnboarding /> : <Navigate to={accessState === "signed_out" ? "/auth" : accessState === "blocked" ? "/account-status" : "/"} replace />} />
