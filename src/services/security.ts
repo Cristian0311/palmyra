@@ -23,3 +23,11 @@ export async function revokeMyDevice(companyId:string,deviceId:string){
   if(error) throw error;
   return data;
 }
+
+
+export async function touchCurrentDevice(companyId:string){
+ const supabase=getSupabase(); if(!supabase) return false;
+ const {data,error}=await supabase.rpc("touch_current_device",{p_company_id:companyId});
+ if(error) throw error;
+ return data===true;
+}
