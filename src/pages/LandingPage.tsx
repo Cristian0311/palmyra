@@ -1,82 +1,344 @@
-import React,{useState} from "react";
-import {ArrowRight,BarChart3,Boxes,Check,ChevronRight,CloudOff,CreditCard,MonitorSmartphone,PackageCheck,Users,WifiOff,ShoppingCart,Truck,RotateCcw,Settings2,LineChart,WalletCards,Menu,X,UserRound} from "lucide-react";
-import {useNavigate} from "react-router-dom";
+import React, { useMemo, useState } from "react";
+import {
+  ArrowRight, BarChart3, Boxes, Check, ChevronRight, CloudOff, CreditCard,
+  MonitorSmartphone, PackageCheck, Users, WifiOff, ShoppingCart, Truck,
+  RotateCcw, Settings2, LineChart, WalletCards, Menu, X, UserRound,
+  ShieldCheck, Building2, Warehouse, Sparkles, Globe2, Clock3, Receipt,
+  CircleDollarSign, LockKeyhole
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
-const plans=[
- {name:"Starter",price:"10",badge:"90 días gratis",warehouses:"1 almacén",employees:"2 empleados",products:"50 productos",features:["POS completo","Clientes y proveedores","Reportes básicos","Modo offline"]},
- {name:"Growth",price:"15",badge:"Para crecer",warehouses:"3 almacenes",employees:"4 empleados",products:"150 productos",features:["POS completo","Transferencias","Compras y proveedores","Reportes avanzados","Modo offline"]},
- {name:"Pro",price:"25",badge:"Máxima capacidad",warehouses:"7 almacenes",employees:"10 empleados",products:"300 productos",features:["POS completo","Transferencias","Compras y proveedores","Reportes avanzados+","Analítica avanzada","Soporte prioritario"]}
+const CITY_IMAGE = "https://live.staticflickr.com/5016/5514619147_c7d54849af_o.jpg";
+const CITY_CREDIT = "Foto: Institute for the Study of the Ancient World · CC BY 2.0 · Wikimedia Commons";
+
+const modules = [
+  { id: "dashboard", label: "Dashboard", icon: BarChart3, title: "Una vista clara de tu negocio.", text: "Ventas, inventario, caja y alertas importantes en una sola pantalla.", stats: [["Ventas", "$ 12,480"], ["Tickets", "248"], ["Stock bajo", "12"], ["Equipo", "8"]] },
+  { id: "pos", label: "Punto de Venta", icon: ShoppingCart, title: "Cobrar rápido, incluso sin conexión.", text: "Un POS pensado para jornadas reales: simple para el trabajador y potente para el dueño.", stats: [["Caja", "$ 8,420"], ["Tickets", "24"], ["Pendientes", "0"], ["Estado", "Offline listo"]] },
+  { id: "inventory", label: "Inventario", icon: Boxes, title: "Existencias por almacén, sin confusión.", text: "Controla stock, movimientos, mínimos y entradas desde cualquier dispositivo.", stats: [["Productos", "284"], ["Stock bajo", "12"], ["Almacenes", "3"], ["Movimientos", "1,248"]] },
+  { id: "transfers", label: "Transferencias", icon: Truck, title: "Mueve mercancía con contexto.", text: "Consulta qué salió, desde dónde, hacia qué almacén y qué cantidad.", stats: [["Hoy", "8"], ["En tránsito", "3"], ["Completadas", "24"], ["Almacenes", "3"]] },
+  { id: "customers", label: "Clientes", icon: Users, title: "La relación con tus clientes, ordenada.", text: "Historial de compras y datos útiles sin convertir el CRM en un laberinto.", stats: [["Clientes", "1,284"], ["Nuevos", "18"], ["Compras", "$ 24.8K"], ["Activos", "942"]] },
+  { id: "reports", label: "Reportes", icon: LineChart, title: "Decisiones con información real.", text: "Indicadores comerciales y operativos para saber dónde estás y qué mejorar.", stats: [["Ventas", "$ 84K"], ["Margen", "28.4%"], ["Ticket", "$ 32.80"], ["Stock", "$ 124K"]] },
+  { id: "team", label: "Equipo", icon: UserRound, title: "Personas, roles y permisos claros.", text: "Cada trabajador tiene su propia cuenta y ve solo lo que necesita.", stats: [["Empleados", "8"], ["Accesos", "6"], ["Roles", "5"], ["Invitaciones", "2"]] },
+  { id: "cash", label: "Caja", icon: WalletCards, title: "Turnos y efectivo bajo control.", text: "Apertura, movimientos, cierres y descuadres con trazabilidad.", stats: [["Caja", "$ 8,420"], ["Turno", "04"], ["Descuadre", "$ 0.00"], ["Cierres", "18"]] },
+  { id: "settings", label: "Configuración", icon: Settings2, title: "Todo en su lugar.", text: "Empresa, almacenes, equipo, POS, seguridad, monedas y plan.", stats: [["Empresa", "Activa"], ["Almacenes", "3"], ["POS", "2"], ["Plan", "Growth"]] }
 ];
 
-const modules=[
- ["dashboard","Dashboard",BarChart3],["pos","Punto de Venta",ShoppingCart],["inventory","Inventario",Boxes],
- ["transfers","Transferencias",Truck],["customers","Clientes",Users],["reports","Reportes",LineChart],
- ["team","Equipo",UserRound],["cash","Caja",WalletCards],["settings","Configuración",Settings2]
-] as const;
-
-const palette=[
- ["#32145F","Profundo"],["#4C1D95","Institucional"],["#6631C9","PALMYRA"],["#7C4DDE","Activo"],
- ["#A98AEF","Lavanda"],["#EDE7FA","Suave"],["#F8F7FC","Fondo"]
+const plans = [
+  {
+    code: "starter", icon: Sparkles, name: "Starter", price: "$10", note: "90 días gratis", warehouses: "1 almacén", employees: "2 empleados", products: "50 productos",
+    features: ["POS + inventario", "Clientes y proveedores", "Reportes básicos", "Modo offline"], featured: false
+  },
+  {
+    code: "growth", icon: Building2, name: "Growth", price: "$15", note: "Para crecer", warehouses: "3 almacenes", employees: "4 empleados", products: "150 productos",
+    features: ["Todo Starter", "Transferencias", "Compras y proveedores", "Reportes avanzados"], featured: true
+  },
+  {
+    code: "pro", icon: Globe2, name: "Pro", price: "$25", note: "Máxima capacidad", warehouses: "7 almacenes", employees: "10 empleados", products: "300 productos",
+    features: ["Todo Growth", "Analítica avanzada", "Soporte prioritario", "Mayor capacidad"], featured: false
+  }
 ];
 
-function Side({active}:{active:string}){
- return <aside className="w-36 shrink-0 border-r border-violet-100 bg-white p-3">
-  <div className="flex items-center gap-2 mb-5 px-1"><img src="/icon.png" alt="" className="w-7 h-7 object-contain"/><b className="text-[10px] text-[#32145F]">PALMYRA</b></div>
-  <div className="space-y-1">
-   {modules.slice(0,8).map(([id,label,Icon])=><div key={id} className={"flex items-center gap-2 px-2 py-2 rounded-lg text-[8px] font-bold "+(active===id?"bg-violet-100 text-[#4C1D95]":"text-slate-500")}><Icon className="w-3 h-3"/>{label}</div>)}
-  </div>
-  <div className="mt-8 rounded-lg bg-[#F8F7FC] border border-violet-100 p-2"><p className="text-[7px] text-slate-400 font-bold">Empresa</p><p className="text-[8px] text-[#32145F] font-black mt-1">Mi empresa</p><p className="text-[7px] text-slate-400">Almacén Principal</p></div>
- </aside>
+const palette = [
+  ["#3B1B6E", "Violeta profundo"], ["#4B1FA7", "Índigo"], ["#6535C5", "PALMYRA"], ["#7C4DDE", "Activo"],
+  ["#9B7BE8", "Lavanda"], ["#EFE8FF", "Superficie"], ["#F7F5FC", "Fondo"]
+];
+
+function Brand({ compact = false }: { compact?: boolean }) {
+  return (
+    <div className={compact ? "flex items-center gap-2.5" : "flex items-center gap-3"}>
+      <img src="/palmyra-logo.svg" alt="PALMYRA" className={compact ? "w-9 h-9" : "w-11 h-11"} />
+      {!compact && <div><div className="text-[18px] font-black tracking-[-.04em] text-[#3B1B6E]">PALMYRA</div><div className="text-[8px] font-black uppercase tracking-[.18em] text-[#9B7BE8]">Business OS</div></div>}
+    </div>
+  );
 }
 
-function Header({label,title,action}:{label:string;title:string;action?:string}){
- return <div className="flex items-start justify-between gap-3 mb-4"><div><p className="text-[7px] uppercase tracking-[.18em] text-[#7C4DDE] font-black">PALMYRA · {label}</p><h3 className="text-base font-black text-[#32145F] mt-1">{title}</h3><p className="text-[8px] text-slate-400 mt-1">Información en tiempo real de tu empresa</p></div>{action&&<button className="h-7 px-2.5 rounded-lg bg-[#6631C9] text-white text-[8px] font-black">{action}</button>}</div>
+function MiniSidebar({ active }: { active: string }) {
+  return (
+    <aside className="hidden sm:block w-[116px] shrink-0 border-r border-violet-100 bg-white/80 p-2.5">
+      <Brand compact />
+      <div className="mt-4 space-y-1.5">
+        {modules.map(({ id, label, icon: Icon }) => (
+          <div key={id} className={"flex items-center gap-1.5 px-2 py-2 rounded-lg text-[8px] font-bold " + (active === id ? "bg-[#EFE8FF] text-[#6535C5]" : "text-slate-500")}>
+            <Icon className="w-3 h-3" /> <span className="truncate">{label}</span>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 p-2 rounded-xl bg-[#F7F5FC] border border-violet-100">
+        <p className="text-[7px] font-black uppercase tracking-wider text-slate-400">Empresa</p>
+        <p className="text-[8px] font-black text-[#3B1B6E] mt-1 truncate">Mi Empresa</p>
+        <p className="text-[7px] text-slate-500 mt-1">Almacén Principal</p>
+      </div>
+    </aside>
+  );
 }
 
-function Preview({active}:{active:string}){
- if(active==="dashboard")return <><Header label="Dashboard" title="Resumen de tu negocio"/><div className="grid grid-cols-4 gap-2">{[["Ventas","$ 12,480"],["Transacciones","24"],["Productos","56"],["Clientes","18"]].map(x=><div key={x[0]} className="rounded-xl border border-violet-100 bg-white p-3"><p className="text-[7px] text-slate-400">{x[0]}</p><b className="text-sm text-[#32145F]">{x[1]}</b><p className="text-[7px] text-emerald-600 mt-1">↑ 12% vs. ayer</p></div>)}</div><div className="grid grid-cols-[1.4fr_.6fr] gap-3 mt-3"><div className="rounded-xl border border-violet-100 p-3"><b className="text-[8px]">Ventas</b><div className="h-28 mt-4 flex items-end gap-1">{[35,44,32,58,49,72,61,88,78,95].map((h,i)=><span key={i} style={{height:h+"%"}} className="flex-1 bg-violet-200 rounded-t"><span className="block h-2/3 mt-auto bg-violet-600 rounded-t"/></span>)}</div></div><div className="rounded-xl border border-violet-100 p-3"><b className="text-[8px]">Métodos de pago</b><div className="w-20 h-20 rounded-full border-[10px] border-violet-200 border-t-[#32145F] border-r-[#7C4DDE] mx-auto mt-4"/></div></div></>;
-
- if(active==="pos")return <><Header label="POS" title="Punto de Venta" action="Cobrar"/><div className="grid grid-cols-[1fr_.34fr] gap-3">{<div className="grid grid-cols-4 gap-2">{["Café Premium","Agua 500ml","Pan Integral","Leche Entera","Huevos","Arroz 1kg","Aceite 1L","Pasta 500g"].map(p=><div key={p} className="rounded-xl border border-violet-100 bg-white p-2"><div className="aspect-square rounded-lg bg-[#F8F7FC] flex items-center justify-center text-violet-300">▦</div><p className="text-[7px] font-black mt-2">{p}</p><p className="text-[7px] text-violet-700">$ 2.50</p></div>)}</div>}<div className="rounded-xl bg-[#32145F] p-3 text-white"><p className="text-[8px] text-violet-200">Carrito (3)</p>{["Café Premium","Pan Integral","Agua 500ml"].map(p=><div key={p} className="bg-white/10 rounded-lg p-2 mt-2"><div className="flex justify-between text-[7px]"><b>{p}</b><span>$ 2.50</span></div><p className="text-[7px] text-violet-200 mt-1">− 1 +</p></div>)}<div className="border-t border-white/10 mt-4 pt-3 flex justify-between text-[8px]"><span>Total</span><b>$ 4.40</b></div><button className="w-full h-8 rounded-lg bg-white text-[#32145F] text-[8px] font-black mt-3">Cobrar</button></div></div></>;
-
- if(active==="inventory")return <><Header label="Inventario" title="Existencias" action="Nuevo producto"/><div className="grid grid-cols-3 gap-2 mb-3">{[["Productos","284"],["Stock bajo","12"],["Almacenes","3"]].map(x=><div key={x[0]} className="rounded-xl border border-violet-100 p-3"><p className="text-[7px] text-slate-400">{x[0]}</p><b className="text-sm text-[#32145F]">{x[1]}</b></div>)}</div><div className="rounded-xl border border-violet-100 overflow-hidden">{["Café Premium","Agua 500ml","Pan Integral","Leche Entera","Huevos","Aceite 1L"].map((p,i)=><div key={p} className="grid grid-cols-5 p-2 border-b border-violet-50 text-[7px]"><b>{p}</b><span>General</span><b className={i===2||i===3?"text-orange-500":""}>{[45,120,8,3,18,12][i]}</b><span>Principal</span><span className={i===2||i===3?"text-orange-500":"text-emerald-600"}>{i===2||i===3?"Bajo":"Normal"}</span></div>)}</div></>;
-
- if(active==="transfers")return <><Header label="Transferencias" title="Movimientos entre almacenes" action="Nueva transferencia"/><div className="space-y-2">{["Principal → Sucursal 2","Sucursal 2 → Principal","Principal → Sucursal 3","Sucursal 3 → Principal"].map((x,i)=><div key={x} className="rounded-xl border border-violet-100 bg-white p-3 flex justify-between"><div><b className="text-[8px]">{x}</b><p className="text-[7px] text-slate-400 mt-1">{[24,12,8,18][i]} productos</p></div><span className="text-[7px] font-black text-violet-700 bg-violet-50 px-2 py-1 rounded-full">{i===1?"Completada":"En proceso"}</span></div>)}</div></>;
-
- if(active==="customers")return <><Header label="Clientes" title="Clientes y actividad" action="Nuevo cliente"/><div className="grid grid-cols-3 gap-2 mb-3">{[["Clientes","1,284"],["Nuevos hoy","18"],["Compras","$ 24,840"]].map(x=><div key={x[0]} className="rounded-xl border border-violet-100 p-3"><p className="text-[7px] text-slate-400">{x[0]}</p><b className="text-sm text-[#32145F]">{x[1]}</b></div>)}</div><div className="rounded-xl border border-violet-100">{["Ana Rodríguez","Carlos Pérez","María Gómez","Pedro López"].map(p=><div key={p} className="p-2.5 border-b border-violet-50 flex items-center gap-2"><span className="w-6 h-6 rounded-full bg-violet-100 text-violet-700 text-[8px] font-black flex items-center justify-center">{p[0]}</span><b className="text-[8px]">{p}</b><span className="ml-auto text-[7px] text-slate-400">$ 420.00</span></div>)}</div></>;
-
- if(active==="reports")return <><Header label="Reportes" title="Indicadores del negocio"/><div className="grid grid-cols-4 gap-2 mb-3">{[["Ventas","$ 84K"],["Margen","28.4%"],["Ticket","$ 32.80"],["Stock","$ 124K"]].map(x=><div key={x[0]} className="rounded-xl border border-violet-100 p-3"><p className="text-[7px] text-slate-400">{x[0]}</p><b className="text-sm text-[#32145F]">{x[1]}</b></div>)}</div><div className="rounded-xl border border-violet-100 p-3"><b className="text-[8px]">Ventas por periodo</b><div className="h-28 mt-4 flex items-end gap-1">{[30,44,37,50,48,65,56,76,69,90,82,94].map((h,i)=><span key={i} style={{height:h+"%"}} className="flex-1 bg-violet-200 rounded-t"><span className="block h-1/2 mt-auto bg-violet-600 rounded-t"/></span>)}</div></div></>;
-
- if(active==="team")return <><Header label="Equipo" title="Usuarios, roles y accesos" action="Agregar trabajador"/><div className="grid grid-cols-4 gap-2 mb-3">{[["Empleados","8"],["Accesos","6"],["Invitaciones","2"],["Roles","5"]].map(x=><div key={x[0]} className="rounded-xl border border-violet-100 p-3"><p className="text-[7px] text-slate-400">{x[0]}</p><b className="text-sm text-[#32145F]">{x[1]}</b></div>)}</div><div className="rounded-xl border border-violet-100 overflow-hidden">{["Carlos Rodríguez","María González","Pedro López","Ana Torres","Luis Fernández"].map((p,i)=><div key={p} className="grid grid-cols-5 p-2 border-b border-violet-50 text-[7px]"><b>{p}</b><span className="text-slate-400">{p.split(" ")[0].toLowerCase()}@empresa.com</span><span className="bg-violet-100 text-violet-700 rounded px-1.5 py-0.5 font-black">{["Encargado","Cajera","Vendedor","Almacén","Supervisor"][i]}</span><span>{i===1?"Principal":"Principal, Sucursal 2"}</span><span className="text-emerald-600 font-black">Activo</span></div>)}</div></>;
-
- if(active==="cash")return <><Header label="Caja" title="Turnos y movimientos"/><div className="grid grid-cols-3 gap-2"><div className="rounded-xl border border-violet-100 p-3"><p className="text-[7px] text-slate-400">Caja abierta</p><b className="text-sm text-[#32145F]">$ 8,420</b></div><div className="rounded-xl border border-violet-100 p-3"><p className="text-[7px] text-slate-400">Ventas</p><b className="text-sm text-[#32145F]">$ 12,480</b></div><div className="rounded-xl border border-violet-100 p-3"><p className="text-[7px] text-slate-400">Movimientos</p><b className="text-sm text-[#32145F]">32</b></div></div><div className="mt-3 rounded-xl border border-violet-100 p-4"><div className="flex justify-between"><b className="text-[8px]">Turno actual</b><span className="text-[7px] text-emerald-600 font-black">● Abierto</span></div><div className="grid grid-cols-2 gap-3 mt-4"><div className="bg-[#F8F7FC] rounded-lg p-3"><p className="text-[7px] text-slate-400">Fondo inicial</p><b className="text-sm text-[#32145F]">$ 2,000</b></div><div className="bg-[#F8F7FC] rounded-lg p-3"><p className="text-[7px] text-slate-400">Esperado</p><b className="text-sm text-[#32145F]">$ 8,420</b></div></div></div></>;
-
- return <><Header label="Configuración" title="Empresa y preferencias"/><div className="grid grid-cols-3 gap-2">{["Empresa","Almacenes","Equipo","Roles y permisos","Caja y POS","Monedas","Seguridad","Sincronización","Plan"].map(x=><div key={x} className="rounded-xl border border-violet-100 bg-white p-3"><div className="w-7 h-7 rounded-lg bg-violet-100 text-violet-700 flex items-center justify-center"><Settings2 className="w-3.5 h-3.5"/></div><b className="text-[8px] block mt-2 text-[#32145F]">{x}</b><span className="text-[7px] text-slate-400">Gestiona esta sección</span></div>)}</div></>;
+function MiniTopbar({ title }: { title: string }) {
+  return (
+    <div className="h-8 border-b border-violet-100 bg-white flex items-center justify-between px-3">
+      <div className="flex items-center gap-1.5">
+        <span className="w-2 h-2 rounded-full bg-violet-200" />
+        <span className="w-2 h-2 rounded-full bg-violet-300" />
+        <span className="w-2 h-2 rounded-full bg-violet-400" />
+      </div>
+      <span className="text-[7px] font-black text-[#6535C5] uppercase tracking-[.2em]">{title}</span>
+      <div className="w-8 h-2 rounded-full bg-[#F0EBFA]" />
+    </div>
+  );
 }
 
-function ProductPreview({active}:{active:string}){
- return <div className="rounded-[2rem] border border-violet-200 bg-white p-2.5 shadow-[0_30px_80px_-35px_rgba(76,29,149,.42)]"><div className="rounded-[1.5rem] overflow-hidden border border-violet-100 bg-[#F8F7FC]"><div className="h-8 bg-white border-b border-violet-100 flex items-center justify-between px-3"><div className="flex gap-1"><span className="w-2 h-2 rounded-full bg-violet-200"/><span className="w-2 h-2 rounded-full bg-violet-200"/><span className="w-2 h-2 rounded-full bg-violet-200"/></div><b className="text-[7px] tracking-widest text-violet-500">PALMYRA</b></div><div className="flex min-h-[380px] md:min-h-[470px]"><Side active={active}/><main className="flex-1 min-w-0 p-4 md:p-5"><Preview active={active}/></main></div></div></div>
+function ModuleScreen({ module }: { module: typeof modules[number] }) {
+  const Icon = module.icon;
+  return (
+    <div className="rounded-[22px] border border-violet-100 bg-white/90 overflow-hidden">
+      <MiniTopbar title={module.label} />
+      <div className="flex min-h-[300px] md:min-h-[390px]">
+        <MiniSidebar active={module.id} />
+        <main className="flex-1 min-w-0 p-3 md:p-5 bg-[#FBFAFD]">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div>
+              <div className="flex items-center gap-1.5 text-[#6535C5]">
+                <Icon className="w-3.5 h-3.5" />
+                <span className="text-[7px] uppercase tracking-[.18em] font-black">PALMYRA · {module.label}</span>
+              </div>
+              <h4 className="text-sm md:text-base font-black text-[#251536] mt-1">{module.title}</h4>
+            </div>
+            <span className="hidden md:block text-[7px] px-2 py-1 rounded-full bg-[#EFE8FF] text-[#6535C5] font-black">Vista del módulo</span>
+          </div>
+          <p className="text-[9px] md:text-[10px] leading-5 text-slate-500 max-w-2xl">{module.text}</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-4">
+            {module.stats.map(([name, value]) => (
+              <div key={name} className="rounded-xl bg-white border border-violet-100 p-2.5 shadow-[0_10px_30px_-22px_rgba(76,29,149,.3)]">
+                <p className="text-[7px] text-slate-400 font-bold uppercase tracking-wider">{name}</p>
+                <p className="text-[11px] md:text-sm font-black text-[#3B1B6E] mt-1 truncate">{value}</p>
+              </div>
+            ))}
+          </div>
+          <div className="grid lg:grid-cols-[1.35fr_.65fr] gap-2 mt-3">
+            <div className="rounded-xl border border-violet-100 bg-white p-3">
+              <div className="flex items-center justify-between"><span className="text-[8px] font-black text-slate-700">Actividad</span><span className="text-[7px] text-violet-600 font-bold">Últimos 7 días</span></div>
+              <div className="h-28 mt-3 flex items-end gap-1.5">
+                {[34,46,39,62,56,71,66,84,76,93].map((height, index) => (
+                  <div key={index} className="flex-1 h-full flex items-end">
+                    <div className="w-full rounded-t-md bg-[#E9DEFF]" style={{ height: height + "%" }}>
+                      <div className="h-2/3 mt-auto rounded-t-md bg-gradient-to-t from-[#6535C5] to-[#9B7BE8]" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-xl border border-violet-100 bg-[#3B1B6E] p-3 text-white">
+              <span className="text-[8px] font-black text-violet-200 uppercase tracking-wider">Acciones</span>
+              <div className="space-y-2 mt-3">
+                {["Consultar", "Registrar", "Analizar"].map((action, index) => (
+                  <div key={action} className="flex items-center gap-2 rounded-lg bg-white/10 p-2">
+                    <span className="w-5 h-5 rounded-md bg-white/10 flex items-center justify-center text-[8px]">{index + 1}</span>
+                    <span className="text-[8px] font-bold">{action}</span>
+                    <ChevronRight className="w-3 h-3 ml-auto text-violet-200" />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+  );
 }
 
-export default function LandingPage(){
- const navigate=useNavigate(); const [active,setActive]=useState("dashboard"); const [mobileOpen,setMobileOpen]=useState(false);
- const current=modules.find(x=>x[0]===active)||modules[0];
- return <div className="palmyra-landing-page min-h-screen bg-[#F8F7FC] text-[#211A2E]">
-  <header className="sticky top-0 z-50 border-b border-violet-100 bg-[#F8F7FC]/95 backdrop-blur"><div className="max-w-7xl mx-auto px-5 sm:px-8 h-16 flex items-center justify-between"><button className="flex items-center gap-2.5" onClick={()=>window.scrollTo({top:0,behavior:"smooth"})}><img src="/icon.png" alt="PALMYRA" className="w-10 h-10 object-contain"/><span className="font-black text-xl tracking-[-.04em] text-[#32145F]">PALMYRA</span></button><nav className="hidden md:flex items-center gap-7 text-sm font-bold text-slate-600"><a href="#modulos">Módulos</a><a href="#planes">Planes</a><a href="#como-funciona">Cómo funciona</a></nav><div className="flex items-center gap-2"><button onClick={()=>navigate("/auth")} className="hidden sm:block px-4 py-2 text-sm font-black text-[#4C1D95]">Entrar</button><button onClick={()=>navigate("/auth?mode=signup")} className="px-4 py-2.5 rounded-xl bg-[#6631C9] text-white text-sm font-black shadow-lg shadow-violet-500/20">Crear cuenta</button><button onClick={()=>setMobileOpen(v=>!v)} className="md:hidden w-10 h-10 rounded-xl border border-violet-100 text-violet-700 flex items-center justify-center">{mobileOpen?<X className="w-4 h-4"/>:<Menu className="w-4 h-4"/>}</button></div></div>{mobileOpen&&<div className="md:hidden px-5 pb-4 border-t border-violet-100 bg-white"><div className="flex flex-col gap-2 pt-3 text-sm font-bold text-slate-600"><a href="#modulos">Módulos</a><a href="#planes">Planes</a><a href="#como-funciona">Cómo funciona</a></div></div>}</header>
+export default function LandingPage() {
+  const navigate = useNavigate();
+  const [active, setActive] = useState("dashboard");
+  const [mobileMenu, setMobileMenu] = useState(false);
+  const current = useMemo(() => modules.find(item => item.id === active) || modules[0], [active]);
 
-  <main>
-   <section className="relative overflow-hidden"><div className="absolute -top-36 -right-20 w-[34rem] h-[34rem] rounded-full bg-violet-200/45 blur-3xl"/><div className="max-w-7xl mx-auto px-5 sm:px-8 pt-20 pb-16 lg:pt-28 lg:pb-24 grid lg:grid-cols-[.86fr_1.14fr] gap-12 items-center"><div className="relative z-10"><div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-violet-100 text-[#4C1D95] text-xs font-black"><span className="w-1.5 h-1.5 rounded-full bg-[#6631C9]"/>Gestión empresarial simple y profesional</div><h1 className="text-5xl sm:text-6xl lg:text-7xl font-black tracking-[-.055em] leading-[.94] mt-6 text-[#32145F]">Tu negocio.<br/><span className="text-[#6631C9]">Todo bajo control.</span></h1><p className="text-lg text-slate-600 leading-8 mt-7 max-w-xl">Ventas, inventario, caja, compras, clientes, almacenes, equipo y reportes en un solo sistema. Una cuenta pertenece a una sola empresa y puede crecer con los almacenes que permite su plan.</p><div className="flex flex-col sm:flex-row gap-3 mt-8"><button onClick={()=>navigate("/auth?mode=signup")} className="h-12 px-6 rounded-2xl bg-[#6631C9] text-white font-black flex items-center justify-center gap-2 shadow-xl shadow-violet-500/20">Crear mi cuenta <ArrowRight className="w-4 h-4"/></button><a href="#modulos" className="h-12 px-6 rounded-2xl bg-white border border-violet-200 text-[#4C1D95] font-black flex items-center justify-center">Ver el sistema</a></div><div className="flex flex-wrap gap-5 mt-7 text-xs font-bold text-slate-500"><span><Check className="inline w-4 h-4 text-emerald-600 mr-1"/>Una empresa por cuenta</span><span><Check className="inline w-4 h-4 text-emerald-600 mr-1"/>Almacenes según el plan</span><span><Check className="inline w-4 h-4 text-emerald-600 mr-1"/>Offline</span></div></div><div className="relative"><ProductPreview active={active}/><div className="absolute -bottom-5 -left-3 md:-left-7 rounded-2xl bg-white border border-violet-100 shadow-xl px-4 py-3 flex items-center gap-3"><span className="w-9 h-9 rounded-xl bg-violet-100 text-violet-700 flex items-center justify-center"><WifiOff className="w-4 h-4"/></span><div><b className="text-[10px] block text-[#32145F]">Modo offline</b><span className="text-[9px] text-slate-500">Sigue operando sin conexión</span></div></div></div></div></section>
+  return (
+    <div className="palmyra-landing-page min-h-screen bg-[#F7F5FC] text-[#21182F]">
+      <header className="sticky top-0 z-50 border-b border-violet-100 bg-[#F7F5FC]/90 backdrop-blur-xl">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-[68px] flex items-center justify-between gap-4">
+          <button onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} aria-label="Ir al inicio"><Brand /></button>
+          <nav className="hidden lg:flex items-center gap-7 text-[12px] font-bold text-slate-600">
+            <a href="#producto">Producto</a><a href="#modulos">Módulos</a><a href="#planes">Planes</a><a href="#historia">Historia</a>
+          </nav>
+          <div className="flex items-center gap-2">
+            <button onClick={() => navigate("/auth")} className="hidden sm:inline-flex h-10 px-4 rounded-xl items-center justify-center text-xs font-black text-[#4B1FA7] hover:bg-white">Entrar</button>
+            <button onClick={() => navigate("/auth?mode=signup")} className="h-10 px-4 sm:px-5 rounded-xl bg-[#6535C5] text-white text-xs font-black shadow-[0_12px_28px_-12px_rgba(101,53,197,.65)]">Crear cuenta</button>
+            <button onClick={() => setMobileMenu(v => !v)} className="lg:hidden w-10 h-10 rounded-xl border border-violet-100 bg-white text-[#6535C5]" aria-label="Menú">{mobileMenu ? <X className="w-4 h-4 mx-auto" /> : <Menu className="w-4 h-4 mx-auto" />}</button>
+          </div>
+        </div>
+        {mobileMenu && <div className="lg:hidden border-t border-violet-100 bg-white px-4 py-3"><div className="flex flex-col gap-3 text-xs font-bold text-slate-600"><a href="#producto" onClick={() => setMobileMenu(false)}>Producto</a><a href="#modulos" onClick={() => setMobileMenu(false)}>Módulos</a><a href="#planes" onClick={() => setMobileMenu(false)}>Planes</a><a href="#historia" onClick={() => setMobileMenu(false)}>Historia</a></div></div>}
+      </header>
 
-   <section id="modulos" className="bg-white border-y border-violet-100"><div className="max-w-7xl mx-auto px-5 sm:px-8 py-20"><div className="max-w-3xl"><p className="text-xs font-black uppercase tracking-[.2em] text-[#6631C9]">Explora PALMYRA</p><h2 className="text-3xl sm:text-5xl font-black tracking-tight text-[#32145F] mt-3">Una barra. Todo el sistema.</h2><p className="text-slate-600 mt-4 leading-7">Pulsa cada sección del menú y visualiza la pantalla correspondiente. Esta es la estructura visual que vamos a mantener como lenguaje de todo PALMYRA.</p></div><div className="mt-8 rounded-2xl border border-violet-100 bg-[#F8F7FC] p-2 overflow-x-auto"><div className="flex min-w-max gap-1">{modules.map(([id,label,Icon])=>{const selected=active===id;return <button key={id} onClick={()=>setActive(id)} className={"flex items-center gap-2 px-3.5 py-2.5 rounded-xl text-[11px] font-black transition-all "+(selected?"bg-[#6631C9] text-white shadow-md":"text-slate-500 hover:bg-white hover:text-[#4C1D95]")}><Icon className="w-3.5 h-3.5"/>{label}</button>})}</div></div><div className="grid lg:grid-cols-[.32fr_.68fr] gap-8 items-start mt-8"><div className="pt-3"><p className="text-xs font-black uppercase tracking-[.18em] text-[#7C4DDE]">{current[1]}</p><h3 className="text-3xl font-black text-[#32145F] mt-3">{active==="dashboard"?"Visión clara para decidir.":active==="pos"?"Vender rápido y fácil.":active==="inventory"?"Control real de existencias.":active==="transfers"?"Mercancía organizada por ubicación.":active==="customers"?"Información del cliente al alcance.":active==="reports"?"Indicadores que ayudan a decidir.":active==="team"?"Personas, roles y permisos claros.":active==="cash"?"Caja y turnos bajo control.":"Configuración simple y ordenada."}</h3><p className="text-sm text-slate-500 leading-7 mt-4">La interfaz utiliza espacios amplios, tarjetas limpias y acciones visibles para que el propietario tenga control y el trabajador pueda operar sin aprender informática.</p><div className="mt-7 inline-flex items-center gap-2 text-xs font-bold text-violet-700"><span className="w-2 h-2 rounded-full bg-emerald-500"/>Vista interactiva del módulo</div></div><ProductPreview active={active}/></div></div></section>
+      <main>
+        <section id="producto" className="relative overflow-hidden">
+          <div className="absolute -top-40 -right-36 w-[30rem] h-[30rem] rounded-full palmyra-orb" />
+          <div className="absolute bottom-0 left-0 w-[18rem] h-[18rem] rounded-full bg-[#EDE7FA]/70 blur-3xl" />
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-14 pb-12 lg:pt-20 lg:pb-16 grid xl:grid-cols-[.82fr_1.18fr] gap-9 items-center">
+            <div className="relative z-10">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#EFE8FF] text-[#4B1FA7] text-[10px] font-black">
+                <Sparkles className="w-3 h-3" /> Business OS para negocios reales
+              </div>
+              <h1 className="text-[2.8rem] sm:text-5xl lg:text-6xl font-black tracking-[-.06em] leading-[.98] mt-5 text-[#3B1B6E]">
+                Vende mejor.<br/><span className="palmyra-gradient-text">Controla todo.</span>
+              </h1>
+              <p className="text-sm sm:text-base lg:text-lg leading-7 text-slate-600 mt-5 max-w-xl">
+                PALMYRA reúne ventas, inventario, cajas, compras, clientes, almacenes, equipo y reportes en un solo sistema. Una cuenta pertenece a una sola empresa y crece con los almacenes permitidos por tu plan.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-2.5 mt-7">
+                <button onClick={() => navigate("/auth?mode=signup")} className="h-12 px-5 rounded-2xl bg-[#6535C5] text-white font-black text-sm flex items-center justify-center gap-2 shadow-[0_18px_40px_-18px_rgba(101,53,197,.7)]">Crear mi cuenta <ArrowRight className="w-4 h-4"/></button>
+                <a href="#modulos" className="h-12 px-5 rounded-2xl bg-white border border-violet-200 text-[#4B1FA7] font-black text-sm flex items-center justify-center">Ver cómo funciona</a>
+              </div>
+              <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-x-5 gap-y-2.5 mt-6 text-[10px] font-bold text-slate-500">
+                <span><Check className="inline w-3.5 h-3.5 text-emerald-600 mr-1"/>1 cuenta = 1 empresa</span>
+                <span><Check className="inline w-3.5 h-3.5 text-emerald-600 mr-1"/>Almacenes por plan</span>
+                <span><Check className="inline w-3.5 h-3.5 text-emerald-600 mr-1"/>Offline</span>
+                <span><Check className="inline w-3.5 h-3.5 text-emerald-600 mr-1"/>Accesos por rol</span>
+              </div>
+            </div>
 
-   <section className="bg-[#32145F] text-white"><div className="max-w-7xl mx-auto px-5 sm:px-8 py-20 grid md:grid-cols-[1fr_auto] gap-10 items-center"><div><p className="text-xs font-black uppercase tracking-[.2em] text-violet-200">Paleta oficial</p><h2 className="text-3xl md:text-4xl font-black mt-3">El morado del logo se convierte en el lenguaje de todo PALMYRA.</h2><p className="text-violet-100/80 mt-4 max-w-2xl leading-7">Profundidad para marca y navegación, violeta para acciones, lavanda para estados y superficies muy suaves para mantener el sistema cómodo durante jornadas largas.</p></div><div className="flex items-end gap-2 rounded-2xl bg-white/5 border border-white/10 p-4">{palette.map(([hex,name])=><div key={hex} className="text-center"><span style={{backgroundColor:hex}} className="block w-9 h-9 rounded-full border border-white/15 shadow-sm"/><span className="block text-[6px] text-violet-200 mt-1 w-9">{name}</span></div>)}</div></div></section>
+            <div className="relative">
+              <div className="palmyra-3d rounded-[28px] bg-white/60 p-2.5 border border-violet-100 shadow-[0_40px_90px_-42px_rgba(59,27,110,.48)]">
+                <ModuleScreen module={current} />
+              </div>
+              <div className="absolute -bottom-4 -left-2 sm:-left-4 px-3 py-2 rounded-2xl bg-white border border-violet-100 shadow-xl flex items-center gap-2">
+                <span className="w-8 h-8 rounded-xl bg-[#EFE8FF] text-[#6535C5] flex items-center justify-center"><WifiOff className="w-4 h-4"/></span>
+                <div><p className="text-[9px] font-black text-[#3B1B6E]">Modo offline</p><p className="text-[8px] text-slate-500">Sigue operando sin internet</p></div>
+              </div>
+              <div className="absolute -top-5 -right-2 sm:-right-5 px-3 py-2 rounded-2xl bg-[#3B1B6E] text-white shadow-2xl flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-violet-200"/>
+                <div><p className="text-[9px] font-black">Datos aislados</p><p className="text-[8px] text-violet-200">Empresa · usuario · dispositivo</p></div>
+              </div>
+            </div>
+          </div>
+        </section>
 
-   <section id="planes" className="bg-[#F8F7FC]"><div className="max-w-7xl mx-auto px-5 sm:px-8 py-20"><div className="text-center max-w-2xl mx-auto"><p className="text-xs font-black uppercase tracking-[.2em] text-[#6631C9]">Planes</p><h2 className="text-3xl sm:text-4xl font-black text-[#32145F] mt-3">Crece sin cambiar de sistema.</h2><p className="text-slate-600 mt-4">Una cuenta corresponde a una sola empresa. Los almacenes, empleados y productos aumentan según el plan contratado.</p></div><div className="grid lg:grid-cols-3 gap-5 mt-10">{plans.map((p,i)=><article key={p.name} className={(i===1?"bg-[#6631C9] text-white border-[#6631C9]":"bg-white text-[#32145F] border-violet-100")+" rounded-3xl border p-7 shadow-sm"}><div className="flex items-center justify-between gap-2"><b className="text-xs uppercase tracking-widest">{p.name}</b><span className={(i===1?"bg-white/15 text-white":"bg-violet-100 text-violet-700")+" px-2.5 py-1 rounded-full text-[9px] font-black"}>{p.badge}</span></div><div className="mt-6 flex items-end gap-1"><span className="text-5xl font-black">{p.price}</span><span className={(i===1?"text-violet-200":"text-slate-400")+" text-sm mb-2"}>USD / mes</span></div><div className="grid grid-cols-3 gap-2 mt-5 text-[9px] font-black"><span className="rounded-xl bg-black/5 p-2">{p.warehouses}</span><span className="rounded-xl bg-black/5 p-2">{p.employees}</span><span className="rounded-xl bg-black/5 p-2">{p.products}</span></div><ul className="space-y-3 mt-6">{p.features.map(f=><li key={f} className="flex items-start gap-2 text-sm"><Check className={(i===1?"text-violet-200":"text-emerald-600")+" w-4 h-4 shrink-0 mt-0.5"}/><span className={i===1?"text-white/90":"text-slate-600"}>{f}</span></li>)}</ul><button onClick={()=>navigate("/auth?mode=signup")} className={(i===1?"bg-white text-violet-700":"bg-[#6631C9] text-white")+" w-full mt-8 h-11 rounded-xl font-black"}>Comenzar <ChevronRight className="inline w-4 h-4"/></button></article>)}</div><p className="text-center text-[10px] text-slate-400 mt-5">En Cuba, durante esta etapa, los planes se contratan y pagan en efectivo. La arquitectura queda preparada para habilitar pagos internacionales más adelante.</p></div></section>
+        <section id="modulos" className="border-y border-violet-100 bg-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 lg:py-18">
+            <div className="max-w-3xl">
+              <p className="text-[10px] font-black uppercase tracking-[.2em] text-[#7C4DDE]">Explora el producto</p>
+              <h2 className="text-2xl sm:text-4xl font-black tracking-[-.04em] text-[#3B1B6E] mt-2">Un menú. Todo tu negocio.</h2>
+              <p className="text-sm text-slate-500 mt-3 leading-6">Pulsa una sección para ver una vista compacta del módulo. El lenguaje visual está pensado para que el propietario entienda rápido y el trabajador opere sin sentirse perdido.</p>
+            </div>
+            <div className="mt-6 flex gap-1.5 overflow-x-auto pb-1">
+              {modules.map(({ id, label, icon: Icon }) => (
+                <button key={id} onClick={() => setActive(id)} className={"shrink-0 h-9 px-3 rounded-xl flex items-center gap-2 text-[10px] font-black transition " + (active === id ? "bg-[#6535C5] text-white shadow-md" : "bg-[#F7F5FC] text-slate-500 hover:bg-[#EFE8FF] hover:text-[#4B1FA7]")}>
+                  <Icon className="w-3.5 h-3.5"/>{label}
+                </button>
+              ))}
+            </div>
+            <div className="grid lg:grid-cols-[.33fr_.67fr] gap-7 mt-6 items-center">
+              <div className="rounded-3xl border border-violet-100 bg-[#F7F5FC] p-5">
+                <div className="w-10 h-10 rounded-2xl bg-[#EFE8FF] text-[#6535C5] flex items-center justify-center"><current.icon className="w-5 h-5"/></div>
+                <p className="text-[9px] font-black uppercase tracking-[.18em] text-[#7C4DDE] mt-5">{current.label}</p>
+                <h3 className="text-xl font-black text-[#3B1B6E] mt-2 tracking-[-.02em]">{current.title}</h3>
+                <p className="text-xs text-slate-500 mt-3 leading-6">{current.text}</p>
+                <div className="mt-5 text-[9px] font-black text-[#6535C5] flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"/> Interfaz diseñada para uso diario</div>
+              </div>
+              <ModuleScreen module={current} />
+            </div>
+          </div>
+        </section>
 
-   <section id="como-funciona" className="bg-white"><div className="max-w-7xl mx-auto px-5 sm:px-8 py-20"><div className="text-center"><p className="text-xs font-black uppercase tracking-[.2em] text-[#6631C9]">Así funciona</p><h2 className="text-3xl sm:text-4xl font-black text-[#32145F] mt-3">Simple para el dueño. Claro para el trabajador.</h2></div><div className="grid md:grid-cols-4 gap-4 mt-10">{[["01","Crea tu cuenta","Una cuenta PALMYRA pertenece a una sola empresa."],["02","Crea tu empresa","Selecciona tu plan y configura los almacenes permitidos."],["03","Organiza el equipo","Invita trabajadores y asigna roles, permisos y almacenes."],["04","Empieza a operar","POS, inventario, caja y sincronización online/offline."]].map(x=><div key={x[0]} className="p-6 rounded-2xl bg-[#F8F7FC] border border-violet-100"><span className="text-xs font-black text-[#7C4DDE]">{x[0]}</span><h3 className="font-black text-[#32145F] mt-4">{x[1]}</h3><p className="text-sm text-slate-500 mt-2 leading-6">{x[2]}</p></div>)}</div></div></section>
+        <section className="bg-[#3B1B6E] text-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 grid lg:grid-cols-[1fr_auto] gap-7 items-center">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[.2em] text-violet-200">Lenguaje visual</p>
+              <h2 className="text-2xl sm:text-4xl font-black tracking-[-.04em] mt-2">Morado para la marca. Claridad para trabajar.</h2>
+              <p className="text-sm text-violet-100/75 mt-3 max-w-2xl leading-6">La paleta nace del logo: profundidad para navegación y encabezados, violeta para acciones, lavanda para superficies y contrastes suaves para largas jornadas frente a la pantalla.</p>
+            </div>
+            <div className="flex items-center gap-1.5 rounded-2xl bg-white/5 border border-white/10 p-3 overflow-x-auto">
+              {palette.map(([hex, name]) => <div key={hex} className="text-center shrink-0"><span style={{backgroundColor:hex}} className="block w-8 h-8 rounded-full border border-white/15"/><span className="block text-[6px] text-violet-200 mt-1 w-10 leading-3">{name}</span></div>)}
+            </div>
+          </div>
+        </section>
 
-   <section className="bg-[#211238] text-white"><div className="max-w-5xl mx-auto px-5 sm:px-8 py-20 text-center"><img src="/icon.png" alt="PALMYRA" className="w-16 h-16 mx-auto object-contain"/><h2 className="text-3xl sm:text-5xl font-black mt-6">Una identidad. Un sistema. PALMYRA.</h2><p className="text-violet-200 max-w-2xl mx-auto mt-4 leading-7">Control empresarial con una experiencia visual limpia, profesional y fácil de entender.</p><button onClick={()=>navigate("/auth?mode=signup")} className="mt-8 px-7 h-12 rounded-xl bg-white text-[#4C1D95] font-black">Crear cuenta gratis <ArrowRight className="inline w-4 h-4 ml-1"/></button></div></section>
-  </main>
+        <section id="planes" className="bg-[#F7F5FC]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 lg:py-18">
+            <div className="text-center max-w-2xl mx-auto">
+              <p className="text-[10px] font-black uppercase tracking-[.2em] text-[#7C4DDE]">Planes</p>
+              <h2 className="text-2xl sm:text-4xl font-black text-[#3B1B6E] mt-2">Empieza pequeño. Crece sin cambiar de sistema.</h2>
+              <p className="text-sm text-slate-500 mt-3">Un administrador por empresa y el número de almacenes y empleados que permite cada plan.</p>
+            </div>
+            <div className="grid md:grid-cols-3 gap-3 mt-8">
+              {plans.map(plan => {
+                const Icon = plan.icon;
+                return (
+                  <article key={plan.code} className={"relative rounded-2xl p-4 border " + (plan.featured ? "border-[#8B63E6] bg-white shadow-[0_25px_60px_-34px_rgba(101,53,197,.55)] md:-translate-y-2" : "border-violet-100 bg-white/80")}>
+                    {plan.featured && <div className="absolute -top-2.5 left-4 px-2.5 py-1 rounded-full bg-[#6535C5] text-white text-[8px] font-black uppercase tracking-wider">Más elegido</div>}
+                    <div className="flex items-center justify-between gap-2"><div className="flex items-center gap-2"><span className="w-8 h-8 rounded-xl bg-[#EFE8FF] text-[#6535C5] flex items-center justify-center"><Icon className="w-4 h-4"/></span><div><p className="text-[9px] uppercase tracking-wider text-slate-400 font-black">{plan.note}</p><h3 className="text-base font-black text-[#3B1B6E]">{plan.name}</h3></div></div><p className="text-xl font-black text-[#3B1B6E]">{plan.price}<span className="text-[8px] text-slate-400 font-bold">/mes</span></p></div>
+                    <div className="grid grid-cols-3 gap-1.5 mt-4">{[plan.warehouses, plan.employees, plan.products].map((value, index) => <div key={index} className="rounded-lg bg-[#F7F5FC] border border-violet-50 px-2 py-2 text-center"><p className="text-[7px] text-slate-400 uppercase font-black">{["Almacenes","Empleados","Productos"][index]}</p><p className="text-[10px] font-black text-[#4B1FA7] mt-0.5">{value}</p></div>)}</div>
+                    <div className="space-y-1.5 mt-4">{plan.features.map(f => <div key={f} className="flex items-center gap-2 text-[9px] text-slate-500"><span className="w-4 h-4 rounded-md bg-[#EFE8FF] text-[#6535C5] flex items-center justify-center shrink-0"><Check className="w-2.5 h-2.5"/></span>{f}</div>)}</div>
+                    <button onClick={() => navigate("/auth?mode=signup")} className={"w-full h-10 mt-5 rounded-xl text-[10px] font-black " + (plan.featured ? "bg-[#6535C5] text-white" : "bg-[#F0EBFA] text-[#4B1FA7]")}>{plan.code === "starter" ? "Comenzar gratis" : "Elegir plan"}</button>
+                    <p className="text-[7px] text-center text-slate-400 mt-2">En Cuba: activación y pago en efectivo</p>
+                  </article>
+                );
+              })}
+            </div>
+          </div>
+        </section>
 
-  <footer className="bg-[#120C1D] text-white/60"><div className="max-w-7xl mx-auto px-5 sm:px-8 py-10 flex flex-col md:flex-row gap-5 items-center justify-between"><div className="flex items-center gap-2 text-white"><img src="/icon.png" alt="" className="w-8 h-8 object-contain"/><b>PALMYRA</b></div><p className="text-xs">© 2026 PALMYRA · Gestión empresarial</p><div className="flex gap-5 text-xs font-bold"><button onClick={()=>navigate("/auth")}>Acceder</button><a href="#modulos">Módulos</a><a href="#planes">Planes</a></div></div></footer>
- </div>;
+        <section className="bg-white border-y border-violet-100">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 grid lg:grid-cols-3 gap-3">
+            {[
+              [LockKeyhole, "Cuenta personal", "Cada usuario entra con su propia identidad."],
+              [MonitorSmartphone, "Desde cualquier dispositivo", "Mismo negocio, mismo rol y permisos."],
+              [CloudOff, "Offline de verdad", "La operación puede continuar y sincronizarse después."]
+            ].map(([Icon, title, text]) => <div key={String(title)} className="rounded-2xl border border-violet-100 bg-[#F7F5FC] p-4"><div className="w-9 h-9 rounded-xl bg-white border border-violet-100 text-[#6535C5] flex items-center justify-center"><Icon className="w-4 h-4"/></div><h3 className="text-sm font-black text-[#3B1B6E] mt-3">{title}</h3><p className="text-[10px] text-slate-500 mt-1 leading-5">{text}</p></div>)}
+          </div>
+        </section>
+
+        <section id="historia" className="bg-[#F7F5FC]">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 lg:py-18 grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
+            <div className="relative rounded-[28px] overflow-hidden border border-violet-100 shadow-[0_30px_70px_-40px_rgba(59,27,110,.45)]">
+              <img src={CITY_IMAGE} alt="Ruinas de la antigua ciudad de Palmyra, Siria" className="w-full h-[300px] sm:h-[390px] object-cover" loading="lazy" />
+              <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/70 to-transparent text-white"><p className="text-[8px] font-bold opacity-80">{CITY_CREDIT}</p></div>
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[.2em] text-[#7C4DDE]">Por qué PALMYRA</p>
+              <h2 className="text-2xl sm:text-4xl font-black tracking-[-.04em] text-[#3B1B6E] mt-2">Un nombre nacido de conexión, comercio y movimiento.</h2>
+              <p className="text-sm text-slate-600 leading-7 mt-4">Elegimos PALMYRA por la historia de una ciudad que durante siglos fue un punto de encuentro en medio del desierto: una parada clave para comerciantes y caravanas que conectaban rutas y culturas.</p>
+              <p className="text-sm text-slate-600 leading-7 mt-3">Para nosotros, el nombre representa exactamente lo que queremos construir: un sistema que conecte ventas, inventario, cajas, almacenes, personas y decisiones dentro de un mismo lugar.</p>
+              <div className="grid sm:grid-cols-3 gap-2 mt-6">
+                {[["Conexión","Rutas que se encuentran"],["Comercio","Movimiento que crea valor"],["Resiliencia","Seguir avanzando"]].map(([a,b]) => <div key={a} className="rounded-xl bg-white border border-violet-100 p-3"><p className="text-xs font-black text-[#4B1FA7]">{a}</p><p className="text-[9px] text-slate-500 mt-1">{b}</p></div>)}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-[#3B1B6E] text-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 grid md:grid-cols-[1fr_auto] gap-7 items-center">
+            <div><p className="text-[10px] font-black uppercase tracking-[.2em] text-violet-200">Cuba primero · mundo después</p><h2 className="text-2xl sm:text-4xl font-black mt-2 tracking-[-.04em]">Hoy cobramos los planes en efectivo. La arquitectura queda lista para escalar.</h2><p className="text-sm text-violet-100/75 mt-3 max-w-2xl leading-6">PALMYRA usa un modelo de facturación preparado para registrar pagos manuales en Cuba y, más adelante, conectar proveedores internacionales sin cambiar las cuentas, empresas ni el historial.</p></div>
+            <div className="rounded-2xl bg-white/5 border border-white/10 p-4 min-w-[240px]"><div className="flex items-center gap-2"><CircleDollarSign className="w-5 h-5 text-violet-200"/><span className="text-xs font-black">Método actual</span></div><div className="mt-3 p-3 rounded-xl bg-white/10"><p className="text-[9px] uppercase tracking-wider text-violet-200 font-black">Cuba</p><p className="text-sm font-black mt-1">Pago en efectivo</p><p className="text-[8px] text-violet-200 mt-1">Activación manual por PALMYRA</p></div><div className="mt-2 flex items-center gap-2 text-[8px] text-violet-200"><Globe2 className="w-3.5 h-3.5"/> Proveedores internacionales preparados</div></div>
+          </div>
+        </section>
+
+        <section id="como-funciona" className="bg-white">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
+            <div className="text-center max-w-2xl mx-auto"><p className="text-[10px] font-black uppercase tracking-[.2em] text-[#7C4DDE]">Cómo empieza</p><h2 className="text-2xl sm:text-4xl font-black text-[#3B1B6E] mt-2">De cero a operativo en pocos pasos.</h2></div>
+            <div className="grid md:grid-cols-3 gap-3 mt-8">
+              {[
+                [1, "Crea tu cuenta", "Tu cuenta pertenece a una sola empresa."],
+                [2, "Configura el negocio", "Selecciona plan, crea el primer almacén y organiza el equipo."],
+                [3, "Empieza a operar", "Vende, controla inventario, cierra cajas y trabaja online u offline."]
+              ].map(([n,t,d]) => <div key={String(n)} className="rounded-2xl border border-violet-100 bg-[#F7F5FC] p-5"><span className="w-8 h-8 rounded-xl bg-[#6535C5] text-white flex items-center justify-center text-xs font-black">{n}</span><h3 className="text-sm font-black text-[#3B1B6E] mt-4">{t}</h3><p className="text-[10px] text-slate-500 mt-1.5 leading-5">{d}</p></div>)}
+            </div>
+          </div>
+        </section>
+
+        <section className="bg-[#F7F5FC] border-t border-violet-100">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <div><p className="text-[10px] font-black uppercase tracking-[.2em] text-[#7C4DDE]">PALMYRA</p><h2 className="text-2xl sm:text-3xl font-black text-[#3B1B6E] mt-2">Tu negocio merece un sistema que no estorbe.</h2><p className="text-xs text-slate-500 mt-2">Claro para trabajar. Potente para crecer.</p></div>
+            <button onClick={() => navigate("/auth?mode=signup")} className="h-12 px-5 rounded-2xl bg-[#6535C5] text-white font-black text-sm flex items-center gap-2 shadow-[0_18px_40px_-20px_rgba(101,53,197,.7)]">Crear cuenta <ArrowRight className="w-4 h-4"/></button>
+          </div>
+        </section>
+      </main>
+
+      <footer className="bg-white border-t border-violet-100">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-7 flex flex-col md:flex-row items-center justify-between gap-3">
+          <Brand compact />
+          <p className="text-[9px] text-slate-400 text-center">PALMYRA · Business OS · Gestión empresarial simple y profesional</p>
+          <p className="text-[9px] text-slate-400">© {new Date().getFullYear()} PALMYRA</p>
+        </div>
+      </footer>
+    </div>
+  );
 }
