@@ -47,3 +47,75 @@ begin
  return jsonb_build_object('ok',true,'company_id',v_req.company_id,'plan_code',v_plan.code,'plan_name',v_plan.name,'invoice_number',v_invoice,'payment_id',v_payment_id);
 end; $$;
 revoke all on function public.approve_plan_request(uuid) from public,anon; grant execute on function public.approve_plan_request(uuid) to authenticated;
+
+-- Payment abstraction: manual cash is active for Cuba; online providers are reserved for future international checkout.
+alter table public.plans add column if not exists billing_currency_code bpchar not null default 'USD';
+update public.plans set billing_currency_code='USD' where billing_currency_code is null;
+
+alter table public.plan_requests add column if not exists payment_method text not null default 'manual_cash';
+alter table public.plan_requests add column if not exists payment_provider text not null default 'manual_cash';
+alter table public.billing_payments add column if not exists payment_method text not null default 'manual_cash';
+alter table public.billing_payments add column if not exists payment_provider text not null default 'manual_cash';
+alter table public.billing_payments add column if not exists metadata jsonb not null default '{}'::jsonb;
+
+alter table public.plan_requests drop constraint if exists plan_requests_payment_method_check;
+alter table public.plan_requests add constraint plan_requests_payment_method_check check (payment_method in ('manual_cash','online'));
+alter table public.plan_requests drop constraint if exists plan_requests_payment_provider_check;
+alter table public.plan_requests add constraint plan_requests_payment_provider_check check (payment_provider in ('manual_cash','stripe','paypal'));
+
+alter table public.billing_payments drop constraint if exists billing_payments_payment_method_check;
+alter table public.billing_payments add constraint billing_payments_payment_method_check check (payment_method in ('manual_cash','card','bank_transfer','other'));
+alter table public.billing_payments drop constraint if exists billing_payments_payment_provider_check;
+alter table public.billing_payments add constraint billing_payments_payment_provider_check check (payment_provider in ('manual_cash','stripe','paypal','other'));
+
+create index if not exists plan_requests_company_status_idx on public.plan_requests(company_id,status,requested_at desc);
+create index if not exists billing_payments_company_created_idx on public.billing_payments(company_id,created_at desc);
+
+create or replace function public.set_manual_cash_payment(
+  p_request_id uuid,
+  p_reference text default null,
+  p_note text default null
+) returns jsonb
+language plpgsql security definer
+set search_path to 'public','private','pg_temp'
+as $$
+declare
+  v_user uuid:=auth.uid();
+  v_req public.plan_requests%rowtype;
+  v_plan public.plans%rowtype;
+  v_company_currency bpchar;
+begin
+  if v_user is null or not exists(
+    select 1 from public.platform_admins where user_id=v_user
+  ) then raise exception 'permission_denied'; end if;
+
+  select * into v_req from public.plan_requests where id=p_request_id for update;
+  if not found then raise exception 'plan_request_not_found'; end if;
+  if v_req.status<>'pending' then raise exception 'plan_request_not_pending'; end if;
+
+  select * into v_plan from public.plans where id=v_req.requested_plan_id and active;
+  if not found then raise exception 'invalid_plan'; end if;
+
+  select default_currency_code into v_company_currency
+  from public.companies where id=v_req.company_id;
+
+  update public.plan_requests
+    set payment_method='manual_cash',
+        payment_provider='manual_cash',
+        note=coalesce(p_note,note)
+  where id=v_req.id;
+
+  return jsonb_build_object(
+    'ok',true,
+    'request_id',v_req.id,
+    'plan_code',v_plan.code,
+    'amount',v_plan.monthly_price,
+    'currency_code',coalesce(v_plan.billing_currency_code,'USD'),
+    'company_currency_code',v_company_currency,
+    'payment_method','manual_cash'
+  );
+end;
+$$;
+
+revoke all on function public.set_manual_cash_payment(uuid,text,text) from public,anon;
+grant execute on function public.set_manual_cash_payment(uuid,text,text) to authenticated;
