@@ -28,6 +28,7 @@ export async function loadSubscriptionOverview() {
   ]);
   if(plansError) throw plansError;
   if(requestError) throw requestError;
+  if(invoicesError) throw invoicesError;
   if(invoiceError) throw invoiceError;
 
   const {data:subscription,error:subscriptionError}=await supabase
