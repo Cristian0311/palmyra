@@ -10,6 +10,7 @@ export interface SaaSContext {
   company: { id: string; name: string; slug: string; account_status: string; default_currency_code: string } | null;
   availableCompanies: Array<{ id: string; name: string; slug: string; account_status: string; isOwner: boolean }>;
   membershipStatus: string | null;
+  isOwner: boolean;
   roleKey: string;
   warehouseIds: string[];
   subscription: {
@@ -100,7 +101,8 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
       companyId: null,
       company: null,
       availableCompanies: [],
-      membershipStatus: null,
+      membershipStatus,
+      isOwner: Boolean(fallbackMembership?.is_owner),
       roleKey: 'admin',
       warehouseIds: [],
       subscription: null
@@ -116,7 +118,8 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     supabase.from('role_permissions').select('permissions!inner(key)').eq('role_id', (userRole as any)?.role_id || '00000000-0000-0000-0000-000000000000')
   ]);
 
-  const roleKey = (userRole as any)?.roles?.key || (membership?.is_owner ? 'admin' : 'employee');
+  const isOwner = activeMembership?.is_owner === true;
+  const roleKey = (userRole as any)?.roles?.key || (isOwner ? 'admin' : 'employee');
   const warehouseIds = (locations || []).map((row:any) => row.warehouse_id).filter(Boolean);
   const granularPermissions = (permissionRows || []).map((row:any) => (row as any)?.permissions?.key).filter(Boolean);
   const permissions = granularPermissions.length > 0 ? granularPermissions : (roleKey === 'admin'
@@ -158,6 +161,7 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
       isOwner: row.is_owner === true
     })),
     membershipStatus,
+    isOwner,
     roleKey,
     warehouseIds,
     subscription: subscription && plan ? {
