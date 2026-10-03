@@ -31,6 +31,7 @@ const PublicShop = lazy(() => import("./pages/PublicShop"));
 const SaaSAuth = lazy(() => import("./pages/SaaSAuth"));
 const SaaSOnboarding = lazy(() => import("./pages/SaaSOnboarding"));
 const AccountStatus = lazy(() => import("./pages/AccountStatus"));
+const Subscription = lazy(() => import("./pages/Subscription"));
 const Team = lazy(() => import("./pages/Team"));
 const SaaSInvite = lazy(() => import("./pages/SaaSInvite"));
 const Suppliers = lazy(() => import("./pages/Suppliers"));
@@ -280,6 +281,7 @@ export default function App() {
                     <Route path="/reports" element={can("reports.view") ? <Reports /> : <Navigate to="/pos" replace />} />
                     <Route path="/settings" element={can("settings.manage") ? <Settings /> : <Navigate to="/pos" replace />} />
                     <Route path="/team" element={can("employees.manage") ? <Team /> : <Navigate to="/pos" replace />} />
+                    <Route path="/subscription" element={can("settings.manage") ? <Subscription /> : <Navigate to="/pos" replace />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </Suspense>
