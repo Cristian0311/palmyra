@@ -115,6 +115,8 @@ export default function App() {
 
       if (!ctx.companyId) {
         setAccessState(ctx.membershipStatus && ctx.membershipStatus !== "active" ? "blocked" : "needs_onboarding");
+      } else if (!ctx.deviceActive) {
+        setAccessState("blocked");
       } else if (ctx.company?.account_status === "pending_payment" || ctx.company?.account_status === "suspended") {
         setAccessState("blocked");
       } else {
