@@ -6,6 +6,7 @@
  * periods and localStorage is too fragile for a growing transactional queue.
  */
 import { addSyncLog } from '../utils/syncLogger';
+import { getPalmyraLocalScopeKey } from './localScope';
 
 
 export type OfflineActionType =
@@ -30,12 +31,14 @@ export interface OfflineQueueItem {
   deviceId?: string;
 }
 
-const STORAGE_KEY = 'pos_offline_sync_queue';
-const TOMBSTONES_KEY = 'pos_offline_sync_queue_tombstones';
-const DB_NAME = 'omnisync-pos-offline';
+let STORAGE_KEY = 'palmyra-offline-queue__anonymous';
+let TOMBSTONES_KEY = 'palmyra-offline-queue-tombstones__anonymous';
+let DB_NAME = 'palmyra-offline-v2-anonymous';
 const DB_VERSION = 1;
 const STORE_NAME = 'operations';
-const DEVICE_KEY = 'omnisync_device_id';
+let DEVICE_KEY = 'palmyra_device_id__anonymous';
+let activeScopeKey: string | null = null;
+let activeDbName = '';
 
 let memoryQueue: OfflineQueueItem[] = [];
 let queueReady = false;
@@ -45,12 +48,31 @@ let queueInitPromise: Promise<void>;
 let dbPromise: Promise<IDBDatabase | null> | null = null;
 let removedDuringQueueProcess = new Set<string>();
 
+function refreshScopeKeys() {
+  const scopeKey = getPalmyraLocalScopeKey();
+  activeScopeKey = scopeKey;
+  if (!scopeKey) {
+    STORAGE_KEY = 'palmyra-offline-queue__anonymous';
+    TOMBSTONES_KEY = 'palmyra-offline-queue-tombstones__anonymous';
+    DB_NAME = 'palmyra-offline-v2-anonymous';
+    DEVICE_KEY = 'palmyra_device_id__anonymous';
+    return;
+  }
+  STORAGE_KEY = 'palmyra-offline-queue__' + scopeKey;
+  TOMBSTONES_KEY = 'palmyra-offline-queue-tombstones__' + scopeKey;
+  DB_NAME = 'palmyra-offline-v2-' + encodeURIComponent(scopeKey);
+  DEVICE_KEY = 'palmyra_device_id__' + scopeKey;
+}
+
+refreshScopeKeys();
+
 class PermanentSyncError extends Error {
   permanent = true;
 }
 
 function getDeviceId(): string {
   if (typeof window === 'undefined') return 'server';
+  if (!activeScopeKey) return 'anonymous-device';
   const existing = localStorage.getItem(DEVICE_KEY);
   if (existing) return existing;
   const id = crypto.randomUUID();
@@ -96,9 +118,10 @@ function clearQueueTombstones(): void {
 }
 
 function openDb(): Promise<IDBDatabase | null> {
-  if (typeof indexedDB === 'undefined') return Promise.resolve(null);
-  if (dbPromise) return dbPromise;
+  if (typeof indexedDB === 'undefined' || !activeScopeKey) return Promise.resolve(null);
+  if (dbPromise && activeDbName === DB_NAME) return dbPromise;
   dbPromise = new Promise((resolve, reject) => {
+    activeDbName = DB_NAME;
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
@@ -186,6 +209,12 @@ async function idbClear(): Promise<void> {
 
 async function migrateLegacyQueue(): Promise<void> {
   if (typeof window === 'undefined') { queueReady = true; return; }
+  if (!activeScopeKey) {
+    memoryQueue = [];
+    queueReady = true;
+    emitQueueEvent();
+    return;
+  }
   const legacyRaw = localStorage.getItem(STORAGE_KEY);
   const legacy = legacyRaw ? (() => { try { return JSON.parse(legacyRaw); } catch { return []; } })() : [];
   const tombstones = readQueueTombstones();
@@ -229,6 +258,24 @@ async function migrateLegacyQueue(): Promise<void> {
   // El replay automático se inicia desde App después de que el store termine
   // de hidratarse. No procesamos la cola aquí para evitar que IndexedDB y
   // Zustand compitan durante el arranque y posteriormente se pisen el estado.
+}
+
+export async function setOfflineQueueScope(): Promise<void> {
+  const nextScope = getPalmyraLocalScopeKey();
+  if (nextScope === activeScopeKey && queueReady) return;
+
+  try { await persistenceChain; } catch {}
+
+  refreshScopeKeys();
+  memoryQueue = [];
+  removedDuringQueueProcess = new Set<string>();
+  queueReady = false;
+  persistenceError = null;
+  dbPromise = null;
+  activeDbName = '';
+
+  queueInitPromise = migrateLegacyQueue();
+  await queueInitPromise;
 }
 
 // Hydrate once at module load. Synchronous readers use the memory snapshot.
