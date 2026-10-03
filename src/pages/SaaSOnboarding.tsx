@@ -63,7 +63,7 @@ export default function SaaSOnboarding() {
       <div className="w-full max-w-4xl">
         <div className="flex items-center justify-between mb-3 px-1">
           <button type="button" onClick={() => navigate("/")} className="flex items-center gap-2" aria-label="PALMYRA">
-            <img src="/palmyra-logo.svg" alt="PALMYRA" className="w-9 h-9" />
+            <img src="/palmyra-logo.svg" alt="PALMYRA" className="w-[124px] h-8 object-contain object-left" />
             <span className="text-sm font-black text-[#3B1B6E] tracking-[-.03em]">PALMYRA</span>
           </button>
           <span className="text-[9px] font-black uppercase tracking-[.16em] text-[#8B63E6]">Configuración inicial</span>
