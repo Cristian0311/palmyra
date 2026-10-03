@@ -37,6 +37,7 @@ const SaaSInvite = lazy(() => import("./pages/SaaSInvite"));
 const Suppliers = lazy(() => import("./pages/Suppliers"));
 const InventoryAudit = lazy(() => import("./pages/InventoryAudit"));
 const Banks = lazy(() => import("./pages/Banks"));
+const PlatformAdmin = lazy(() => import("./pages/PlatformAdmin"));
 
 function PageLoading() {
   const location = window.location.pathname;
@@ -258,6 +259,7 @@ export default function App() {
       <Router>
         <Suspense fallback={<PageLoading />}>
           <Routes>
+          <Route path="/platform-admin" element={<PlatformAdmin />} />
           <Route path="/shop/:slug" element={<PublicShop />} />
           <Route path="/shop" element={<CustomerShop />} />
           <Route path="/invite" element={<SaaSInvite />} />
