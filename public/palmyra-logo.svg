@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 112" role="img" aria-label="PALMYRA">
+  <defs>
+    <linearGradient id="bg" x1="18" y1="12" x2="96" y2="98" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#6D36D7"/>
+      <stop offset="1" stop-color="#4B1FA7"/>
+    </linearGradient>
+    <linearGradient id="word" x1="196" y1="24" x2="492" y2="88" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3B1B6E"/>
+      <stop offset="1" stop-color="#5B2BBF"/>
+    </linearGradient>
+  </defs>
+  <circle cx="56" cy="56" r="50" fill="url(#bg)"/>
+  <g transform="translate(10 11) scale(.57)">
+    <path d="M18 78C18 42.1 45.8 14 80 14s62 28.1 62 64" stroke="#EBDDFF" stroke-width="7" stroke-linecap="round"/>
+    <path d="M32 77c.8-11.7 7-18.5 17.4-19.2 5.9-.4 10.8 1.9 15.1 5.7 1.4-11.2 8.3-19.2 18.3-19.2 9.8 0 15.9 7.2 17.9 18.4 2.5-5.2 7.5-8 13.8-7.2 10.1 1.2 14.1 8.6 13.5 16.6-.4 5.5-2.4 10.5-5.6 14.8h-9.3c2.6-3.8 3.7-8 3.4-12.1-.3-4.4-2.6-7.3-6.4-7.3-4.7 0-7.4 4.1-7.6 10.3l-.4 9.1H83.6l.3-9.6c.2-6.5-2.2-10.5-7-10.5-4.8 0-7.1 4-7.3 10.5l-.3 9.6H48.2c-9.1 0-15.5-3.7-16.2-9.9Z" fill="#FFFFFF"/>
+    <path d="M96.5 35.5c5.2 1.4 8.8 4.7 10.7 9.1 2.8-4 6.5-6 11.2-6.2" stroke="#D8C1FF" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="116.5" cy="38" r="2.2" fill="#EBDDFF"/>
+  </g>
+  <text x="128" y="73" fill="url(#word)" font-family="Plus Jakarta Sans,Inter,Arial,sans-serif" font-size="54" font-weight="800" letter-spacing="1.2">PALMYRA</text>
+</svg>
