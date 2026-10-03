@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { ArrowRight, CheckCircle2, LockKeyhole, Mail, Store, UserRound } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { loadSaaSContext, signInSaaSAccount, signUpSaaSAccount } from "../services/saas";
+import { loadSaaSContext, signInSaaSAccount, signUpSaaSAccount, requestSaaSPasswordReset, updateSaaSPassword } from "../services/saas";
+import { getSupabase } from "../lib/supabase";
 
-type Mode = "signin" | "signup";
+type Mode = "signin" | "signup" | "reset" | "recovery";
 
 export default function SaaSAuth() {
   const navigate = useNavigate();
@@ -14,6 +15,24 @@ export default function SaaSAuth() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [recoveryMode, setRecoveryMode] = useState(
+    new URLSearchParams(window.location.search).get("recovery") === "1"
+  );
+
+  useEffect(() => {
+    const supabase = getSupabase();
+    if (!supabase) return;
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        setRecoveryMode(true);
+        setMode("recovery");
+        setError("");
+        setMessage("");
+      }
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
 
   const continueAfterAuth = async () => {
     const ctx = await loadSaaSContext();
@@ -39,6 +58,37 @@ export default function SaaSAuth() {
     setMessage("");
 
     try {
+      if (mode === "reset") {
+        if (!email.trim()) {
+          setError("Escribe tu correo.");
+          return;
+        }
+        const { error: resetError } = await requestSaaSPasswordReset(email);
+        if (resetError) throw resetError;
+        setMessage("Si existe una cuenta con ese correo, recibirás un enlace para restablecer la contraseña.");
+        return;
+      }
+
+      if (mode === "recovery" || recoveryMode) {
+        if (password.length < 8) {
+          setError("La contraseña debe tener al menos 8 caracteres.");
+          return;
+        }
+        if (password !== confirmPassword) {
+          setError("Las contraseñas no coinciden.");
+          return;
+        }
+        const { error: updateError } = await updateSaaSPassword(password);
+        if (updateError) throw updateError;
+        setPassword("");
+        setConfirmPassword("");
+        setRecoveryMode(false);
+        setMessage("Contraseña actualizada. Ya puedes entrar a PALMYRA.");
+        setMode("signin");
+        window.history.replaceState({}, "", "/auth");
+        return;
+      }
+
       if (mode === "signup") {
         if (name.trim().length < 2) {
           setError("Escribe tu nombre completo.");
@@ -124,11 +174,16 @@ export default function SaaSAuth() {
               {mode === "signin" ? "Entra a tu cuenta" : "Crea tu cuenta"}
             </h2>
             <p className="text-sm text-slate-500 mt-2">
-              {mode === "signin"
-                ? "Tu sesión determina automáticamente la empresa y los permisos."
-                : "Después de registrarte crearás tu empresa y elegirás el plan."}
+              {mode === "reset"
+                ? "Te enviaremos un enlace para recuperar tu contraseña."
+                : mode === "recovery"
+                  ? "Crea una nueva contraseña para continuar."
+                  : mode === "signin"
+                    ? "Tu sesión determina automáticamente la empresa y los permisos."
+                    : "Después de registrarte crearás tu empresa y elegirás el plan."}
             </p>
 
+            {mode !== "recovery" && (
             <div className="grid grid-cols-2 p-1 bg-slate-100 rounded-xl mt-7">
               <button
                 type="button"
@@ -145,6 +200,7 @@ export default function SaaSAuth() {
                 Crear cuenta
               </button>
             </div>
+          )}
 
             <form onSubmit={submit} className="space-y-4 mt-6">
               {mode === "signup" && (
@@ -159,7 +215,7 @@ export default function SaaSAuth() {
                 </label>
               )}
 
-              <label className="block">
+              {mode !== "recovery" && <label className="block">
                 <span className="block text-xs font-bold text-slate-600 mb-2">Correo</span>
                 <div className="relative">
                   <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -167,10 +223,10 @@ export default function SaaSAuth() {
                     className="w-full h-12 pl-10 pr-4 rounded-xl border border-slate-200 bg-slate-50 outline-none focus:bg-white focus:border-rose-400"
                     placeholder="nombre@empresa.com" />
                 </div>
-              </label>
+              </label>}
 
               <label className="block">
-                <span className="block text-xs font-bold text-slate-600 mb-2">Contraseña</span>
+                <span className="block text-xs font-bold text-slate-600 mb-2">{mode === "recovery" ? "Nueva contraseña" : "Contraseña"}</span>
                 <div className="relative">
                   <LockKeyhole className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                   <input type="password" value={password} onChange={e => setPassword(e.target.value)} disabled={busy} autoComplete={mode === "signin" ? "current-password" : "new-password"}
@@ -179,14 +235,37 @@ export default function SaaSAuth() {
                 </div>
               </label>
 
+              {mode === "recovery" && (
+                <label className="block">
+                  <span className="block text-xs font-bold text-slate-600 mb-2">Confirmar contraseña</span>
+                  <div className="relative">
+                    <LockKeyhole className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} disabled={busy} autoComplete="new-password"
+                      className="w-full h-12 pl-10 pr-4 rounded-xl border border-slate-200 bg-slate-50 outline-none focus:bg-white focus:border-rose-400"
+                      placeholder="••••••••" />
+                  </div>
+                </label>
+              )}
+
               {error && <div className="rounded-xl border border-rose-200 bg-rose-50 text-rose-700 text-sm p-3">{error}</div>}
               {message && <div className="rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-700 text-sm p-3">{message}</div>}
 
               <button disabled={busy} className="w-full h-12 rounded-xl bg-slate-950 text-white font-bold flex items-center justify-center gap-2 disabled:opacity-50">
-                {busy ? "Procesando..." : mode === "signin" ? "Entrar a PALMYRA" : "Crear cuenta"}
+                {busy ? "Procesando..." : mode === "recovery" ? "Actualizar contraseña" : mode === "reset" ? "Enviar enlace" : mode === "signin" ? "Entrar a PALMYRA" : "Crear cuenta"}
                 {!busy && <ArrowRight className="w-4 h-4" />}
               </button>
             </form>
+
+            {mode === "signin" && (
+              <button type="button" onClick={() => { setMode("reset"); setError(""); setMessage(""); }} className="w-full text-xs font-bold text-rose-600 mt-4">
+                ¿Olvidaste tu contraseña?
+              </button>
+            )}
+            {mode === "reset" && (
+              <button type="button" onClick={() => { setMode("signin"); setError(""); setMessage(""); }} className="w-full text-xs font-bold text-slate-500 mt-4">
+                Volver a iniciar sesión
+              </button>
+            )}
 
             <p className="text-[11px] text-slate-400 mt-6 leading-5">
               La cuenta principal de PALMYRA usa autenticación de Supabase. Los empleados operativos de cada empresa se gestionan por separado dentro del sistema.
