@@ -272,3 +272,12 @@ end;
 $$;
 revoke all on function public.select_company_plan(uuid,uuid) from public,anon;
 grant execute on function public.select_company_plan(uuid,uuid) to authenticated;
+
+
+-- Remove duplicate plan-limit triggers. One canonical private trigger now
+-- enforces products, employees and warehouses; this also prevents conflicting
+-- bootstrap errors during company creation.
+drop trigger if exists enforce_warehouse_plan_limit on public.warehouses;
+drop trigger if exists trg_plan_limits_warehouses on public.warehouses;
+drop trigger if exists trg_plan_limits_products on public.products;
+drop trigger if exists trg_plan_limits_employees on public.employees;
