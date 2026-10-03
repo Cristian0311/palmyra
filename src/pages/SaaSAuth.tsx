@@ -41,7 +41,7 @@ export default function SaaSAuth() {
       return;
     }
     if (!ctx.companyId) {
-      navigate("/onboarding", { replace: true });
+      navigate(ctx.membershipStatus && ctx.membershipStatus !== "active" ? "/account-status" : "/onboarding", { replace: true });
       return;
     }
     if (ctx.company?.account_status === "pending_payment" || ctx.company?.account_status === "suspended") {
