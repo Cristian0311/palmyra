@@ -246,6 +246,25 @@ async function sendInvitationEmail(payload: { companyId: string; employeeId: str
   return data as { sent: boolean; reason?: string };
 }
 
+async function sendInvitationEmail(input: {
+  companyId: string;
+  employeeId: string;
+  email: string;
+  name: string;
+  token: string;
+}) {
+  const supabase = getSupabase();
+  if (!supabase) return { sent: false, reason: "supabase_not_configured" };
+  const { data, error } = await supabase.functions.invoke("send-company-invitation", {
+    body: input
+  });
+  if (error) {
+    console.warn("[PALMYRA] No se pudo enviar la invitación por correo:", error);
+    return { sent: false, reason: "email_send_failed", error: error.message };
+  }
+  return data as { sent?: boolean; reason?: string };
+}
+
 export async function createEmployeeWithInvitation(input: {
   companyId: string;
   employeeCode: string;
