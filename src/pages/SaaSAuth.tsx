@@ -127,7 +127,6 @@ export default function SaaSAuth() {
         <div className="flex items-center justify-between mb-3 px-1">
           <button onClick={() => navigate("/landing")} className="flex items-center gap-2.5">
             <img src="/palmyra-logo.svg" alt="PALMYRA" className="w-[124px] h-8 object-contain object-left" />
-            <span className="text-sm font-black tracking-[-.04em] text-[#3B1B6E]">PALMYRA</span>
           </button>
           <button onClick={() => navigate("/landing")} className="text-[9px] font-black uppercase tracking-wider text-slate-400 hover:text-[#6535C5]">Volver al inicio</button>
         </div>
