@@ -4,8 +4,8 @@ revoke all on function public.create_company_authenticated(text,text,bpchar,bpch
 grant execute on function public.create_company_authenticated(text,text,bpchar,bpchar,text,text) to service_role;
 
 create or replace function public.palmyra_onboard_company(
-  p_name text,p_slug text,p_country_code bpchar default 'PR',p_default_currency_code bpchar default 'USD',
-  p_timezone text default 'America/Puerto_Rico',p_warehouse_name text default 'Almacén principal',
+  p_name text,p_slug text,p_country_code bpchar default 'CU',p_default_currency_code bpchar default 'CUP',
+  p_timezone text default 'America/Havana',p_warehouse_name text default 'Almacén principal',
   p_plan_code text default 'starter',p_employee_name text default null,p_employee_code text default null
 ) returns jsonb language plpgsql security definer set search_path to 'public','private','pg_temp' as $$
 declare v_user uuid:=auth.uid();v_company_id uuid;v_warehouse_id uuid;v_employee_id uuid;v_employee_role_id uuid;
