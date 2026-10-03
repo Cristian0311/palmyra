@@ -1,6 +1,7 @@
 import type { User } from '../types';
 import { getSupabase } from '../lib/supabase';
 import { slugifyCompany, type PlanCode } from '../config/saas';
+import { setPalmyraLocalScope, clearPalmyraLocalScope } from './localScope';
 
 export interface SaaSContext {
   authUserId: string;
@@ -75,6 +76,7 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
 
   const companyId = profile?.active_company_id || membership?.company_id || null;
   if (!companyId) {
+    clearPalmyraLocalScope();
     return {
       authUserId: authUser.id,
       user: {
