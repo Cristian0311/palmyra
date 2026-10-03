@@ -119,3 +119,53 @@ $$;
 
 revoke all on function public.set_manual_cash_payment(uuid,text,text) from public,anon;
 grant execute on function public.set_manual_cash_payment(uuid,text,text) to authenticated;
+
+
+create or replace function public.create_open_invoice_for_plan_request(p_request_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path to 'public','private','pg_temp'
+as $$
+declare
+  v_req public.plan_requests%rowtype;
+  v_plan public.plans%rowtype;
+  v_now timestamptz:=timezone('utc',now());
+  v_invoice text;
+  v_id uuid;
+begin
+  select * into v_req from public.plan_requests where id=p_request_id for update;
+  if not found then raise exception 'plan_request_not_found'; end if;
+
+  select * into v_plan from public.plans where id=v_req.requested_plan_id and active;
+  if not found or v_plan.code='trial' then raise exception 'invalid_paid_plan'; end if;
+
+  select id into v_id from public.billing_invoices
+  where plan_request_id=v_req.id and status='open'
+  order by created_at desc limit 1;
+
+  if v_id is null then
+    v_invoice:='PAL-'||to_char(v_now,'YYYYMMDD')||'-'||substr(replace(gen_random_uuid()::text,'-',''),1,10);
+    insert into public.billing_invoices(
+      company_id,plan_request_id,invoice_number,period_start,period_end,due_at,
+      amount,currency_code,status,external_reference
+    )
+    values(
+      v_req.company_id,v_req.id,v_invoice,v_now,v_now+interval '30 days',v_now,
+      v_plan.monthly_price,coalesce(v_plan.billing_currency_code,'USD'),'open',
+      'manual_cash:plan_request:'||v_req.id
+    )
+    returning id into v_id;
+  end if;
+
+  return jsonb_build_object(
+    'invoice_id',v_id,
+    'invoice_number',(select invoice_number from public.billing_invoices where id=v_id),
+    'amount',(select amount from public.billing_invoices where id=v_id),
+    'currency_code',(select currency_code from public.billing_invoices where id=v_id)
+  );
+end;
+$$;
+
+revoke all on function public.create_open_invoice_for_plan_request(uuid) from public,anon;
+grant execute on function public.create_open_invoice_for_plan_request(uuid) to authenticated;
