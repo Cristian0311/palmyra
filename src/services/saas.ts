@@ -217,16 +217,6 @@ export async function selectCompanyPlan(companyId: string, planCode: PlanCode) {
 }
 
 
-export async function switchActiveCompany(companyId: string) {
-  const supabase = getSupabase();
-  if (!supabase) throw new Error('Supabase no está configurado.');
-  const { data, error } = await supabase.rpc('set_active_company', { p_company_id: companyId });
-  if (error) throw error;
-  const ctx = await loadSaaSContext(true);
-  if (ctx?.companyId) setPalmyraLocalScope(ctx.authUserId, ctx.companyId);
-  return ctx || data;
-}
-
 
 export async function requestSaaSPasswordReset(email: string) {
   const supabase = getSupabase();
