@@ -91,21 +91,20 @@ async function loadCatalog() {
   const tenant = await getActiveTenant();
   const supabase = getSupabase()!;
 
-  const [warehousesRes, categoriesRes, productsRes, employeesRes, accessRes, companyRes, catalogRes, variantsRes, barcodeRes, kitRes, currenciesRes] = await Promise.all([
+  const [warehousesRes, categoriesRes, productsRes, employeesRes, accessRes, companyRes, variantsRes, barcodeRes, kitRes, currenciesRes] = await Promise.all([
     supabase.from('warehouses').select('*').eq('company_id', tenant.companyId).eq('active', true).order('created_at', { ascending: true }),
     supabase.from('categories').select('*').eq('company_id', tenant.companyId).eq('active', true).order('created_at', { ascending: true }),
     supabase.from('products').select('*').eq('company_id', tenant.companyId).neq('status', 'archived').order('created_at', { ascending: true }),
     supabase.from('employees').select('*').eq('company_id', tenant.companyId).eq('active', true).order('created_at', { ascending: true }),
     supabase.from('employee_warehouse_access').select('*').eq('company_id', tenant.companyId),
     supabase.from('companies').select('id,name,default_currency_code,timezone').eq('id', tenant.companyId).single(),
-    supabase.from('company_catalogs').select('*').eq('company_id', tenant.companyId).maybeSingle(),
     supabase.from('product_variants').select('*').eq('company_id', tenant.companyId).eq('active', true),
     supabase.from('product_barcodes').select('*').eq('company_id', tenant.companyId).eq('active', true),
     supabase.from('product_kit_components').select('*').eq('company_id', tenant.companyId),
     supabase.from('currencies').select('*').eq('active', true).order('code'),
   ]);
 
-  const firstError = [warehousesRes,categoriesRes,productsRes,employeesRes,accessRes,companyRes,catalogRes,variantsRes,barcodeRes,kitRes,currenciesRes].find(r => r.error)?.error;
+  const firstError = [warehousesRes,categoriesRes,productsRes,employeesRes,accessRes,companyRes,variantsRes,barcodeRes,kitRes,currenciesRes].find(r => r.error)?.error;
   if (firstError) throw firstError;
 
   const variantsByProduct = new Map<string, any[]>();
@@ -152,8 +151,7 @@ async function loadCatalog() {
     isBase: c.code === (companyRes.data?.default_currency_code || 'USD'),
   }));
 
-  const settings = catalogRes.data || {};
-  const storeConfig = (settings.settings && settings.settings.storeConfig) || {
+  const storeConfig = {
     storeName: companyRes.data?.name || 'PALMYRA POS',
     address: '',
     phone: '',
@@ -161,7 +159,7 @@ async function loadCatalog() {
     darkMode: false,
     manualOfflineSync: true
   };
-  const receiptConfig = (settings.settings && settings.settings.receiptConfig) || {
+  const receiptConfig = {
     showLogo: false, showAddress: true, showPhone: true, showFooter: true,
     footerText: 'Gracias por su compra.',
     businessName: companyRes.data?.name || 'PALMYRA POS',
@@ -170,15 +168,8 @@ async function loadCatalog() {
     printerWidth: '80mm',
     autoPrint: false
   };
-  const catalogConfig = {
-    themeColor: settings.theme_color || '#E11D73',
-    bannerText: settings.banner_text || '',
-    whatsappNumber: settings.whatsapp_number || '',
-    showPrices: settings.show_prices !== false,
-    visibleBranches: Array.isArray(settings.visible_warehouses) ? settings.visible_warehouses : branches.map((b:any)=>b.id),
-  };
 
-  return { tenant, warehouses: warehousesRes.data || [], branches, categories: categoriesRes.data || [], products, users, currencies, storeConfig, receiptConfig, catalogConfig };
+  return { tenant, warehouses: warehousesRes.data || [], branches, categories: categoriesRes.data || [], products, users, currencies, storeConfig, receiptConfig };
 }
 
 async function loadInventory(branchId?: string) {
@@ -456,7 +447,7 @@ async function loadAllData(branchId?:string) {
     transactions,cashSessions,transfers,warranties:extras.warranties,returns:extras.returns,quotes:extras.quotes,
     timeShifts:extras.timeShifts,salarySettlements:extras.salarySettlements,inventoryAudits:extras.audits,
     suppliers:suppliersOrders.suppliers,supplierOrders:suppliersOrders.supplierOrders,
-    receiptConfig:catalog.receiptConfig,storeConfig:catalog.storeConfig,catalogConfig:catalog.catalogConfig,lastTurnNumber
+    receiptConfig:catalog.receiptConfig,storeConfig:catalog.storeConfig,lastTurnNumber
   };
 }
 
@@ -490,7 +481,7 @@ export async function pullBranchOperationalDataFromSupabase(branchId:string, opt
 export async function pullGlobalCatalogDataFromSupabase() {
   try {
     const c=await loadCatalog();
-    return {success:true,data:{branches:c.branches,categories:c.categories,products:c.products,users:c.users,currencies:c.currencies,receiptConfig:c.receiptConfig,storeConfig:c.storeConfig,catalogConfig:c.catalogConfig}};
+    return {success:true,data:{branches:c.branches,categories:c.categories,products:c.products,users:c.users,currencies:c.currencies,receiptConfig:c.receiptConfig,storeConfig:c.storeConfig}};
   } catch(e:any){ return {success:false,message:e?.message||'No se pudo actualizar el catálogo remoto'}; }
 }
 
