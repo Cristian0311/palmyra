@@ -4,7 +4,7 @@ import {
   LayoutDashboard,
   ShoppingCart,
   Package,
-  Users,
+  Users, ShieldCheck,
   Store,
   Settings,
   Menu,
@@ -56,6 +56,7 @@ const adminNavItems = [
 ];
 
 const cashierNavItems = [
+  { name: "Seguridad", href: "/security", icon: ShieldCheck },
   { name: "Punto de Venta", href: "/pos", icon: ShoppingCart },
 ];
 
