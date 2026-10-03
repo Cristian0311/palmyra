@@ -169,16 +169,81 @@ export default function SaaSAuth() {
             </div>}
 
             <form onSubmit={submit} className="space-y-3 mt-5">
-              {mode === "signup" && <label className="block"><span className="label">Nombre completo</span><div className="relative"><Users className="icon"/><input className="field pl-10 h-11" value={name} onChange={e=>setName(e.target.value)} disabled={busy} autoComplete="name" placeholder="Tu nombre"/></div></label>}
-              {mode !== "recovery" && <label className="block"><span className="label">Correo</span><div className="relative"><Mail className="icon"/><input type="email" className="field pl-10 h-11" value={email} onChange={e=>setEmail(e.target.value)} disabled={busy} autoComplete="email" placeholder="nombre@empresa.com"/></div></label>}
-              <label className="block"><span className="label">{mode==="recovery"?"Nueva contraseña":"Contraseña"}</span><div className="relative"><LockKeyhole className="icon"/><input type={showPassword?"text":"password"} className="field pl-10 pr-10 h-11" value={password} onChange={e=>setPassword(e.target.value)} disabled={busy} autoComplete={mode==="signin"?"current-password":"new-password"} placeholder="Mínimo 8 caracteres"/><button type="button" onClick={()=>setShowPassword(v=>!v)} className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 text-slate-400">{showPassword?<EyeOff className="w-4 h-4 mx-auto"/>:<Eye className="w-4 h-4 mx-auto"/>}</button></div></label>}
-              {(mode==="recovery") && <label className="block"><span className="label">Confirmar contraseña</span><div className="relative"><LockKeyhole className="icon"/><input type={showPassword?"text":"password"} className="field pl-10 h-11" value={confirmPassword} onChange={e=>setConfirmPassword(e.target.value)} disabled={busy} autoComplete="new-password" placeholder="Repite la contraseña"/></div></label>}
+              {mode === "signup" ? (
+                <label className="block">
+                  <span className="label">Nombre completo</span>
+                  <div className="relative">
+                    <Users className="icon"/>
+                    <input className="field pl-10 h-11" value={name} onChange={e=>setName(e.target.value)} disabled={busy} autoComplete="name" placeholder="Tu nombre"/>
+                  </div>
+                </label>
+              ) : null}
 
-              {error && <div className="rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-bold p-3">{error}</div>}
-              {message && <div className="rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold p-3">{message}</div>}
+              {mode !== "recovery" ? (
+                <label className="block">
+                  <span className="label">Correo</span>
+                  <div className="relative">
+                    <Mail className="icon"/>
+                    <input type="email" className="field pl-10 h-11" value={email} onChange={e=>setEmail(e.target.value)} disabled={busy} autoComplete="email" placeholder="nombre@empresa.com"/>
+                  </div>
+                </label>
+              ) : null}
+
+              <label className="block">
+                <span className="label">{mode==="recovery" ? "Nueva contraseña" : "Contraseña"}</span>
+                <div className="relative">
+                  <LockKeyhole className="icon"/>
+                  <input
+                    type={showPassword ? "text" : "password"}
+                    className="field pl-10 pr-10 h-11"
+                    value={password}
+                    onChange={e=>setPassword(e.target.value)}
+                    disabled={busy}
+                    autoComplete={mode==="signin" ? "current-password" : "new-password"}
+                    placeholder="Mínimo 8 caracteres"
+                  />
+                  <button type="button" onClick={()=>setShowPassword(v=>!v)} className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 text-slate-400">
+                    {showPassword ? <EyeOff className="w-4 h-4 mx-auto"/> : <Eye className="w-4 h-4 mx-auto"/>}
+                  </button>
+                </div>
+              </label>
+
+              {mode === "recovery" ? (
+                <label className="block">
+                  <span className="label">Confirmar contraseña</span>
+                  <div className="relative">
+                    <LockKeyhole className="icon"/>
+                    <input
+                      type={showPassword ? "text" : "password"}
+                      className="field pl-10 h-11"
+                      value={confirmPassword}
+                      onChange={e=>setConfirmPassword(e.target.value)}
+                      disabled={busy}
+                      autoComplete="new-password"
+                      placeholder="Repite la contraseña"
+                    />
+                  </div>
+                </label>
+              ) : null}
+
+              {error ? (
+                <div className="rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-bold p-3">{error}</div>
+              ) : null}
+              {message ? (
+                <div className="rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold p-3">{message}</div>
+              ) : null}
 
               <button disabled={busy} className="w-full h-11 mt-1 rounded-xl bg-[#6535C5] hover:bg-[#4F249D] text-white text-xs font-black flex items-center justify-center gap-2 disabled:opacity-50">
-                {busy ? "Procesando..." : mode==="signup" ? "Crear cuenta" : mode==="reset" ? "Enviar enlace" : mode==="recovery" ? "Actualizar contraseña" : "Entrar a PALMYRA"} {!busy && <ArrowRight className="w-4 h-4"/>}
+                {busy
+                  ? "Procesando..."
+                  : mode === "signup"
+                    ? "Crear cuenta"
+                    : mode === "reset"
+                      ? "Enviar enlace"
+                      : mode === "recovery"
+                        ? "Actualizar contraseña"
+                        : "Entrar a PALMYRA"}
+                {!busy && <ArrowRight className="w-4 h-4"/>}
               </button>
             </form>
 
