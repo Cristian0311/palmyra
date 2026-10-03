@@ -8,8 +8,8 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-const CITY_IMAGE = "https://commons.wikimedia.org/wiki/Special:Redirect/file/City_Ruins_at_Palmyra.jpg?width=1400";
-const CITY_CREDIT = "Palmyra histórica · Foto: Institute for the Study of the Ancient World / Erik Hermans · CC BY 2.0";
+const CITY_IMAGE = "https://live.staticflickr.com/5016/5514619147_c7d54849af_o.jpg";
+const CITY_CREDIT = "Palmyra histórica · Erik Hermans / Institute for the Study of the Ancient World · CC BY 2.0";
 
 const modules = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3, title: "Una vista clara de tu negocio.", text: "Ventas, inventario, caja y alertas importantes en una sola pantalla.", stats: [["Ventas", "$ 12,480"], ["Tickets", "248"], ["Stock bajo", "12"], ["Equipo", "8"]] },
