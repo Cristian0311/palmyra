@@ -36,7 +36,7 @@ declare
   v_hash text; v_id uuid; v_employee record; v_existing uuid;
 begin
   if auth.uid() is null then raise exception 'authentication_required'; end if;
-  if not private.has_permission(p_company_id,'roles.manage') then raise exception 'permission_denied'; end if;
+  if not private.has_permission(p_company_id,'employees.manage') then raise exception 'permission_denied'; end if;
   if v_email !~ '^[^@[:space:]]+@[^@[:space:]]+\.[^@[:space:]]+$' then raise exception 'invalid_email'; end if;
 
   select e.id,e.user_id,e.active,e.company_id into v_employee
