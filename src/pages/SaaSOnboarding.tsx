@@ -31,7 +31,10 @@ export default function SaaSOnboarding() {
   const navigate = useNavigate();
   const [companyName, setCompanyName] = useState("");
   const [warehouseName, setWarehouseName] = useState("Almacén principal");
-  const [planCode, setPlanCode] = useState<PlanCode>("starter");
+  const [planCode, setPlanCode] = useState<PlanCode>(() => {
+    const stored = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("palmyra_signup_plan") : null;
+    return stored === "growth" || stored === "pro" || stored === "starter" ? stored : "starter";
+  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -47,6 +50,7 @@ export default function SaaSOnboarding() {
     setBusy(true);
     try {
       await createCompanyOnboarding({ name: companyName, warehouseName, planCode });
+      sessionStorage.removeItem("palmyra_signup_plan");
       const ctx = await loadSaaSContext(true);
       if (!ctx?.companyId) throw new Error("La empresa se creó, pero no se pudo cargar el acceso.");
       useStore.setState({ currentUser: ctx.user, currentBranchId: ctx.warehouseIds[0] || "" });
