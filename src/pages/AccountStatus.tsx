@@ -39,19 +39,19 @@ export default function AccountStatus() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 px-4 py-8 flex items-center justify-center">
-      <div className="w-full max-w-lg bg-white border border-slate-200 rounded-[2rem] shadow-xl p-7 sm:p-9 text-center">
-        <div className="w-16 h-16 mx-auto rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center">
+    <main className="min-h-screen bg-[#F7F5FC] px-4 py-8 flex items-center justify-center">
+      <div className="w-full max-w-lg bg-white border border-violet-100 rounded-[2rem] shadow-xl p-7 sm:p-9 text-center">
+        <div className="w-16 h-16 mx-auto rounded-2xl bg-[#F0EBFA] text-amber-600 flex items-center justify-center">
           <AlertTriangle className="w-8 h-8" />
         </div>
         <p className="text-[10px] font-black tracking-[0.18em] uppercase text-slate-400 mt-6">Estado de la cuenta</p>
-        <h1 className="text-2xl font-black text-slate-950 mt-2">{suspended ? "Acceso suspendido" : "La empresa necesita activación"}</h1>
-        <p className="text-sm text-slate-500 mt-3 leading-6">
+        <h1 className="text-2xl font-black text-[#21182F] mt-2">{suspended ? "Acceso suspendido" : "La empresa necesita activación"}</h1>
+        <p className="text-sm text-[#6F647B] mt-3 leading-6">
           {suspended
             ? "Tu cuenta sigue existiendo, pero el acceso a esta empresa está suspendido."
             : "Tu empresa está creada, pero el plan seleccionado necesita completar su activación antes de usar el panel."}
         </p>
-        <div className="rounded-2xl bg-slate-50 border border-slate-200 text-left p-4 mt-6 text-sm text-slate-600">
+        <div className="rounded-2xl bg-[#F7F5FC] border border-violet-100 text-left p-4 mt-6 text-sm text-slate-600">
           <div className="flex items-start gap-2">
             <CheckCircle2 className="w-4 h-4 mt-0.5 text-emerald-500 shrink-0" />
             La empresa y su almacén ya están registrados.
@@ -61,13 +61,13 @@ export default function AccountStatus() {
             La solicitud de plan quedó asociada a tu empresa.
           </div>
         </div>
-        {message && <div className="rounded-xl border border-slate-200 bg-white p-3 mt-4 text-sm text-slate-600">{message}</div>}
+        {message && <div className="rounded-xl border border-violet-100 bg-white p-3 mt-4 text-sm text-slate-600">{message}</div>}
         <div className="grid sm:grid-cols-2 gap-3 mt-6">
-          <button type="button" onClick={refresh} disabled={busy} className="h-11 rounded-xl bg-slate-950 text-white font-bold flex items-center justify-center gap-2 disabled:opacity-50">
+          <button type="button" onClick={refresh} disabled={busy} className="h-11 rounded-xl bg-[#3B1B6E] text-white font-bold flex items-center justify-center gap-2 disabled:opacity-50">
             <RefreshCw className={`w-4 h-4 ${busy ? "animate-spin" : ""}`} />
             Comprobar
           </button>
-          <button type="button" onClick={signOut} disabled={busy} className="h-11 rounded-xl border border-slate-200 text-slate-700 font-bold flex items-center justify-center gap-2">
+          <button type="button" onClick={signOut} disabled={busy} className="h-11 rounded-xl border border-violet-100 text-slate-700 font-bold flex items-center justify-center gap-2">
             <LogOut className="w-4 h-4" />
             Cerrar sesión
           </button>
