@@ -7,6 +7,12 @@ function getSecretKey() {
   return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 }
 
+async function sha256Hex(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return Response.json({ error: "method_not_allowed" }, { status: 405 });
   const authHeader = req.headers.get("Authorization") || "";
@@ -47,6 +53,23 @@ Deno.serve(async (req: Request) => {
     }
   }
   if (!allowed) return Response.json({ error: "permission_denied" }, { status: 403 });
+
+  const tokenHash = await sha256Hex(token.trim());
+  const { data: invitation } = await admin.from("company_invitations")
+    .select("id,company_id,employee_id,email,status,expires_at")
+    .eq("company_id", companyId).eq("employee_id", employeeId)
+    .eq("email", email).eq("token_hash", tokenHash).eq("status", "pending")
+    .maybeSingle();
+  if (!invitation || new Date(invitation.expires_at).getTime() <= Date.now()) {
+    return Response.json({ error: "invitation_invalid_or_expired" }, { status: 400 });
+  }
+
+  const { data: employee } = await admin.from("employees")
+    .select("id,company_id,full_name,active,user_id")
+    .eq("id", employeeId).eq("company_id", companyId).maybeSingle();
+  if (!employee || employee.active === false || employee.user_id) {
+    return Response.json({ error: "employee_invalid" }, { status: 400 });
+  }
 
   const appUrl = Deno.env.get("PALMYRA_APP_URL") || req.headers.get("origin") || "";
   if (!appUrl) return Response.json({ error: "app_url_not_configured" }, { status: 500 });
