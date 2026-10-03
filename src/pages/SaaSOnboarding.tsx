@@ -64,7 +64,7 @@ export default function SaaSOnboarding() {
         <div className="p-6 sm:p-8 border-b border-slate-200">
           <p className="text-[10px] font-black uppercase tracking-[0.18em] text-rose-500">Paso 1 de 1</p>
           <h1 className="text-3xl font-black text-slate-950 mt-2">Configura tu empresa</h1>
-          <p className="text-sm text-slate-500 mt-2">Creamos tu empresa, el primer almacén y la suscripción dentro de PALMYRA.</p>
+          <p className="text-sm text-slate-500 mt-2">Creamos tu empresa, el primer almacén y la suscripción dentro de PALMYRA. En Cuba, los planes se pagan actualmente en efectivo.</p>
         </div>
 
         <div className="p-6 sm:p-8 grid lg:grid-cols-[1fr_1.05fr] gap-8">
@@ -117,7 +117,7 @@ export default function SaaSOnboarding() {
                         </div>
                         <p className="text-xs text-slate-500 mt-1">{plan.description}</p>
                       </div>
-                      <span className="font-black text-slate-950 whitespace-nowrap">${plan.price}/mes</span>
+                      <span className="font-black text-slate-950 whitespace-nowrap">US${plan.price}/mes</span>
                     </div>
                     <div className="grid sm:grid-cols-3 gap-2 mt-3 text-[11px] font-bold text-slate-600">
                       <span className="inline-flex items-center gap-1.5"><Package className="w-3.5 h-3.5" />{plan.products} productos</span>
