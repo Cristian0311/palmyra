@@ -38,10 +38,11 @@ export default function Subscription(){
   const subPlan=data?.subscription?.plans;
   const currentCode=subPlan?.code||data?.ctx?.subscription?.planCode||"starter";
   const request=data?.request;
+  const planCurrency = subPlan?.billing_currency_code || "USD";
 
   return <div className="space-y-5 max-w-6xl mx-auto pb-10">
     <header className="bg-secondary border border-base rounded-3xl p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-      <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-rose-500">Cuenta</p><h1 className="text-2xl font-black text-primary mt-1">Facturación y plan</h1><p className="text-xs text-muted mt-1">Consulta el estado de tu plan y solicita cambios sin afectar tus datos.</p></div>
+      <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-rose-500">Cuenta</p><h1 className="text-2xl font-black text-primary mt-1">Facturación y plan</h1><p className="text-xs text-muted mt-1">En Cuba, las suscripciones se solicitan y pagan en efectivo. La facturación del plan se expresa en USD.</p></div>
       <button onClick={()=>void refresh()} disabled={busy} className="h-10 px-4 rounded-xl border border-base bg-primary text-primary text-xs font-black flex items-center gap-2"><RefreshCw className={cn("w-4 h-4",loading&&"animate-spin")}/>Actualizar</button>
     </header>
 
@@ -57,12 +58,25 @@ export default function Subscription(){
 
     {request&&<section className="bg-amber-50 border border-amber-200 rounded-2xl p-4"><div className="flex items-start gap-3"><Clock3 className="w-5 h-5 text-amber-700 mt-0.5"/><div><p className="text-sm font-black text-amber-900">Solicitud {request.status}</p><p className="text-xs text-amber-800 mt-1">Plan solicitado: {request.plan_name||request.plan_code} · {new Date(request.requested_at).toLocaleDateString("es-CU")}</p>{request.note&&<p className="text-[10px] text-amber-800 mt-1">{request.note}</p>}</div></div></section>}
 
+    {request?.status==="pending" && (
+      <section className="bg-violet-50 border border-violet-200 rounded-2xl p-4">
+        <div className="flex items-start gap-3">
+          <CreditCard className="w-5 h-5 text-violet-700 mt-0.5"/>
+          <div>
+            <p className="text-sm font-black text-violet-900">Pago en efectivo · Cuba</p>
+            <p className="text-xs text-violet-800 mt-1">Entrega o coordina el efectivo con PALMYRA usando la vía indicada en la solicitud. El plan se activa cuando PALMYRA confirma el pago.</p>
+            {request.whatsapp_phone&&<a className="inline-flex mt-2 text-[11px] font-black text-violet-700 underline" href={"https://wa.me/"+String(request.whatsapp_phone).replace(/[^0-9]/g,"")} target="_blank" rel="noreferrer">Contactar para pago</a>}
+          </div>
+        </div>
+      </section>
+    )}
+
     <section className="grid md:grid-cols-3 gap-4">
       {data?.plans?.map((plan:SubscriptionPlan)=>{
         const current=plan.code===currentCode;
         return <article key={plan.id} className={cn("bg-secondary border rounded-3xl p-5 flex flex-col",current?"border-rose-300 ring-1 ring-rose-200":"border-base")}>
           <div className="flex items-center justify-between gap-2"><div><p className="text-lg font-black text-primary">{plan.name}</p><p className="text-[10px] uppercase text-muted font-black">{plan.code}</p></div>{current&&<span className="text-[9px] px-2 py-1 rounded-full bg-rose-100 text-rose-700 font-black">Actual</span>}</div>
-          <p className="text-2xl font-black text-primary mt-5">{money(Number(plan.monthly_price)||0)}<span className="text-xs text-muted font-bold"> / mes</span></p>
+          <p className="text-2xl font-black text-primary mt-5">{money(Number(plan.monthly_price)||0)} <span className="text-base font-black text-primary">{plan.billing_currency_code || "USD"}</span><span className="text-xs text-muted font-bold"> / mes</span></p>
           <div className="mt-5 space-y-2 text-[10px] text-muted flex-1">
             <div className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5"/>{String(plan.limits?.employees||"Ilimitados")} empleados</div>
             <div className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5"/>{String(plan.limits?.warehouses||"Ilimitados")} almacenes</div>
