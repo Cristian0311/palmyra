@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { ArrowRight, CheckCircle2, LockKeyhole, Mail, ShieldCheck, Store, UserRound } from "lucide-react";
+import { ArrowRight, CheckCircle2, LockKeyhole, Mail, ShieldCheck, Store, UserRound, Eye, EyeOff, Warehouse, MonitorSmartphone } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getSupabase } from "../lib/supabase";
 import { signInSaaSAccount, signUpSaaSAccount, loadSaaSContext } from "../services/saas";
@@ -16,6 +16,7 @@ export default function SaaSInvite() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [accepted, setAccepted] = useState(false);
@@ -61,6 +62,7 @@ export default function SaaSInvite() {
       if (!token) throw new Error("Enlace de invitación inválido.");
       if (mode === "signup") {
         if (name.trim().length < 2) throw new Error("Escribe tu nombre completo.");
+        if (email.trim().length < 5) throw new Error("Escribe un correo válido.");
         if (password.length < 8) throw new Error("La contraseña debe tener al menos 8 caracteres.");
         const result = await signUpSaaSAccount(name, email, password, `/invite?token=${encodeURIComponent(token)}`);
         if (result.error) throw result.error;
@@ -80,7 +82,13 @@ export default function SaaSInvite() {
         await finish();
       }
     } catch (e: any) {
-      setError(e?.message || "No se pudo completar la invitación.");
+      const raw = String(e?.message || "");
+      if (/already registered|user already registered|already exists/i.test(raw) && mode === "signup") {
+        setMode("signin");
+        setError("Este correo ya tiene una cuenta PALMYRA. Inicia sesión para aceptar la invitación.");
+      } else {
+        setError(raw || "No se pudo completar la invitación.");
+      }
     } finally {
       setBusy(false);
     }
