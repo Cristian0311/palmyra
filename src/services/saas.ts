@@ -226,3 +226,18 @@ export async function switchActiveCompany(companyId: string) {
   if (ctx?.companyId) setPalmyraLocalScope(ctx.authUserId, ctx.companyId);
   return ctx || data;
 }
+
+
+export async function requestSaaSPasswordReset(email: string) {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error("Supabase no está configurado.");
+  return supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
+    redirectTo: window.location.origin + "/auth?recovery=1"
+  });
+}
+
+export async function updateSaaSPassword(password: string) {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error("Supabase no está configurado.");
+  return supabase.auth.updateUser({ password });
+}
