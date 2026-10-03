@@ -1,5 +1,5 @@
 export type BillingMode = "manual_cash" | "online";
-export type BillingProvider = "manual_cash" | "stripe" | "paypal";
+export type BillingProvider = "manual_cash" | "stripe" | "paypal" | "mercadopago";
 
 export interface BillingCheckoutRequest {
   companyId: string;
