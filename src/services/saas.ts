@@ -107,7 +107,7 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     supabase.from('user_locations').select('warehouse_id,is_default').eq('user_id',authUser.id).eq('company_id',companyId).order('is_default',{ascending:false}),
     supabase.from('employees').select('id,full_name,base_salary,active').eq('user_id',authUser.id).eq('company_id',companyId).maybeSingle(),
     supabase.from('subscriptions').select('id,status,plan_id,current_period_end,trial_ends_at,plans!inner(code,name,limits,features)').eq('company_id',companyId).order('updated_at',{ascending:false}).maybeSingle(),
-    supabase.from('role_permissions').select('permissions!inner(key)').eq('company_id',companyId).eq('role_id', (userRole as any)?.role_id || '00000000-0000-0000-0000-000000000000')
+    supabase.from('role_permissions').select('permissions!inner(key)').eq('role_id', (userRole as any)?.role_id || '00000000-0000-0000-0000-000000000000')
   ]);
 
   const roleKey = (userRole as any)?.roles?.key || (membership?.is_owner ? 'admin' : 'employee');
