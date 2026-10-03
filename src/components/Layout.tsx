@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
 import { cn } from "../lib/utils";
-import { loadSaaSContext, switchActiveCompany } from "../services/saas";
+import { loadSaaSContext } from "../services/saas";
 import { useStore } from "../store/useStore";
 import { getOfflineQueueCount } from "../services/offlineQueue";
 import { 
@@ -302,44 +302,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>
         </div>
-
-        {!sidebarCollapsed && saasContext?.company && (
-          <div className="px-2 pb-2">
-            {saasContext.availableCompanies.length > 1 ? (
-              <label className="block">
-                <span className="px-2 text-[8px] font-black uppercase tracking-wider text-muted">Empresa activa</span>
-                <select
-                  value={saasContext.companyId || ""}
-                  disabled={companySwitching}
-                  onChange={async (e) => {
-                    const nextId = e.target.value;
-                    if (!nextId || nextId === saasContext.companyId) return;
-                    setCompanySwitching(true);
-                    try {
-                      await switchActiveCompany(nextId);
-                      window.location.reload();
-                    } catch (error: any) {
-                      addNotification(error?.message || "No se pudo cambiar de empresa.", "error");
-                      setCompanySwitching(false);
-                    }
-                  }}
-                  className="mt-1.5 w-full h-9 px-2.5 rounded-xl bg-primary border border-base text-primary text-[10px] font-black outline-none"
-                >
-                  {saasContext.availableCompanies.map(company => (
-                    <option key={company.id} value={company.id}>
-                      {company.name}{company.account_status !== "active" ? " · " + company.account_status : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : (
-              <div className="px-2 py-2 rounded-xl bg-subtle border border-base">
-                <p className="text-[8px] font-black uppercase tracking-wider text-muted">Empresa activa</p>
-                <p className="text-[10px] font-black text-primary truncate mt-0.5">{saasContext.company.name}</p>
-              </div>
-            )}
-          </div>
-        )}
 
         <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto custom-scrollbar">
           {navItems.map((item) => {
