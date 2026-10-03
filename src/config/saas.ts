@@ -4,6 +4,7 @@ export interface SaaSPlan {
   code: PlanCode;
   name: string;
   price: number;
+  priceCurrency: 'USD';
   warehouses: number;
   employees: number;
   products: number;
