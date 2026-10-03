@@ -10,28 +10,28 @@
 
 :root {
   /* Light Mode Palette - Enterprise SaaS Style */
-  --bg-primary: #FAF6F2;
+  --bg-primary: #F8F7FC;
   --bg-secondary: #FFFFFF;
   --bg-elevated: #FFFFFF;
-  --bg-subtle: #F1EAF3;
+  --bg-subtle: #F3F0FA;
   
-  --text-primary: #241622;
-  --text-secondary: #5F4D61;
-  --text-muted: #8C7A8D;
+  --text-primary: #171522;
+  --text-secondary: #4F485C;
+  --text-muted: #7A7287;
   --text-inverse: #FFFFFF;
   
-  --border-base: #E6DCE8;
-  --border-subtle: #F0E8F1;
-  --border-accent: #D8A6BB;
+  --border-base: #E6E0F0;
+  --border-subtle: #F2EEF7;
+  --border-accent: #C4B5FD;
   
-  --primary: #C65B87;
-  --primary-hover: #A94370;
+  --primary: #7C3AED;
+  --primary-hover: #6D28D9;
   --primary-fg: #FFFFFF;
   
   --success: #10B981;
   --warning: #F59E0B;
   --danger: #EF4444;
-  --info: #8E5B93;
+  --info: #8B5CF6;
   
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
@@ -43,28 +43,28 @@
 
 .dark {
   /* Dark Mode Palette - Enterprise SaaS Style (Deep, Calm) */
-  --bg-primary: #241622;
-  --bg-secondary: #2E2230;
-  --bg-elevated: #3A2B3B;
-  --bg-subtle: #312431;
+  --bg-primary: #110F1A;
+  --bg-secondary: #1B1725;
+  --bg-elevated: #262033;
+  --bg-subtle: #211B2D;
   
-  --text-primary: #FCF8FD;
-  --text-secondary: #E4D9E7;
-  --text-muted: #B5A5B7;
-  --text-inverse: #111827;
+  --text-primary: #FAF8FF;
+  --text-secondary: #E8E2F0;
+  --text-muted: #B9B0C6;
+  --text-inverse: #0F0C16;
   
-  --border-base: #4A394B;
-  --border-subtle: #392A3A;
-  --border-accent: #E7B1C7;
+  --border-base: #3A314A;
+  --border-subtle: #2C253A;
+  --border-accent: #A78BFA;
   
-  --primary: #D985A7;
+  --primary: #A78BFA;
   --primary-hover: #FB7185;
   --primary-fg: #FFFFFF;
   
   --success: #059669;
   --warning: #D97706;
   --danger: #DC2626;
-  --info: #D8A0BE;
+  --info: #C4B5FD;
   
   --shadow-sm: none;
   --shadow-md: none;
@@ -587,7 +587,7 @@ body {
   min-height: 3rem;
   max-width: min(90vw, 24rem);
   padding: 0.7rem 0.95rem;
-  border: 1px solid rgb(225 29 115 / 0.22);
+  border: 1px solid rgb(124 58 237 / 0.22);
   border-radius: 1rem;
   background: rgb(255 255 255 / 0.98);
   color: #111827;
@@ -608,16 +608,16 @@ body {
   height: 1.75rem;
   flex: 0 0 auto;
   border-radius: 0.8rem;
-  background: rgb(225 29 115 / 0.09);
-  border: 1px solid rgb(225 29 115 / 0.14);
+  background: rgb(124 58 237 / 0.09);
+  border: 1px solid rgb(124 58 237 / 0.14);
 }
 
 .palmyra-loading-spinner {
   width: 0.95rem;
   height: 0.95rem;
   flex: 0 0 auto;
-  border: 2px solid rgb(225 29 115 / 0.18);
-  border-top-color: rgb(190 24 93);
+  border: 2px solid rgb(124 58 237 / 0.18);
+  border-top-color: rgb(109 40 217);
   border-radius: 999px;
   animation: palmyra-loading-spin 700ms linear infinite;
 }
@@ -628,15 +628,15 @@ body {
 }
 
 .dark .palmyra-loading-bubble {
-  border-color: rgb(244 114 182 / 0.28);
+  border-color: rgb(167 139 250 / 0.28);
   background: rgb(17 24 39 / 0.98);
   color: #f8fafc;
   box-shadow: 0 10px 24px rgb(0 0 0 / 0.28);
 }
 
 .dark .palmyra-loading-icon {
-  background: rgb(244 114 182 / 0.12);
-  border-color: rgb(244 114 182 / 0.2);
+  background: rgb(167 139 250 / 0.12);
+  border-color: rgb(167 139 250 / 0.2);
 }
 
 @keyframes palmyra-loading-spin {
@@ -660,22 +660,22 @@ html[data-perf-tier="ultra"] .palmyra-loading-bubble {
 
 /* PALMYRA BRAND UTILITY OVERRIDES */
 @layer utilities {
-  .bg-rose-600 { background-color: #C65B87 !important; }
-  .bg-rose-500 { background-color: #D06E98 !important; }
-  .bg-rose-50 { background-color: #F5E6EE !important; }
-  .bg-rose-100 { background-color: #EFD6E2 !important; }
-  .bg-rose-950 { background-color: #2D1B2A !important; }
-  .text-rose-600 { color: #B94E7D !important; }
+  .bg-rose-600 { background-color: #7C3AED !important; }
+  .bg-rose-500 { background-color: #8B5CF6 !important; }
+  .bg-rose-50 { background-color: #F5F3FF !important; }
+  .bg-rose-100 { background-color: #EDE9FE !important; }
+  .bg-rose-950 { background-color: #2E1065 !important; }
+  .text-rose-600 { color: #6D28D9 !important; }
   .text-rose-500 { color: #C65B87 !important; }
-  .text-rose-400 { color: #D184A5 !important; }
-  .text-rose-300 { color: #E7B1C7 !important; }
-  .text-rose-200 { color: #F0CBD9 !important; }
+  .text-rose-400 { color: #8B5CF6 !important; }
+  .text-rose-300 { color: #C4B5FD !important; }
+  .text-rose-200 { color: #DDD6FE !important; }
   .border-rose-100 { border-color: #EFD6E2 !important; }
-  .border-rose-200 { border-color: #E5C1D1 !important; }
-  .border-rose-300 { border-color: #D9A9BE !important; }
-  .ring-rose-100 { --tw-ring-color: #F4DCE7 !important; }
+  .border-rose-200 { border-color: #DDD6FE !important; }
+  .border-rose-300 { border-color: #C4B5FD !important; }
+  .ring-rose-100 { --tw-ring-color: #EDE9FE !important; }
   .ring-rose-200 { --tw-ring-color: #E7B1C7 !important; }
   .ring-rose-500 { --tw-ring-color: #C65B87 !important; }
-  .shadow-rose-100\/50 { --tw-shadow-color: rgb(198 91 135 / .12) !important; }
-  .shadow-rose-200\/40 { --tw-shadow-color: rgb(198 91 135 / .16) !important; }
+  .shadow-rose-100\/50 { --tw-shadow-color: rgb(124 58 237 / .12) !important; }
+  .shadow-rose-200\/40 { --tw-shadow-color: rgb(124 58 237 / .16) !important; }
 }
