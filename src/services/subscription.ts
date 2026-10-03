@@ -18,12 +18,14 @@ export async function loadSubscriptionOverview() {
   const ctx=await loadSaaSContext(true);
   if(!ctx?.companyId) throw new Error("No hay una empresa activa.");
 
-  const [{data:plans,error:plansError},{data:request,error:requestError}]=await Promise.all([
+  const [{data:plans,error:plansError},{data:request,error:requestError},{data:invoices,error:invoiceError}]=await Promise.all([
     supabase.from("plans").select("id,code,name,monthly_price,trial_days,limits,features,active").eq("active",true).neq("code","trial").order("monthly_price",{ascending:true}),
-    supabase.rpc("get_my_plan_request",{p_company_id:ctx.companyId})
+    supabase.rpc("get_my_plan_request",{p_company_id:ctx.companyId}),
+    supabase.rpc("get_my_billing_invoices",{p_company_id:ctx.companyId})
   ]);
   if(plansError) throw plansError;
   if(requestError) throw requestError;
+  if(invoiceError) throw invoiceError;
 
   const {data:subscription,error:subscriptionError}=await supabase
     .from("subscriptions")
@@ -34,7 +36,7 @@ export async function loadSubscriptionOverview() {
     .maybeSingle();
   if(subscriptionError) throw subscriptionError;
 
-  return {ctx,plans:(plans||[]) as SubscriptionPlan[],request:(request||null),subscription};
+  return {ctx,plans:(plans||[]) as SubscriptionPlan[],request:(request||null),subscription,invoices:(invoices||[]) as any[]};
 }
 
 export async function selectSubscriptionPlan(planId:string) {
