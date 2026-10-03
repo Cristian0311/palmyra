@@ -49,7 +49,7 @@ const adminNavItems = [
   { name: "Cuentas Bancarias", href: "/banks", icon: CreditCard, permission: "settings.manage" },
   { name: "Devoluciones", href: "/returns", icon: RotateCcw, permission: "pos.access" },
   { name: "Reportes", href: "/reports", icon: BarChart, permission: "reports.view" },
-  { name: "Configuración", href: "/settings", icon: Settings, permission: "settings.manage" },
+  { name: "Configuración", href: "/settings", icon: Settings, permission: "settings.manage" },\n  { name: "Equipo", href: "/team", icon: Users, permission: "employees.manage" },
 ];
 
 const cashierNavItems = [
