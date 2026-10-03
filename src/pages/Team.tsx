@@ -240,7 +240,7 @@ export default function Team() {
           });
           const link = `${window.location.origin}/invite?token=${encodeURIComponent(invite.token)}`;
           setInviteLink(link);
-          setMessage("Empleado actualizado y nueva invitación generada.");
+          setMessage(invite.email_sent ? "Empleado actualizado y correo de invitación reenviado." : "Empleado actualizado. Se generó un enlace nuevo para compartir.");
         } else {
           setMessage("Empleado actualizado.");
         }
@@ -257,7 +257,7 @@ export default function Team() {
           });
           const link = `${window.location.origin}/invite?token=${encodeURIComponent(invite.token)}`;
           setInviteLink(link);
-          setMessage("Empleado creado. Comparte este enlace para que configure su cuenta.");
+          setMessage(invite.email_sent ? "Empleado creado y correo de invitación enviado." : "Empleado creado. El correo automático no fue enviado; usa el enlace generado.");
         } else {
           await createEmployee({
             companyId: snapshot.companyId,
