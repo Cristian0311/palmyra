@@ -18,12 +18,16 @@ export interface SyncLogEntry {
   httpStatus?: number;
 }
 
-const STORAGE_KEY = 'pos_sync_logs_v1';
+import { getPalmyraScopedStorageKey } from '../services/localScope';
+
+const STORAGE_KEY_PREFIX = 'palmyra_sync_logs_v2';
 const MAX_LOGS = 200;
 
 export function getSyncLogs(): SyncLogEntry[] {
+  const storageKey = getPalmyraScopedStorageKey(STORAGE_KEY_PREFIX);
+  if (!storageKey) return [];
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(storageKey);
     if (!raw) return getInitialDemoLogs();
     return JSON.parse(raw) as SyncLogEntry[];
   } catch (e) {
@@ -43,8 +47,10 @@ export function addSyncLog(entry: Omit<SyncLogEntry, 'id' | 'timestamp'>): SyncL
   // Prepend y limitar a MAX_LOGS
   const updated = [newLog, ...logs].slice(0, MAX_LOGS);
 
+  const storageKey = getPalmyraScopedStorageKey(STORAGE_KEY_PREFIX);
+  if (!storageKey) return newLog;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    localStorage.setItem(storageKey, JSON.stringify(updated));
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('sync_log_event', { detail: { log: newLog, logs: updated } }));
     }
@@ -56,8 +62,10 @@ export function addSyncLog(entry: Omit<SyncLogEntry, 'id' | 'timestamp'>): SyncL
 }
 
 export function clearSyncLogs(): void {
+  const storageKey = getPalmyraScopedStorageKey(STORAGE_KEY_PREFIX);
+  if (!storageKey) return;
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(storageKey);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('sync_log_event', { detail: { cleared: true, logs: [] } }));
     }
