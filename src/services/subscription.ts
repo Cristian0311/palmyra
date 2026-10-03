@@ -6,11 +6,10 @@ export interface SubscriptionPlan {
   code: string;
   name: string;
   monthly_price: number;
-  billing_currency_code: string;
+  billing_currency_code?: string | null;
   trial_days: number;
   limits: Record<string, unknown>;
   features: Record<string, unknown>;
-  billing_currency_code?: string | null;
   active: boolean;
 }
 
