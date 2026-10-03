@@ -358,3 +358,25 @@ export async function upsertCompanyRole(input: {
   if (error) throwRpcError(error);
   return data as { id: string; key: string; name: string };
 }
+
+export async function sendEmployeeInvitationEmail(input: {
+  companyId: string;
+  employeeId: string;
+  email: string;
+  name: string;
+  token: string;
+}) {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error("Supabase no está configurado.");
+  const { data, error } = await supabase.functions.invoke("send-company-invitation", {
+    body: {
+      companyId: input.companyId,
+      employeeId: input.employeeId,
+      email: input.email.trim().toLowerCase(),
+      name: input.name.trim(),
+      token: input.token
+    }
+  });
+  if (error) throw error;
+  return data as { sent: boolean; reason?: string; user_id?: string | null };
+}
