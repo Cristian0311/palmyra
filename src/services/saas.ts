@@ -22,7 +22,7 @@ export interface SaaSContext {
 
 const mapRole = (key: string): 'admin' | 'employee' => key === 'admin' ? 'admin' : 'employee';
 
-export async function signUpSaaSAccount(fullName: string, email: string, password: string) {
+export async function signUpSaaSAccount(fullName: string, email: string, password: string, redirectPath = "/auth") {
   const supabase = getSupabase();
   if (!supabase) throw new Error('Supabase no está configurado.');
   const origin = window.location.origin;
@@ -31,7 +31,7 @@ export async function signUpSaaSAccount(fullName: string, email: string, passwor
     password,
     options: {
       data: { full_name: fullName.trim(), product: 'PALMYRA POS' },
-      emailRedirectTo: `${origin}/auth`
+      emailRedirectTo: `${origin}${redirectPath.startsWith("/") ? redirectPath : `/${redirectPath}`}`
     }
   });
 }
