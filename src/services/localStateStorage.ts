@@ -4,22 +4,37 @@
  * Las escrituras se agrupan brevemente para evitar serializar el store en cada set().
  */
 import type { StateStorage } from 'zustand/middleware';
+import { getPalmyraLocalScopeKey, getPalmyraScopedStorageKey } from './localScope';
 
-const DB_NAME = 'omnisync-pos-local-state';
+const DB_PREFIX = 'palmyra-local-state-v2';
 const DB_VERSION = 1;
 const STORE = 'state';
 const KEY = 'zustand';
+let activeDbName = '';
+
 let writeTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingValue: string | null = null;
 let writeChain: Promise<void> = Promise.resolve();
 let lastWriteError: Error | null = null;
 let dbPromise: Promise<IDBDatabase | null> | null = null;
 
+function getStorageScopeKey(): string | null {
+  return getPalmyraLocalScopeKey();
+}
+
+function getDbName(): string | null {
+  const scope = getStorageScopeKey();
+  return scope ? DB_PREFIX + '-' + encodeURIComponent(scope) : null;
+}
+
 function openDb(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === 'undefined') return Promise.resolve(null);
-  if (dbPromise) return dbPromise;
+  const dbName = getDbName();
+  if (!dbName) return Promise.resolve(null);
+  if (dbPromise && activeDbName === dbName) return dbPromise;
   dbPromise = new Promise(resolve => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    activeDbName = dbName;
+    const req = indexedDB.open(dbName, DB_VERSION);
     req.onupgradeneeded = () => {
       if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE);
     };
@@ -35,7 +50,9 @@ function openDb(): Promise<IDBDatabase | null> {
 
 async function read(): Promise<string | null> {
   const fallback = () => {
-    try { return localStorage.getItem('pos-store-storage'); } catch { return null; }
+    const key = getPalmyraScopedStorageKey('palmyra-local-state');
+    if (!key) return null;
+    try { return localStorage.getItem(key); } catch { return null; }
   };
 
   const db = await openDb();
@@ -55,12 +72,16 @@ async function read(): Promise<string | null> {
 }
 
 async function writeNow(value: string): Promise<void> {
+  const scopeKey = getStorageScopeKey();
+  if (!scopeKey) return;
+  const fallbackKey = getPalmyraScopedStorageKey('palmyra-local-state');
   const operation = writeChain.then(async () => {
     const db = await openDb();
 
     if (!db) {
       try {
-        localStorage.setItem('pos-store-storage', value);
+        if (!fallbackKey) return;
+        localStorage.setItem(fallbackKey, value);
         lastWriteError = null;
         return;
       } catch (localError) {
@@ -83,7 +104,8 @@ async function writeNow(value: string): Promise<void> {
       // Respaldo inmediato: una venta cobrada offline nunca debe depender de
       // una única implementación de almacenamiento del navegador.
       try {
-        localStorage.setItem('pos-store-storage', value);
+        if (!fallbackKey) throw idbError;
+        localStorage.setItem(fallbackKey, value);
         lastWriteError = null;
         console.warn('[localStateStorage] IndexedDB falló; se guardó el estado en localStorage:', idbError);
       } catch (localError) {
@@ -131,10 +153,8 @@ export const localStateStorage: StateStorage = {
   getItem: async () => {
     const value = await read();
     // Migración transparente desde la persistencia antigua de Zustand.
-    if (value && typeof indexedDB !== 'undefined' && localStorage.getItem('pos-store-storage')) {
-      void writeNow(value).then(() => {
-        try { localStorage.removeItem('pos-store-storage'); } catch {}
-      });
+    if (value) {
+      void writeNow(value);
     }
     return value;
   },
@@ -149,9 +169,12 @@ export const localStateStorage: StateStorage = {
     }, 250);
   },
   removeItem: async () => {
+    const fallbackKey = getPalmyraScopedStorageKey('palmyra-local-state');
     const db = await openDb();
     if (!db) {
-      try { localStorage.removeItem('pos-store-storage'); } catch {}
+      if (fallbackKey) {
+        try { localStorage.removeItem(fallbackKey); } catch {}
+      }
       return;
     }
     await new Promise<void>(resolve => {
@@ -193,7 +216,8 @@ export async function clearLocalStateStorage(): Promise<void> {
     });
   }
 
-  // El respaldo legacy debe limpiarse siempre, incluso cuando IndexedDB no esté
-  // disponible, para que una recuperación posterior no restaure datos antiguos.
-  try { localStorage.removeItem('pos-store-storage'); } catch {}
+  const fallbackKey = getPalmyraScopedStorageKey('palmyra-local-state');
+  if (fallbackKey) {
+    try { localStorage.removeItem(fallbackKey); } catch {}
+  }
 }
