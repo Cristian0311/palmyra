@@ -16,6 +16,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { getDevicePerformanceTier, scheduleIdleTask } from "./utils/devicePerformance";
 import { flushLocalStateStorage } from "./services/localStateStorage";
 import { setPalmyraLocalScope, clearPalmyraLocalScope } from "./services/localScope";
+import { registerCurrentDevice } from "./services/device";
 
 // Code-splitting de rutas para acelerar inicio en tablets y reducir consumo de memoria
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -108,6 +109,11 @@ export default function App() {
           currentBranchId: ctx.warehouseIds[0] || "",
         });
         await useStore.persist.rehydrate();
+        if (ctx.warehouseIds[0]) {
+          registerCurrentDevice(ctx.companyId, ctx.warehouseIds[0]).catch(error => {
+            console.warn("[PALMYRA] No se pudo registrar el dispositivo:", error);
+          });
+        }
       }
 
       if (!ctx.companyId) {
