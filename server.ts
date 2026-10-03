@@ -2,8 +2,6 @@ import express from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
-import { createClient } from '@supabase/supabase-js';
-import crypto from 'node:crypto';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -21,116 +19,6 @@ async function startServer() {
 
 
 
-  app.post('/api/team/send-invitation', async (req, res) => {
-    try {
-      const authHeader = String(req.get('authorization') || '');
-      const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
-      const { invitationId, token } = req.body || {};
-      if (!accessToken || !invitationId || !token) {
-        return res.status(400).json({ success: false, error: 'missing_auth_or_invitation' });
-      }
-
-      const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-      const supabaseKey = process.env.SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-      const resendKey = process.env.RESEND_API_KEY;
-      const from = process.env.PALMYRA_EMAIL_FROM;
-      if (!supabaseUrl || !supabaseKey) {
-        return res.status(503).json({ success: false, error: 'supabase_server_not_configured' });
-      }
-
-      const userClient = createClient(supabaseUrl, supabaseKey, {
-        auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
-        global: { headers: { Authorization: 'Bearer ' + accessToken } }
-      });
-      const { data: authData, error: authError } = await userClient.auth.getUser(accessToken);
-      if (authError || !authData.user) return res.status(401).json({ success: false, error: 'invalid_session' });
-
-      const { data: invitation, error: invitationError } = await userClient.rpc('get_invitation_for_email_send', {
-        p_invitation_id: invitationId,
-        p_token: token
-      });
-      if (invitationError || !invitation) {
-        return res.status(403).json({ success: false, error: invitationError?.message || 'invitation_not_found_or_forbidden' });
-      }
-
-      const appUrl = (process.env.PALMYRA_APP_URL || 'https://palmyracrm.onrender.com').replace(/\/+$/, '');
-      const inviteUrl = appUrl + '/invite?token=' + encodeURIComponent(String(token));
-      const expires = new Date(String(invitation.expires_at)).toLocaleDateString('es-CU');
-      const employeeName = String(invitation.employee_name || 'Trabajador');
-      const companyName = String(invitation.company_name || 'tu empresa');
-      const roleName = String(invitation.role_name || 'Empleado');
-
-      const escapeHtml = (value: string) => value
-        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#039;');
-
-      const html = '<!doctype html><html lang="es"><body style="margin:0;background:#f7f5fc;font-family:Arial,sans-serif;color:#21182f">' +
-        '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f7f5fc;padding:32px 12px"><tr><td align="center">' +
-        '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;background:#fff;border:1px solid #e7dff4;border-radius:20px;overflow:hidden">' +
-        '<tr><td style="background:#3b1b6e;padding:22px 24px;color:#fff"><strong style="font-size:20px;letter-spacing:-.03em">PALMYRA</strong><div style="font-size:10px;color:#c9b6f2;margin-top:4px">Business OS</div></td></tr>' +
-        '<tr><td style="padding:28px 24px"><h1 style="font-size:24px;margin:0 0 10px;color:#3b1b6e">Tienes una invitación a PALMYRA</h1>' +
-        '<p style="font-size:15px;line-height:1.6;margin:0 0 18px">Hola ' + escapeHtml(employeeName) + ', <strong>' + escapeHtml(companyName) + '</strong> te ha invitado a trabajar en PALMYRA.</p>' +
-        '<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f7f5fc;border:1px solid #e7dff4;border-radius:14px;padding:14px 16px">' +
-        '<tr><td style="font-size:12px;color:#6b6176"><strong style="color:#21182f">Rol:</strong> ' + escapeHtml(roleName) + '</td></tr>' +
-        '<tr><td style="font-size:12px;color:#6b6176;padding-top:7px"><strong style="color:#21182f">Válida hasta:</strong> ' + expires + '</td></tr></table>' +
-        '<p style="margin:22px 0"><a href="' + inviteUrl + '" style="display:inline-block;background:#6535c5;color:#fff;text-decoration:none;padding:13px 20px;border-radius:12px;font-weight:700;font-size:14px">Configurar mi acceso</a></p>' +
-        '<p style="font-size:12px;line-height:1.6;color:#8e849b;margin:0">Usa el correo de esta invitación. Tu cuenta es personal y conservará tus permisos al entrar desde otro dispositivo.</p>' +
-        '</td></tr></table></td></tr></table></body></html>';
-
-      const textBody = [
-        'PALMYRA · Invitación de empresa',
-        '',
-        'Hola ' + employeeName + ',',
-        companyName + ' te ha invitado a trabajar en PALMYRA.',
-        'Rol: ' + roleName,
-        'Válida hasta: ' + expires,
-        '',
-        'Configura tu acceso: ' + inviteUrl,
-        '',
-        'Usa el mismo correo al aceptar la invitación.'
-      ].join('\n');
-
-      if (!resendKey || !from) {
-        return res.status(202).json({
-          success: true,
-          sent: false,
-          configured: false,
-          message: 'Correo no configurado todavía. El enlace de invitación está listo para compartir.',
-          inviteUrl
-        });
-      }
-
-      const idem = crypto.createHash('sha256').update(String(invitation.id) + ':' + String(token)).digest('hex');
-      const providerResponse = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-          Authorization: 'Bearer ' + resendKey,
-          'Content-Type': 'application/json',
-          'Idempotency-Key': 'palmyra-invitation/' + idem
-        },
-        body: JSON.stringify({
-          from,
-          to: [String(invitation.email).trim().toLowerCase()],
-          subject: 'Invitación a PALMYRA · ' + companyName,
-          html,
-          text: textBody
-        })
-      });
-
-      const providerBody = await providerResponse.text();
-      if (!providerResponse.ok) {
-        console.error('[SaaS Invitation Email] Resend error:', providerResponse.status, providerBody);
-        return res.status(502).json({ success: false, sent: false, error: 'email_provider_error', inviteUrl });
-      }
-
-      let parsed: any = {};
-      try { parsed = JSON.parse(providerBody); } catch {}
-      return res.json({ success: true, sent: true, configured: true, emailId: parsed?.id || null, inviteUrl });
-    } catch (error: any) {
-      console.error('[SaaS Invitation Email Error]', error);
-      return res.status(500).json({ success: false, error: error?.message || 'email_send_failed' });
-    }
-  });
 
   // AI Financial & Operational Report Analyzer
   app.post('/api/ai-analyze-report', async (req, res) => {
