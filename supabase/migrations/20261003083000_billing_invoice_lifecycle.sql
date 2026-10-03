@@ -38,9 +38,9 @@ begin
  on conflict(company_id) do update set plan_id=excluded.plan_id,status=excluded.status,starts_at=excluded.starts_at,trial_ends_at=null,current_period_start=excluded.current_period_start,current_period_end=excluded.current_period_end,cancelled_at=null,updated_at=excluded.updated_at returning * into v_sub;
  v_invoice:='PAL-'||to_char(v_now,'YYYYMM')||'-'||lpad((select count(*)+1 from public.billing_invoices where company_id=v_req.company_id)::text,5,'0');
  insert into public.billing_invoices(company_id,subscription_id,plan_request_id,invoice_number,period_start,period_end,due_at,amount,currency_code,status,paid_at,external_reference)
- values(v_req.company_id,v_sub.id,v_req.id,v_invoice,v_now,v_now+interval '30 days',v_now,v_plan.monthly_price,coalesce(v_company_currency,'USD'),'paid',v_now,'manual:plan_request:'||v_req.id) on conflict(company_id,invoice_number) do nothing;
+ values(v_req.company_id,v_sub.id,v_req.id,v_invoice,v_now,v_now+interval '30 days',v_now,v_plan.monthly_price,coalesce(v_plan.billing_currency_code,'USD'),'paid',v_now,'manual_cash:plan_request:'||v_req.id) on conflict(company_id,invoice_number) do nothing;
  insert into public.billing_payments(company_id,subscription_id,amount,currency_code,status,external_reference,paid_at)
- values(v_req.company_id,v_sub.id,v_plan.monthly_price,coalesce(v_company_currency,'USD'),'paid','manual:plan_request:'||v_req.id,v_now)
+ values(v_req.company_id,v_sub.id,v_plan.monthly_price,coalesce(v_plan.billing_currency_code,'USD'),'paid','manual_cash:plan_request:'||v_req.id,v_now)
  returning id into v_payment_id;
  update public.plan_requests set status='approved',approved_at=v_now,approved_by=v_user where id=v_req.id;
  update public.companies set account_status='active',active=true,updated_at=v_now where id=v_req.company_id;
