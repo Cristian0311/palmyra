@@ -14,7 +14,7 @@
   --bg-primary: #F8F7FC;
   --bg-secondary: #FFFFFF;
   --bg-elevated: #FFFFFF;
-  --bg-subtle: #F3F0FA;
+  --bg-subtle: #F1ECFA;
   
   --text-primary: #171522;
   --text-secondary: #4F485C;
@@ -23,16 +23,16 @@
   
   --border-base: #E6E0F0;
   --border-subtle: #F2EEF7;
-  --border-accent: #C4B5FD;
+  --border-accent: #B59BEF;
   
-  --primary: #7C3AED;
-  --primary-hover: #6D28D9;
+  --primary: #6631C9;
+  --primary-hover: #4C1D95;
   --primary-fg: #FFFFFF;
   
   --success: #10B981;
   --warning: #F59E0B;
   --danger: #EF4444;
-  --info: #8B5CF6;
+  --info: #7C4DDE;
   
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
@@ -44,10 +44,10 @@
 
 .dark {
   /* Dark Mode Palette - Enterprise SaaS Style (Deep, Calm) */
-  --bg-primary: #110F1A;
-  --bg-secondary: #1B1725;
-  --bg-elevated: #262033;
-  --bg-subtle: #211B2D;
+  --bg-primary: #151022;
+  --bg-secondary: #20172F;
+  --bg-elevated: #2A2140;
+  --bg-subtle: #241B35;
   
   --text-primary: #FAF8FF;
   --text-secondary: #E8E2F0;
@@ -56,16 +56,16 @@
   
   --border-base: #3A314A;
   --border-subtle: #2C253A;
-  --border-accent: #A78BFA;
+  --border-accent: #9A78E5;
   
-  --primary: #A78BFA;
-  --primary-hover: #FB7185;
+  --primary: #9A78E5;
+  --primary-hover: #B59BEF;
   --primary-fg: #FFFFFF;
   
   --success: #059669;
   --warning: #D97706;
   --danger: #DC2626;
-  --info: #C4B5FD;
+  --info: #B9A1F5;
   
   --shadow-sm: none;
   --shadow-md: none;
@@ -680,4 +680,17 @@ html[data-perf-tier="ultra"] .palmyra-loading-bubble {
   .ring-rose-500 { --tw-ring-color: #C65B87 !important; }
   .shadow-rose-100\/50 { --tw-shadow-color: rgb(124 58 237 / .12) !important; }
   .shadow-rose-200\/40 { --tw-shadow-color: rgb(124 58 237 / .16) !important; }
+}
+
+
+/* PALMYRA brand tokens — derived from the official camel logo. */
+:root {
+  --palmyra-950: #32145F;
+  --palmyra-900: #4C1D95;
+  --palmyra-700: #5B2BAE;
+  --palmyra-600: #6631C9;
+  --palmyra-500: #7C4DDE;
+  --palmyra-300: #A98AEF;
+  --palmyra-100: #EDE7FA;
+  --palmyra-50: #F8F7FC;
 }
