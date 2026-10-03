@@ -16,7 +16,7 @@ export default function Security(){
    const next=await loadSaaSContext(true);
    setCtx(next);
    if(next?.companyId) setDevices(await loadMyDevices(next.companyId));
-  }catch(e){setError(e?.message||"No se pudieron cargar las sesiones.")}
+  }catch(e:any){setError(e?.message||"No se pudieron cargar las sesiones.")}
   finally{setLoading(false)}
  };
  useEffect(()=>{void refresh()},[]);
