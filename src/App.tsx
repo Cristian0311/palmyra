@@ -28,7 +28,7 @@ const Reports = lazy(() => import("./pages/Reports"));
 const CustomerShop = lazy(() => import("./pages/CustomerShop"));
 const SaaSAuth = lazy(() => import("./pages/SaaSAuth"));
 const SaaSOnboarding = lazy(() => import("./pages/SaaSOnboarding"));
-const AccountStatus = lazy(() => import("./pages/AccountStatus"));
+const AccountStatus = lazy(() => import("./pages/AccountStatus"));\nconst Team = lazy(() => import("./pages/Team"));\nconst SaaSInvite = lazy(() => import("./pages/SaaSInvite"));
 const Suppliers = lazy(() => import("./pages/Suppliers"));
 const InventoryAudit = lazy(() => import("./pages/InventoryAudit"));
 const Banks = lazy(() => import("./pages/Banks"));
@@ -47,7 +47,7 @@ function PageLoading() {
     "/returns": "Cargando Devoluciones…",
     "/reports": "Cargando Reportes…",
     "/settings": "Cargando Configuración…",
-    "/shop": "Cargando tienda…",
+    "/shop": "Cargando tienda…",\n    "/team": "Cargando equipo…",\n    "/invite": "Cargando invitación…",
   };
   const label = labels[location] || "Cargando sección…";
 
@@ -232,7 +232,7 @@ export default function App() {
       <Router>
         <Suspense fallback={<PageLoading />}>
           <Routes>
-          <Route path="/shop" element={<CustomerShop />} />
+          <Route path="/shop" element={<CustomerShop />} />\n          <Route path="/invite" element={<SaaSInvite />} />
           <Route path="/auth" element={accessState === "signed_out" ? <SaaSAuth /> : <Navigate to={accessState === "needs_onboarding" ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/"} replace />} />
           <Route path="/onboarding" element={accessState === "needs_onboarding" ? <SaaSOnboarding /> : <Navigate to={accessState === "signed_out" ? "/auth" : accessState === "blocked" ? "/account-status" : "/"} replace />} />
           <Route path="/account-status" element={accessState === "blocked" ? <AccountStatus /> : <Navigate to={accessState === "signed_out" ? "/auth" : accessState === "needs_onboarding" ? "/onboarding" : "/"} replace />} />
@@ -251,7 +251,7 @@ export default function App() {
                     <Route path="/returns" element={can("pos.access") ? <Returns /> : <Navigate to="/pos" replace />} />
                     <Route path="/customers" element={can("customers.manage") ? <Customers /> : <Navigate to="/pos" replace />} />
                     <Route path="/reports" element={can("reports.view") ? <Reports /> : <Navigate to="/pos" replace />} />
-                    <Route path="/settings" element={can("settings.manage") ? <Settings /> : <Navigate to="/pos" replace />} />
+                    <Route path="/settings" element={can("settings.manage") ? <Settings /> : <Navigate to="/pos" replace />} />\n                    <Route path="/team" element={can("employees.manage") ? <Team /> : <Navigate to="/pos" replace />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </Suspense>
