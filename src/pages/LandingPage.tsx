@@ -45,10 +45,11 @@ const palette = [
 
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
-    <div className={compact ? "flex items-center gap-2.5" : "flex items-center gap-3"}>
-      <img src="/palmyra-logo.svg" alt="PALMYRA" className={compact ? "w-9 h-9" : "w-11 h-11"} />
-      {!compact && <div><div className="text-[18px] font-black tracking-[-.04em] text-[#3B1B6E]">PALMYRA</div><div className="text-[8px] font-black uppercase tracking-[.18em] text-[#9B7BE8]">Business OS</div></div>}
-    </div>
+    <img
+      src="/palmyra-logo.svg"
+      alt="PALMYRA"
+      className={compact ? "w-[92px] h-6 object-contain object-left" : "w-[154px] h-9 object-contain object-left"}
+    />
   );
 }
 
@@ -288,8 +289,17 @@ export default function LandingPage() {
 
         <section id="historia" className="bg-[#F7F5FC]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 lg:py-18 grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
-            <div className="relative rounded-[28px] overflow-hidden border border-violet-100 shadow-[0_30px_70px_-40px_rgba(59,27,110,.45)]">
-              <img src={CITY_IMAGE} alt="Ruinas de la antigua ciudad de Palmyra, Siria" className="w-full h-[300px] sm:h-[390px] object-cover" loading="lazy" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+            <div className="relative rounded-[28px] overflow-hidden border border-violet-100 shadow-[0_30px_70px_-40px_rgba(59,27,110,.45)] bg-gradient-to-br from-[#241143] via-[#5D2DB9] to-[#A987F3] h-[300px] sm:h-[390px]">
+                  <div className="absolute inset-0 opacity-35">
+                    <div className="absolute bottom-0 left-[9%] w-[5%] h-[42%] bg-white/30 rounded-t-sm"/>
+                    <div className="absolute bottom-0 left-[18%] w-[4%] h-[58%] bg-white/25 rounded-t-sm"/>
+                    <div className="absolute bottom-0 left-[27%] w-[6%] h-[50%] bg-white/20 rounded-t-sm"/>
+                    <div className="absolute bottom-0 left-[40%] w-[4%] h-[68%] bg-white/25 rounded-t-sm"/>
+                    <div className="absolute bottom-0 left-[49%] w-[7%] h-[46%] bg-white/20 rounded-t-sm"/>
+                    <div className="absolute bottom-0 left-[65%] w-[4%] h-[62%] bg-white/25 rounded-t-sm"/>
+                    <div className="absolute bottom-0 left-[74%] w-[6%] h-[51%] bg-white/20 rounded-t-sm"/>
+                  </div>
+              <img src={CITY_IMAGE} alt="Ruinas de la antigua ciudad de Palmyra, Siria" className="absolute inset-0 w-full h-full object-cover" loading="eager" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.style.display = "none"; }} />
               <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/70 to-transparent text-white"><p className="text-[8px] font-bold opacity-80">{CITY_CREDIT}</p></div>
             </div>
             <div>
