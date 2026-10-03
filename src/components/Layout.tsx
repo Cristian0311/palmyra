@@ -183,8 +183,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           ...(res.errors || []).map(e => `${e.type} · ${e.actionId}: ${e.message}`),
           ...(cloudResult?.errors || []).map((e: string) => `Nube: ${e}`),
           cloudResult?.success === false && cloudResult?.message ? `Sincronización nube: ${cloudResult.message}` : ''
-        ].filter(Boolean).join('
-') || 'No se recibió un detalle específico. Abre Configuración y revisa el registro de sincronización.');
+        ].filter(Boolean).join('\\n') || 'No se recibió un detalle específico. Abre Configuración y revisa el registro de sincronización.');
       } else {
         addNotification("Sincronización con la nube completada con éxito", 'success');
       }
