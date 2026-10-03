@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Check, Copy, Edit3, Mail, MapPin, MoreHorizontal, Plus, RefreshCw, ShieldCheck, UserRound, UserX, X } from "lucide-react";
+import { Check, Copy, Edit3, Mail, MapPin, MoreHorizontal, Plus, RefreshCw, ShieldCheck, UserRound, UserX, X, Shield, Save } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useStore } from "../store/useStore";
 import { loadSaaSContext } from "../services/saas";
@@ -11,6 +11,7 @@ import {
   revokeEmployeeInvitation,
   setEmployeeStatus,
   updateEmployee,
+  upsertCompanyRole,
   type TeamEmployee,
   type TeamRole,
   type TeamSnapshot
@@ -43,6 +44,14 @@ export default function Team() {
   const [editing, setEditing] = useState<TeamEmployee | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [showRoleForm, setShowRoleForm] = useState(false);
+  const [editingRole, setEditingRole] = useState<TeamRole | null>(null);
+  const [roleForm, setRoleForm] = useState({
+    key: "",
+    name: "",
+    description: "",
+    permissionKeys: [] as string[]
+  });
 
   const canManageRoles = currentUser?.permissions?.includes("roles.manage") || currentUser?.role === "admin";
   const canManageEmployees = currentUser?.permissions?.includes("employees.manage") || currentUser?.role === "admin";
@@ -101,6 +110,64 @@ export default function Team() {
       email: "",
       sendInvite: true
     });
+  };
+
+  const openRoleCreate = () => {
+    setEditingRole(null);
+    setRoleForm({ key: "", name: "", description: "", permissionKeys: [] });
+    setError("");
+    setMessage("");
+    setShowRoleForm(true);
+  };
+
+  const openRoleEdit = (role: TeamRole) => {
+    if (role.is_system) return;
+    setEditingRole(role);
+    setRoleForm({
+      key: role.key,
+      name: role.name,
+      description: role.description || "",
+      permissionKeys: [...(role.permission_keys || [])]
+    });
+    setError("");
+    setMessage("");
+    setShowRoleForm(true);
+  };
+
+  const toggleRolePermission = (key: string) => {
+    setRoleForm(prev => ({
+      ...prev,
+      permissionKeys: prev.permissionKeys.includes(key)
+        ? prev.permissionKeys.filter(item => item !== key)
+        : [...prev.permissionKeys, key]
+    }));
+  };
+
+  const submitRole = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!snapshot?.companyId) return;
+    if (!canManageRoles) return setError("No tienes permiso para administrar roles.");
+    if (roleForm.name.trim().length < 2) return setError("Escribe el nombre del rol.");
+    if (roleForm.key.trim().length < 2) return setError("Escribe una clave para el rol.");
+    setBusy(true);
+    setError("");
+    try {
+      await upsertCompanyRole({
+        companyId: snapshot.companyId,
+        roleId: editingRole?.id,
+        key: roleForm.key,
+        name: roleForm.name,
+        description: roleForm.description,
+        permissionKeys: roleForm.permissionKeys
+      });
+      await refresh();
+      setShowRoleForm(false);
+      addNotification(editingRole ? "Rol actualizado." : "Rol creado.", "success");
+    } catch (e: any) {
+      setError(e?.message || "No se pudo guardar el rol.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const openCreate = () => {
@@ -307,6 +374,48 @@ export default function Team() {
         </div>
       </section>
 
+      {canManageRoles && (
+        <section className="bg-secondary border border-base rounded-3xl p-4 md:p-5">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <Shield className="w-5 h-5 text-rose-500" />
+                <h2 className="text-sm font-black text-primary">Roles y permisos</h2>
+              </div>
+              <p className="text-[10px] text-muted mt-1">Crea perfiles de trabajo y decide qué módulos puede usar cada uno.</p>
+            </div>
+            <button onClick={openRoleCreate} className="h-10 px-4 rounded-xl bg-slate-950 text-white font-black text-[10px] uppercase tracking-wider flex items-center gap-2">
+              <Plus className="w-4 h-4" /> Crear rol
+            </button>
+          </div>
+          <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-2 mt-4">
+            {(snapshot.roles || []).map(role => (
+              <button
+                key={role.id}
+                type="button"
+                onClick={() => openRoleEdit(role)}
+                className={cn(
+                  "text-left p-3 rounded-2xl border transition",
+                  role.is_system ? "border-base bg-subtle cursor-default" : "border-base bg-primary hover:border-rose-300"
+                )}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-xs font-black text-primary">{role.name}</span>
+                  <span className="text-[8px] uppercase tracking-wider font-black text-muted">{role.is_system ? "Sistema" : "Personalizado"}</span>
+                </div>
+                <p className="text-[9px] text-muted mt-1 line-clamp-2">{role.description || "Sin descripción"}</p>
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {(role.permission_keys || []).slice(0, 4).map(key => (
+                    <span key={key} className="text-[8px] rounded-full bg-subtle border border-base px-2 py-1 text-muted">{key}</span>
+                  ))}
+                  {(role.permission_keys || []).length > 4 && <span className="text-[8px] text-muted px-1 py-1">+{(role.permission_keys || []).length - 4}</span>}
+                </div>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       {inviteLink && (
         <section className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
           <div className="flex flex-col md:flex-row md:items-center gap-3">
@@ -461,6 +570,58 @@ export default function Team() {
               <button type="button" onClick={() => setShowForm(false)} className="h-11 px-4 rounded-xl bg-subtle text-primary font-black text-xs uppercase tracking-wider">Cancelar</button>
               <button type="submit" disabled={busy} className="h-11 px-4 rounded-xl bg-rose-600 text-white font-black text-xs uppercase tracking-wider flex-1">
                 {busy ? "Guardando..." : editing ? "Guardar cambios" : "Crear trabajador"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {showRoleForm && (
+        <div className="fixed inset-0 z-[210] bg-slate-950/60 backdrop-blur-sm p-3 sm:p-5 flex items-center justify-center" onClick={() => setShowRoleForm(false)}>
+          <form onSubmit={submitRole} onClick={e => e.stopPropagation()} className="w-full max-w-2xl bg-secondary border border-base rounded-3xl shadow-2xl p-5 sm:p-6 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3 mb-5">
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-rose-500">{editingRole ? "Editar rol" : "Nuevo rol"}</p>
+                <h2 className="text-xl font-black text-primary">{editingRole ? editingRole.name : "Perfil personalizado"}</h2>
+                <p className="text-xs text-muted mt-1">El rol define los módulos y acciones disponibles para el trabajador.</p>
+              </div>
+              <button type="button" onClick={() => setShowRoleForm(false)} className="w-9 h-9 rounded-xl bg-subtle text-muted flex items-center justify-center"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="grid sm:grid-cols-2 gap-4">
+              <label className="block">
+                <span className="label">Nombre del rol</span>
+                <input className="field" value={roleForm.name} onChange={e => setRoleForm({...roleForm,name:e.target.value})} disabled={busy || Boolean(editingRole?.is_system)} />
+              </label>
+              <label className="block">
+                <span className="label">Clave interna</span>
+                <input className="field" value={roleForm.key} onChange={e => setRoleForm({...roleForm,key:e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g,"-")})} disabled={busy || Boolean(editingRole?.is_system)} />
+              </label>
+            </div>
+            <label className="block mt-4">
+              <span className="label">Descripción</span>
+              <input className="field" value={roleForm.description} onChange={e => setRoleForm({...roleForm,description:e.target.value})} disabled={busy || Boolean(editingRole?.is_system)} />
+            </label>
+            <div className="mt-4">
+              <span className="label">Permisos</span>
+              <div className="grid sm:grid-cols-2 gap-2 mt-2">
+                {(snapshot.permissions || []).map(permission => {
+                  const selected = roleForm.permissionKeys.includes(permission.key);
+                  return (
+                    <label key={permission.id} className={cn("flex items-start gap-3 p-3 rounded-xl border cursor-pointer", selected ? "border-rose-300 bg-rose-50/50 dark:bg-rose-950/20" : "border-base bg-primary")}>
+                      <input type="checkbox" checked={selected} onChange={() => toggleRolePermission(permission.key)} disabled={busy || Boolean(editingRole?.is_system)} className="mt-0.5" />
+                      <span>
+                        <span className="block text-xs font-bold text-primary">{permission.name}</span>
+                        <span className="block text-[9px] text-muted mt-0.5">{permission.description || permission.key}</span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2 mt-6">
+              <button type="button" onClick={() => setShowRoleForm(false)} className="h-11 px-4 rounded-xl bg-subtle text-primary font-black text-xs uppercase tracking-wider">Cancelar</button>
+              <button type="submit" disabled={busy || Boolean(editingRole?.is_system)} className="h-11 px-4 rounded-xl bg-rose-600 text-white font-black text-xs uppercase tracking-wider flex-1 flex items-center justify-center gap-2">
+                {busy ? "Guardando..." : <><Save className="w-4 h-4" /> Guardar rol</>}
               </button>
             </div>
           </form>
