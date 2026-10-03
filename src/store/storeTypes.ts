@@ -27,8 +27,6 @@ export interface AppState {
   getBaseCurrency: () => Currency;
   storeConfig: import('../types').StoreConfig;
   updateStoreConfig: (config: import('../types').StoreConfig) => void;
-  catalogConfig: import('../types').CatalogConfig;
-  updateCatalogConfig: (config: import('../types').CatalogConfig) => void;
 
   // Sucursales
   branches: Branch[];
