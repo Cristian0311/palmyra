@@ -136,7 +136,7 @@ export default function Settings() {
     { id: 'cash', label: 'Caja y turnos', desc: 'Turnos, movimientos de caja y liquidaciones', icon: DollarSign },
     { id: 'bank', label: 'Bancos', desc: 'Tarjetas y movimientos bancarios', icon: CreditCard },
     { id: 'users', label: 'Usuarios y empleados', desc: 'Restablece usuarios dejando el administrador inicial', icon: Users },
-    { id: 'branches', label: 'Sucursales', desc: 'Elimina las sucursales configuradas', icon: Building2 },
+    { id: 'branches', label: 'Almacenes', desc: 'Elimina los almacenes configurados', icon: Building2 },
     { id: 'quotes', label: 'Cotizaciones y pedidos', desc: 'Cotizaciones y pedidos pendientes', icon: CloudUpload },
     { id: 'settings', label: 'Configuración', desc: 'Tasas de moneda y valores de configuración restablecibles', icon: SettingsIcon },
   ] as const;
@@ -220,7 +220,7 @@ export default function Settings() {
       }
 
       deleteBranch(branchToDelete.id);
-      showToast(`Sucursal "${branchToDelete.name}" eliminada.`);
+      showToast(`Almacén "${branchToDelete.name}" eliminado.`);
       setBranchToDelete(null);
     }
   };
@@ -250,17 +250,17 @@ export default function Settings() {
       );
 
       if (duplicate) {
-        showToast(`Ya existe un almacén/sucursal con este nombre ("${duplicate.name}"). No se permiten duplicados.`, "error");
+        showToast(`Ya existe un almacén con este nombre ("${duplicate.name}"). No se permiten duplicados.`, "error");
         return;
       }
 
       if (editingBranch) {
         updateBranch(editingBranch.id, { name: trimmed });
         setEditingBranch(null);
-        showToast("Sucursal actualizada.");
+        showToast("Almacén actualizado.");
       } else {
         addBranch({ id: crypto.randomUUID(), name: trimmed });
-        showToast("Sucursal agregada y guardada en Supabase.");
+        showToast("Almacén agregado y guardado en Supabase.");
       }
       setNewBranchName("");
     }
@@ -778,9 +778,9 @@ export default function Settings() {
               <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
                 <Store className="w-6 h-6" />
               </div>
-              <h3 className="text-base font-black text-slate-900 uppercase">¿Eliminar Sucursal?</h3>
+              <h3 className="text-base font-black text-slate-900 uppercase">¿Eliminar almacén?</h3>
               <p className="text-xs text-slate-600">
-                ¿Estás seguro de que deseas eliminar la sucursal <span className="font-bold text-slate-900">"{branchToDelete.name}"</span>?
+                ¿Estás seguro de que deseas eliminar el almacén <span className="font-bold text-slate-900">"{branchToDelete.name}"</span>?
               </p>
             </div>
             <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
@@ -1054,7 +1054,7 @@ export default function Settings() {
               <Store size={16} />
             </div>
             <div>
-              <h3 className="text-xs font-black text-primary uppercase tracking-wider">Sucursales</h3>
+              <h3 className="text-xs font-black text-primary uppercase tracking-wider">Almacenes</h3>
               <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Gestión de Ubicaciones</p>
             </div>
           </div>
