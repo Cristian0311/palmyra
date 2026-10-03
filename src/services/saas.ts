@@ -185,9 +185,9 @@ export async function createCompanyOnboarding(input: {
   const payload = {
     p_name: input.name.trim(),
     p_slug: slugifyCompany(input.name),
-    p_country_code: 'PR',
-    p_default_currency_code: 'USD',
-    p_timezone: 'America/Puerto_Rico',
+    p_country_code: 'CU',
+    p_default_currency_code: 'CUP',
+    p_timezone: 'America/Havana',
     p_warehouse_name: input.warehouseName.trim(),
     p_plan_code: input.planCode,
     p_employee_name: input.employeeName?.trim() || null,
