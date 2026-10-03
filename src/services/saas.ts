@@ -8,6 +8,7 @@ export interface SaaSContext {
   user: User;
   companyId: string | null;
   company: { id: string; name: string; slug: string; account_status: string; default_currency_code: string } | null;
+  availableCompanies: Array<{ id: string; name: string; slug: string; account_status: string; isOwner: boolean }>;
   roleKey: string;
   warehouseIds: string[];
   subscription: {
@@ -69,12 +70,15 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
   const authUser = authData.user;
   if (!authUser) return null;
 
-  const [{ data: profile }, { data: membership }] = await Promise.all([
+  const [{ data: profile, error: profileError }, { data: memberships, error: membershipError }] = await Promise.all([
     supabase.from('profiles').select('full_name,phone,active_company_id').eq('id', authUser.id).maybeSingle(),
-    supabase.from('company_memberships').select('company_id,is_owner,status').eq('user_id', authUser.id).eq('status','active').maybeSingle()
+    supabase.from('company_memberships').select('company_id,is_owner,status,companies!inner(id,name,slug,account_status,default_currency_code)').eq('user_id', authUser.id).eq('status','active').order('joined_at',{ascending:true})
   ]);
+  if (profileError || membershipError) throw profileError || membershipError;
 
-  const companyId = profile?.active_company_id || membership?.company_id || null;
+  const membershipRows: any[] = memberships || [];
+  const activeMembership = membershipRows.find(row => row.company_id === profile?.active_company_id) || membershipRows[0] || null;
+  const companyId = activeMembership?.company_id || null;
   if (!companyId) {
     clearPalmyraLocalScope();
     return {
@@ -90,6 +94,7 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
       },
       companyId: null,
       company: null,
+      availableCompanies: [],
       roleKey: 'admin',
       warehouseIds: [],
       subscription: null
@@ -139,6 +144,13 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     user,
     companyId,
     company: effectiveCompany,
+    availableCompanies: membershipRows.map(row => ({
+      id: row.company_id,
+      name: row.companies?.name || 'Empresa',
+      slug: row.companies?.slug || '',
+      account_status: row.companies?.account_status || 'setup',
+      isOwner: row.is_owner === true
+    })),
     roleKey,
     warehouseIds,
     subscription: subscription && plan ? {
@@ -195,4 +207,15 @@ export async function selectCompanyPlan(companyId: string, planCode: PlanCode) {
   const { data, error } = await supabase.rpc('select_company_plan', { p_company_id: companyId, p_plan_id: plan.id });
   if (error) throw error;
   return data;
+}
+
+
+export async function switchActiveCompany(companyId: string) {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error('Supabase no está configurado.');
+  const { data, error } = await supabase.rpc('set_active_company', { p_company_id: companyId });
+  if (error) throw error;
+  const ctx = await loadSaaSContext(true);
+  if (ctx?.companyId) setPalmyraLocalScope(ctx.authUserId, ctx.companyId);
+  return ctx || data;
 }
