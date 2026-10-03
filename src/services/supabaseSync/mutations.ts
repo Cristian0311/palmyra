@@ -221,11 +221,20 @@ export async function pushSalarySettlementToSupabase(settlement:SalarySettlement
 }
 
 async function updateCompanySettings(patch:Record<string,any>){
-  const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {data,error:re}=await supabase.from('company_catalogs').select('settings,theme_color,banner_text,whatsapp_number,show_prices,visible_warehouses').eq('company_id',companyId).maybeSingle();if(re)throw re;const current=(data?.settings&&typeof data.settings==='object')?data.settings:{};const {error}=await supabase.from('company_catalogs').upsert({company_id:companyId,enabled:true,theme_color:data?.theme_color||'#E11D73',banner_text:data?.banner_text||'',whatsapp_number:data?.whatsapp_number||'',show_prices:data?.show_prices!==false,visible_warehouses:data?.visible_warehouses||[],settings:{...current,...patch},updated_at:new Date().toISOString()},{onConflict:'company_id'});if(error)throw error;
+  const supabase=await onlineClient();
+  const {companyId}=await getActiveTenant();
+  const {data:existing,error:readError}=await supabase.from('company_settings').select('settings').eq('company_id',companyId).maybeSingle();
+  if(readError)throw readError;
+  const current=existing?.settings && typeof existing.settings==='object' ? existing.settings : {};
+  const {error}=await supabase.from('company_settings').upsert({
+    company_id:companyId,
+    settings:{...current,...patch},
+    updated_at:new Date().toISOString()
+  },{onConflict:'company_id'});
+  if(error)throw error;
 }
 export async function pushReceiptConfigToSupabase(config:ReceiptConfig){try{await updateCompanySettings({receiptConfig:config});return true;}catch(e:any){await queue('receipt_config',config,'global');return false;}}
 export async function pushStoreConfigToSupabase(config:StoreConfig&Record<string,any>){try{await updateCompanySettings({storeConfig:config});return true;}catch(e:any){await queue('store_config',config,'global');return false;}}
-export async function pushCatalogConfigToSupabase(config:Record<string,any>){try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const current=await supabase.from('company_catalogs').select('settings').eq('company_id',companyId).maybeSingle();if(current.error)throw current.error;const {error}=await supabase.from('company_catalogs').upsert({company_id:companyId,enabled:true,theme_color:config.themeColor||'#E11D73',banner_text:config.bannerText||'',whatsapp_number:config.whatsappNumber||'',show_prices:config.showPrices!==false,visible_warehouses:config.visibleBranches||[],settings:{...(current.data?.settings||{}),catalogConfig:config},updated_at:new Date().toISOString()},{onConflict:'company_id'});if(error)throw error;return true;}catch(e:any){await queue('catalog_config',config,'global');return false;}}
 
 export async function deleteTransactionFromSupabase(id:string){
   try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {error}=await supabase.rpc('palmyra_void_sale',{p_sale_id:id,p_company_id:companyId,p_reason:'Anulación desde PALMYRA'});if(error)throw error;return true;}catch{return false;}
