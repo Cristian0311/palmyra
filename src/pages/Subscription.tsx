@@ -33,6 +33,7 @@ export default function Subscription(){
   };
 
   if(loading)return <div className="min-h-[50vh] flex items-center justify-center text-sm font-bold text-muted">Cargando suscripción...</div>;
+  if(data && !data.ctx.isOwner) return <div className="min-h-[50vh] flex items-center justify-center"><div className="max-w-md bg-secondary border border-base rounded-3xl p-8 text-center"><ShieldCheck className="w-10 h-10 mx-auto text-rose-500"/><h2 className="text-xl font-black text-primary mt-3">Solo el propietario puede cambiar el plan</h2><p className="text-xs text-muted mt-2">Puedes consultar otras áreas permitidas de la empresa, pero la suscripción pertenece al propietario.</p></div></div>;
 
   const subPlan=data?.subscription?.plans;
   const currentCode=subPlan?.code||data?.ctx?.subscription?.planCode||"starter";
