@@ -9,70 +9,56 @@
 }
 
 :root {
-  --palmyra-font-scale: 1;
-  /* Light Mode Palette - Enterprise SaaS Style */
-  --bg-primary: #F8F7FC;
+  --bg-primary: #F7F5FC;
   --bg-secondary: #FFFFFF;
   --bg-elevated: #FFFFFF;
-  --bg-subtle: #F1ECFA;
-  
-  --text-primary: #171522;
-  --text-secondary: #4F485C;
-  --text-muted: #7A7287;
+  --bg-subtle: #F0EBFA;
+  --text-primary: #21182F;
+  --text-secondary: #5F5570;
+  --text-muted: #8E849B;
   --text-inverse: #FFFFFF;
-  
-  --border-base: #E6E0F0;
-  --border-subtle: #F2EEF7;
-  --border-accent: #B59BEF;
-  
-  --primary: #6631C9;
-  --primary-hover: #4C1D95;
+  --border-base: #E7DFF4;
+  --border-subtle: #F2EDF8;
+  --border-accent: #C9B6F2;
+  --primary: #6535C5;
+  --primary-hover: #4F249D;
   --primary-fg: #FFFFFF;
-  
-  --success: #10B981;
-  --warning: #F59E0B;
-  --danger: #EF4444;
-  --info: #7C4DDE;
-  
-  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  
+  --success: #16A34A;
+  --warning: #D97706;
+  --danger: #DC2626;
+  --info: #7C5CD6;
+  --shadow-sm: 0 1px 2px 0 rgb(27 12 54 / 0.05);
+  --shadow-md: 0 8px 24px -16px rgb(76 29 149 / 0.20);
+  --shadow-lg: 0 20px 50px -28px rgb(76 29 149 / 0.28);
   --radius-xl: 0.75rem;
   --radius-2xl: 1rem;
 }
 
-.dark {
-  /* Dark Mode Palette - Enterprise SaaS Style (Deep, Calm) */
-  --bg-primary: #151022;
-  --bg-secondary: #20172F;
-  --bg-elevated: #2A2140;
-  --bg-subtle: #241B35;
-  
-  --text-primary: #FAF8FF;
-  --text-secondary: #E8E2F0;
-  --text-muted: #B9B0C6;
-  --text-inverse: #0F0C16;
-  
-  --border-base: #3A314A;
-  --border-subtle: #2C253A;
-  --border-accent: #9A78E5;
-  
-  --primary: #9A78E5;
-  --primary-hover: #B59BEF;
+ .dark {
+  --bg-primary: #120B1F;
+  --bg-secondary: #19112A;
+  --bg-elevated: #23173A;
+  --bg-subtle: #211631;
+  --text-primary: #FAF7FF;
+  --text-secondary: #DAD2E9;
+  --text-muted: #A79CB9;
+  --text-inverse: #111016;
+  --border-base: #3D3150;
+  --border-subtle: #2E233B;
+  --border-accent: #6F54A8;
+  --primary: #8B63E6;
+  --primary-hover: #A180F0;
   --primary-fg: #FFFFFF;
-  
-  --success: #059669;
-  --warning: #D97706;
-  --danger: #DC2626;
-  --info: #B9A1F5;
-  
+  --success: #22C55E;
+  --warning: #F59E0B;
+  --danger: #F87171;
+  --info: #B69AEF;
   --shadow-sm: none;
   --shadow-md: none;
   --shadow-lg: none;
 }
 
-/* Automatic low-memory rendering profile. The POS keeps all functionality,
+/* Automatic low-memory/m rendering profile. The POS keeps all functionality,
    * but removes expensive visual work on 2 GB-class tablets. */
 .pos-product-card {
   content-visibility: auto;
@@ -177,7 +163,7 @@ body {
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-base);
     color: var(--text-primary);
-    @apply outline-none transition-all focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500;
+    @apply outline-none transition-all focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500;
     -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
   }
@@ -693,4 +679,30 @@ html[data-perf-tier="ultra"] .palmyra-loading-bubble {
   --palmyra-300: #A98AEF;
   --palmyra-100: #EDE7FA;
   --palmyra-50: #F8F7FC;
+}
+
+@layer components {
+  .palmyra-glass {
+    background: color-mix(in srgb, var(--bg-secondary) 84%, transparent);
+    border: 1px solid color-mix(in srgb, var(--border-base) 86%, transparent);
+    box-shadow: 0 24px 80px -45px rgb(76 29 149 / .45);
+    backdrop-filter: blur(18px);
+  }
+  .palmyra-gradient-text {
+    background: linear-gradient(120deg,#3B1B6E 0%,#6535C5 55%,#8B63E6 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .palmyra-orb {
+    background: radial-gradient(circle at 30% 30%,rgba(179,154,255,.55),rgba(101,53,197,.18) 45%,rgba(101,53,197,0) 72%);
+    filter: blur(8px);
+  }
+  .palmyra-3d {
+    transform: perspective(1200px) rotateX(2deg) rotateY(-4deg);
+    transform-origin: center;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .palmyra-3d { transform: none; }
+  }
 }
