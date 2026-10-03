@@ -56,3 +56,19 @@ begin
  return coalesce(v_seen,true);
 end; $$;
 revoke all on function public.is_current_device_active(uuid) from public,anon; grant execute on function public.is_current_device_active(uuid) to authenticated;
+
+create or replace function public.touch_current_device(p_company_id uuid)
+returns boolean language plpgsql security definer
+set search_path to 'public','private','pg_temp'
+as $$
+declare v_user uuid:=auth.uid();v_session uuid:=nullif(auth.jwt()->>'session_id','')::uuid;v_id uuid;
+begin
+ if v_user is null then return false; end if;
+ if not private.has_company_access(p_company_id) then return false; end if;
+ update public.devices set last_seen_at=timezone('utc',now()),active=true
+ where company_id=p_company_id and user_id=v_user and (v_session is null or session_id=v_session) and active=true
+ returning id into v_id;
+ return v_id is not null;
+end; $$;
+revoke all on function public.touch_current_device(uuid) from public,anon;
+grant execute on function public.touch_current_device(uuid) to authenticated;
