@@ -76,7 +76,7 @@ Deno.serve(async (req: Request) => {
   const redirectTo = appUrl.replace(/\/$/, "") + "/invite?token=" + encodeURIComponent(token);
 
   const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
-    data: { full_name: name, palmyra_company_id: companyId, palmyra_employee_id: employeeId, palmyra_invitation_token: token },
+    data: { full_name: name },
     redirectTo
   });
   if (error) {
