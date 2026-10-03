@@ -151,7 +151,17 @@ async function loadCatalog() {
     isBase: c.code === (companyRes.data?.default_currency_code || 'USD'),
   }));
 
-  const storeConfig = {
+  const { data: companySettings, error: settingsError } = await supabase
+    .from('company_settings')
+    .select('settings')
+    .eq('company_id', tenant.companyId)
+    .maybeSingle();
+  if (settingsError) throw settingsError;
+
+  const settings = companySettings?.settings && typeof companySettings.settings === 'object'
+    ? companySettings.settings
+    : {};
+  const storeConfig = settings.storeConfig || {
     storeName: companyRes.data?.name || 'PALMYRA POS',
     address: '',
     phone: '',
@@ -159,7 +169,7 @@ async function loadCatalog() {
     darkMode: false,
     manualOfflineSync: true
   };
-  const receiptConfig = {
+  const receiptConfig = settings.receiptConfig || {
     showLogo: false, showAddress: true, showPhone: true, showFooter: true,
     footerText: 'Gracias por su compra.',
     businessName: companyRes.data?.name || 'PALMYRA POS',
