@@ -76,7 +76,16 @@ function throwRpcError(error: any): never {
     invitation_email_mismatch: "Debes entrar con el correo al que se envió la invitación.",
     already_company_member: "Esta cuenta ya pertenece a esta empresa.",
     employee_already_linked: "Ese empleado ya tiene otra cuenta vinculada.",
-    employee_not_found: "El empleado no existe."
+    employee_not_found: "El empleado no existe.",
+    employee_inactive: "El empleado está inactivo.",
+    invalid_role_key: "La clave del rol no es válida.",
+    invalid_role_name: "El nombre del rol no es válido.",
+    reserved_role_key: "Esa clave está reservada por PALMYRA.",
+    invalid_permission: "Uno de los permisos seleccionados no es válido.",
+    role_not_found_or_system: "Ese rol no existe o es un rol del sistema.",
+    role_key_taken: "La clave del rol ya existe.",
+    role_name_taken: "El nombre del rol ya existe.",
+    role_already_exists: "Ya existe un rol con esos datos."
   };
   const match = Object.entries(known).find(([key]) => message.includes(key));
   throw new Error(match ? match[1] : message);
