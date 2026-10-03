@@ -8,7 +8,6 @@ export interface SaaSContext {
   user: User;
   companyId: string | null;
   company: { id: string; name: string; slug: string; account_status: string; default_currency_code: string } | null;
-  availableCompanies: Array<{ id: string; name: string; slug: string; account_status: string; isOwner: boolean }>;
   membershipStatus: string | null;
   isOwner: boolean;
   roleKey: string;
@@ -74,15 +73,13 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
 
   const [{ data: profile, error: profileError }, { data: memberships, error: membershipError }] = await Promise.all([
     supabase.from('profiles').select('full_name,phone,active_company_id').eq('id', authUser.id).maybeSingle(),
-    supabase.from('company_memberships').select('company_id,is_owner,status,companies!inner(id,name,slug,account_status,default_currency_code)').eq('user_id', authUser.id).order('joined_at',{ascending:true})
+    supabase.from('company_memberships').select('company_id,is_owner,status,companies!inner(id,name,slug,account_status,default_currency_code)').eq('user_id', authUser.id).limit(1)
   ]);
   if (profileError || membershipError) throw profileError || membershipError;
 
   const membershipRows: any[] = memberships || [];
-  const activeMembership = membershipRows.find(row => row.status === 'active' && row.company_id === profile?.active_company_id)
-    || membershipRows.find(row => row.status === 'active')
-    || null;
-  const fallbackMembership = membershipRows.find(row => row.company_id === profile?.active_company_id) || membershipRows[0] || null;
+  const activeMembership = membershipRows.find(row => row.status === 'active') || null;
+  const fallbackMembership = membershipRows[0] || null;
   const companyId = activeMembership?.company_id || null;
   const membershipStatus = activeMembership?.status || fallbackMembership?.status || null;
   if (!companyId) {
@@ -100,7 +97,6 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
       },
       companyId: null,
       company: null,
-      availableCompanies: [],
       membershipStatus,
       isOwner: Boolean(fallbackMembership?.is_owner),
       roleKey: 'admin',
@@ -153,13 +149,6 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     user,
     companyId,
     company: effectiveCompany,
-    availableCompanies: membershipRows.filter(row => row.status === 'active').map(row => ({
-      id: row.company_id,
-      name: row.companies?.name || 'Empresa',
-      slug: row.companies?.slug || '',
-      account_status: row.companies?.account_status || 'setup',
-      isOwner: row.is_owner === true
-    })),
     membershipStatus,
     isOwner,
     roleKey,
