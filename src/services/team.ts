@@ -10,6 +10,13 @@ export interface TeamRole {
   company_id?: string | null;
 }
 
+export interface TeamPermission {
+  id: string;
+  key: string;
+  name: string;
+  description?: string | null;
+}
+
 export interface TeamWarehouse {
   id: string;
   name: string;
@@ -42,6 +49,7 @@ export interface TeamSnapshot {
   companyId: string;
   employees: TeamEmployee[];
   roles: TeamRole[];
+  permissions: TeamPermission[];
   warehouses: TeamWarehouse[];
 }
 
@@ -82,6 +90,7 @@ export async function loadTeamSnapshot(): Promise<TeamSnapshot> {
     { data: employees, error: employeesError },
     { data: roles, error: rolesError },
     { data: warehouses, error: warehousesError },
+    { data: permissions, error: permissionsError },
     { data: accessRows, error: accessError },
     { data: invitations, error: invitationsError }
   ] = await Promise.all([
@@ -103,6 +112,10 @@ export async function loadTeamSnapshot(): Promise<TeamSnapshot> {
       .eq("company_id", companyId)
       .order("name", { ascending: true }),
     supabase
+      .from("permissions")
+      .select("id,key,name,description")
+      .order("name", { ascending: true }),
+    supabase
       .from("employee_warehouse_access")
       .select("employee_id,warehouse_id,is_default")
       .eq("company_id", companyId),
@@ -114,7 +127,7 @@ export async function loadTeamSnapshot(): Promise<TeamSnapshot> {
       .order("created_at", { ascending: false })
   ]);
 
-  const error = employeesError || rolesError || warehousesError || accessError || invitationsError;
+  const error = employeesError || rolesError || warehousesError || permissionsError || accessError || invitationsError;
   if (error) throw error;
 
   const accessMap = new Map<string, { ids: string[]; defaultId?: string | null }>();
@@ -152,6 +165,7 @@ export async function loadTeamSnapshot(): Promise<TeamSnapshot> {
       };
     }),
     roles: (roles || []) as TeamRole[],
+    permissions: (permissions || []) as TeamPermission[],
     warehouses: (warehouses || []) as TeamWarehouse[]
   };
 }
@@ -279,4 +293,27 @@ export async function acceptEmployeeInvitation(token: string) {
   });
   if (error) throwRpcError(error);
   return data as { company_id: string; employee_id?: string | null };
+}
+
+
+export async function upsertCompanyRole(input: {
+  companyId: string;
+  roleId?: string | null;
+  key: string;
+  name: string;
+  description?: string;
+  permissionKeys: string[];
+}) {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error("Supabase no está configurado.");
+  const { data, error } = await supabase.rpc("upsert_company_role", {
+    p_company_id: input.companyId,
+    p_role_id: input.roleId || null,
+    p_key: input.key,
+    p_name: input.name,
+    p_description: input.description || "",
+    p_permission_keys: input.permissionKeys
+  });
+  if (error) throwRpcError(error);
+  return data as { id: string; key: string; name: string };
 }
