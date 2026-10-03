@@ -37,6 +37,7 @@ const Suppliers = lazy(() => import("./pages/Suppliers"));
 const InventoryAudit = lazy(() => import("./pages/InventoryAudit"));
 const Banks = lazy(() => import("./pages/Banks"));
 const PlatformAdmin = lazy(() => import("./pages/PlatformAdmin"));
+const Security = lazy(() => import("./pages/Security"));
 
 function PageLoading() {
   const location = window.location.pathname;
@@ -265,6 +266,7 @@ export default function App() {
         <Suspense fallback={<PageLoading />}>
           <Routes>
           <Route path="/platform-admin" element={<PlatformAdmin />} />
+          <Route path="/security" element={<Security />} />
           <Route path="/invite" element={<SaaSInvite />} />
           <Route path="/auth" element={accessState === "signed_out" ? <SaaSAuth /> : <Navigate to={accessState === "needs_onboarding" ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/"} replace />} />
           <Route path="/onboarding" element={accessState === "needs_onboarding" ? <SaaSOnboarding /> : <Navigate to={accessState === "signed_out" ? "/auth" : accessState === "blocked" ? "/account-status" : "/"} replace />} />
