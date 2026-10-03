@@ -62,7 +62,7 @@ export default function SaaSInvite() {
       if (mode === "signup") {
         if (name.trim().length < 2) throw new Error("Escribe tu nombre completo.");
         if (password.length < 8) throw new Error("La contraseña debe tener al menos 8 caracteres.");
-        const result = await signUpSaaSAccount(name, email, password);
+        const result = await signUpSaaSAccount(name, email, password, `/invite?token=${encodeURIComponent(token)}`);
         if (result.error) throw result.error;
         if (!result.data.session) {
           sessionStorage.setItem("palmyra_pending_invitation", token);
