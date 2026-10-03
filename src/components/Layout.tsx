@@ -52,6 +52,7 @@ const adminNavItems = [
   { name: "Reportes", href: "/reports", icon: BarChart, permission: "reports.view" },
   { name: "Configuración", href: "/settings", icon: Settings, permission: "settings.manage" },
   { name: "Equipo", href: "/team", icon: Users, permission: "employees.manage" },
+  { name: "Plan", href: "/subscription", icon: CreditCard, permission: "settings.manage" },
 ];
 
 const cashierNavItems = [
