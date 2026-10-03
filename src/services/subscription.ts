@@ -10,6 +10,7 @@ export interface SubscriptionPlan {
   trial_days: number;
   limits: Record<string, unknown>;
   features: Record<string, unknown>;
+  billing_currency_code?: string | null;
   active: boolean;
 }
 
