@@ -77,6 +77,8 @@ function throwRpcError(error: any): never {
     already_company_member: "Esta cuenta ya pertenece a esta empresa.",
     employee_already_linked: "Ese empleado ya tiene otra cuenta vinculada.",
     employee_not_found: "El empleado no existe.",
+    company_membership_exists: "Esta cuenta ya pertenece a una empresa.",
+    user_identity_mismatch: "La identidad de la sesión no coincide con el usuario indicado.",
     employee_inactive: "El empleado está inactivo.",
     invalid_role_key: "La clave del rol no es válida.",
     invalid_role_name: "El nombre del rol no es válido.",
