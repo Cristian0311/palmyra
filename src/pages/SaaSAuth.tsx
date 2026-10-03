@@ -90,16 +90,26 @@ export default function SaaSAuth() {
       }
 
       if (mode === "signup") {
+        const normalizedEmail = email.trim().toLowerCase();
         if (name.trim().length < 2) {
+
           setError("Escribe tu nombre completo.");
+          return;
+        }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+          setError("Escribe un correo electrónico válido.");
           return;
         }
         if (password.length < 8) {
           setError("La contraseña debe tener al menos 8 caracteres.");
           return;
         }
+        if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+          setError("La contraseña debe contener al menos una letra y un número.");
+          return;
+        }
 
-        const { data, error: signUpError } = await signUpSaaSAccount(name, email, password);
+        const { data, error: signUpError } = await signUpSaaSAccount(name, normalizedEmail, password);
         if (signUpError) throw signUpError;
 
         if (!data.session) {
@@ -120,7 +130,17 @@ export default function SaaSAuth() {
         await continueAfterAuth();
       }
     } catch (err: any) {
-      setError(err?.message || "No se pudo completar la operación.");
+      const code = String(err?.code || "");
+      const raw = String(err?.message || "");
+      const friendly =
+        code === "user_already_exists" || /already registered|user already exists|already been registered/i.test(raw)
+          ? "Ese correo ya tiene una cuenta. Inicia sesión o recupera la contraseña."
+          : /password.*(weak|strength)/i.test(raw)
+            ? "La contraseña no cumple los requisitos de seguridad."
+            : /email.*(invalid|valid)/i.test(raw)
+              ? "El correo electrónico no es válido."
+              : raw || "No se pudo completar la operación.";
+      setError(friendly);
     } finally {
       setBusy(false);
     }
