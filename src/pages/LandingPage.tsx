@@ -8,8 +8,8 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-const CITY_IMAGE = "https://live.staticflickr.com/5016/5514619147_c7d54849af_o.jpg";
-const CITY_CREDIT = "Foto: Institute for the Study of the Ancient World · CC BY 2.0 · Wikimedia Commons";
+const CITY_IMAGE = "https://commons.wikimedia.org/wiki/Special:Redirect/file/City_Ruins_at_Palmyra.jpg?width=1400";
+const CITY_CREDIT = "Palmyra histórica · Foto: Institute for the Study of the Ancient World / Erik Hermans · CC BY 2.0";
 
 const modules = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3, title: "Una vista clara de tu negocio.", text: "Ventas, inventario, caja y alertas importantes en una sola pantalla.", stats: [["Ventas", "$ 12,480"], ["Tickets", "248"], ["Stock bajo", "12"], ["Equipo", "8"]] },
@@ -289,7 +289,7 @@ export default function LandingPage() {
         <section id="historia" className="bg-[#F7F5FC]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 lg:py-18 grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
             <div className="relative rounded-[28px] overflow-hidden border border-violet-100 shadow-[0_30px_70px_-40px_rgba(59,27,110,.45)]">
-              <img src={CITY_IMAGE} alt="Ruinas de la antigua ciudad de Palmyra, Siria" className="w-full h-[300px] sm:h-[390px] object-cover" loading="lazy" />
+              <img src={CITY_IMAGE} alt="Ruinas de la antigua ciudad de Palmyra, Siria" className="w-full h-[300px] sm:h-[390px] object-cover" loading="lazy" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.style.display = "none"; }} />
               <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/70 to-transparent text-white"><p className="text-[8px] font-bold opacity-80">{CITY_CREDIT}</p></div>
             </div>
             <div>
