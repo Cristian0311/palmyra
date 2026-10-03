@@ -129,7 +129,7 @@ export default function Settings() {
   const RESET_OPTIONS = [
     { id: 'inventory', label: 'Inventario', desc: 'Existencias, movimientos y transferencias', icon: Package },
     { id: 'reports', label: 'Reportes e historial', desc: 'Ventas, turnos, devoluciones, garantías y auditorías', icon: Database },
-    { id: 'catalog', label: 'Catálogo', desc: 'Productos y categorías', icon: LayoutGrid },
+    { id: 'catalog', label: 'Productos', desc: 'Productos y categorías', icon: LayoutGrid },
     { id: 'customers', label: 'Clientes', desc: 'Clientes registrados', icon: Users },
     { id: 'suppliers', label: 'Proveedores', desc: 'Proveedores registrados', icon: Store },
     { id: 'purchases', label: 'Compras', desc: 'Pedidos a proveedores', icon: CloudDownload },
