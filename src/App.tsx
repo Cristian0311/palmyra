@@ -17,6 +17,7 @@ import { getDevicePerformanceTier, scheduleIdleTask } from "./utils/devicePerfor
 import { flushLocalStateStorage } from "./services/localStateStorage";
 import { setPalmyraLocalScope, clearPalmyraLocalScope } from "./services/localScope";
 import { registerCurrentDevice } from "./services/device";
+import { touchCurrentDevice } from "./services/security";
 
 // Code-splitting de rutas para acelerar inicio en tablets y reducir consumo de memoria
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -225,6 +226,29 @@ export default function App() {
     return scheduleIdleTask(() => {
       void import("./pages/POS");
     }, 1200, 1600);
+  }, [currentUser?.id, accessState]);
+
+  useEffect(() => {
+    if (accessState !== "ready" || !currentUser) return;
+    let cancelled = false;
+    const heartbeat = async () => {
+      try {
+        const ctx = await loadSaaSContext(true);
+        if (cancelled || !ctx?.companyId) return;
+        const active = await touchCurrentDevice(ctx.companyId);
+        if (!active) {
+          await getSupabase()?.auth.signOut();
+          return;
+        }
+      } catch (error) {
+        console.warn("[PALMYRA] Device heartbeat failed:", error);
+      }
+    };
+    const timer = window.setInterval(heartbeat, 120000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, [currentUser?.id, accessState]);
 
   useEffect(() => {
