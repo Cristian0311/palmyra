@@ -102,13 +102,6 @@ export interface StoreConfig {
   manualOfflineSync?: boolean;
 }
 
-export interface CatalogConfig {
-  themeColor: string;
-  bannerText: string;
-  whatsappNumber: string;
-  showPrices: boolean;
-  visibleBranches?: string[]; // IDs of branches to show in catalog
-}
 
 export interface Transaction {
   id: string;
