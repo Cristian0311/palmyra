@@ -8,6 +8,7 @@ export interface TeamRole {
   description?: string | null;
   is_system: boolean;
   company_id?: string | null;
+  permission_keys?: string[];
 }
 
 export interface TeamPermission {
@@ -102,7 +103,7 @@ export async function loadTeamSnapshot(): Promise<TeamSnapshot> {
       .order("full_name", { ascending: true }),
     supabase
       .from("roles")
-      .select("id,key,name,description,is_system,company_id")
+      .select("id,key,name,description,is_system,company_id,role_permissions(permission_id,permissions(key))")
       .or(`company_id.is.null,company_id.eq.${companyId}`)
       .order("is_system", { ascending: false })
       .order("name", { ascending: true }),
@@ -164,7 +165,17 @@ export async function loadTeamSnapshot(): Promise<TeamSnapshot> {
         pending_invitation: invitationMap.get(employee.id) || null
       };
     }),
-    roles: (roles || []) as TeamRole[],
+    roles: (roles || []).map((role: any) => ({
+      id: role.id,
+      key: role.key,
+      name: role.name,
+      description: role.description,
+      is_system: role.is_system,
+      company_id: role.company_id,
+      permission_keys: Array.isArray(role.role_permissions)
+        ? role.role_permissions.map((rp: any) => rp.permissions?.key).filter(Boolean)
+        : []
+    })) as TeamRole[],
     permissions: (permissions || []) as TeamPermission[],
     warehouses: (warehouses || []) as TeamWarehouse[]
   };
