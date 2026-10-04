@@ -389,7 +389,7 @@ export default function Team() {
             </button>
           </div>
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-2 mt-4">
-            {(snapshot.roles || []).map(role => (
+            {(snapshot?.roles || []).map(role => (
               <button
                 key={role.id}
                 type="button"
@@ -441,7 +441,7 @@ export default function Team() {
         ) : snapshot?.employees.length ? (
           <div className="divide-y divide-slate-200/70 dark:divide-slate-700/60">
             {snapshot.employees.map(employee => {
-              const warehouseNames = employee.warehouse_ids.map(id => snapshot.warehouses.find(w => w.id === id)?.name).filter(Boolean);
+              const warehouseNames = employee.warehouse_ids.map(id => snapshot?.warehouses.find(w => w.id === id)?.name).filter(Boolean);
               return (
                 <div key={employee.id} className="p-4 md:p-5 flex flex-col md:flex-row md:items-center gap-4">
                   <div className={cn("w-11 h-11 rounded-2xl flex items-center justify-center shrink-0", employee.active ? "bg-rose-100 text-rose-600" : "bg-slate-100 text-slate-400")}>
