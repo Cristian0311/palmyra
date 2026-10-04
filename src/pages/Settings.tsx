@@ -667,9 +667,9 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Avanzado / Reset */}
+        {/* Avanzado / Reset — legado oculto; el panel activo está más abajo */}
         {activeTab === 'advanced' && (
-          <div className="bg-secondary rounded-2xl shadow-sm border border-rose-100 dark:border-rose-900/30 p-5 space-y-4">
+          <div className="bg-secondary rounded-2xl shadow-sm border border-rose-100 dark:border-rose-900/30 p-5 space-y-4" style={{ display: 'none' }}>
              <div className="flex items-center gap-3 border-b border-rose-50 dark:border-rose-950/30 pb-3">
               <div className="bg-rose-50 dark:bg-rose-950/50 p-2 rounded-lg text-rose-600 dark:text-rose-400">
                 <AlertTriangle size={16} />
