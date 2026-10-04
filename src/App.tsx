@@ -4,7 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useState, lazy, Suspense } from "react";
+import { useEffect, useState, useRef, lazy, Suspense } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout";
 import { loadSaaSContext } from "./services/saas";
@@ -78,16 +78,18 @@ export default function App() {
   const [accessState, setAccessState] = useState<"loading" | "signed_out" | "needs_onboarding" | "ready" | "blocked" | "recovering">("loading");
   const can = (permission: string) => currentUser?.role === "admin" || currentUser?.permissions?.includes(permission) === true;
   const pendingOnboarding = typeof sessionStorage !== "undefined" && sessionStorage.getItem("palmyra_pending_onboarding") === "1";
+  const hydratePromiseRef = useRef<Promise<void> | null>(null);
 
   const hydrateAuth = async () => {
-    setAuthBootstrapping(true);
+    if (hydratePromiseRef.current) return hydratePromiseRef.current;
+    const run = (async () => {
+      setAuthBootstrapping(true);
     try {
     let lastError: unknown = null;
 
     for (let attempt = 0; attempt < 4; attempt += 1) {
       try {
         const ctx = await loadSaaSContext(attempt > 0);
-        let deviceReady = ctx?.deviceActive !== false;
 
         if (!ctx) {
           const supabase = getSupabase();
@@ -113,33 +115,43 @@ export default function App() {
           if (typeof sessionStorage !== "undefined") {
             sessionStorage.removeItem("palmyra_pending_onboarding");
           }
-          setPalmyraLocalScope(ctx.authUserId, ctx.companyId);
-          const { setOfflineQueueScope } = await import("./services/offlineQueue");
-          await setOfflineQueueScope();
+          try {
+            setPalmyraLocalScope(ctx.authUserId, ctx.companyId);
+          } catch (error) {
+            console.warn("[PALMYRA] No se pudo guardar el alcance local; continuamos con la sesión cloud.", error);
+          }
           useStore.setState({
             currentUser: ctx.user,
             currentBranchId: ctx.warehouseIds[0] || "",
           });
-          await useStore.persist.rehydrate();
-          if (ctx.warehouseIds[0]) {
-            if (!ctx.deviceActive) {
-              try {
-                await registerCurrentDevice(ctx.companyId, ctx.warehouseIds[0]);
-                deviceReady = true;
-              } catch (error) {
-                deviceReady = false;
-                console.warn("[PALMYRA] No se pudo registrar el dispositivo:", error);
-              }
-            } else {
-              deviceReady = true;
+
+          // La entrada al CRM depende solo del contexto seguro de Supabase.
+          // Offline/IndexedDB, persistencia y registro del dispositivo son
+          // inicialización secundaria y nunca deben bloquear el acceso.
+          void (async () => {
+            try {
+              const { setOfflineQueueScope } = await import("./services/offlineQueue");
+              await setOfflineQueueScope();
+            } catch (error) {
+              console.warn("[PALMYRA] Inicialización de cola offline diferida:", error);
             }
-          }
+            try {
+              await useStore.persist.rehydrate();
+            } catch (error) {
+              console.warn("[PALMYRA] Rehidratación del estado local diferida:", error);
+            }
+            if (ctx.warehouseIds[0]) {
+              try {
+                await registerCurrentDevice(ctx.companyId!, ctx.warehouseIds[0]);
+              } catch (error) {
+                console.warn("[PALMYRA] Registro de dispositivo diferido:", error);
+              }
+            }
+          })();
         }
 
         if (!ctx.companyId) {
           setAccessState(ctx.membershipStatus && ctx.membershipStatus !== "active" ? "blocked" : "needs_onboarding");
-        } else if (!deviceReady) {
-          setAccessState("blocked");
         } else if (ctx.company?.account_status === "pending_payment" || ctx.company?.account_status === "suspended") {
           setAccessState("blocked");
         } else {
@@ -173,6 +185,13 @@ export default function App() {
       // La hidratación no puede bloquear la interfaz indefinidamente.
       // Tanto si hay sesión válida como si no, liberamos el boot de Auth.
       setAuthBootstrapping(false);
+    }
+    })();
+    hydratePromiseRef.current = run;
+    try {
+      await run;
+    } finally {
+      if (hydratePromiseRef.current === run) hydratePromiseRef.current = null;
     }
   };
   useEffect(() => {
