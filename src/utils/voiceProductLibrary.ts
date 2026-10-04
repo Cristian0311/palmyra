@@ -1,4 +1,6 @@
-// Generated from the current product catalog. Acceleration dictionary only.\n// IDs, prices and stock always come from the live/local product store.\nexport const KNOWN_PRODUCT_NAMES = [
+// Generated from the current product catalog. Acceleration dictionary only.
+// IDs, prices and stock always come from the live/local product store.
+export const KNOWN_PRODUCT_NAMES = [
   "Air max Sin Hacer",
   "Alarmas",
   "Amiris Hombre",
@@ -171,4 +173,8 @@
   "Vestidos Girasol",
   "Vestidos Olinda",
   "Vestidos Reeb"
-] as const;\n\nexport const KNOWN_PRODUCT_NAMES_NORMALIZED = new Set(KNOWN_PRODUCT_NAMES.map(name =>\n  name.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/\\s+/g, " ").trim()\n));\n
+] as const;
+
+export const KNOWN_PRODUCT_NAMES_NORMALIZED = new Set(KNOWN_PRODUCT_NAMES.map(name =>
+  name.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase().replace(/\\s+/g, " ").trim()
+));
