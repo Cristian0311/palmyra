@@ -1013,7 +1013,7 @@ export default function CashRegister() {
                         <div className="flex flex-wrap gap-1">
                           {tx.items.map((item, idx) => (
                             <span key={idx} className="text-[7px] font-black bg-slate-50 text-slate-500 px-1.5 py-0.5 rounded uppercase tracking-widest border border-slate-100">
-                              {item.quantity}x {item.product?.name || (typeof (item.product as any) === 'string' ? useStore.getState().products.find(p => p.id === (item.product as any))?.name || item.product : 'Desconocido')}
+                              {item.quantity}x {(typeof (item.product as any) === 'string' ? useStore.getState().products.find(p => p.id === (item.product as any))?.name || String(item.product) : (item.product as any)?.name || 'Desconocido')}
                             </span>
                           ))}
                         </div>
