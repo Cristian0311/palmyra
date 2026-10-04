@@ -7,6 +7,7 @@ import { Branch, Category, User } from "../types";
 import { cn } from "../lib/utils";
 import { normalizeSemanticText } from "../utils/textUtils";
 import { connectBluetoothPrinter, connectPrinter, printESCPOS, isInsideIframe } from "../lib/escpos";
+import { getSupabase } from "../lib/supabase";
 
 export default function Settings() {
   const { 
@@ -189,9 +190,31 @@ export default function Settings() {
     showToast("Tasas de cambio actualizadas correctamente.");
   };
 
-  const handleSaveConfig = () => {
-    updateStoreConfig(config);
-    showToast("Datos de la empresa actualizados.");
+  const handleSaveConfig = async () => {
+    const companyName = config.storeName.trim();
+    if (!companyName) {
+      showToast("El nombre de la empresa no puede quedar vacío.", "error");
+      return;
+    }
+
+    updateStoreConfig({ ...config, storeName: companyName });
+
+    // El nombre SaaS canónico vive en companies.name. Solo lo sincronizamos
+    // desde la pestaña Empresa, evitando que otros ajustes sobrescriban identidad.
+    try {
+      const supabase = getSupabase();
+      const ctx = await import("../services/saas").then(m => m.loadSaaSContext());
+      if (!supabase || !ctx?.companyId) throw new Error("No hay una empresa activa.");
+      const { error } = await supabase
+        .from("companies")
+        .update({ name: companyName })
+        .eq("id", ctx.companyId);
+      if (error) throw error;
+      showToast("Datos de la empresa actualizados.");
+    } catch (error: any) {
+      showToast("Se guardó la configuración local, pero no se pudo actualizar el nombre SaaS.", "error");
+      addNotification("No se pudo sincronizar el nombre de la empresa.", "error", error?.message || "Error de Supabase.");
+    }
   };
 
   const handleSaveTicket = () => {
