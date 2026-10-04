@@ -252,8 +252,8 @@ export default function Customers() {
 
       {/* Modal Agregar Cliente (Compact) */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-secondary rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden border border-base animate-in zoom-in-95">
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="palmyra-mobile-modal bg-secondary rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden border border-base animate-in zoom-in-95">
             <div className="p-4 border-b border-base bg-subtle flex justify-between items-center">
                <h3 className="text-xs font-black text-primary uppercase tracking-widest">{editingCustomer ? "Editar Cliente" : "Nuevo Cliente"}</h3>
                <button onClick={() => setShowAddModal(false)} className="text-muted hover:text-primary font-bold">✕</button>
@@ -300,7 +300,7 @@ export default function Customers() {
                 <div className="pt-2">
                   <button 
                     type="submit" 
-                    className="w-full py-2.5 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50"\n                    disabled={savingCustomer}
+                    className="w-full py-2.5 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50" disabled={savingCustomer}
                   >
                     {savingCustomer ? "Guardando..." : "Guardar Cliente"}
                   </button>
