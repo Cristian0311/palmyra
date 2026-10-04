@@ -16,7 +16,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PALMYRA_PLANS, type PlanCode } from "../config/saas";
-import { createCompanyOnboarding, loadSaaSContext } from "../services/saas";
+import { createCompanyOnboarding } from "../services/saas";
 import { registerCurrentDevice } from "../services/device";
 
 const planIcons: Record<PlanCode, typeof Sparkles> = {
@@ -162,45 +162,12 @@ export default function SaaSOnboarding() {
       }
 
       stage = "registro del dispositivo";
-      // Para el plan gratuito (Oasis/Starter) la empresa queda activa
-      // inmediatamente. El dispositivo inicial también debe quedar registrado
-      // antes de abandonar onboarding; si falla, NO mandamos al usuario al
-      // landing como si hubiera cerrado sesión.
-      await registerCurrentDevice(result.company_id, result.warehouse_id);
-
-      stage = "verificación del espacio de trabajo";
-      let verifiedContext: Awaited<ReturnType<typeof loadSaaSContext>> = null;
-      let lastContextError: unknown = null;
-
-      // El RPC y las lecturas posteriores pueden tardar unos milisegundos en
-      // quedar visibles en una nueva lectura. Reintentamos de forma controlada
-      // para evitar la falsa pantalla de "sesión cerrada".
-      for (let attempt = 0; attempt < 4; attempt += 1) {
-        try {
-          verifiedContext = await loadSaaSContext(true);
-          if (
-            verifiedContext?.companyId === result.company_id &&
-            verifiedContext.warehouseIds.includes(result.warehouse_id)
-          ) {
-            break;
-          }
-        } catch (contextError) {
-          lastContextError = contextError;
-        }
-        await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
-      }
-
-      if (
-        !verifiedContext?.companyId ||
-        verifiedContext.companyId !== result.company_id ||
-        !verifiedContext.warehouseIds.includes(result.warehouse_id)
-      ) {
-        console.error("[PALMYRA] La empresa fue creada pero no pudo verificarse antes de salir de onboarding.", {
-          result,
-          lastContextError,
-          verifiedContext
-        });
-        throw lastContextError || new Error("La empresa se creó, pero PALMYRA todavía no puede verificar el espacio de trabajo.");
+      try {
+        await registerCurrentDevice(result.company_id, result.warehouse_id);
+      } catch (deviceError) {
+        // El dispositivo se puede registrar de nuevo durante la hidratación de App.
+        // No bloqueamos la entrada al CRM por una carrera transitoria del registro.
+        console.warn("[PALMYRA] No se pudo registrar el dispositivo inicial:", deviceError);
       }
 
       stage = "finalización";
@@ -213,7 +180,7 @@ export default function SaaSOnboarding() {
       // Starter/Oasis = 90 días gratis y cuenta activa: entra directamente
       // al CRM. Los planes de pago continúan por el estado de activación.
       const nextPath =
-        verifiedContext.company?.account_status === "pending_payment"
+        result?.account_status === "pending_payment"
           ? "/account-status"
           : "/";
 
