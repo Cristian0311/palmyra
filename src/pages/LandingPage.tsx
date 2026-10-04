@@ -55,7 +55,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
     <img
       src="/palmyra-logo.svg"
       alt="PALMYRA"
-      className={compact ? "w-[92px] h-6 object-contain object-left" : "w-[154px] h-9 object-contain object-left"}
+      className={compact ? "w-[106px] h-7 object-contain object-left" : "w-[198px] h-12 object-contain object-left"}
     />
   );
 }
@@ -350,7 +350,7 @@ export default function LandingPage() {
 
       <footer className="bg-white border-t border-violet-100">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-7 flex flex-col md:flex-row items-center justify-between gap-3">
-          <Brand compact />
+          <Brand />
           <p className="text-[9px] text-slate-400 text-center">PALMYRA · Business OS · Gestión empresarial simple y profesional</p>
           <p className="text-[9px] text-slate-400">© {new Date().getFullYear()} PALMYRA</p>
         </div>
