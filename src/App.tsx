@@ -81,6 +81,7 @@ export default function App() {
 
   const hydrateAuth = async () => {
     setAuthBootstrapping(true);
+    try {
     let lastError: unknown = null;
 
     for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -168,6 +169,11 @@ export default function App() {
     void import("./services/offlineQueue").then(({ setOfflineQueueScope }) => setOfflineQueueScope()).catch(() => {});
     useStore.setState({ currentUser: null, currentBranchId: "", activeSessionId: null });
     setAccessState("signed_out");
+    } finally {
+      // La hidratación no puede bloquear la interfaz indefinidamente.
+      // Tanto si hay sesión válida como si no, liberamos el boot de Auth.
+      setAuthBootstrapping(false);
+    }
   };
   useEffect(() => {
     let active = true;
