@@ -10,6 +10,7 @@ export default function CashRegister() {
   const { branches, currentBranchId, setCurrentBranch, getCurrentSession, openSession, closeSession, getBaseCurrency, currencies, currentUser, transactions, users, products, salarySettlements, updateSalarySettlement, cashSessions } = useStore(useShallow((state) => ({ branches: state.branches, currentBranchId: state.currentBranchId, setCurrentBranch: state.setCurrentBranch, getCurrentSession: state.getCurrentSession, openSession: state.openSession, closeSession: state.closeSession, getBaseCurrency: state.getBaseCurrency, currencies: state.currencies, currentUser: state.currentUser, transactions: state.transactions, users: state.users, products: state.products, salarySettlements: state.salarySettlements, updateSalarySettlement: state.updateSalarySettlement, cashSessions: state.cashSessions })));
   const session = getCurrentSession(currentBranchId, currentUser?.id || 'u1');
   const baseCurrency = getBaseCurrency();
+  const productCatalog = products || [];
   const currentBranch = branches.find(b => b.id === currentBranchId);
 
   // El arqueo siempre debe mostrar efectivo CUP, aunque la configuración
