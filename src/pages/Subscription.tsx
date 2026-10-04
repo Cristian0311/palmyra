@@ -48,7 +48,7 @@ export default function Subscription(){
         goToWhatsAppPayment({
           ownerName,
           ownerEmail,
-          companyName:data?.ctx?.company?.name||data?.ctx?.storeConfig?.storeName||"",
+          companyName:data?.ctx?.company?.name||"",
           warehouseName,
           planName:plan.name,
           planCode:plan.code,
