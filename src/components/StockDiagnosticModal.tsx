@@ -19,7 +19,7 @@ import {
   X
 } from "lucide-react";
 import { useStore } from "../store/useStore";
-import { supabase } from "../lib/supabase";
+import { getSupabase } from "../lib/supabase";
 import { Product, Branch } from "../types";
 import { cn } from "../lib/utils";
 
@@ -34,7 +34,6 @@ export function StockDiagnosticModal({ isOpen, onClose, preselectedProductId }: 
     products, 
     branches, 
     inventory, 
-    fetchProductStockRealtime, 
     reconcileProductStock, 
     repairOrphanedInventoryLevels 
   } = useStore(useShallow((state) => ({ products: state.products, branches: state.branches, inventory: state.inventory, fetchProductStockRealtime: state.fetchProductStockRealtime, reconcileProductStock: state.reconcileProductStock, repairOrphanedInventoryLevels: state.repairOrphanedInventoryLevels })));
@@ -64,6 +63,8 @@ export function StockDiagnosticModal({ isOpen, onClose, preselectedProductId }: 
     setLoadingDb(true);
     setFeedbackMsg(null);
     try {
+      const supabase = getSupabase();
+      if (!supabase) throw new Error("Supabase no está configurado.");
       const { data, error } = await supabase
         .from('inventory_levels')
         .select('*')
@@ -73,9 +74,6 @@ export function StockDiagnosticModal({ isOpen, onClose, preselectedProductId }: 
         setFeedbackMsg({ type: 'error', text: `Error consultando Supabase: ${error.message}` });
       } else {
         setDbInventory(data || []);
-        // Also refresh local Zustand store for this product
-        await fetchProductStockRealtime(prodId);
-
         // Pre-fill edit state
         const initialEdits: { [key: string]: number } = {};
         branches.forEach(b => {
