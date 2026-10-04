@@ -1,76 +1,41 @@
 <!doctype html>
 <html lang="es">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="x-apple-disable-message-reformatting">
-  <title>Confirma tu cuenta</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="x-apple-disable-message-reformatting">
+<title>Confirma tu cuenta PALMYRA</title>
 </head>
-<body style="margin:0;padding:0;background:#f4f5f7;font-family:Arial,Helvetica,sans-serif;color:#172033;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f4f5f7;">
-    <tr>
-      <td align="center" style="padding:32px 16px;">
-        <table role="presentation" width="620" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:620px;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
-          <tr>
-            <td style="height:4px;background:#6332c4;font-size:0;line-height:0;">&nbsp;</td>
-          </tr>
-
-          <tr>
-            <td style="padding:22px 30px;border-bottom:1px solid #eef0f3;">
-              <img src="https://palmyracrm.onrender.com/palmyra-logo.svg" width="180" alt="PALMYRA" style="display:block;width:180px;max-width:70%;height:auto;border:0;">
-            </td>
-          </tr>
-
-          <tr>
-            <td style="padding:34px 42px 8px;">
-              <div style="font-size:12px;line-height:18px;font-weight:700;color:#6332c4;text-transform:uppercase;letter-spacing:1px;">Cuenta de empresa</div>
-              <h1 style="margin:8px 0 0;font-size:28px;line-height:36px;font-weight:700;color:#172033;">Confirma tu correo electrónico</h1>
-              <p style="margin:16px 0 0;font-size:15px;line-height:24px;color:#667085;">
-                Tu cuenta está casi lista. Confirma tu correo para continuar con la configuración de tu empresa en PALMYRA.
-              </p>
-            </td>
-          </tr>
-
-          <tr>
-            <td style="padding:24px 42px 28px;">
-              <a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email" style="display:inline-block;padding:13px 22px;background:#6332c4;border:1px solid #6332c4;border-radius:8px;color:#ffffff;text-decoration:none;font-size:14px;line-height:20px;font-weight:700;">
-                Confirmar correo
-              </a>
-            </td>
-          </tr>
-
-          <tr>
-            <td style="padding:0 42px 34px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8f9fb;border:1px solid #e6e9ee;border-radius:10px;">
-                <tr>
-                  <td style="padding:15px 16px;">
-                    <div style="font-size:11px;line-height:17px;color:#667085;">Enlace alternativo</div>
-                    <div style="margin-top:5px;font-size:11px;line-height:18px;color:#6332c4;word-break:break-all;">
-                      {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email
-                    </div>
-                  </td>
-                </tr>
-              </table>
-              <p style="margin:18px 0 0;font-size:12px;line-height:19px;color:#98a2b3;">
-                Si no creaste esta cuenta, puedes ignorar este mensaje.
-              </p>
-            </td>
-          </tr>
-
-          <tr>
-            <td style="padding:18px 42px;background:#f8f9fb;border-top:1px solid #eef0f3;">
-              <div style="font-size:11px;line-height:18px;color:#667085;">
-                Plataforma de gestión empresarial
-              </div>
-            </td>
-          </tr>
-        </table>
-
-        <div style="max-width:620px;padding:12px 10px 0;font-size:10px;line-height:16px;color:#98a2b3;">
-          Este correo fue enviado automáticamente. No respondas a este mensaje.
-        </div>
-      </td>
-    </tr>
-  </table>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#172033;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:#f3f4f6;">
+<tr><td align="center" style="padding:40px 16px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+<tr><td style="height:4px;background:#6332c4;font-size:0;line-height:0;">&nbsp;</td></tr>
+<tr><td align="center" style="padding:32px 30px 26px;background:#fff;">
+<img src="https://palmyracrm.onrender.com/palmyra-email-logo.jpg" width="230" alt="PALMYRA" style="display:block;width:230px;max-width:80%;height:auto;margin:0 auto;border:0;outline:none;text-decoration:none;">
+</td></tr>
+<tr><td style="height:1px;background:#eef0f3;font-size:0;line-height:0;">&nbsp;</td></tr>
+<tr><td style="padding:38px 44px 12px;">
+<div style="font-size:11px;line-height:18px;font-weight:700;color:#6332c4;text-transform:uppercase;letter-spacing:1px;">Verificación de cuenta</div>
+<h1 style="margin:8px 0 0;padding:0;font-size:27px;line-height:36px;font-weight:700;color:#172033;">Confirma tu correo electrónico</h1>
+<p style="margin:18px 0 0;padding:0;font-size:15px;line-height:25px;color:#667085;">Tu cuenta está casi lista. Confirma tu dirección de correo electrónico para activar tu acceso y continuar con la configuración de tu empresa.</p>
+</td></tr>
+<tr><td style="padding:22px 44px 30px;">
+<a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email" style="display:inline-block;padding:13px 22px;background:#6332c4;border:1px solid #6332c4;border-radius:7px;color:#fff;text-decoration:none;font-size:14px;line-height:20px;font-weight:700;">Confirmar correo electrónico</a>
+</td></tr>
+<tr><td style="padding:0 44px 34px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8f9fb;border:1px solid #e5e7eb;border-radius:8px;">
+<tr><td style="padding:15px 16px;">
+<div style="font-size:11px;line-height:17px;font-weight:700;color:#667085;">Si el botón no funciona</div>
+<div style="margin-top:7px;font-size:11px;line-height:18px;color:#6332c4;word-break:break-all;">{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email</div>
+</td></tr></table>
+<p style="margin:18px 0 0;padding:0;font-size:12px;line-height:19px;color:#98a2b3;">Si no creaste esta cuenta, no necesitas realizar ninguna acción.</p>
+</td></tr>
+<tr><td style="padding:20px 44px;background:#f8f9fb;border-top:1px solid #eef0f3;">
+<p style="margin:0;font-size:11px;line-height:18px;color:#667085;">Este mensaje fue enviado automáticamente por PALMYRA.</p>
+</td></tr>
+</table>
+<div style="max-width:600px;padding:14px 10px 0;font-size:10px;line-height:16px;color:#98a2b3;text-align:center;">Gestión empresarial desde un solo lugar.</div>
+</td></tr></table>
 </body>
 </html>
