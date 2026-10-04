@@ -118,10 +118,16 @@ export default function Subscription(){
     {request?.status==="pending" && (
       <section className="bg-violet-50 border border-violet-200 rounded-2xl p-4">
         <div className="flex items-start gap-3">
-          <CreditCard className="w-5 h-5 text-violet-700 mt-0.5"/>
-          <div>
-            <p className="text-sm font-black text-violet-900">Pago en efectivo · Cuba</p>
-            <p className="text-xs text-violet-800 mt-1">Entrega o coordina el efectivo con PALMYRA usando la vía indicada en la solicitud. El plan se activa cuando PALMYRA confirma el pago.</p>
+          <CreditCard className="w-5 h-5 text-violet-700 mt-0.5 shrink-0"/>
+          <div className="min-w-0">
+            <p className="text-sm font-black text-violet-900">
+              {request.payment_method==="manual_bank_transfer" ? "Transferencia bancaria · Cuba" : "Pago en efectivo · Cuba"}
+            </p>
+            <p className="text-xs text-violet-800 mt-1">
+              {request.payment_method==="manual_bank_transfer"
+                ? "La solicitud queda pendiente de confirmación. Coordina la transferencia con PALMYRA usando la vía indicada; tu plan actual sigue operativo mientras revisamos el cambio."
+                : "La solicitud queda pendiente de confirmación. Coordina el efectivo con PALMYRA usando la vía indicada; tu plan actual sigue operativo mientras revisamos el cambio."}
+            </p>
             {request.whatsapp_phone&&<a className="inline-flex mt-2 text-[11px] font-black text-violet-700 underline" href={"https://wa.me/"+String(request.whatsapp_phone).replace(/[^0-9]/g,"")} target="_blank" rel="noreferrer">Contactar para pago</a>}
           </div>
         </div>
