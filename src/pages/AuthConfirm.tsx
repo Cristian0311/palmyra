@@ -54,7 +54,7 @@ export default function AuthConfirm() {
   return (
     <main className="min-h-screen bg-[#F7F5FC] flex items-center justify-center p-4">
       <section className="w-full max-w-md rounded-[26px] bg-white border border-violet-100 shadow-[0_30px_90px_-52px_rgba(59,27,110,.55)] p-7 text-center">
-        <img src="/palmyra-logo.svg" alt="PALMYRA" className="w-[190px] h-12 object-contain mx-auto mb-7" />
+        <img src="/palmyra-logo.svg" alt="PALMYRA" className="w-[210px] h-13 object-contain mx-auto mb-7" />
         {error ? (
           <>
             <div className="mx-auto w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
