@@ -4706,6 +4706,8 @@ export default function Reports() {
             branches={branches}
             products={products}
             users={users}
+            currencies={currencies}
+            formatMoney={formatMoney}
             manualItemProductSearch={manualItemProductSearch}
             manualItemProductId={manualItemProductId}
             manualItemQuantity={manualItemQuantity}
