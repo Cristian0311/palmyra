@@ -18,6 +18,8 @@ import { useNavigate } from "react-router-dom";
 import { PALMYRA_PLANS, type PlanCode } from "../config/saas";
 import { createCompanyOnboarding } from "../services/saas";
 import { registerCurrentDevice } from "../services/device";
+import { getSupabase } from "../lib/supabase";
+import { goToWhatsAppPayment } from "../utils/whatsapp";
 
 const planIcons: Record<PlanCode, typeof Sparkles> = {
   starter: Sparkles,
@@ -193,14 +195,40 @@ export default function SaaSOnboarding() {
         sessionStorage.setItem("palmyra_onboarding_completed", "1");
       }
 
-      // Starter/Oasis = 90 días gratis y cuenta activa: entra directamente
-      // al CRM. Los planes de pago continúan por el estado de activación.
-      const nextPath =
-        result?.account_status === "pending_payment"
-          ? "/account-status"
-          : "/";
+      if (result?.account_status === "pending_payment") {
+        let ownerName = "";
+        let ownerEmail = "";
+        try {
+          const supabase = getSupabase();
+          if (supabase) {
+            const { data: authData } = await supabase.auth.getUser();
+            ownerEmail = authData.user?.email || "";
+            ownerName =
+              authData.user?.user_metadata?.full_name ||
+              authData.user?.user_metadata?.name ||
+              "";
+          }
+        } catch (authError) {
+          console.warn("[PALMYRA] No se pudo leer el nombre/correo del propietario para WhatsApp:", authError);
+        }
 
-      window.location.replace(nextPath);
+        goToWhatsAppPayment({
+          ownerName,
+          ownerEmail,
+          companyName: normalizedCompanyName,
+          warehouseName: normalizedWarehouseName,
+          planName: selectedPlan.name,
+          planCode: selectedPlan.code,
+          amount: Number(selectedPlan.price) || undefined,
+          currency: "USD",
+          paymentMethod,
+          requestId: result?.request_id || undefined
+        });
+        return;
+      }
+
+      // Starter/Oasis = 90 días gratis y cuenta activa: entra directamente al CRM.
+      window.location.replace("/");
     } catch (caughtError) {
       console.error("[PALMYRA] Error de onboarding:", {
         stage,
