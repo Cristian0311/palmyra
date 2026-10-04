@@ -510,13 +510,13 @@ export default function CashRegister() {
           <h3 className="text-sm font-black text-slate-900 mb-1 uppercase tracking-widest">Caja Cerrada</h3>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Abre el turno para operar</p>
 
-          <div className="my-6 p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100/50">
-            <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">Sucursal Activa</p>
+          <div className="my-3 sm:my-6 p-3 sm:p-4 bg-indigo-50/50 rounded-2xl border border-indigo-100/50">
+            <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest mb-1">Almacén Activo</p>
             {currentUser?.role === 'admin' ? (
               <select
                 value={currentBranchId}
                 onChange={(e) => setCurrentBranch(e.target.value)}
-                className="w-full bg-white border border-indigo-200 text-indigo-900 rounded-xl px-3 py-2 text-sm font-black uppercase outline-none focus:ring-2 focus:ring-indigo-500 mt-1 mb-2"
+                className="w-full bg-white border border-indigo-200 text-indigo-900 rounded-xl px-3 py-2 text-xs sm:text-sm font-black uppercase outline-none focus:ring-2 focus:ring-indigo-500 mt-1 mb-2 min-w-0"
               >
                 {branches.map(b => (
                   <option key={b.id} value={b.id}>{b.name}</option>
@@ -572,7 +572,7 @@ export default function CashRegister() {
                     </label>
                   ))}
                   {branchStaff.length === 0 && (
-                    <p className="text-[10px] text-slate-400 font-bold text-center py-2">No hay empleados asignados a esta sucursal.</p>
+                    <p className="text-[10px] text-slate-400 font-bold text-center py-2">No hay empleados asignados a este almacén.</p>
                   )}
                 </div>
               </div>
