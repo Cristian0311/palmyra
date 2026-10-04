@@ -26,7 +26,7 @@ import {
   callBankInternalTransferRPC, callDeleteBankInternalTransferRPC, callDeleteBankTransactionRPC, callDeleteBankCardRPC, callProcessBankTransactionRPC,
   setBankCardBalanceToSupabase, pullBranchInventoryFromSupabase,
   pushCashSessionToSupabase, deleteProductFromSupabase,
-  pushBranchToSupabase, deleteBranchFromSupabase, pushCategoryToSupabase,
+  pushBranchToSupabase, deleteBranchFromSupabase, pushCategoryToSupabase, deleteCategoryFromSupabase, deleteSupplierFromSupabase,
   pushProductToSupabase, pushUserToSupabase, pushWarrantyToSupabase, pushTimeShiftToSupabase,
   pushQuoteToSupabase, pushBankCardToSupabase, pushReturnToSupabase,
   pushSupplierToSupabase, pushSupplierOrderToSupabase, pushInventoryAuditToSupabase,
