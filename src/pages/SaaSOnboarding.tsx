@@ -147,8 +147,10 @@ export default function SaaSOnboarding() {
 
     setBusy(true);
     setCreationStage(1);
+    const startedAt = Date.now();
     let stage = "validación";
-    const stageTimer = window.setInterval(() => setCreationStage((current) => current < 4 ? current + 1 : current), 1200);
+    const stageTimer = window.setInterval(() => setCreationStage((current) => current < 4 ? current + 1 : current), 900);
+    const wait = (ms: number) => new Promise<void>((resolve) => window.setTimeout(resolve, ms));
 
     try {
       stage = "creación de la empresa";
@@ -174,7 +176,16 @@ export default function SaaSOnboarding() {
         console.warn("[PALMYRA] No se pudo registrar el dispositivo inicial:", deviceError);
       }
 
+      // El RPC devolvió los identificadores: la creación ya está confirmada.
+      // Mostramos explícitamente la confirmación antes de abandonar onboarding.
+      window.clearInterval(stageTimer);
       setCreationStage(5);
+      await wait(900);
+      setCreationStage(6);
+      const elapsed = Date.now() - startedAt;
+      const remaining = Math.max(1200, 5500 - elapsed);
+      await wait(remaining);
+
       stage = "finalización";
       if (typeof sessionStorage !== "undefined") {
         sessionStorage.removeItem("palmyra_signup_plan");
@@ -189,9 +200,7 @@ export default function SaaSOnboarding() {
           ? "/account-status"
           : "/";
 
-      setCreationStage(6);
-      window.clearInterval(stageTimer);
-      window.setTimeout(() => window.location.replace(nextPath), 650);
+      window.location.replace(nextPath);
     } catch (caughtError) {
       console.error("[PALMYRA] Error de onboarding:", {
         stage,
