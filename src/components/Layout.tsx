@@ -105,10 +105,37 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let active = true;
-    loadSaaSContext().then(ctx => {
-      if (active) setSaaSContext(ctx);
-    }).catch(() => {});
-    return () => { active = false; };
+
+    const refreshContext = async () => {
+      try {
+        const ctx = await loadSaaSContext(true);
+        if (active) setSaaSContext(ctx);
+      } catch {
+        // La interfaz continúa con el último contexto válido. App.tsx mantiene
+        // la hidratación principal de acceso y reintentará si fuese necesario.
+      }
+    };
+
+    void refreshContext();
+
+    // Una aprobación/rechazo del plan puede ocurrir desde la administración
+    // de PALMYRA mientras el usuario ya tiene el CRM abierto. Refrescamos el
+    // contexto periódicamente para que el plan y el contador cambien sin exigir
+    // cerrar sesión ni recargar manualmente.
+    const timer = window.setInterval(() => {
+      void refreshContext();
+    }, 30_000);
+
+    const handleFocus = () => void refreshContext();
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleFocus);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleFocus);
+    };
   }, [currentUser?.id]);
 
   const loadingLabelByPath: Record<string, string> = {
