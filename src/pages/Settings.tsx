@@ -668,34 +668,6 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Avanzado / Reset — legado oculto; el panel activo está más abajo */}
-        {activeTab === 'advanced' && (
-          <div className="bg-secondary rounded-2xl shadow-sm border border-rose-100 dark:border-rose-900/30 p-5 space-y-4" style={{ display: 'none' }}>
-             <div className="flex items-center gap-3 border-b border-rose-50 dark:border-rose-950/30 pb-3">
-              <div className="bg-rose-50 dark:bg-rose-950/50 p-2 rounded-lg text-rose-600 dark:text-rose-400">
-                <AlertTriangle size={16} />
-              </div>
-              <div>
-                <h3 className="text-xs font-black text-rose-600 dark:text-rose-400 uppercase tracking-wider">Avanzado</h3>
-                <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Acciones críticas del sistema</p>
-              </div>
-            </div>
-            <div className="p-4 bg-rose-50/50 dark:bg-rose-950/10 rounded-2xl border border-rose-100 dark:border-rose-900/30">
-               <h4 className="text-[10px] font-black text-rose-600 uppercase mb-2">Zona de Peligro</h4>
-               <p className="text-[9px] text-rose-700 dark:text-rose-400 font-medium leading-relaxed mb-4">
-                 Las siguientes acciones son irreversibles. Borrarán todos los datos locales de este dispositivo. Asegúrate de tener una copia de seguridad o de que los datos estén sincronizados con la nube.
-               </p>
-               <div className="flex flex-col sm:flex-row gap-3">
-                 <button 
-                   onClick={() => setShowConfirmReset(true)}
-                   className="px-6 py-2.5 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-700 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
-                 >
-                   <Trash2 size={14} /> Borrar Datos Locales
-                 </button>
-               </div>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* In-App User Deletion Confirmation Modal */}
