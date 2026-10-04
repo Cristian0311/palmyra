@@ -3,6 +3,8 @@ import {CheckCircle2,Clock3,CreditCard,RefreshCw,ShieldCheck,WalletCards,Globe2,
 import {loadSubscriptionOverview,selectSubscriptionPlan,type SubscriptionPlan} from "../services/subscription";
 import {useStore} from "../store/useStore";
 import {cn} from "../lib/utils";
+import {getSupabase} from "../lib/supabase";
+import {goToWhatsAppPayment} from "../utils/whatsapp";
 
 function money(v:number){return v.toLocaleString("es-CU",{minimumFractionDigits:2,maximumFractionDigits:2});}
 
@@ -27,8 +29,38 @@ export default function Subscription(){
     setBusy(true);setError("");
     try{
       const result=await selectSubscriptionPlan(plan.id,paymentMethod);
+      if(result?.status==="pending_payment"){
+        let ownerName="";
+        let ownerEmail="";
+        let warehouseName="";
+        try{
+          const supabase=getSupabase();
+          if(supabase){
+            const [{data:authData},{data:warehouse}]=await Promise.all([
+              supabase.auth.getUser(),
+              supabase.from("warehouses").select("name").eq("company_id",data.ctx.companyId).eq("active",true).order("created_at",{ascending:true}).limit(1).maybeSingle()
+            ]);
+            ownerEmail=authData.user?.email||"";
+            ownerName=authData.user?.user_metadata?.full_name||authData.user?.user_metadata?.name||"";
+            warehouseName=warehouse?.name||"";
+          }
+        }catch(authError){console.warn("[PALMYRA] No se pudieron preparar todos los datos de WhatsApp:",authError);}
+        goToWhatsAppPayment({
+          ownerName,
+          ownerEmail,
+          companyName:data?.ctx?.company?.name||data?.ctx?.storeConfig?.storeName||"",
+          warehouseName,
+          planName:plan.name,
+          planCode:plan.code,
+          amount:Number(plan.monthly_price)||undefined,
+          currency:plan.billing_currency_code||"USD",
+          paymentMethod,
+          requestId:result?.request_id||undefined
+        });
+        return;
+      }
       await refresh();
-      addNotification(result?.status==="pending_payment" ? "Solicitud de plan enviada." : "Plan actualizado.", "success");
+      addNotification("Plan actualizado.", "success");
     }catch(e:any){setError(e?.message||"No se pudo solicitar el plan.");}
     finally{setBusy(false);}
   };
@@ -39,7 +71,7 @@ export default function Subscription(){
   const subPlan=data?.subscription?.plans;
   const currentCode=subPlan?.code||data?.ctx?.subscription?.planCode||"starter";
   const request=data?.request;
-    return <div className="space-y-5 max-w-6xl mx-auto pb-10">
+    return <div className="space-y-4 sm:space-y-5 w-full min-w-0 max-w-6xl mx-auto pb-10 overflow-x-hidden">
     <header className="bg-secondary border border-base rounded-3xl p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
       <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#6535C5]">Cuenta</p><h1 className="text-2xl font-black text-primary mt-1">Facturación y plan</h1><p className="text-xs text-muted mt-1">En Cuba puedes solicitar el plan mediante efectivo o transferencia bancaria. La activación se realiza después de confirmar el pago.</p></div>
       <button onClick={()=>void refresh()} disabled={busy} className="h-10 px-4 rounded-xl border border-base bg-primary text-primary text-xs font-black flex items-center gap-2"><RefreshCw className={cn("w-4 h-4",loading&&"animate-spin")}/>Actualizar</button>
