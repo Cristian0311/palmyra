@@ -43,18 +43,18 @@ async function resolveVariantId(supabase:any,companyId:string,productId:string,v
   if(error)throw error;return data?.id||null;
 }
 
-export async function applyInventoryAdjustmentToSupabase(params:{operationId:string;productId:string;branchId:string;variantLabel?:string;delta:number;minQuantity?:number;userId?:string;movementType?:string}){
+export async function applyInventoryAdjustmentToSupabase(params:{operationId:string;productId:string;branchId:string;variantLabel?:string;delta:number;minQuantity?:number;userId?:string;movementType?:string}): Promise<{success:true;conflict:false;data:{quantity:number};error?:string}|{success:false;conflict?:boolean;error:string;data?:never}>{
   try{
     const supabase=await onlineClient();const {companyId,authUserId}=await getActiveTenant();const vid=await resolveVariantId(supabase,companyId,params.productId,params.variantLabel);const table=vid?'variant_stock_balances':'stock_balances';const filter=vid?{variant_id:vid}:{variant_id:null};
     const {data:row,error:readErr}=await supabase.from(table).select('quantity').eq('company_id',companyId).eq('warehouse_id',params.branchId).eq('product_id',params.productId).match(filter).maybeSingle();if(readErr)throw readErr;
     const next=Math.max(0,(Number(row?.quantity)||0)+(Number(params.delta)||0));
     const {error}=await supabase.from(table).upsert({company_id:companyId,warehouse_id:params.branchId,product_id:params.productId,quantity:next,updated_at:new Date().toISOString(),...filter},{onConflict:'company_id,warehouse_id,product_id,variant_id'});if(error)throw error;
     const {error:me}=await supabase.from('stock_movements').insert({id:crypto.randomUUID(),company_id:companyId,warehouse_id:params.branchId,product_id:params.productId,movement_type:(params.movementType||'adjustment').toLowerCase(),quantity:Number(params.delta)||0,reference_type:'inventory_adjustment',reference_id:params.operationId,created_by:authUserId,occurred_at:new Date().toISOString(),variant_id:vid});if(me)throw me;
-    return {success:true,data:{quantity:next}};
+    return {success:true,conflict:false,data:{quantity:next}};
   }catch(e:any){await queue('inventory_adjustment',params,params.operationId);return {success:false,error:e?.message||'Error de inventario'};}
 }
 
-export async function reconcileInventoryToSupabase(params:{operationId:string;productId:string;branchId:string;variantLabel?:string;expectedQuantity:number;newQuantity:number;minQuantity?:number;userId?:string}){
+export async function reconcileInventoryToSupabase(params:{operationId:string;productId:string;branchId:string;variantLabel?:string;expectedQuantity:number;newQuantity:number;minQuantity?:number;userId?:string}): Promise<{success:true;conflict:false;data:{quantity:number};error?:string}|{success:false;conflict?:boolean;error:string;data?:never}>{
   try{
     const supabase=await onlineClient();const {companyId,authUserId}=await getActiveTenant();const vid=await resolveVariantId(supabase,companyId,params.productId,params.variantLabel);const table=vid?'variant_stock_balances':'stock_balances';const filter=vid?{variant_id:vid}:{variant_id:null};
     const {data,error}=await supabase.from(table).select('quantity').eq('company_id',companyId).eq('warehouse_id',params.branchId).eq('product_id',params.productId).match(filter).maybeSingle();if(error)throw error;
