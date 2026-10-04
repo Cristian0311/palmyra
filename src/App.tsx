@@ -103,6 +103,9 @@ export default function App() {
           cart: []
         });
       } else {
+        if (typeof sessionStorage !== "undefined") {
+          sessionStorage.removeItem("palmyra_pending_onboarding");
+        }
         setPalmyraLocalScope(ctx.authUserId, ctx.companyId);
         const { setOfflineQueueScope } = await import("./services/offlineQueue");
         await setOfflineQueueScope();
