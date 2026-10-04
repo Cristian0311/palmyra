@@ -14,6 +14,8 @@ export default function Customers() {
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [viewingHistory, setViewingHistory] = useState<Customer | null>(null);
   const [newCustomer, setNewCustomer] = useState({ name: "", email: "", phone: "", taxId: "" });
+  const [savingCustomer, setSavingCustomer] = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   const filteredCustomers = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
@@ -33,39 +35,52 @@ export default function Customers() {
     return `${baseCurrency.symbol} ${amount.toLocaleString('es-CU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
-  const handleAddCustomer = (e: React.FormEvent) => {
+  const handleAddCustomer = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingCustomer) {
-      updateCustomer(editingCustomer.id, {
-        name: newCustomer.name,
-        email: newCustomer.email,
-        phone: newCustomer.phone,
-        taxId: newCustomer.taxId
-      });
-    } else {
-      addCustomer({
-        id: crypto.randomUUID(),
-        name: newCustomer.name,
-        email: newCustomer.email,
-        phone: newCustomer.phone,
-        taxId: newCustomer.taxId
-      });
+    if (savingCustomer || !newCustomer.name.trim()) return;
+    setSavingCustomer(true);
+    setSaveError("");
+    try {
+      const saved = editingCustomer
+        ? await updateCustomer(editingCustomer.id, {
+            name: newCustomer.name.trim(),
+            email: newCustomer.email.trim(),
+            phone: newCustomer.phone.trim(),
+            taxId: newCustomer.taxId.trim()
+          })
+        : await addCustomer({
+            id: crypto.randomUUID(),
+            name: newCustomer.name.trim(),
+            email: newCustomer.email.trim(),
+            phone: newCustomer.phone.trim(),
+            taxId: newCustomer.taxId.trim()
+          });
+
+      if (!saved) {
+        setSaveError("No se pudo guardar el cliente en la base de datos. Revisa el mensaje y vuelve a intentarlo.");
+        return;
+      }
+
+      setShowAddModal(false);
+      setEditingCustomer(null);
+      setNewCustomer({ name: "", email: "", phone: "", taxId: "" });
+    } catch (error: any) {
+      setSaveError(error?.message || "No se pudo guardar el cliente.");
+    } finally {
+      setSavingCustomer(false);
     }
-    setShowAddModal(false);
-    setEditingCustomer(null);
-    setNewCustomer({ name: "", email: "", phone: "", taxId: "" });
   };
 
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 flex flex-col pb-8">
-      <header className="flex justify-between items-center px-1">
+      <header className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 px-1">
         <div className="flex items-center gap-2">
           <h2 className="text-xl font-black text-primary tracking-tight uppercase">Clientes</h2>
           <InfoTooltip text="Gestiona tu directorio de clientes y su historial." position="bottom" />
         </div>
         <button 
           onClick={() => setShowAddModal(true)}
-          className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+          className="w-full sm:w-auto bg-indigo-600 text-white px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
         >
           <Plus size={14} />
           Nuevo
@@ -285,9 +300,9 @@ export default function Customers() {
                 <div className="pt-2">
                   <button 
                     type="submit" 
-                    className="w-full py-2.5 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                    className="w-full py-2.5 bg-indigo-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50"\n                    disabled={savingCustomer}
                   >
-                    Guardar Cliente
+                    {savingCustomer ? "Guardando..." : "Guardar Cliente"}
                   </button>
                 </div>
               </form>
