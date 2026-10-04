@@ -35,7 +35,7 @@ export default defineConfig(() => {
               purpose: 'any maskable'
             },
             {
-              src: '/pwa-512.svg',
+              src: '/palmyra-mark-exact.svg',
               sizes: '512x512',
               type: 'image/svg+xml',
               purpose: 'any maskable'
