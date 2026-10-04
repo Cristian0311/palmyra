@@ -179,6 +179,35 @@ body {
 }
 
 @layer components {
+  .form-label {
+    display: block;
+    margin-bottom: 0.4rem;
+    color: #625773;
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: .04em;
+  }
+  .field-input {
+    width: 100%;
+    border-radius: 0.85rem;
+    border: 1px solid #E4DCF1;
+    background: #FBFAFD;
+    color: #2A1938;
+    box-shadow: inset 0 1px 1px rgb(59 27 120 / .02);
+  }
+  .field-input::placeholder { color: #AAA0B8; font-weight: 600; }
+  .field-input:hover { border-color: #CDBCEB; background: #FFFFFF; }
+  .field-input:focus {
+    border-color: #7C4DDE;
+    background: #FFFFFF;
+    box-shadow: 0 0 0 4px rgb(124 77 222 / .10);
+  }
+  .field-input:disabled { opacity: .65; cursor: not-allowed; }
+  .field-input[aria-invalid="true"] {
+    border-color: #E11D48;
+    box-shadow: 0 0 0 4px rgb(225 29 72 / .08);
+  }
+
   /* Unified Compact Button Styles - pure CSS for Tailwind v4 compatibility */
   .btn-compact {
     display: inline-flex;
