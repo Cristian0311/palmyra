@@ -117,6 +117,7 @@ export default function SaaSOnboarding() {
   const [paymentMethod, setPaymentMethod] =
     useState<"manual_cash" | "manual_bank_transfer">("manual_cash");
   const [busy, setBusy] = useState(false);
+  const [creationStage, setCreationStage] = useState(0);
   const [error, setError] = useState("");
 
   const selectedPlan = useMemo(
@@ -145,7 +146,9 @@ export default function SaaSOnboarding() {
     }
 
     setBusy(true);
+    setCreationStage(1);
     let stage = "validación";
+    const stageTimer = window.setInterval(() => setCreationStage((current) => current < 4 ? current + 1 : current), 1200);
 
     try {
       stage = "creación de la empresa";
@@ -161,6 +164,7 @@ export default function SaaSOnboarding() {
         throw new Error("La empresa no devolvió los identificadores esperados.");
       }
 
+      setCreationStage(5);
       stage = "registro del dispositivo";
       try {
         await registerCurrentDevice(result.company_id, result.warehouse_id);
@@ -170,6 +174,7 @@ export default function SaaSOnboarding() {
         console.warn("[PALMYRA] No se pudo registrar el dispositivo inicial:", deviceError);
       }
 
+      setCreationStage(5);
       stage = "finalización";
       if (typeof sessionStorage !== "undefined") {
         sessionStorage.removeItem("palmyra_signup_plan");
@@ -184,19 +189,38 @@ export default function SaaSOnboarding() {
           ? "/account-status"
           : "/";
 
-      window.location.replace(nextPath);
+      setCreationStage(6);
+      window.clearInterval(stageTimer);
+      window.setTimeout(() => window.location.replace(nextPath), 650);
     } catch (caughtError) {
       console.error("[PALMYRA] Error de onboarding:", {
         stage,
         error: caughtError
       });
+      window.clearInterval(stageTimer);
       setError(getErrorMessage(caughtError, stage));
       setBusy(false);
+      setCreationStage(0);
     }
   };
 
   return (
-    <main className="h-[100dvh] min-h-[100dvh] overflow-y-auto bg-[#F7F5FC]" data-keyboard-viewport="native">
+    <main className="relative h-[100dvh] min-h-[100dvh] overflow-y-auto bg-[#F7F5FC]" data-keyboard-viewport="native">
+      {busy && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#24133d]/45 px-4 backdrop-blur-sm" aria-live="polite" aria-busy="true">
+          <div className="w-full max-w-sm rounded-3xl border border-violet-100 bg-white p-6 text-center shadow-2xl">
+            <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F0E9FF]"><img src="/palmyra-mark-exact.svg" alt="" aria-hidden="true" className="h-10 w-10 object-contain" /></div>
+            <h2 className="mt-4 text-base font-black text-[#3B1B6E]">Configurando tu espacio</h2>
+            <p className="mt-1 text-[10px] leading-4 text-slate-400">No cierres esta ventana. PALMYRA está creando y verificando todo automáticamente.</p>
+            <div className="mt-5 space-y-2 text-left">
+              {["Registrando nombre de empresa","Creando almacén principal","Configurando plan y suscripción","Preparando acceso, usuario y permisos","Confirmando la creación","Espacio creado correctamente"].map((label, index) => {
+                const active = creationStage === index + 1; const done = creationStage > index + 1;
+                return <div key={label} className={"flex items-center gap-2.5 rounded-xl px-3 py-2 text-[10px] font-bold " + (active ? "bg-[#F5F0FF] text-[#6535C5]" : done ? "text-emerald-600" : "text-slate-300")}><span className={"flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[8px] font-black " + (active ? "bg-[#6535C5] text-white" : done ? "bg-emerald-100 text-emerald-600" : "bg-slate-100 text-slate-300")}>{done ? <Check className="h-3 w-3" /> : index + 1}</span><span>{label}</span>{active && <span className="ml-auto h-3 w-3 animate-spin rounded-full border-2 border-[#DCCEFF] border-t-[#6535C5]" />}</div>;
+              })}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="mx-auto w-full max-w-6xl px-3 py-3 sm:px-5 sm:py-5">
         <header className="mb-3 flex items-center justify-between gap-3 px-1 sm:mb-4">
           <button
