@@ -48,7 +48,7 @@ export async function selectSubscriptionPlan(planId:string, paymentMethod: 'manu
   if(!supabase) throw new Error("Supabase no está configurado.");
   const ctx=await loadSaaSContext(true);
   if(!ctx?.companyId) throw new Error("No hay una empresa activa.");
-  const {data,error}=await supabase.rpc("select_company_plan",{p_company_id:ctx.companyId,p_plan_id:planId});
+  const {data,error}=await supabase.rpc("select_company_plan_with_payment",{p_company_id:ctx.companyId,p_plan_id:planId,p_payment_method:paymentMethod});
   if(error) throw error;
   return data;
 }
