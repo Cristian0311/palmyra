@@ -1,14 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="18 18 1145 270" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 196" role="img" aria-labelledby="title desc">
   <title id="title">PALMYRA</title>
-  <desc id="desc">Logo PALMYRA con camello blanco dentro de un círculo violeta y nombre PALMYRA con separación clara entre letras.</desc>
-  <defs>
-    <clipPath id="palmyraMarkClip"><circle cx="150" cy="150" r="124"/></clipPath>
-    <linearGradient id="palmyraPurple" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#6B32D4"/>
-      <stop offset="1" stop-color="#4B1FA7"/>
-    </linearGradient>
-  </defs>
-  <circle cx="150" cy="150" r="128" fill="url(#palmyraPurple)"/>
-  <path clip-path="url(#palmyraMarkClip)" fill="#fff" d="M70 214c-7-14-7-33-4-50 4-22 15-39 30-51 10-8 18-16 23-27 5-10 14-16 25-16 13 0 23 8 29 17 7 10 16 15 28 16 8 1 14-2 17-10 4-10 5-25 5-38 0-9 6-15 15-15 6 0 10 3 14 8 7-4 15-3 21 1 5 3 10 4 15 4 8 0 15 5 17 12 2 7-1 13-7 16-8 4-19 3-27 0-5-2-10-2-15 0-4 2-7 6-8 11-1 10-1 21-3 31-2 14-7 27-15 38-7 10-17 18-28 23-13 6-25 10-38 14-9 3-17 7-25 12-8 5-12 13-12 23 0 13-1 26-1 39 0 8-4 14-11 14-10 0-16-6-18-15-3-11-3-24-3-36 0-9-3-16-10-21-7-5-15-9-23-12-8-3-14-8-17-14zm54-71c-5 1-9 5-10 10-1 5 1 10 5 13 5 3 10 3 15 1 5-3 8-7 8-12 0-5-3-9-8-11-3-1-7-1-10-1z"/>
-  <text x="316" y="193" fill="#3F237E" font-family="Arial, Helvetica, sans-serif" font-size="132" font-weight="800" letter-spacing="11">PALMYRA</text>
+  <desc id="desc">Logotipo oficial PALMYRA con camello blanco dentro de un círculo violeta y palabra PALMYRA.</desc>
+  <image href="/palmyra-email-logo.jpg" x="0" y="0" width="760" height="196" preserveAspectRatio="none"/>
 </svg>
