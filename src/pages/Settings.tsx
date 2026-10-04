@@ -1,5 +1,5 @@
 import { useShallow } from 'zustand/react/shallow';
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import { Settings as SettingsIcon, Save, DollarSign, Building2, Users, Plus, Trash2, Edit, LayoutGrid, Store, AlertTriangle, RefreshCw, Usb, Bluetooth, Wifi, Printer, CheckCircle2, ExternalLink, AlertCircle, Sparkles, ChevronRight, Package, Search, X, Database, CreditCard, CloudUpload, CloudDownload, Check, Sun, Moon, Type, Palette } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { InfoTooltip } from "../components/InfoTooltip";
@@ -143,10 +143,14 @@ export default function Settings() {
   const [resetSections, setResetSections] = useState<string[]>([]);
 
   const [selectedUserForConfig, setSelectedUserForConfig] = useState<User | null>(null);
+  const settingsContentRef = useRef<HTMLDivElement | null>(null);
 
   const [activeTab, setActiveTab] = useState<'connectivity' | 'company' | 'currency' | 'branches' | 'categories' | 'employees' | 'visual' | 'advanced'>('connectivity');
   const [fontScale, setFontScale] = useState(() => { try { const saved = Number(localStorage.getItem('palmyra-font-scale') || '1'); return [0.9,1,1.1,1.2].includes(saved) ? saved : 1; } catch { return 1; } });
   useEffect(() => { document.documentElement.style.setProperty('--palmyra-font-scale', String(fontScale)); try { localStorage.setItem('palmyra-font-scale', String(fontScale)); } catch {} }, [fontScale]);
+  useEffect(() => {
+    settingsContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [activeTab]);
 
   const handleClearData = async () => {
     if (resetInput.trim().toUpperCase() !== 'ELIMINAR' || resetSections.length === 0) return;
@@ -326,7 +330,7 @@ export default function Settings() {
     <div className="settings-page space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 w-full min-w-0 max-w-5xl mx-auto pb-8 relative overflow-x-hidden">
       {/* In-App Toast Notification */}
       {toast && (
-        <div className="fixed top-4 right-4 z-[200] max-w-md animate-in slide-in-from-top-4 fade-in duration-300">
+        <div className="fixed top-2 right-2 sm:top-4 sm:right-4 z-[200] w-[calc(100vw-1rem)] sm:w-auto max-w-md min-w-0 animate-in slide-in-from-top-4 fade-in duration-300">
           <div className={cn(
             "p-4 rounded-2xl shadow-2xl border flex items-center gap-3 backdrop-blur-md",
             toast.type === 'success' ? "bg-emerald-950/95 text-emerald-100 border-emerald-800/80 shadow-emerald-900/30" :
@@ -400,7 +404,7 @@ export default function Settings() {
         </div>
       </div>
 
-      <div id="settings-section-content" className="grid grid-cols-1 gap-3 min-w-0">
+      <div ref={settingsContentRef} id="settings-section-content" className="grid grid-cols-1 gap-3 min-w-0 scroll-mt-2">
         {/* Conectividad y Sincronización */}
         {activeTab === 'connectivity' && (
           <div className="space-y-4">
