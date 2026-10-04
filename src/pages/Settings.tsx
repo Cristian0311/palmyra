@@ -726,7 +726,6 @@ export default function Settings() {
         )}
 
         {activeTab === 'branches' && (
-                  {/* Almacenes */}
         <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4">
           <div className="flex items-center gap-3 border-b border-base pb-3">
             <div className="bg-rose-50 dark:bg-rose-950/30 p-2 rounded-lg text-rose-600 dark:text-rose-400">
@@ -772,7 +771,6 @@ export default function Settings() {
         )}
 
         {activeTab === 'categories' && (
-                  {/* Categorías (Compact) */}
         <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4">
           <div className="flex items-center gap-3 border-b border-base pb-3">
             <div className="bg-amber-50 dark:bg-amber-950/30 p-2 rounded-lg text-amber-600 dark:text-amber-400">
@@ -829,7 +827,6 @@ export default function Settings() {
         )}
 
         {activeTab === 'connectivity' && (
-                  {/* Configuración de Ticket / Recibo */}
         <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4 lg:col-span-3">
           <div className="flex items-center gap-3 border-b border-base pb-3">
             <div className="bg-rose-50 dark:bg-rose-950/30 p-2 rounded-lg text-rose-600 dark:text-rose-400">
@@ -1178,7 +1175,6 @@ export default function Settings() {
         )}
 
         {activeTab === 'advanced' && (
-                {/* Zona Peligrosa */}
       <div className="bg-secondary rounded-2xl shadow-sm border border-red-200 dark:border-red-900/30 p-5 space-y-4 lg:col-span-3">
         <div className="flex items-center gap-3 border-b border-red-50 dark:border-red-950/30 pb-3">
           <div className="bg-red-50 dark:bg-red-950/50 p-2 rounded-lg text-red-600 dark:text-red-400">
