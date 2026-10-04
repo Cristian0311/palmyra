@@ -502,81 +502,7 @@ export default function Settings() {
               </div>
             </div>
 
-            {/* Offline Backup & Restore Section (Moved here) */}
-            <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4">
-              <div className="flex items-center gap-3 border-b border-base pb-3">
-                <div className="bg-emerald-50 dark:bg-emerald-950/30 p-2.5 rounded-xl text-emerald-600 dark:text-emerald-400">
-                  <Save size={20} />
-                </div>
-                <div>
-                  <h3 className="text-xs font-black text-primary uppercase tracking-wider">Copia de Seguridad Offline</h3>
-                  <p className="text-[9px] font-bold text-muted uppercase tracking-tight">Exportar e importar base de datos local</p>
-                </div>
-              </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="p-4 bg-subtle rounded-2xl border border-base">
-                  <div className="flex items-center gap-2 mb-2">
-                    <CloudDownload className="w-4 h-4 text-rose-500" />
-                    <span className="text-[10px] font-black uppercase text-primary tracking-widest">Generar Backup</span>
-                  </div>
-                  <p className="text-[9px] text-muted mb-4 font-bold leading-tight">Descarga toda tu información local en un archivo JSON.</p>
-                  <button
-                    onClick={() => {
-                      const data = exportData();
-                      const blob = new Blob([data], { type: 'application/json' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = `backup_pos_${new Date().toISOString().split('T')[0]}.json`;
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
-                      URL.revokeObjectURL(url);
-                      showToast("Copia de seguridad generada y descargada");
-                    }}
-                    className="w-full py-2 bg-rose-600 text-white rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-rose-700 transition-all cursor-pointer shadow-md"
-                  >
-                    Exportar Datos
-                  </button>
-                </div>
-
-                <div className="p-4 bg-subtle rounded-2xl border border-base">
-                  <div className="flex items-center gap-2 mb-2">
-                    <CloudUpload className="w-4 h-4 text-rose-500" />
-                    <span className="text-[10px] font-black uppercase text-primary tracking-widest">Restaurar Sistema</span>
-                  </div>
-                  <p className="text-[9px] text-muted mb-4 font-bold leading-tight">Carga un archivo de respaldo previo para sobrescribir los datos.</p>
-                  <label className="block">
-                    <input
-                      type="file"
-                      accept=".json"
-                      className="hidden"
-                      id="backup-upload"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        if (window.confirm("¿Restaurar datos? Se perderá lo que no esté en el archivo.")) {
-                          setIsLoading(true);
-                          const reader = new FileReader();
-                          reader.onload = async (ev) => {
-                            const result = await importData(ev.target?.result as string);
-                            if (result.success) {
-                              showToast("Sistema restaurado");
-                              setTimeout(() => window.location.reload(), 1000);
-                            } else showToast(`Error: ${result.error}`, "error");
-                          };
-                          reader.readAsText(file);
-                        }
-                      }}
-                    />
-                    <div className="w-full py-2 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-[9px] font-black uppercase tracking-wider text-center cursor-pointer hover:bg-slate-300 transition-all border border-base">
-                      Importar JSON
-                    </div>
-                  </label>
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
@@ -743,7 +669,7 @@ export default function Settings() {
 
         {/* Avanzado / Reset */}
         {activeTab === 'advanced' && (
-          <div className="bg-secondary rounded-2xl shadow-sm border border-rose-100 dark:border-rose-900/30 p-5 space-y-4" style={{ display: 'none' }}>
+          <div className="bg-secondary rounded-2xl shadow-sm border border-rose-100 dark:border-rose-900/30 p-5 space-y-4">
              <div className="flex items-center gap-3 border-b border-rose-50 dark:border-rose-950/30 pb-3">
               <div className="bg-rose-50 dark:bg-rose-950/50 p-2 rounded-lg text-rose-600 dark:text-rose-400">
                 <AlertTriangle size={16} />
@@ -1195,7 +1121,7 @@ export default function Settings() {
         </div>
 
         {/* Offline Backup & Restore Section */}
-        <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4 lg:col-span-3">
+        <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4 lg:col-span-3" style={{ display: activeTab === 'advanced' ? undefined : 'none' }}>
           <div className="flex items-center gap-3 border-b border-base pb-3">
             <div className="bg-emerald-50 dark:bg-emerald-950/30 p-2.5 rounded-xl text-emerald-600 dark:text-emerald-400">
               <Save size={20} />
