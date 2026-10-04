@@ -21,14 +21,15 @@ export async function loadSubscriptionOverview() {
 
   const [{data:plans,error:plansError},{data:request,error:requestError},{data:invoices,error:invoiceError}]=await Promise.all([
     supabase.from("plans").select("id,code,name,monthly_price,billing_currency_code,trial_days,limits,features,active").eq("active",true).neq("code","trial").order("monthly_price",{ascending:true}),
-    supabase.rpc("get_my_plan_request",{p_company_id:ctx.companyId}),
+    ctx.isOwner
+      ? supabase.rpc("get_my_plan_request",{p_company_id:ctx.companyId})
+      : Promise.resolve({data:null,error:null} as any),
     ctx.isOwner
       ? supabase.rpc("get_my_billing_invoices",{p_company_id:ctx.companyId})
       : Promise.resolve({data:[],error:null} as any)
   ]);
   if(plansError) throw plansError;
   if(requestError) throw requestError;
-  if(invoiceError) throw invoiceError;
   if(invoiceError) throw invoiceError;
 
   const {data:subscription,error:subscriptionError}=await supabase
