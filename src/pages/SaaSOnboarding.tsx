@@ -196,7 +196,7 @@ export default function SaaSOnboarding() {
             aria-label="PALMYRA"
           >
             <img
-              src="/palmyra-email-logo.jpg"
+              src="/palmyra-logo-exact.svg"
               alt="PALMYRA"
               className="block h-auto w-[170px] max-w-[46vw] object-contain"
             />
