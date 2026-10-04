@@ -29,7 +29,7 @@ export default defineConfig(() => {
           theme_color: '#ffffff',
           icons: [
             {
-              src: '/pwa-192.svg',
+              src: '/palmyra-mark-exact.svg',
               sizes: '192x192',
               type: 'image/svg+xml',
               purpose: 'any maskable'
