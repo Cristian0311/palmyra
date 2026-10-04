@@ -1,6 +1,6 @@
 import React from "react";
 import { Search, Plus, X, Loader2 } from "lucide-react";
-import type { Branch, CashRegisterSession, Product, User } from "../../types";
+import type { Branch, CashRegisterSession, Product, User, Currency } from "../../types";
 
 export interface AddItemToShiftModalProps {
   session: CashRegisterSession;
@@ -8,6 +8,8 @@ export interface AddItemToShiftModalProps {
   branches: Branch[];
   products: Product[];
   users: User[];
+  currencies: Currency[];
+  formatMoney: (amount: number, code?: string) => string;
   manualItemProductSearch: string;
   manualItemProductId: string;
   manualItemQuantity: number;
@@ -33,6 +35,8 @@ export default function AddItemToShiftModal({
   branches,
   products,
   users,
+  currencies,
+  formatMoney,
   manualItemProductSearch,
   manualItemProductId,
   manualItemQuantity,
