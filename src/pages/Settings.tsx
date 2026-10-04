@@ -62,6 +62,7 @@ export default function Settings() {
 
   const [rates, setRates] = useState<{ [code: string]: number }>(
     currencies.reduce((acc, c) => ({ ...acc, [c.code]: c.rateToBase }), {})
+      </div>
   );
 
   const [config, setConfig] = useState(storeConfig);
