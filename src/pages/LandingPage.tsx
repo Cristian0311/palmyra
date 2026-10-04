@@ -15,6 +15,8 @@ const modules = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3, title: "Una vista clara de tu negocio.", text: "Ventas, inventario, caja y alertas importantes en una sola pantalla.", stats: [["Ventas", "$ 12,480"], ["Tickets", "248"], ["Stock bajo", "12"], ["Equipo", "8"]] },
   { id: "pos", label: "Punto de Venta", icon: ShoppingCart, title: "Cobrar rápido, incluso sin conexión.", text: "Un POS pensado para jornadas reales: simple para el trabajador y potente para el dueño.", stats: [["Caja", "$ 8,420"], ["Tickets", "24"], ["Pendientes", "0"], ["Estado", "Offline listo"]] },
   { id: "inventory", label: "Inventario", icon: Boxes, title: "Existencias por almacén, sin confusión.", text: "Controla stock, movimientos, mínimos y entradas desde cualquier dispositivo.", stats: [["Productos", "284"], ["Stock bajo", "12"], ["Almacenes", "3"], ["Movimientos", "1,248"]] },
+  { id: "purchases", label: "Compras", icon: Receipt, title: "Compras y recepción en un solo flujo.", text: "Registra proveedores, órdenes y recepciones sin separar la información del inventario.", stats: [["Órdenes", "18"], ["Pendientes", "4"], ["Recibidas", "14"], ["Proveedores", "26"]] },
+  { id: "suppliers", label: "Proveedores", icon: Users, title: "Proveedores siempre a mano.", text: "Consulta contactos, compras y relación comercial desde una vista sencilla.", stats: [["Proveedores", "26"], ["Activos", "21"], ["Compras", "$ 42K"], ["Pendientes", "4"]] },
   { id: "transfers", label: "Transferencias", icon: Truck, title: "Mueve mercancía con contexto.", text: "Consulta qué salió, desde dónde, hacia qué almacén y qué cantidad.", stats: [["Hoy", "8"], ["En tránsito", "3"], ["Completadas", "24"], ["Almacenes", "3"]] },
   { id: "customers", label: "Clientes", icon: Users, title: "La relación con tus clientes, ordenada.", text: "Historial de compras y datos útiles sin convertir el CRM en un laberinto.", stats: [["Clientes", "1,284"], ["Nuevos", "18"], ["Compras", "$ 24.8K"], ["Activos", "942"]] },
   { id: "reports", label: "Reportes", icon: LineChart, title: "Decisiones con información real.", text: "Indicadores comerciales y operativos para saber dónde estás y qué mejorar.", stats: [["Ventas", "$ 84K"], ["Margen", "28.4%"], ["Ticket", "$ 32.80"], ["Stock", "$ 124K"]] },
@@ -39,7 +41,7 @@ const plans = [
 ];
 
 const palette = [
-  ["#3B1B6E", "Violeta profundo"], ["#4B1FA7", "Índigo"], ["#6535C5", "PALMYRA"], ["#7C4DDE", "Activo"],
+  ["#3B1B78", "Violeta profundo"], ["#5B2DBA", "Índigo"], ["#5B2DBA", "PALMYRA"], ["#7C4DDE", "Activo"],
   ["#9B7BE8", "Lavanda"], ["#EFE8FF", "Superficie"], ["#F7F5FC", "Fondo"]
 ];
 
@@ -59,14 +61,14 @@ function MiniSidebar({ active }: { active: string }) {
       <Brand compact />
       <div className="mt-4 space-y-1.5">
         {modules.map(({ id, label, icon: Icon }) => (
-          <div key={id} className={"flex items-center gap-1.5 px-2 py-2 rounded-lg text-[8px] font-bold " + (active === id ? "bg-[#EFE8FF] text-[#6535C5]" : "text-slate-500")}>
+          <div key={id} className={"flex items-center gap-1.5 px-2 py-2 rounded-lg text-[8px] font-bold " + (active === id ? "bg-[#EFE8FF] text-[#5B2DBA]" : "text-slate-500")}>
             <Icon className="w-3 h-3" /> <span className="truncate">{label}</span>
           </div>
         ))}
       </div>
       <div className="mt-4 p-2 rounded-xl bg-[#F7F5FC] border border-violet-100">
         <p className="text-[7px] font-black uppercase tracking-wider text-slate-400">Empresa</p>
-        <p className="text-[8px] font-black text-[#3B1B6E] mt-1 truncate">Mi Empresa</p>
+        <p className="text-[8px] font-black text-[#3B1B78] mt-1 truncate">Mi Empresa</p>
         <p className="text-[7px] text-slate-500 mt-1">Almacén Principal</p>
       </div>
     </aside>
@@ -81,7 +83,7 @@ function MiniTopbar({ title }: { title: string }) {
         <span className="w-2 h-2 rounded-full bg-violet-300" />
         <span className="w-2 h-2 rounded-full bg-violet-400" />
       </div>
-      <span className="text-[7px] font-black text-[#6535C5] uppercase tracking-[.2em]">{title}</span>
+      <span className="text-[7px] font-black text-[#5B2DBA] uppercase tracking-[.2em]">{title}</span>
       <div className="w-8 h-2 rounded-full bg-[#F0EBFA]" />
     </div>
   );
@@ -97,20 +99,20 @@ function ModuleScreen({ module }: { module: typeof modules[number] }) {
         <main className="flex-1 min-w-0 p-3 md:p-5 bg-[#FBFAFD]">
           <div className="flex items-start justify-between gap-3 mb-4">
             <div>
-              <div className="flex items-center gap-1.5 text-[#6535C5]">
+              <div className="flex items-center gap-1.5 text-[#5B2DBA]">
                 <Icon className="w-3.5 h-3.5" />
                 <span className="text-[7px] uppercase tracking-[.18em] font-black">PALMYRA · {module.label}</span>
               </div>
               <h4 className="text-sm md:text-base font-black text-[#251536] mt-1">{module.title}</h4>
             </div>
-            <span className="hidden md:block text-[7px] px-2 py-1 rounded-full bg-[#EFE8FF] text-[#6535C5] font-black">Vista del módulo</span>
+            <span className="hidden md:block text-[7px] px-2 py-1 rounded-full bg-[#EFE8FF] text-[#5B2DBA] font-black">Vista del módulo</span>
           </div>
           <p className="text-[9px] md:text-[10px] leading-5 text-slate-500 max-w-2xl">{module.text}</p>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-4">
             {module.stats.map(([name, value]) => (
               <div key={name} className="rounded-xl bg-white border border-violet-100 p-2.5 shadow-[0_10px_30px_-22px_rgba(76,29,149,.3)]">
                 <p className="text-[7px] text-slate-400 font-bold uppercase tracking-wider">{name}</p>
-                <p className="text-[11px] md:text-sm font-black text-[#3B1B6E] mt-1 truncate">{value}</p>
+                <p className="text-[11px] md:text-sm font-black text-[#3B1B78] mt-1 truncate">{value}</p>
               </div>
             ))}
           </div>
@@ -121,13 +123,13 @@ function ModuleScreen({ module }: { module: typeof modules[number] }) {
                 {[34,46,39,62,56,71,66,84,76,93].map((height, index) => (
                   <div key={index} className="flex-1 h-full flex items-end">
                     <div className="w-full rounded-t-md bg-[#E9DEFF]" style={{ height: height + "%" }}>
-                      <div className="h-2/3 mt-auto rounded-t-md bg-gradient-to-t from-[#6535C5] to-[#9B7BE8]" />
+                      <div className="h-2/3 mt-auto rounded-t-md bg-gradient-to-t from-[#5B2DBA] to-[#9B7BE8]" />
                     </div>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="rounded-xl border border-violet-100 bg-[#3B1B6E] p-3 text-white">
+            <div className="rounded-xl border border-violet-100 bg-[#3B1B78] p-3 text-white">
               <span className="text-[8px] font-black text-violet-200 uppercase tracking-wider">Acciones</span>
               <div className="space-y-2 mt-3">
                 {["Consultar", "Registrar", "Analizar"].map((action, index) => (
@@ -161,9 +163,9 @@ export default function LandingPage() {
             <a href="#producto">Producto</a><a href="#modulos">Módulos</a><a href="#planes">Planes</a><a href="#historia">Historia</a>
           </nav>
           <div className="flex items-center gap-2">
-            <button onClick={() => navigate("/auth")} className="hidden sm:inline-flex h-10 px-4 rounded-xl items-center justify-center text-xs font-black text-[#4B1FA7] hover:bg-white">Entrar</button>
-            <button onClick={() => navigate("/auth?mode=signup")} className="h-10 px-4 sm:px-5 rounded-xl bg-[#6535C5] text-white text-xs font-black shadow-[0_12px_28px_-12px_rgba(101,53,197,.65)]">Crear cuenta</button>
-            <button onClick={() => setMobileMenu(v => !v)} className="lg:hidden w-10 h-10 rounded-xl border border-violet-100 bg-white text-[#6535C5]" aria-label="Menú">{mobileMenu ? <X className="w-4 h-4 mx-auto" /> : <Menu className="w-4 h-4 mx-auto" />}</button>
+            <button onClick={() => navigate("/auth")} className="hidden sm:inline-flex h-10 px-4 rounded-xl items-center justify-center text-xs font-black text-[#5B2DBA] hover:bg-white">Entrar</button>
+            <button onClick={() => navigate("/auth?mode=signup")} className="h-10 px-4 sm:px-5 rounded-xl bg-[#5B2DBA] text-white text-xs font-black shadow-[0_12px_28px_-12px_rgba(101,53,197,.65)]">Crear cuenta</button>
+            <button onClick={() => setMobileMenu(v => !v)} className="lg:hidden w-10 h-10 rounded-xl border border-violet-100 bg-white text-[#5B2DBA]" aria-label="Menú">{mobileMenu ? <X className="w-4 h-4 mx-auto" /> : <Menu className="w-4 h-4 mx-auto" />}</button>
           </div>
         </div>
         {mobileMenu && <div className="lg:hidden border-t border-violet-100 bg-white px-4 py-3"><div className="flex flex-col gap-3 text-xs font-bold text-slate-600"><a href="#producto" onClick={() => setMobileMenu(false)}>Producto</a><a href="#modulos" onClick={() => setMobileMenu(false)}>Módulos</a><a href="#planes" onClick={() => setMobileMenu(false)}>Planes</a><a href="#historia" onClick={() => setMobileMenu(false)}>Historia</a></div></div>}
@@ -175,18 +177,18 @@ export default function LandingPage() {
           <div className="absolute bottom-0 left-0 w-[18rem] h-[18rem] rounded-full bg-[#EDE7FA]/70 blur-3xl" />
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-14 pb-12 lg:pt-20 lg:pb-16 grid xl:grid-cols-[.82fr_1.18fr] gap-9 items-center">
             <div className="relative z-10">
-              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#EFE8FF] text-[#4B1FA7] text-[10px] font-black">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#EFE8FF] text-[#5B2DBA] text-[10px] font-black">
                 <Sparkles className="w-3 h-3" /> Business OS para negocios reales
               </div>
-              <h1 className="text-[2.8rem] sm:text-5xl lg:text-6xl font-black tracking-[-.06em] leading-[.98] mt-5 text-[#3B1B6E]">
+              <h1 className="text-[2.8rem] sm:text-5xl lg:text-6xl font-black tracking-[-.06em] leading-[.98] mt-5 text-[#3B1B78]">
                 Vende mejor.<br/><span className="palmyra-gradient-text">Controla todo.</span>
               </h1>
               <p className="text-sm sm:text-base lg:text-lg leading-7 text-slate-600 mt-5 max-w-xl">
                 PALMYRA reúne ventas, inventario, cajas, compras, clientes, almacenes, equipo y reportes en un solo sistema. Una cuenta pertenece a una sola empresa y crece con los almacenes permitidos por tu plan.
               </p>
               <div className="flex flex-col sm:flex-row gap-2.5 mt-7">
-                <button onClick={() => navigate("/auth?mode=signup")} className="h-12 px-5 rounded-2xl bg-[#6535C5] text-white font-black text-sm flex items-center justify-center gap-2 shadow-[0_18px_40px_-18px_rgba(101,53,197,.7)]">Crear mi cuenta <ArrowRight className="w-4 h-4"/></button>
-                <a href="#modulos" className="h-12 px-5 rounded-2xl bg-white border border-violet-200 text-[#4B1FA7] font-black text-sm flex items-center justify-center">Ver cómo funciona</a>
+                <button onClick={() => navigate("/auth?mode=signup")} className="h-12 px-5 rounded-2xl bg-[#5B2DBA] text-white font-black text-sm flex items-center justify-center gap-2 shadow-[0_18px_40px_-18px_rgba(101,53,197,.7)]">Crear mi cuenta <ArrowRight className="w-4 h-4"/></button>
+                <a href="#modulos" className="h-12 px-5 rounded-2xl bg-white border border-violet-200 text-[#5B2DBA] font-black text-sm flex items-center justify-center">Ver cómo funciona</a>
               </div>
               <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-x-5 gap-y-2.5 mt-6 text-[10px] font-bold text-slate-500">
                 <span><Check className="inline w-3.5 h-3.5 text-emerald-600 mr-1"/>1 cuenta = 1 empresa</span>
@@ -201,10 +203,10 @@ export default function LandingPage() {
                 <ModuleScreen module={current} />
               </div>
               <div className="absolute -bottom-4 -left-2 sm:-left-4 px-3 py-2 rounded-2xl bg-white border border-violet-100 shadow-xl flex items-center gap-2">
-                <span className="w-8 h-8 rounded-xl bg-[#EFE8FF] text-[#6535C5] flex items-center justify-center"><WifiOff className="w-4 h-4"/></span>
-                <div><p className="text-[9px] font-black text-[#3B1B6E]">Modo offline</p><p className="text-[8px] text-slate-500">Sigue operando sin internet</p></div>
+                <span className="w-8 h-8 rounded-xl bg-[#EFE8FF] text-[#5B2DBA] flex items-center justify-center"><WifiOff className="w-4 h-4"/></span>
+                <div><p className="text-[9px] font-black text-[#3B1B78]">Modo offline</p><p className="text-[8px] text-slate-500">Sigue operando sin internet</p></div>
               </div>
-              <div className="absolute -top-5 -right-2 sm:-right-5 px-3 py-2 rounded-2xl bg-[#3B1B6E] text-white shadow-2xl flex items-center gap-2">
+              <div className="absolute -top-5 -right-2 sm:-right-5 px-3 py-2 rounded-2xl bg-[#3B1B78] text-white shadow-2xl flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 text-violet-200"/>
                 <div><p className="text-[9px] font-black">Datos aislados</p><p className="text-[8px] text-violet-200">Empresa · usuario · dispositivo</p></div>
               </div>
@@ -216,30 +218,30 @@ export default function LandingPage() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 lg:py-18">
             <div className="max-w-3xl">
               <p className="text-[10px] font-black uppercase tracking-[.2em] text-[#7C4DDE]">Explora el producto</p>
-              <h2 className="text-2xl sm:text-4xl font-black tracking-[-.04em] text-[#3B1B6E] mt-2">Un menú. Todo tu negocio.</h2>
+              <h2 className="text-2xl sm:text-4xl font-black tracking-[-.04em] text-[#3B1B78] mt-2">Un menú. Todo tu negocio.</h2>
               <p className="text-sm text-slate-500 mt-3 leading-6">Pulsa una sección para ver una vista compacta del módulo. El lenguaje visual está pensado para que el propietario entienda rápido y el trabajador opere sin sentirse perdido.</p>
             </div>
             <div className="mt-6 flex gap-1.5 overflow-x-auto pb-1">
               {modules.map(({ id, label, icon: Icon }) => (
-                <button key={id} onClick={() => setActive(id)} className={"shrink-0 h-9 px-3 rounded-xl flex items-center gap-2 text-[10px] font-black transition " + (active === id ? "bg-[#6535C5] text-white shadow-md" : "bg-[#F7F5FC] text-slate-500 hover:bg-[#EFE8FF] hover:text-[#4B1FA7]")}>
+                <button key={id} onClick={() => setActive(id)} className={"shrink-0 h-9 px-3 rounded-xl flex items-center gap-2 text-[10px] font-black transition " + (active === id ? "bg-[#5B2DBA] text-white shadow-md" : "bg-[#F7F5FC] text-slate-500 hover:bg-[#EFE8FF] hover:text-[#5B2DBA]")}>
                   <Icon className="w-3.5 h-3.5"/>{label}
                 </button>
               ))}
             </div>
             <div className="grid lg:grid-cols-[.33fr_.67fr] gap-7 mt-6 items-center">
               <div className="rounded-3xl border border-violet-100 bg-[#F7F5FC] p-5">
-                <div className="w-10 h-10 rounded-2xl bg-[#EFE8FF] text-[#6535C5] flex items-center justify-center"><current.icon className="w-5 h-5"/></div>
+                <div className="w-10 h-10 rounded-2xl bg-[#EFE8FF] text-[#5B2DBA] flex items-center justify-center"><current.icon className="w-5 h-5"/></div>
                 <p className="text-[9px] font-black uppercase tracking-[.18em] text-[#7C4DDE] mt-5">{current.label}</p>
-                <h3 className="text-xl font-black text-[#3B1B6E] mt-2 tracking-[-.02em]">{current.title}</h3>
+                <h3 className="text-xl font-black text-[#3B1B78] mt-2 tracking-[-.02em]">{current.title}</h3>
                 <p className="text-xs text-slate-500 mt-3 leading-6">{current.text}</p>
-                <div className="mt-5 text-[9px] font-black text-[#6535C5] flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"/> Interfaz diseñada para uso diario</div>
+                <div className="mt-5 text-[9px] font-black text-[#5B2DBA] flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500"/> Interfaz diseñada para uso diario</div>
               </div>
               <ModuleScreen module={current} />
             </div>
           </div>
         </section>
 
-        <section className="bg-[#3B1B6E] text-white">
+        <section className="bg-[#3B1B78] text-white">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 grid lg:grid-cols-[1fr_auto] gap-7 items-center">
             <div>
               <p className="text-[10px] font-black uppercase tracking-[.2em] text-violet-200">Lenguaje visual</p>
@@ -256,7 +258,7 @@ export default function LandingPage() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 lg:py-18">
             <div className="text-center max-w-2xl mx-auto">
               <p className="text-[10px] font-black uppercase tracking-[.2em] text-[#7C4DDE]">Planes</p>
-              <h2 className="text-2xl sm:text-4xl font-black text-[#3B1B6E] mt-2">Empieza pequeño. Crece sin cambiar de sistema.</h2>
+              <h2 className="text-2xl sm:text-4xl font-black text-[#3B1B78] mt-2">Empieza pequeño. Crece sin cambiar de sistema.</h2>
               <p className="text-sm text-slate-500 mt-3">Un administrador por empresa y el número de almacenes y empleados que permite cada plan.</p>
             </div>
             <div className="grid md:grid-cols-3 gap-3 mt-8">
@@ -264,11 +266,11 @@ export default function LandingPage() {
                 const Icon = plan.icon;
                 return (
                   <article key={plan.code} className={"relative rounded-2xl p-4 border " + (plan.featured ? "border-[#8B63E6] bg-white shadow-[0_25px_60px_-34px_rgba(101,53,197,.55)] md:-translate-y-2" : "border-violet-100 bg-white/80")}>
-                    {plan.featured && <div className="absolute -top-2.5 left-4 px-2.5 py-1 rounded-full bg-[#6535C5] text-white text-[8px] font-black uppercase tracking-wider">Más elegido</div>}
-                    <div className="flex items-center justify-between gap-2"><div className="flex items-center gap-2"><span className="w-8 h-8 rounded-xl bg-[#EFE8FF] text-[#6535C5] flex items-center justify-center"><Icon className="w-4 h-4"/></span><div><p className="text-[9px] uppercase tracking-wider text-slate-400 font-black">{plan.note}</p><h3 className="text-base font-black text-[#3B1B6E]">{plan.name}</h3></div></div><p className="text-xl font-black text-[#3B1B6E]">{plan.price}<span className="text-[8px] text-slate-400 font-bold">/mes</span></p></div>
-                    <div className="grid grid-cols-3 gap-1.5 mt-4">{[plan.warehouses, plan.employees, plan.products].map((value, index) => <div key={index} className="rounded-lg bg-[#F7F5FC] border border-violet-50 px-2 py-2 text-center"><p className="text-[7px] text-slate-400 uppercase font-black">{["Almacenes","Empleados","Productos"][index]}</p><p className="text-[10px] font-black text-[#4B1FA7] mt-0.5">{value}</p></div>)}</div>
-                    <div className="space-y-1.5 mt-4">{plan.features.map(f => <div key={f} className="flex items-center gap-2 text-[9px] text-slate-500"><span className="w-4 h-4 rounded-md bg-[#EFE8FF] text-[#6535C5] flex items-center justify-center shrink-0"><Check className="w-2.5 h-2.5"/></span>{f}</div>)}</div>
-                    <button onClick={() => { sessionStorage.setItem("palmyra_signup_plan", plan.code); navigate("/auth?mode=signup"); }} className={"w-full h-10 mt-5 rounded-xl text-[10px] font-black " + (plan.featured ? "bg-[#6535C5] text-white" : "bg-[#F0EBFA] text-[#4B1FA7]")}>{plan.code === "starter" ? "Comenzar gratis" : "Elegir plan"}</button>
+                    {plan.featured && <div className="absolute -top-2.5 left-4 px-2.5 py-1 rounded-full bg-[#5B2DBA] text-white text-[8px] font-black uppercase tracking-wider">Más elegido</div>}
+                    <div className="flex items-center justify-between gap-2"><div className="flex items-center gap-2"><span className="w-8 h-8 rounded-xl bg-[#EFE8FF] text-[#5B2DBA] flex items-center justify-center"><Icon className="w-4 h-4"/></span><div><p className="text-[9px] uppercase tracking-wider text-slate-400 font-black">{plan.note}</p><h3 className="text-base font-black text-[#3B1B78]">{plan.name}</h3></div></div><p className="text-xl font-black text-[#3B1B78]">{plan.price}<span className="text-[8px] text-slate-400 font-bold">/mes</span></p></div>
+                    <div className="grid grid-cols-3 gap-1.5 mt-4">{[plan.warehouses, plan.employees, plan.products].map((value, index) => <div key={index} className="rounded-lg bg-[#F7F5FC] border border-violet-50 px-2 py-2 text-center"><p className="text-[7px] text-slate-400 uppercase font-black">{["Almacenes","Empleados","Productos"][index]}</p><p className="text-[10px] font-black text-[#5B2DBA] mt-0.5">{value}</p></div>)}</div>
+                    <div className="space-y-1.5 mt-4">{plan.features.map(f => <div key={f} className="flex items-center gap-2 text-[9px] text-slate-500"><span className="w-4 h-4 rounded-md bg-[#EFE8FF] text-[#5B2DBA] flex items-center justify-center shrink-0"><Check className="w-2.5 h-2.5"/></span>{f}</div>)}</div>
+                    <button onClick={() => { sessionStorage.setItem("palmyra_signup_plan", plan.code); navigate("/auth?mode=signup"); }} className={"w-full h-10 mt-5 rounded-xl text-[10px] font-black " + (plan.featured ? "bg-[#5B2DBA] text-white" : "bg-[#F0EBFA] text-[#5B2DBA]")}>{plan.code === "starter" ? "Comenzar gratis" : "Elegir plan"}</button>
                     <p className="text-[7px] text-center text-slate-400 mt-2">En Cuba: activación y pago en efectivo</p>
                   </article>
                 );
@@ -283,7 +285,7 @@ export default function LandingPage() {
               [LockKeyhole, "Cuenta personal", "Cada usuario entra con su propia identidad."],
               [MonitorSmartphone, "Desde cualquier dispositivo", "Mismo negocio, mismo rol y permisos."],
               [CloudOff, "Offline de verdad", "La operación puede continuar y sincronizarse después."]
-            ].map(([Icon, title, text]) => <div key={String(title)} className="rounded-2xl border border-violet-100 bg-[#F7F5FC] p-4"><div className="w-9 h-9 rounded-xl bg-white border border-violet-100 text-[#6535C5] flex items-center justify-center"><Icon className="w-4 h-4"/></div><h3 className="text-sm font-black text-[#3B1B6E] mt-3">{title}</h3><p className="text-[10px] text-slate-500 mt-1 leading-5">{text}</p></div>)}
+            ].map(([Icon, title, text]) => <div key={String(title)} className="rounded-2xl border border-violet-100 bg-[#F7F5FC] p-4"><div className="w-9 h-9 rounded-xl bg-white border border-violet-100 text-[#5B2DBA] flex items-center justify-center"><Icon className="w-4 h-4"/></div><h3 className="text-sm font-black text-[#3B1B78] mt-3">{title}</h3><p className="text-[10px] text-slate-500 mt-1 leading-5">{text}</p></div>)}
           </div>
         </section>
 
@@ -304,17 +306,17 @@ export default function LandingPage() {
             </div>
             <div>
               <p className="text-[10px] font-black uppercase tracking-[.2em] text-[#7C4DDE]">Por qué PALMYRA</p>
-              <h2 className="text-2xl sm:text-4xl font-black tracking-[-.04em] text-[#3B1B6E] mt-2">Un nombre nacido de conexión, comercio y movimiento.</h2>
+              <h2 className="text-2xl sm:text-4xl font-black tracking-[-.04em] text-[#3B1B78] mt-2">Un nombre nacido de conexión, comercio y movimiento.</h2>
               <p className="text-sm text-slate-600 leading-7 mt-4">Elegimos PALMYRA por la historia de una ciudad que durante siglos fue un punto de encuentro en medio del desierto: una parada clave para comerciantes y caravanas que conectaban rutas y culturas.</p>
               <p className="text-sm text-slate-600 leading-7 mt-3">Para nosotros, el nombre representa exactamente lo que queremos construir: un sistema que conecte ventas, inventario, cajas, almacenes, personas y decisiones dentro de un mismo lugar.</p>
               <div className="grid sm:grid-cols-3 gap-2 mt-6">
-                {[["Conexión","Rutas que se encuentran"],["Comercio","Movimiento que crea valor"],["Resiliencia","Seguir avanzando"]].map(([a,b]) => <div key={a} className="rounded-xl bg-white border border-violet-100 p-3"><p className="text-xs font-black text-[#4B1FA7]">{a}</p><p className="text-[9px] text-slate-500 mt-1">{b}</p></div>)}
+                {[["Conexión","Rutas que se encuentran"],["Comercio","Movimiento que crea valor"],["Resiliencia","Seguir avanzando"]].map(([a,b]) => <div key={a} className="rounded-xl bg-white border border-violet-100 p-3"><p className="text-xs font-black text-[#5B2DBA]">{a}</p><p className="text-[9px] text-slate-500 mt-1">{b}</p></div>)}
               </div>
             </div>
           </div>
         </section>
 
-        <section className="bg-[#3B1B6E] text-white">
+        <section className="bg-[#3B1B78] text-white">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 grid md:grid-cols-[1fr_auto] gap-7 items-center">
             <div><p className="text-[10px] font-black uppercase tracking-[.2em] text-violet-200">Cuba primero · mundo después</p><h2 className="text-2xl sm:text-4xl font-black mt-2 tracking-[-.04em]">Hoy cobramos los planes en efectivo. La arquitectura queda lista para escalar.</h2><p className="text-sm text-violet-100/75 mt-3 max-w-2xl leading-6">PALMYRA usa un modelo de facturación preparado para registrar pagos manuales en Cuba y, más adelante, conectar proveedores internacionales sin cambiar las cuentas, empresas ni el historial.</p></div>
             <div className="rounded-2xl bg-white/5 border border-white/10 p-4 min-w-[240px]"><div className="flex items-center gap-2"><CircleDollarSign className="w-5 h-5 text-violet-200"/><span className="text-xs font-black">Método actual</span></div><div className="mt-3 p-3 rounded-xl bg-white/10"><p className="text-[9px] uppercase tracking-wider text-violet-200 font-black">Cuba</p><p className="text-sm font-black mt-1">Pago en efectivo</p><p className="text-[8px] text-violet-200 mt-1">Activación manual por PALMYRA</p></div><div className="mt-2 flex items-center gap-2 text-[8px] text-violet-200"><Globe2 className="w-3.5 h-3.5"/> Proveedores internacionales preparados</div></div>
@@ -323,21 +325,21 @@ export default function LandingPage() {
 
         <section id="como-funciona" className="bg-white">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14">
-            <div className="text-center max-w-2xl mx-auto"><p className="text-[10px] font-black uppercase tracking-[.2em] text-[#7C4DDE]">Cómo empieza</p><h2 className="text-2xl sm:text-4xl font-black text-[#3B1B6E] mt-2">De cero a operativo en pocos pasos.</h2></div>
+            <div className="text-center max-w-2xl mx-auto"><p className="text-[10px] font-black uppercase tracking-[.2em] text-[#7C4DDE]">Cómo empieza</p><h2 className="text-2xl sm:text-4xl font-black text-[#3B1B78] mt-2">De cero a operativo en pocos pasos.</h2></div>
             <div className="grid md:grid-cols-3 gap-3 mt-8">
               {[
                 [1, "Crea tu cuenta", "Tu cuenta pertenece a una sola empresa."],
                 [2, "Configura el negocio", "Selecciona plan, crea el primer almacén y organiza el equipo."],
                 [3, "Empieza a operar", "Vende, controla inventario, cierra cajas y trabaja online u offline."]
-              ].map(([n,t,d]) => <div key={String(n)} className="rounded-2xl border border-violet-100 bg-[#F7F5FC] p-5"><span className="w-8 h-8 rounded-xl bg-[#6535C5] text-white flex items-center justify-center text-xs font-black">{n}</span><h3 className="text-sm font-black text-[#3B1B6E] mt-4">{t}</h3><p className="text-[10px] text-slate-500 mt-1.5 leading-5">{d}</p></div>)}
+              ].map(([n,t,d]) => <div key={String(n)} className="rounded-2xl border border-violet-100 bg-[#F7F5FC] p-5"><span className="w-8 h-8 rounded-xl bg-[#5B2DBA] text-white flex items-center justify-center text-xs font-black">{n}</span><h3 className="text-sm font-black text-[#3B1B78] mt-4">{t}</h3><p className="text-[10px] text-slate-500 mt-1.5 leading-5">{d}</p></div>)}
             </div>
           </div>
         </section>
 
         <section className="bg-[#F7F5FC] border-t border-violet-100">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 flex flex-col md:flex-row md:items-center justify-between gap-6">
-            <div><p className="text-[10px] font-black uppercase tracking-[.2em] text-[#7C4DDE]">PALMYRA</p><h2 className="text-2xl sm:text-3xl font-black text-[#3B1B6E] mt-2">Tu negocio merece un sistema que no estorbe.</h2><p className="text-xs text-slate-500 mt-2">Claro para trabajar. Potente para crecer.</p></div>
-            <button onClick={() => navigate("/auth?mode=signup")} className="h-12 px-5 rounded-2xl bg-[#6535C5] text-white font-black text-sm flex items-center gap-2 shadow-[0_18px_40px_-20px_rgba(101,53,197,.7)]">Crear cuenta <ArrowRight className="w-4 h-4"/></button>
+            <div><p className="text-[10px] font-black uppercase tracking-[.2em] text-[#7C4DDE]">PALMYRA</p><h2 className="text-2xl sm:text-3xl font-black text-[#3B1B78] mt-2">Tu negocio merece un sistema que no estorbe.</h2><p className="text-xs text-slate-500 mt-2">Claro para trabajar. Potente para crecer.</p></div>
+            <button onClick={() => navigate("/auth?mode=signup")} className="h-12 px-5 rounded-2xl bg-[#5B2DBA] text-white font-black text-sm flex items-center gap-2 shadow-[0_18px_40px_-20px_rgba(101,53,197,.7)]">Crear cuenta <ArrowRight className="w-4 h-4"/></button>
           </div>
         </section>
       </main>
