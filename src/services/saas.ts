@@ -72,11 +72,16 @@ export async function getAuthenticatedUser() {
 }
 
 export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext | null> {
-  void forceRefresh;
   const supabase = getSupabase();
   if (!supabase) return null;
 
-  const { data: authData } = await supabase.auth.getUser();
+  if (forceRefresh) {
+    const { error: refreshError } = await supabase.auth.getSession();
+    if (refreshError) throw refreshError;
+  }
+
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
   const authUser = authData.user;
   if (!authUser) return null;
 
@@ -212,6 +217,8 @@ export async function createCompanyOnboarding(input: {
     subscription_id: string;
     plan_code: string;
     current_period_end: string;
+    account_status: string;
+    trial_ends_at?: string | null;
   };
 }
 
