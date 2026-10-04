@@ -28,7 +28,7 @@ begin
 end;
 $function$;
 
-revoke all on function public.has_pending_plan_request(uuid) from anon;
+revoke all on function public.has_pending_plan_request(uuid) from public, anon;
 grant execute on function public.has_pending_plan_request(uuid) to authenticated;
 
 create or replace function public.select_company_plan(p_company_id uuid, p_plan_id uuid)
