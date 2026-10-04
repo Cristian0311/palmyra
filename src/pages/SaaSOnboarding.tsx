@@ -163,6 +163,7 @@ export default function SaaSOnboarding() {
       stage = "finalización";
       if (typeof sessionStorage !== "undefined") {
         sessionStorage.removeItem("palmyra_signup_plan");
+        sessionStorage.removeItem("palmyra_pending_onboarding");
       }
 
       // No hacemos una segunda carga de contexto aquí. App.tsx ya es el
@@ -185,7 +186,7 @@ export default function SaaSOnboarding() {
   };
 
   return (
-    <main className="h-[100dvh] min-h-[100dvh] overflow-y-auto bg-[#F7F5FC]">
+    <main className="h-[100dvh] min-h-[100dvh] overflow-y-auto bg-[#F7F5FC]" data-keyboard-viewport="native">
       <div className="mx-auto w-full max-w-6xl px-3 py-3 sm:px-5 sm:py-5">
         <header className="mb-3 flex items-center justify-between gap-3 px-1 sm:mb-4">
           <button
