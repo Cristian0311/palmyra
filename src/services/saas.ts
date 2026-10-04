@@ -216,7 +216,14 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     allowedBranches: warehouseIds
   };
 
-  const plan = (subscription as any)?.plans;
+  const { data: plan, error: planError } = await supabase
+    .from('plans')
+    .select('code,name,limits,features')
+    .eq('id', subscription.plan_id)
+    .maybeSingle();
+  if (planError) throw new Error(`No se pudo cargar el plan de la empresa: ${planError.message}`);
+  if (!plan) throw new Error('La suscripción existe, pero su plan no está disponible.');
+
   const trialEndsAt = subscription?.trial_ends_at || null;
   const currentPeriodEnd = subscription?.current_period_end || null;
   const nowMs = Date.now();
