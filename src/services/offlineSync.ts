@@ -7,7 +7,7 @@
 import { getSupabase, checkSupabaseReachability } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import type { OfflineActionType, OfflineQueueItem } from './offlineQueue';
-import type { Transaction, CashRegisterSession, Customer, ReturnItem, Branch, Product, Category, InventoryLevel } from '../types';
+import type { Transaction, CashRegisterSession, Customer, ReturnItem, InventoryLevel } from '../types';
 import {
   getOfflineQueue,
   waitForOfflineQueueReady,
@@ -346,59 +346,28 @@ async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<
     }
     case 'branch_delete': {
       const id = String(data?.id || '');
-      if (!id) throw new PermanentSyncError('Eliminación de sucursal sin ID');
-      const { count: invCount, error: invError } = await supabase.from('inventory').select('*', { count: 'exact', head: true }).eq('branch_id', id);
-      const { count: txCount, error: txError } = await supabase.from('transactions').select('*', { count: 'exact', head: true }).eq('branch_id', id);
-      const { count: csCount, error: csError } = await supabase.from('cash_sessions').select('*', { count: 'exact', head: true }).eq('branch_id', id);
-      if (invError || txError || csError) throw invError || txError || csError;
-      if ((invCount || 0) > 0 || (txCount || 0) > 0 || (csCount || 0) > 0) {
-        const { error } = await supabase.from('branches').update({ is_active: false }).eq('id', id);
-        if (error) throw error;
-      } else {
-        const { error: usersError } = await supabase.from('users').update({ branch_id: null, assigned_branch_id: null }).eq('branch_id', id);
-        if (usersError) throw usersError;
-        const { error } = await supabase.from('branches').delete().eq('id', id);
-        if (error) throw error;
-      }
+      if (!id) throw new PermanentSyncError('Eliminación de almacén sin ID');
+      const ok = await deleteBranchFromSupabase(id);
+      if (!ok) throw new Error('No se pudo sincronizar la desactivación del almacén.');
       return true;
     }
     case 'category_delete': {
       const id = String(data?.id || '');
       if (!id) throw new PermanentSyncError('Eliminación de categoría sin ID');
-      const { error } = await supabase.from('categories').delete().eq('id', id);
-      if (error) {
-        if (error.code === '23503') throw new PermanentSyncError(error.message || 'La categoría está siendo utilizada por otro registro.');
-        throw error;
-      }
+      const ok = await deleteCategoryFromSupabase(id);
+      if (!ok) throw new Error('No se pudo sincronizar la desactivación de la categoría.');
       return true;
     }
     case 'supplier_delete': {
       const id = String(data?.id || '');
       if (!id) throw new PermanentSyncError('Eliminación de proveedor sin ID');
-      const { error } = await supabase.from('suppliers').delete().eq('id', id);
-      if (error) {
-        if (error.code === '23503') throw new PermanentSyncError(error.message || 'El proveedor tiene datos relacionados y no puede eliminarse.');
-        throw error;
-      }
+      const ok = await deleteSupplierFromSupabase(id);
+      if (!ok) throw new Error('No se pudo sincronizar la desactivación del proveedor.');
       return true;
     }
     case 'salary_settlement': {
-      const settlement = data;
-      const { error } = await supabase.from('salary_settlements').upsert({
-        id: settlement.id, user_id: settlement.userId || null, user_name: settlement.userName || '',
-        session_id: settlement.sessionId || null, base_salary: Number(settlement.baseSalary) || 0,
-        sales_goal: Number(settlement.salesGoal) || 0, commissions: Number(settlement.commissions) || 0,
-        total: Number(settlement.total) || 0, date: settlement.date, status: settlement.status || 'pending'
-      });
-      if (error) throw error;
-
-      const { data: persisted, error: verifyError } = await supabase
-        .from('salary_settlements')
-        .select('id,user_id,session_id,total,status')
-        .eq('id', settlement.id)
-        .maybeSingle();
-      if (verifyError) throw verifyError;
-      if (!persisted) throw new Error('Liquidación salarial no confirmada en Supabase después del replay.');
+      const ok = await pushSalarySettlementToSupabase(data as any);
+      if (!ok) throw new Error('No se pudo sincronizar la liquidación pendiente.');
       return true;
     }
     case 'customer': {
