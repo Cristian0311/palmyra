@@ -28,6 +28,7 @@ import {
   pushCashSessionToSupabase, deleteProductFromSupabase
 } from './supabaseSync';
 import { addSyncLog } from '../utils/syncLogger';
+import { getActiveTenant } from './tenant';
 
 async function reconcileBankCanonical(): Promise<void> {
   try {
@@ -396,12 +397,24 @@ async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<
     }
     case 'customer': {
       const customer = data as Customer;
-      const { error } = await supabase.from('customers').upsert({ id: customer.id, name: customer.name, phone: customer.phone || null, email: customer.email || null, tax_id: customer.taxId || null });
-      if (error) throw error; return true;
+      const { companyId } = await getActiveTenant();
+      const { error } = await supabase.from('customers').upsert({
+        id: customer.id,
+        company_id: companyId,
+        name: customer.name,
+        phone: customer.phone || null,
+        email: customer.email || null,
+        tax_id: customer.taxId || null,
+        active: true
+      }, { onConflict: 'id' });
+      if (error) throw error;
+      return true;
     }
     case 'customer_delete': {
-      const { error } = await supabase.from('customers').delete().eq('id', data.id);
-      if (error) throw error; return true;
+      const { companyId } = await getActiveTenant();
+      const { error } = await supabase.from('customers').update({ active: false }).eq('id', data.id).eq('company_id', companyId);
+      if (error) throw error;
+      return true;
     }
     case 'branch': {
       const b = data as Branch;
