@@ -62,15 +62,11 @@ function PageLoading() {
   const label = labels[location] || "Cargando sección…";
 
   return (
-    <div className="flex-1 min-h-[50vh] relative" aria-live="polite" aria-busy="true">
-      <div className="absolute inset-0 z-[60] flex items-center justify-center pointer-events-none px-4">
-        <div className="palmyra-loading-bubble">
-          <span className="palmyra-loading-icon" aria-hidden="true">
-            <span className="palmyra-loading-spinner" />
-          </span>
-          <span className="min-w-0">{label}</span>
-          <span className="palmyra-loading-dots" aria-hidden="true">•••</span>
-        </div>
+    <div className="min-h-[50vh] w-full flex items-center justify-center px-5" aria-live="polite" aria-busy="true">
+      <div className="flex w-full max-w-sm flex-col items-center justify-center rounded-2xl border border-violet-100 bg-white p-6 text-center shadow-sm">
+        <img src="/palmyra-mark-exact.svg" alt="" aria-hidden="true" className="mb-3 h-10 w-10 object-contain" />
+        <div className="palmyra-loading-spinner" aria-hidden="true" />
+        <p className="mt-3 text-[10px] font-black uppercase tracking-[.08em] text-[#4C1D95]">{label}</p>
       </div>
     </div>
   );
@@ -227,8 +223,15 @@ export default function App() {
 
   useEffect(() => {
     if (accessState !== "ready" || !currentUser || getDevicePerformanceTier() === "ultra") return;
-    // Precalentar solo la ruta POS en dispositivos que no estén en el perfil
-    // de 2 GB. En ultra se evita consumir memoria antes de necesitar el POS.
+    // Precalentar las dos rutas principales para que el primer salto al CRM
+    // no dependa de una descarga perezosa justo después del login/onboarding.
+    if (getDevicePerformanceTier() !== "ultra") {
+      return scheduleIdleTask(() => {
+        void import("./pages/POS");
+        void import("./pages/Dashboard");
+      }, 700, 1600);
+    }
+
     return scheduleIdleTask(() => {
       void import("./pages/POS");
     }, 1200, 1600);
