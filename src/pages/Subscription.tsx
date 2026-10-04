@@ -39,18 +39,16 @@ export default function Subscription(){
   const subPlan=data?.subscription?.plans;
   const currentCode=subPlan?.code||data?.ctx?.subscription?.planCode||"starter";
   const request=data?.request;
-  const planCurrency = "USD";
-
-  return <div className="space-y-5 max-w-6xl mx-auto pb-10">
+    return <div className="space-y-5 max-w-6xl mx-auto pb-10">
     <header className="bg-secondary border border-base rounded-3xl p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-      <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#6535C5]">Cuenta</p><h1 className="text-2xl font-black text-primary mt-1">Facturación y plan</h1><p className="text-xs text-muted mt-1">En Cuba, las suscripciones se solicitan y pagan en efectivo. La estructura ya contempla proveedores internacionales para una etapa posterior.</p></div>
+      <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#6535C5]">Cuenta</p><h1 className="text-2xl font-black text-primary mt-1">Facturación y plan</h1><p className="text-xs text-muted mt-1">En Cuba puedes solicitar el plan mediante efectivo o transferencia bancaria. La activación se realiza después de confirmar el pago.</p></div>
       <button onClick={()=>void refresh()} disabled={busy} className="h-10 px-4 rounded-xl border border-base bg-primary text-primary text-xs font-black flex items-center gap-2"><RefreshCw className={cn("w-4 h-4",loading&&"animate-spin")}/>Actualizar</button>
     </header>
 
     {error&&<div className="rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold p-3">{error}</div>}
 
     <section className="grid md:grid-cols-3 gap-3">
-      <div className="bg-secondary border border-base rounded-2xl p-4"><p className="text-[9px] uppercase tracking-wider text-muted font-black">Plan actual</p><p className="text-xl font-black text-primary mt-1">{subPlan?.name||"Starter"}</p><p className="text-[10px] text-muted mt-1 uppercase">{currentCode}</p></div>
+      <div className="bg-secondary border border-base rounded-2xl p-4"><p className="text-[9px] uppercase tracking-wider text-muted font-black">Plan actual</p><p className="text-xl font-black text-primary mt-1">{subPlan?.name||"Oasis"}</p><p className="text-[10px] text-muted mt-1 uppercase">{currentCode}</p></div>
       <div className="bg-secondary border border-base rounded-2xl p-4"><p className="text-[9px] uppercase tracking-wider text-muted font-black">Estado</p><p className="text-xl font-black text-primary mt-1 capitalize">{data?.ctx?.company?.account_status||data?.subscription?.status||"activo"}</p><p className="text-[10px] text-muted mt-1">{data?.subscription?.trial_ends_at ? "Prueba configurada" : "Ciclo de servicio"}</p></div>
       <div className="bg-secondary border border-base rounded-2xl p-4"><p className="text-[9px] uppercase tracking-wider text-muted font-black">Próximo vencimiento</p><p className="text-xl font-black text-primary mt-1">{data?.subscription?.trial_ends_at||data?.subscription?.current_period_end ? new Date(data.subscription.trial_ends_at||data.subscription.current_period_end).toLocaleDateString("es-CU") : "—"}</p></div>
     </section>
