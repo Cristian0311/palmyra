@@ -71,6 +71,7 @@ export default function Team() {
     setError("");
     try {
       const [nextContext, nextSnapshot] = await Promise.all([loadSaaSContext(), loadTeamSnapshot()]);
+      if (!nextSnapshot) throw new Error("No se recibió el estado del equipo.");
       setContext(nextContext);
       setSnapshot(nextSnapshot);
       if (!form.roleId) {
@@ -310,7 +311,7 @@ export default function Team() {
   };
 
   const copyInvite = async (employee: TeamEmployee) => {
-    if (!employee.pending_invitation) return;
+    if (!employee.pending_invitation || !snapshot?.companyId) return;
     try {
       const invite = await resendEmployeeInvitation({
         companyId: snapshot!.companyId,
@@ -342,7 +343,7 @@ export default function Team() {
   }
 
   return (
-    <div className="space-y-5 max-w-6xl mx-auto pb-10" onClick={() => setMenuId(null)}>
+    <div className="space-y-5 w-full min-w-0 max-w-6xl mx-auto pb-10" onClick={() => setMenuId(null)}>
       <header className="bg-secondary border border-base rounded-3xl p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <p className="text-[10px] font-black tracking-[0.18em] uppercase text-rose-500">Empresa</p>
@@ -350,7 +351,7 @@ export default function Team() {
           <p className="text-xs text-muted mt-1">Cada trabajador tiene su propio acceso y conserva sus permisos al cambiar de dispositivo.</p>
         </div>
         <button onClick={openCreate} disabled={loading || busy || remainingSlots === 0}
-          className="h-11 px-4 rounded-xl bg-rose-600 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50">
+          className="w-full sm:w-auto h-11 px-4 rounded-xl bg-rose-600 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50">
           <Plus className="w-4 h-4" /> Agregar trabajador
         </button>
       </header>
@@ -384,7 +385,7 @@ export default function Team() {
               </div>
               <p className="text-[10px] text-muted mt-1">Crea perfiles de trabajo y decide qué módulos puede usar cada uno.</p>
             </div>
-            <button onClick={openRoleCreate} className="h-10 px-4 rounded-xl bg-slate-950 text-white font-black text-[10px] uppercase tracking-wider flex items-center gap-2">
+            <button onClick={openRoleCreate} className="w-full sm:w-auto h-10 px-4 rounded-xl bg-slate-950 text-white font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-2">
               <Plus className="w-4 h-4" /> Crear rol
             </button>
           </div>
