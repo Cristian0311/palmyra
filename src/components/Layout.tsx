@@ -55,7 +55,7 @@ const adminNavItems = [
   { name: "Plan", href: "/subscription", icon: CreditCard, permission: "settings.manage" },
 ];
 
-const APP_VERSION = "v1.0.0";
+const APP_VERSION = "V 1.0.0";
 
 function getPlanCountdown(target: string | null | undefined, nowMs: number) {
   if (!target) return null;
@@ -461,8 +461,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               ["Meses", countdown.months],
               ["Días", countdown.days],
               ["Horas", countdown.hours],
-              ["Min", countdown.minutes],
-              ["Seg", countdown.seconds],
+              ["Minutos", countdown.minutes],
+              ["Segundos", countdown.seconds],
             ] as const;
             return (
               <div className="mb-2 rounded-xl border border-violet-200 dark:border-violet-900/40 bg-violet-50/70 dark:bg-violet-950/20 px-2.5 py-2">
