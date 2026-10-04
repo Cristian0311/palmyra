@@ -554,7 +554,7 @@ body {
   line-height: 1.25;
 }
 
-.reportes-page table {
+ .reportes-page { min-width: 0; }\n.reportes-page table {
   min-width: 720px;
 }
 @media (max-width: 767px) {
