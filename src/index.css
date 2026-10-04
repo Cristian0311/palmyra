@@ -520,6 +520,49 @@ body {
   }
 }
 
+
+/* Shared mobile surface contract: no dialog, bubble or floating panel may exceed
+   the visual viewport. Components can opt in with .palmyra-mobile-modal. */
+.palmyra-mobile-modal {
+  width: min(100%, 36rem);
+  min-width: 0;
+  max-width: calc(100vw - 2rem);
+  max-height: calc(100dvh - 2rem);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 767px) {
+  .palmyra-mobile-modal {
+    max-width: calc(100vw - 1rem);
+    max-height: calc(100dvh - 1rem);
+    border-radius: 1rem !important;
+  }
+
+  .settings-page,
+  .reportes-page {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow-x: hidden !important;
+  }
+
+  .settings-page #settings-section-content,
+  .reportes-page {
+    width: 100%;
+  }
+
+  .reportes-page .fixed {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+  }
+
+  .reportes-page .fixed > div {
+    max-width: calc(100vw - 1rem) !important;
+    max-height: calc(100dvh - 1rem) !important;
+  }
+}
+
 /* Responsive baseline for mobile, tablet and desktop */
 @media (max-width: 1023px) {
   html, body, #root {
