@@ -279,11 +279,13 @@ export async function createCompanyOnboarding(input: {
     company_id: string;
     warehouse_id: string;
     employee_id?: string | null;
-    subscription_id: string;
+    subscription_id?: string | null;
     plan_code: string;
-    current_period_end: string;
+    current_period_end?: string | null;
     account_status: string;
     trial_ends_at?: string | null;
+    request_id?: string | null;
+    invoice?: unknown;
   };
 }
 
