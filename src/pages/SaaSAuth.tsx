@@ -156,10 +156,10 @@ export default function SaaSAuth() {
               <p className="text-xs leading-6 text-violet-100/75 mt-3">Ventas, inventario, cajas, almacenes, equipo y reportes en un mismo lugar.</p>
               <div className="space-y-2 mt-7">
                 {[
-                  [ShieldCheck,"Una cuenta pertenece a una sola empresa."],
-                  [Warehouse,"Almacenes según el plan contratado."],
-                  [Users,"Trabajadores con cuentas y permisos propios."]
-                ].map(([Icon, text]) => <div key={String(text)} className="flex items-center gap-2.5 rounded-xl bg-white/8 border border-white/8 p-3"><Icon className="w-4 h-4 text-violet-200 shrink-0"/><span className="text-[9px] text-violet-100/80">{text}</span></div>)}
+                  { Icon: ShieldCheck, text: "Una cuenta pertenece a una sola empresa." },
+                  { Icon: Warehouse, text: "Almacenes según el plan contratado." },
+                  { Icon: Users, text: "Trabajadores con cuentas y permisos propios." }
+                ].map(({ Icon, text }) => <div key={text} className="flex items-center gap-2.5 rounded-xl bg-white/8 border border-white/8 p-3"><Icon className="w-4 h-4 text-violet-200 shrink-0"/><span className="text-[9px] text-violet-100/80">{text}</span></div>)}
               </div>
               <div className="mt-7 rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-[8px] uppercase tracking-wider font-black text-violet-200">Cuba</p><p className="text-sm font-black mt-1">Planes con pago en efectivo</p><p className="text-[9px] text-violet-200/70 mt-1">Pagos internacionales preparados para una fase posterior.</p></div>
             </div>
