@@ -705,73 +705,330 @@ export default function Settings() {
                 <div><h4 className="text-xs font-black text-primary">Vista recomendada</h4><p className="text-[10px] text-muted mt-1">Normal es el tamaño equilibrado para POS, tablets y escritorio.</p></div>
                 <button type="button" onClick={() => setFontScale(1)} className="px-4 py-2 rounded-xl bg-violet-600 text-white text-[10px] font-black uppercase">Restablecer</button>
               </div>
-              <div className="p-4 rounded-2xl border border-base bg-primary flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <h4 className="text-xs font-black text-primary">Experiencia visual</h4>
-                  <p className="text-[10px] text-muted mt-1">Cambia entre modo claro y oscuro sin salir de esta sección.</p>
-                </div>
-                <div className="bg-secondary p-1 rounded-xl border border-base flex items-center gap-1 shrink-0">
-                  <button type="button" onClick={() => { const next = { ...config, darkMode: false }; setConfig(next); updateStoreConfig(next); showToast("Modo luz activado"); }}
-                    className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all", !config.darkMode ? "bg-violet-600 text-white shadow-sm" : "text-muted hover:bg-subtle")}>
-                    <Sun size={12} /> Luz
-                  </button>
-                  <button type="button" onClick={() => { const next = { ...config, darkMode: true }; setConfig(next); updateStoreConfig(next); showToast("Modo oscuro activado"); }}
-                    className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all", config.darkMode ? "bg-violet-600 text-white shadow-sm" : "text-muted hover:bg-subtle")}>
-                    <Moon size={12} /> Oscuro
-                  </button>
-                </div>
-              </div>
             </div>
           </div>
         )}
 
-        {activeTab === 'branches' && (
-        <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4">
-          <div className="flex items-center gap-3 border-b border-base pb-3">
-            <div className="bg-rose-50 dark:bg-rose-950/30 p-2 rounded-lg text-rose-600 dark:text-rose-400">
-              <Store size={16} />
+        {/* Categorías */}
+        {activeTab === 'categories' && (
+          <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4" style={{ display: 'none' }}>
+            <div className="flex items-center gap-3 border-b border-base pb-3">
+              <div className="bg-amber-50 dark:bg-amber-950/30 p-2 rounded-lg text-amber-600 dark:text-amber-400">
+                <LayoutGrid size={16} />
+              </div>
+              <div>
+                <h3 className="text-xs font-black text-primary uppercase tracking-wider">Categorías de Productos</h3>
+                <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Clasificación de inventario para reportes</p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-xs font-black text-primary uppercase tracking-wider">Almacenes</h3>
-              <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Gestión de Ubicaciones</p>
+            {/* ... Categories content ... */}
+          </div>
+        )}
+
+        {/* Empleados */}
+        {activeTab === 'employees' && (
+          <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4" style={{ display: 'none' }}>
+            <div className="flex items-center gap-3 border-b border-base pb-3">
+              <div className="bg-rose-50 dark:bg-rose-950/50 p-2 rounded-lg text-rose-600 dark:text-rose-400">
+                <Users size={16} />
+              </div>
+              <div>
+                <h3 className="text-xs font-black text-primary uppercase tracking-wider">Gestión de Empleados</h3>
+                <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Permisos y salarios por turno</p>
+              </div>
+            </div>
+            {/* ... Employees content ... */}
+          </div>
+        )}
+
+        {/* Avanzado / Reset */}
+        {activeTab === 'advanced' && (
+          <div className="bg-secondary rounded-2xl shadow-sm border border-rose-100 dark:border-rose-900/30 p-5 space-y-4" style={{ display: 'none' }}>
+             <div className="flex items-center gap-3 border-b border-rose-50 dark:border-rose-950/30 pb-3">
+              <div className="bg-rose-50 dark:bg-rose-950/50 p-2 rounded-lg text-rose-600 dark:text-rose-400">
+                <AlertTriangle size={16} />
+              </div>
+              <div>
+                <h3 className="text-xs font-black text-rose-600 dark:text-rose-400 uppercase tracking-wider">Avanzado</h3>
+                <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Acciones críticas del sistema</p>
+              </div>
+            </div>
+            <div className="p-4 bg-rose-50/50 dark:bg-rose-950/10 rounded-2xl border border-rose-100 dark:border-rose-900/30">
+               <h4 className="text-[10px] font-black text-rose-600 uppercase mb-2">Zona de Peligro</h4>
+               <p className="text-[9px] text-rose-700 dark:text-rose-400 font-medium leading-relaxed mb-4">
+                 Las siguientes acciones son irreversibles. Borrarán todos los datos locales de este dispositivo. Asegúrate de tener una copia de seguridad o de que los datos estén sincronizados con la nube.
+               </p>
+               <div className="flex flex-col sm:flex-row gap-3">
+                 <button 
+                   onClick={() => setShowConfirmReset(true)}
+                   className="px-6 py-2.5 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-700 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
+                 >
+                   <Trash2 size={14} /> Borrar Datos Locales
+                 </button>
+               </div>
             </div>
           </div>
+        )}
+      </div>
 
-          <div className="space-y-3">
-            <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
-              {branches.map(branch => (
-                <div key={branch.id} className="flex justify-between items-center bg-subtle p-2 rounded-xl border border-base group">
-                  <div className="text-[11px] font-black text-primary uppercase tracking-tight break-words leading-snug flex-1 min-w-0 mr-2">{branch.name}</div>
-                  <div className="flex gap-1 shrink-0 ml-1">
-                    <button onClick={() => { setEditingBranch(branch); setNewBranchName(branch.name); }} className="p-1.5 text-muted hover:text-rose-600 rounded-lg transition-colors cursor-pointer" title="Editar"><Edit size={13} /></button>
-                    {branches.length > 1 && (
-                      <button onClick={() => setBranchToDelete({ id: branch.id, name: branch.name })} className="p-1.5 text-muted hover:text-rose-500 rounded-lg transition-colors cursor-pointer" title="Eliminar"><Trash2 size={13} /></button>
-                    )}
-                  </div>
-                </div>
-              ))}
+      {/* In-App User Deletion Confirmation Modal */}
+      {userToDelete && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[150] flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="palmyra-mobile-modal bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-5 text-center space-y-3">
+              <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-black text-slate-900 uppercase">¿Desactivar Empleado?</h3>
+              <p className="text-xs text-slate-600">
+                ¿Desactivar a <span className="font-bold text-slate-900">{userToDelete.name}</span>? El empleado perderá acceso, pero se conservarán su historial y operaciones.
+              </p>
             </div>
-            <div className="space-y-3">
-              <div className="flex gap-2">
-                <input 
-                  type="text" 
-                  value={newBranchName}
-                  onChange={e => setNewBranchName(e.target.value)}
-                  placeholder="Nombre"
-                  className="flex-1 min-w-0 px-3 py-2 bg-primary border border-base rounded-xl text-xs font-bold text-primary outline-none focus:ring-1 focus:ring-rose-500" 
-                />
-                <button onClick={handleAddBranch} className="p-2 bg-rose-600 text-white rounded-xl hover:bg-rose-700 active:scale-95 transition-all shrink-0 cursor-pointer">
-                  {editingBranch ? <Save size={16} /> : <Plus size={16} />}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setUserToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteUserAction}
+                className="px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/20 transition-all cursor-pointer"
+              >
+                Sí, Desactivar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Branch Deletion Confirmation Modal */}
+      {branchToDelete && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-5 text-center space-y-3">
+              <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+                <Store className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-black text-slate-900 uppercase">¿Eliminar almacén?</h3>
+              <p className="text-xs text-slate-600">
+                ¿Estás seguro de que deseas eliminar el almacén <span className="font-bold text-slate-900">"{branchToDelete.name}"</span>?
+              </p>
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setBranchToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteBranchAction}
+                className="px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/20 transition-all cursor-pointer"
+              >
+                Sí, Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* In-App Category Deletion Confirmation Modal */}
+      {categoryToDelete && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-5 text-center space-y-3">
+              <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-black text-slate-900 uppercase">¿Eliminar Categoría?</h3>
+              <p className="text-xs text-slate-600">
+                ¿Estás seguro de que deseas eliminar la categoría <span className="font-bold text-slate-900">"{categoryToDelete.name}"</span>?
+              </p>
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setCategoryToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteCategoryAction}
+                className="px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/20 transition-all cursor-pointer"
+              >
+                Sí, Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Configuración de empleado */}
+      {selectedUserForConfig && (
+        <div className="fixed inset-0 bg-slate-950/40 dark:bg-slate-950/80 z-[100] flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="palmyra-mobile-modal bg-secondary w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-1rem)] border border-base">
+            <div className="bg-rose-600 p-4 text-white flex items-center justify-between">
+              <div>
+                <h3 className="text-xs font-black uppercase tracking-wider">Configuración de Empleado</h3>
+                <p className="text-[10px] font-bold text-rose-100 uppercase">{selectedUserForConfig.name}</p>
+              </div>
+              <button type="button" onClick={() => setSelectedUserForConfig(null)} className="p-1.5 hover:bg-white/10 rounded-lg">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 sm:p-5 overflow-y-auto custom-scrollbar space-y-5 flex-1 bg-secondary">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="bg-subtle p-3.5 rounded-xl border border-base space-y-2">
+                  <span className="text-[8px] font-black text-muted uppercase tracking-widest block">Salario Base</span>
+                  <input type="number" min="0" step="0.01" value={employeeSalaries[selectedUserForConfig.id] ?? (selectedUserForConfig.baseSalary || 0)}
+                    onChange={e => {
+                      const val = Number(e.target.value);
+                      setEmployeeSalaries({ ...employeeSalaries, [selectedUserForConfig.id]: val });
+                      updateUser(selectedUserForConfig.id, { baseSalary: val });
+                    }}
+                    className="w-full px-3 py-2 bg-primary border border-base rounded-lg text-xs font-black text-primary outline-none focus:ring-1 focus:ring-rose-500"
+                  />
+                </div>
+                <div className="bg-subtle p-3.5 rounded-xl border border-base space-y-2">
+                  <span className="text-[8px] font-black text-muted uppercase tracking-widest block">Contraseña POS</span>
+                  <input type="password" value={selectedUserForConfig.password || ''}
+                    onChange={e => {
+                      const newPass = e.target.value;
+                      const updated = { ...selectedUserForConfig, password: newPass };
+                      setSelectedUserForConfig(updated);
+                      updateUser(selectedUserForConfig.id, { password: newPass });
+                    }}
+                    className="w-full px-3 py-2 bg-primary border border-base rounded-lg text-xs font-bold text-primary outline-none focus:ring-1 focus:ring-rose-500"
+                    placeholder="Nueva contraseña"
+                  />
+                </div>
+              </div>
+              <div className="bg-subtle p-4 rounded-xl border border-base space-y-3">
+                <div className="flex items-center gap-2"><Building2 size={16} className="text-rose-600" /><h4 className="text-[10px] font-black text-primary uppercase">Acceso a almacenes</h4></div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {branches.map(branch => {
+                    const isAllowed = selectedUserForConfig.allowedBranches?.includes(branch.id) ?? true;
+                    return (
+                      <label key={branch.id} className={cn("flex items-center gap-2.5 p-2.5 rounded-xl border transition-all cursor-pointer", isAllowed ? "bg-primary border-rose-200 dark:border-rose-500/50" : "bg-subtle border-base opacity-40")}>
+                        <input type="checkbox" checked={isAllowed}
+                          onChange={e => {
+                            const current = selectedUserForConfig.allowedBranches ?? branches.map(b => b.id);
+                            const newAllowed = e.target.checked ? [...current, branch.id] : current.filter(id => id !== branch.id);
+                            const updated = { ...selectedUserForConfig, allowedBranches: newAllowed };
+                            setSelectedUserForConfig(updated);
+                            updateUser(selectedUserForConfig.id, { allowedBranches: newAllowed });
+                          }}
+                          className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500"
+                        />
+                        <span className="text-[10px] font-black uppercase text-primary">{branch.name}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="pt-2 border-t border-base flex items-center justify-between">
+                <button type="button" onClick={() => {
+                  const target = selectedUserForConfig;
+                  setSelectedUserForConfig(null);
+                  setUserToDelete({ id: target.id, name: target.name });
+                }} className="text-rose-600 hover:bg-rose-50 px-3 py-2 rounded-xl text-[10px] font-black uppercase flex items-center gap-1.5">
+                  <Trash2 size={14} /> Desactivar
+                </button>
+                <button type="button" onClick={() => setSelectedUserForConfig(null)} className="bg-rose-600 text-white px-8 py-2.5 rounded-xl font-black text-[10px] uppercase shadow-md">
+                  Listo
                 </button>
               </div>
             </div>
           </div>
         </div>
+      )}
 
-        )}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Tasas de Cambio (Compacto Lineal: CUP, USD, EUR) */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 sm:p-5 space-y-3.5 min-w-0" style={{ display: 'none' }}>
+          <div className="flex items-center justify-between border-b border-slate-100 pb-3 gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="bg-emerald-50 p-1.5 rounded-lg text-emerald-600 shrink-0">
+                <DollarSign className="w-4 h-4" />
+              </div>
+              <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider truncate">Tasas de Cambio</h3>
+            </div>
+            <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-md shrink-0">
+              Base: CUP
+            </span>
+          </div>
+          
+          <div className="space-y-2">
+            {currencies
+              .filter(currency => ['CUP', 'USD', 'EUR'].includes(currency.code))
+              .map(currency => {
+                const isBase = currency.code === 'CUP';
+                return (
+                  <div 
+                    key={currency.code} 
+                    className={cn(
+                      "px-3 py-2 rounded-xl border transition-all flex items-center justify-between gap-3",
+                      isBase ? "bg-slate-50 border-slate-200" : "bg-white border-slate-200 hover:border-rose-300 shadow-xs"
+                    )}
+                  >
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="w-6 h-6 rounded-md bg-slate-100 text-slate-800 font-black text-[11px] flex items-center justify-center shrink-0 border border-slate-200 shadow-2xs">
+                        {currency.symbol || (currency.code === 'EUR' ? '€' : '$')}
+                      </span>
+                      <span className="text-xs font-black text-slate-900 uppercase tracking-tight">
+                        {currency.code}
+                      </span>
+                    </div>
 
-        {activeTab === 'categories' && (
-        <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4">
+                    <div className="flex items-center gap-1.5 justify-end shrink-0">
+                      {isBase ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-1 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-[9px] font-black uppercase tracking-wider">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          1.00 (Base)
+                        </span>
+                      ) : (
+                        <div className="flex items-center bg-slate-50 border border-slate-200 rounded-lg px-2 py-0.5 focus-within:ring-2 focus-within:ring-rose-500/20 focus-within:border-rose-500 transition-all">
+                          <span className="text-[9px] font-black text-slate-400 mr-1 select-none">
+                            1 {currency.code} =
+                          </span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={rates[currency.code] ?? ''}
+                            onChange={(e) => setRates({ ...rates, [currency.code]: parseFloat(e.target.value) || 0 })}
+                            className="w-14 sm:w-16 bg-white border border-slate-200 rounded px-1.5 py-0.5 text-right text-xs font-black text-slate-900 outline-none focus:border-rose-500"
+                            placeholder="0.00"
+                          />
+                          <span className="text-[9px] font-black text-slate-600 ml-1 select-none">
+                            CUP
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+
+          <button 
+            onClick={handleSaveRates}
+            className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-md shadow-rose-100 active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <Save className="w-3.5 h-3.5" />
+            Guardar Tasas
+          </button>
+        </div>
+
+        {/* Categorías (Compact) */}
+        <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4" style={{ display: activeTab === 'categories' ? undefined : 'none' }}>
           <div className="flex items-center gap-3 border-b border-base pb-3">
             <div className="bg-amber-50 dark:bg-amber-950/30 p-2 rounded-lg text-amber-600 dark:text-amber-400">
               <LayoutGrid size={16} />
@@ -824,10 +1081,208 @@ export default function Settings() {
           </div>
         </div>
 
-        )}
+        {/* Sucursales (Branches) */}
+        <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4" style={{ display: activeTab === 'branches' ? undefined : 'none' }}>
+          <div className="flex items-center gap-3 border-b border-base pb-3">
+            <div className="bg-rose-50 dark:bg-rose-950/30 p-2 rounded-lg text-rose-600 dark:text-rose-400">
+              <Store size={16} />
+            </div>
+            <div>
+              <h3 className="text-xs font-black text-primary uppercase tracking-wider">Almacenes</h3>
+              <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Gestión de Ubicaciones</p>
+            </div>
+          </div>
 
-        {activeTab === 'connectivity' && (
+          <div className="space-y-3">
+            <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+              {branches.map(branch => (
+                <div key={branch.id} className="flex justify-between items-center bg-subtle p-2 rounded-xl border border-base group">
+                  <div className="text-[11px] font-black text-primary uppercase tracking-tight break-words leading-snug flex-1 min-w-0 mr-2">{branch.name}</div>
+                  <div className="flex gap-1 shrink-0 ml-1">
+                    <button onClick={() => { setEditingBranch(branch); setNewBranchName(branch.name); }} className="p-1.5 text-muted hover:text-rose-600 rounded-lg transition-colors cursor-pointer" title="Editar"><Edit size={13} /></button>
+                    {branches.length > 1 && (
+                      <button onClick={() => setBranchToDelete({ id: branch.id, name: branch.name })} className="p-1.5 text-muted hover:text-rose-500 rounded-lg transition-colors cursor-pointer" title="Eliminar"><Trash2 size={13} /></button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="space-y-3">
+              <div className="flex gap-2">
+                <input 
+                  type="text" 
+                  value={newBranchName}
+                  onChange={e => setNewBranchName(e.target.value)}
+                  placeholder="Nombre"
+                  className="flex-1 min-w-0 px-3 py-2 bg-primary border border-base rounded-xl text-xs font-bold text-primary outline-none focus:ring-1 focus:ring-rose-500" 
+                />
+                <button onClick={handleAddBranch} className="p-2 bg-rose-600 text-white rounded-xl hover:bg-rose-700 active:scale-95 transition-all shrink-0 cursor-pointer">
+                  {editingBranch ? <Save size={16} /> : <Plus size={16} />}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Apariencia y Visibilidad (Mejorado para Miopía) */}
+        <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4 lg:col-span-3" style={{ display: activeTab === 'visual' ? undefined : 'none' }}>
+          <div className="flex items-center gap-3 border-b border-base pb-3">
+            <div className="bg-rose-600 p-2 rounded-lg text-white">
+              <Sparkles size={16} />
+            </div>
+            <div>
+              <h3 className="text-xs font-black text-primary uppercase tracking-wider">Apariencia y Visibilidad</h3>
+              <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Personalización del entorno de trabajo</p>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-6 bg-subtle p-6 rounded-2xl border border-base">
+            <div className="flex-1 space-y-2">
+              <div className="flex items-center gap-3">
+                <div className="bg-primary text-rose-600 p-2 rounded-xl shadow-sm border border-base">
+                  {config.darkMode ? <Moon size={16} /> : <Sun size={16} />}
+                </div>
+                <div>
+                  <h4 className="text-sm font-black text-primary uppercase tracking-tight">Experiencia Visual</h4>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="px-2 py-0.5 bg-rose-100 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 text-[8px] font-black rounded-full uppercase tracking-wider border border-rose-200 dark:border-rose-800">
+                      Enterprise Mode
+                    </span>
+                  </div>
+                </div>
+              </div>
+              <p className="text-[11px] text-secondary leading-relaxed max-w-xl">
+                Personaliza el entorno de trabajo. El modo oscuro utiliza una paleta de grises profundos diseñada para reducir la fatiga visual.
+              </p>
+            </div>
+
+            <div className="shrink-0 flex flex-col items-end gap-3">
+              <div className="bg-secondary p-1.5 rounded-2xl border border-base shadow-sm flex items-center gap-1">
+                <button 
+                  onClick={() => {
+                    const newConfig = { ...config, darkMode: false };
+                    setConfig(newConfig);
+                    updateStoreConfig(newConfig);
+                    showToast("Modo luz activado");
+                  }}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer",
+                    !config.darkMode ? "bg-rose-600 text-white shadow-lg" : "text-muted hover:bg-subtle"
+                  )}
+                >
+                  <Sun size={14} />
+                  Luz
+                </button>
+                <button 
+                  onClick={() => {
+                    const newConfig = { ...config, darkMode: true };
+                    setConfig(newConfig);
+                    updateStoreConfig(newConfig);
+                    showToast("Modo oscuro activado");
+                  }}
+                  className={cn(
+                    "flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer",
+                    config.darkMode ? "bg-rose-600 text-white shadow-lg" : "text-muted hover:bg-subtle"
+                  )}
+                >
+                  <Moon size={14} />
+                  Oscuro
+                </button>
+              </div>
+              <p className="text-[9px] font-bold text-muted uppercase tracking-widest px-2">Selección de Tema</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Offline Backup & Restore Section */}
         <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4 lg:col-span-3">
+          <div className="flex items-center gap-3 border-b border-base pb-3">
+            <div className="bg-emerald-50 dark:bg-emerald-950/30 p-2.5 rounded-xl text-emerald-600 dark:text-emerald-400">
+              <Save size={20} />
+            </div>
+            <div>
+              <h3 className="text-xs font-black text-primary uppercase tracking-wider">Copia de Seguridad Offline</h3>
+              <p className="text-[9px] font-bold text-muted uppercase tracking-tight">Descarga tus datos en un archivo JSON para restaurarlos manualmente cuando quieras</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="p-4 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-base">
+              <div className="flex items-center gap-2 mb-2">
+                <CloudDownload className="w-4 h-4 text-rose-500" />
+                <span className="text-[10px] font-black uppercase text-primary tracking-widest">Generar Backup</span>
+              </div>
+              <p className="text-[9px] text-muted mb-4 font-bold">Crea un archivo con toda tu información local: productos, ventas, turnos y configuración.</p>
+              <button
+                onClick={() => {
+                  const data = exportData();
+                  const blob = new Blob([data], { type: 'application/json' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `backup_pos_${new Date().toISOString().split('T')[0]}.json`;
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                  showToast("Copia de seguridad generada y descargada", "success");
+                }}
+                className="w-full py-2.5 bg-rose-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-rose-700 transition-all shadow-md active:scale-95"
+              >
+                Descargar Archivo JSON
+              </button>
+            </div>
+
+            <div className="p-4 bg-slate-50 dark:bg-slate-900/40 rounded-2xl border border-base">
+              <div className="flex items-center gap-2 mb-2">
+                <CloudUpload className="w-4 h-4 text-emerald-500" />
+                <span className="text-[10px] font-black uppercase text-primary tracking-widest">Restaurar Datos</span>
+              </div>
+              <p className="text-[9px] text-muted mb-4 font-bold">⚠️ ATENCIÓN: Al restaurar, se sobrescribirán todos los datos actuales por los del archivo.</p>
+              
+              <label className="block">
+                <input
+                  type="file"
+                  accept=".json"
+                  className="hidden"
+                  id="backup-upload"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+
+                    if (window.confirm("¿Estás seguro de que deseas RESTAURAR los datos? Esta acción sobrescribirá TODO el sistema actual y sincronizará con la nube.")) {
+                      setIsLoading(true);
+                      const reader = new FileReader();
+                      reader.onload = async (event) => {
+                        const content = event.target?.result as string;
+                        const result = await importData(content);
+                        if (result.success) {
+                          showToast("Sistema restaurado con éxito", "success");
+                          setTimeout(() => window.location.reload(), 1500);
+                        } else {
+                          showToast(`Error: ${result.error}`, "error");
+                        }
+                        setIsLoading(false);
+                      };
+                      reader.readAsText(file);
+                    }
+                    e.target.value = ''; // Reset input
+                  }}
+                />
+                <div 
+                  onClick={() => document.getElementById('backup-upload')?.click()}
+                  className="w-full py-2.5 bg-emerald-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {isLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CloudUpload className="w-3.5 h-3.5" />}
+                  Cargar y Restaurar
+                </div>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        {/* Configuración de Ticket / Recibo */}
+        <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4 lg:col-span-3" style={{ display: activeTab === 'connectivity' ? undefined : 'none' }}>
           <div className="flex items-center gap-3 border-b border-base pb-3">
             <div className="bg-rose-50 dark:bg-rose-950/30 p-2 rounded-lg text-rose-600 dark:text-rose-400">
               <Plus size={16} />
@@ -1111,10 +1566,7 @@ export default function Settings() {
           </div>
         </div>
 
-        )}
-
-        {activeTab === 'employees' && (
-                <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4 lg:col-span-3">
+      <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4 lg:col-span-3" style={{ display: activeTab === 'employees' ? undefined : 'none' }}>
         <div className="flex items-center justify-between gap-3 border-b border-base pb-3">
           <div className="flex items-center gap-3">
             <div className="bg-rose-50 dark:bg-rose-950/30 p-2 rounded-lg text-rose-600"><Users size={16} /></div>
@@ -1172,10 +1624,8 @@ export default function Settings() {
         </div>
       </div>
 
-        )}
-
-        {activeTab === 'advanced' && (
-      <div className="bg-secondary rounded-2xl shadow-sm border border-red-200 dark:border-red-900/30 p-5 space-y-4 lg:col-span-3">
+      {/* Zona Peligrosa */}
+      <div className="bg-secondary rounded-2xl shadow-sm border border-red-200 dark:border-red-900/30 p-5 space-y-4 lg:col-span-3" style={{ display: activeTab === 'advanced' ? undefined : 'none' }}>
         <div className="flex items-center gap-3 border-b border-red-50 dark:border-red-950/30 pb-3">
           <div className="bg-red-50 dark:bg-red-950/50 p-2 rounded-lg text-red-600 dark:text-red-400">
             <AlertTriangle size={16} />
@@ -1309,189 +1759,7 @@ export default function Settings() {
           </div>
         </div>
         </div>
-        )}
       </div>
-
-      {/* In-App User Deletion Confirmation Modal */}
-      {userToDelete && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[150] flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-          <div className="palmyra-mobile-modal bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-5 text-center space-y-3">
-              <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
-                <Trash2 className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-black text-slate-900 uppercase">¿Desactivar Empleado?</h3>
-              <p className="text-xs text-slate-600">
-                ¿Desactivar a <span className="font-bold text-slate-900">{userToDelete.name}</span>? El empleado perderá acceso, pero se conservarán su historial y operaciones.
-              </p>
-            </div>
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setUserToDelete(null)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-all cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={confirmDeleteUserAction}
-                className="px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/20 transition-all cursor-pointer"
-              >
-                Sí, Desactivar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* In-App Branch Deletion Confirmation Modal */}
-      {branchToDelete && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-5 text-center space-y-3">
-              <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
-                <Store className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-black text-slate-900 uppercase">¿Eliminar almacén?</h3>
-              <p className="text-xs text-slate-600">
-                ¿Estás seguro de que deseas eliminar el almacén <span className="font-bold text-slate-900">"{branchToDelete.name}"</span>?
-              </p>
-            </div>
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setBranchToDelete(null)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-all cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={confirmDeleteBranchAction}
-                className="px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/20 transition-all cursor-pointer"
-              >
-                Sí, Eliminar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* In-App Category Deletion Confirmation Modal */}
-      {categoryToDelete && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-5 text-center space-y-3">
-              <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
-                <Trash2 className="w-6 h-6" />
-              </div>
-              <h3 className="text-base font-black text-slate-900 uppercase">¿Eliminar Categoría?</h3>
-              <p className="text-xs text-slate-600">
-                ¿Estás seguro de que deseas eliminar la categoría <span className="font-bold text-slate-900">"{categoryToDelete.name}"</span>?
-              </p>
-            </div>
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => setCategoryToDelete(null)}
-                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-all cursor-pointer"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={confirmDeleteCategoryAction}
-                className="px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/20 transition-all cursor-pointer"
-              >
-                Sí, Eliminar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Configuración de empleado */}
-      {selectedUserForConfig && (
-        <div className="fixed inset-0 bg-slate-950/40 dark:bg-slate-950/80 z-[100] flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
-          <div className="palmyra-mobile-modal bg-secondary w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-1rem)] border border-base">
-            <div className="bg-rose-600 p-4 text-white flex items-center justify-between">
-              <div>
-                <h3 className="text-xs font-black uppercase tracking-wider">Configuración de Empleado</h3>
-                <p className="text-[10px] font-bold text-rose-100 uppercase">{selectedUserForConfig.name}</p>
-              </div>
-              <button type="button" onClick={() => setSelectedUserForConfig(null)} className="p-1.5 hover:bg-white/10 rounded-lg">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-4 sm:p-5 overflow-y-auto custom-scrollbar space-y-5 flex-1 bg-secondary">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="bg-subtle p-3.5 rounded-xl border border-base space-y-2">
-                  <span className="text-[8px] font-black text-muted uppercase tracking-widest block">Salario Base</span>
-                  <input type="number" min="0" step="0.01" value={employeeSalaries[selectedUserForConfig.id] ?? (selectedUserForConfig.baseSalary || 0)}
-                    onChange={e => {
-                      const val = Number(e.target.value);
-                      setEmployeeSalaries({ ...employeeSalaries, [selectedUserForConfig.id]: val });
-                      updateUser(selectedUserForConfig.id, { baseSalary: val });
-                    }}
-                    className="w-full px-3 py-2 bg-primary border border-base rounded-lg text-xs font-black text-primary outline-none focus:ring-1 focus:ring-rose-500"
-                  />
-                </div>
-                <div className="bg-subtle p-3.5 rounded-xl border border-base space-y-2">
-                  <span className="text-[8px] font-black text-muted uppercase tracking-widest block">Contraseña POS</span>
-                  <input type="password" value={selectedUserForConfig.password || ''}
-                    onChange={e => {
-                      const newPass = e.target.value;
-                      const updated = { ...selectedUserForConfig, password: newPass };
-                      setSelectedUserForConfig(updated);
-                      updateUser(selectedUserForConfig.id, { password: newPass });
-                    }}
-                    className="w-full px-3 py-2 bg-primary border border-base rounded-lg text-xs font-bold text-primary outline-none focus:ring-1 focus:ring-rose-500"
-                    placeholder="Nueva contraseña"
-                  />
-                </div>
-              </div>
-              <div className="bg-subtle p-4 rounded-xl border border-base space-y-3">
-                <div className="flex items-center gap-2"><Building2 size={16} className="text-rose-600" /><h4 className="text-[10px] font-black text-primary uppercase">Acceso a almacenes</h4></div>
-                 </div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {branches.map(branch => {
-                    const isAllowed = selectedUserForConfig.allowedBranches?.includes(branch.id) ?? true;
-                    return (
-                      <label key={branch.id} className={cn("flex items-center gap-2.5 p-2.5 rounded-xl border transition-all cursor-pointer", isAllowed ? "bg-primary border-rose-200 dark:border-rose-500/50" : "bg-subtle border-base opacity-40")}>
-                        <input type="checkbox" checked={isAllowed}
-                          onChange={e => {
-                            const current = selectedUserForConfig.allowedBranches ?? branches.map(b => b.id);
-                            const newAllowed = e.target.checked ? [...current, branch.id] : current.filter(id => id !== branch.id);
-                            const updated = { ...selectedUserForConfig, allowedBranches: newAllowed };
-                            setSelectedUserForConfig(updated);
-                            updateUser(selectedUserForConfig.id, { allowedBranches: newAllowed });
-                          }}
-                          className="w-4 h-4 rounded text-rose-600 focus:ring-rose-500"
-                        />
-                        <span className="text-[10px] font-black uppercase text-primary">{branch.name}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="pt-2 border-t border-base flex items-center justify-between">
-                <button type="button" onClick={() => {
-                  const target = selectedUserForConfig;
-                  setSelectedUserForConfig(null);
-                  setUserToDelete({ id: target.id, name: target.name });
-                }} className="text-rose-600 hover:bg-rose-50 px-3 py-2 rounded-xl text-[10px] font-black uppercase flex items-center gap-1.5">
-                  <Trash2 size={14} /> Desactivar
-                </button>
-                <button type="button" onClick={() => setSelectedUserForConfig(null)} className="bg-rose-600 text-white px-8 py-2.5 rounded-xl font-black text-[10px] uppercase shadow-md">
-                  Listo
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      </div>
+    </div>
   );
 }
