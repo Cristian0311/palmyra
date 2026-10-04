@@ -75,76 +75,100 @@ function PageLoading() {
 export default function App() {
   const { currentUser, isInitialized, restoreTransactionsFromBackup, currentBranchId } = useStore(useShallow((state) => ({ currentUser: state.currentUser, isInitialized: state.isInitialized, restoreTransactionsFromBackup: state.restoreTransactionsFromBackup, currentBranchId: state.currentBranchId })));
   const [authBootstrapping, setAuthBootstrapping] = useState(true);
-  const [accessState, setAccessState] = useState<"loading" | "signed_out" | "needs_onboarding" | "ready" | "blocked">("loading");
+  const [accessState, setAccessState] = useState<"loading" | "signed_out" | "needs_onboarding" | "ready" | "blocked" | "recovering">("loading");
   const can = (permission: string) => currentUser?.role === "admin" || currentUser?.permissions?.includes(permission) === true;
   const pendingOnboarding = typeof sessionStorage !== "undefined" && sessionStorage.getItem("palmyra_pending_onboarding") === "1";
 
   const hydrateAuth = async () => {
     setAuthBootstrapping(true);
-    try {
-      const ctx = await loadSaaSContext();
-      let deviceReady = ctx?.deviceActive !== false;
-      if (!ctx) {
-        useStore.setState({ currentUser: null, currentBranchId: "", activeSessionId: null });
-        setAccessState("signed_out");
-        return;
-      }
+    let lastError: unknown = null;
 
-      if (!ctx.companyId) {
-        clearPalmyraLocalScope();
-        void import("./services/offlineQueue").then(({ setOfflineQueueScope }) => setOfflineQueueScope()).catch(() => {});
-        useStore.setState({
-          currentUser: ctx.user,
-          currentBranchId: "",
-          activeSessionId: null,
-          cart: []
-        });
-      } else {
-        if (typeof sessionStorage !== "undefined") {
-          sessionStorage.removeItem("palmyra_pending_onboarding");
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      try {
+        const ctx = await loadSaaSContext(attempt > 0);
+        let deviceReady = ctx?.deviceActive !== false;
+
+        if (!ctx) {
+          const supabase = getSupabase();
+          const { data: userData } = supabase ? await supabase.auth.getUser() : { data: { user: null } };
+          if (userData.user) {
+            throw new Error("La sesión existe, pero el contexto de PALMYRA todavía no está disponible.");
+          }
+          useStore.setState({ currentUser: null, currentBranchId: "", activeSessionId: null });
+          setAccessState("signed_out");
+          return;
         }
-        setPalmyraLocalScope(ctx.authUserId, ctx.companyId);
-        const { setOfflineQueueScope } = await import("./services/offlineQueue");
-        await setOfflineQueueScope();
-        useStore.setState({
-          currentUser: ctx.user,
-          currentBranchId: ctx.warehouseIds[0] || "",
-        });
-        await useStore.persist.rehydrate();
-        if (ctx.warehouseIds[0]) {
-          if (!ctx.deviceActive) {
-            try {
-              await registerCurrentDevice(ctx.companyId, ctx.warehouseIds[0]);
+
+        if (!ctx.companyId) {
+          clearPalmyraLocalScope();
+          void import("./services/offlineQueue").then(({ setOfflineQueueScope }) => setOfflineQueueScope()).catch(() => {});
+          useStore.setState({
+            currentUser: ctx.user,
+            currentBranchId: "",
+            activeSessionId: null,
+            cart: []
+          });
+        } else {
+          if (typeof sessionStorage !== "undefined") {
+            sessionStorage.removeItem("palmyra_pending_onboarding");
+          }
+          setPalmyraLocalScope(ctx.authUserId, ctx.companyId);
+          const { setOfflineQueueScope } = await import("./services/offlineQueue");
+          await setOfflineQueueScope();
+          useStore.setState({
+            currentUser: ctx.user,
+            currentBranchId: ctx.warehouseIds[0] || "",
+          });
+          await useStore.persist.rehydrate();
+          if (ctx.warehouseIds[0]) {
+            if (!ctx.deviceActive) {
+              try {
+                await registerCurrentDevice(ctx.companyId, ctx.warehouseIds[0]);
+                deviceReady = true;
+              } catch (error) {
+                deviceReady = false;
+                console.warn("[PALMYRA] No se pudo registrar el dispositivo:", error);
+              }
+            } else {
               deviceReady = true;
-            } catch (error) {
-              deviceReady = false;
-              console.warn("[PALMYRA] No se pudo registrar el dispositivo:", error);
             }
-          } else {
-            deviceReady = true;
           }
         }
-      }
 
-      if (!ctx.companyId) {
-        setAccessState(ctx.membershipStatus && ctx.membershipStatus !== "active" ? "blocked" : "needs_onboarding");
-      } else if (!deviceReady) {
-        setAccessState("blocked");
-      } else if (ctx.company?.account_status === "pending_payment" || ctx.company?.account_status === "suspended") {
-        setAccessState("blocked");
-      } else {
-        setAccessState("ready");
+        if (!ctx.companyId) {
+          setAccessState(ctx.membershipStatus && ctx.membershipStatus !== "active" ? "blocked" : "needs_onboarding");
+        } else if (!deviceReady) {
+          setAccessState("blocked");
+        } else if (ctx.company?.account_status === "pending_payment" || ctx.company?.account_status === "suspended") {
+          setAccessState("blocked");
+        } else {
+          setAccessState("ready");
+        }
+        return;
+      } catch (error) {
+        lastError = error;
+        console.warn(`[PALMYRA] Fallo de hidratación (${attempt + 1}/4):`, error);
+        if (attempt < 3) {
+          await new Promise((resolve) => window.setTimeout(resolve, 350 * (attempt + 1)));
+        }
       }
-    } catch {
-      clearPalmyraLocalScope();
-      void import("./services/offlineQueue").then(({ setOfflineQueueScope }) => setOfflineQueueScope()).catch(() => {});
-      useStore.setState({ currentUser: null, currentBranchId: "", activeSessionId: null });
-      setAccessState("signed_out");
-    } finally {
-      setAuthBootstrapping(false);
     }
-  };
 
+    // Si Auth sigue siendo válida, nunca enviamos al usuario al Landing por un
+    // fallo transitorio de contexto. Mostramos recuperación y permitimos reintentar.
+    const supabase = getSupabase();
+    const { data: userData } = supabase ? await supabase.auth.getUser() : { data: { user: null } };
+    if (userData.user) {
+      console.error("[PALMYRA] Contexto no disponible después de varios intentos:", lastError);
+      setAccessState("recovering");
+      return;
+    }
+
+    clearPalmyraLocalScope();
+    void import("./services/offlineQueue").then(({ setOfflineQueueScope }) => setOfflineQueueScope()).catch(() => {});
+    useStore.setState({ currentUser: null, currentBranchId: "", activeSessionId: null });
+    setAccessState("signed_out");
+  };
   useEffect(() => {
     let active = true;
     const boot = async () => {
@@ -294,6 +318,18 @@ export default function App() {
     };
   }, [currentUser?.id, currentBranchId, accessState]);
 
+  if (accessState === "recovering") {
+    return (
+      <div className="min-h-screen bg-[#F7F5FC] flex items-center justify-center p-5">
+        <div className="w-full max-w-md rounded-3xl border border-violet-100 bg-white p-7 text-center shadow-xl">
+          <img src="/palmyra-mark-exact.svg" alt="" aria-hidden="true" className="mx-auto h-12 w-12 object-contain" />
+          <h1 className="mt-4 text-lg font-black text-[#3B1B6E]">Estamos preparando tu espacio</h1>
+          <p className="mt-2 text-xs leading-5 text-slate-500">Tu sesión sigue activa. PALMYRA está verificando empresa, almacén y permisos antes de abrir el sistema.</p>
+          <button type="button" onClick={() => void hydrateAuth()} className="mt-5 h-10 rounded-xl bg-[#6535C5] px-5 text-[10px] font-black text-white">Reintentar</button>
+        </div>
+      </div>
+    );
+  }
   if (!isInitialized || authBootstrapping) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
