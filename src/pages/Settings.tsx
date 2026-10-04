@@ -144,7 +144,7 @@ export default function Settings() {
 
   const [selectedUserForConfig, setSelectedUserForConfig] = useState<User | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'connectivity' | 'company' | 'branches' | 'categories' | 'employees' | 'visual' | 'advanced'>('connectivity');
+  const [activeTab, setActiveTab] = useState<'connectivity' | 'company' | 'currency' | 'branches' | 'categories' | 'employees' | 'visual' | 'advanced'>('connectivity');
   const [fontScale, setFontScale] = useState(() => { try { const saved = Number(localStorage.getItem('palmyra-font-scale') || '1'); return [0.9,1,1.1,1.2].includes(saved) ? saved : 1; } catch { return 1; } });
   useEffect(() => { document.documentElement.style.setProperty('--palmyra-font-scale', String(fontScale)); try { localStorage.setItem('palmyra-font-scale', String(fontScale)); } catch {} }, [fontScale]);
 
@@ -323,7 +323,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 max-w-5xl mx-auto pb-8 relative">
+    <div className="settings-page space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 w-full min-w-0 max-w-5xl mx-auto pb-8 relative overflow-x-hidden">
       {/* In-App Toast Notification */}
       {toast && (
         <div className="fixed top-4 right-4 z-[200] max-w-md animate-in slide-in-from-top-4 fade-in duration-300">
@@ -372,6 +372,7 @@ export default function Settings() {
           {[
             { id: 'connectivity', label: 'Conexión', icon: Wifi },
             { id: 'company', label: 'Empresa', icon: Store },
+            { id: 'currency', label: 'Monedas', icon: DollarSign },
             { id: 'branches', label: 'Almacenes', icon: Building2 },
             { id: 'categories', label: 'Categorías', icon: LayoutGrid },
             { id: 'employees', label: 'Empleados', icon: Users },
@@ -399,7 +400,7 @@ export default function Settings() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4">
+      <div id="settings-section-content" className="grid grid-cols-1 gap-3 min-w-0">
         {/* Conectividad y Sincronización */}
         {activeTab === 'connectivity' && (
           <div className="space-y-4">
@@ -552,130 +553,92 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Datos de la Empresa y Apariencia */}
+        {/* Datos de la Empresa */}
         {activeTab === 'company' && (
-          <div className="space-y-4">
-            <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4">
+          <div className="space-y-3 min-w-0">
+            <div className="bg-secondary rounded-2xl shadow-sm border border-base p-3 sm:p-5 space-y-4 min-w-0">
               <div className="flex items-center gap-3 border-b border-base pb-3">
-                <div className="bg-rose-50 dark:bg-rose-950/50 p-2 rounded-lg text-rose-600 dark:text-rose-400">
+                <div className="bg-rose-50 dark:bg-rose-950/50 p-2 rounded-lg text-rose-600 dark:text-rose-400 shrink-0">
                   <Store size={16} />
                 </div>
-                <div>
+                <div className="min-w-0">
                   <h3 className="text-xs font-black text-primary uppercase tracking-wider">Datos de la Empresa</h3>
-                  <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Información para tickets y reportes</p>
+                  <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Nombre, teléfono y dirección usados por PALMYRA</p>
                 </div>
               </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-muted uppercase px-1">Nombre del Negocio</label>
-                  <input 
-                    type="text" 
-                    value={config.storeName}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <label className="space-y-1.5 min-w-0">
+                  <span className="text-[10px] font-black text-muted uppercase px-1">Nombre del Negocio</span>
+                  <input type="text" value={config.storeName}
                     onChange={e => setConfig({ ...config, storeName: e.target.value })}
-                    className="w-full px-4 py-2.5 bg-primary border border-base rounded-xl text-xs font-bold text-primary outline-none focus:ring-1 focus:ring-rose-500 shadow-sm"
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-black text-muted uppercase px-1">Teléfono</label>
-                  <input 
-                    type="text" 
-                    value={config.phone}
+                    className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-primary border border-base rounded-xl text-xs font-bold text-primary outline-none focus:ring-1 focus:ring-rose-500 shadow-sm" />
+                </label>
+                <label className="space-y-1.5 min-w-0">
+                  <span className="text-[10px] font-black text-muted uppercase px-1">Teléfono</span>
+                  <input type="text" value={config.phone}
                     onChange={e => setConfig({ ...config, phone: e.target.value })}
-                    className="w-full px-4 py-2.5 bg-primary border border-base rounded-xl text-xs font-bold text-primary outline-none focus:ring-1 focus:ring-rose-500 shadow-sm"
-                  />
-                </div>
-                <div className="space-y-1.5 md:col-span-2">
-                  <label className="text-[10px] font-black text-muted uppercase px-1">Dirección</label>
-                  <input 
-                    type="text" 
-                    value={config.address}
+                    className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-primary border border-base rounded-xl text-xs font-bold text-primary outline-none focus:ring-1 focus:ring-rose-500 shadow-sm" />
+                </label>
+                <label className="space-y-1.5 md:col-span-2 min-w-0">
+                  <span className="text-[10px] font-black text-muted uppercase px-1">Dirección</span>
+                  <input type="text" value={config.address}
                     onChange={e => setConfig({ ...config, address: e.target.value })}
-                    className="w-full px-4 py-2.5 bg-primary border border-base rounded-xl text-xs font-bold text-primary outline-none focus:ring-1 focus:ring-rose-500 shadow-sm"
-                  />
-                </div>
+                    className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-primary border border-base rounded-xl text-xs font-bold text-primary outline-none focus:ring-1 focus:ring-rose-500 shadow-sm" />
+                </label>
               </div>
-              <div className="pt-2 flex justify-end">
-                <button 
-                  onClick={handleSaveConfig}
-                  className="px-6 py-2 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-700 transition-all shadow-md flex items-center gap-2 cursor-pointer"
-                >
-                  <Save size={14} />
-                  Guardar Cambios
+
+              <div className="pt-1 flex justify-end">
+                <button onClick={handleSaveConfig}
+                  className="w-full sm:w-auto px-5 py-2.5 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-700 transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer">
+                  <Save size={14} /> Guardar Cambios
                 </button>
               </div>
             </div>
+          </div>
+        )}
 
-            {/* Tasas de Cambio (Moved here) */}
-            <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4">
-              <div className="flex items-center justify-between border-b border-base pb-3 gap-2">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="bg-emerald-50 p-1.5 rounded-lg text-emerald-600 shrink-0">
-                    <DollarSign className="w-4 h-4" />
-                  </div>
-                  <h3 className="text-xs font-black text-primary uppercase tracking-wider truncate">Tasas de Cambio</h3>
-                </div>
-                <span className="text-[9px] font-black uppercase tracking-wider bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-300 px-2 py-0.5 rounded-md shrink-0">
-                  Base: {baseCurrency.code}
-                </span>
+        {/* Monedas y tasas */}
+        {activeTab === 'currency' && (
+          <div className="bg-secondary rounded-2xl shadow-sm border border-base p-3 sm:p-5 space-y-4 min-w-0">
+            <div className="flex items-center gap-3 border-b border-base pb-3">
+              <div className="bg-emerald-50 dark:bg-emerald-950/30 p-2 rounded-lg text-emerald-600 dark:text-emerald-400 shrink-0">
+                <DollarSign size={16} />
               </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {currencies
-                  .filter(currency => ['CUP', 'USD', 'EUR'].includes(currency.code))
-                  .map(currency => {
-                    const isBase = currency.code === baseCurrency.code;
-                    return (
-                      <div key={currency.code} className={cn("px-3 py-2 rounded-xl border flex items-center justify-between gap-3", isBase ? "bg-subtle border-base" : "bg-primary border-base shadow-xs")}>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <span className="w-6 h-6 rounded-md bg-secondary text-primary font-black text-[11px] flex items-center justify-center shrink-0 border border-base">
-                            {currency.symbol || (currency.code === 'EUR' ? '€' : '$')}
-                          </span>
-                          <span className="text-xs font-black text-primary uppercase">{currency.code}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 justify-end">
-                          {isBase ? (
-                            <span className="text-[9px] font-black uppercase text-emerald-600">1.00 (Base)</span>
-                          ) : (
-                            <div className="flex items-center bg-subtle border border-base rounded-lg px-2 py-0.5">
-                              <input
-                                type="number"
-                                step="0.01"
-                                value={rates[currency.code] ?? ''}
-                                onChange={(e) => setRates({ ...rates, [currency.code]: parseFloat(e.target.value) || 0 })}
-                                className="w-12 bg-transparent text-right text-xs font-black text-primary outline-none"
-                              />
-                            </div>
-                          )}
-                        </div>
+              <div className="min-w-0">
+                <h3 className="text-xs font-black text-primary uppercase tracking-wider">Monedas y tasas</h3>
+                <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Configura las tasas usadas por ventas, caja y reportes</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+              {currencies.filter(currency => ['CUP', 'USD', 'EUR'].includes(currency.code)).map(currency => {
+                const isBase = currency.code === baseCurrency.code;
+                return (
+                  <div key={currency.code} className={cn("min-w-0 px-3 py-2.5 rounded-xl border flex items-center justify-between gap-3", isBase ? "bg-subtle border-base" : "bg-primary border-base")}>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="w-6 h-6 rounded-md bg-secondary text-primary font-black text-[11px] flex items-center justify-center shrink-0 border border-base">{currency.symbol || (currency.code === 'EUR' ? '€' : '$')}</span>
+                      <span className="text-xs font-black text-primary uppercase">{currency.code}</span>
+                    </div>
+                    {isBase ? (
+                      <span className="shrink-0 text-[9px] font-black uppercase text-emerald-600">1.00 (Base)</span>
+                    ) : (
+                      <div className="flex items-center min-w-0 bg-subtle border border-base rounded-lg px-2 py-0.5">
+                        <span className="hidden sm:inline text-[9px] font-black text-muted mr-1 whitespace-nowrap">1 {currency.code} =</span>
+                        <input type="number" step="0.01" min="0" value={rates[currency.code] ?? ''}
+                          onChange={e => setRates({ ...rates, [currency.code]: parseFloat(e.target.value) || 0 })}
+                          className="w-16 bg-transparent text-right text-xs font-black text-primary outline-none border-0 shadow-none" />
+                        <span className="text-[9px] font-black text-muted ml-1">CUP</span>
                       </div>
-                    );
-                  })}
-              </div>
-              <button onClick={handleSaveRates} className="w-full py-2 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md">
-                <Save size={14} /> Actualizar Tasas
-              </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
-            {/* Apariencia (Moved here) */}
-            <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4">
-              <div className="flex items-center gap-3 border-b border-base pb-3">
-                <div className="bg-rose-600 p-2 rounded-lg text-white">
-                  <Sparkles size={16} />
-                </div>
-                <div>
-                  <h3 className="text-xs font-black text-primary uppercase tracking-wider">Apariencia</h3>
-                  <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Tema del sistema</p>
-                </div>
-              </div>
-              <div className="flex items-center justify-between bg-subtle p-4 rounded-2xl border border-base">
-                <p className="text-xs font-bold text-primary">Modo Oscuro</p>
-                <div className="flex bg-secondary p-1 rounded-xl border border-base">
-                  <button onClick={() => { const nc = {...config, darkMode:false}; setConfig(nc); updateStoreConfig(nc); }} className={cn("px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all cursor-pointer", !config.darkMode ? "bg-rose-600 text-white" : "text-muted")}>Luz</button>
-                  <button onClick={() => { const nc = {...config, darkMode:true}; setConfig(nc); updateStoreConfig(nc); }} className={cn("px-4 py-1.5 rounded-lg text-[9px] font-black uppercase transition-all cursor-pointer", config.darkMode ? "bg-rose-600 text-white" : "text-muted")}>Noche</button>
-                </div>
-              </div>
-            </div>
+            <button onClick={handleSaveRates} className="w-full py-2.5 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center justify-center gap-2">
+              <Save size={14} /> Guardar Tasas
+            </button>
           </div>
         )}
 
@@ -783,8 +746,8 @@ export default function Settings() {
 
       {/* In-App User Deletion Confirmation Modal */}
       {userToDelete && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[150] flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[150] flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="palmyra-mobile-modal bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-5 text-center space-y-3">
               <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
                 <Trash2 className="w-6 h-6" />
@@ -882,8 +845,8 @@ export default function Settings() {
 
       {/* Configuración de empleado */}
       {selectedUserForConfig && (
-        <div className="fixed inset-0 bg-slate-950/40 dark:bg-slate-950/80 z-[100] flex items-center justify-center p-3 sm:p-4">
-          <div className="bg-secondary w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[92vh] border border-base">
+        <div className="fixed inset-0 bg-slate-950/40 dark:bg-slate-950/80 z-[100] flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="palmyra-mobile-modal bg-secondary w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-1rem)] border border-base">
             <div className="bg-rose-600 p-4 text-white flex items-center justify-between">
               <div>
                 <h3 className="text-xs font-black uppercase tracking-wider">Configuración de Empleado</h3>
