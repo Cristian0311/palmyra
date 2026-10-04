@@ -1524,14 +1524,14 @@ export default function Reports() {
       <div className="bg-secondary p-3 rounded-2xl shadow-sm border border-base flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           {/* Filtro Sucursal */}
-          <div className="flex items-center gap-1.5 bg-subtle border border-base rounded-xl px-2.5 py-1.5">
-            <span className="text-[8px] font-black text-muted uppercase tracking-widest">Sucursal:</span>
+          <div className="flex items-center gap-1 bg-subtle border border-base rounded-lg px-1.5 py-1 min-w-0 max-w-full">
+            <span className="text-[8px] font-black text-muted uppercase tracking-widest">Almacén:</span>
             <select
               value={selectedBranchFilter}
               onChange={(e) => setSelectedBranchFilter(e.target.value)}
-              className="bg-transparent text-[10px] font-black text-primary uppercase outline-none cursor-pointer"
+              className="bg-transparent text-[8px] leading-none font-black text-primary uppercase outline-none cursor-pointer max-w-[8rem] sm:max-w-[12rem] truncate"
             >
-              <option value="all" className="bg-secondary">Todas las Sucursales ({(branches || []).length})</option>
+              <option value="all" className="bg-secondary">Todos</option>
               {branches.map(b => (
                 <option key={b.id} value={b.id} className="bg-secondary">{b.name}</option>
               ))}
@@ -1546,7 +1546,7 @@ export default function Reports() {
               onChange={(e) => setSelectedWorkerFilter(e.target.value)}
               className="bg-transparent text-[10px] font-black text-primary uppercase outline-none cursor-pointer"
             >
-              <option value="all" className="bg-secondary">Todos los Vendedores</option>
+              <option value="all" className="bg-secondary">Todos</option>
               {(users || []).map(u => (
                 <option key={u.id} value={u.id} className="bg-secondary">{u.name}</option>
               ))}
