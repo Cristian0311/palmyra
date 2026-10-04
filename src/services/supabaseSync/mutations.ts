@@ -145,8 +145,28 @@ export async function pushUserToSupabase(user:User){
 }
 export async function deleteUserFromSupabase(id:string){try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {error}=await supabase.from('employees').update({active:false}).eq('id',id).eq('company_id',companyId);if(error)throw error;}catch{}}
 
-export async function pushCustomerToSupabase(customer:Customer){
-  try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {error}=await supabase.from('customers').upsert({id:customer.id,company_id:companyId,name:customer.name,phone:customer.phone||null,email:customer.email||null,tax_id:customer.taxId||null,active:true},{onConflict:'id'});if(error)throw error;return true;}catch(e:any){await queue('customer',customer,customer.id);return false;}
+export async function pushCustomerToSupabase(customer:Customer):Promise<{success:boolean;pending:boolean;error?:string}>{
+  try{
+    const supabase=await onlineClient();
+    const {companyId}=await getActiveTenant();
+    const {error}=await supabase.from('customers').upsert({
+      id:customer.id,company_id:companyId,name:customer.name,
+      phone:customer.phone||null,email:customer.email||null,
+      tax_id:customer.taxId||null,active:true
+    },{onConflict:'id'});
+    if(error) throw error;
+    return {success:true,pending:false};
+  }catch(e:any){
+    const message=String(e?.message||e||'No se pudo guardar el cliente.');
+    const code=String(e?.code||'');
+    const offline=typeof navigator!=='undefined' && !navigator.onLine;
+    const transportError=offline || /failed to fetch|network|timeout|fetch error|load failed/i.test(message);
+    if(transportError){
+      await queue('customer',{...customer},customer.id);
+      return {success:false,pending:true,error:message};
+    }
+    return {success:false,pending:false,error:message};
+  }
 }
 export async function deleteCustomerFromSupabase(id:string):Promise<boolean>{try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {error}=await supabase.from('customers').update({active:false}).eq('id',id).eq('company_id',companyId);if(error)throw error;return true;}catch{return false;}}
 
