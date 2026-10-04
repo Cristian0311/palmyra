@@ -43,7 +43,7 @@ export async function loadSubscriptionOverview() {
   return {ctx,plans:(plans||[]) as SubscriptionPlan[],request:(request||null),subscription,invoices:(invoices||[]) as any[]};
 }
 
-export async function selectSubscriptionPlan(planId:string) {
+export async function selectSubscriptionPlan(planId:string, paymentMethod: 'manual_cash' | 'manual_bank_transfer' = 'manual_cash') {
   const supabase=getSupabase();
   if(!supabase) throw new Error("Supabase no está configurado.");
   const ctx=await loadSaaSContext(true);
