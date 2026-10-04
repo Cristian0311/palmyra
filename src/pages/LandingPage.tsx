@@ -1,4 +1,3 @@
-import type React from "react";
 import React, { useMemo, useState } from "react";
 import {
   ArrowRight, BarChart3, Boxes, Check, ChevronRight, CloudOff, CreditCard, ClipboardCheck,
