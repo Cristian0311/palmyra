@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta http-equiv="X-UA-Compatible" content="IE=edge"><title>Confirma tu cuenta PALMYRA</title></head>
+<body style="margin:0;padding:0;background-color:#f7f5fc;font-family:Arial,Helvetica,sans-serif;color:#241536;">
+<table width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f5fc" style="width:100%;background-color:#f7f5fc;"><tr><td align="center" style="padding-top:32px;padding-bottom:32px;padding-left:16px;padding-right:16px;">
+<table width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;max-width:600px;background-color:#ffffff;border:1px solid #eadffb;border-radius:22px;">
+<tr><td align="center" bgcolor="#3b1b78" style="padding-top:28px;padding-bottom:24px;padding-left:24px;padding-right:24px;background-color:#3b1b78;border-radius:22px 22px 0 0;">
+<img src="{{ .SiteURL }}/palmyra-logo.svg" width="236" height="60" border="0" alt="PALMYRA" style="width:236px;height:60px;display:block;">
+</td></tr>
+<tr><td style="padding-top:38px;padding-bottom:10px;padding-left:40px;padding-right:40px;">
+<p style="margin:0;font-size:11px;line-height:16px;color:#7c4dde;font-weight:bold;letter-spacing:2px;text-transform:uppercase;">PALMYRA</p>
+<h1 style="margin-top:8px;margin-bottom:0;margin-left:0;margin-right:0;font-size:30px;line-height:38px;color:#3b1b78;font-weight:800;">Confirma tu cuenta</h1>
+<p style="margin-top:16px;margin-bottom:0;margin-left:0;margin-right:0;font-size:15px;line-height:24px;color:#64748b;">Gracias por crear tu cuenta. Confirma tu correo electrónico para continuar con la configuración de tu empresa en PALMYRA.</p>
+</td></tr>
+<tr><td align="center" style="padding-top:26px;padding-bottom:18px;padding-left:40px;padding-right:40px;"><table cellpadding="0" cellspacing="0" border="0"><tr><td align="center" bgcolor="#5b2dba" style="border-radius:12px;background-color:#5b2dba;">
+<a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email" style="display:inline-block;padding-top:14px;padding-bottom:14px;padding-left:26px;padding-right:26px;font-size:14px;line-height:20px;font-weight:bold;color:#ffffff;text-decoration:none;">Confirmar mi correo</a>
+</td></tr></table></td></tr>
+<tr><td style="padding-top:0;padding-bottom:28px;padding-left:40px;padding-right:40px;"><p style="margin:0;font-size:12px;line-height:19px;color:#94a3b8;">Si el botón no funciona, copia y pega este enlace:</p>
+<p style="margin-top:8px;margin-bottom:0;font-size:11px;line-height:18px;color:#5b2dba;word-break:break-all;">{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=email</p></td></tr>
+<tr><td bgcolor="#f7f5fc" style="padding-top:20px;padding-bottom:20px;padding-left:40px;padding-right:40px;background-color:#f7f5fc;border-radius:0 0 22px 22px;">
+<p style="margin:0;font-size:11px;line-height:18px;color:#94a3b8;">Si no solicitaste esta cuenta, puedes ignorar este correo.</p>
+<p style="margin-top:8px;margin-bottom:0;font-size:11px;line-height:18px;color:#3b1b78;font-weight:bold;">PALMYRA · Claro para trabajar. Potente para crecer.</p>
+</td></tr></table></td></tr></table>
+</body></html>
