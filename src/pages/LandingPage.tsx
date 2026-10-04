@@ -53,7 +53,7 @@ const palette = [
 function Brand({ compact = false }: { compact?: boolean }) {
   return (
     <img
-      src="/palmyra-logo.svg"
+      src="/palmyra-email-logo.jpg"
       alt="PALMYRA"
       className={compact ? "w-[116px] h-[30px] object-contain object-left" : "w-[236px] h-[61px] object-contain object-left"}
     />
