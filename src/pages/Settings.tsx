@@ -295,7 +295,8 @@ export default function Settings() {
     setIsSyncing(true);
     let syncRes: Awaited<ReturnType<typeof import('../services/offlineSync').processOfflineQueue>> | null = null;
     try {
-      const { processOfflineQueue, getOfflineQueueCount } = await import('../services/offlineSync');
+      const { processOfflineQueue } = await import('../services/offlineSync');
+      const { getOfflineQueueCount } = await import('../services/offlineQueue');
       const count = getOfflineQueueCount();
       if (count > 0) {
         addNotification(`Sincronizando ${count} operaciones pendientes...`, 'info');
