@@ -3260,8 +3260,15 @@ export const useStore = create<AppState>()(
           categories: mergeById(d.categories || [], state.categories || [], pendingCategoryIds).filter(x => !pendingCategoryDeleteIds.has(x.id) && (validCategoryIds.has(x.id) || pendingCategoryIds.has(x.id))),
           products: mergeById(d.products || [], state.products || [], pendingProductIds).filter(x => !pendingProductDeleteIds.has(x.id) && (validProductIds.has(x.id) || pendingProductIds.has(x.id))),
           users: mergeById(d.users || [], state.users || [], pendingUserIds),
-          currencies: d.currencies?.length
-            ? mergeById(d.currencies || [], state.currencies || [], pendingCurrencyCodes)
+          currencies: Array.isArray(d.currencies) && d.currencies.length
+            ? (() => {
+                const currencyMap = new Map<string, Currency>((state.currencies || []).map(currency => [currency.code, currency]));
+                for (const currency of d.currencies as Currency[]) currencyMap.set(currency.code, currency);
+                for (const currency of state.currencies || []) {
+                  if (pendingCurrencyCodes.has(currency.code)) currencyMap.set(currency.code, currency);
+                }
+                return Array.from(currencyMap.values());
+              })()
             : state.currencies,
           fiscalConfigs: Array.isArray(pendingStoreConfig?.fiscalConfigs)
             ? pendingStoreConfig.fiscalConfigs
