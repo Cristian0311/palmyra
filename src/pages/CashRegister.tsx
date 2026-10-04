@@ -503,7 +503,7 @@ export default function CashRegister() {
       </header>
 
       {!session ? (
-        <div className="bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-slate-100 p-4 sm:p-5 text-center w-full max-w-[min(94vw,420px)] mx-auto mt-4 sm:mt-6 animate-in zoom-in-95">
+        <div className="palmyra-mobile-modal bg-white rounded-2xl sm:rounded-3xl shadow-sm border border-slate-100 p-3 sm:p-5 text-center w-full max-w-[min(94vw,420px)] mx-auto mt-3 sm:mt-6 animate-in zoom-in-95">
           <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-slate-100">
             <Lock className="w-6 h-6 text-slate-300" />
           </div>
@@ -529,7 +529,7 @@ export default function CashRegister() {
           </div>
           
           <form onSubmit={handleOpen} className="space-y-3">
-            <div className="text-left bg-slate-50 p-4 rounded-2xl border border-slate-100">
+            <div className="text-left bg-slate-50 p-3 sm:p-4 rounded-2xl border border-slate-100">
               <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Fondo Inicial ({baseCurrency.code})</label>
               <div className="relative mb-4">
                 <span className="absolute left-0 top-1/2 -translate-y-1/2 text-base font-black text-slate-300">$</span>
@@ -546,7 +546,7 @@ export default function CashRegister() {
                 />
               </div>
 
-              <div className="space-y-2 mt-4 pt-4 border-t border-slate-200">
+              <div className="space-y-1.5 mt-3 pt-3 sm:mt-4 sm:pt-4 border-t border-slate-200">
                 <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">
                   Empleados en este turno
                 </label>
