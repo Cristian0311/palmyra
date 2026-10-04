@@ -12,6 +12,8 @@ import {
   getOfflineQueue,
   waitForOfflineQueueReady,
   getOfflineQueueCount,
+  getOfflineConflictCount,
+  removeFromOfflineQueue,
   isOfflineQueueItemRemoved,
   clearOfflineQueueRemovalMark,
   setOfflineQueueMemory,
