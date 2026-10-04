@@ -17,6 +17,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { PALMYRA_PLANS, type PlanCode } from "../config/saas";
 import { createCompanyOnboarding } from "../services/saas";
+import { registerCurrentDevice } from "../services/device";
 
 const planIcons: Record<PlanCode, typeof Sparkles> = {
   starter: Sparkles,
@@ -158,6 +159,13 @@ export default function SaaSOnboarding() {
 
       if (!result?.company_id || !result?.warehouse_id) {
         throw new Error("La empresa no devolvió los identificadores esperados.");
+      }
+
+      stage = "registro del dispositivo";
+      try {
+        await registerCurrentDevice(result.company_id, result.warehouse_id);
+      } catch (deviceError) {
+        console.warn("[PALMYRA] No se pudo registrar el dispositivo inicial:", deviceError);
       }
 
       stage = "finalización";
