@@ -85,11 +85,23 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
   const authUser = authData.user;
   if (!authUser) return null;
 
+  // Evitamos relaciones embebidas de PostgREST durante el arranque.
+  // Primero resolvemos membresía y luego empresa, rol y plan por separado.
   const [{ data: profile, error: profileError }, { data: memberships, error: membershipError }] = await Promise.all([
     supabase.from('profiles').select('full_name,phone,active_company_id').eq('id', authUser.id).maybeSingle(),
-    supabase.from('company_memberships').select('company_id,is_owner,status,companies!inner(id,name,slug,account_status,default_currency_code)').eq('user_id', authUser.id).limit(1)
+    supabase.from('company_memberships').select('company_id,is_owner,status,joined_at').eq('user_id', authUser.id).eq('status','active').order('joined_at',{ascending:true}).limit(10)
   ]);
-  if (profileError || membershipError) throw profileError || membershipError;
+  if (profileError) throw new Error(`No se pudo cargar el perfil de la cuenta: ${profileError.message}`);
+  if (membershipError) throw new Error(`No se pudo verificar la membresía de la empresa: ${membershipError.message}`);
+
+  const membershipRows: any[] = memberships || [];
+  const profileCompanyId = profile?.active_company_id || null;
+  const activeMembership = (profileCompanyId
+    ? membershipRows.find(row => row.company_id === profileCompanyId) || membershipRows[0]
+    : membershipRows[0]) || null;
+  const fallbackMembership = activeMembership || membershipRows[0] || null;
+  const companyId = activeMembership?.company_id || null;
+  const membershipStatus = activeMembership?.status || fallbackMembership?.status || null;
 
   const membershipRows: any[] = memberships || [];
   const activeMembership = membershipRows.find(row => row.status === 'active') || null;
@@ -120,44 +132,69 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     };
   }
 
-  const [{ data: company }, { data: userRole }, { data: locations }, { data: employee }, { data: subscription }, { data: permissionRows }] = await Promise.all([
+  const [
+    { data: company, error: companyError },
+    { data: userRoleRow, error: userRoleError },
+    { data: locations, error: locationsError },
+    { data: employee, error: employeeError },
+    { data: subscription, error: subscriptionError }
+  ] = await Promise.all([
     supabase.from('companies').select('id,name,slug,account_status,default_currency_code').eq('id',companyId).maybeSingle(),
-    supabase.from('user_roles').select('role_id,roles!inner(key,name)').eq('user_id',authUser.id).eq('company_id',companyId).maybeSingle(),
+    supabase.from('user_roles').select('role_id').eq('user_id',authUser.id).eq('company_id',companyId).maybeSingle(),
     supabase.from('user_locations').select('warehouse_id,is_default').eq('user_id',authUser.id).eq('company_id',companyId).order('is_default',{ascending:false}),
     supabase.from('employees').select('id,full_name,base_salary,active').eq('user_id',authUser.id).eq('company_id',companyId).maybeSingle(),
-    supabase.from('subscriptions').select('id,status,plan_id,current_period_end,trial_ends_at,plans!inner(code,name,limits,features)').eq('company_id',companyId).order('updated_at',{ascending:false}).maybeSingle(),
-    supabase.from('role_permissions').select('permissions!inner(key)').eq('role_id', (userRole as any)?.role_id || '00000000-0000-0000-0000-000000000000')
+    supabase.from('subscriptions').select('id,status,plan_id,current_period_end,trial_ends_at').eq('company_id',companyId).order('updated_at',{ascending:false}).maybeSingle()
   ]);
 
-  if (!company) {
-    throw new Error('company_context_unavailable');
+  if (companyError) throw new Error(`No se pudo cargar la empresa: ${companyError.message}`);
+  if (!company) throw new Error('La empresa de la cuenta no existe en PALMYRA.');
+  if (userRoleError) throw new Error(`No se pudo cargar el rol de acceso: ${userRoleError.message}`);
+  if (locationsError) throw new Error(`No se pudieron cargar los almacenes autorizados: ${locationsError.message}`);
+  if (employeeError) throw new Error(`No se pudo comprobar el usuario operativo: ${employeeError.message}`);
+  if (subscriptionError) throw new Error(`No se pudo comprobar la suscripción: ${subscriptionError.message}`);
+  if (!subscription) throw new Error('La empresa existe, pero todavía no tiene una suscripción configurada.');
+
+  const roleId = userRoleRow?.role_id || null;
+  let roleKey = '';
+  if (roleId) {
+    const { data: roleRow, error: roleError } = await supabase.from('roles').select('key,name').eq('id',roleId).maybeSingle();
+    if (roleError) throw new Error(`No se pudo cargar el rol: ${roleError.message}`);
+    roleKey = roleRow?.key || '';
   }
 
   const isOwner = activeMembership?.is_owner === true;
-  const roleKey = (userRole as any)?.roles?.key || (isOwner ? 'admin' : 'employee');
-  let warehouseIds = (locations || []).map((row:any) => row.warehouse_id).filter(Boolean);
+  if (!roleKey) roleKey = isOwner ? 'admin' : 'employee';
 
-  // El propietario debe poder entrar aunque la asignación de ubicación tarde
-  // en aparecer o haya quedado incompleta durante una creación/reintento.
-  // Para usuarios no propietarios NO ampliamos el alcance automáticamente.
+  let warehouseIds = (locations || []).map((row:any) => row.warehouse_id).filter(Boolean);
   if (warehouseIds.length === 0 && isOwner) {
     const { data: fallbackWarehouses, error: fallbackWarehouseError } = await supabase
-      .from('warehouses')
-      .select('id')
-      .eq('company_id', companyId)
-      .eq('active', true)
-      .order('created_at', { ascending: true })
-      .limit(1);
-    if (fallbackWarehouseError) {
-      throw fallbackWarehouseError;
-    }
-    warehouseIds = (fallbackWarehouses || []).map((row:any) => row.id).filter(Boolean);
+      .from('warehouses').select('id').eq('company_id',companyId).eq('active',true).order('created_at',{ascending:true}).limit(1);
+    if (fallbackWarehouseError) throw new Error(`No se pudieron localizar los almacenes de la empresa: ${fallbackWarehouseError.message}`);
+    warehouseIds = (fallbackWarehouses || []).map((row:any)=>row.id).filter(Boolean);
+  }
+  if (warehouseIds.length === 0) throw new Error('La cuenta no tiene un almacén autorizado para trabajar.');
+
+  const permissionIds: string[] = [];
+  if (roleId) {
+    const { data: rolePermissionRows, error: rolePermissionError } = await supabase.from('role_permissions').select('permission_id').eq('role_id',roleId);
+    if (rolePermissionError) throw new Error(`No se pudieron cargar los permisos del rol: ${rolePermissionError.message}`);
+    permissionIds.push(...(rolePermissionRows || []).map((row:any)=>row.permission_id).filter(Boolean));
+  }
+  const permissionKeys: string[] = [];
+  if (permissionIds.length) {
+    const { data: permissionRows, error: permissionsError } = await supabase.from('permissions').select('id,key').in('id',permissionIds);
+    if (permissionsError) throw new Error(`No se pudieron cargar los permisos: ${permissionsError.message}`);
+    permissionKeys.push(...(permissionRows || []).map((row:any)=>row.key).filter(Boolean));
   }
 
-  const granularPermissions = (permissionRows || []).map((row:any) => (row as any)?.permissions?.key).filter(Boolean);
+  const granularPermissions = [...new Set(permissionKeys)];
   const permissions = granularPermissions.length > 0 ? granularPermissions : (roleKey === 'admin'
-    ? ['pos.access','reports.view','inventory.manage','products.manage','customers.manage','employees.manage','suppliers.manage','settings.manage','roles.manage','cash.open']
+    ? ['pos.access','reports.view','inventory.manage','products.manage','customers.manage','employees.manage','suppliers.manage','settings.manage','roles.manage']
     : ['pos.access']);
+  if (roleKey === 'admin') {
+    if (!permissions.includes('cash.open')) permissions.push('cash.open');
+    if (!permissions.includes('cash.close')) permissions.push('cash.close');
+  }
 
   // El estado del dispositivo no debe impedir que el propietario entre al CRM.
   // El registro/activación se reintenta después desde App.tsx.

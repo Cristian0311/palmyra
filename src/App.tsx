@@ -78,12 +78,14 @@ export default function App() {
   const [accessState, setAccessState] = useState<"loading" | "signed_out" | "needs_onboarding" | "ready" | "blocked" | "recovering">("loading");
   const can = (permission: string) => currentUser?.role === "admin" || currentUser?.permissions?.includes(permission) === true;
   const pendingOnboarding = typeof sessionStorage !== "undefined" && sessionStorage.getItem("palmyra_pending_onboarding") === "1";
+  const [accessError, setAccessError] = useState("");
   const hydratePromiseRef = useRef<Promise<void> | null>(null);
 
   const hydrateAuth = async () => {
     if (hydratePromiseRef.current) return hydratePromiseRef.current;
     const run = (async () => {
       setAuthBootstrapping(true);
+      setAccessError("");
     try {
     let lastError: unknown = null;
 
@@ -179,6 +181,7 @@ export default function App() {
     const { data: userData } = supabase ? await supabase.auth.getUser() : { data: { user: null } };
     if (userData.user) {
       console.error("[PALMYRA] Contexto no disponible después de varios intentos:", lastError);
+      setAccessError(lastError instanceof Error ? lastError.message : "No se pudo verificar la empresa, el almacén o los permisos.");
       setAccessState("recovering");
       return;
     }
@@ -356,6 +359,7 @@ export default function App() {
           <img src="/palmyra-mark-exact.svg" alt="" aria-hidden="true" className="mx-auto h-12 w-12 object-contain" />
           <h1 className="mt-4 text-lg font-black text-[#3B1B6E]">Estamos preparando tu espacio</h1>
           <p className="mt-2 text-xs leading-5 text-slate-500">Tu sesión sigue activa. PALMYRA está verificando empresa, almacén y permisos antes de abrir el sistema.</p>
+          {accessError ? <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-[10px] font-semibold leading-4 text-amber-700">{accessError}</p> : null}
           <button type="button" onClick={() => void hydrateAuth()} className="mt-5 h-10 rounded-xl bg-[#6535C5] px-5 text-[10px] font-black text-white">Reintentar</button>
         </div>
       </div>
