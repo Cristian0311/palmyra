@@ -2284,10 +2284,10 @@ export default function POS() {
 
               ) : (
                 /* Modal Formulario de Apertura de Caja */
-                <div className="bg-white p-3 sm:p-4 rounded-2xl sm:rounded-[1.5rem] shadow-2xl text-center w-full max-w-[min(94vw,31rem)] max-h-[92dvh] overflow-y-auto animate-in zoom-in-95 border border-white/20 my-auto">
+                <div className="palmyra-mobile-modal palmyra-open-cash-modal p-2.5 sm:p-3 rounded-2xl shadow-2xl text-center w-full max-w-[min(92vw,24rem)] max-h-[calc(100dvh-1rem)] overflow-y-auto animate-in zoom-in-95 my-auto">
                   <div className="flex items-center justify-center gap-2 mb-1.5">
-                    <div className="w-8 h-8 sm:w-9 sm:h-9 bg-indigo-50 rounded-xl flex items-center justify-center shrink-0">
-                      <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-indigo-600" />
+                    <div className="w-8 h-8 sm:w-9 sm:h-9 bg-violet-50 rounded-xl flex items-center justify-center shrink-0">
+                      <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-violet-600" />
                     </div>
                     <div className="min-w-0 text-left">
                       <h3 className="text-base sm:text-lg font-black text-slate-900 uppercase tracking-tight leading-none">Apertura de Caja</h3>
@@ -2544,7 +2544,7 @@ export default function POS() {
                           <button 
                             type="submit"
                             disabled={isOpeningSession}
-                            className="w-full py-3 sm:py-3.5 bg-indigo-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                            className="w-full py-2.5 sm:py-3 bg-violet-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-violet-700 transition-all shadow-lg shadow-violet-600/20 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
                           >
                             {isOpeningSession ? "Abriendo Caja..." : "Abrir Caja y Comenzar"}
                           </button>
