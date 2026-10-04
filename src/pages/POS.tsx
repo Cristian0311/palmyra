@@ -2694,7 +2694,7 @@ export default function POS() {
       {/* Cash Management Modal */}
       {showCashManagementModal && currentSession && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 border border-white/20 flex flex-col max-h-[90vh]">
+          <div className="palmyra-mobile-modal bg-white rounded-2xl sm:rounded-[2rem] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 border border-white/20 flex flex-col max-h-[calc(100dvh-1rem)]">
             <div className="p-4 border-b border-slate-50 flex items-center justify-between bg-slate-900 text-white shrink-0">
               <div className="flex items-center gap-2">
                 <Receipt className="w-4 h-4 text-indigo-400" />
@@ -3496,7 +3496,7 @@ export default function POS() {
       {/* Discrepancy Modal */}
       {showDiscrepancyModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 border border-rose-100 flex flex-col max-h-[90vh]">
+          <div className="palmyra-mobile-modal bg-white rounded-2xl sm:rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 border border-rose-100 flex flex-col max-h-[calc(100dvh-1rem)]">
             <div className="p-6 text-center space-y-4 shrink-0 border-b border-slate-100 bg-rose-50/30">
               <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
                 <AlertCircle className="w-8 h-8" />
@@ -3580,7 +3580,7 @@ export default function POS() {
       {/* Modal para Configurar Producto */}
       {showConfigModal && (
         <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
+          <div className="palmyra-mobile-modal bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
             <div className="p-6">
               <h3 className="text-xl font-bold text-slate-900 mb-2">Configurar Producto</h3>
               <p className="text-slate-500 mb-6">Completa los detalles para <span className="font-semibold text-slate-800">{selectedProduct?.name}</span>.</p>
@@ -4154,7 +4154,7 @@ export default function POS() {
 
       {showAddCustomerModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-xs overflow-hidden animate-in zoom-in-95 border border-white/20">
+          <div className="palmyra-mobile-modal bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden animate-in zoom-in-95 border border-white/20">
             <div className="p-6 space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">Nuevo Cliente</h3>
