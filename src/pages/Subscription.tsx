@@ -1,5 +1,5 @@
 import React,{useEffect,useState} from "react";
-import {CheckCircle2,Clock3,CreditCard,RefreshCw,ShieldCheck,WalletCards,Globe2,Landmark,Caravan,Castle,Sparkles} from "lucide-react";
+import {CheckCircle2,Clock3,CreditCard,RefreshCw,ShieldCheck,WalletCards,Globe2,Landmark} from "lucide-react";
 import {loadSubscriptionOverview,selectSubscriptionPlan,type SubscriptionPlan} from "../services/subscription";
 import {useStore} from "../store/useStore";
 import {cn} from "../lib/utils";
