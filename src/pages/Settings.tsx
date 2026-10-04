@@ -396,6 +396,7 @@ export default function Settings() {
 
         {/* Linear Tabs for Sections */}
         <div className="flex items-center gap-1 bg-secondary p-1 rounded-xl border border-base shrink-0 w-full overflow-x-auto custom-scrollbar shadow-xs scroll-smooth">
+          {/* Las acciones críticas de backup, restauración, caché y borrado global están aisladas en Avanzado. */
           {[
             { id: 'connectivity', label: 'Conexión', icon: Wifi },
             { id: 'company', label: 'Empresa', icon: Store },
@@ -1127,7 +1128,7 @@ export default function Settings() {
               <Save size={20} />
             </div>
             <div>
-              <h3 className="text-xs font-black text-primary uppercase tracking-wider">Copia de Seguridad Offline</h3>
+              <h3 className="text-xs font-black text-primary uppercase tracking-wider">Avanzado · Copias y Restauración</h3>
               <p className="text-[9px] font-bold text-muted uppercase tracking-tight">Descarga tus datos en un archivo JSON para restaurarlos manualmente cuando quieras</p>
             </div>
           </div>
@@ -1557,7 +1558,7 @@ export default function Settings() {
             <AlertTriangle size={16} />
           </div>
           <div>
-            <h3 className="text-xs font-black text-red-600 dark:text-red-400 uppercase tracking-wider">Zona Peligrosa</h3>
+            <h3 className="text-xs font-black text-red-600 dark:text-red-400 uppercase tracking-wider">Avanzado · Zona Peligrosa</h3>
             <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Acciones críticas e irreversibles</p>
           </div>
         </div>
