@@ -133,93 +133,17 @@ async function refreshTransferBranchesCanonical(
 ): Promise<void> {
   const ids = Array.from(new Set(branchIds.filter(Boolean)));
   if (!ids.length) return;
-  const { data, error } = await supabase
-    .from('inventory')
-    .select('*')
-    .in('branch_id', ids);
-  if (error) throw error;
-
-  const freshByKey = new Map<string, any>();
-  for (const row of data || []) {
-    freshByKey.set(
-      `${row.product_id}:${row.branch_id}:${row.variant_label || ''}`,
-      {
-        id: row.id,
-        productId: row.product_id,
-        branchId: row.branch_id,
-        variantLabel: row.variant_label || undefined,
-        quantity: Number(row.quantity) || 0,
-        minQuantity: Number(row.min_quantity) || 0
-      }
-    );
-  }
-
-  // No perder el espejo optimista de otras operaciones que siguen en
-  // la cola para estas mismas sucursales. El movimiento que acabamos de
-  // confirmar ya no estará en la cola; solo conservamos operaciones aún
-  // pendientes.
-  const pendingKeys = new Set<string>();
-  for (const queued of getOfflineQueue()) {
-    const d = queued.data || {};
-    if (queued.type === 'transaction') {
-      const branchId = d.branchId;
-      for (const saleItem of Array.isArray(d.items) ? d.items : []) {
-        const productId = typeof saleItem?.product === 'string' ? saleItem.product : saleItem?.product?.id;
-        if (!productId || !ids.includes(branchId)) continue;
-        pendingKeys.add(`${productId}:${branchId}:${saleItem?.variantLabel || saleItem?.variant_label || ''}`);
-      }
-    } else if (queued.type === 'transfer') {
-      const productId = d.productId;
-      for (const v of Array.isArray(d.variants) ? d.variants : []) {
-        const label = v?.variantLabel ?? v?.variant_label ?? '';
-        if (!productId) continue;
-        if (ids.includes(d.fromBranchId)) pendingKeys.add(`${productId}:${d.fromBranchId}:${label}`);
-        if (ids.includes(d.toBranchId)) pendingKeys.add(`${productId}:${d.toBranchId}:${label}`);
-      }
-    } else if (queued.type === 'transfer_bulk') {
-      for (const op of Array.isArray(d.items) ? d.items : []) {
-        for (const v of Array.isArray(op?.variants) ? op.variants : []) {
-          const label = v?.variantLabel ?? v?.variant_label ?? '';
-          if (!op?.productId) continue;
-          if (ids.includes(d.fromBranchId)) pendingKeys.add(`${op.productId}:${d.fromBranchId}:${label}`);
-          if (ids.includes(d.toBranchId)) pendingKeys.add(`${op.productId}:${d.toBranchId}:${label}`);
-        }
-      }
-    } else if (queued.type === 'supplier_receive') {
-      const order = (useStore.getState().supplierOrders || []).find(o => o.id === d.id);
-      if (order && ids.includes(order.branchId)) {
-        for (const line of Array.isArray(order.items) ? order.items : []) {
-          pendingKeys.add(`${line.productId}:${order.branchId}:${line.variantLabel || ''}`);
-        }
-      }
-    } else if (queued.type === 'inventory_adjustment' || queued.type === 'inventory_reconcile') {
-      if (ids.includes(d.branchId) && d.productId) {
-        pendingKeys.add(`${d.productId}:${d.branchId}:${d.variantLabel || ''}`);
-      }
-    }
-  }
-
-  useStore.setState(state => {
-    const existing = (state.inventory || []).filter(row => !ids.includes(row.branchId));
-    const freshByKeyWithPendingOverlay = new Map(freshByKey);
-    for (const localRow of state.inventory || []) {
-      const key = `${localRow.productId}:${localRow.branchId}:${localRow.variantLabel || ''}`;
-      if (pendingKeys.has(key)) {
-        freshByKeyWithPendingOverlay.set(key, localRow);
-      }
-    }
-    return {
-      inventory: [...existing, ...Array.from(freshByKeyWithPendingOverlay.values())]
-    };
-  });
+  const results = await Promise.all(ids.map((id) => pullBranchInventoryFromSupabase(id)));
+  const failed = results.find((r) => !r.success);
+  if (failed) throw new Error(failed.message || 'No se pudo actualizar el inventario de los almacenes.');
+  const canonical = results.flatMap((r) => r.inventory || []);
+  useStore.setState((state) => ({
+    inventory: [
+      ...(state.inventory || []).filter((item) => !ids.includes(item.branchId)),
+      ...canonical
+    ]
+  }));
 }
-
-let isProcessingQueue = false;
-
-class PermanentSyncError extends Error {
-  permanent = true;
-}
-
 async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<boolean> {
   const { type, data } = item;
   switch (type) {
@@ -234,26 +158,34 @@ async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<
         // comisiones desde las ventas que realmente existen en Supabase para
         // que una venta rechazada no termine dentro de la liquidación salarial.
         const { data: persistedSales, error: salesError } = await supabase
-          .from('transactions')
-          .select('id,status,deleted_at,items')
-          .eq('session_id', session.id);
+          .from('sales')
+          .select('id,status')
+          .eq('cash_session_id', session.id);
         if (salesError) throw salesError;
 
+        const completedSaleIds = (persistedSales || [])
+          .filter((sale: any) => sale.status === 'completed')
+          .map((sale: any) => sale.id);
+
         let commissions = 0;
-        for (const sale of persistedSales || []) {
-          if (sale.status !== 'completed' || sale.deleted_at) continue;
-          const items = Array.isArray(sale.items) ? sale.items : [];
-          for (const item of items) {
-            const product = item?.product;
-            const commissionValue = Number(
-              product?.commissionValue ??
-              product?.commission_value ??
-              item?.commissionValue ??
-              item?.commission_value ??
-              0
-            ) || 0;
-            commissions += commissionValue * (Number(item?.quantity) || 0);
+        if (completedSaleIds.length) {
+          const [itemsRes, productsRes] = await Promise.all([
+            supabase.from('sale_items').select('product_id,quantity,line_total').in('sale_id', completedSaleIds),
+            supabase.from('products').select('id,commission_fixed,commission_percent').eq('company_id', session.companyId || (await getActiveTenant()).companyId)
+          ]);
+          if (itemsRes.error) throw itemsRes.error;
+          if (productsRes.error) throw productsRes.error;
+          const productMap = new Map<string, any>((productsRes.data || []).map((p: any) => [p.id, p]));
+          for (const saleItem of itemsRes.data || []) {
+            const product = productMap.get(saleItem.product_id);
+            if (!product) continue;
+            const quantity = Number(saleItem.quantity) || 0;
+            const lineTotal = Number(saleItem.line_total) || 0;
+            const fixed = Number(product.commission_fixed) || 0;
+            const percent = Number(product.commission_percent) || 0;
+            commissions += (fixed * quantity) + (lineTotal * percent / 100);
           }
+        }
         }
 
         const discrepancyDeduction = Number(settlement.discrepancyDeduction) || 0;
@@ -646,213 +578,35 @@ async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<
       }
 
       const { data: persistedReturn, error: returnReadError } = await supabase
-        .from('returns')
-        .select('id,status,branch_id')
+        .from('sales_returns')
+        .select('id,status,sale_id')
         .eq('id', data.id)
         .maybeSingle();
       if (returnReadError) throw returnReadError;
       if (!persistedReturn || persistedReturn.status !== 'completed') {
         throw new Error('Supabase no confirmó la devolución como completada');
       }
-      if (persistedReturn.branch_id) {
-        const inventoryRes = await pullBranchInventoryFromSupabase(persistedReturn.branch_id);
-        if (!inventoryRes.success) throw new Error(inventoryRes.message || 'No se pudo reconciliar el inventario de la devolución');
-        useStore.setState(state => ({
-          inventory: [
-            ...(state.inventory || []).filter(item => item.branchId !== persistedReturn.branch_id),
-            ...inventoryRes.inventory
-          ]
-        }));
-      }
-      return true;
-    }
-    case 'transfer_bulk': {
-      const d = data || {};
-      const res = await callTransferInventoryBulkRPC({
-        batchId: d.batchId,
-        fromBranchId: d.fromBranchId,
-        toBranchId: d.toBranchId,
-        items: Array.isArray(d.items) ? d.items : [],
-        userId: d.userId
-      });
-      if (!res.success) {
-        const code = String(res.errorCode || '');
-        if (['P0001','23503','23505','42501','22003','22P02','IDEMPOTENCY_CONFLICT'].includes(code)) {
-          try {
-            await refreshTransferBranchesCanonical(supabase, [d.fromBranchId, d.toBranchId]);
-          } catch (refreshError) {
-            console.warn('[transfer_bulk] No se pudo refrescar origen/destino tras conflicto permanente:', refreshError);
-          }
-          throw new PermanentSyncError(res.error || 'No se pudo sincronizar el traslado múltiple');
-        }
-        throw new Error(res.error || 'No se pudo sincronizar el traslado múltiple');
-      }
-      await refreshTransferBranchesCanonical(supabase, [d.fromBranchId, d.toBranchId]);
-      useStore.setState(state => ({
-        transfers: (state.transfers || []).map(t => {
-          const op = d.items?.find((x:any) => x.operationId === (t.operationId || t.id));
-          return op ? { ...t, status: 'completed' as const, batchId: d.batchId } : t;
-        })
-      }));
-      return true;
-    }
-    case 'transfer': {
-      const res = await callTransferInventoryRPC(data);
-      if (!res.success) {
-        // Un traslado que falla por reglas de negocio/stock es un conflicto
-        // permanente para esa operación concreta. Antes de marcarlo como
-        // conflicto, refrescamos origen y destino para quitar el stock
-        // optimista local y mostrar el estado canónico.
-        const code = String(res.errorCode || '');
-        if (['P0001', '23503', '23505', '22003', '22P02'].includes(code)) {
-          try {
-            await refreshTransferBranchesCanonical(supabase, [data.fromBranchId, data.toBranchId]);
-          } catch (refreshError) {
-            console.warn('[transfer] No se pudo refrescar origen/destino tras conflicto:', refreshError);
-          }
+      if (persistedReturn.sale_id) {
+        const { data: saleRow, error: saleReadError } = await supabase
+          .from('sales')
+          .select('warehouse_id')
+          .eq('id', persistedReturn.sale_id)
+          .maybeSingle();
+        if (saleReadError) throw saleReadError;
+        if (saleRow?.warehouse_id) {
+          const inventoryRes = await pullBranchInventoryFromSupabase(saleRow.warehouse_id);
+          if (!inventoryRes.success) throw new Error(inventoryRes.message || 'No se pudo reconciliar el inventario de la devolución');
           useStore.setState(state => ({
-            transfers: (state.transfers || []).map(t =>
-              (t.id === data.operationId || t.operationId === data.operationId)
-                ? { ...t, status: 'cancelled' as const }
-                : t
-            )
+            inventory: [
+              ...(state.inventory || []).filter(item => item.branchId !== saleRow.warehouse_id),
+              ...(inventoryRes.inventory || [])
+            ]
           }));
-          throw new PermanentSyncError(res.error || 'Transferencia rechazada por Supabase');
         }
-        throw new Error(res.error || 'No se pudo sincronizar la transferencia');
-      }
-
-      // La RPC debe confirmarse tanto a nivel de respuesta como de
-      // persistencia de la operación. Así nunca retiramos de IndexedDB una
-      // transferencia que haya quedado solo parcialmente confirmada.
-      const { data: persistedTransfer, error: verifyError } = await supabase
-        .from('inventory_transfers')
-        .select('id,operation_id,status,product_id,from_branch_id,to_branch_id,quantity,variants')
-        .eq('operation_id', data.operationId)
-        .maybeSingle();
-      if (verifyError) throw verifyError;
-      if (!persistedTransfer) {
-        throw new Error('Supabase no confirmó la transferencia en inventory_transfers.');
-      }
-
-      await refreshTransferBranchesCanonical(supabase, [data.fromBranchId, data.toBranchId]);
-
-      useStore.setState(state => ({
-        transfers: (state.transfers || []).map(t =>
-          (t.id === data.operationId || t.operationId === data.operationId)
-            ? { ...t, status: 'completed' as const }
-            : t
-        )
-      }));
-      return true;
-    }
-    case 'bank_internal_transfer': {
-      const res = await callBankInternalTransferRPC(data);
-      if (!res.success) {
-        const code = String(res.errorCode || '');
-        if (['P0001','23503','23505','42501','22003','22P02'].includes(code)) {
-          await reconcileBankCanonical();
-          throw new PermanentSyncError(res.error || 'No se pudo sincronizar la transferencia bancaria');
-        }
-        throw new Error(res.error || 'No se pudo sincronizar la transferencia bancaria');
       }
       return true;
     }
-    case 'bank_internal_transfer_delete': {
-      const res = await callDeleteBankInternalTransferRPC(data.operationId);
-      if (!res.success) {
-        const code = String(res.errorCode || '');
-        if (['P0001','23503','23505','42501','22003','22P02'].includes(code)) {
-          await reconcileBankCanonical();
-          throw new PermanentSyncError(res.error || 'No se pudo revertir la transferencia bancaria');
-        }
-        throw new Error(res.error || 'No se pudo revertir la transferencia bancaria');
-      }
-      return true;
-    }
-    case 'bank_transaction_delete': {
-      const res = await callDeleteBankTransactionRPC(data.id);
-      if (!res.success) {
-        const code = String(res.errorCode || '');
-        if (['P0001','23503','23505','42501','22003','22P02'].includes(code)) {
-          await reconcileBankCanonical();
-          throw new PermanentSyncError(res.error || 'No se pudo eliminar el movimiento bancario');
-        }
-        throw new Error(res.error || 'No se pudo eliminar el movimiento bancario');
-      }
-      return true;
-    }
-    case 'bank_card_delete': {
-      const res = await callDeleteBankCardRPC(data.id);
-      if (!res.success) {
-        const code = String(res.errorCode || '');
-        if (['P0001','23503','23505','42501','22003','22P02'].includes(code)) {
-          await reconcileBankCanonical();
-          throw new PermanentSyncError(res.error || 'No se pudo eliminar la cuenta bancaria');
-        }
-        throw new Error(res.error || 'No se pudo eliminar la cuenta bancaria');
-      }
-      return true;
-    }
-    case 'supplier_receive': {
-      if (!data.userId) throw new PermanentSyncError('La recepción de mercancía no tiene un trabajador válido asociado.');
-      const res = await callReceiveSupplierOrderRPC(data.id, data.userId);
-      if (!res.success) {
-        const code = String(res.errorCode || '');
-        if (['P0001','23503','23505','42501','22003','22P02','IDEMPOTENCY_CONFLICT'].includes(code)) {
-          await reconcileSupplierReceiveCanonical(supabase, data.id);
-          throw new PermanentSyncError(res.error || 'No se pudo recibir la orden');
-        }
-        throw new Error(res.error || 'No se pudo recibir la orden');
-      }
-      await reconcileSupplierReceiveCanonical(supabase, data.id);
-      return true;
-    }
-    case 'audit_complete': { const res = await callSaveInventoryAuditCountRPC(data.id, data.userId, data.items || [], data.notes); if (!res.success) throw new Error(res.error || 'No se pudo guardar el conteo'); return true; }
-    case 'inventory': {
-      const ok = await pushInventoryToSupabase(data as any);
-      if (!ok) throw new Error('No se pudo sincronizar el nivel de inventario pendiente.');
-      return true;
-    }
-    case 'inventory_adjustment': {
-      const result = await applyInventoryAdjustmentToSupabase({
-        operationId: item.actionId,
-        productId: data.productId,
-        branchId: data.branchId,
-        variantLabel: data.variantLabel || '',
-        delta: Number(data.delta) || 0,
-        minQuantity: Number(data.minQuantity) || 0,
-        userId: data.userId || null,
-        movementType: data.movementType || 'ADJUSTMENT'
-      });
-      if (!result.success) {
-        if (result.conflict) throw new PermanentSyncError(result.error || 'Conflicto de inventario durante la sincronización.');
-        throw new Error(result.error || 'No se pudo sincronizar el ajuste de inventario.');
-      }
-      return true;
-    }
-    case 'inventory_reconcile': {
-      const result = await reconcileInventoryToSupabase({
-        operationId: item.actionId,
-        productId: data.productId,
-        branchId: data.branchId,
-        variantLabel: data.variantLabel || '',
-        expectedQuantity: Number(data.expectedQuantity),
-        newQuantity: Number(data.quantity) || 0,
-        minQuantity: Number(data.minQuantity) || 0,
-        userId: data.userId || null
-      });
-      if (!result.success) {
-        if (result.conflict) throw new PermanentSyncError(result.error || 'Conflicto de inventario durante la reconciliación.');
-        throw new Error(result.error || 'No se pudo reconciliar el inventario.');
-      }
-      return true;
-    }
-    case 'return': {
-      const ok = await pushReturnToSupabase(data as any);
-      if (!ok) throw new Error('No se pudo sincronizar la devolución pendiente.');
-      return true;
-    }
+    case 'receipt_config': {
     case 'receipt_config': { const { error } = await supabase.from('settings').upsert({ id: 'global', receipt_config: data }); if (error) throw error; return true; }
     case 'store_config': {
       const { data: current, error: readError } = await supabase
