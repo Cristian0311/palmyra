@@ -837,7 +837,13 @@ export const useStore = create<AppState>()(
   products: INITIAL_PRODUCTS,
   inventory: INITIAL_INVENTORY,
   addProduct: (product, initialQuantity, branchId, variantLabel, initialVariantQuantities) => {
-    const targetBranch = branchId || get().currentBranchId;
+    const state = get();
+    const targetBranch = branchId || state.currentBranchId;
+    const warehouseAvailable = Boolean(targetBranch) && (state.branches || []).some(b => b.id === targetBranch && (b.isActive !== false));
+    if (!warehouseAvailable) {
+      get().addNotification("No se puede crear el producto sin un almacén activo.", "error", "Primero crea o selecciona un almacén y luego registra el producto.");
+      return;
+    }
     let newInventoryEntries: InventoryLevel[] = [];
     
     if (initialVariantQuantities && Object.keys(initialVariantQuantities).length > 0) {
@@ -1799,25 +1805,47 @@ export const useStore = create<AppState>()(
   },
 
   customers: [],
-  addCustomer: (customer) => {
+  addCustomer: async (customer) => {
+    let added = false;
     set((state) => {
       // Deduplicación por ID, Teléfono o Correo
-      const isDuplicate = (state.customers || []).some(c => 
-        c.id === customer.id || 
+      const isDuplicate = (state.customers || []).some(c =>
+        c.id === customer.id ||
         (c.phone && customer.phone && c.phone === customer.phone) ||
         (c.email && customer.email && c.email.toLowerCase().trim() === customer.email.toLowerCase().trim())
       );
       if (isDuplicate) return state;
+      added = true;
       return { customers: [...(state.customers || []), customer] };
     });
-    pushCustomerToSupabase(customer).catch(() => {});
+    if (!added) return false;
+
+    const result = await pushCustomerToSupabase(customer);
+    if (!result.success && !result.pending) {
+      set((state) => ({ customers: state.customers.filter(c => c.id !== customer.id) }));
+      get().addNotification("No se pudo guardar el cliente.", "error", result.error || "Supabase rechazó la operación.");
+      return false;
+    }
+    return true;
   },
-  updateCustomer: (id, customer) => {
+  updateCustomer: async (id, customer) => {
+    const previous = get().customers.find(c => c.id === id);
+    const updated = previous ? { ...previous, ...customer } : undefined;
+    if (!updated) return false;
+
     set((state) => ({
-      customers: state.customers.map(c => c.id === id ? { ...c, ...customer } : c)
+      customers: state.customers.map(c => c.id === id ? updated : c)
     }));
-    const updated = get().customers.find(c => c.id === id);
-    if (updated) pushCustomerToSupabase(updated).catch(() => {});
+
+    const result = await pushCustomerToSupabase(updated);
+    if (!result.success && !result.pending) {
+      if (previous) {
+        set((state) => ({ customers: state.customers.map(c => c.id === id ? previous : c) }));
+      }
+      get().addNotification("No se pudo actualizar el cliente.", "error", result.error || "Supabase rechazó la operación.");
+      return false;
+    }
+    return true;
   },
   deleteCustomer: (id) => {
     set((state) => ({
