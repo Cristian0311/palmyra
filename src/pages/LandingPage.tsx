@@ -24,7 +24,7 @@ const modules = [
   { id: "reports", label: "Reportes", icon: LineChart, title: "Decisiones con información real.", text: "Indicadores comerciales y operativos para saber dónde estás y qué mejorar.", stats: [["Ventas", "$ 84K"], ["Margen", "28.4%"], ["Ticket", "$ 32.80"], ["Stock", "$ 124K"]] },
   { id: "team", label: "Equipo", icon: UserRound, title: "Personas, roles y permisos claros.", text: "Cada trabajador tiene su propia cuenta y ve solo lo que necesita.", stats: [["Empleados", "8"], ["Accesos", "6"], ["Roles", "5"], ["Invitaciones", "2"]] },
   { id: "cash", label: "Caja", icon: WalletCards, title: "Turnos y efectivo bajo control.", text: "Apertura, movimientos, cierres y descuadres con trazabilidad.", stats: [["Caja", "$ 8,420"], ["Turno", "04"], ["Descuadre", "$ 0.00"], ["Cierres", "18"]] },
-  { id: "settings", label: "Configuración", icon: Settings2, title: "Todo en su lugar.", text: "Empresa, almacenes, equipo, POS, seguridad, monedas y plan.", stats: [["Empresa", "Activa"], ["Almacenes", "3"], ["POS", "2"], ["Plan", "Growth"]] }
+  { id: "settings", label: "Configuración", icon: Settings2, title: "Todo en su lugar.", text: "Empresa, almacenes, equipo, POS, seguridad, monedas y plan.", stats: [["Empresa", "Activa"], ["Almacenes", "3"], ["POS", "2"], ["Plan", "Caravana"]] }
 ];
 
 const plans = [
