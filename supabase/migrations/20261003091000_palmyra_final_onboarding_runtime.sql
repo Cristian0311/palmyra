@@ -52,7 +52,7 @@ begin
     if v_employee_role_id is null then raise exception 'employee_role_not_found'; end if;
   end if;
 
-  if nullif(trim(coalesce(p_employee_name,''))) is not null then
+  if nullif(trim(coalesce(p_employee_name,'')),'') is not null then
     select (public.create_employee_secure(
       v_company_id,coalesce(nullif(trim(p_employee_code),''),'EMP-001'),
       trim(p_employee_name),0,v_employee_role_id,array[v_warehouse_id]::uuid[]
