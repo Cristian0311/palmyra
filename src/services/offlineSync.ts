@@ -144,6 +144,12 @@ async function refreshTransferBranchesCanonical(
     ]
   }));
 }
+let isProcessingQueue = false;
+
+class PermanentSyncError extends Error {
+  permanent = true;
+}
+
 async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<boolean> {
   const { type, data } = item;
   switch (type) {
