@@ -210,7 +210,7 @@ body {
     z-index: 2;
   }
 
-  .field-input:focus + .field-icon {
+  .relative:focus-within .field-icon {
     color: #7C4DDE;
   }
   .field-input::placeholder { color: #AAA0B8; font-weight: 600; }
