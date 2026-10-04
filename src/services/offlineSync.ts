@@ -171,7 +171,7 @@ async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<
         if (completedSaleIds.length) {
           const [itemsRes, productsRes] = await Promise.all([
             supabase.from('sale_items').select('product_id,quantity,line_total').in('sale_id', completedSaleIds),
-            supabase.from('products').select('id,commission_fixed,commission_percent').eq('company_id', session.companyId || (await getActiveTenant()).companyId)
+            supabase.from('products').select('id,commission_fixed,commission_percent').eq('company_id', (await getActiveTenant()).companyId)
           ]);
           if (itemsRes.error) throw itemsRes.error;
           if (productsRes.error) throw productsRes.error;
@@ -185,7 +185,6 @@ async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<
             const percent = Number(product.commission_percent) || 0;
             commissions += (fixed * quantity) + (lineTotal * percent / 100);
           }
-        }
         }
 
         const discrepancyDeduction = Number(settlement.discrepancyDeduction) || 0;
@@ -232,7 +231,7 @@ async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<
       // reconciliamos metadatos de una sesión ya existente.
       const { data: remoteSession, error: remoteReadError } = await supabase
         .from('cash_sessions')
-        .select('id,status,closed_at,deleted_at,deleted_by,delete_reason,branch_id,user_id')
+        .select('id,status,closed_at,deleted_at,deleted_by,delete_reason')
         .eq('id', session.id)
         .maybeSingle();
       if (remoteReadError) throw remoteReadError;
