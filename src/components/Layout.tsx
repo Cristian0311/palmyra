@@ -454,7 +454,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
 
           {!sidebarCollapsed && (() => {
-            const planEndsAt = saasContext?.subscription?.trialEndsAt || saasContext?.subscription?.currentPeriodEnd || null;
+            const planTarget = saasContext?.subscription?.status === "trialing"
+              ? saasContext?.subscription?.trialEndsAt
+              : saasContext?.subscription?.currentPeriodEnd;
+            const planEndsAt = planTarget || saasContext?.subscription?.trialEndsAt || saasContext?.subscription?.currentPeriodEnd || null;
             const countdown = getPlanCountdown(planEndsAt, countdownNow);
             if (!countdown) return null;
             const units = [
