@@ -497,7 +497,7 @@ export const useStore = create<AppState>()(
     // Forzar la escritura diferida antes de devolver el control. Esto evita
     // que una recarga inmediata restaure el snapshot anterior desde IndexedDB.
     try { await flushLocalStateStorage(); } catch {}
-    return remote;
+    return;
   },
   clearReportsHistory: async () => {
     // Primero se confirma la limpieza remota. Nunca debemos vaciar el estado
@@ -3226,7 +3226,7 @@ export const useStore = create<AppState>()(
     try {
       const res = await pullGlobalCatalogDataFromSupabase();
       if (!res.success || !res.data) return false;
-      const d = res.data;
+      const d: any = res.data;
       set((state) => {
         const queue = getOfflineQueue();
         const mergeById = <T extends { id: string }>(
