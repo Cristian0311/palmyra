@@ -12,6 +12,15 @@ import {
 
 type Mode = "signin" | "signup" | "reset" | "recovery";
 
+const PRODUCTION_APP_URL = "https://palmyracrm.onrender.com";
+
+function getAuthAppUrl() {
+  const host = window.location.hostname;
+  return host === "localhost" || host === "127.0.0.1" || host === "[::1]"
+    ? window.location.origin
+    : PRODUCTION_APP_URL;
+}
+
 function messageFor(error: any) {
   const raw = String(error?.message || error?.error_description || "");
   if (/invalid login credentials/i.test(raw)) return "El correo o la contraseña no son correctos.";
@@ -130,7 +139,7 @@ export default function SaaSAuth() {
       <div className="w-full max-w-4xl">
         <div className="flex items-center justify-between mb-3 px-1">
           <button onClick={() => navigate("/landing")} className="flex items-center gap-2.5">
-            <img src="/palmyra-logo.svg" alt="PALMYRA" className="w-[170px] h-10 object-contain object-left" />
+            <img src="/palmyra-logo.svg" alt="PALMYRA" className="w-[194px] h-12 object-contain object-left" />
           </button>
           <button onClick={() => navigate("/landing")} className="text-[9px] font-black uppercase tracking-wider text-slate-400 hover:text-[#6535C5]">Volver al inicio</button>
         </div>
@@ -176,15 +185,15 @@ export default function SaaSAuth() {
                 <label className="block">
                   <span className="form-label">Nombre completo</span>
                   <div className="relative">
-                    <Users className="icon"/>
-                    <input className="field-input field-input pl-10 h-11" value={name} onChange={e=>setName(e.target.value)} disabled={busy} autoComplete="name" placeholder="Tu nombre"/>
+                    <Users className="field-icon" />
+                    <input className="field-input pl-10 h-11" value={name} onChange={e=>setName(e.target.value)} disabled={busy} autoComplete="name" placeholder="Tu nombre"/>
                   </div>
                 </label>
               ) : null}
 
               {mode !== "recovery" ? (
                 <label className="block">
-                  <span className="label">Correo</span>
+                  <span className="form-label">Correo</span>
                   <div className="relative">
                     <Mail className="icon"/>
                     <input type="email" className="field-input field-input pl-10 h-11" value={email} onChange={e=>setEmail(e.target.value)} disabled={busy} autoComplete="email" placeholder="nombre@empresa.com"/>
@@ -198,7 +207,7 @@ export default function SaaSAuth() {
                   <LockKeyhole className="icon"/>
                   <input
                     type={showPassword ? "text" : "password"}
-                    className="field-input field-input pl-10 pr-10 h-11"
+                    className="field-input pl-10 pr-10 h-11"
                     value={password}
                     onChange={e=>setPassword(e.target.value)}
                     disabled={busy}
@@ -213,7 +222,7 @@ export default function SaaSAuth() {
 
               {mode === "recovery" ? (
                 <label className="block">
-                  <span className="label">Confirmar contraseña</span>
+                  <span className="form-label">Confirmar contraseña</span>
                   <div className="relative">
                     <LockKeyhole className="icon"/>
                     <input
