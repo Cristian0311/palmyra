@@ -6,6 +6,10 @@ function isFormControl(element: Element | null): element is HTMLElement {
   return element instanceof HTMLElement && element.matches(FORM_CONTROL_SELECTOR);
 }
 
+function isNativeKeyboardViewport(element: Element | null) {
+  return element instanceof HTMLElement && Boolean(element.closest('[data-keyboard-viewport="native"]'));
+}
+
 function isScrollable(element: HTMLElement): boolean {
   const style = window.getComputedStyle(element);
   return /(auto|scroll|overlay)/.test(style.overflowY) && element.scrollHeight > element.clientHeight + 2;
