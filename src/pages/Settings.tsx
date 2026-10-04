@@ -396,7 +396,7 @@ export default function Settings() {
 
         {/* Linear Tabs for Sections */}
         <div className="flex items-center gap-1 bg-secondary p-1 rounded-xl border border-base shrink-0 w-full overflow-x-auto custom-scrollbar shadow-xs scroll-smooth">
-          {/* Las acciones críticas de backup, restauración, caché y borrado global están aisladas en Avanzado. */
+          {/* Las acciones críticas de backup, restauración, caché y borrado global están aisladas en Avanzado. */}
           {[
             { id: 'connectivity', label: 'Conexión', icon: Wifi },
             { id: 'company', label: 'Empresa', icon: Store },
