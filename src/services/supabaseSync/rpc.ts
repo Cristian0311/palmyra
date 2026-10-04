@@ -2,7 +2,7 @@ import { getSupabase } from '../../lib/supabase';
 import { getActiveTenant, getEmployeeForIdentity } from '../tenant';
 import type { CashRegisterSession, Transaction, SalarySettlement, InventoryTransfer } from '../../types';
 
-export type RpcFailure = { success: false; error: string; errorCode?: string; data?: never };
+export type RpcFailure = { success: false; error: string; errorCode?: string; data?: any };
 export type RpcSuccess<T = any> = { success: true; data: T; error?: string; errorCode?: string };
 export type RpcResult<T = any> = RpcSuccess<T> | RpcFailure;
 
