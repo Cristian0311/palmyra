@@ -26,16 +26,24 @@ export interface SaaSContext {
 
 const mapRole = (key: string): 'admin' | 'employee' => key === 'admin' ? 'admin' : 'employee';
 
+const PRODUCTION_APP_URL = 'https://palmyracrm.onrender.com';
+
+function getPalmyraAuthUrl(path: string) {
+  const pathname = path.startsWith('/') ? path : `/${path}`;
+  const host = typeof window !== 'undefined' ? window.location.hostname : '';
+  const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
+  return `${isLocal && typeof window !== 'undefined' ? window.location.origin : PRODUCTION_APP_URL}${pathname}`;
+}
+
 export async function signUpSaaSAccount(fullName: string, email: string, password: string, redirectPath = "/auth") {
   const supabase = getSupabase();
   if (!supabase) throw new Error('Supabase no está configurado.');
-  const origin = window.location.origin;
   return supabase.auth.signUp({
     email: email.trim().toLowerCase(),
     password,
     options: {
       data: { full_name: fullName.trim(), product: 'PALMYRA POS' },
-      emailRedirectTo: `${origin}${redirectPath.startsWith("/") ? redirectPath : `/${redirectPath}`}`
+      emailRedirectTo: getPalmyraAuthUrl(redirectPath)
     }
   });
 }
@@ -223,7 +231,7 @@ export async function requestSaaSPasswordReset(email: string) {
   const supabase = getSupabase();
   if (!supabase) throw new Error("Supabase no está configurado.");
   return supabase.auth.resetPasswordForEmail(email.trim().toLowerCase(), {
-    redirectTo: window.location.origin + "/auth?recovery=1"
+    redirectTo: getPalmyraAuthUrl("/auth?recovery=1")
   });
 }
 
