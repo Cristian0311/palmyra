@@ -220,7 +220,7 @@ export default function SaaSOnboarding() {
           planName: selectedPlan.name,
           planCode: selectedPlan.code,
           amount: Number(selectedPlan.price) || undefined,
-          currency: "USD",
+          currency: selectedPlan.priceCurrency,
           paymentMethod,
           requestId: result?.request_id || undefined
         });
