@@ -71,7 +71,7 @@ export default function Reports() {
   const categories = store.categories || [];
   const salarySettlements = store.salarySettlements || [];
 
-  const currencyByCode = useMemo(() => new Map(currencies.map(currency => [currency.code, currency])), [currencies]);
+  const currencyByCode = useMemo(() => new Map<string, (typeof currencies)[number]>(currencies.map(currency => [currency.code, currency])), [currencies]);
   const userById = useMemo(() => new Map(users.map(user => [user.id, user])), [users]);
   const productById = useMemo(() => new Map(products.map(product => [product.id, product])), [products]);
   const branchById = useMemo(() => new Map(branches.map(branch => [branch.id, branch])), [branches]);
@@ -1182,7 +1182,7 @@ export default function Reports() {
     setTimeout(() => setExportSuccess(false), 2500);
   };
 
-  const handleExportSectionExcel = async (sec: 'summary' | 'sales' | 'items' | 'sessions' | 'payroll' | 'products' | 'returns' | 'banks' | 'idn' | 'discrepancies' | 'movements' | 'transfers') => {
+  const handleExportSectionExcel = async (sec: 'summary' | 'sales' | 'items' | 'sessions' | 'payroll' | 'products' | 'returns' | 'banks' | 'discrepancies' | 'movements' | 'transfers') => {
     const { exportSingleSectionToExcel } = await import("../utils/excelExport");
     const data = getExportData();
     exportSingleSectionToExcel(sec, data);
@@ -1887,9 +1887,7 @@ export default function Reports() {
                           <td className="px-3 py-2 whitespace-nowrap">
                             <span className={cn(
                               "inline-flex items-center px-2 py-0.5 rounded text-[9px] font-black font-mono border tracking-wider",
-                              isIDN
-                                ? "bg-amber-50 text-amber-800 border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
-                                : "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800"
+                              "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800"
                             )}>
                               {tx.id}
                             </span>
