@@ -1453,6 +1453,7 @@ export default function Settings() {
               </div>
               <div className="bg-subtle p-4 rounded-xl border border-base space-y-3">
                 <div className="flex items-center gap-2"><Building2 size={16} className="text-rose-600" /><h4 className="text-[10px] font-black text-primary uppercase">Acceso a almacenes</h4></div>
+                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   {branches.map(branch => {
                     const isAllowed = selectedUserForConfig.allowedBranches?.includes(branch.id) ?? true;
