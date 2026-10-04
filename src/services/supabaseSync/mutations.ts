@@ -7,7 +7,7 @@ export type ResetSection =
 
 import type {
   Product, Category, Branch, InventoryLevel, User, BankCard, Customer, Transaction, CashRegisterSession,
-  Warranty, ReturnItem, InventoryTransfer, TimeShift, Quote, BankTransaction, SupplierOrder,
+  Warranty, ReturnItem, InventoryTransfer, TimeShift, Quote, BankTransaction, SupplierOrder, Supplier,
   InventoryAudit, SalarySettlement, Currency, ReceiptConfig, StoreConfig
 } from '../../types';
 
