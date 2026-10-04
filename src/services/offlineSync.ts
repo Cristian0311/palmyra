@@ -7,7 +7,7 @@
 import { getSupabase, checkSupabaseReachability } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import type { OfflineActionType, OfflineQueueItem } from './offlineQueue';
-import type { Transaction, CashRegisterSession, Customer, ReturnItem, Branch, Product, Category } from '../types';
+import type { Transaction, CashRegisterSession, Customer, ReturnItem, Branch, Product, Category, InventoryLevel } from '../types';
 import {
   getOfflineQueue,
   waitForOfflineQueueReady,
@@ -105,7 +105,7 @@ async function reconcileSupplierReceiveCanonical(supabase: any, orderId: string)
       }
       useStore.setState(state => {
         const otherBranches = (state.inventory || []).filter(item => item.branchId !== branchId);
-        const byKey = new Map(inventoryRes.inventory.map(item => [
+        const byKey = new Map<string, InventoryLevel>((inventoryRes.inventory as InventoryLevel[]).map(item => [
           `${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item
         ]));
         for (const localRow of state.inventory || []) {
