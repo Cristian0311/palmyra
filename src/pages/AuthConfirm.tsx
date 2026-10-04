@@ -39,12 +39,24 @@ export default function AuthConfirm() {
 
       if (type === "recovery") {
         setStatus("Enlace verificado. Preparando la recuperación…");
-        window.setTimeout(() => window.location.replace("/auth?recovery=1"), 350);
+        window.setTimeout(() => window.location.replace("/auth?recovery=1"), 150);
         return;
       }
 
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!active) return;
+
+      if (!sessionData.session) {
+        setError("El correo fue confirmado, pero no pudimos recuperar la sesión automáticamente. Vuelve a iniciar sesión para continuar.");
+        return;
+      }
+
+      if (typeof sessionStorage !== "undefined") {
+        sessionStorage.setItem("palmyra_pending_onboarding", "1");
+      }
+
       setStatus("Correo confirmado. Preparando tu cuenta…");
-      window.setTimeout(() => window.location.replace("/onboarding"), 350);
+      window.setTimeout(() => window.location.replace("/onboarding"), 150);
     };
 
     void verify();
@@ -54,7 +66,7 @@ export default function AuthConfirm() {
   return (
     <main className="min-h-screen bg-[#F7F5FC] flex items-center justify-center p-4">
       <section className="w-full max-w-md rounded-[26px] bg-white border border-violet-100 shadow-[0_30px_90px_-52px_rgba(59,27,110,.55)] p-7 text-center">
-        <img src="/palmyra-email-logo.jpg" alt="PALMYRA" className="w-[230px] h-[59px] object-contain mx-auto mb-7" />
+        <img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="w-[230px] h-[59px] object-contain mx-auto mb-7" />
         {error ? (
           <>
             <div className="mx-auto w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
