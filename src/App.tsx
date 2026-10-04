@@ -83,6 +83,7 @@ export default function App() {
     setAuthBootstrapping(true);
     try {
       const ctx = await loadSaaSContext();
+      let deviceReady = ctx?.deviceActive !== false;
       if (!ctx) {
         useStore.setState({ currentUser: null, currentBranchId: "", activeSessionId: null });
         setAccessState("signed_out");
@@ -111,15 +112,23 @@ export default function App() {
         });
         await useStore.persist.rehydrate();
         if (ctx.warehouseIds[0]) {
-          registerCurrentDevice(ctx.companyId, ctx.warehouseIds[0]).catch(error => {
-            console.warn("[PALMYRA] No se pudo registrar el dispositivo:", error);
-          });
+          if (!ctx.deviceActive) {
+            try {
+              await registerCurrentDevice(ctx.companyId, ctx.warehouseIds[0]);
+              deviceReady = true;
+            } catch (error) {
+              deviceReady = false;
+              console.warn("[PALMYRA] No se pudo registrar el dispositivo:", error);
+            }
+          } else {
+            deviceReady = true;
+          }
         }
       }
 
       if (!ctx.companyId) {
         setAccessState(ctx.membershipStatus && ctx.membershipStatus !== "active" ? "blocked" : "needs_onboarding");
-      } else if (!ctx.deviceActive) {
+      } else if (!deviceReady) {
         setAccessState("blocked");
       } else if (ctx.company?.account_status === "pending_payment" || ctx.company?.account_status === "suspended") {
         setAccessState("blocked");
