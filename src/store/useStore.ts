@@ -510,12 +510,12 @@ export const useStore = create<AppState>()(
           ? remote.failed.join(' · ')
           : 'Supabase no pudo confirmar la limpieza del historial.';
         get().addNotification('No se limpió el historial local porque la nube no confirmó la operación.', 'error', details);
-        return false;
+        return;
       }
     } catch (err: any) {
       console.warn("Supabase history clear failed; keeping local history:", err);
       get().addNotification('No se limpió el historial local porque la nube no confirmó la operación.', 'error', err?.message || 'Error de conexión.');
-      return false;
+      return;
     }
 
     // Solo después de confirmación remota se limpia el estado local.
@@ -531,7 +531,7 @@ export const useStore = create<AppState>()(
       cart: [],
       notifications: []
     });
-    return true;
+    return;
   },
   exportData: () => {
     const state = get();
