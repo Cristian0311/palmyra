@@ -36,7 +36,7 @@ export function StockDiagnosticModal({ isOpen, onClose, preselectedProductId }: 
     inventory, 
     reconcileProductStock, 
     repairOrphanedInventoryLevels 
-  } = useStore(useShallow((state) => ({ products: state.products, branches: state.branches, inventory: state.inventory, fetchProductStockRealtime: state.fetchProductStockRealtime, reconcileProductStock: state.reconcileProductStock, repairOrphanedInventoryLevels: state.repairOrphanedInventoryLevels })));
+  } = useStore(useShallow((state) => ({ products: state.products, branches: state.branches, inventory: state.inventory, reconcileProductStock: state.reconcileProductStock, repairOrphanedInventoryLevels: state.repairOrphanedInventoryLevels })));
 
   const [selectedProductId, setSelectedProductId] = useState<string>(preselectedProductId || products[0]?.id || "");
   const [searchTerm, setSearchTerm] = useState("");
