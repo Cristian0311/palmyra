@@ -159,6 +159,15 @@ export function initKeyboardViewport() {
 
     document.body.classList.toggle('keyboard-open', metrics.keyboardInset > 0);
 
+    if (isNativeKeyboardViewport(validControl)) {
+      restoreScrollContainers();
+      if (activeModalSurface) {
+        activeModalSurface.classList.remove('keyboard-modal-surface');
+        activeModalSurface = null;
+      }
+      return;
+    }
+
     restoreScrollContainers();
 
     let scrollContainer = validControl.parentElement;
