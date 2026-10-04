@@ -55,7 +55,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
     <img
       src="/palmyra-logo.svg"
       alt="PALMYRA"
-      className={compact ? "w-[106px] h-7 object-contain object-left" : "w-[198px] h-12 object-contain object-left"}
+      className={compact ? "w-[116px] h-[30px] object-contain object-left" : "w-[236px] h-[61px] object-contain object-left"}
     />
   );
 }
