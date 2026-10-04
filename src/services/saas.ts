@@ -129,9 +129,31 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     supabase.from('role_permissions').select('permissions!inner(key)').eq('role_id', (userRole as any)?.role_id || '00000000-0000-0000-0000-000000000000')
   ]);
 
+  if (!company) {
+    throw new Error('company_context_unavailable');
+  }
+
   const isOwner = activeMembership?.is_owner === true;
   const roleKey = (userRole as any)?.roles?.key || (isOwner ? 'admin' : 'employee');
-  const warehouseIds = (locations || []).map((row:any) => row.warehouse_id).filter(Boolean);
+  let warehouseIds = (locations || []).map((row:any) => row.warehouse_id).filter(Boolean);
+
+  // El propietario debe poder entrar aunque la asignación de ubicación tarde
+  // en aparecer o haya quedado incompleta durante una creación/reintento.
+  // Para usuarios no propietarios NO ampliamos el alcance automáticamente.
+  if (warehouseIds.length === 0 && isOwner) {
+    const { data: fallbackWarehouses, error: fallbackWarehouseError } = await supabase
+      .from('warehouses')
+      .select('id')
+      .eq('company_id', companyId)
+      .eq('active', true)
+      .order('created_at', { ascending: true })
+      .limit(1);
+    if (fallbackWarehouseError) {
+      throw fallbackWarehouseError;
+    }
+    warehouseIds = (fallbackWarehouses || []).map((row:any) => row.id).filter(Boolean);
+  }
+
   const granularPermissions = (permissionRows || []).map((row:any) => (row as any)?.permissions?.key).filter(Boolean);
   const permissions = granularPermissions.length > 0 ? granularPermissions : (roleKey === 'admin'
     ? ['pos.access','reports.view','inventory.manage','products.manage','customers.manage','employees.manage','suppliers.manage','settings.manage','roles.manage','cash.open']
