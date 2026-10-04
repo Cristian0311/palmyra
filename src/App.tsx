@@ -81,6 +81,7 @@ export default function App() {
   const [authBootstrapping, setAuthBootstrapping] = useState(true);
   const [accessState, setAccessState] = useState<"loading" | "signed_out" | "needs_onboarding" | "ready" | "blocked">("loading");
   const can = (permission: string) => currentUser?.role === "admin" || currentUser?.permissions?.includes(permission) === true;
+  const pendingOnboarding = typeof sessionStorage !== "undefined" && sessionStorage.getItem("palmyra_pending_onboarding") === "1";
 
   const hydrateAuth = async () => {
     setAuthBootstrapping(true);
@@ -296,8 +297,8 @@ export default function App() {
           <Route path="/security" element={<Security />} />
           <Route path="/invite" element={<SaaSInvite />} />
           <Route path="/auth/confirm" element={<AuthConfirm />} />
-          <Route path="/auth" element={accessState === "signed_out" ? <SaaSAuth /> : <Navigate to={accessState === "needs_onboarding" ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/"} replace />} />
-          <Route path="/onboarding" element={accessState === "needs_onboarding" ? <SaaSOnboarding /> : <Navigate to={accessState === "signed_out" ? "/auth" : accessState === "blocked" ? "/account-status" : "/"} replace />} />
+          <Route path="/auth" element={accessState === "signed_out" ? <SaaSAuth /> : <Navigate to={accessState === "needs_onboarding" || pendingOnboarding ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/"} replace />} />
+          <Route path="/onboarding" element={(accessState === "needs_onboarding" || pendingOnboarding) ? <SaaSOnboarding /> : <Navigate to={accessState === "signed_out" ? "/auth" : accessState === "blocked" ? "/account-status" : "/"} replace />} />
           <Route path="/account-status" element={accessState === "blocked" ? <AccountStatus /> : <Navigate to={accessState === "signed_out" ? "/auth" : accessState === "needs_onboarding" ? "/onboarding" : "/"} replace />} />
           <Route path="/*" element={
             accessState === "ready" && currentUser ? (
@@ -322,7 +323,7 @@ export default function App() {
                 </Suspense>
               </Layout>
             ) : (
-              <Navigate to={accessState === "signed_out" ? "/landing" : accessState === "needs_onboarding" ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/auth"} replace />
+              <Navigate to={accessState === "signed_out" ? "/landing" : accessState === "needs_onboarding" || pendingOnboarding ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/auth"} replace />
             )
           } />
         </Routes>
