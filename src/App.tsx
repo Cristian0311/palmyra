@@ -28,7 +28,8 @@ const Settings = lazy(() => import("./pages/Settings"));
 const Customers = lazy(() => import("./pages/Customers"));
 const Transfers = lazy(() => import("./pages/Transfers"));
 const Reports = lazy(() => import("./pages/Reports"));
-const SaaSAuth = lazy(() => import("./pages/SaaSAuth"));\nconst AuthConfirm = lazy(() => import("./pages/AuthConfirm"));
+const SaaSAuth = lazy(() => import("./pages/SaaSAuth"));
+const AuthConfirm = lazy(() => import("./pages/AuthConfirm"));
 const SaaSOnboarding = lazy(() => import("./pages/SaaSOnboarding"));
 const AccountStatus = lazy(() => import("./pages/AccountStatus"));
 const Subscription = lazy(() => import("./pages/Subscription"));
@@ -294,7 +295,8 @@ export default function App() {
           <Route path="/platform-admin" element={<PlatformAdmin />} />
           <Route path="/security" element={<Security />} />
           <Route path="/invite" element={<SaaSInvite />} />
-          <Route path="/auth/confirm" element={<AuthConfirm />} />\n          <Route path="/auth" element={accessState === "signed_out" ? <SaaSAuth /> : <Navigate to={accessState === "needs_onboarding" ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/"} replace />} />
+          <Route path="/auth/confirm" element={<AuthConfirm />} />
+          <Route path="/auth" element={accessState === "signed_out" ? <SaaSAuth /> : <Navigate to={accessState === "needs_onboarding" ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/"} replace />} />
           <Route path="/onboarding" element={accessState === "needs_onboarding" ? <SaaSOnboarding /> : <Navigate to={accessState === "signed_out" ? "/auth" : accessState === "blocked" ? "/account-status" : "/"} replace />} />
           <Route path="/account-status" element={accessState === "blocked" ? <AccountStatus /> : <Navigate to={accessState === "signed_out" ? "/auth" : accessState === "needs_onboarding" ? "/onboarding" : "/"} replace />} />
           <Route path="/*" element={
