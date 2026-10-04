@@ -158,7 +158,6 @@ export async function pushCustomerToSupabase(customer:Customer):Promise<{success
     return {success:true,pending:false};
   }catch(e:any){
     const message=String(e?.message||e||'No se pudo guardar el cliente.');
-    const code=String(e?.code||'');
     const offline=typeof navigator!=='undefined' && !navigator.onLine;
     const transportError=offline || /failed to fetch|network|timeout|fetch error|load failed/i.test(message);
     if(transportError){
