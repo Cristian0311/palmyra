@@ -26,14 +26,8 @@ export default function Inventory() {
   );
 
   const getBranchDisplayName = (b: { id: string; name: string }) => {
-    const assignedUser = (users || []).find(u => (u.assignedBranchId === b.id || u.branchId === b.id) && u.isIndependent);
-    if (assignedUser) {
-      return `${b.name} (Vendedor IDN: ${assignedUser.name})`;
-    }
-    const standardWorker = (users || []).find(u => (u.assignedBranchId === b.id || u.branchId === b.id));
-    if (standardWorker) {
-      return `${b.name} (${standardWorker.name})`;
-    }
+    const assignedUser = (users || []).find(u => u.branchId === b.id);
+    return assignedUser ? `${b.name} (${assignedUser.name})` : b.name;
     return b.name;
   };
 
