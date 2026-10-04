@@ -796,3 +796,48 @@ html[data-perf-tier="ultra"] .palmyra-loading-bubble {
     .palmyra-3d { transform: none; }
   }
 }
+
+
+/* PALMYRA accessibility typography: font-size options now affect rem-based UI
+   immediately instead of only changing the inherited body font. */
+:root {
+  --palmyra-font-scale: 1;
+}
+html {
+  font-size: calc(16px * var(--palmyra-font-scale, 1)) !important;
+}
+body,
+#root {
+  font-size: 1rem !important;
+}
+
+/* Compact, branded cash-opening surface for phones and small tablets. */
+.palmyra-open-cash-modal {
+  width: min(100%, 24rem);
+  max-width: calc(100vw - 1rem);
+  max-height: calc(100dvh - 1rem);
+  min-width: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid color-mix(in srgb, var(--palmyra-500) 28%, var(--border-base));
+  background: var(--bg-secondary);
+  box-shadow: 0 22px 60px rgb(76 29 149 / 0.22);
+}
+.palmyra-open-cash-modal h3 {
+  color: var(--text-primary);
+}
+.palmyra-open-cash-modal input,
+.palmyra-open-cash-modal select {
+  min-height: 2.45rem;
+}
+@media (max-width: 767px) {
+  .palmyra-open-cash-modal {
+    width: min(100%, 23rem);
+    max-width: calc(100vw - 1rem);
+    max-height: calc(100dvh - 1rem);
+    border-radius: 1rem !important;
+  }
+}
+.dark .palmyra-open-cash-modal {
+  box-shadow: 0 22px 60px rgb(0 0 0 / 0.35);
+}
