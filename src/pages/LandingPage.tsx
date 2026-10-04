@@ -1,7 +1,7 @@
 import type React from "react";
 import React, { useMemo, useState } from "react";
 import {
-  ArrowRight, BarChart3, Boxes, Check, ChevronRight, CloudOff, CreditCard,
+  ArrowRight, BarChart3, Boxes, Check, ChevronRight, CloudOff, CreditCard, ClipboardCheck,
   MonitorSmartphone, PackageCheck, Users, WifiOff, ShoppingCart, Truck,
   RotateCcw, Settings2, LineChart, WalletCards, Menu, X, UserRound,
   ShieldCheck, Building2, Warehouse, Sparkles, Globe2, Clock3, Receipt,
