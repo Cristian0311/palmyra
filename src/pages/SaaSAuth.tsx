@@ -60,14 +60,14 @@ export default function SaaSAuth() {
       return;
     }
     if (!ctx.companyId) {
-      navigate(ctx.membershipStatus && ctx.membershipStatus !== "active" ? "/account-status" : "/onboarding", { replace: true });
+      window.location.replace(ctx.membershipStatus && ctx.membershipStatus !== "active" ? "/account-status" : "/onboarding");
       return;
     }
     if (ctx.company?.account_status === "pending_payment" || ctx.company?.account_status === "suspended" || ctx.membershipStatus !== "active" || !ctx.deviceActive) {
-      navigate("/account-status", { replace: true });
+      window.location.replace("/account-status");
       return;
     }
-    navigate("/", { replace: true });
+    window.location.replace("/");
   };
 
   const submit = async (e: React.FormEvent) => {
@@ -130,7 +130,7 @@ export default function SaaSAuth() {
       <div className="w-full max-w-4xl">
         <div className="flex items-center justify-between mb-3 px-1">
           <button onClick={() => navigate("/landing")} className="flex items-center gap-2.5">
-            <img src="/palmyra-logo.svg" alt="PALMYRA" className="w-[124px] h-8 object-contain object-left" />
+            <img src="/palmyra-logo.svg" alt="PALMYRA" className="w-[170px] h-10 object-contain object-left" />
           </button>
           <button onClick={() => navigate("/landing")} className="text-[9px] font-black uppercase tracking-wider text-slate-400 hover:text-[#6535C5]">Volver al inicio</button>
         </div>
