@@ -132,13 +132,15 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     { data: userRoleRow, error: userRoleError },
     { data: locations, error: locationsError },
     { data: employee, error: employeeError },
-    { data: subscription, error: subscriptionError }
+    { data: subscription, error: subscriptionError },
+    { data: pendingPlanRequest, error: pendingPlanRequestError }
   ] = await Promise.all([
     supabase.from('companies').select('id,name,slug,account_status,default_currency_code').eq('id',companyId).maybeSingle(),
     supabase.from('user_roles').select('role_id').eq('user_id',authUser.id).eq('company_id',companyId).maybeSingle(),
     supabase.from('user_locations').select('warehouse_id,is_default').eq('user_id',authUser.id).eq('company_id',companyId).order('is_default',{ascending:false}),
     supabase.from('employees').select('id,full_name,base_salary,active').eq('user_id',authUser.id).eq('company_id',companyId).maybeSingle(),
-    supabase.from('subscriptions').select('id,status,plan_id,current_period_end,trial_ends_at').eq('company_id',companyId).order('updated_at',{ascending:false}).maybeSingle()
+    supabase.from('subscriptions').select('id,status,plan_id,current_period_end,trial_ends_at').eq('company_id',companyId).order('updated_at',{ascending:false}).maybeSingle(),
+    supabase.rpc('has_pending_plan_request', { p_company_id: companyId })
   ]);
 
   if (companyError) throw new Error(`No se pudo cargar la empresa: ${companyError.message}`);
@@ -147,6 +149,7 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
   if (locationsError) throw new Error(`No se pudieron cargar los almacenes autorizados: ${locationsError.message}`);
   if (employeeError) throw new Error(`No se pudo comprobar el usuario operativo: ${employeeError.message}`);
   if (subscriptionError) throw new Error(`No se pudo comprobar la suscripción: ${subscriptionError.message}`);
+  if (pendingPlanRequestError) throw new Error(`No se pudo comprobar una solicitud de plan pendiente: ${pendingPlanRequestError.message}`);
   if (!subscription) throw new Error('La empresa existe, pero todavía no tiene una suscripción configurada.');
 
   const roleId = userRoleRow?.role_id || null;
@@ -224,8 +227,19 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
   const nowMs = Date.now();
   const trialExpired = subscription?.status === 'trialing' && !!trialEndsAt && new Date(trialEndsAt).getTime() <= nowMs;
   const paidPeriodExpired = subscription?.status === 'active' && !!currentPeriodEnd && new Date(currentPeriodEnd).getTime() <= nowMs;
+  const hasPendingPlanRequest = pendingPlanRequest === true;
+  const expiredWithoutPendingRequest = (trialExpired || paidPeriodExpired) && !hasPendingPlanRequest;
   const effectiveCompany = company
-    ? { ...company, account_status: (company.account_status === 'active' && (trialExpired || paidPeriodExpired)) ? 'pending_payment' : company.account_status }
+    ? {
+        ...company,
+        // A pending upgrade gives the company a review grace period. The
+        // current plan stays usable until approval or rejection.
+        account_status: hasPendingPlanRequest && company.account_status !== 'suspended'
+          ? 'active'
+          : (company.account_status === 'active' && expiredWithoutPendingRequest)
+            ? 'pending_payment'
+            : company.account_status
+      }
     : null;
 
   return {
