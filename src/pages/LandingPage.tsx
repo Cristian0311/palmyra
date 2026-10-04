@@ -286,10 +286,10 @@ export default function LandingPage() {
         <section className="bg-white border-y border-violet-100">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 grid lg:grid-cols-3 gap-3">
             {[
-              [LockKeyhole, "Cuenta personal", "Cada usuario entra con su propia identidad."],
-              [MonitorSmartphone, "Desde cualquier dispositivo", "Mismo negocio, mismo rol y permisos."],
-              [CloudOff, "Offline de verdad", "La operación puede continuar y sincronizarse después."]
-            ].map(([Icon, title, text]) => <div key={String(title)} className="rounded-2xl border border-violet-100 bg-[#F7F5FC] p-4"><div className="w-9 h-9 rounded-xl bg-white border border-violet-100 text-[#5B2DBA] flex items-center justify-center"><Icon className="w-4 h-4"/></div><h3 className="text-sm font-black text-[#3B1B78] mt-3">{title}</h3><p className="text-[10px] text-slate-500 mt-1 leading-5">{text}</p></div>)}
+              { Icon: LockKeyhole, title: "Cuenta personal", text: "Cada usuario entra con su propia identidad." },
+              { Icon: MonitorSmartphone, title: "Desde cualquier dispositivo", text: "Mismo negocio, mismo rol y permisos." },
+              { Icon: CloudOff, title: "Offline de verdad", text: "La operación puede continuar y sincronizarse después." }
+            ].map(({ Icon, title, text }) => <div key={title} className="rounded-2xl border border-violet-100 bg-[#F7F5FC] p-4"><div className="w-9 h-9 rounded-xl bg-white border border-violet-100 text-[#5B2DBA] flex items-center justify-center"><Icon className="w-4 h-4"/></div><h3 className="text-sm font-black text-[#3B1B78] mt-3">{title}</h3><p className="text-[10px] text-slate-500 mt-1 leading-5">{text}</p></div>)}
           </div>
         </section>
 
