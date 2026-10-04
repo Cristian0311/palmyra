@@ -257,8 +257,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </div>
       {/* Mobile Top Bar (Only when not on POS or if POS wants it) */}
       {!isPosPage && (
-        <div className="md:hidden bg-rose-600 text-white p-3.5 flex justify-between items-center shadow-md shrink-0">
-          <img src="/palmyra-logo.svg" alt="PALMYRA" className="w-[136px] h-8 object-contain object-left brightness-0 invert" />
+        <div className="md:hidden bg-white text-slate-700 p-3.5 flex justify-between items-center shadow-sm border-b border-violet-100 shrink-0">
+          <img src="/palmyra-logo.svg" alt="PALMYRA" className="w-[150px] h-[39px] object-contain object-left" />
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1">
             <Menu className="w-5 h-5" />
           </button>
@@ -282,7 +282,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <img
               src="/palmyra-logo.svg"
               alt="PALMYRA"
-              className="w-[158px] h-10 object-contain object-left"
+              className="w-[176px] h-[46px] object-contain object-left"
             />
           </div>
 
