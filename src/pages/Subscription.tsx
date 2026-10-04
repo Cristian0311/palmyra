@@ -1,5 +1,5 @@
 import React,{useEffect,useState} from "react";
-import {CheckCircle2,Clock3,CreditCard,RefreshCw,ShieldCheck,WalletCards,Globe2} from "lucide-react";
+import {CheckCircle2,Clock3,CreditCard,RefreshCw,ShieldCheck,WalletCards,Globe2,Landmark,Caravan,Castle,Sparkles} from "lucide-react";
 import {loadSubscriptionOverview,selectSubscriptionPlan,type SubscriptionPlan} from "../services/subscription";
 import {useStore} from "../store/useStore";
 import {cn} from "../lib/utils";
@@ -12,6 +12,7 @@ export default function Subscription(){
   const [loading,setLoading]=useState(true);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState("");
+  const [paymentMethod,setPaymentMethod]=useState<'manual_cash'|'manual_bank_transfer'>('manual_cash');
 
   const refresh=async()=>{
     setLoading(true);setError("");
@@ -25,7 +26,7 @@ export default function Subscription(){
     if(!data?.ctx?.companyId)return;
     setBusy(true);setError("");
     try{
-      const result=await selectSubscriptionPlan(plan.id);
+      const result=await selectSubscriptionPlan(plan.id,paymentMethod);
       await refresh();
       addNotification(result?.status==="pending_payment" ? "Solicitud de plan enviada." : "Plan actualizado.", "success");
     }catch(e:any){setError(e?.message||"No se pudo solicitar el plan.");}
@@ -58,10 +59,25 @@ export default function Subscription(){
 
     {request&&<section className="bg-amber-50 border border-amber-200 rounded-2xl p-4"><div className="flex items-start gap-3"><Clock3 className="w-5 h-5 text-amber-700 mt-0.5"/><div><p className="text-sm font-black text-amber-900">Solicitud {request.status}</p><p className="text-xs text-amber-800 mt-1">Plan solicitado: {request.plan_name||request.plan_code} · {new Date(request.requested_at).toLocaleDateString("es-CU")}</p>{request.note&&<p className="text-[10px] text-amber-800 mt-1">{request.note}</p>}</div></div></section>}
 
+    <section className="bg-secondary border border-base rounded-3xl p-5">
+      <div className="flex items-center justify-between gap-3">
+        <div><p className="text-[9px] uppercase tracking-wider text-muted font-black">Método para solicitar el plan</p><p className="text-sm font-black text-primary mt-1">Selecciona cómo realizarás el pago en Cuba.</p></div>
+        <CreditCard className="w-5 h-5 text-[#6535C5]"/>
+      </div>
+      <div className="grid sm:grid-cols-2 gap-2 mt-4">
+        <button type="button" onClick={()=>setPaymentMethod('manual_cash')} className={cn("rounded-2xl border p-4 text-left",paymentMethod==='manual_cash'?"border-[#8B63E6] bg-[#EFE8FF]":"border-base bg-secondary")}>
+          <WalletCards className="w-5 h-5 text-[#6535C5]"/><p className="text-xs font-black text-primary mt-2">Efectivo</p><p className="text-[10px] text-muted mt-1">Pago manual y activación después de confirmar.</p>
+        </button>
+        <button type="button" onClick={()=>setPaymentMethod('manual_bank_transfer')} className={cn("rounded-2xl border p-4 text-left",paymentMethod==='manual_bank_transfer'?"border-[#8B63E6] bg-[#EFE8FF]":"border-base bg-secondary")}>
+          <Landmark className="w-5 h-5 text-[#6535C5]"/><p className="text-xs font-black text-primary mt-2">Transferencia bancaria</p><p className="text-[10px] text-muted mt-1">Transferencia en Cuba y confirmación manual.</p>
+        </button>
+      </div>
+    </section>
+
     <section className="grid md:grid-cols-2 gap-3">
       <div className="bg-violet-50 border border-violet-200 rounded-2xl p-4">
         <div className="flex items-center gap-2"><WalletCards className="w-5 h-5 text-violet-700"/><p className="text-sm font-black text-violet-900">Método activo · Cuba</p></div>
-        <p className="text-xs text-violet-800 mt-1">Pago en efectivo y activación manual después de confirmar el pago.</p>
+        <p className="text-xs text-violet-800 mt-1">{paymentMethod==='manual_bank_transfer' ? 'Transferencia bancaria seleccionada. La activación se realiza después de confirmar el pago.' : 'Efectivo seleccionado. La activación se realiza después de confirmar el pago.'}</p>
       </div>
       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
         <div className="flex items-center gap-2"><Globe2 className="w-5 h-5 text-slate-600"/><p className="text-sm font-black text-slate-800">Internacional · preparado</p></div>
@@ -98,6 +114,6 @@ export default function Subscription(){
       })}
     </section>
 
-    <p className="text-[10px] text-muted text-center">Las solicitudes Growth/Pro quedan pendientes de activación. La integración de cobro automático todavía se mantiene separada del núcleo operativo.</p>
+    <p className="text-[10px] text-muted text-center">Las solicitudes de planes de pago quedan pendientes de activación. El cobro automático permanece separado del núcleo operativo.</p>
   </div>;
 }
