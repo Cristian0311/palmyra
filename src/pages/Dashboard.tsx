@@ -270,7 +270,7 @@ export default function Dashboard() {
           <button 
             onClick={handleGenerateAI}
             disabled={isGeneratingAI}
-            className="btn-secondary"
+            className="btn-secondary h-8 min-h-0"
           >
             {isGeneratingAI ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 text-amber-500" />}
             {aiSummary ? "Actualizar Análisis IA" : "Analizar con IA"}
@@ -283,7 +283,7 @@ export default function Dashboard() {
                 setCurrentBranch(e.target.value);
               }
             }}
-            className="bg-secondary border border-base rounded-xl text-[10px] font-black text-primary px-3 py-1.5 focus:ring-1 focus:ring-indigo-100 outline-none cursor-pointer uppercase tracking-widest transition-colors shadow-2xs"
+            className="h-8 min-h-0 bg-secondary border border-base rounded-xl text-[9px] leading-none font-black text-primary px-2.5 py-1 focus:ring-1 focus:ring-indigo-100 outline-none cursor-pointer uppercase tracking-wider transition-colors shadow-2xs"
           >
             <option value="all">🏢 Todas</option>
             {branches.map(b => (
