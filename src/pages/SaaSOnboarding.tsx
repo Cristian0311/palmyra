@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { ArrowRight, Building2, Check, CreditCard, MapPin, Package, ShieldCheck, Sparkles, Users, Warehouse, WalletCards } from "lucide-react";
+import { ArrowRight, Building2, Check, CreditCard, MapPin, Package, ShieldCheck, Sparkles, Users, Warehouse, WalletCards, Caravan, Castle, Landmark } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PALMYRA_PLANS, type PlanCode } from "../config/saas";
 import { createCompanyOnboarding, loadSaaSContext } from "../services/saas";
@@ -7,8 +7,8 @@ import { useStore } from "../store/useStore";
 
 const planIcons: Record<PlanCode, typeof Sparkles> = {
   starter: Sparkles,
-  growth: Building2,
-  pro: ShieldCheck
+  growth: Caravan,
+  pro: Castle
 };
 
 function getErrorMessage(error: any) {
@@ -35,6 +35,7 @@ export default function SaaSOnboarding() {
     const stored = typeof sessionStorage !== "undefined" ? sessionStorage.getItem("palmyra_signup_plan") : null;
     return stored === "growth" || stored === "pro" || stored === "starter" ? stored : "starter";
   });
+  const [paymentMethod, setPaymentMethod] = useState<'manual_cash' | 'manual_bank_transfer'>('manual_cash');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -49,7 +50,7 @@ export default function SaaSOnboarding() {
 
     setBusy(true);
     try {
-      await createCompanyOnboarding({ name: companyName, warehouseName, planCode });
+      await createCompanyOnboarding({ name: companyName, warehouseName, planCode, paymentMethod });
       sessionStorage.removeItem("palmyra_signup_plan");
       const ctx = await loadSaaSContext(true);
       if (!ctx?.companyId) throw new Error("La empresa se creó, pero no se pudo cargar el acceso.");
@@ -136,7 +137,7 @@ export default function SaaSOnboarding() {
               <div className="mt-6">
                 <div className="flex items-end justify-between gap-3">
                   <div><p className="text-sm font-black text-[#2A1938]">Elige tu plan</p><p className="text-[9px] text-slate-400 mt-0.5">Puedes cambiarlo después como propietario.</p></div>
-                  <span className="inline-flex items-center gap-1.5 text-[9px] font-black text-[#6535C5]"><WalletCards className="w-3.5 h-3.5" /> Cuba · efectivo</span>
+                  <span className="inline-flex items-center gap-1.5 text-[9px] font-black text-[#6535C5]"><WalletCards className="w-3.5 h-3.5" /> Cuba · método de pago</span>
                 </div>
 
                 <div className="grid sm:grid-cols-3 gap-2.5 mt-3">
@@ -160,9 +161,27 @@ export default function SaaSOnboarding() {
                 </div>
               </div>
 
+              {selectedPlan.code !== "starter" && (
+                <div className="mt-4">
+                  <p className="text-[9px] font-black uppercase tracking-wider text-slate-500 mb-2">¿Cómo deseas pagar?</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setPaymentMethod('manual_cash')} className={"rounded-xl border p-3 text-left " + (paymentMethod === 'manual_cash' ? "border-[#7C4DDE] bg-[#EFE8FF]" : "border-violet-100 bg-white")}>
+                      <WalletCards className="w-4 h-4 text-[#6535C5]"/>
+                      <p className="text-[10px] font-black text-[#3B1B6E] mt-2">Efectivo</p>
+                      <p className="text-[8px] text-slate-400 mt-0.5">Pago manual en Cuba</p>
+                    </button>
+                    <button type="button" onClick={() => setPaymentMethod('manual_bank_transfer')} className={"rounded-xl border p-3 text-left " + (paymentMethod === 'manual_bank_transfer' ? "border-[#7C4DDE] bg-[#EFE8FF]" : "border-violet-100 bg-white")}>
+                      <Landmark className="w-4 h-4 text-[#6535C5]"/>
+                      <p className="text-[10px] font-black text-[#3B1B6E] mt-2">Transferencia bancaria</p>
+                      <p className="text-[8px] text-slate-400 mt-0.5">Confirmación manual en Cuba</p>
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div className="mt-4 flex items-center gap-2 rounded-xl bg-[#F8F6FC] border border-violet-100 px-3 py-2.5 text-[9px] text-slate-500">
                 <CreditCard className="w-4 h-4 text-[#6535C5] shrink-0" />
-                {selectedPlan.code === "starter" ? "Starter incluye 90 días gratis. No se solicita pago durante la prueba." : "En Cuba, la activación del plan se realiza mediante pago en efectivo. Los pagos internacionales quedan preparados para una etapa posterior."}
+                {selectedPlan.code === "starter" ? "Oasis incluye 90 días gratis. No se solicita pago durante la prueba." : paymentMethod === "manual_bank_transfer" ? "Has seleccionado transferencia bancaria. El plan quedará pendiente hasta confirmar el pago." : "Has seleccionado efectivo. El plan quedará pendiente hasta confirmar el pago."}
               </div>
 
               {error && <div className="mt-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-bold p-3">{error}</div>}
