@@ -158,7 +158,7 @@ export default function AddItemToShiftModal({
               </div>
 
               {/* Cantidad y Precio de Venta */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[9px] font-black uppercase text-muted tracking-wider mb-1.5">
                     Cantidad Vendida:
