@@ -137,9 +137,13 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     ? ['pos.access','reports.view','inventory.manage','products.manage','customers.manage','employees.manage','suppliers.manage','settings.manage','roles.manage','cash.open']
     : ['pos.access']);
 
+  // El estado del dispositivo no debe impedir que el propietario entre al CRM.
+  // El registro/activación se reintenta después desde App.tsx.
   const { data: deviceActiveData, error: deviceActiveError } = await supabase.rpc('is_current_device_active', { p_company_id: companyId });
-  if (deviceActiveError) throw deviceActiveError;
-  const deviceActive = deviceActiveData !== false;
+  if (deviceActiveError) {
+    console.warn('[PALMYRA] No se pudo comprobar el dispositivo durante el arranque; continuamos y lo reintentamos en segundo plano.', deviceActiveError);
+  }
+  const deviceActive = deviceActiveError ? true : deviceActiveData !== false;
 
   const user: User = {
     id: authUser.id,
