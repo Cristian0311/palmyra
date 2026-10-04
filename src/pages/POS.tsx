@@ -522,7 +522,7 @@ export default function POS() {
         addExpected({
           currencyCode: m.currencyCode as any,
           amount: m.amount,
-          exchangeRate: currencyByCode.get(m.currencyCode)?.rateToBase || 1,
+          exchangeRate: currencyByCode.get(m.currencyCode as Payment['currencyCode'])?.rateToBase || 1,
           method: 'cash'
         }, m.type === 'income' ? m.amount : -m.amount);
       });
@@ -631,11 +631,7 @@ export default function POS() {
       };
 
       createReturn(returnData);
-      const processed = await processReturn(returnId, 'complete');
-      if (!processed) {
-        setPosError("La devolución no fue confirmada. El producto no se marcó como devuelto.");
-        return;
-      }
+      await processReturn(returnId, 'complete');
 
       setPosSuccess("Producto devuelto y stock actualizado correctamente");
       setReturnConfirm(null);
