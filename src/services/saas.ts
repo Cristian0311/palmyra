@@ -103,11 +103,6 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
   const companyId = activeMembership?.company_id || null;
   const membershipStatus = activeMembership?.status || fallbackMembership?.status || null;
 
-  const membershipRows: any[] = memberships || [];
-  const activeMembership = membershipRows.find(row => row.status === 'active') || null;
-  const fallbackMembership = membershipRows[0] || null;
-  const companyId = activeMembership?.company_id || null;
-  const membershipStatus = activeMembership?.status || fallbackMembership?.status || null;
   if (!companyId) {
     clearPalmyraLocalScope();
     return {
