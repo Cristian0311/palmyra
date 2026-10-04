@@ -119,6 +119,9 @@ export default function SaaSAuth() {
           setMessage("Cuenta creada. Revisa tu correo para confirmar la cuenta y luego inicia sesión.");
           return;
         }
+        if (typeof sessionStorage !== "undefined") {
+          sessionStorage.setItem("palmyra_pending_onboarding", "1");
+        }
         await finishAuth();
         return;
       }
