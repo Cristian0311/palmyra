@@ -135,11 +135,11 @@ export default function SaaSAuth() {
   };
 
   return (
-    <main className="min-h-screen bg-[#F7F5FC] flex items-center justify-center p-3 sm:p-5">
+    <main className="min-h-[100dvh] bg-[#F7F5FC] overflow-y-auto flex items-start sm:items-center justify-center p-3 sm:p-5" data-keyboard-viewport="native">
       <div className="w-full max-w-4xl">
         <div className="flex items-center justify-between mb-3 px-1">
           <button onClick={() => navigate("/landing")} className="flex items-center gap-2.5">
-            <img src="/palmyra-email-logo.jpg" alt="PALMYRA" className="w-[230px] h-[59px] object-contain object-left" />
+            <img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="w-[230px] h-[59px] object-contain object-left" />
           </button>
           <button onClick={() => navigate("/landing")} className="text-[9px] font-black uppercase tracking-wider text-slate-400 hover:text-[#6535C5]">Volver al inicio</button>
         </div>
@@ -196,7 +196,7 @@ export default function SaaSAuth() {
                   <span className="form-label">Correo</span>
                   <div className="relative">
                     <Mail className="field-icon" />
-                    <input type="email" className="field-input field-input pl-10 h-11" value={email} onChange={e=>setEmail(e.target.value)} disabled={busy} autoComplete="email" placeholder="nombre@empresa.com"/>
+                    <input type="email" className="field-input pl-10 h-11" value={email} onChange={e=>setEmail(e.target.value)} disabled={busy} autoComplete="email" placeholder="nombre@empresa.com"/>
                   </div>
                 </label>
               ) : null}
@@ -224,7 +224,7 @@ export default function SaaSAuth() {
                 <label className="block">
                   <span className="form-label">Confirmar contraseña</span>
                   <div className="relative">
-                    <LockKeyhole className="icon"/>
+                    <LockKeyhole className="field-icon"/>
                     <input
                       type={showPassword ? "text" : "password"}
                       className="field-input pl-10 h-11"
