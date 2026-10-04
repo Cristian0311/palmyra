@@ -177,7 +177,7 @@ export default function SaaSAuth() {
                   <span className="form-label">Nombre completo</span>
                   <div className="relative">
                     <Users className="icon"/>
-                    <input className="field field-input pl-10 h-11" value={name} onChange={e=>setName(e.target.value)} disabled={busy} autoComplete="name" placeholder="Tu nombre"/>
+                    <input className="field-input field-input pl-10 h-11" value={name} onChange={e=>setName(e.target.value)} disabled={busy} autoComplete="name" placeholder="Tu nombre"/>
                   </div>
                 </label>
               ) : null}
@@ -187,7 +187,7 @@ export default function SaaSAuth() {
                   <span className="label">Correo</span>
                   <div className="relative">
                     <Mail className="icon"/>
-                    <input type="email" className="field field-input pl-10 h-11" value={email} onChange={e=>setEmail(e.target.value)} disabled={busy} autoComplete="email" placeholder="nombre@empresa.com"/>
+                    <input type="email" className="field-input field-input pl-10 h-11" value={email} onChange={e=>setEmail(e.target.value)} disabled={busy} autoComplete="email" placeholder="nombre@empresa.com"/>
                   </div>
                 </label>
               ) : null}
@@ -198,7 +198,7 @@ export default function SaaSAuth() {
                   <LockKeyhole className="icon"/>
                   <input
                     type={showPassword ? "text" : "password"}
-                    className="field field-input pl-10 pr-10 h-11"
+                    className="field-input field-input pl-10 pr-10 h-11"
                     value={password}
                     onChange={e=>setPassword(e.target.value)}
                     disabled={busy}
@@ -218,7 +218,7 @@ export default function SaaSAuth() {
                     <LockKeyhole className="icon"/>
                     <input
                       type={showPassword ? "text" : "password"}
-                      className="field pl-10 h-11"
+                      className="field-input pl-10 h-11"
                       value={confirmPassword}
                       onChange={e=>setConfirmPassword(e.target.value)}
                       disabled={busy}
