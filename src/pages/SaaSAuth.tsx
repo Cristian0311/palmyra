@@ -195,16 +195,16 @@ export default function SaaSAuth() {
                 <label className="block">
                   <span className="form-label">Correo</span>
                   <div className="relative">
-                    <Mail className="icon"/>
+                    <Mail className="field-icon" />
                     <input type="email" className="field-input field-input pl-10 h-11" value={email} onChange={e=>setEmail(e.target.value)} disabled={busy} autoComplete="email" placeholder="nombre@empresa.com"/>
                   </div>
                 </label>
               ) : null}
 
               <label className="block">
-                <span className="label">{mode==="recovery" ? "Nueva contraseña" : "Contraseña"}</span>
+                <span className="form-label">{mode==="recovery" ? "Nueva contraseña" : "Contraseña"}</span>
                 <div className="relative">
-                  <LockKeyhole className="icon"/>
+                  <LockKeyhole className="field-icon" />
                   <input
                     type={showPassword ? "text" : "password"}
                     className="field-input pl-10 pr-10 h-11"
