@@ -178,6 +178,7 @@ export async function createCompanyOnboarding(input: {
   employeeName?: string;
   employeeCode?: string;
   planCode: PlanCode;
+  paymentMethod?: 'manual_cash' | 'manual_bank_transfer';
 }) {
   const supabase = getSupabase();
   if (!supabase) throw new Error('Supabase no está configurado.');
@@ -194,7 +195,7 @@ export async function createCompanyOnboarding(input: {
     p_employee_code: input.employeeCode?.trim() || null
   };
 
-  const { data, error } = await supabase.rpc('palmyra_onboard_company', payload);
+  const { data, error } = await supabase.rpc('palmyra_onboard_company_with_payment', { ...payload, p_payment_method: input.paymentMethod || 'manual_cash' });
   if (error) throw error;
   return data as {
     company_id: string;
