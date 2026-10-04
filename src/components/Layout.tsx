@@ -213,7 +213,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const visibleNavItems = navItems.length > 0 ? navItems : cashierNavItems;
 
   return (
-    <div className="h-[100dvh] w-full min-h-[100dvh] max-h-[100dvh] overflow-hidden bg-primary text-primary flex flex-col md:flex-row relative overscroll-none transition-colors duration-200">
+    <div className="h-[100dvh] w-full min-h-[100dvh] max-h-[100dvh] overflow-hidden bg-primary text-primary flex flex-col lg:flex-row relative overscroll-none transition-colors duration-200">
       {/* Sistema de Notificaciones Globales */}
       <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
         {notifications.map((n) => (
@@ -255,9 +255,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         ))}
       </div>
-      {/* Mobile Top Bar (Only when not on POS or if POS wants it) */}
-      {!isPosPage && (
-        <div className="md:hidden bg-white text-slate-700 p-3.5 flex justify-between items-center shadow-sm border-b border-violet-100 shrink-0">
+      {/* Mobile / tablet top bar */}
+      {(
+        <div className="lg:hidden bg-white text-slate-700 p-3.5 flex justify-between items-center shadow-sm border-b border-violet-100 shrink-0">
           <img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="w-[150px] h-[39px] object-contain object-left" />
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1">
             <Menu className="w-5 h-5" />
@@ -271,7 +271,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           // Mobile: off-canvas drawer with fixed overlay
           "fixed inset-y-0 left-0 z-50",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
-          // Desktop / Tablet (md+): relative in-flow column, NEVER covers or overlaps the right content
+          // Desktop (lg+): relative in-flow column, NEVER covers or overlaps the right content
           "lg:relative lg:inset-auto lg:z-auto lg:translate-x-0",
           sidebarCollapsed ? "lg:w-16" : "lg:w-64"
         )}
