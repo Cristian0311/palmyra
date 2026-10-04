@@ -14,6 +14,24 @@ import './index.css';
 const CHUNK_RECOVERY_KEY = 'omnisync-chunk-recovery';
 const CHUNK_RECOVERY_TTL_MS = 30_000;
 
+const DYNAMIC_CHUNK_RECOVERY_KEY = 'palmyra-dynamic-chunk-recovery';
+const DYNAMIC_CHUNK_RECOVERY_TTL_MS = 30_000;
+
+window.addEventListener('unhandledrejection', (event) => {
+  const reason = event.reason;
+  const message = String(reason?.message || reason || '');
+  const looksLikeChunkFailure = /dynamically imported module|importing a module script failed|chunk|loading module/i.test(message);
+  if (!looksLikeChunkFailure || !navigator.onLine) return;
+
+  const now = Date.now();
+  const previous = Number(sessionStorage.getItem(DYNAMIC_CHUNK_RECOVERY_KEY) || '0');
+  if (!previous || now - previous > DYNAMIC_CHUNK_RECOVERY_TTL_MS) {
+    sessionStorage.setItem(DYNAMIC_CHUNK_RECOVERY_KEY, String(now));
+    event.preventDefault();
+    window.location.reload();
+  }
+});
+
 window.addEventListener('vite:preloadError', (event) => {
   const now = Date.now();
   const previous = Number(sessionStorage.getItem(CHUNK_RECOVERY_KEY) || '0');
