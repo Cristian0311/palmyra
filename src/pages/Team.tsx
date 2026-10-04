@@ -502,19 +502,19 @@ export default function Team() {
 
       {showForm && (
         <div className="fixed inset-0 z-[200] bg-slate-950/60 backdrop-blur-sm p-3 sm:p-5 flex items-center justify-center" onClick={() => setShowForm(false)}>
-          <form onSubmit={submit} onClick={e => e.stopPropagation()} className="w-full max-w-2xl bg-secondary border border-base rounded-3xl shadow-2xl p-5 sm:p-6 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-start justify-between gap-3 mb-5">
+          <form onSubmit={submit} onClick={e => e.stopPropagation()} className="palmyra-mobile-modal w-full max-w-xl bg-secondary border border-base rounded-2xl sm:rounded-3xl shadow-2xl p-3 sm:p-5 max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain">
+            <div className="flex items-start justify-between gap-2 mb-3 sm:mb-4">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-rose-500">{editing ? "Editar" : "Nuevo"}</p>
-                <h2 className="text-xl font-black text-primary">{editing ? "Trabajador" : "Trabajador y acceso"}</h2>
-                <p className="text-xs text-muted mt-1">El empleado y la cuenta web quedan vinculados, pero no comparten credenciales con el dueño.</p>
+                <h2 className="text-lg sm:text-xl font-black text-primary break-words">{editing ? "Trabajador" : "Trabajador y acceso"}</h2>
+                <p className="text-[10px] sm:text-xs text-muted mt-1 leading-4">El empleado y la cuenta web quedan vinculados, pero no comparten credenciales con el dueño.</p>
               </div>
               <button type="button" onClick={() => setShowForm(false)} className="w-9 h-9 rounded-xl bg-subtle text-muted flex items-center justify-center">
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="grid sm:grid-cols-2 gap-4">
+            <div className="grid sm:grid-cols-2 gap-2.5 sm:gap-3">
               <label className="block">
                 <span className="label">Nombre completo</span>
                 <input className="field" value={form.fullName} onChange={e => setForm({...form, fullName:e.target.value})} disabled={busy} />
@@ -536,11 +536,11 @@ export default function Team() {
               </label>
             </div>
 
-            <div className="mt-4">
+            <div className="mt-3 sm:mt-4">
               <span className="label">Almacenes permitidos</span>
-              <div className="grid sm:grid-cols-2 gap-2 mt-2">
+              <div className="grid sm:grid-cols-2 gap-1.5 mt-2">
                 {(snapshot?.warehouses || []).filter(warehouse => warehouse.active).map(warehouse => (
-                  <label key={warehouse.id} className={cn("flex items-center gap-2 p-3 rounded-xl border cursor-pointer", form.warehouseIds.includes(warehouse.id) ? "border-rose-300 bg-rose-50/50 dark:bg-rose-950/20" : "border-base bg-primary")}>
+                  <label key={warehouse.id} className={cn("flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer min-w-0", form.warehouseIds.includes(warehouse.id) ? "border-rose-300 bg-rose-50/50 dark:bg-rose-950/20" : "border-base bg-primary")}>
                     <input type="checkbox" checked={form.warehouseIds.includes(warehouse.id)} onChange={() => toggleWarehouse(warehouse.id)} disabled={busy} />
                     <span className="text-xs font-bold text-primary">{warehouse.name}</span>
                   </label>
@@ -548,7 +548,7 @@ export default function Team() {
               </div>
             </div>
 
-            <div className="mt-4 p-4 rounded-2xl border border-base bg-subtle">
+            <div className="mt-3 p-3 rounded-xl border border-base bg-subtle">
               <label className="flex items-start gap-3 cursor-pointer">
                 <input type="checkbox" checked={form.sendInvite} onChange={e => setForm({...form, sendInvite:e.target.checked})} disabled={busy || Boolean(editing?.user_id)} className="mt-1" />
                 <span>
@@ -557,7 +557,7 @@ export default function Team() {
                 </span>
               </label>
               {form.sendInvite && !editing?.user_id && (
-                <label className="block mt-4">
+                <label className="block mt-3">
                   <span className="label">Correo del trabajador</span>
                   <input type="email" className="field" value={form.email} onChange={e => setForm({...form, email:e.target.value})} disabled={busy} placeholder="trabajador@empresa.com" />
                 </label>
@@ -567,7 +567,7 @@ export default function Team() {
               )}
             </div>
 
-            <div className="flex flex-col sm:flex-row gap-2 mt-6">
+            <div className="flex flex-col sm:flex-row gap-1.5 mt-4">
               <button type="button" onClick={() => setShowForm(false)} className="h-11 px-4 rounded-xl bg-subtle text-primary font-black text-xs uppercase tracking-wider">Cancelar</button>
               <button type="submit" disabled={busy} className="h-11 px-4 rounded-xl bg-rose-600 text-white font-black text-xs uppercase tracking-wider flex-1">
                 {busy ? "Guardando..." : editing ? "Guardar cambios" : "Crear trabajador"}
@@ -579,12 +579,12 @@ export default function Team() {
 
       {showRoleForm && (
         <div className="fixed inset-0 z-[210] bg-slate-950/60 backdrop-blur-sm p-3 sm:p-5 flex items-center justify-center" onClick={() => setShowRoleForm(false)}>
-          <form onSubmit={submitRole} onClick={e => e.stopPropagation()} className="w-full max-w-2xl bg-secondary border border-base rounded-3xl shadow-2xl p-5 sm:p-6 max-h-[92vh] overflow-y-auto">
+          <form onSubmit={submitRole} onClick={e => e.stopPropagation()} className="palmyra-mobile-modal w-full max-w-xl bg-secondary border border-base rounded-2xl sm:rounded-3xl shadow-2xl p-3 sm:p-5 max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain">
             <div className="flex items-start justify-between gap-3 mb-5">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-[0.18em] text-rose-500">{editingRole ? "Editar rol" : "Nuevo rol"}</p>
-                <h2 className="text-xl font-black text-primary">{editingRole ? editingRole.name : "Perfil personalizado"}</h2>
-                <p className="text-xs text-muted mt-1">El rol define los módulos y acciones disponibles para el trabajador.</p>
+                <h2 className="text-lg sm:text-xl font-black text-primary break-words">{editingRole ? editingRole.name : "Perfil personalizado"}</h2>
+                <p className="text-[10px] sm:text-xs text-muted mt-1 leading-4">El rol define los módulos y acciones disponibles para el trabajador.</p>
               </div>
               <button type="button" onClick={() => setShowRoleForm(false)} className="w-9 h-9 rounded-xl bg-subtle text-muted flex items-center justify-center"><X className="w-4 h-4" /></button>
             </div>
@@ -605,7 +605,7 @@ export default function Team() {
             <div className="mt-4">
               <span className="label">Permisos</span>
               <div className="grid sm:grid-cols-2 gap-2 mt-2">
-                {(snapshot.permissions || []).map(permission => {
+                {(snapshot?.permissions || []).map(permission => {
                   const selected = roleForm.permissionKeys.includes(permission.key);
                   return (
                     <label key={permission.id} className={cn("flex items-start gap-3 p-3 rounded-xl border cursor-pointer", selected ? "border-rose-300 bg-rose-50/50 dark:bg-rose-950/20" : "border-base bg-primary")}>
