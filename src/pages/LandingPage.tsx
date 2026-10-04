@@ -1,3 +1,4 @@
+import type React from "react";
 import React, { useMemo, useState } from "react";
 import {
   ArrowRight, BarChart3, Boxes, Check, ChevronRight, CloudOff, CreditCard,
@@ -19,12 +20,15 @@ const modules = [
   { id: "inventory", label: "Inventario", icon: Boxes, title: "Existencias por almacén, sin confusión.", text: "Controla stock, movimientos, mínimos y entradas desde cualquier dispositivo.", stats: [["Productos", "284"], ["Stock bajo", "12"], ["Almacenes", "3"], ["Movimientos", "1,248"]] },
   { id: "purchases", label: "Compras", icon: Receipt, title: "Compras y recepción en un solo flujo.", text: "Registra proveedores, órdenes y recepciones sin separar la información del inventario.", stats: [["Órdenes", "18"], ["Pendientes", "4"], ["Recibidas", "14"], ["Proveedores", "26"]] },
   { id: "suppliers", label: "Proveedores", icon: Users, title: "Proveedores siempre a mano.", text: "Consulta contactos, compras y relación comercial desde una vista sencilla.", stats: [["Proveedores", "26"], ["Activos", "21"], ["Compras", "$ 42K"], ["Pendientes", "4"]] },
+  { id: "audit", label: "Auditoría de stock", icon: ClipboardCheck, title: "Auditoría de stock controlada.", text: "Conteo físico, variación, recuento y aprobación antes de ajustar existencias.", stats: [] },
+  { id: "bank", label: "Cuentas bancarias", icon: Landmark, title: "Movimientos bancarios centralizados.", text: "Cuentas y movimientos confirmados en un solo lugar.", stats: [] },
   { id: "transfers", label: "Transferencias", icon: Truck, title: "Mueve mercancía con contexto.", text: "Consulta qué salió, desde dónde, hacia qué almacén y qué cantidad.", stats: [["Hoy", "8"], ["En tránsito", "3"], ["Completadas", "24"], ["Almacenes", "3"]] },
   { id: "customers", label: "Clientes", icon: Users, title: "La relación con tus clientes, ordenada.", text: "Historial de compras y datos útiles sin convertir el CRM en un laberinto.", stats: [["Clientes", "1,284"], ["Nuevos", "18"], ["Compras", "$ 24.8K"], ["Activos", "942"]] },
   { id: "reports", label: "Reportes", icon: LineChart, title: "Decisiones con información real.", text: "Indicadores comerciales y operativos para saber dónde estás y qué mejorar.", stats: [["Ventas", "$ 84K"], ["Margen", "28.4%"], ["Ticket", "$ 32.80"], ["Stock", "$ 124K"]] },
   { id: "team", label: "Equipo", icon: UserRound, title: "Personas, roles y permisos claros.", text: "Cada trabajador tiene su propia cuenta y ve solo lo que necesita.", stats: [["Empleados", "8"], ["Accesos", "6"], ["Roles", "5"], ["Invitaciones", "2"]] },
   { id: "cash", label: "Caja", icon: WalletCards, title: "Turnos y efectivo bajo control.", text: "Apertura, movimientos, cierres y descuadres con trazabilidad.", stats: [["Caja", "$ 8,420"], ["Turno", "04"], ["Descuadre", "$ 0.00"], ["Cierres", "18"]] },
-  { id: "settings", label: "Configuración", icon: Settings2, title: "Todo en su lugar.", text: "Empresa, almacenes, equipo, POS, seguridad, monedas y plan.", stats: [["Empresa", "Activa"], ["Almacenes", "3"], ["POS", "2"], ["Plan", "Caravana"]] }
+  { id: "settings", label: "Configuración", icon: Settings2, title: "Todo en su lugar.", text: "Empresa, almacenes, equipo, POS, seguridad, monedas y plan.", stats: [["Empresa", "Activa"], ["Almacenes", "3"], ["POS", "2"], ["Plan", "Caravana"]] },
+  { id: "plan", label: "Plan", icon: CreditCard, title: "Plan y facturación claros.", text: "Consulta el plan actual, método de pago y opciones de crecimiento.", stats: [] }
 ];
 
 const plans = [
@@ -94,9 +98,44 @@ function MiniTopbar({ title }: { title: string }) {
   );
 }
 
+function RealModulePreview({ id }: { id: string }) {
+  const side = ["Dashboard","Punto de venta","Transferencias","Clientes (POS)","Inventario","Auditoría stock","Proveedores","Cuentas bancarias","Devoluciones","Reportes","Configuración","Equipo","Plan"];
+  const active = id === "audit" ? "Auditoría stock" : id === "bank" ? "Cuentas bancarias" : id === "plan" ? "Plan" : id === "settings" ? "Configuración" : id === "transfers" ? "Transferencias" : "Reportes";
+  const labels: Record<string,string> = {
+    audit: "AUDITORÍA DE STOCK", bank: "CUENTAS BANCARIAS", reports: "REPORTES", plan: "Facturación y plan",
+    settings: "CONFIGURACIÓN", transfers: "TRANSFERENCIAS"
+  };
+  const Stat=({title,value}:{title:string,value:string}) => <div className="rounded-xl border border-violet-100 bg-white px-3 py-2"><p className="text-[6px] uppercase tracking-wider text-slate-400 font-black">{title}</p><p className="text-sm font-black text-[#3B1B78] mt-1">{value}</p></div>;
+  const Box=({children,className=""}:{children:React.ReactNode,className?:string}) => <div className={"rounded-2xl border border-violet-100 bg-white "+className}>{children}</div>;
+  return <div className="rounded-[18px] overflow-hidden border border-violet-100 bg-[#F7F5FC]">
+    <div className="flex min-h-[330px]">
+      <aside className="hidden sm:block w-[112px] shrink-0 bg-white border-r border-violet-100 p-2">
+        <Brand compact />
+        <div className="mt-3 space-y-0.5">{side.map(x => <div key={x} className={"px-2 py-1.5 rounded-md text-[6px] font-bold "+(x===active?"bg-[#7C3AED] text-white":"text-slate-500")}>{x}</div>)}</div>
+        <div className="mt-3 rounded-lg bg-emerald-50 px-2 py-1 text-[6px] font-black text-emerald-600">● ONLINE</div>
+      </aside>
+      <div className="flex-1 min-w-0 p-3 md:p-4">
+        <div className="flex items-center justify-between gap-2"><div><p className="text-[6px] uppercase tracking-[.18em] text-slate-400 font-black">PALMYRA</p><h4 className="text-sm md:text-base font-black text-[#251536]">{labels[id] || "MÓDULO"}</h4></div><button className="h-6 px-2 rounded-lg bg-[#5B2DBA] text-white text-[6px] font-black">{id==="audit"?"+ NUEVA AUDITORÍA":id==="bank"?"+ NUEVA CUENTA":id==="reports"?"EXCEL":id==="plan"?"Actualizar":id==="settings"?"SINCRONIZAR NUBE":"+ TRASLADO INDIVIDUAL"}</button></div>
+        {id==="audit" && <div className="mt-3 space-y-2"><div className="h-6 rounded-lg bg-[#5B2DBA] text-white text-[6px] font-black flex items-center justify-center">+ NUEVA AUDITORÍA</div><div className="grid grid-cols-2 gap-2"><Stat title="Total auditorías" value="0"/><Stat title="En conteo" value="0"/><Stat title="Pendientes revisión" value="0"/><Stat title="Aprobadas" value="0"/></div><Box className="p-3"><p className="text-[7px] font-black text-[#3B1B78]">HISTORIAL Y CONTROL</p><div className="mt-3 h-20 rounded-lg bg-[#F8F6FC] flex items-center justify-center text-[6px] text-slate-400">NO HAY AUDITORÍAS REGISTRADAS.</div></Box></div>}
+        {id==="bank" && <div className="mt-3 space-y-2"><Box className="w-36 h-14 flex items-center justify-center text-[6px] text-slate-500">＋<br/>AGREGAR CUENTA</Box><Box className="p-3 h-28"><p className="text-[7px] font-black text-[#3B1B78]">MOVIMIENTOS BANCARIOS</p><div className="h-full flex items-center justify-center text-[6px] text-slate-400">No hay movimientos</div></Box></div>}
+        {id==="reports" && <div className="mt-3 space-y-2"><div className="flex gap-1.5 overflow-hidden">{["VENTAS","NÓMINA","CAJAS","DESCUADRES","MOVIMIENTOS","TRANSFERENCIAS"].map((x,i)=><span key={x} className={"shrink-0 px-2 py-1 rounded-lg text-[6px] font-black "+(i===0?"bg-[#7C3AED] text-white":"bg-[#F0EBFA] text-slate-500")}>{x}</span>)}</div><Box className="p-3 h-28"><p className="text-[7px] font-black">VENTAS POR HORARIO</p><div className="mt-3 h-16 border-b border-dashed border-violet-100"/></Box><Box className="p-3 h-24"><p className="text-[7px] font-black">TOP CATEGORÍAS</p></Box><div className="grid grid-cols-2 gap-2"><Stat title="Ingresos ventas" value="$ 0"/><Stat title="Gastos / egresos" value="$ 0"/><Stat title="Flujo neto" value="$ 0"/><Stat title="Transacciones totales" value="0"/></div></div>}
+        {id==="plan" && <div className="mt-3 space-y-2"><Box className="p-3"><p className="text-[7px] font-black">PLAN ACTUAL</p><div className="grid grid-cols-3 gap-2 mt-2"><Stat title="Plan" value="Oasis"/><Stat title="Estado" value="Activo"/><Stat title="Vencimiento" value="1/1/2027"/></div></Box><div className="grid grid-cols-3 gap-2">{[["Oasis","10.00 USD"],["Caravana","15.00 USD"],["Ciudadela","25.00 USD"]].map(([n,p])=><Box key={n} className="p-3"><p className="text-[9px] font-black text-[#3B1B78]">{n}</p><p className="text-xs font-black mt-2">{p}<span className="text-[6px] text-slate-400"> /mes</span></p><div className="mt-3 h-6 rounded-lg bg-[#F0EBFA]"/></Box>)}</div></div>}
+        {id==="settings" && <div className="mt-3 space-y-2"><div className="flex gap-1 overflow-hidden">{["CONEXIÓN","EMPRESA","MONEDAS","ALMACENES","CATEGORÍAS","EMPLEADOS","ESTILO VISUAL"].map((x,i)=><span key={x} className={"shrink-0 px-2 py-1.5 rounded-lg text-[6px] font-black "+(i===0?"bg-[#7C3AED] text-white":"bg-[#F0EBFA] text-slate-500")}>{x}</span>)}</div><Box className="p-3"><p className="text-[8px] font-black">CONECTIVIDAD Y NUBE</p><div className="grid grid-cols-2 gap-2 mt-3"><div className="h-20 rounded-xl bg-[#F7F5FC]"/><div className="h-20 rounded-xl bg-[#F7F5FC]"/></div></Box><Box className="p-3 h-20"><p className="text-[7px] font-black">COPIA DE SEGURIDAD OFFLINE</p></Box></div>}
+        {id==="transfers" && <div className="mt-3 space-y-2"><Box className="p-3"><div className="flex items-center justify-between"><p className="text-[8px] font-black">HISTORIAL DE MOVIMIENTOS</p><span className="text-[6px] text-slate-400">0 OPERACIONES</span></div><div className="h-24 flex items-center justify-center text-[6px] text-slate-400">SIN REGISTROS DE TRANSFERENCIA</div></Box><Box className="p-3"><p className="text-[7px] font-black">MÉTRICAS DE OPERACIÓN</p><div className="grid grid-cols-2 gap-2 mt-2"><Stat title="Transferencias totales" value="0"/><Stat title="Puntos de distribución" value="1"/></div></Box><div className="rounded-xl bg-[#10182F] p-3 text-white"><p className="text-[7px] font-black">SEGURIDAD DE INVENTARIO</p><p className="text-[6px] mt-2 text-emerald-200">● VALIDACIÓN ATÓMICA</p><p className="text-[6px] mt-1 text-emerald-200">● TRAZABILIDAD TOTAL</p></div></div>}
+      </div>
+    </div>
+  </div>;
+}
+
 function ModuleScreen({ module }: { module: typeof modules[number] }) {
+  if (["audit","bank","reports","plan","settings","transfers"].includes(module.id)) {
+    return <RealModulePreview id={module.id} />;
+  }
   const Icon = module.icon;
   const moduleInfo: Record<string, { eyebrow: string; steps: string[]; controls: string[]; accent: string }> = {
+    audit: { eyebrow: "Control físico · Variación · Recuento", steps: ["Nueva auditoría", "Contar existencias", "Aprobar ajuste"], controls: ["Total auditorías", "En conteo", "Pendientes revisión", "Aprobadas"], accent: "Auditoría controlada" },
+    bank: { eyebrow: "Todos los movimientos", steps: ["Agregar cuenta", "Registrar movimiento", "Reconciliar"], controls: ["Cuentas", "Movimientos", "Reconciliación", "Base de datos"], accent: "Control financiero" },
+    plan: { eyebrow: "Cuenta", steps: ["Revisar plan", "Elegir método", "Solicitar cambio"], controls: ["Plan actual", "Estado", "Vencimiento", "Método de pago"], accent: "Facturación" },
     dashboard: { eyebrow: "Resumen ejecutivo", steps: ["Revisar ventas", "Detectar alertas", "Tomar decisiones"], controls: ["Ventas del día", "Caja", "Stock", "Actividad del equipo"], accent: "Visión general" },
     pos: { eyebrow: "Venta rápida", steps: ["Buscar producto", "Cobrar", "Cerrar ticket"], controls: ["Productos", "Clientes", "Métodos de pago", "Caja y recibo"], accent: "Pensado para el mostrador" },
     inventory: { eyebrow: "Control de existencias", steps: ["Consultar stock", "Registrar movimiento", "Reponer a tiempo"], controls: ["Existencias", "Mínimos", "Almacenes", "Historial"], accent: "Menos pérdidas, más control" },
@@ -222,7 +261,7 @@ export default function LandingPage() {
             <div className="max-w-3xl">
               <p className="text-[10px] font-black uppercase tracking-[.2em] text-[#7C4DDE]">Explora el producto</p>
               <h2 className="text-2xl sm:text-4xl font-black tracking-[-.04em] text-[#3B1B78] mt-2">Conoce cada área antes de entrar.</h2>
-              <p className="text-sm text-slate-500 mt-3 leading-6">Selecciona una sección para entender qué resuelve, cómo se utiliza y qué información puedes controlar. Sin pantallas ficticias ni números de ejemplo.</p>
+              <p className="text-sm text-slate-500 mt-3 leading-6">Selecciona una sección para entender qué resuelve, cómo se utiliza y qué información puedes controlar. Las capturas reales incorporadas muestran cómo se ve PALMYRA en sus módulos; iremos completando las restantes con sus capturas correspondientes.</p>
             </div>
             <div className="mt-6 flex gap-1.5 overflow-x-auto pb-1">
               {modules.map(({ id, label, icon: Icon }) => (
