@@ -4,12 +4,14 @@ import {
   MonitorSmartphone, PackageCheck, Users, WifiOff, ShoppingCart, Truck,
   RotateCcw, Settings2, LineChart, WalletCards, Menu, X, UserRound,
   ShieldCheck, Building2, Warehouse, Sparkles, Globe2, Clock3, Receipt,
-  CircleDollarSign, LockKeyhole
+  CircleDollarSign, LockKeyhole, Landmark, Caravan, Castle
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const CITY_IMAGE = "https://live.staticflickr.com/5016/5514619147_c7d54849af_o.jpg";
 const CITY_CREDIT = "Palmyra histórica · Erik Hermans / Institute for the Study of the Ancient World · CC BY 2.0";
+const CaravanIcon = Caravan;
+const CitadelIcon = Castle;
 
 const modules = [
   { id: "dashboard", label: "Dashboard", icon: BarChart3, title: "Una vista clara de tu negocio.", text: "Ventas, inventario, caja y alertas importantes en una sola pantalla.", stats: [["Ventas", "$ 12,480"], ["Tickets", "248"], ["Stock bajo", "12"], ["Equipo", "8"]] },
@@ -27,16 +29,19 @@ const modules = [
 
 const plans = [
   {
-    code: "starter", icon: Sparkles, name: "Starter", price: "$10", note: "90 días gratis", warehouses: "1 almacén", employees: "2 empleados", products: "50 productos",
-    features: ["POS + inventario", "Clientes y proveedores", "Reportes básicos", "Modo offline"], featured: false
+    code: "starter", icon: Sparkles, name: "Oasis", price: "$10", note: "Inicio esencial", warehouses: "1 almacén", employees: "2 empleados", products: "50 productos",
+    description: "Para comenzar a vender y controlar lo esencial sin complicaciones.",
+    features: ["Punto de venta", "Inventario y caja", "Clientes y proveedores", "Reportes básicos", "Modo offline"], featured: false
   },
   {
-    code: "growth", icon: Building2, name: "Growth", price: "$15", note: "Para crecer", warehouses: "3 almacenes", employees: "4 empleados", products: "150 productos",
-    features: ["Todo Starter", "Transferencias", "Compras y proveedores", "Reportes avanzados"], featured: true
+    code: "growth", icon: CaravanIcon, name: "Caravana", price: "$15", note: "Operación en expansión", warehouses: "3 almacenes", employees: "4 empleados", products: "150 productos",
+    description: "Para negocios que ya mueven mercancía entre varios puntos y necesitan más control.",
+    features: ["Compras y recepción", "Transferencias entre almacenes", "Reportes avanzados", "Equipo con roles", "Operación multi-almacén"], featured: true
   },
   {
-    code: "pro", icon: Globe2, name: "Pro", price: "$25", note: "Máxima capacidad", warehouses: "7 almacenes", employees: "10 empleados", products: "300 productos",
-    features: ["Todo Growth", "Analítica avanzada", "Soporte prioritario", "Mayor capacidad"], featured: false
+    code: "pro", icon: CitadelIcon, name: "Ciudadela", price: "$25", note: "Control empresarial", warehouses: "7 almacenes", employees: "10 empleados", products: "300 productos",
+    description: "Para empresas con mayor estructura, más ubicaciones y análisis profundo.",
+    features: ["Analítica avanzada", "7 almacenes operativos", "10 empleados + administrador", "300 productos/SKUs", "Soporte prioritario"], featured: false
   }
 ];
 
@@ -91,58 +96,56 @@ function MiniTopbar({ title }: { title: string }) {
 
 function ModuleScreen({ module }: { module: typeof modules[number] }) {
   const Icon = module.icon;
+  const moduleInfo: Record<string, { eyebrow: string; steps: string[]; controls: string[]; accent: string }> = {
+    dashboard: { eyebrow: "Resumen ejecutivo", steps: ["Revisar ventas", "Detectar alertas", "Tomar decisiones"], controls: ["Ventas del día", "Caja", "Stock", "Actividad del equipo"], accent: "Visión general" },
+    pos: { eyebrow: "Venta rápida", steps: ["Buscar producto", "Cobrar", "Cerrar ticket"], controls: ["Productos", "Clientes", "Métodos de pago", "Caja y recibo"], accent: "Pensado para el mostrador" },
+    inventory: { eyebrow: "Control de existencias", steps: ["Consultar stock", "Registrar movimiento", "Reponer a tiempo"], controls: ["Existencias", "Mínimos", "Almacenes", "Historial"], accent: "Menos pérdidas, más control" },
+    purchases: { eyebrow: "Abastecimiento", steps: ["Crear compra", "Recibir mercancía", "Actualizar inventario"], controls: ["Órdenes", "Recepciones", "Costos", "Proveedores"], accent: "De la compra al inventario" },
+    suppliers: { eyebrow: "Relación comercial", steps: ["Guardar proveedor", "Consultar compras", "Dar seguimiento"], controls: ["Contactos", "Historial", "Compras", "Pendientes"], accent: "Información en un solo lugar" },
+    transfers: { eyebrow: "Movimiento interno", steps: ["Elegir origen", "Elegir destino", "Registrar cantidades"], controls: ["Almacenes", "Mercancía", "Historial", "Estado"], accent: "Mercancía donde hace falta" },
+    customers: { eyebrow: "Clientes", steps: ["Registrar cliente", "Consultar historial", "Atender mejor"], controls: ["Datos", "Compras", "Historial", "Actividad"], accent: "Relaciones que permanecen" },
+    reports: { eyebrow: "Información para decidir", steps: ["Elegir período", "Analizar indicadores", "Actuar"], controls: ["Ventas", "Margen", "Caja", "Inventario"], accent: "Datos que ayudan a decidir" },
+    team: { eyebrow: "Equipo y permisos", steps: ["Invitar trabajador", "Asignar rol", "Definir acceso"], controls: ["Usuarios", "Roles", "Almacenes", "Dispositivos"], accent: "Cada persona ve lo necesario" },
+    cash: { eyebrow: "Control de caja", steps: ["Abrir turno", "Registrar movimientos", "Cerrar y revisar"], controls: ["Turnos", "Entradas", "Salidas", "Descuadres"], accent: "Trazabilidad de efectivo" },
+    settings: { eyebrow: "Configuración", steps: ["Definir empresa", "Configurar operación", "Administrar seguridad"], controls: ["Empresa", "Almacenes", "POS", "Seguridad"], accent: "Todo preparado desde un lugar" }
+  };
+  const info = moduleInfo[module.id] || moduleInfo.dashboard;
   return (
-    <div className="rounded-[22px] border border-violet-100 bg-white/90 overflow-hidden">
-      <MiniTopbar title={module.label} />
-      <div className="flex min-h-[300px] md:min-h-[390px]">
-        <MiniSidebar active={module.id} />
-        <main className="flex-1 min-w-0 p-3 md:p-5 bg-[#FBFAFD]">
-          <div className="flex items-start justify-between gap-3 mb-4">
-            <div>
-              <div className="flex items-center gap-1.5 text-[#5B2DBA]">
-                <Icon className="w-3.5 h-3.5" />
-                <span className="text-[7px] uppercase tracking-[.18em] font-black">PALMYRA · {module.label}</span>
-              </div>
-              <h4 className="text-sm md:text-base font-black text-[#251536] mt-1">{module.title}</h4>
-            </div>
-            <span className="hidden md:block text-[7px] px-2 py-1 rounded-full bg-[#EFE8FF] text-[#5B2DBA] font-black">Vista del módulo</span>
+    <div className="rounded-[22px] border border-violet-100 bg-white overflow-hidden shadow-[0_24px_70px_-46px_rgba(59,27,110,.4)]">
+      <div className="h-10 border-b border-violet-100 bg-[#FBFAFD] flex items-center justify-between px-4">
+        <div className="flex items-center gap-1.5">
+          <span className="w-2 h-2 rounded-full bg-violet-200"/><span className="w-2 h-2 rounded-full bg-violet-300"/><span className="w-2 h-2 rounded-full bg-violet-400"/>
+        </div>
+        <span className="text-[8px] font-black uppercase tracking-[.18em] text-[#5B2DBA]">PALMYRA · {module.label}</span>
+        <span className="text-[7px] font-black text-slate-400">{info.accent}</span>
+      </div>
+      <div className="p-4 md:p-6 min-h-[300px] md:min-h-[370px] bg-white">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-[#EFE8FF] text-[#5B2DBA] flex items-center justify-center shrink-0"><Icon className="w-6 h-6"/></div>
+          <div className="min-w-0">
+            <p className="text-[8px] font-black uppercase tracking-[.18em] text-[#7C4DDE]">{info.eyebrow}</p>
+            <h4 className="text-lg md:text-xl font-black text-[#251536] mt-1">{module.title}</h4>
+            <p className="text-[10px] md:text-xs leading-5 text-slate-500 mt-2 max-w-2xl">{module.text}</p>
           </div>
-          <p className="text-[9px] md:text-[10px] leading-5 text-slate-500 max-w-2xl">{module.text}</p>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 mt-4">
-            {module.stats.map(([name, value]) => (
-              <div key={name} className="rounded-xl bg-white border border-violet-100 p-2.5 shadow-[0_10px_30px_-22px_rgba(76,29,149,.3)]">
-                <p className="text-[7px] text-slate-400 font-bold uppercase tracking-wider">{name}</p>
-                <p className="text-[11px] md:text-sm font-black text-[#3B1B78] mt-1 truncate">{value}</p>
+        </div>
+        <div className="grid md:grid-cols-3 gap-2 mt-6">
+          {info.steps.map((step, index) => (
+            <div key={step} className="rounded-2xl border border-violet-100 bg-[#F8F6FC] p-3">
+              <div className="flex items-center justify-between"><span className="w-6 h-6 rounded-lg bg-white border border-violet-100 text-[#5B2DBA] flex items-center justify-center text-[8px] font-black">{index + 1}</span><ChevronRight className="w-3.5 h-3.5 text-violet-300"/></div>
+              <p className="text-[10px] font-black text-[#3B1B78] mt-3">{step}</p>
+            </div>
+          ))}
+        </div>
+        <div className="mt-3 rounded-2xl bg-[#3B1B78] p-4 text-white">
+          <p className="text-[8px] font-black uppercase tracking-[.18em] text-violet-200">Qué puedes controlar</p>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-3">
+            {info.controls.map(control => (
+              <div key={control} className="flex items-center gap-2 rounded-xl bg-white/10 border border-white/10 px-2.5 py-2">
+                <Check className="w-3 h-3 text-violet-200 shrink-0"/><span className="text-[8px] font-bold text-white/90">{control}</span>
               </div>
             ))}
           </div>
-          <div className="grid lg:grid-cols-[1.35fr_.65fr] gap-2 mt-3">
-            <div className="rounded-xl border border-violet-100 bg-white p-3">
-              <div className="flex items-center justify-between"><span className="text-[8px] font-black text-slate-700">Actividad</span><span className="text-[7px] text-violet-600 font-bold">Últimos 7 días</span></div>
-              <div className="h-28 mt-3 flex items-end gap-1.5">
-                {[34,46,39,62,56,71,66,84,76,93].map((height, index) => (
-                  <div key={index} className="flex-1 h-full flex items-end">
-                    <div className="w-full rounded-t-md bg-[#E9DEFF]" style={{ height: height + "%" }}>
-                      <div className="h-2/3 mt-auto rounded-t-md bg-gradient-to-t from-[#5B2DBA] to-[#9B7BE8]" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div className="rounded-xl border border-violet-100 bg-[#3B1B78] p-3 text-white">
-              <span className="text-[8px] font-black text-violet-200 uppercase tracking-wider">Acciones</span>
-              <div className="space-y-2 mt-3">
-                {["Consultar", "Registrar", "Analizar"].map((action, index) => (
-                  <div key={action} className="flex items-center gap-2 rounded-lg bg-white/10 p-2">
-                    <span className="w-5 h-5 rounded-md bg-white/10 flex items-center justify-center text-[8px]">{index + 1}</span>
-                    <span className="text-[8px] font-bold">{action}</span>
-                    <ChevronRight className="w-3 h-3 ml-auto text-violet-200" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </main>
+        </div>
       </div>
     </div>
   );
@@ -218,8 +221,8 @@ export default function LandingPage() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 lg:py-18">
             <div className="max-w-3xl">
               <p className="text-[10px] font-black uppercase tracking-[.2em] text-[#7C4DDE]">Explora el producto</p>
-              <h2 className="text-2xl sm:text-4xl font-black tracking-[-.04em] text-[#3B1B78] mt-2">Un menú. Todo tu negocio.</h2>
-              <p className="text-sm text-slate-500 mt-3 leading-6">Pulsa una sección para ver una vista compacta del módulo. El lenguaje visual está pensado para que el propietario entienda rápido y el trabajador opere sin sentirse perdido.</p>
+              <h2 className="text-2xl sm:text-4xl font-black tracking-[-.04em] text-[#3B1B78] mt-2">Conoce cada área antes de entrar.</h2>
+              <p className="text-sm text-slate-500 mt-3 leading-6">Selecciona una sección para entender qué resuelve, cómo se utiliza y qué información puedes controlar. Sin pantallas ficticias ni números de ejemplo.</p>
             </div>
             <div className="mt-6 flex gap-1.5 overflow-x-auto pb-1">
               {modules.map(({ id, label, icon: Icon }) => (
@@ -269,9 +272,10 @@ export default function LandingPage() {
                     {plan.featured && <div className="absolute -top-2.5 left-4 px-2.5 py-1 rounded-full bg-[#5B2DBA] text-white text-[8px] font-black uppercase tracking-wider">Más elegido</div>}
                     <div className="flex items-center justify-between gap-2"><div className="flex items-center gap-2"><span className="w-8 h-8 rounded-xl bg-[#EFE8FF] text-[#5B2DBA] flex items-center justify-center"><Icon className="w-4 h-4"/></span><div><p className="text-[9px] uppercase tracking-wider text-slate-400 font-black">{plan.note}</p><h3 className="text-base font-black text-[#3B1B78]">{plan.name}</h3></div></div><p className="text-xl font-black text-[#3B1B78]">{plan.price}<span className="text-[8px] text-slate-400 font-bold">/mes</span></p></div>
                     <div className="grid grid-cols-3 gap-1.5 mt-4">{[plan.warehouses, plan.employees, plan.products].map((value, index) => <div key={index} className="rounded-lg bg-[#F7F5FC] border border-violet-50 px-2 py-2 text-center"><p className="text-[7px] text-slate-400 uppercase font-black">{["Almacenes","Empleados","Productos"][index]}</p><p className="text-[10px] font-black text-[#5B2DBA] mt-0.5">{value}</p></div>)}</div>
+                    <p className="text-[9px] text-slate-500 leading-5 mt-3">{plan.description}</p>
                     <div className="space-y-1.5 mt-4">{plan.features.map(f => <div key={f} className="flex items-center gap-2 text-[9px] text-slate-500"><span className="w-4 h-4 rounded-md bg-[#EFE8FF] text-[#5B2DBA] flex items-center justify-center shrink-0"><Check className="w-2.5 h-2.5"/></span>{f}</div>)}</div>
                     <button onClick={() => { sessionStorage.setItem("palmyra_signup_plan", plan.code); navigate("/auth?mode=signup"); }} className={"w-full h-10 mt-5 rounded-xl text-[10px] font-black " + (plan.featured ? "bg-[#5B2DBA] text-white" : "bg-[#F0EBFA] text-[#5B2DBA]")}>{plan.code === "starter" ? "Comenzar gratis" : "Elegir plan"}</button>
-                    <p className="text-[7px] text-center text-slate-400 mt-2">En Cuba: activación y pago en efectivo</p>
+                    <p className="text-[7px] text-center text-slate-400 mt-2">Cuba: efectivo o transferencia bancaria</p>
                   </article>
                 );
               })}
@@ -319,7 +323,7 @@ export default function LandingPage() {
         <section className="bg-[#3B1B78] text-white">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 grid md:grid-cols-[1fr_auto] gap-7 items-center">
             <div><p className="text-[10px] font-black uppercase tracking-[.2em] text-violet-200">Cuba primero · mundo después</p><h2 className="text-2xl sm:text-4xl font-black mt-2 tracking-[-.04em]">Hoy cobramos los planes en efectivo. La arquitectura queda lista para escalar.</h2><p className="text-sm text-violet-100/75 mt-3 max-w-2xl leading-6">PALMYRA usa un modelo de facturación preparado para registrar pagos manuales en Cuba y, más adelante, conectar proveedores internacionales sin cambiar las cuentas, empresas ni el historial.</p></div>
-            <div className="rounded-2xl bg-white/5 border border-white/10 p-4 min-w-[240px]"><div className="flex items-center gap-2"><CircleDollarSign className="w-5 h-5 text-violet-200"/><span className="text-xs font-black">Método actual</span></div><div className="mt-3 p-3 rounded-xl bg-white/10"><p className="text-[9px] uppercase tracking-wider text-violet-200 font-black">Cuba</p><p className="text-sm font-black mt-1">Pago en efectivo</p><p className="text-[8px] text-violet-200 mt-1">Activación manual por PALMYRA</p></div><div className="mt-2 flex items-center gap-2 text-[8px] text-violet-200"><Globe2 className="w-3.5 h-3.5"/> Proveedores internacionales preparados</div></div>
+            <div className="rounded-2xl bg-white/5 border border-white/10 p-4 min-w-[240px]"><div className="flex items-center gap-2"><CircleDollarSign className="w-5 h-5 text-violet-200"/><span className="text-xs font-black">Método actual</span></div><div className="mt-3 p-3 rounded-xl bg-white/10"><p className="text-[9px] uppercase tracking-wider text-violet-200 font-black">Cuba</p><p className="text-sm font-black mt-1">Efectivo o transferencia bancaria</p><p className="text-[8px] text-violet-200 mt-1">Activación manual después de confirmar el pago</p></div><div className="mt-2 flex items-center gap-2 text-[8px] text-violet-200"><Globe2 className="w-3.5 h-3.5"/> Proveedores internacionales preparados</div></div>
           </div>
         </section>
 
