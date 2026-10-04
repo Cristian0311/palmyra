@@ -11,6 +11,7 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'autoUpdate',
+        includeAssets: ['palmyra-email-logo.jpg'],
         devOptions: {
           enabled: true
         },
