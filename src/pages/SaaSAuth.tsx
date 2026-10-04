@@ -18,6 +18,9 @@ function messageFor(error: any) {
   if (/email not confirmed/i.test(raw)) return "Confirma tu correo electrónico y vuelve a entrar.";
   if (/user already registered/i.test(raw)) return "Este correo ya tiene una cuenta. Inicia sesión.";
   if (/password/i.test(raw) && /8/i.test(raw)) return "La contraseña debe tener al menos 8 caracteres.";
+  if (/database error saving new user|error saving new user/i.test(raw)) return "No pudimos crear la cuenta en este momento. El registro no se completó; inténtalo nuevamente.";
+  if (/email rate limit|rate limit/i.test(raw)) return "Se alcanzó temporalmente el límite de registros. Espera unos minutos e inténtalo de nuevo.";
+  if (/redirect.*url|not allowed.*redirect/i.test(raw)) return "La configuración de acceso no aceptó la dirección de retorno. Vuelve a intentarlo.";
   return raw || "No se pudo completar la operación.";
 }
 
@@ -101,6 +104,7 @@ export default function SaaSAuth() {
 
         const result = await signUpSaaSAccount(name, email, password, "/auth");
         if (result.error) throw result.error;
+        if (!result.data.user) throw new Error("No se pudo crear el usuario.");
         if (!result.data.session) {
           setMode("signin");
           setMessage("Cuenta creada. Revisa tu correo para confirmar la cuenta y luego inicia sesión.");
@@ -170,10 +174,10 @@ export default function SaaSAuth() {
             <form onSubmit={submit} className="space-y-3 mt-5">
               {mode === "signup" ? (
                 <label className="block">
-                  <span className="label">Nombre completo</span>
+                  <span className="form-label">Nombre completo</span>
                   <div className="relative">
                     <Users className="icon"/>
-                    <input className="field pl-10 h-11" value={name} onChange={e=>setName(e.target.value)} disabled={busy} autoComplete="name" placeholder="Tu nombre"/>
+                    <input className="field field-input pl-10 h-11" value={name} onChange={e=>setName(e.target.value)} disabled={busy} autoComplete="name" placeholder="Tu nombre"/>
                   </div>
                 </label>
               ) : null}
@@ -183,7 +187,7 @@ export default function SaaSAuth() {
                   <span className="label">Correo</span>
                   <div className="relative">
                     <Mail className="icon"/>
-                    <input type="email" className="field pl-10 h-11" value={email} onChange={e=>setEmail(e.target.value)} disabled={busy} autoComplete="email" placeholder="nombre@empresa.com"/>
+                    <input type="email" className="field field-input pl-10 h-11" value={email} onChange={e=>setEmail(e.target.value)} disabled={busy} autoComplete="email" placeholder="nombre@empresa.com"/>
                   </div>
                 </label>
               ) : null}
@@ -194,7 +198,7 @@ export default function SaaSAuth() {
                   <LockKeyhole className="icon"/>
                   <input
                     type={showPassword ? "text" : "password"}
-                    className="field pl-10 pr-10 h-11"
+                    className="field field-input pl-10 pr-10 h-11"
                     value={password}
                     onChange={e=>setPassword(e.target.value)}
                     disabled={busy}
