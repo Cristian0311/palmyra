@@ -220,7 +220,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div 
             key={n.id} 
             className={cn(
-              "pointer-events-auto min-w-[280px] p-4 rounded-2xl shadow-2xl border flex items-center gap-3 animate-in slide-in-from-right-4 duration-300",
+              "pointer-events-auto w-[calc(100vw-2rem)] max-w-sm min-w-0 p-4 rounded-2xl shadow-2xl border flex items-center gap-3 animate-in slide-in-from-right-4 duration-300",
               n.type === 'success' ? "bg-emerald-50 border-emerald-100 text-emerald-800" :
               n.type === 'error' ? "bg-rose-50 border-rose-100 text-rose-800" :
               n.type === 'warning' ? "bg-amber-50 border-amber-100 text-amber-800" :
