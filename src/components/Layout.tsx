@@ -55,6 +55,27 @@ const adminNavItems = [
   { name: "Plan", href: "/subscription", icon: CreditCard, permission: "settings.manage" },
 ];
 
+const APP_VERSION = "v1.0.0";
+
+function getPlanCountdown(target: string | null | undefined, nowMs: number) {
+  if (!target) return null;
+  const diff = new Date(target).getTime() - nowMs;
+  if (!Number.isFinite(diff)) return null;
+  if (diff <= 0) return { months: 0, days: 0, hours: 0, minutes: 0, seconds: 0, expired: true };
+
+  const totalSeconds = Math.floor(diff / 1000);
+  const seconds = totalSeconds % 60;
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const minutes = totalMinutes % 60;
+  const totalHours = Math.floor(totalMinutes / 60);
+  const hours = totalHours % 24;
+  const totalDays = Math.floor(totalHours / 24);
+  const months = Math.floor(totalDays / 30);
+  const days = totalDays % 30;
+
+  return { months, days, hours, minutes, seconds, expired: false };
+}
+
 const cashierNavItems = [
   { name: "Seguridad", href: "/security", icon: ShieldCheck },
   { name: "Punto de Venta", href: "/pos", icon: ShoppingCart },
@@ -72,9 +93,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const navigationTimerRef = useRef<number | null>(null);
   const [saasContext, setSaaSContext] = useState<Awaited<ReturnType<typeof loadSaaSContext>>>(null);
   const [companySwitching, setCompanySwitching] = useState(false);
+  const [countdownNow, setCountdownNow] = useState(() => Date.now());
   const { currentUser, logout, notifications, removeNotification, storeConfig, syncWithSupabase, addNotification } = useStore(useShallow((state) => ({ currentUser: state.currentUser, logout: state.logout, notifications: state.notifications, removeNotification: state.removeNotification, storeConfig: state.storeConfig, syncWithSupabase: state.syncWithSupabase, addNotification: state.addNotification })));
   const location = useLocation();
   const isPosPage = location.pathname === "/pos";
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setCountdownNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -258,7 +285,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {/* Mobile / tablet top bar */}
       {(
         <div className="lg:hidden bg-white text-slate-700 p-3.5 flex justify-between items-center shadow-sm border-b border-violet-100 shrink-0">
-          <img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="w-[150px] h-[39px] object-contain object-left" />
+          <div className="flex items-center gap-2 min-w-0"><img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="w-[150px] h-[39px] object-contain object-left" /><span className="text-[9px] font-black text-slate-400 tracking-wider shrink-0">{APP_VERSION}</span></div>
           <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1">
             <Menu className="w-5 h-5" />
           </button>
@@ -278,12 +305,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       >
         {/* Header with Collapse toggle */}
         <div className={cn("p-3.5 shrink-0 flex items-center justify-between border-b border-subtle", sidebarCollapsed && "lg:p-3 lg:justify-center")}>
-          <div className={cn("flex items-center min-w-0", sidebarCollapsed && "lg:hidden")}>
+          <div className={cn("flex items-center gap-2 min-w-0", sidebarCollapsed && "lg:hidden")}>
             <img
               src="/palmyra-logo-exact.svg"
               alt="PALMYRA"
               className="w-[176px] h-[46px] object-contain object-left"
             />
+            <span className="text-[9px] font-black text-muted tracking-wider shrink-0">{APP_VERSION}</span>
           </div>
 
           <div className={cn("hidden items-center justify-center", sidebarCollapsed && "lg:flex")}>
@@ -397,6 +425,40 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </div>
             )}
           </div>
+
+          {!sidebarCollapsed && (() => {
+            const planEndsAt = saasContext?.subscription?.trialEndsAt || saasContext?.subscription?.currentPeriodEnd || null;
+            const countdown = getPlanCountdown(planEndsAt, countdownNow);
+            if (!countdown) return null;
+            const units = [
+              ["Meses", countdown.months],
+              ["Días", countdown.days],
+              ["Horas", countdown.hours],
+              ["Min", countdown.minutes],
+              ["Seg", countdown.seconds],
+            ] as const;
+            return (
+              <div className="mb-2 rounded-xl border border-violet-200 dark:border-violet-900/40 bg-violet-50/70 dark:bg-violet-950/20 px-2.5 py-2">
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <Clock className="w-3 h-3 text-violet-600 shrink-0" />
+                    <span className="text-[8px] font-black uppercase tracking-wider text-violet-700 dark:text-violet-300 truncate">
+                      {saasContext?.subscription?.planName || "Plan"}
+                    </span>
+                  </div>
+                  <span className="text-[7px] font-black uppercase text-muted shrink-0">Vence en</span>
+                </div>
+                <div className="grid grid-cols-5 gap-1 text-center">
+                  {units.map(([label, value]) => (
+                    <div key={label} className="min-w-0 rounded-lg bg-primary/70 dark:bg-slate-900/30 px-0.5 py-1">
+                      <p className="text-[11px] font-black text-primary leading-none tabular-nums">{String(value).padStart(2, "0")}</p>
+                      <p className="mt-1 text-[6px] font-black uppercase tracking-tight text-muted truncate">{label}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
 
           <button
             onClick={logout}
