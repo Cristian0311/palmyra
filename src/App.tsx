@@ -137,6 +137,12 @@ export default function App() {
             }
             try {
               await useStore.persist.rehydrate();
+              // El contexto cloud es la fuente de verdad para identidad y alcance.
+              // La caché local no puede sustituir al usuario/almacén recién validados.
+              useStore.setState({
+                currentUser: ctx.user,
+                currentBranchId: ctx.warehouseIds[0] || "",
+              });
             } catch (error) {
               console.warn("[PALMYRA] Rehidratación del estado local diferida:", error);
             }
