@@ -605,7 +605,6 @@ async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<
       }
       return true;
     }
-    case 'receipt_config': {
     case 'receipt_config': { const { error } = await supabase.from('settings').upsert({ id: 'global', receipt_config: data }); if (error) throw error; return true; }
     case 'store_config': {
       const { data: current, error: readError } = await supabase
