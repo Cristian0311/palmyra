@@ -85,8 +85,8 @@ export interface AppState {
 
   // Clientes
   customers: Customer[];
-  addCustomer: (customer: Customer) => void;
-  updateCustomer: (id: string, customer: Partial<Customer>) => void;
+  addCustomer: (customer: Customer) => Promise<boolean>;
+  updateCustomer: (id: string, customer: Partial<Customer>) => Promise<boolean>;
   deleteCustomer: (id: string) => void;
 
   // Caja
