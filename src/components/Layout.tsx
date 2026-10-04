@@ -272,13 +272,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           "fixed inset-y-0 left-0 z-50",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           // Desktop / Tablet (md+): relative in-flow column, NEVER covers or overlaps the right content
-          "md:relative md:inset-auto md:z-auto md:translate-x-0",
-          sidebarCollapsed ? "md:w-16" : "md:w-64"
+          "lg:relative lg:inset-auto lg:z-auto lg:translate-x-0",
+          sidebarCollapsed ? "lg:w-16" : "lg:w-64"
         )}
       >
         {/* Header with Collapse toggle */}
-        <div className={cn("p-3.5 shrink-0 flex items-center justify-between border-b border-subtle", sidebarCollapsed && "md:p-3 md:justify-center")}>
-          <div className={cn("flex items-center min-w-0", sidebarCollapsed && "md:hidden")}>
+        <div className={cn("p-3.5 shrink-0 flex items-center justify-between border-b border-subtle", sidebarCollapsed && "lg:p-3 lg:justify-center")}>
+          <div className={cn("flex items-center min-w-0", sidebarCollapsed && "lg:hidden")}>
             <img
               src="/palmyra-logo-exact.svg"
               alt="PALMYRA"
@@ -286,7 +286,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             />
           </div>
 
-          <div className={cn("hidden items-center justify-center", sidebarCollapsed && "md:flex")}>
+          <div className={cn("hidden items-center justify-center", sidebarCollapsed && "lg:flex")}>
             <img
               src="/palmyra-mark-exact.svg"
               alt="PALMYRA"
@@ -294,10 +294,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             />
           </div>
           
+          <button
+            type="button"
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden p-2 rounded-xl text-muted hover:bg-subtle hover:text-primary transition-colors"
+            aria-label="Cerrar menú"
+            title="Cerrar menú"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
           <button 
             type="button"
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="hidden md:flex p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
             title={sidebarCollapsed ? "Expandir menú" : "Minimizar menú"}
           >
             {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
@@ -336,8 +346,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className={cn("shrink-0 p-3 bg-secondary border-t border-subtle", sidebarCollapsed && "md:p-2 md:items-center")}>
-          <div className={cn("mb-2 space-y-1.5", sidebarCollapsed && "md:hidden")}>
+        <div className={cn("shrink-0 p-3 bg-secondary border-t border-subtle", sidebarCollapsed && "lg:p-2 lg:items-center")}>
+          <div className={cn("mb-2 space-y-1.5", sidebarCollapsed && "lg:hidden")}>
             <button
               type="button"
               onClick={handleManualSync}
@@ -372,7 +382,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </button>
           </div>
 
-          <div className={cn("flex items-center gap-2 mb-2", sidebarCollapsed && "md:justify-center md:mb-1")}>
+          <div className={cn("flex items-center gap-2 mb-2", sidebarCollapsed && "lg:justify-center lg:mb-1")}>
             <div className="w-7 h-7 rounded-full bg-subtle border border-base flex items-center justify-center text-primary font-black text-[9px] uppercase shrink-0 shadow-sm">
               {currentUser?.name.charAt(0)}
             </div>
@@ -420,11 +430,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         {/* Overlay for mobile sidebar */}
         {sidebarOpen && (
           <div
-            className="fixed inset-0 bg-black/60 z-40 md:hidden"
+            className="fixed inset-0 bg-black/60 z-40 lg:hidden"
             onClick={() => setSidebarOpen(false)}
           />
         )}
-        <div className={cn("flex-1 min-w-0 h-full flex flex-col scroll-touch keyboard-safe-scroll", isPosPage ? "overflow-hidden p-0" : "overflow-y-auto p-4 md:p-6 pb-20 md:pb-12")}>
+        <div className={cn("flex-1 min-w-0 h-full flex flex-col scroll-touch keyboard-safe-scroll", isPosPage ? "overflow-hidden p-0" : "overflow-y-auto p-3 sm:p-4 lg:p-6 pb-20 lg:pb-12")}>
           {children}
         </div>
       </main>
