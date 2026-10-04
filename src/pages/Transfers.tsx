@@ -41,14 +41,8 @@ export default function Transfers() {
   } = useStore(useShallow((state) => ({ branches: state.branches, products: state.products, inventory: state.inventory, transferInventory: state.transferInventory, transferInventoryBatch: state.transferInventoryBatch, transferProductsBulk: state.transferProductsBulk, transfers: state.transfers, currentBranchId: state.currentBranchId, addNotification: state.addNotification, users: state.users })));
 
   const getBranchDisplayName = (b: { id: string; name: string }) => {
-    const assignedUser = (users || []).find(u => (u.assignedBranchId === b.id || u.branchId === b.id) && u.isIndependent);
-    if (assignedUser) {
-      return `${b.name} (Vendedor IDN: ${assignedUser.name})`;
-    }
-    const standardWorker = (users || []).find(u => (u.assignedBranchId === b.id || u.branchId === b.id));
-    if (standardWorker) {
-      return `${b.name} (${standardWorker.name})`;
-    }
+    const assignedUser = (users || []).find(u => u.branchId === b.id);
+    return assignedUser ? `${b.name} (${assignedUser.name})` : b.name;
     return b.name;
   };
 
