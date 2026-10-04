@@ -1,5 +1,7 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs/promises';
+import sharp from 'sharp';
 import { createServer as createViteServer } from 'vite';
 import { GoogleGenAI } from '@google/genai';
 import dotenv from 'dotenv';
@@ -11,6 +13,29 @@ async function startServer() {
   const PORT = Number(process.env.PORT) || 10000;
 
   app.use(express.json({ limit: '15mb' }));
+
+  // Single, crisp PNG version of the official PALMYRA master logo for
+  // email clients such as Gmail. The vector source lives in public/ and is
+  // rendered server-side so email never depends on SVG support.
+  let palmyraEmailLogoBuffer: Buffer | null = null;
+  app.get('/palmyra-email-logo-v2.png', async (_req, res) => {
+    try {
+      if (!palmyraEmailLogoBuffer) {
+        const svgPath = path.join(process.cwd(), 'public', 'palmyra-brand-master.svg');
+        const svg = await fs.readFile(svgPath);
+        palmyraEmailLogoBuffer = await sharp(svg)
+          .resize({ width: 1200, withoutEnlargement: true })
+          .png()
+          .toBuffer();
+      }
+      res.setHeader('Content-Type', 'image/png');
+      res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+      res.send(palmyraEmailLogoBuffer);
+    } catch (error) {
+      console.error('[PALMYRA] No se pudo generar el logo PNG de correo:', error);
+      res.status(500).type('text/plain').send('PALMYRA logo unavailable');
+    }
+  });
 
   // Health check
   app.get('/api/health', (req, res) => {
