@@ -16,4 +16,5 @@ jobs:
           node-version: 24
       - run: npm install --no-audit --no-fund
       - run: npm run lint
+      - run: npm run audit:architecture
       - run: npm run build
