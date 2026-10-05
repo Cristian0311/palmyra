@@ -30,7 +30,6 @@ export {
   generateTransfersSheet,
 } from './excel/sheets';
 
-} from '../types';
 // 1. SHEET: RESUMEN FINANCIERO Y EJECUTIVO
 // 2. SHEET: REGISTRO DE VENTAS Y TICKETS (Comprobante por fila)
 
