@@ -74,6 +74,8 @@ export default function Reports() {
   const categories = store.categories || [];
   const salarySettlements = store.salarySettlements || [];
 
+  const getBaseCurrency = store.getBaseCurrency;
+
   const {
     currencyByCode,
     userById,
@@ -119,7 +121,6 @@ export default function Reports() {
     getBaseCurrency,
   });
 
-  const getBaseCurrency = store.getBaseCurrency;
   const addNotification = store.addNotification;
   const addSalarySettlement = store.addSalarySettlement;
   const updateSalarySettlement = store.updateSalarySettlement;
