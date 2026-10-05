@@ -386,8 +386,6 @@ export default function Reports() {
     });
 
     return closedSessions
-      .filter(session => {
-        const emp = userById.get(session.userId) || (session.workerName ? userByName.get(session.workerName.trim().toLowerCase()) : undefined);})
       .map(session => {
         const turnLabel = sessionTurnMap.get(session.id) || session.id;
       const sessionTx = transactionsBySession.get(session.id) || [];
