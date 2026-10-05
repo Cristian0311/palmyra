@@ -302,6 +302,8 @@ export default function Reports() {
     sessionFilter,
   });
 
+  const filteredCashSessions = filteredSessions;
+
   const { payrollList, filteredPayrollList, aggregatedPayrollByWorker } = useReportsPayroll({
     closedSessions,
     salarySettlements,
