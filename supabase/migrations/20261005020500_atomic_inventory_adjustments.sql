@@ -59,6 +59,29 @@ begin
     )
   );
 
+  -- The same operation may have raced with another device before the lock.
+  select * into v_existing
+  from public.sync_applied_operations
+  where operation_id = p_operation_id
+    and company_id = p_company_id
+  limit 1;
+
+  if found then
+    if p_variant_id is null then
+      select coalesce(sb.quantity, 0) into v_current
+      from public.stock_balances sb
+      where sb.company_id = p_company_id and sb.warehouse_id = p_warehouse_id
+        and sb.product_id = p_product_id and sb.variant_id is null;
+    else
+      select coalesce(vsb.quantity, 0) into v_current
+      from public.variant_stock_balances vsb
+      where vsb.company_id = p_company_id and vsb.warehouse_id = p_warehouse_id
+        and vsb.product_id = p_product_id and vsb.variant_id = p_variant_id;
+    end if;
+
+    return jsonb_build_object('success', true, 'already_applied', true, 'quantity', coalesce(v_current, 0));
+  end if;
+
   if not exists (
     select 1 from public.warehouses
     where id = p_warehouse_id and company_id = p_company_id and active
