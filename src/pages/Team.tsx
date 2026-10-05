@@ -42,6 +42,7 @@ export default function Team() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
+  const [formStep, setFormStep] = useState<1 | 2 | 3>(1);
   const [editing, setEditing] = useState<TeamEmployee | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
@@ -176,6 +177,7 @@ export default function Team() {
     resetForm();
     setMessage("");
     setError("");
+    setFormStep(1);
     setShowForm(true);
   };
 
@@ -193,6 +195,7 @@ export default function Team() {
       email: employee.login_email || employee.pending_invitation?.email || "",
       sendInvite: !employee.user_id
     });
+    setFormStep(1);
     setShowForm(true);
     setMenuId(null);
   };
@@ -518,15 +521,24 @@ export default function Team() {
               </div>
               <button type="button" onClick={() => setShowForm(false)} className="w-10 h-10 rounded-2xl bg-subtle text-muted hover:text-primary hover:bg-primary border border-base flex items-center justify-center shrink-0 transition" aria-label="Cerrar formulario"><X className="w-4 h-4" /></button>
             </div>
-            <div className="team-employee-stepbar" aria-label="Secciones del formulario">
-              <div className="team-step-item team-step-active"><span>01</span><div><strong>Información</strong><small>Datos personales</small></div></div>
-              <div className="team-step-line" />
-              <div className="team-step-item"><span>02</span><div><strong>Operación</strong><small>Rol y almacenes</small></div></div>
-              <div className="team-step-line" />
-              <div className="team-step-item"><span>03</span><div><strong>Acceso</strong><small>Cuenta web</small></div></div>
+            <div className="team-employee-stepbar" aria-label="Pasos para crear trabajador">
+              {[
+                [1,"Información","Datos personales"],
+                [2,"Operación","Rol y almacenes"],
+                [3,"Acceso","Cuenta web"]
+              ].map(([step,label,sub]) => {
+                const n = step as 1|2|3;
+                return <React.Fragment key={n}>
+                  <button type="button" className={cn("team-step-item", formStep===n && "team-step-active", formStep>n && "team-step-done")} onClick={() => setFormStep(n)} disabled={busy}>
+                    <span>{formStep>n ? <Check className="w-3 h-3" /> : String(n).padStart(2,"0")}</span>
+                    <div><strong>{label}</strong><small>{sub}</small></div>
+                  </button>
+                  {n<3 && <div className={cn("team-step-line", formStep>n && "is-complete")} />}
+                </React.Fragment>;
+              })}
             </div>
             <div className="team-employee-modal-body">
-              <section className="team-form-section" data-section="employee-info">
+              <section className={cn("team-form-section", formStep !== 1 && "team-form-hidden")} data-section="employee-info" aria-hidden={formStep !== 1}>
                 <div className="team-form-section-head"><div className="team-form-section-icon"><UserRound className="w-4 h-4" /></div><div><h3>Información del trabajador</h3><p>Identifica a la persona que formará parte del equipo.</p></div></div>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <label className="team-field-wrap sm:col-span-2"><span className="team-field-label">Nombre completo <b>*</b></span><span className="team-field"><span className="team-field-icon"><UserRound className="w-4 h-4" /></span><input value={form.fullName} onChange={e => setForm({...form, fullName:e.target.value})} disabled={busy} className="team-field-input" placeholder="Ej. María González Pérez" autoComplete="name" /></span></label>
@@ -534,7 +546,7 @@ export default function Team() {
                   <label className="team-field-wrap"><span className="team-field-label">Salario base</span><span className="team-field"><span className="team-field-icon"><WalletCards className="w-4 h-4" /></span><input type="number" min="0" step="0.01" inputMode="decimal" value={form.baseSalary} onChange={e => setForm({...form, baseSalary:e.target.value})} disabled={busy} className="team-field-input" placeholder="0.00" /></span></label>
                 </div>
               </section>
-              <section className="team-form-section" data-section="employee-operation">
+              <section className={cn("team-form-section", formStep !== 2 && "team-form-hidden")} data-section="employee-operation" aria-hidden={formStep !== 2}>
                 <div className="team-form-section-head"><div className="team-form-section-icon"><ShieldCheck className="w-4 h-4" /></div><div><h3>Rol y almacenes</h3><p>Define dónde trabaja y qué nivel de operación tendrá.</p></div></div>
                 <label className="team-field-wrap"><span className="team-field-label">Rol <b>*</b></span><span className="team-field"><span className="team-field-icon"><ShieldCheck className="w-4 h-4" /></span><select value={form.roleId} onChange={e => setForm({...form, roleId:e.target.value})} disabled={busy || availableRoles.length===0} className="team-field-input team-field-select">{availableRoles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}</select></span>{!canManageRoles && <span className="team-field-help"><Info className="w-3.5 h-3.5" />Solo puedes asignar el rol operativo estándar.</span>}</label>
                 <div className="mt-4">
@@ -548,7 +560,7 @@ export default function Team() {
                   {!(snapshot?.warehouses || []).some(warehouse => warehouse.active) && <div className="team-empty-inline"><Warehouse className="w-4 h-4" />No hay almacenes activos disponibles. Crea uno en Configuración antes de asignar acceso.</div>}
                 </div>
               </section>
-              <section className={cn("team-form-section team-access-section", form.sendInvite && "is-enabled")} data-section="employee-access">
+              <section className={cn("team-form-section team-access-section", form.sendInvite && "is-enabled", formStep !== 3 && "team-form-hidden")} data-section="employee-access" aria-hidden={formStep !== 3}>
                 <div className="team-form-section-head"><div className="team-form-section-icon"><Link2 className="w-4 h-4" /></div><div className="min-w-0"><h3>Acceso al sistema</h3><p>La cuenta del trabajador es independiente de la del dueño.</p></div><label className="team-switch ml-auto shrink-0"><input type="checkbox" checked={form.sendInvite} onChange={e => setForm({...form, sendInvite:e.target.checked})} disabled={busy || Boolean(editing?.user_id)} className="sr-only" /><span className="team-switch-track"><span className="team-switch-thumb" /></span></label></div>
                 <div className="team-access-card">
                   <div className="flex items-start gap-3"><div className="team-access-icon"><AtSign className="w-4 h-4" /></div><div className="min-w-0 flex-1"><p className="text-xs font-black text-primary">Cuenta web del trabajador</p><p className="text-[10px] sm:text-[11px] text-muted leading-5 mt-0.5">Activa una cuenta independiente. PALMYRA generará una invitación segura para que el trabajador configure sus propias credenciales.</p></div></div>
@@ -558,7 +570,13 @@ export default function Team() {
                 </div>
               </section>
             </div>
-            <div className="team-employee-modal-footer"><div className="flex items-start gap-2 min-w-0"><div className="team-footer-icon"><Info className="w-3.5 h-3.5" /></div><p>Los datos se guardan en la empresa activa. El acceso web se mantiene separado de las credenciales del propietario.</p></div><div className="team-footer-actions"><button type="button" onClick={() => setShowForm(false)} className="team-footer-secondary">Cancelar</button><button type="submit" disabled={busy} className="team-footer-primary">{busy ? <><RefreshCw className="w-4 h-4 animate-spin" /> Guardando…</> : editing ? <><Save className="w-4 h-4" /> Guardar cambios</> : <><Check className="w-4 h-4" /> Crear trabajador</>}</button></div></div>
+            <div className="team-employee-modal-footer">
+              <div className="flex items-start gap-2 min-w-0"><div className="team-footer-icon"><Info className="w-3.5 h-3.5" /></div><p>{formStep === 1 ? "Empieza por identificar al trabajador. Podrás revisar todo antes de guardar." : formStep === 2 ? "Define el rol y los almacenes. El trabajador solo tendrá acceso a lo que aquí autorices." : "La cuenta web es independiente de la del propietario. El trabajador configurará sus propias credenciales."}</p></div>
+              <div className="team-footer-actions">
+                <button type="button" onClick={() => formStep === 1 ? setShowForm(false) : setFormStep((formStep-1) as 1|2|3)} className="team-footer-secondary">{formStep === 1 ? "Cancelar" : <><ChevronLeft className="w-4 h-4" /> Atrás</>}</button>
+                {formStep < 3 ? <button type="button" disabled={busy || (formStep===1 && (!form.fullName.trim() || !form.employeeCode.trim())) || (formStep===2 && (!form.roleId || !form.warehouseIds.length))} onClick={() => setFormStep((formStep+1) as 1|2|3)} className="team-footer-primary">Continuar <ChevronRight className="w-4 h-4" /></button> : <button type="submit" disabled={busy || (form.sendInvite && !form.email.trim())} className="team-footer-primary">{busy ? <><RefreshCw className="w-4 h-4 animate-spin" /> Guardando…</> : editing ? <><Save className="w-4 h-4" /> Guardar cambios</> : <><Check className="w-4 h-4" /> Crear trabajador</>}</button>}
+              </div>
+            </div>
           </form>
         </div>
       )}
