@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, Check, ChevronDown, CloudOff, LockKeyhole, MonitorSmartphone, ShieldCheck, Sparkles, Users, X } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, CloudOff, LockKeyhole, Menu, MonitorSmartphone, ShieldCheck, Sparkles, Users, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ImmersiveBackdrop } from "../components/landing/ImmersiveBackdrop";
 import { landingModules, ProductScene } from "../components/landing/ProductScene";
@@ -71,7 +71,7 @@ export default function LandingPage() {
           <button type="button" className="landing-btn landing-btn--light" onClick={() => navigate("/auth")}>Entrar</button>
           <button type="button" className="landing-btn landing-btn--primary" onClick={goSignup}>Crear cuenta <ArrowRight size={13} /></button>
           <button type="button" className="landing-menu" aria-expanded={mobileOpen} aria-label={mobileOpen ? "Cerrar menú" : "Abrir menú"} onClick={() => setMobileOpen((value) => !value)}>
-            {mobileOpen ? <X size={16} /> : <ChevronDown size={16} />}
+            {mobileOpen ? <X size={16} /> : <Menu size={16} />}
           </button>
         </div>
         {mobileOpen ? (
