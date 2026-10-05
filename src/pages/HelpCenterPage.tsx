@@ -1,0 +1,1 @@
+export default function HelpCenterPage(){return <div>help</div>}
