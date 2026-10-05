@@ -203,6 +203,7 @@ export default function POS() {
   }, [currentUser?.id, fallbackSessionBranchId]);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [showSalarySummary, setShowSalarySummary] = useState(false);
+  const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
   const [salesFilter, setSalesFilter] = useState<'all' | 'usd' | 'transfer' | 'cash_cup' | 'mixed'>('all');
   const [salesSubTab, setSalesSubTab] = useState<'tickets' | 'products'>('tickets');
 
@@ -824,6 +825,7 @@ export default function POS() {
 
   const {
     connectedPrinterName,
+    setConnectedPrinterName,
     showPrinterSetupModal,
     setShowPrinterSetupModal,
     isConnectingPrinter,
