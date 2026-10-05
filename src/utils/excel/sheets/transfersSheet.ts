@@ -1,4 +1,4 @@
-import type { ExcelExportData } from "../../../types";
+import type { ExcelExportData } from "../types";
 
 export function generateTransfersSheet(data: ExcelExportData): any[][] {
   const { transfers = [], users, branches } = data;
