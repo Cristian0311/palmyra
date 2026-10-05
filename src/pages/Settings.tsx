@@ -355,7 +355,7 @@ export default function Settings() {
   };
 
   return (
-    <div className="settings-page space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 w-full min-w-0 max-w-5xl mx-auto pb-8 relative overflow-x-hidden">
+    <div data-palmi-content="settings" className="settings-page space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 w-full min-w-0 max-w-5xl mx-auto pb-8 relative overflow-x-hidden">
       {/* In-App Toast Notification */}
       {toast && (
         <div className="fixed top-2 right-2 sm:top-4 sm:right-4 z-[200] w-[calc(100vw-1rem)] sm:w-auto max-w-md min-w-0 animate-in slide-in-from-top-4 fade-in duration-300">
