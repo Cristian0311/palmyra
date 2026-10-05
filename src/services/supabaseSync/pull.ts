@@ -47,7 +47,7 @@ function mapUser(e:any, locations:any[], admin?:any): User {
   const access = locations.filter((l:any) => l.employee_id === e.id);
   const warehouseIds = access.map((l:any) => l.warehouse_id).filter(Boolean);
   return {
-    id: e.id,
+    id: e.user_id || e.id,
     name: e.full_name,
     email: '',
     password: '',
@@ -272,7 +272,7 @@ async function loadSales(branchId?: string, limit = 500) {
     const payments = pRows.map((p:any) => ({
       method: p.method || 'cash',
       amount: Number(p.amount) || 0,
-      currencyCode: p.currency_code || 'USD',
+      currencyCode: p.currency_code || s.currency_code || 'CUP',
       exchangeRate: Number(p.exchange_rate) || 1,
       bankCardId: undefined
     }));
@@ -301,14 +301,18 @@ async function loadSales(branchId?: string, limit = 500) {
 async function loadCashSessions(branchId?: string) {
   const tenant = await getActiveTenant();
   const supabase = getSupabase()!;
-  const [registersRes, employeesRes] = await Promise.all([
+  const [registersRes, employeesRes, companyRes] = await Promise.all([
     supabase.from('cash_registers').select('*').eq('company_id',tenant.companyId).eq('active',true),
-    supabase.from('employees').select('id,full_name').eq('company_id',tenant.companyId)
+    supabase.from('employees').select('id,full_name,user_id').eq('company_id',tenant.companyId),
+    supabase.from('companies').select('default_currency_code').eq('id',tenant.companyId).single()
   ]);
   if (registersRes.error) throw registersRes.error;
   if (employeesRes.error) throw employeesRes.error;
+  if (companyRes.error) throw companyRes.error;
   const registerMap = new Map<string,any>((registersRes.data || []).map((r:any)=>[r.id,r]));
   const employeeMap = new Map<string,string>((employeesRes.data || []).map((e:any)=>[e.id,e.full_name]));
+  const employeeUserMap = new Map<string,string>((employeesRes.data || []).filter((e:any)=>e.user_id).map((e:any)=>[e.id,e.user_id]));
+  const defaultCurrencyCode = companyRes.data?.default_currency_code || 'CUP';
 
   let q=supabase.from('cash_sessions').select('*').eq('company_id',tenant.companyId).order('opened_at',{ascending:false}).limit(50);
   const { data, error }=await q;
@@ -326,10 +330,26 @@ async function loadCashSessions(branchId?: string) {
     openingAmount:Number(s.opening_amount)||0,
     expectedBalance:Number(s.expected_cash)||undefined,
     status:s.status || 'open',
-    userId:s.employee_id || s.opened_by || '',
-    workerName:employeeMap.get(s.employee_id) || undefined,
-    workingEmployeeIds:s.employee_id ? [s.employee_id] : [],
-    closingBalances: s.physical_cash == null ? [] : [{method:'cash',amount:Number(s.physical_cash)||0,currencyCode:'USD',exchangeRate:1}],
+    userId:employeeUserMap.get(s.employee_id) || s.opened_by || s.employee_id || '',
+    workerName:(s.metadata?.workerName || employeeMap.get(s.employee_id)) || undefined,
+    workingEmployeeIds:Array.isArray(s.metadata?.workingEmployeeIds) && s.metadata.workingEmployeeIds.length
+      ? s.metadata.workingEmployeeIds
+      : (s.employee_id ? [employeeUserMap.get(s.employee_id) || s.employee_id] : (s.opened_by ? [s.opened_by] : [])),
+    closingBalances:Array.isArray(s.metadata?.closingBalances)
+      ? s.metadata.closingBalances
+      : (s.physical_cash == null ? [] : [{method:'cash',amount:Number(s.physical_cash)||0,currencyCode:defaultCurrencyCode,exchangeRate:1}]),
+    isForcedClose:Boolean(s.metadata?.isForcedClose),
+    forcedCloseReason:s.metadata?.forcedCloseReason || undefined,
+    discrepancyNote:s.metadata?.discrepancyNote || undefined,
+    hasDiscrepancy:Boolean(s.metadata?.hasDiscrepancy),
+    discrepancyDetails:Array.isArray(s.metadata?.discrepancyDetails)?s.metadata.discrepancyDetails:[],
+    discrepancyDeductionApplied:Number(s.metadata?.discrepancyDeductionApplied)||0,
+    deductedFromSalary:Boolean(s.metadata?.deductedFromSalary),
+    aiDiagnostic:s.metadata?.aiDiagnostic || undefined,
+    matchingProductsAnalysis:Array.isArray(s.metadata?.matchingProductsAnalysis)?s.metadata.matchingProductsAnalysis:[],
+    auditStatus:s.metadata?.auditStatus || 'pending_review',
+    auditNotes:s.metadata?.auditNotes || '',
+    expectedBalance:s.metadata?.expectedBalance != null ? Number(s.metadata.expectedBalance) : (s.expected_cash == null ? undefined : Number(s.expected_cash)),
   }));
 }
 
