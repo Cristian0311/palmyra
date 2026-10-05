@@ -39,7 +39,7 @@ type StoreSet = (
 ) => void;
 type StoreGet = () => AppState;
 
-export function createSyncActions(set: StoreSet, get: StoreGet): Partial<AppState> {
+export function createSyncActions(set: StoreSet, get: StoreGet): any {
   return {
   refreshGlobalCatalogData: async () => {
     if (typeof navigator !== 'undefined' && !navigator.onLine) return false;
