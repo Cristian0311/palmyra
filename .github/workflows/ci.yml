@@ -1,0 +1,36 @@
+name: PALMYRA CI
+
+on:
+  push:
+    branches: [main, 'refactor/**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: TypeScript
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Architecture audit
+        run: npm run audit:architecture:strict
+
+      - name: Production build
+        run: npm run build
+
