@@ -17,10 +17,8 @@ import {
 import type { AIDiagnosticReport, ExcelExportData } from './excel/types';
 
 export type { AIDiagnosticReport, ExcelExportData } from './excel/types';
+export { generateSummarySheet, generateSalesSheet, generateItemsSoldDetailSheet };
 export {
-  generateSummarySheet,
-  generateSalesSheet,
-  generateItemsSoldDetailSheet,
   generateSessionsSheet,
   generatePayrollSheet,
   generateProductsPerformanceSheet,
