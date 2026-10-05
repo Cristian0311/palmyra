@@ -30,7 +30,7 @@ test('inventory CSV escapes commas, quotes and newlines', () => {
     },
   ], [{ id: 'c1', name: 'Higiene, "premium"', department: 'Aseo' } as any]);
 
-  assert.match(csv, /^"Producto, ""especial"""/);
+  assert.match(csv, /p1,"Producto, ""especial""",SKU-1/);
   assert.match(csv, /"Higiene, ""premium"""/);
 });
 
