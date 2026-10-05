@@ -2,7 +2,7 @@ import React from "react";
 
 export function PalmiMascot({ className = "" }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 280 320" role="img" aria-label="Sira, guía inteligente de PALMYRA" xmlns="http://www.w3.org/2000/svg">
+    <svg className={className} viewBox="0 0 280 320" role="img" aria-label="Numa, guía inteligente de PALMYRA" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <linearGradient id="sira-fur" x1="15%" y1="5%" x2="85%" y2="100%"><stop offset="0" stopColor="#F6D09B"/><stop offset=".52" stopColor="#C9874D"/><stop offset="1" stopColor="#87502F"/></linearGradient>
         <linearGradient id="sira-muzzle" x1="25%" y1="15%" x2="80%" y2="90%"><stop offset="0" stopColor="#FFF8EA"/><stop offset="1" stopColor="#E8B477"/></linearGradient>
