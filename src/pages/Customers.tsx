@@ -75,7 +75,7 @@ export default function Customers() {
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 flex flex-col pb-8">
       <header className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 px-1">
         <div className="flex items-center gap-2">
-          <h2 className="text-xl font-black text-primary tracking-tight uppercase">Clientes</h2>
+          <h2 data-palmi-content="customers" className="text-xl font-black text-primary tracking-tight uppercase">Clientes</h2>
           <InfoTooltip text="Gestiona tu directorio de clientes y su historial." position="bottom" />
         </div>
         <button 
