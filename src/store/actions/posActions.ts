@@ -7,18 +7,35 @@ import {
   callVoidTransactionRPC,
   callCompleteReturnRPC,
 } from '../../services/supabaseSync';
-import { enqueueOfflineItem, getOfflineQueue } from '../../services/offlineQueue';
+import { enqueueOfflineItem, getOfflineQueue, waitForOfflineQueueReady, removeFromOfflineQueueByAction, removeFromOfflineQueueByTransactionId } from '../../services/offlineQueue';
 import { buildLocalCompletedSalePatch } from '../utils/localCompletedSale';
 import { buildLocalVoidTransactionPatch } from '../utils/localVoidTransaction';
 import { setCanonicalInventoryQuantity } from '../utils/inventoryTransforms';
-import { generateId } from '../../lib/utils';
+import { generateId, generateReadableId } from '../../lib/utils';
 import { normalizeSemanticText } from '../../utils/textUtils';
 import { getActiveTenant } from '../../services/tenant';
+import { pushWarrantyToSupabase, callCancelSessionRPC, pullBranchInventoryFromSupabase } from '../../services/supabaseSync';
+import { flushLocalStateStorage } from '../../services/localStateStorage';
 
 type StoreSet = (
   partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)
 ) => void;
 type StoreGet = () => AppState;
+
+
+async function refreshInventoryBranchesFromSupabase(set, get, set: StoreSet, get: StoreGet, branchIds: string[]): Promise<boolean> {
+  const ids = Array.from(new Set(branchIds.filter(Boolean)));
+  if (!ids.length) return true;
+  try {
+    const results = await Promise.all(ids.map(id => pullBranchInventoryFromSupabase(id)));
+    if (results.some(result => !result.success)) return false;
+    const byKey = new Map<string, any>();
+    get().inventory.forEach(item => { if (!ids.includes(item.branchId)) byKey.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item); });
+    for (const result of results) for (const item of result.inventory) byKey.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
+    set({ inventory: Array.from(byKey.values()) });
+    return true;
+  } catch { return false; }
+}
 
 export function createPosActions(set: StoreSet, get: StoreGet): Partial<AppState> {
   return {
@@ -226,7 +243,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): Partial<AppState
       // La confirmación remota ya ocurrió. Si este refresh falla, la venta no
       // vuelve a un estado de error ni se vuelve a cobrar; el sincronizador
       // reconciliará el inventario en el siguiente ciclo.
-      const inventoryReconciled = await refreshInventoryBranchesFromSupabase([transaction.branchId]);
+      const inventoryReconciled = await refreshInventoryBranchesFromSupabase(set, get, [transaction.branchId]);
       if (!inventoryReconciled) {
         console.warn('[processTransaction] Venta confirmada; inventario local pendiente de reconciliación.');
       }
