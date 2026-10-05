@@ -348,7 +348,7 @@ export default function Team() {
       <header className="bg-secondary border border-base rounded-3xl p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
           <p className="text-[10px] font-black tracking-[0.18em] uppercase text-rose-500">Empresa</p>
-          <h1 className="text-2xl font-black text-primary mt-1">Equipo y accesos</h1>
+          <h1 data-palmi-content="team" className="text-2xl font-black text-primary mt-1">Equipo y accesos</h1>
           <p className="text-xs text-muted mt-1">Cada trabajador tiene su propio acceso y conserva sus permisos al cambiar de dispositivo.</p>
         </div>
         <button onClick={openCreate} disabled={loading || busy || remainingSlots === 0}
