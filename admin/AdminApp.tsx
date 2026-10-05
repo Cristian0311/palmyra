@@ -16,6 +16,11 @@ import {
   Search,
   Settings2,
   Shield,
+  Headphones,
+  Phone,
+  Mail,
+  Save,
+  ExternalLink,
   ShieldCheck,
   Sparkles,
   TicketCheck,
@@ -32,6 +37,11 @@ import {
   type PlanRequest,
   type PlatformCompany,
   type PlatformSnapshot,
+  loadSupportRequests,
+  loadSupportSettings,
+  saveSupportSettings,
+  type PlatformSupportRequest,
+  type PlatformSupportSettings,
 } from "./platformAdminApi";
 import { adminSignIn, adminSignOut, adminUser, getAdminSupabase } from "./supabase";
 import "./admin.css";
@@ -418,19 +428,118 @@ function BillingView({
   );
 }
 
-function PlaceholderView({ view }: { view: View }) {
-  const meta: Record<View, { eyebrow: string; title: string; copy: string; icon: typeof Activity }> = {
-    overview: { eyebrow: "DASHBOARD", title: "Dashboard", copy: "Vista general.", icon: BarChart3 },
-    companies: { eyebrow: "EMPRESAS", title: "Empresas", copy: "Gestión de cuentas.", icon: Building2 },
-    billing: { eyebrow: "PLANES", title: "Planes y pagos", copy: "Gestión comercial.", icon: CreditCard },
-    support: { eyebrow: "SOPORTE", title: "Centro de soporte", copy: "Sesiones temporales y trazabilidad.", icon: TicketCheck },
-    audit: { eyebrow: "AUDITORÍA", title: "Auditoría administrativa", copy: "Registro de acciones críticas.", icon: Activity },
-    settings: { eyebrow: "CONFIGURACIÓN", title: "Configuración", copy: "Seguridad y operación de la plataforma.", icon: Settings2 },
+function SupportView() {
+  const [requests, setRequests] = useState<PlatformSupportRequest[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState("open");
+  const [error, setError] = useState("");
+
+  const refresh = async (nextFilter = filter) => {
+    setLoading(true);
+    setError("");
+    try {
+      setRequests(await loadSupportRequests(nextFilter === "all" ? undefined : nextFilter));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudieron cargar las solicitudes.");
+    } finally {
+      setLoading(false);
+    }
   };
-  const m = meta[view];
-  const Icon = m.icon;
-  return <div className="admin-placeholder"><div className="admin-placeholder__icon"><Icon size={24} /></div><p className="admin-eyebrow">{m.eyebrow}</p><h1>{m.title}</h1><p>{m.copy} Esta pantalla ya tiene su lugar y contrato visual; conectaremos su fuente de datos sobre el mismo núcleo seguro.</p></div>;
+
+  useEffect(() => { void refresh(); }, [filter]);
+
+  return (
+    <div className="admin-content-stack">
+      <section className="admin-page-head">
+        <div>
+          <p className="admin-eyebrow">ATENCIÓN</p>
+          <h1>Centro de atención al cliente.</h1>
+          <p>Las solicitudes enviadas desde cada empresa quedan registradas aquí antes de continuar por el canal oficial.</p>
+        </div>
+        <Button onClick={() => void refresh()} disabled={loading}><RefreshCw size={14} className={loading ? "spin" : ""}/>Actualizar</Button>
+      </section>
+      <section className="admin-toolbar">
+        <div className="admin-filter-row">
+          {[["open","Abiertas"],["in_progress","En atención"],["resolved","Resueltas"],["closed","Cerradas"],["all","Todas"]].map(([value,label]) =>
+            <button key={value} type="button" onClick={() => setFilter(value)} className={filter===value ? "active" : ""}>{label}</button>
+          )}
+        </div>
+      </section>
+      {error ? <div className="admin-global-error"><AlertCircle size={16}/>{error}</div> : null}
+      <section className="admin-panel">
+        <div className="admin-panel__head"><div><p className="admin-kicker">SOLICITUDES</p><h2>{requests.length} registros</h2></div><TicketCheck size={17}/></div>
+        {loading ? <div className="admin-empty">Cargando solicitudes…</div> :
+          requests.length ? <div className="admin-request-list">{requests.map(request =>
+            <article key={request.id} className="admin-request-row">
+              <div className="admin-request-main">
+                <div className="admin-company-avatar admin-company-avatar--small">{request.company_name.slice(0,1).toUpperCase()}</div>
+                <div><strong>{request.company_name}</strong><span>{request.request_type} · {request.subject}</span><span>{formatDate(request.created_at)}</span></div>
+              </div>
+              <div className="admin-request-price"><strong>{request.status}</strong><span>{request.contact_phone || "Sin teléfono"}</span></div>
+              <div className="admin-request-actions"><a className="admin-btn admin-btn--secondary" href={`https://wa.me/?text=${encodeURIComponent("Solicitud "+request.id+" · "+request.company_name+" · "+request.subject)}`} target="_blank" rel="noreferrer"><ArrowUpRight size={14}/>Abrir canal</a></div>
+            </article>
+          )}</div> : <EmptyPanel title="No hay solicitudes en este estado" description="Cuando una empresa envíe una solicitud aparecerá aquí." />
+        }
+      </section>
+    </div>
+  );
 }
+
+function SettingsView() {
+  const [settings,setSettings] = useState<PlatformSupportSettings>({whatsapp_number:null,support_email:null,privacy_url:null});
+  const [form,setForm] = useState({whatsapp_number:"",support_email:"",privacy_url:""});
+  const [loading,setLoading] = useState(true);
+  const [saving,setSaving] = useState(false);
+  const [message,setMessage] = useState("");
+  const [error,setError] = useState("");
+
+  const refresh = async () => {
+    setLoading(true); setError("");
+    try {
+      const value=await loadSupportSettings();
+      setSettings(value);
+      setForm({whatsapp_number:value.whatsapp_number||"",support_email:value.support_email||"",privacy_url:value.privacy_url||""});
+    } catch(err) {
+      setError(err instanceof Error?err.message:"No se pudo cargar la configuración.");
+    } finally { setLoading(false); }
+  };
+
+  useEffect(()=>{void refresh()},[]);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault(); setSaving(true); setMessage(""); setError("");
+    try {
+      const value=await saveSupportSettings(form);
+      setSettings(value);
+      setForm({whatsapp_number:value.whatsapp_number||"",support_email:value.support_email||"",privacy_url:value.privacy_url||""});
+      setMessage("Configuración guardada correctamente.");
+    } catch(err) {
+      setError(err instanceof Error?err.message:"No se pudo guardar la configuración.");
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <div className="admin-content-stack">
+      <section className="admin-page-head">
+        <div><p className="admin-eyebrow">CONFIGURACIÓN</p><h1>Centro de atención de PALMYRA.</h1><p>Define el canal que utilizarán todas las empresas desde el Centro de atención del CRM.</p></div>
+        <span className="admin-status admin-status--green"><span/>Protegido por Supabase</span>
+      </section>
+      <section className="admin-panel admin-support-settings">
+        <div className="admin-panel__head"><div><p className="admin-kicker">ATENCIÓN AL CLIENTE</p><h2>Canales oficiales</h2></div><Settings2 size={17}/></div>
+        <form className="admin-settings-form" onSubmit={submit}>
+          <label><span><Phone size={13}/>WhatsApp de atención</span><div className="admin-field-icon"><Phone size={15}/><input value={form.whatsapp_number} onChange={e=>setForm({...form,whatsapp_number:e.target.value})} placeholder="+53 5555 5555" inputMode="tel"/></div><small>Se limpiará automáticamente a formato numérico al guardar.</small></label>
+          <label><span><Mail size={13}/>Correo de soporte</span><div className="admin-field-icon"><Mail size={15}/><input type="email" value={form.support_email} onChange={e=>setForm({...form,support_email:e.target.value})} placeholder="soporte@palmyra.com"/></div></label>
+          <label><span><FileTextIcon/>Política y privacidad</span><div className="admin-field-icon"><ExternalLink size={15}/><input type="url" value={form.privacy_url} onChange={e=>setForm({...form,privacy_url:e.target.value})} placeholder="https://…"/></div><small>Opcional. Aparecerá como enlace oficial dentro del CRM.</small></label>
+          {error?<div className="admin-settings-message admin-settings-message--error">{error}</div>:null}
+          {message?<div className="admin-settings-message admin-settings-message--success">{message}</div>:null}
+          <div className="admin-settings-footer"><span>{loading?"Cargando…":settings.whatsapp_number?"Canal configurado y disponible":"Sin canal configurado"}</span><Button type="submit" variant="primary" disabled={saving||loading}><Save size={14}/>{saving?"Guardando…":"Guardar cambios"}</Button></div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function FileTextIcon(){return <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M6 2h9l3 3v17H6V2Zm8 1.5V6h3.5L14 3.5ZM8 8h8V6.5H8V8Zm0 4h8v-1.5H8V12Zm0 4h6v-1.5H8V16Z"/></svg>}
 
 function AdminShell({
   snapshot,
@@ -518,7 +627,9 @@ function AdminShell({
               {view === "overview" ? <Overview snapshot={snapshot} onRefresh={async () => onSnapshotChange(await loadPlatformSnapshot())} /> :
                 view === "companies" ? <CompaniesView companies={snapshot.companies} busy={busy} onToggle={(company) => void toggleCompany(company)} /> :
                 view === "billing" ? <BillingView requests={snapshot.requests} busy={busy} onApprove={(r) => void approve(r)} onReject={(r) => void reject(r)} /> :
-                <PlaceholderView view={view} />}
+                view === "support" ? <SupportView /> :
+                view === "settings" ? <SettingsView /> :
+                <div className="admin-placeholder"><div className="admin-placeholder__icon"><Shield size={24}/></div><p className="admin-eyebrow">PRÓXIMAMENTE</p><h1>{current.label}</h1><p>Área preparada para ampliar el control de plataforma sobre el mismo núcleo seguro.</p></div>}
             </motion.div>
           </AnimatePresence>
         </main>
