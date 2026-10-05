@@ -6,7 +6,8 @@ import { useStore } from "../store/useStore";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { SettingsWarehousesSection } from "../components/settings/SettingsWarehousesSection";
 import { SettingsCategoriesSection } from "../components/settings/SettingsCategoriesSection";
-import { Branch, Category } from "../types";
+import { SettingsEmployeeConfigModal } from "../components/settings/SettingsEmployeeConfigModal";
+import { Branch, Category, User } from "../types";
 import { cn } from "../lib/utils";
 import { normalizeSemanticText } from "../utils/textUtils";
 import { connectBluetoothPrinter, connectPrinter, printESCPOS, isInsideIframe } from "../lib/escpos";
@@ -20,8 +21,10 @@ export default function Settings() {
     branches, addBranch, updateBranch, deleteBranch,
     categories, addCategory, updateCategory, deleteCategory,
     receiptConfig, updateReceiptConfig,
+    users, updateUser, addUser, deleteUser,
     getBaseCurrency, clearAllData,
     exportData, importData,
+    registerEmployee,
     products,
     inventory, transactions, cashSessions,
     syncWithSupabase,
@@ -41,10 +44,15 @@ export default function Settings() {
     deleteCategory: state.deleteCategory, 
     receiptConfig: state.receiptConfig, 
     updateReceiptConfig: state.updateReceiptConfig, 
+    users: state.users, 
+    updateUser: state.updateUser, 
+    addUser: state.addUser, 
+    deleteUser: state.deleteUser, 
     getBaseCurrency: state.getBaseCurrency, 
     clearAllData: state.clearAllData, 
     exportData: state.exportData, 
     importData: state.importData, 
+    registerEmployee: state.registerEmployee, 
     products: state.products, 
     inventory: state.inventory, 
     transactions: state.transactions, 
@@ -55,6 +63,8 @@ export default function Settings() {
 
   const baseCurrency = getBaseCurrency();
   const productById = useMemo(() => new Map(products.map(product => [product.id, product])), [products]);
+  const employees = useMemo(() => users.filter(user => user.role === 'employee'), [users]);
+
   const [rates, setRates] = useState<{ [code: string]: number }>(
     currencies.reduce((acc, c) => ({ ...acc, [c.code]: c.rateToBase }), {})
   );
@@ -64,12 +74,59 @@ export default function Settings() {
   useEffect(() => {
     setTicketConfig(receiptConfig);
   }, [receiptConfig]);
+  const [employeeSalaries, setEmployeeSalaries] = useState<{ [id: string]: number }>({});
+  
+  const [printerStatus, setPrinterStatus] = useState<{
+    type: 'idle' | 'loading' | 'success' | 'error' | 'warning';
+    message: string;
+    deviceName?: string;
+  } | null>(null);
+  const [isInIframe, setIsInIframe] = useState(false);
+
+  // In-app Toast
+  const [toast, setToast] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
+
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'success') => {
+    setToast({ type, message });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  // In-app Deletion Confirmations (Bypasses iframe blocked window.confirm)
+  const [userToDelete, setUserToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [branchToDelete, setBranchToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = useState<{ id: string; name: string } | null>(null);
+
+  useEffect(() => {
+    try {
+      setIsInIframe(window.self !== window.top);
+    } catch (e) {
+      setIsInIframe(true);
+    }
+  }, []);
+
+  // Sync employee salaries when users are loaded
+  useEffect(() => {
+    if (users.length > 0) {
+      setEmployeeSalaries(prev => {
+        const next = { ...prev };
+        users.forEach(u => {
+          if (!(u.id in next)) {
+            next[u.id] = u.baseSalary || 0;
+          }
+        });
+        return next;
+      });
+    }
+  }, [users]);
+
   const [newBranchName, setNewBranchName] = useState("");
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
 
   const [newCategory, setNewCategory] = useState({ name: "", department: "" });
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   
+  const [newEmployee, setNewEmployee] = useState({ name: "", password: "" });
+
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [showConfirmCache, setShowConfirmCache] = useState(false);
@@ -91,9 +148,10 @@ export default function Settings() {
   ] as const;
   const [resetSections, setResetSections] = useState<string[]>([]);
 
+  const [selectedUserForConfig, setSelectedUserForConfig] = useState<User | null>(null);
   const settingsContentRef = useRef<HTMLDivElement | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'connectivity' | 'company' | 'currency' | 'branches' | 'categories' | 'visual' | 'advanced'>('connectivity');
+  const [activeTab, setActiveTab] = useState<'connectivity' | 'company' | 'currency' | 'branches' | 'categories' | 'employees' | 'visual' | 'advanced'>('connectivity');
   const [fontScale, setFontScale] = useState(() => { try { const saved = Number(localStorage.getItem('palmyra-font-scale') || '1'); return [0.9,1,1.1,1.2].includes(saved) ? saved : 1; } catch { return 1; } });
   useEffect(() => { document.documentElement.style.setProperty('--palmyra-font-scale', String(fontScale)); try { localStorage.setItem('palmyra-font-scale', String(fontScale)); } catch {} }, [fontScale]);
   useEffect(() => {
@@ -169,6 +227,20 @@ export default function Settings() {
     showToast("Configuración de ticket guardada.");
   };
 
+  const handleSaveEmployeeSalary = (userId: string) => {
+    const salary = employeeSalaries[userId];
+    updateUser(userId, { baseSalary: salary });
+    showToast("Salario actualizado correctamente.");
+  };
+
+  const confirmDeleteUserAction = () => {
+    if (userToDelete) {
+      deleteUser(userToDelete.id);
+      showToast(`Empleado "${userToDelete.name}" desactivado. Se conserva su historial.`);
+      setUserToDelete(null);
+    }
+  };
+
   const confirmDeleteBranchAction = () => {
     if (branchToDelete) {
       const hasStock = (inventory || []).some(l => l.branchId === branchToDelete.id && l.quantity > 0);
@@ -240,6 +312,14 @@ export default function Settings() {
       }
       setNewCategory({ name: "", department: "" });
     }
+  };
+
+  const handleRegisterEmployeeManual = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newEmployee.name.trim() || !newEmployee.password) return;
+    registerEmployee(newEmployee.name.trim(), newEmployee.password);
+    setNewEmployee({ name: "", password: "" });
+    showToast("Empleado registrado con éxito. Ya aparecerá en el punto de venta.");
   };
 
   const handleManualSync = async () => {
@@ -350,6 +430,15 @@ export default function Settings() {
             );
           })}
         </div>
+      </div>
+
+      <div className="bg-violet-50/70 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-900/40 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[9px] font-black uppercase tracking-[0.16em] text-violet-600 dark:text-violet-300">Gestión de trabajadores</p>
+          <h3 className="mt-1 text-sm font-black text-primary">Todo el equipo se administra desde una sola vista</h3>
+          <p className="mt-1 text-[10px] leading-4 text-secondary">Crear empleados, enviar invitaciones, asignar roles, permisos, salarios y almacenes ahora vive en <strong>Equipo</strong>.</p>
+        </div>
+        <button type="button" onClick={() => navigate("/team")} className="shrink-0 w-full sm:w-auto h-10 px-4 rounded-xl bg-violet-600 text-white text-[10px] font-black uppercase tracking-wider shadow-sm hover:bg-violet-700 transition-colors">Abrir Equipo</button>
       </div>
 
       <div className="bg-violet-50/70 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-900/40 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -585,7 +674,56 @@ export default function Settings() {
           </div>
         )}
 
+        {/* Empleados */}
+        {activeTab === 'employees' && (
+          <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4" style={{ display: 'none' }}>
+            <div className="flex items-center gap-3 border-b border-base pb-3">
+              <div className="bg-rose-50 dark:bg-rose-950/50 p-2 rounded-lg text-rose-600 dark:text-rose-400">
+                <Users size={16} />
+              </div>
+              <div>
+                <h3 className="text-xs font-black text-primary uppercase tracking-wider">Gestión de Empleados</h3>
+                <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Permisos y salarios por turno</p>
+              </div>
+            </div>
+            {/* ... Employees content ... */}
+          </div>
+        )}
+
       </div>
+
+      {/* In-App User Deletion Confirmation Modal */}
+      {userToDelete && (
+        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[150] flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+          <div className="palmyra-mobile-modal bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-5 text-center space-y-3">
+              <div className="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto">
+                <Trash2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-black text-slate-900 uppercase">¿Desactivar Empleado?</h3>
+              <p className="text-xs text-slate-600">
+                ¿Desactivar a <span className="font-bold text-slate-900">{userToDelete.name}</span>? El empleado perderá acceso, pero se conservarán su historial y operaciones.
+              </p>
+            </div>
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setUserToDelete(null)}
+                className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteUserAction}
+                className="px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider bg-rose-600 hover:bg-rose-700 text-white shadow-lg shadow-rose-600/20 transition-all cursor-pointer"
+              >
+                Sí, Desactivar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* In-App Branch Deletion Confirmation Modal */}
       {branchToDelete && (
@@ -653,7 +791,16 @@ export default function Settings() {
         </div>
       )}
 
-
+      <SettingsEmployeeConfigModal
+        user={selectedUserForConfig}
+        branches={branches}
+        employeeSalaries={employeeSalaries}
+        setEmployeeSalaries={setEmployeeSalaries}
+        setUser={setSelectedUserForConfig}
+        updateUser={updateUser}
+        setUserToDelete={setUserToDelete}
+        onClose={() => setSelectedUserForConfig(null)}
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Tasas de Cambio (Compacto Lineal: CUP, USD, EUR) */}
@@ -1195,6 +1342,64 @@ export default function Settings() {
             </button>
           </div>
         </div>
+
+      <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4 lg:col-span-3" style={{ display: activeTab === 'employees' ? undefined : 'none' }}>
+        <div className="flex items-center justify-between gap-3 border-b border-base pb-3">
+          <div className="flex items-center gap-3">
+            <div className="bg-rose-50 dark:bg-rose-950/30 p-2 rounded-lg text-rose-600"><Users size={16} /></div>
+            <div>
+              <h3 className="text-xs font-black text-primary uppercase tracking-wider">Gestión de Personal</h3>
+              <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Empleados y permisos por almacén</p>
+            </div>
+          </div>
+          <span className="text-[8px] font-black uppercase tracking-widest bg-rose-50 text-rose-600 px-2.5 py-1 rounded-full">Admin no cuenta en el límite</span>
+        </div>
+
+        <div className="bg-subtle p-4 rounded-xl border border-base border-dashed">
+          <h4 className="text-[10px] font-black text-primary uppercase mb-3 flex items-center gap-2"><Plus size={14} className="text-rose-600" /> Registrar empleado</h4>
+          <form onSubmit={handleRegisterEmployeeManual} className="grid gap-3 sm:grid-cols-3">
+            <input type="text" placeholder="Nombre completo" required value={newEmployee.name} onChange={e => setNewEmployee({ ...newEmployee, name: e.target.value })}
+              className="px-3 py-2 bg-primary border border-base rounded-lg text-xs font-bold outline-none focus:ring-1 focus:ring-rose-500" />
+            <input type="password" placeholder="Contraseña inicial" required value={newEmployee.password} onChange={e => setNewEmployee({ ...newEmployee, password: e.target.value })}
+              className="px-3 py-2 bg-primary border border-base rounded-lg text-xs font-bold outline-none focus:ring-1 focus:ring-rose-500" />
+            <button type="submit" className="bg-rose-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest shadow-md flex items-center justify-center gap-2">
+              <Plus size={14} /> Registrar
+            </button>
+          </form>
+        </div>
+
+        {users.length === 0 ? (
+          <div className="p-8 bg-subtle rounded-xl text-center text-sm font-bold text-muted">No hay empleados registrados en este espacio.</div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {users.map(u => (
+              <div key={u.id} className="p-4 rounded-2xl border border-base bg-secondary shadow-sm flex flex-col gap-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-black text-primary uppercase truncate">{u.name}</p>
+                    <span className="text-[7px] font-black uppercase bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full inline-flex mt-1">
+                      {u.role === 'admin' ? 'Administrador' : 'Empleado'}
+                    </span>
+                  </div>
+                  <button type="button" onClick={() => setUserToDelete({ id: u.id, name: u.name })} className="p-1.5 text-muted hover:text-rose-600 hover:bg-rose-50 rounded-lg" title="Desactivar empleado"><Trash2 size={14}/></button>
+                </div>
+                <div className="bg-subtle p-2.5 rounded-xl border border-base text-[9px] space-y-1.5">
+                  <div className="flex justify-between font-bold text-muted"><span>Almacenes</span><span className="text-primary font-black">{(u.allowedBranches || branches.map(b => b.id)).length === branches.length ? 'Todos' : `${(u.allowedBranches || []).length} autorizados`}</span></div>
+                  <div className="flex justify-between font-bold text-muted"><span>Salario base</span><span className="text-primary font-black">{baseCurrency.symbol}{(employeeSalaries[u.id] ?? u.baseSalary ?? 0).toLocaleString()}</span></div>
+                </div>
+                <button type="button" onClick={() => setSelectedUserForConfig(u)} className="w-full py-2 px-3 rounded-xl bg-rose-600 text-white font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-1.5">
+                  <SettingsIcon size={14}/> Configuración
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/50 p-3 rounded-xl flex gap-3">
+          <InfoTooltip text="Configura salarios y acceso por almacén. El administrador de la empresa no se cuenta dentro del límite de empleados del plan." />
+          <p className="text-[9px] text-rose-700 dark:text-rose-300 font-medium leading-relaxed">Los límites de empleados se validan en el servidor antes de aceptar nuevos registros.</p>
+        </div>
+      </div>
 
       {/* Zona Peligrosa */}
       <div className="bg-secondary rounded-2xl shadow-sm border border-red-200 dark:border-red-900/30 p-5 space-y-4 lg:col-span-3" style={{ display: activeTab === 'advanced' ? undefined : 'none' }}>
