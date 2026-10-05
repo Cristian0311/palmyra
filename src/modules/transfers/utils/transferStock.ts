@@ -9,27 +9,27 @@ export function getTransferStockHelpers(
   variantQuantities: Record<string, number>
 ) {
   const getSourceStockForVariant = (variantLabel: string = ''): number => {
-    if (!selectedProduct || !effectiveFromBranchId) return 0;
+    if (!productId || !fromBranchId) return 0;
     const item = inventory.find(
-      i => i.productId === selectedProduct.id && 
-           i.branchId === effectiveFromBranchId && 
+      i => i.productId === productId && 
+           i.branchId === fromBranchId && 
            (i.variantLabel || '') === (variantLabel || '')
     );
     return item ? Number(item.quantity) : 0;
   };
 
   const getTargetStockForVariant = (variantLabel: string = ''): number => {
-    if (!selectedProduct || !effectiveToBranchId) return 0;
+    if (!productId || !toBranchId) return 0;
     const item = inventory.find(
-      i => i.productId === selectedProduct.id && 
-           i.branchId === effectiveToBranchId && 
+      i => i.productId === productId && 
+           i.branchId === toBranchId && 
            (i.variantLabel || '') === (variantLabel || '')
     );
     return item ? Number(item.quantity) : 0;
   };
 
   const totalSourceStock: number = variantsList.reduce((acc: number, v: string) => acc + getSourceStockForVariant(v), 0);
-  const totalTargetStock: number = effectiveToBranchId 
+  const totalTargetStock: number = toBranchId 
     ? variantsList.reduce((acc: number, v: string) => acc + getTargetStockForVariant(v), 0) 
     : 0;
 
