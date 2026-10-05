@@ -5,6 +5,7 @@ import { useStore } from "../store/useStore";
 import { Payment } from "../types";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { cn } from "../lib/utils";
+import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
 
 export default function CashRegister() {
   const { branches, currentBranchId, setCurrentBranch, getCurrentSession, openSession, closeSession, getBaseCurrency, currencies, currentUser, transactions, users, products, salarySettlements, updateSalarySettlement, cashSessions } = useStore(useShallow((state) => ({ branches: state.branches, currentBranchId: state.currentBranchId, setCurrentBranch: state.setCurrentBranch, getCurrentSession: state.getCurrentSession, openSession: state.openSession, closeSession: state.closeSession, getBaseCurrency: state.getBaseCurrency, currencies: state.currencies, currentUser: state.currentUser, transactions: state.transactions, users: state.users, products: state.products, salarySettlements: state.salarySettlements, updateSalarySettlement: state.updateSalarySettlement, cashSessions: state.cashSessions })));
@@ -164,51 +165,12 @@ export default function CashRegister() {
     }
   };
 
-  // Calculate expected balances
-  const expectedBalances = useMemo(() => {
-    if (!session) return [];
-    
-    // Start with opening balance as cash in base currency
-    const expected: Payment[] = [
-      { currencyCode: baseCurrency.code, amount: session.openingBalance, exchangeRate: 1, method: 'cash' }
-    ];
-
-    const sessionTx = transactions.filter(
-      t => t.branchId === currentBranchId && t.userId === session.userId && new Date(t.date) >= new Date(session.openedAt)
-    );
-
-    sessionTx.forEach(tx => {
-      tx.payments.forEach(p => {
-        const exItem = expected.find(e => e.currencyCode === p.currencyCode && e.method === p.method);
-        if (exItem) {
-          exItem.amount += p.amount;
-        } else {
-          expected.push({ currencyCode: p.currencyCode, amount: p.amount, exchangeRate: p.exchangeRate, method: p.method });
-        }
-      });
-    });
-
-    // Add movements
-    if (session.movements) {
-      session.movements.forEach(m => {
-        const exItem = expected.find(e => e.currencyCode === m.currencyCode && e.method === 'cash');
-        const multiplier = m.type === 'income' ? 1 : -1;
-        if (exItem) {
-          exItem.amount += (m.amount * multiplier);
-        } else {
-          const currency = currencies.find(c => c.code === m.currencyCode);
-          expected.push({ 
-            currencyCode: m.currencyCode as any, 
-            amount: m.amount * multiplier, 
-            exchangeRate: currency?.rateToBase || 1, 
-            method: 'cash' 
-          });
-        }
-      });
-    }
-
-    return expected;
-  }, [session, transactions, currentBranchId, baseCurrency, currencies]);
+  // El efectivo esperado usa la misma regla del POS:
+  // pagos en efectivo + movimientos - cambios, agrupados por moneda/método.
+  const expectedBalances = useMemo(
+    () => calculateExpectedSessionBalances(session, transactions, currentBranchId, baseCurrency, currencies),
+    [session, transactions, currentBranchId, baseCurrency, currencies]
+  );
 
   const sessionProducts = useMemo(() => {
     if (!session) return [];
