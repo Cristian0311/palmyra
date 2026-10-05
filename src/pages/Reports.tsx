@@ -176,8 +176,6 @@ export default function Reports() {
     id: string;
     label: string;
   } | null>(null);
-  const [deletePin, setDeletePin] = useState("");
-  const [deletePinError, setDeletePinError] = useState(false);
 
   const [editingSessionDateId, setEditingSessionDateId] = useState<string | null>(null);
   const [newSessionDate, setNewSessionDate] = useState<string>("");
@@ -261,8 +259,6 @@ export default function Reports() {
   const [auditCurrencyCode, setAuditCurrencyCode] = useState<string>('CUP');
   const [auditActionMode, setAuditActionMode] = useState<'add' | 'subtract'>('add');
   const [isAddingAuditProduct, setIsAddingAuditProduct] = useState(false);
-
-  const REQUIRED_DELETE_PIN = "03111166702";
 
   const {
     categoryData,
