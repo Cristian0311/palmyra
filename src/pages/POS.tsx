@@ -1,18 +1,17 @@
 import React, { lazy, Suspense, useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { Search, Wifi, WifiOff, RefreshCw, Plus, Minus, CreditCard, Receipt, Trash2, ShoppingCart, ShieldCheck, DollarSign, Banknote, QrCode, ArrowLeftRight, UserPlus, X, Lock, Unlock, Camera, AlertCircle, TrendingUp, Wallet, MessageSquare, Mail, HelpCircle, Calculator, ArrowRight, Package, User, RotateCcw, Printer, Bluetooth, Usb, Smartphone, Send, Copy, Check, CheckCircle, Share2, Store, ChevronDown, ChevronUp, Filter } from "lucide-react";
-import type { Html5QrcodeScanner } from "html5-qrcode";
 import { useNavigate } from "react-router-dom";
 import { cn, generateId } from "../lib/utils";
 import { useStore } from "../store/useStore";
 import { Product, Payment, Transaction, CashRegisterSession } from "../types";
-import { useBarcodeScanner } from "../hooks/useBarcodeScanner";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { getOfflineQueueCount, getOfflineConflictCount, waitForOfflineQueueReady } from "../services/offlineQueue";
-import { normalizeSemanticText } from "../utils/textUtils";
 import { POSCatalog } from "../components/POSCatalog";
 import { printThermalReceipt as printThermalReceiptDirect } from "../lib/escpos";
-import { createPaymentMath, formatMoney, isCupLikeCurrency } from "../modules/pos/utils/paymentMath";
+import { formatMoney } from "../modules/pos/utils/paymentMath";
+import { usePOSPayments } from "../modules/pos/hooks/usePOSPayments";
+import { usePOSScanner } from "../modules/pos/hooks/usePOSScanner";
 import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
 const CheckoutModal = lazy(() => import("../components/pos/CheckoutModal"));
 
@@ -122,6 +121,8 @@ export default function POS() {
   }, [activeCashSessions]);
   const activeTransactions = useMemo(() => transactions.filter(t => !t.deletedAt), [transactions]);
   const [showConfigModal, setShowConfigModal] = useState(false);
+  const [showReceiptModal, setShowReceiptModal] = useState<Transaction | null>(null);
+  const [returnConfirm, setReturnConfirm] = useState<{ tx: Transaction, item: any } | null>(null);
 
 
 
@@ -254,13 +255,6 @@ export default function POS() {
     }).catch(() => {});
   }, []);
   
-  type PaymentLine = { id: string, code: string, amount: number, method: 'cash' | 'transfer', bankCardId?: string };
-  const [paymentLines, setPaymentLines] = useState<PaymentLine[]>([]);
-  const [showReceiptModal, setShowReceiptModal] = useState<Transaction | null>(null);
-  const [returnConfirm, setReturnConfirm] = useState<{ tx: Transaction, item: any } | null>(null);
-
-  const [activePaymentLineId, setActivePaymentLineId] = useState<string | null>(null);
-
   const [salesFilter, setSalesFilter] = useState<'all' | 'usd' | 'transfer' | 'cash_cup' | 'mixed'>('all');
   const [salesSubTab, setSalesSubTab] = useState<'tickets' | 'products'>('tickets');
 
@@ -803,375 +797,62 @@ export default function POS() {
 
   // Barcode scanner moved lower
 
-  const subtotalBase = cart.reduce((sum, item) => {
-    const price = typeof (item.product as any) === 'object' && item.product !== null ? (item.product.price ?? item.price ?? 0) : (item.price ?? 0);
-    return sum + (price * item.quantity);
-  }, 0);
-  const taxBase = 0; // Configurable tax if needed
-  const rawTotalBase = subtotalBase + taxBase;
-  const isCupBase = baseCurrency.code === 'CUP' || baseCurrency.code === 'MN';
-  const totalBase = isCupBase ? Math.round(rawTotalBase) : Math.round(rawTotalBase * 100) / 100;
-
-  // Todos los importes del checkout se convierten a la moneda base con una
-  // tasa válida. La moneda base siempre vale 1, incluso si la configuración
-  // remota llega momentáneamente sin rateToBase.
-  const { getSafeRateToBase, toBaseAmount, roundBaseAmount } = createPaymentMath(baseCurrency, currencies, isCupBase);
-
-  const totalPaidBase = roundBaseAmount(paymentLines.reduce(
-    (sum, line) => sum + toBaseAmount(line.amount, line.code),
-    0
-  ));
-
-  const balanceBase = roundBaseAmount(totalBase - totalPaidBase);
-  const remainingBase = Math.max(0, balanceBase);
-  const changeBase = Math.max(0, -balanceBase);
-  const isPaid = remainingBase <= (isCupBase ? 0 : 0.01) && totalBase > 0;
-
+  const {
+    paymentLines,
+    setPaymentLines,
+    activePaymentLineId,
+    setActivePaymentLineId,
+    subtotalBase,
+    taxBase,
+    rawTotalBase,
+    isCupBase,
+    totalBase,
+    totalPaidBase,
+    balanceBase,
+    remainingBase,
+    changeBase,
+    isPaid,
+    getSafeRateToBase,
+    toBaseAmount,
+    roundBaseAmount,
+    addPaymentLine,
+    updatePaymentLine,
+    removePaymentLine,
+    autoFillRemaining,
+    splitUsdPayment,
+  } = usePOSPayments({ cart, currencies, baseCurrency, bankCards });
 
   const generateSerial = () => {
     const randomSN = `SN-${Math.floor(Math.random() * 100000000).toString().padStart(8, '0')}`;
     setConfigData({ ...configData, serialNumber: randomSN });
   };
 
-  const getProductStock = (productId: string, variantLabel?: string) => {
-    return (inventory || []).reduce((total, item) => {
-      const stockBranchId = currentSession?.branchId || currentBranchId;
-      if (item.branchId !== stockBranchId || item.productId !== productId) return total;
-      if (variantLabel) return item.variantLabel === variantLabel ? total + item.quantity : total;
-      return total + item.quantity;
-    }, 0);
-  };
-
-  const getCartQuantity = (productId: string, variantLabel?: string) => {
-    return cart
-      .filter(item => {
-        const pId = typeof (item.product as any) === 'object' && item.product !== null ? item.product.id : item.product;
-        return pId === productId && (item.variantLabel || '') === (variantLabel || '');
-      })
-      .reduce((sum, item) => sum + item.quantity, 0);
-  };
-
-  useBarcodeScanner((barcode) => {
-    const normCode = normalizeSemanticText(barcode);
-    const scannedProduct = (products || []).find(p => {
-      if (!p) return false;
-      return (
-        p.id === barcode ||
-        normalizeSemanticText(p.sku) === normCode ||
-        normalizeSemanticText(p.barcode) === normCode ||
-        p.sku === barcode ||
-        p.barcode === barcode
-      );
-    });
-
-    if (scannedProduct) {
-       const totalAvailable = getProductStock(scannedProduct.id);
-       if (totalAvailable > 0) {
-          const needsConfig = scannedProduct.hasSerial || (scannedProduct.availableSizes?.length) || (scannedProduct.availableColors?.length);
-          if (needsConfig) {
-             setSelectedProduct(scannedProduct);
-             setShowConfigModal(true);
-          } else {
-             addToCart(scannedProduct);
-             setPosSuccess(`¡Producto "${scannedProduct.name}" detectado y agregado al carrito!`);
-             setTimeout(() => setPosSuccess(""), 2000);
-          }
-       } else {
-          setPosError(`El producto "${scannedProduct.name}" no tiene existencias suficientes en este almacén.`);
-          setTimeout(() => setPosError(""), 3000);
-       }
-    } else {
-      setPosError(`No se encontró ningún producto con el código "${barcode}".`);
-      setTimeout(() => setPosError(""), 2500);
-    }
+  const {
+    getProductStock,
+    getCartQuantity,
+    handleProductClick,
+    handleCatalogOutOfStock,
+    handleConfigSubmit,
+  } = usePOSScanner({
+    products,
+    inventory,
+    currentBranchId,
+    currentSessionBranchId: currentSession?.branchId,
+    cart,
+    pendingOrders,
+    addToCart,
+    clearCart,
+    removePendingOrder,
+    selectedProduct,
+    setSelectedProduct,
+    configData,
+    setConfigData,
+    setShowConfigModal,
+    showCameraScanner,
+    setShowCameraScanner,
+    setPosSuccess,
+    setPosError,
   });
-
-  useEffect(() => {
-    let scanner: Html5QrcodeScanner | null = null;
-    let cancelled = false;
-
-    if (showCameraScanner) {
-      void import("html5-qrcode").then(({ Html5QrcodeScanner }) => {
-        if (cancelled) return;
-
-        scanner = new Html5QrcodeScanner(
-          "qr-reader",
-          { fps: 10, qrbox: { width: 250, height: 250 } },
-          false
-        );
-
-        scanner.render((decodedText) => {
-        // On successful scan
-        const scannedProduct = products.find(p => p.sku === decodedText || p.id === decodedText || p.barcode === decodedText);
-        if (scannedProduct) {
-          const totalAvailable = getProductStock(scannedProduct.id);
-          if (totalAvailable > 0) {
-            const needsConfig = scannedProduct.hasSerial || (scannedProduct.availableSizes?.length) || (scannedProduct.availableColors?.length);
-            if (needsConfig) {
-              setSelectedProduct(scannedProduct);
-              setShowConfigModal(true);
-            } else {
-              addToCart(scannedProduct);
-              setPosSuccess("Producto escaneado");
-              setTimeout(() => setPosSuccess(""), 1500);
-            }
-          } else {
-            setPosError("Sin existencias");
-            setTimeout(() => setPosError(""), 1500);
-          }
-        } else {
-          // Check if it's an order payload from the customer shop
-          if (decodedText.startsWith("APP_ORDER:")) {
-            try {
-              const payloadStr = decodedText.replace("APP_ORDER:", "");
-              const payload = JSON.parse(payloadStr);
-              if (payload && payload.i && Array.isArray(payload.i)) {
-                clearCart();
-                payload.i.forEach((item: any) => {
-                  const p = products.find(prod => prod.id === item.id);
-                  if (p) {
-                    for(let i=0; i<item.q; i++) {
-                      addToCart(p);
-                    }
-                  }
-                });
-                setPosSuccess("Carrito de cliente cargado exitosamente.");
-                setTimeout(() => setPosSuccess(""), 3000);
-              }
-            } catch(e) {
-              setPosError("Código de orden inválido");
-              setTimeout(() => setPosError(""), 1500);
-            }
-          } else {
-            // Check if it's a legacy pending order (by ID)
-            const order = pendingOrders.find(o => o.id === decodedText && o.status === 'pending');
-            if (order) {
-              clearCart();
-              order.items.forEach(item => {
-                const prodObj = typeof (item.product as any) === 'object' && item.product !== null ? item.product : products.find(p => p.id === (item.product as any));
-                if (prodObj) {
-                  for(let i=0; i<item.quantity; i++){
-                    addToCart(prodObj, item.serialNumber);
-                  }
-                }
-              });
-              removePendingOrder(order.id);
-              setPosSuccess("Orden cargada exitosamente.");
-              setTimeout(() => setPosSuccess(""), 3000);
-            } else {
-              setPosError("Código no reconocido");
-              setTimeout(() => setPosError(""), 1500);
-            }
-          }
-        }
-          setShowCameraScanner(false);
-        }, (error) => {
-          // Handle scan errors silently
-        });
-      });
-    }
-
-    return () => {
-      cancelled = true;
-      if (scanner) {
-        scanner.clear().catch(error => {
-          console.error("Failed to clear html5QrcodeScanner. ", error);
-        });
-      }
-    };
-  }, [showCameraScanner, products, inventory, currentBranchId]);
-
-  const handleProductClick = useCallback((product: Product) => {
-    setPosError("");
-    setSelectedProduct(product);
-    const autoSN = product.hasSerial ? `SN-${Math.floor(Math.random() * 100000000).toString().padStart(8, "0")}` : "";
-    setConfigData({
-      selectedSize: product.availableSizes?.[0],
-      selectedColor: product.availableColors?.[0],
-      serialNumber: autoSN
-    });
-    setShowConfigModal(true);
-  }, []);
-
-  const handleCatalogOutOfStock = useCallback(() => {
-    setPosError("Sin existencias en esta sucursal.");
-    setTimeout(() => setPosError(""), 3000);
-  }, []);
-
-  const handleConfigSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setPosError("");
-    if (selectedProduct) {
-      const variantLabel = configData.selectedSize || configData.selectedColor;
-      if (getCartQuantity(selectedProduct.id, variantLabel) >= getProductStock(selectedProduct.id, variantLabel)) {
-        setPosError(`No hay suficiente stock para la variante ${variantLabel || 'seleccionada'}.`);
-        setTimeout(() => setPosError(""), 3000);
-        return;
-      }
-      addToCart({
-        ...selectedProduct,
-      }, configData.serialNumber, { size: configData.selectedSize, color: configData.selectedColor, variantLabel });
-      
-      setShowConfigModal(false);
-      setSelectedProduct(null);
-      setConfigData({});
-    }
-  };
-
-  const addPaymentLine = () => {
-    const newId = crypto.randomUUID();
-    const curr = currencies.find(c => c.code === baseCurrency.code);
-    let fillAmount = 0;
-    if (remainingBase > 0) {
-      const rawAmount = remainingBase / (curr?.rateToBase || 1);
-      fillAmount = curr?.code === 'CUP' ? Math.round(rawAmount) : Math.round(rawAmount * 100) / 100;
-    }
-    const defaultBank = bankCards.find(c => c.currency === baseCurrency.code) || bankCards[0];
-    setPaymentLines(prev => [...prev, { id: newId, code: baseCurrency.code, amount: fillAmount, method: 'cash', bankCardId: defaultBank?.id }]);
-    setActivePaymentLineId(newId);
-  };
-
-  const updatePaymentLine = (id: string, field: keyof PaymentLine, value: any) => {
-    setPaymentLines(prev => {
-      let nextLines = prev.map(p => {
-        if (p.id !== id) return p;
-        const updated = { ...p, [field]: value };
-
-        // Handle currency conversion when code changes
-        if (field === 'code' && value !== p.code) {
-          const oldCurrency = currencies.find(c => c.code === p.code);
-          const newCurrency = currencies.find(c => c.code === value);
-          if (oldCurrency && newCurrency) {
-            const amountInBase = p.amount * oldCurrency.rateToBase;
-            const convertedAmount = amountInBase / newCurrency.rateToBase;
-            // If new currency is CUP-like, round to integer, otherwise keep 2 decimals
-            updated.amount = isCupLikeCurrency(value) ? Math.round(convertedAmount) : Math.round(convertedAmount * 100) / 100;
-          }
-        }
-
-        // If amount is directly edited and it's CUP, round to integer
-        if (field === 'amount' && isCupLikeCurrency(updated.code)) {
-          updated.amount = Math.round(updated.amount);
-        }
-
-        if (field === 'method' && value === 'transfer') {
-          // If transfer is selected, force CUP if not already
-          if (updated.code !== 'CUP') {
-            const oldCurrency = currencies.find(c => c.code === updated.code);
-            const cupCurrency = currencies.find(c => c.code === 'CUP');
-            if (oldCurrency && cupCurrency) {
-              const amountInBase = updated.amount * oldCurrency.rateToBase;
-              updated.amount = Math.round(amountInBase / cupCurrency.rateToBase);
-            }
-            updated.code = 'CUP';
-          }
-          
-          if (!updated.bankCardId) {
-            const matchingCard = bankCards.find(c => c.currency === updated.code) || bankCards[0];
-            if (matchingCard) {
-              updated.bankCardId = matchingCard.id;
-            }
-          }
-        }
-
-        // Ensure that if it's CUP, it's ALWAYS an integer regardless of the field being changed
-        if (isCupLikeCurrency(updated.code)) {
-          updated.amount = Math.round(updated.amount);
-        }
-
-        if (field === 'code' && updated.method === 'transfer') {
-          const matchingCard = bankCards.find(c => c.currency === value) || bankCards[0];
-          if (matchingCard) {
-            updated.bankCardId = matchingCard.id;
-          }
-        }
-        return updated;
-      });
-      return nextLines;
-    });
-  };
-
-  const removePaymentLine = (id: string) => {
-    setPaymentLines(prev => {
-      const filtered = prev.filter(p => p.id !== id);
-      if (activePaymentLineId === id && filtered.length > 0) {
-        setActivePaymentLineId(filtered[0].id);
-      }
-      return filtered;
-    });
-  };
-
-  const autoFillRemaining = (id: string) => {
-    const line = paymentLines.find(p => p.id === id);
-    if (!line) return;
-    const currency = currencies.find(c => c.code === line.code);
-    if (!currency || !Number.isFinite(currency.rateToBase) || currency.rateToBase <= 0) return;
-
-    // Completa exactamente lo que falta. No se suma al importe existente,
-    // porque eso podía duplicar el importe al volver a pulsar "Total a cobrar".
-    const paidByOtherLines = paymentLines.reduce((sum, p) => {
-      if (p.id === id) return sum;
-      return sum + toBaseAmount(p.amount, p.code);
-    }, 0);
-    const missingBase = Math.max(0, roundBaseAmount(totalBase - paidByOtherLines));
-    const amountNeededInCurrency = missingBase / getSafeRateToBase(line.code);
-    const roundedAmount = (line.code === 'CUP' || line.code === 'MN' || line.code === 'CUC')
-      ? Math.round(amountNeededInCurrency)
-      : Math.round(amountNeededInCurrency * 100) / 100;
-
-    updatePaymentLine(id, 'amount', roundedAmount);
-  };
-
-  const splitUsdPayment = (id: string) => {
-    const line = paymentLines.find(p => p.id === id);
-    if (!line || line.code !== 'USD') return;
-    
-    const usdCurrency = currencies.find(c => c.code === 'USD');
-    const cupCurrency = currencies.find(c => c.code === 'CUP');
-    if (!usdCurrency || !cupCurrency) return;
-
-    // Take the integer part of the CURRENT amount in this line
-    const integerPart = Math.floor(line.amount);
-    
-    // Calculate base currency covered by OTHER lines
-    const coveredByOthers = paymentLines.reduce((sum, p) => {
-      if (p.id === id) return sum;
-      const curr = currencies.find(c => c.code === p.code);
-      return sum + (p.amount * (curr?.rateToBase || 0));
-    }, 0);
-
-    // Calculate base currency covered by the integer USD part
-    const coveredByUsdInteger = integerPart * usdCurrency.rateToBase;
-    
-    // The exact remainder needed in base currency to reach totalBase
-    const remainderBase = totalBase - (coveredByOthers + coveredByUsdInteger);
-    
-    // Convert to CUP and round to integer
-    const remainderCup = Math.max(0, Math.round(remainderBase / cupCurrency.rateToBase));
-
-    // 1. Update current line to integer USD
-    updatePaymentLine(id, 'amount', integerPart);
-
-    // 2. Add or Update CUP line
-    // Search for any existing CUP cash line that is NOT the current line
-    const existingCupLine = paymentLines.find(p => (p.code === 'CUP' || p.code === 'MN') && p.method === 'cash' && p.id !== id);
-    
-    if (existingCupLine) {
-      updatePaymentLine(existingCupLine.id, 'amount', existingCupLine.amount + remainderCup);
-      setActivePaymentLineId(existingCupLine.id);
-    } else if (remainderCup > 0) {
-      const newId = crypto.randomUUID();
-      const defaultCupBank = bankCards.find(c => c.currency === 'CUP') || bankCards[0];
-      setPaymentLines(prev => [...prev, { 
-        id: newId, 
-        code: 'CUP', 
-        amount: remainderCup, 
-        method: 'cash', 
-        bankCardId: defaultCupBank?.id 
-      }]);
-      setActivePaymentLineId(newId);
-    }
-  };
 
   const openCheckout = () => {
     if (!currentSession) {
