@@ -6,7 +6,7 @@ import { useStore } from "../store/useStore";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { SettingsWarehousesSection } from "../components/settings/SettingsWarehousesSection";
 import { SettingsCategoriesSection } from "../components/settings/SettingsCategoriesSection";
-import { Branch, Category, User } from "../types";
+import { Branch, Category } from "../types";
 import { cn } from "../lib/utils";
 import { normalizeSemanticText } from "../utils/textUtils";
 import { connectBluetoothPrinter, connectPrinter, printESCPOS, isInsideIframe } from "../lib/escpos";
@@ -22,7 +22,6 @@ export default function Settings() {
     receiptConfig, updateReceiptConfig,
     getBaseCurrency, clearAllData,
     exportData, importData,
-    registerEmployee,
     products,
     inventory, transactions, cashSessions,
     syncWithSupabase,
@@ -42,15 +41,10 @@ export default function Settings() {
     deleteCategory: state.deleteCategory, 
     receiptConfig: state.receiptConfig, 
     updateReceiptConfig: state.updateReceiptConfig, 
-    users: state.users, 
-    updateUser: state.updateUser, 
-    addUser: state.addUser, 
-    deleteUser: state.deleteUser, 
     getBaseCurrency: state.getBaseCurrency, 
     clearAllData: state.clearAllData, 
     exportData: state.exportData, 
     importData: state.importData, 
-    registerEmployee: state.registerEmployee, 
     products: state.products, 
     inventory: state.inventory, 
     transactions: state.transactions, 
