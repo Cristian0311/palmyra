@@ -13,6 +13,9 @@ import { formatMoney } from "../modules/pos/utils/paymentMath";
 import { usePOSPayments } from "../modules/pos/hooks/usePOSPayments";
 import { usePOSScanner } from "../modules/pos/hooks/usePOSScanner";
 import { usePOSPrinter } from "../modules/pos/hooks/usePOSPrinter";
+import { POSConfigProductModal } from "../components/pos/POSConfigProductModal";
+import { POSAddCustomerModal } from "../components/pos/POSAddCustomerModal";
+import { POSCancelShiftModal } from "../components/pos/POSCancelShiftModal";
 import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
 import { aggregateTransferPayments, buildTransactionTicketId, finalizeCheckoutPayments } from '../modules/pos/utils/checkoutUtils';
 const CheckoutModal = lazy(() => import("../components/pos/CheckoutModal"));
@@ -2716,82 +2719,18 @@ export default function POS() {
         </div>
       )}
 
-      {/* Modal para Configurar Producto */}
-      {showConfigModal && (
-        <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
-          <div className="palmyra-mobile-modal bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
-            <div className="p-3 sm:p-5">
-              <h3 className="text-base sm:text-xl font-bold text-slate-900 mb-1.5 sm:mb-2">Configurar Producto</h3>
-              <p className="text-slate-500 mb-6">Completa los detalles para <span className="font-semibold text-slate-800">{selectedProduct?.name}</span>.</p>
-              
-              <form onSubmit={handleConfigSubmit} className="space-y-4">
-                {selectedProduct?.hasSerial && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Número de Serie (Opcional)</label>
-                    <div className="flex gap-2">
-                      <input 
-                        type="text" 
-                        autoFocus
-                        placeholder="Ej: SN-123456789" 
-                        value={configData.serialNumber || ''}
-                        onChange={(e) => setConfigData({...configData, serialNumber: e.target.value})}
-                        className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-shadow"
-                      />
-                      <button type="button" onClick={generateSerial} className="px-4 py-2.5 bg-indigo-50 text-indigo-700 rounded-xl font-medium hover:bg-indigo-100 transition-colors">
-                        Generar
-                      </button>
-                    </div>
-                  </div>
-                )}
-                
-                {selectedProduct?.availableSizes && selectedProduct.availableSizes.length > 0 && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Talla</label>
-                    <select 
-                      required
-                      value={configData.selectedSize || ''}
-                      onChange={(e) => setConfigData({...configData, selectedSize: e.target.value})}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-shadow"
-                    >
-                      {selectedProduct.availableSizes.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                )}
-
-                {selectedProduct?.availableColors && selectedProduct.availableColors.length > 0 && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Color</label>
-                    <select 
-                      required
-                      value={configData.selectedColor || ''}
-                      onChange={(e) => setConfigData({...configData, selectedColor: e.target.value})}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-shadow"
-                    >
-                      {selectedProduct.availableColors.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                )}
-
-                <div className="flex gap-3 pt-4">
-                  <button 
-                    type="button" 
-                    onClick={() => { setShowConfigModal(false); setConfigData({}); }}
-                    className="flex-1 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-colors"
-                  >
-                    Cancelar
-                  </button>
-                  <button 
-                    type="submit" 
-                    className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
-                  >
-                    Agregar
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
+      <POSConfigProductModal
+        open={showConfigModal}
+        product={selectedProduct}
+        configData={configData}
+        setConfigData={setConfigData}
+        generateSerial={generateSerial}
+        onSubmit={handleConfigSubmit}
+        onClose={() => {
+          setShowConfigModal(false);
+          setConfigData({});
+        }}
+      />
 
       {/* POS Tablet & Desktop Professional Top Bar */}
       <header className="bg-slate-900 text-white px-3 sm:px-4 py-2 flex items-center justify-between gap-2 border-b border-slate-800 shrink-0 z-20">
@@ -3290,61 +3229,13 @@ export default function POS() {
         </div>
       )}
 
-      {showAddCustomerModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="palmyra-mobile-modal bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden animate-in zoom-in-95 border border-white/20">
-            <div className="p-3 sm:p-5 space-y-2.5 sm:space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">Nuevo Cliente</h3>
-                <button onClick={() => setShowAddCustomerModal(false)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
-              </div>
-              <form onSubmit={handleAddCustomer} className="space-y-3">
-                <div>
-                  <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Nombre Completo</label>
-                  <input 
-                    required 
-                    type="text" 
-                    value={newCustomer.name} 
-                    onChange={e => setNewCustomer({...newCustomer, name: e.target.value})}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:ring-1 focus:ring-indigo-100 outline-none text-xs font-bold" 
-                  />
-                </div>
-                <div>
-                  <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Teléfono</label>
-                  <input 
-                    type="text" 
-                    value={newCustomer.phone} 
-                    onChange={e => setNewCustomer({...newCustomer, phone: e.target.value})}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:ring-1 focus:ring-indigo-100 outline-none text-xs font-bold" 
-                  />
-                </div>
-                <div>
-                  <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Email (Opcional)</label>
-                  <input 
-                    type="email" 
-                    value={newCustomer.email} 
-                    onChange={e => setNewCustomer({...newCustomer, email: e.target.value})}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:ring-1 focus:ring-indigo-100 outline-none text-xs font-bold" 
-                  />
-                </div>
-                <div>
-                  <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">CI o Pasaporte</label>
-                  <input 
-                    type="text" 
-                    value={newCustomer.taxId} 
-                    onChange={e => setNewCustomer({...newCustomer, taxId: e.target.value})}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:ring-1 focus:ring-indigo-100 outline-none text-xs font-bold" 
-                    placeholder="Número de identidad"
-                  />
-                </div>
-                <button type="submit" className="w-full py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-95">
-                  Guardar Cliente
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
+      <POSAddCustomerModal
+        open={showAddCustomerModal}
+        value={newCustomer}
+        setValue={setNewCustomer}
+        onSubmit={handleAddCustomer}
+        onClose={() => setShowAddCustomerModal(false)}
+      />
 
       {/* Mobile Cart & Quick Checkout Bottom Bar: Visible ONLY on small mobile screens (< md) */}
       {Boolean(currentSession) && !showMobileCart && (
@@ -3562,59 +3453,18 @@ export default function POS() {
         />
       )}
 
-      {/* Modal para Cancelar Turno */}
-      {showCancelShiftModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 border border-rose-100">
-            <div className="p-8 text-center space-y-6">
-              <div className="w-20 h-20 bg-rose-100 text-rose-600 rounded-3xl flex items-center justify-center mx-auto rotate-12 shadow-lg shadow-rose-100">
-                <Trash2 className="w-10 h-10" />
-              </div>
-              
-              <div className="space-y-2">
-                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter">¿Cancelar Turno?</h3>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4">
-                  Esta acción anulará las ventas de este turno, revertirá el inventario y conservará el turno como "Cancelado" en el historial. Se requiere contraseña.
-                </p>
-              </div>
+      <POSCancelShiftModal
+        open={showCancelShiftModal}
+        password={cancelShiftPassword}
+        setPassword={setCancelShiftPassword}
+        isCancelling={isCancellingShift}
+        onCancel={handleCancelShift}
+        onClose={() => {
+          setShowCancelShiftModal(false);
+          setCancelShiftPassword("");
+        }}
+      />
 
-              <div className="space-y-4">
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input 
-                    type="password"
-                    autoFocus
-                    placeholder="Contraseña del Trabajador"
-                    value={cancelShiftPassword}
-                    onChange={(e) => setCancelShiftPassword(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleCancelShift()}
-                    className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 transition-all font-black text-center tracking-[0.5em]"
-                  />
-                </div>
-
-                <div className="flex gap-3">
-                  <button 
-                    onClick={() => {
-                      setShowCancelShiftModal(false);
-                      setCancelShiftPassword("");
-                    }}
-                    className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-colors"
-                  >
-                    Volver
-                  </button>
-                  <button 
-                    onClick={handleCancelShift}
-                    disabled={isCancellingShift}
-                    className="flex-[2] py-4 bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-200 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {isCancellingShift ? "Cancelando..." : "Confirmar Anulación"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
