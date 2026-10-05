@@ -1,5 +1,6 @@
 import React, { lazy, Suspense, useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { getTransactionReceiptLines as getTransactionReceiptLinesUtil } from '../modules/pos/utils/getTransactionReceiptLines';
+import { getClosureReceiptLines as getClosureReceiptLinesUtil } from '../modules/pos/utils/getClosureReceiptLines';
 import { useShallow } from "zustand/react/shallow";
 import { Search, Wifi, WifiOff, RefreshCw, Plus, Minus, CreditCard, Receipt, Trash2, ShoppingCart, ShieldCheck, DollarSign, Banknote, QrCode, ArrowLeftRight, UserPlus, X, Lock, Unlock, Camera, AlertCircle, TrendingUp, Wallet, MessageSquare, Mail, HelpCircle, Calculator, ArrowRight, Package, User, RotateCcw, Printer, Bluetooth, Usb, Smartphone, Send, Copy, Check, CheckCircle, Share2, Store, ChevronDown, ChevronUp, Filter } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -598,7 +599,6 @@ export default function POS() {
             method: method as any
           };
         });
-
       let hasDiscrepancy = false;
       expectedBalances.forEach(eb => {
         const actual = finalBalances.find(fb => fb.currencyCode === eb.currencyCode && fb.method === eb.method)?.amount || 0;
@@ -929,194 +929,20 @@ export default function POS() {
     });
 
 
-  const getClosureReceiptLines = (session: CashRegisterSession): string[] => {
-    const receiptConfig = useStore.getState().receiptConfig;
-    const sessionTx = useStore.getState().transactions.filter(t =>
-      t.sessionId === session.id && !t.deletedAt
-    );
-
-    const soldMap: { [name: string]: { name: string, qty: number, total: number } } = {};
-    sessionTx.forEach(tx => {
-      tx.items.forEach(item => {
-        const prodId = typeof item.product === 'string' ? item.product : item.product?.id;
-        const catalogProduct = prodId ? products.find(p => p.id === prodId) : undefined;
-        const name = typeof item.product === 'object'
-          ? (item.product?.name || catalogProduct?.name || 'Producto')
-          : (catalogProduct?.name || item.product || 'Producto');
-        if (!soldMap[name]) soldMap[name] = { name, qty: 0, total: 0 };
-        const price = typeof item.product === 'object'
-          ? Number(item.product?.price ?? item.price ?? catalogProduct?.price ?? 0)
-          : Number(item.price ?? catalogProduct?.price ?? 0);
-        soldMap[name].qty += Number(item.quantity || 0);
-        soldMap[name].total += price * Number(item.quantity || 0);
-      });
+  const getClosureReceiptLines = (session: CashRegisterSession): string[] =>
+    getClosureReceiptLinesUtil(session, {
+      receiptConfig: useStore.getState().receiptConfig,
+      transactions: useStore.getState().transactions,
+      products,
+      currencies,
+      branches,
+      users,
+      currentUser,
+      salarySettlements,
+      baseCurrency,
+      formatMoney,
+      formatSalaryCUP,
     });
-    const soldList = Object.values(soldMap);
-    const totalSales = sessionTx.reduce((sum, tx) => sum + tx.total, 0);
-
-    const commissions = sessionTx.reduce((sum, tx) => {
-      return sum + tx.items.reduce((s, item) => {
-        const prodId = typeof item.product === 'string' ? item.product : item.product.id;
-        const prod = products.find(p => p.id === prodId);
-        if (!prod) return s;
-        const commValue = prod.commissionValue || 0;
-        return s + (commValue * item.quantity);
-      }, 0);
-    }, 0);
-
-    const employee = users.find(u => u.id === session.userId || u.name === session.workerName) || users.find(u => u.name?.toLowerCase() === session.workerName?.toLowerCase()) || users.find(u => u.role === 'employee') || currentUser;
-
-    // Calculate total cost for shop (what the independent seller owes the shop)
-    const totalShopCost = sessionTx.reduce((sum, tx) => {
-      return sum + tx.items.reduce((s, item) => {
-        const prodId = typeof item.product === 'string' ? item.product : item.product.id;
-        const prod = products.find(p => p.id === prodId);
-        const cost = typeof item.product === 'object' ? (item.product?.costPrice || 0) : (prod?.costPrice || 0);
-        return s + (cost * item.quantity);
-      }, 0);
-    }, 0);
-
-    const baseSalary = employee?.baseSalary || 0;
-    const totalSalary = baseSalary + commissions;
-
-    const lines: string[] = [];
-    lines.push(`CENTER|BOLD|${receiptConfig.businessName || 'PALMYRA POS'}`);
-    if (receiptConfig.showAddress && receiptConfig.businessAddress) lines.push(`CENTER|${receiptConfig.businessAddress}`);
-    if (receiptConfig.showPhone && receiptConfig.businessPhone) lines.push(`CENTER|${receiptConfig.businessPhone}`);
-    lines.push("---");
-    lines.push("CENTER|BOLD|CIERRE DE CAJA / TURNO");
-    lines.push(`TURNO: ${session.id}`);
-    lines.push(`FECHA: ${new Date(session.closingDate || session.closedAt || new Date()).toLocaleDateString()}`);
-    lines.push(`HORA: ${new Date(session.closingDate || session.closedAt || new Date()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
-    lines.push(`EMPLEADO: ${(session.workerName || 'EMPLEADO').toUpperCase()}`);
-    lines.push(`SUCURSAL: ${(branches.find(b => b.id === session.branchId)?.name || 'Central').slice(0, 18)}`);
-    lines.push("---");
-    lines.push("BOLD|PRODUCTOS VENDIDOS:");
-    if (soldList.length === 0) {
-      lines.push("Sin ventas registradas");
-    } else {
-      soldList.forEach(p => {
-        const label = `${p.qty}x ${p.name.slice(0, 16)}`;
-        const val = formatMoney(p.total, baseCurrency.symbol);
-        const sp = Math.max(1, 32 - label.length - val.length);
-        lines.push(`${label}${" ".repeat(sp)}${val}`);
-      });
-    }
-    lines.push("---");
-    const totSLabel = "TOTAL VENTAS:";
-    const totSVal = formatMoney(totalSales, baseCurrency.symbol);
-    lines.push(`BOLD|${totSLabel}${" ".repeat(Math.max(1, 32 - totSLabel.length - totSVal.length))}${totSVal}`);
-    lines.push(`ITEMS TOTALES: ${soldList.reduce((s, i) => s + i.qty, 0)}`);
-    lines.push("---");
-
-    if (false) {
-      lines.push("BOLD|LIQUIDACION INDEPENDIENTE:");
-      const shopLabel = "Costo Fijo Tienda:";
-      const shopVal = formatMoney(totalShopCost, baseCurrency.symbol);
-      lines.push(`${shopLabel}${" ".repeat(Math.max(1, 32 - shopLabel.length - shopVal.length))}${shopVal}`);
-} else {
-      lines.push("BOLD|NOMINA / COMISIONES:");
-      const salLabel = "Salario Base:";
-      const salVal = formatMoney(baseSalary, baseCurrency.symbol);
-      lines.push(`${salLabel}${" ".repeat(Math.max(1, 32 - salLabel.length - salVal.length))}${salVal}`);
-      
-      const comLabel = "Comisiones:";
-      const comVal = formatMoney(commissions, baseCurrency.symbol);
-      lines.push(`${comLabel}${" ".repeat(Math.max(1, 32 - comLabel.length - comVal.length))}${comVal}`);
-      
-      const netLabel = "Total a Pagar:";
-      const netVal = formatSalaryCUP(totalSalary);
-      lines.push(`BOLD|${netLabel}${" ".repeat(Math.max(1, 32 - netLabel.length - netVal.length))}${netVal}`);
-      
-      const settlement = useStore.getState().salarySettlements.find(s => s.sessionId === session.id);
-      if (settlement && settlement.discrepancyDeduction && settlement.discrepancyDeduction > 0) {
-        const dedLabel = "(-) Descuento:";
-        const dedVal = formatMoney(settlement.discrepancyDeduction, baseCurrency.symbol);
-        lines.push(`${dedLabel}${" ".repeat(Math.max(1, 32 - dedLabel.length - dedVal.length))}${dedVal}`);
-        
-        const finalLabel = "NETO RECIBIR:";
-        const finalVal = formatMoney(settlement.total, baseCurrency.symbol);
-        lines.push(`BOLD|${finalLabel}${" ".repeat(Math.max(1, 32 - finalLabel.length - finalVal.length))}${finalVal}`);
-      }
-    }
-    lines.push("---");
-    lines.push("BOLD|COBROS POR METODO/MONEDA:");
-    
-    // Aggregate payments by currency and method
-    const paymentTotals: { [key: string]: { code: string, method: string, amount: number } } = {};
-    sessionTx.forEach(tx => {
-      (tx.payments || []).forEach(p => {
-        const key = `${p.currencyCode}-${p.method}`;
-        if (!paymentTotals[key]) {
-          paymentTotals[key] = { code: p.currencyCode, method: p.method, amount: 0 };
-        }
-        paymentTotals[key].amount += p.amount;
-      });
-    });
-
-    const paymentKeys = Object.keys(paymentTotals);
-    if (paymentKeys.length === 0) {
-      lines.push("Sin cobros registrados");
-    } else {
-      paymentKeys.forEach(k => {
-        const pt = paymentTotals[k];
-        const methodLabel = pt.method === 'transfer' ? 'Transf' : 'Efec';
-        const sym = currencies.find(c => c.code === pt.code)?.symbol || '';
-        const label = `${methodLabel} (${pt.code}):`;
-        const val = formatMoney(pt.amount, sym);
-        const sp = Math.max(1, 32 - label.length - val.length);
-        lines.push(`${label}${" ".repeat(sp)}${val}`);
-      });
-    }
-
-    lines.push("---");
-    lines.push("BOLD|ARQUEO DE FONDOS:");
-    const fondoLabel = "Fondo Inicial:";
-    const fondoVal = formatMoney(session.openingBalance, baseCurrency.symbol);
-    lines.push(fondoLabel + " ".repeat(Math.max(1, 32 - fondoLabel.length - fondoVal.length)) + fondoVal);
-    const physicalBalances = Array.isArray(session.closingBalances) ? session.closingBalances : [];
-    lines.push("BOLD|ARQUEO FISICO:");
-    if (physicalBalances.length === 0) {
-      lines.push("Arqueo físico: no registrado");
-    } else {
-      physicalBalances.forEach(p => {
-        const symbol = currencies.find(c => c.code === p.currencyCode)?.symbol || "";
-        const methodLabel = p.method === "transfer" ? "Transf" : "Efec";
-        const label = methodLabel + " (" + p.currencyCode + "):";
-        const val = formatMoney(Number(p.amount || 0), symbol);
-        lines.push(label + " ".repeat(Math.max(1, 32 - label.length - val.length)) + val);
-      });
-    }
-    if (session.expectedBalance !== undefined) {
-      const expectedLabel = "Total esperado:";
-      const expectedVal = formatMoney(Number(session.expectedBalance || 0), baseCurrency.symbol);
-      lines.push(expectedLabel + " ".repeat(Math.max(1, 32 - expectedLabel.length - expectedVal.length)) + expectedVal);
-    }
-    if (session.hasDiscrepancy && Array.isArray(session.discrepancyDetails) && session.discrepancyDetails.length > 0) {
-      lines.push("BOLD|DESCUADRE:");
-      session.discrepancyDetails.forEach(d => {
-        const label = d.currencyCode + " " + (d.method === "transfer" ? "Transf" : "Efec") + ":";
-        const val = formatMoney(Number(d.difference || 0), currencies.find(c => c.code === d.currencyCode)?.symbol || "");
-        lines.push(label + " ".repeat(Math.max(1, 32 - label.length - val.length)) + val);
-      });
-    }
-    lines.push("---");
-    lines.push("BOLD|LIQUIDACION SALARIO:");
-    const baseLabel = "Salario Base:";
-    const baseVal = formatMoney(baseSalary, baseCurrency.symbol);
-    lines.push(`${baseLabel}${" ".repeat(Math.max(1, 32 - baseLabel.length - baseVal.length))}${baseVal}`);
-    const comLabel = "Comisiones:";
-    const comVal = "+" + formatMoney(commissions, baseCurrency.symbol);
-    lines.push(comLabel + " ".repeat(Math.max(1, 32 - comLabel.length - comVal.length)) + comVal);
-    const totSalLabel = "TOTAL SALARIO:";
-    const totSalVal = formatSalaryCUP(totalSalary);
-    lines.push(`BOLD|${totSalLabel}${" ".repeat(Math.max(1, 32 - totSalLabel.length - totSalVal.length))}${totSalVal}`);
-    lines.push("---");
-    lines.push("CENTER|Firma: _________________");
-    lines.push("CENTER|PALMYRA POS");
-
-    return lines;
-  };
 
   const handleThermalPrint = async (tx: import("../types").Transaction, options?: { silent?: boolean }) => {
     try {
@@ -1197,8 +1023,7 @@ export default function POS() {
     let itemsText = (tx.items || []).map(i => {
       const pName = typeof (i.product as any) === 'object' ? ((i.product as any)?.name || 'Producto') : (products.find(p => p.id === (i.product as any))?.name || (i.product as any) || 'Producto');
       const pPrice = typeof (i.product as any) === 'object' ? ((i.product as any)?.price || 0) : (products.find(p => p.id === (i.product as any))?.price || i.price || 0);
-      return `${i.quantity}x ${pName} - ${formatMoney(pPrice * i.quantity, baseCurrency.symbol)}`;
-    }).join('%0A');
+      return `${i.quantity}x ${pName} - ${formatMoney(pPrice * i.quantity, baseCurrency.symbol)}`;    }).join('%0A');
     const text = `Hola, gracias por tu compra en *${storeName}*.%0A%0A*Detalle del recibo ${tx.id}:*%0A${itemsText}%0A%0A*Total:* ${formatMoney(tx.total, baseCurrency.symbol)}%0A%0A¡Vuelve pronto!`;
     const url = `https://wa.me/${phone}?text=${text}`;
     window.open(url, '_blank');
@@ -1797,8 +1622,7 @@ export default function POS() {
                   {/* Botones de impresión y acciones */}
                   <div className="space-y-2">
                     <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
+                      <button                        type="button"
                         onClick={() => handlePrintClosureThermal(lastClosedSession)}
                         className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-black text-[8px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 active:scale-95"
                       >
@@ -2397,8 +2221,7 @@ export default function POS() {
                       <p className="text-xs text-slate-400 text-center py-4 font-bold">No hay movimientos registrados</p>
                     )}
                   </div>
-                </div>
-              ) : cashManagementTab === 'sales' ? (
+                </div>              ) : cashManagementTab === 'sales' ? (
                 <div className="space-y-4">
                   {(() => {
                     const sessionTx = activeTransactions.filter(t => 
@@ -2997,7 +2820,6 @@ export default function POS() {
                         );
                       })()}
                     </div>
-
                     <div className="space-y-3">
                       <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest border-b border-slate-100 pb-2">Arqueo de Efectivo Físico</h4>
                       <div className="grid grid-cols-2 gap-3">
@@ -3597,8 +3419,7 @@ export default function POS() {
                 const totalItems = sessionTransactions.reduce((sum, tx) => sum + (tx.items || []).reduce((s, i) => s + (i.quantity || 0), 0), 0);
 
                 // Group products for display
-                const groupedProducts: { [name: string]: number } = {};
-                sessionTransactions.forEach(tx => {
+                const groupedProducts: { [name: string]: number } = {};                sessionTransactions.forEach(tx => {
                   tx.items.forEach(item => {
                     const name = typeof item.product === 'string' ? item.product : item.product?.name;
                     if (name) groupedProducts[name] = (groupedProducts[name] || 0) + item.quantity;
