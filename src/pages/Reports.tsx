@@ -18,6 +18,7 @@ import MultiCurrencyTotal from "../components/reports/MultiCurrencyTotal";
 import { getLocalDateYMD } from "../utils/dateUtils";
 import { useReportsContext } from "../modules/reports/useReportsContext";
 import { useReportsPayroll } from "../modules/reports/useReportsPayroll";
+import { useReportsSessions } from "../modules/reports/useReportsSessions";
 import { useReportsAnalytics } from "../hooks/useReportsAnalytics";
 import type { ExcelExportData } from "../utils/excelExport";
 import { pullPosBootstrapFromSupabase } from "../services/supabaseSync/pull";
@@ -281,111 +282,25 @@ export default function Reports() {
     transferSearch
   });
 
-  // Reconciliar y recuperar sesiones: asegura que ningún turno se pierda,
-  // incluso si su registro de sesión fue borrado pero existen transacciones asociadas
-  const reconciledSessions = useMemo(() => {
-    const sessionMap = new Map<string, CashRegisterSession>();
-    (cashSessions || []).forEach(s => {
-      if (!s.deletedAt) {
-        sessionMap.set(s.id, s);
-      }
-    });
-
-    (transactions || []).forEach(t => {
-      if (t.sessionId && !sessionMap.has(t.sessionId) && !t.deletedAt) {
-        sessionMap.set(t.sessionId, {
-          id: t.sessionId,
-          userId: t.userId || 'recovered',
-          workerName: t.cashierName || 'Vendedor',
-          branchId: t.branchId || 'b1',
-          openedAt: t.date,
-          openingBalance: 0,
-          openingAmount: 0,
-          status: 'closed',
-          closedAt: t.date,
-          closingDate: t.date
-        });
-      }
-    });
-
-    return Array.from(sessionMap.values());
-  }, [cashSessions, transactions]);
-
-  // Los turnos visibles se presentan siempre consecutivos. La base de datos
-  // mantiene la misma secuencia después de cada eliminación mediante sus triggers.
-  const sessionTurnMap = useMemo(() => {
-    const map = new Map<string, string>();
-    const ordered = [...reconciledSessions]
-      .filter(session => !session.deletedAt)
-      .sort((a, b) => {
-        const timeA = new Date(a.openedAt || a.closedAt || '').getTime();
-        const timeB = new Date(b.openedAt || b.closedAt || '').getTime();
-        if (timeA !== timeB) return timeA - timeB;
-        return a.id.localeCompare(b.id);
-      });
-
-    ordered.forEach((session, index) => {
-      map.set(session.id, `Turno-${index + 1}`);
-    });
-    return map;
-  }, [reconciledSessions]);
-
-  const getSessionTurnNumber = useCallback((session: CashRegisterSession) => {
-    const label = sessionTurnMap.get(session.id) || '';
-    const match = label.match(/^(?:Turno-)?(\d+)$/i);
-    return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
-  }, [sessionTurnMap]);
-
-  const sortSessionsByTurn = useCallback((a: CashRegisterSession, b: CashRegisterSession) => {
-    const turnA = getSessionTurnNumber(a);
-    const turnB = getSessionTurnNumber(b);
-    if (turnA !== turnB) return turnA - turnB;
-    const openedA = new Date(a.openedAt || a.closedAt || '').getTime();
-    const openedB = new Date(b.openedAt || b.closedAt || '').getTime();
-    return openedA - openedB;
-  }, [getSessionTurnNumber]);
-
-  const closedSessions = useMemo(() => {
-    return [...reconciledSessions]
-      .filter(s => s.status === 'closed' && !s.deletedAt)
-      .sort(sortSessionsByTurn);
-  }, [reconciledSessions, sortSessionsByTurn]);
-
-  const filteredSessions = useMemo(() => {
-    const todayYMD = getLocalDateYMD(new Date().toISOString());
-    const yesterdayDate = new Date();
-    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-    const yesterdayYMD = getLocalDateYMD(yesterdayDate.toISOString());
-
-    return [...reconciledSessions]
-      .filter(s => {
-        if (s.deletedAt) return false;
-        if (statusFilter !== 'all' && s.status !== statusFilter) return false;
-        if (selectedBranchFilter !== 'all' && s.branchId !== selectedBranchFilter) return false;
-        if (selectedWorkerFilter !== 'all') {
-          const emp = userById.get(s.userId) || (s.workerName ? userByName.get(s.workerName.trim().toLowerCase()) : undefined);
-          if (emp?.id !== selectedWorkerFilter && s.userId !== selectedWorkerFilter && s.workerName !== selectedWorkerFilter) {
-            return false;
-          }
-        }
-        const sDateYMD = getLocalDateYMD(s.closingDate || s.closedAt || s.openedAt);
-        if (selectedFilterDate) {
-          return sDateYMD === selectedFilterDate;
-        }
-        if (sessionFilter === 'today') {
-          return sDateYMD === todayYMD;
-        }
-        if (sessionFilter === 'yesterday') {
-          return sDateYMD === yesterdayYMD;
-        }
-        return true;
-      })
-      .sort(sortSessionsByTurn);
-  }, [reconciledSessions, statusFilter, selectedBranchFilter, selectedWorkerFilter, selectedFilterDate, sessionFilter, userById, userByName, sortSessionsByTurn]);
-
-  const filteredClosedSessions = useMemo(() => {
-    return filteredSessions.filter(s => s.status === 'closed');
-  }, [filteredSessions]);
+  const {
+    reconciledSessions,
+    sessionTurnMap,
+    getSessionTurnNumber,
+    sortSessionsByTurn,
+    closedSessions,
+    filteredSessions,
+    filteredClosedSessions,
+  } = useReportsSessions({
+    cashSessions,
+    transactions,
+    userById,
+    userByName,
+    statusFilter,
+    selectedBranchFilter,
+    selectedWorkerFilter,
+    selectedFilterDate,
+    sessionFilter,
+  });
 
   const { payrollList, filteredPayrollList, aggregatedPayrollByWorker } = useReportsPayroll({
     closedSessions,
