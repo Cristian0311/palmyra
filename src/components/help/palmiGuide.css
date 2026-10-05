@@ -19,8 +19,8 @@
 @keyframes palmi-float{0%,100%{transform:translateY(0) rotate(0);opacity:.55}50%{transform:translateY(-6px) rotate(8deg);opacity:1}}
 .palmi-mascot-blink{animation:palmi-blink 5.5s infinite;transform-origin:130px 141px}
 @keyframes palmi-blink{0%,93%,100%{opacity:1}95%,97%{opacity:.08}}
-.palmi-guide-panel{position:absolute;right:0;bottom:124px;width:min(410px,calc(100vw - 22px));max-height:min(690px,calc(100dvh - 132px));overflow:hidden;pointer-events:auto;border:1px solid rgba(112,88,157,.18);border-radius:27px;background:rgba(255,255,255,.985);color:#241538;box-shadow:0 30px 90px rgba(39,20,65,.3);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);transform-origin:bottom right;animation:palmi-panel-in .24s ease-out}
-.palmi-guide-panel.dark{background:rgba(35,25,49,.985);color:#f9f5ff;border-color:rgba(180,154,221,.18)}
+.palmi-guide-panel{position:fixed;right:12px;bottom:14px;width:min(410px,calc(100vw - 22px));max-height:min(690px,calc(100dvh - 132px));overflow:hidden;pointer-events:auto;border:1px solid rgba(112,88,157,.18);border-radius:27px;background:rgba(255,255,255,.985);color:#241538;box-shadow:0 30px 90px rgba(39,20,65,.3);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);transform-origin:bottom right;animation:palmi-panel-in .24s ease-out}
+.palmi-guide-panel{z-index:1305}.palmi-guide-panel.dark{background:rgba(35,25,49,.985);color:#f9f5ff;border-color:rgba(180,154,221,.18)}
 @keyframes palmi-panel-in{from{opacity:0;transform:translateY(10px) scale(.975)}to{opacity:1;transform:translateY(0) scale(1)}}
 .palmi-guide-brandbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 16px;border-bottom:1px solid rgba(112,88,157,.1)}
 .palmi-guide-brand{display:flex;align-items:center;gap:8px;min-width:0}
@@ -56,7 +56,7 @@
 .palmi-guide-footer{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px 16px 15px;border-top:1px solid rgba(112,88,157,.1)}
 .palmi-guide-actions{display:flex;align-items:center;gap:7px}
 .palmi-guide-secondary,.palmi-guide-primary{min-height:39px;border-radius:12px;padding:0 13px;border:1px solid transparent;font-size:9px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;cursor:pointer}
-.palmi-guide-secondary{color:#655572;background:#f5f2f8;border-color:#e5deed}
+.palmi-guide-secondary{color:#655572;background:#f5f2f8;border-color:#e5deed}.palmi-guide-back{min-height:39px;display:inline-flex;align-items:center;gap:4px;padding:0 9px;border:1px solid #e5deed;border-radius:12px;background:#fff;color:#655572;font-size:9px;font-weight:900;letter-spacing:.05em;text-transform:uppercase;cursor:pointer}.palmi-guide-back:disabled{opacity:.32;cursor:not-allowed}
 .palmi-guide-primary{display:inline-flex;align-items:center;gap:6px;color:#fff;background:#6d3bd2;box-shadow:0 8px 18px rgba(109,59,210,.22)}
 .palmi-guide-primary.is-disabled,.palmi-guide-primary:disabled{opacity:.45;cursor:not-allowed}
 .palmi-guide-reset{position:absolute;top:-9px;right:-9px;width:29px;height:29px;border:1px solid #e6deef;border-radius:10px;background:#fff;color:#6d3bd2;box-shadow:0 7px 18px rgba(37,17,58,.18);display:flex;align-items:center;justify-content:center;cursor:pointer;pointer-events:auto}
@@ -64,9 +64,9 @@
 .palmi-guide-anchor{width:68px;height:96px}.palmi-guide-anchor.is-edge{right:10px;bottom:10px}
 .palmi-guide-mascot-dock{width:68px;height:96px}.palmi-mascot-stage{width:68px;height:82px;border-radius:24px}
 .palmi-guide-mascot{width:76px;height:90px}.palmi-guide-name{font-size:6px;bottom:4px;padding:4px 7px}
-.palmi-guide-panel{right:0;bottom:104px;width:min(350px,calc(100vw - 10px));max-height:calc(100dvh - 116px);border-radius:22px}
+.palmi-guide-panel{right:10px;bottom:106px;width:min(350px,calc(100vw - 10px));max-height:calc(100dvh - 116px);border-radius:22px}
 .palmi-guide-brandbar{padding:11px 13px}.palmi-guide-hero{padding:11px 13px 9px}.palmi-guide-progress{padding:0 13px 11px}.palmi-guide-command{padding:0 13px 12px}.palmi-guide-body{padding:0 13px 12px;max-height:calc(100dvh - 300px)}.palmi-guide-footer{padding:10px 13px 12px}
-.palmi-guide-secondary{font-size:8px;padding:0 10px}.palmi-guide-primary{padding:0 11px}
+.palmi-guide-secondary{font-size:8px;padding:0 10px}.palmi-guide-back{min-height:36px;font-size:8px;padding:0 8px}.palmi-guide-primary{padding:0 11px}
 }
 @media(prefers-reduced-motion:reduce){
 .palmi-guide-spotlight,.palmi-guide-progress-fill{transition:none}.palmi-guide-panel{animation:none}.palmi-guide-mascot-dock:hover .palmi-guide-mascot{transform:translateY(5px)}.palmi-aura-2,.palmi-spark,.palmi-pulse-dot{animation:none}.palmi-mascot-blink{animation:none}
