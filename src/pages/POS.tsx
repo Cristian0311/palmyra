@@ -16,6 +16,7 @@ import { usePOSPrinter } from "../modules/pos/hooks/usePOSPrinter";
 import { POSConfigProductModal } from "../components/pos/POSConfigProductModal";
 import { POSAddCustomerModal } from "../components/pos/POSAddCustomerModal";
 import { POSCancelShiftModal } from "../components/pos/POSCancelShiftModal";
+import { POSClosurePrintArea } from "../components/pos/POSClosurePrintArea";
 import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
 import { aggregateTransferPayments, buildTransactionTicketId, finalizeCheckoutPayments } from '../modules/pos/utils/checkoutUtils';
 const CheckoutModal = lazy(() => import("../components/pos/CheckoutModal"));
@@ -3318,121 +3319,20 @@ export default function POS() {
         )
       )}
 
-      {/* Hidden printable area for shift closure thermal receipt */}
-      {lastClosedSession && (
-        <div id="print-closure-area" className="hidden font-mono text-[11px] leading-tight text-black bg-white p-2">
-          {(() => {
-            const sessionTx = activeTransactions.filter(t => 
-              t.sessionId === lastClosedSession.id && !t.deletedAt
-            );
-
-            const soldMap: { [name: string]: { name: string, qty: number, total: number } } = {};
-            sessionTx.forEach(tx => {
-              (tx.items || []).forEach(item => {
-                const name = typeof item.product === 'string' ? item.product : (item.product?.name || 'Producto');
-                if (!soldMap[name]) soldMap[name] = { name, qty: 0, total: 0 };
-                const price = typeof item.product === 'object' ? (item.product?.price || 0) : 0;
-                soldMap[name].qty += item.quantity;
-                soldMap[name].total += (price * item.quantity);
-              });
-            });
-            const soldList = Object.values(soldMap);
-            const totalSales = sessionTx.reduce((sum, tx) => sum + tx.total, 0);
-
-            const commissions = sessionTx.reduce((sum, tx) => {
-              return sum + (tx.items || []).reduce((s, item) => {
-                const prodId = typeof item.product === 'string' ? item.product : item.product?.id;
-                const prod = products.find(p => p.id === prodId);
-                if (!prod) return s;
-                const commValue = prod.commissionValue || 0;
-                return s + (commValue * item.quantity);
-              }, 0);
-            }, 0);
-
-            const employee = users.find(u => u.id === lastClosedSession.userId || u.name === lastClosedSession.workerName) || users.find(u => u.name?.toLowerCase() === lastClosedSession.workerName?.toLowerCase()) || users.find(u => u.role === 'employee') || currentUser;
-            const baseSalary = employee?.baseSalary || 0;
-            const totalSalary = baseSalary + commissions;
-
-            return (
-              <div className="space-y-1">
-                <div className="text-center font-black text-sm uppercase">{receiptConfig?.businessName || 'PALMYRA POS'}</div>
-                {receiptConfig?.showAddress && receiptConfig?.businessAddress && (
-                  <div className="text-center text-[9px]">{receiptConfig.businessAddress}</div>
-                )}
-                {receiptConfig?.showPhone && receiptConfig?.businessPhone && (
-                  <div className="text-center text-[9px]">{receiptConfig.businessPhone}</div>
-                )}
-                <div className="border-t border-dashed border-black my-2"></div>
-                <div className="text-center font-black uppercase text-xs">CIERRE DE CAJA / LIQUIDACIÓN</div>
-                <div className="flex justify-between text-[10px]">
-                  <span>TURNO:</span>
-                  <span className="font-bold">{lastClosedSession.id}</span>
-                </div>
-                <div className="flex justify-between text-[10px]">
-                  <span>FECHA:</span>
-                  <span>{new Date(lastClosedSession.closingDate || lastClosedSession.closedAt || new Date()).toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-[10px]">
-                  <span>EMPLEADO:</span>
-                  <span className="font-bold uppercase">{lastClosedSession.workerName || 'EMPLEADO'}</span>
-                </div>
-                <div className="flex justify-between text-[10px]">
-                  <span>SUCURSAL:</span>
-                  <span>{branches.find(b => b.id === lastClosedSession.branchId)?.name || 'Central'}</span>
-                </div>
-                
-                <div className="border-t border-dashed border-black my-2"></div>
-                <div className="font-bold text-[10px] uppercase">PRODUCTOS VENDIDOS ({soldList.reduce((s, i) => s + i.qty, 0)}):</div>
-                {soldList.length === 0 ? (
-                  <div className="text-[10px] italic">Sin ventas registradas en el turno</div>
-                ) : (
-                  soldList.map((p, i) => (
-                    <div key={i} className="flex justify-between text-[10px]">
-                      <span className="truncate max-w-[170px]">{p.qty}x {p?.name || "Producto"}</span>
-                      <span className="font-bold">{formatMoney(p.total, baseCurrency.symbol)}</span>
-                    </div>
-                  ))
-                )}
-                <div className="border-t border-dashed border-black my-2"></div>
-                <div className="flex justify-between font-black text-xs">
-                  <span>VENTA TOTAL:</span>
-                  <span>{formatMoney(totalSales, baseCurrency.symbol)}</span>
-                </div>
-
-                <div className="border-t border-dashed border-black my-2"></div>
-                <div className="font-bold text-[10px] uppercase">ARQUEO DE FONDOS:</div>
-                <div className="flex justify-between text-[10px]">
-                  <span>Fondo Inicial:</span>
-                  <span>{formatMoney(lastClosedSession.openingBalance, baseCurrency.symbol)}</span>
-                </div>
-
-                <div className="border-t border-dashed border-black my-2"></div>
-                <div className="font-bold text-[10px] uppercase">LIQUIDACIÓN DE SALARIO:</div>
-                <div className="flex justify-between text-[10px]">
-                  <span>Salario Base:</span>
-                  <span>{formatMoney(baseSalary, baseCurrency.symbol)}</span>
-                </div>
-                <div className="flex justify-between text-[10px]">
-                  <span>Comisiones Productos:</span>
-                  <span>+{formatMoney(commissions, baseCurrency.symbol)}</span>
-                </div>
-                <div className="flex justify-between font-black text-xs pt-1 border-t border-dotted border-black">
-                  <span>SALARIO A PAGAR:</span>
-                  <span>{formatSalaryCUP(totalSalary)}</span>
-                </div>
-
-                <div className="border-t border-dashed border-black my-4"></div>
-                <div className="pt-6 text-center text-[9px] border-t border-black">
-                  Firma del Empleado
-                </div>
-                <div className="pt-6 text-center text-[9px] border-t border-black">
-                  Firma Supervisor / Administrador
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-      )}
+      <POSClosurePrintArea
+        session={lastClosedSession}
+        transactions={activeTransactions}
+        products={products}
+        users={users}
+        currentUser={currentUser}
+        branches={branches}
+        receiptConfig={receiptConfig}
+        baseCurrency={baseCurrency}
+        formatMoney={formatMoney}
+        formatSalaryCUP={(value) =>
+          `${Math.round(Number(value) || 0).toLocaleString("es-ES")} CUP`
+        }
+      />
 
       {showPrinterSetupModal && (
         <POSPrinterSetupModal
