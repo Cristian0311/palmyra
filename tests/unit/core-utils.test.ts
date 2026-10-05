@@ -12,6 +12,7 @@ import {
   formatMoney,
 } from '../../src/modules/pos/utils/paymentMath';
 import { calculateExpectedCashBase } from '../../src/services/cash/expectedCash';
+import { buildSessionTurnMap } from '../../src/modules/reports/useReportsSessions';
 
 test('inventory transfer validation aggregates duplicate requirements', () => {
   const inventory = [{
@@ -116,4 +117,15 @@ test('expected cash is calculated in base currency without counting transfers', 
 
   // 1000 opening + 1000 cash payment - 100 change + 15000 income - 100 expense.
   assert.equal(calculateExpectedCashBase(session, transactions, currencies), 16800);
+});
+
+
+test('reports preserve persisted turn numbers after a lower turn disappears', () => {
+  const sessions = [
+    { id: 's3', turnNumber: 3, status: 'closed', branchId: 'w1', openedAt: '2026-10-03T10:00:00Z', userId: 'u1', openingBalance: 0 } as any,
+    { id: 's12', turnNumber: 12, status: 'closed', branchId: 'w1', openedAt: '2026-10-12T10:00:00Z', userId: 'u1', openingBalance: 0 } as any,
+  ];
+  const map = buildSessionTurnMap(sessions);
+  assert.equal(map.get('s3'), 'Turno-3');
+  assert.equal(map.get('s12'), 'Turno-12');
 });
