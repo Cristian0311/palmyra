@@ -15,6 +15,7 @@ const AddItemToShiftModal = lazy(() => import("../components/reports/AddItemToSh
 const ReportsCharts = lazy(() => import("../components/reports/ReportsCharts"));
 import { buildCashMovementReceiptLines, buildDiscrepancyReceiptLines, buildShiftReceiptLines, buildTransferReceiptLines } from '../modules/reports/utils/reportReceiptLines';
 import { getSessionDiscrepancyInfo as getSessionDiscrepancyInfoUtil } from '../modules/reports/utils/getSessionDiscrepancyInfo';
+import { buildDetailedMovements, calculatePerfectSessionBalances } from '../modules/reports/utils/reportSessionCalculations';
 import { cn } from "../lib/utils";
 import { InfoTooltip } from "../components/InfoTooltip";
 import MultiCurrencyTotal from "../components/reports/MultiCurrencyTotal";
@@ -439,51 +440,10 @@ export default function Reports() {
     });
   }, [allDiscrepancySessions, selectedBranchFilter, selectedFilterDate, sessionFilter, discrepancyTypeFilter]);
 
-  const allDetailedMovements = useMemo(() => {
-    const list: {
-      id: string;
-      sessionId: string;
-      turnLabel: string;
-      branchId: string;
-      branchName: string;
-      workerName: string;
-      type: 'income' | 'expense';
-      amount: number;
-      currencyCode: string;
-      description: string;
-      date: string;
-      session: typeof cashSessions[0];
-    }[] = [];
-
-    cashSessions.forEach(session => {
-      const turnLabel = sessionTurnMap.get(session.id) || session.id;
-      const branchName = branches.find(b => b.id === session.branchId)?.name || 'Sucursal';
-      const workerName = session.workerName || users.find(u => u.id === session.userId)?.name || 'Cajero';
-
-      (session.movements || []).forEach(m => {
-        list.push({
-          id: m.id,
-          sessionId: session.id,
-          turnLabel,
-          branchId: m.branchId || session.branchId,
-          branchName,
-          workerName: m.workerName || workerName,
-          type: m.type,
-          amount: m.amount,
-          currencyCode: m.currencyCode,
-          description: m.description,
-          date: m.date,
-          session
-        });
-      });
-    });
-
-    return list.sort((a, b) => {
-      const turnOrder = sortSessionsByTurn(a.session, b.session);
-      if (turnOrder !== 0) return turnOrder;
-      return new Date(a.date).getTime() - new Date(b.date).getTime();
-    });
-  }, [cashSessions, sessionTurnMap, branches, users, sortSessionsByTurn]);
+  const allDetailedMovements = useMemo(
+    () => buildDetailedMovements(cashSessions, sessionTurnMap, branches, users, sortSessionsByTurn),
+    [cashSessions, sessionTurnMap, branches, users, sortSessionsByTurn],
+  );
 
   const filteredDetailedMovements = useMemo(() => {
     return allDetailedMovements.filter(m => {
@@ -3210,49 +3170,11 @@ export default function Reports() {
                           type="button"
                           onClick={() => {
                             // 1. Recalcular saldos esperados para esta sesión
-                            const expected: { currencyCode: string; method: 'cash' | 'transfer'; amount: number }[] = [
-                              { currencyCode: baseCurrency.code, method: 'cash', amount: session.openingBalance || 0 }
-                            ];
-
-                            const sessionTxs = transactions.filter(t => 
-                              t.sessionId 
-                                ? t.sessionId === session.id
-                                : (t.branchId === session.branchId && 
-                                   new Date(t.date).getTime() >= new Date(session.openedAt).getTime() && 
-                                   (!session.closedAt || new Date(t.date).getTime() <= new Date(session.closedAt).getTime()))
-                            );
-
-                            sessionTxs.forEach(tx => {
-                              (tx.payments || []).forEach(p => {
-                                const ex = expected.find(e => e.currencyCode === p.currencyCode && e.method === p.method);
-                                if (ex) ex.amount += p.amount;
-                                else expected.push({ currencyCode: p.currencyCode, method: p.method as any, amount: p.amount });
-                              });
-                              if (tx.changePayments && tx.changePayments.length > 0) {
-                                tx.changePayments.forEach(cp => {
-                                  const ex = expected.find(e => e.currencyCode === cp.currencyCode && e.method === cp.method);
-                                  if (ex) ex.amount -= cp.amount;
-                                  else expected.push({ currencyCode: cp.currencyCode, method: cp.method as any, amount: -cp.amount });
-                                });
-                              } else if (tx.changeGiven && tx.changeGiven > 0) {
-                                const ex = expected.find(e => e.currencyCode === baseCurrency.code && e.method === 'cash');
-                                if (ex) ex.amount -= tx.changeGiven;
-                                else expected.push({ currencyCode: baseCurrency.code, method: 'cash', amount: -tx.changeGiven });
-                              }
+                            const perfectBalances = calculatePerfectSessionBalances(session, {
+                              baseCurrencyCode: baseCurrency.code,
+                              currencies,
+                              transactions,
                             });
-
-                            (session.movements || []).forEach(m => {
-                              const ex = expected.find(e => e.currencyCode === m.currencyCode && e.method === 'cash');
-                              if (ex) ex.amount += (m.type === 'income' ? m.amount : -m.amount);
-                              else expected.push({ currencyCode: m.currencyCode, method: 'cash', amount: m.type === 'income' ? m.amount : -m.amount });
-                            });
-
-                            const perfectBalances = expected.map(e => ({
-                              currencyCode: e.currencyCode as any,
-                              amount: e.amount,
-                              method: e.method,
-                              exchangeRate: currencies.find(c => c.code === e.currencyCode)?.rateToBase || 1
-                            }));
 
                             // 2. Actualizar el turno para un Cuadre Perfecto
                             updateCashSession(session.id, {
