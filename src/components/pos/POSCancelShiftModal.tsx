@@ -1,4 +1,5 @@
 import type { KeyboardEvent } from "react";
+import { Lock, Trash2 } from "lucide-react";
 
 type Props = {
   open: boolean;
@@ -28,7 +29,7 @@ export function POSCancelShiftModal({
       <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 border border-rose-100">
         <div className="p-8 text-center space-y-6">
           <div className="w-20 h-20 bg-rose-100 text-rose-600 rounded-3xl flex items-center justify-center mx-auto rotate-12 shadow-lg shadow-rose-100">
-            <span className="text-4xl font-black">×</span>
+            <Trash2 className="w-10 h-10" />
           </div>
 
           <div className="space-y-2">
@@ -42,6 +43,7 @@ export function POSCancelShiftModal({
 
           <div className="space-y-4">
             <div className="relative">
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
                 type="password"
                 autoFocus
