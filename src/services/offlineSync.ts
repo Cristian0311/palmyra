@@ -35,21 +35,10 @@ import {
 } from './supabaseSync';
 import { addSyncLog } from '../utils/syncLogger';
 import { getActiveTenant } from './tenant';
+import { reconcileBankCanonical } from './offline/reconcileBank';
+import { replaceWarehouseInventory, replaceWarehousesInventory } from './offline/reconcileInventory';
 
-async function reconcileBankCanonical(): Promise<void> {
-  try {
-    const { pullBankDataFromSupabase } = await import('./supabaseSync');
-    const remote = await pullBankDataFromSupabase();
-    if (remote.success) {
-      useStore.setState({
-        bankCards: remote.bankCards,
-        bankTransactions: remote.bankTransactions
-      });
-    }
-  } catch (e) {
-    console.warn('[bank] No se pudo reconciliar el estado bancario canónico:', e);
-  }
-}
+
 
 async function reconcileSupplierReceiveCanonical(supabase: any, orderId: string): Promise<void> {
   try {
@@ -127,23 +116,7 @@ async function reconcileSupplierReceiveCanonical(supabase: any, orderId: string)
   }
 }
 
-async function refreshTransferBranchesCanonical(
-  supabase: any,
-  branchIds: string[]
-): Promise<void> {
-  const ids = Array.from(new Set(branchIds.filter(Boolean)));
-  if (!ids.length) return;
-  const results = await Promise.all(ids.map((id) => pullBranchInventoryFromSupabase(id)));
-  const failed = results.find((r) => !r.success);
-  if (failed) throw new Error(failed.message || 'No se pudo actualizar el inventario de los almacenes.');
-  const canonical = results.flatMap((r) => r.inventory || []);
-  useStore.setState((state) => ({
-    inventory: [
-      ...(state.inventory || []).filter((item) => !ids.includes(item.branchId)),
-      ...canonical
-    ]
-  }));
-}
+
 let isProcessingQueue = false;
 
 class PermanentSyncError extends Error {
@@ -563,12 +536,7 @@ async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<
       if (persistedVoid.warehouse_id) {
         const inventoryRes = await pullBranchInventoryFromSupabase(persistedVoid.warehouse_id);
         if (!inventoryRes.success) throw new Error(inventoryRes.message || 'No se pudo reconciliar el inventario de la anulación');
-        useStore.setState(state => ({
-          inventory: [
-            ...(state.inventory || []).filter(item => item.branchId !== persistedVoid.warehouse_id),
-            ...inventoryRes.inventory
-          ]
-        }));
+        replaceWarehouseInventory(persistedVoid.warehouse_id, inventoryRes.inventory);
       }
       await reconcileBankCanonical();
       return true;
@@ -602,12 +570,7 @@ async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<
         if (saleRow?.warehouse_id) {
           const inventoryRes = await pullBranchInventoryFromSupabase(saleRow.warehouse_id);
           if (!inventoryRes.success) throw new Error(inventoryRes.message || 'No se pudo reconciliar el inventario de la devolución');
-          useStore.setState(state => ({
-            inventory: [
-              ...(state.inventory || []).filter(item => item.branchId !== saleRow.warehouse_id),
-              ...(inventoryRes.inventory || [])
-            ]
-          }));
+          replaceWarehouseInventory(saleRow.warehouse_id, inventoryRes.inventory || []);
         }
       }
       return true;
