@@ -15,6 +15,7 @@ import { formatMoney } from "../modules/pos/utils/paymentMath";
 import { usePOSPayments } from "../modules/pos/hooks/usePOSPayments";
 import { usePOSScanner } from "../modules/pos/hooks/usePOSScanner";
 import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
+import { aggregateTransferPayments, buildTransactionTicketId, finalizeCheckoutPayments } from '../modules/pos/utils/checkoutUtils';
 const CheckoutModal = lazy(() => import("../components/pos/CheckoutModal"));
 
 const POSReceiptModal = lazy(() => import("../components/POSReceiptModal"));
@@ -1083,33 +1084,7 @@ export default function POS() {
     setPosError("");
     setPosSuccess("");
     try {
-      // Final payments with rounded USD
-    const finalizedPayments: import('../types').Payment[] = paymentLines
-      .filter(p => Number.isFinite(p.amount) && p.amount > 0)
-      .map(p => {
-        const currency = currencies.find(c => c.code === p.code);
-        const isPaymentBaseCurrency = p.code === baseCurrency.code || (p.code === 'MN' && baseCurrency.code === 'CUP');
-        const configuredRate = Number(currency?.rateToBase);
-        const exchangeRate = isPaymentBaseCurrency
-          ? 1
-          : (Number.isFinite(configuredRate) && configuredRate > 0 ? configuredRate : null);
-        if (exchangeRate === null) {
-          throw new Error(`No existe una tasa de cambio válida para ${p.code}. Actualiza las monedas antes de cobrar.`);
-        }
-        let amount = p.amount;
-        if (p.code === 'CUP') {
-          amount = Math.round(amount);
-        } else if (p.code === 'USD' && p.method === 'cash') {
-          amount = Math.round(amount * 100) / 100;
-        }
-        return {
-          currencyCode: p.code as any,
-          amount: amount,
-          exchangeRate,
-          method: p.method,
-          bankCardId: p.bankCardId
-        };
-      });
+      const finalizedPayments = finalizeCheckoutPayments(paymentLines, currencies, baseCurrency);
 
     // Bloqueo estricto: Una venta NO puede crearse sin un turno abierto
     if (!currentSession) {
@@ -1119,23 +1094,11 @@ export default function POS() {
     }
 
     const currentTransactions = useStore.getState().transactions.filter(t => !t.deletedAt);
-    const txCount = currentTransactions.length;
-    const maxTicketNum = currentTransactions.reduce((max, t) => {
-      const match = t.id?.match(/PALMYRA-TK(\d+)/i);
-      return match ? Math.max(max, parseInt(match[1], 10)) : max;
-    }, 0);
     const activeSellerId = currentSession.userId || currentUser?.id || 'u1';
     const activeSellerName = currentSession.workerName || currentUser?.name || 'Empleado';
     const sellerUser = (users || []).find(u => u.id === activeSellerId) || currentUser;
-    const assignedBranch = null;
     const effectiveBranchId = currentSession.branchId || sellerUser?.branchId || currentBranchId || (branches[0]?.id || '');
-
-    // El número visible conserva legibilidad, pero el ID físico del ticket debe
-    // ser globalmente único entre dispositivos. Nunca usamos solo el contador local:
-    // dos terminales pueden tener el mismo estado y generar el mismo ticket.
-    const nextTicketNum = Math.max(txCount, maxTicketNum) + 1;
-    const ticketSerial = crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
-    const txId = `PALMYRA-TK${nextTicketNum.toString().padStart(2, '0')}-${ticketSerial}`;
+    const txId = buildTransactionTicketId(currentTransactions);
 
     const tx: import('../types').Transaction = {
       id: txId,
@@ -1195,12 +1158,7 @@ export default function POS() {
     // Aggregate multiple transfer lines hitting the same bank account into one
     // movement per account/sale, avoiding duplicate references and preserving
     // the actual amount in the bank card currency (transfers are forced to CUP).
-    const transferByCard = new Map<string, number>();
-    finalizedPayments.forEach(p => {
-      if (p.method === 'transfer' && p.bankCardId) {
-        transferByCard.set(p.bankCardId, (transferByCard.get(p.bankCardId) || 0) + p.amount);
-      }
-    });
+    const transferByCard = aggregateTransferPayments(finalizedPayments);
 
     const itemDetails = cart.map(item => `${item.quantity}x ${item.product?.name || 'Producto'}`).join(', ');
     const bankSaveResults = await Promise.all(
