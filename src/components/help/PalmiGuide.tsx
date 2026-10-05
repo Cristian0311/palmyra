@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ChevronLeft, ChevronRight, CircleCheck, RotateCcw, Sparkles, X } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { useStore } from "../../store/useStore";
-import { getAccessiblePalmiTourSteps, type PalmiTourStep } from "./palmiGuideSteps";
+import { getAccessibleNumaTourSteps, type NumaTourStep } from "./palmiGuideSteps";
 import { PalmiMascot } from "./PalmiMascot";
 import "./palmiGuide.css";
 import PWAInstallPrompt from "./PWAInstallPrompt";
@@ -28,7 +28,7 @@ function findTarget(selectors:string[]|undefined){
   for(const selector of selectors){try{const t=document.querySelector<HTMLElement>(selector);if(t)return t}catch{}}
   return null;
 }
-function selectorsFor(step:PalmiTourStep|undefined,phase:Phase){
+function selectorsFor(step:NumaTourStep|undefined,phase:Phase){
   if(!step)return [];
   if(phase==="action"&&step.navSelector)return [step.navSelector];
   if(phase==="explain"&&step.selector)return step.selector.split(",").map(s=>s.trim()).filter(Boolean);
@@ -40,9 +40,9 @@ export default function PalmiGuide(){
   const darkMode=useStore(s=>s.storeConfig.darkMode);
   const [isMobile,setIsMobile]=useState(()=>typeof window!=="undefined"&&window.matchMedia("(max-width: 720px)").matches);
   useEffect(()=>{const media=window.matchMedia("(max-width: 720px)");const onChange=()=>setIsMobile(media.matches);onChange();media.addEventListener?.("change",onChange);return()=>media.removeEventListener?.("change",onChange)},[]);
-  const steps=useMemo(()=>getAccessiblePalmiTourSteps(currentUser,isMobile),[currentUser,isMobile]);
+  const steps=useMemo(()=>getAccessibleNumaTourSteps(currentUser,isMobile),[currentUser,isMobile]);
   const location=useLocation();
-  const [open,setOpen]=useState(false),[index,setIndex]=useState(0),[phase,setPhase]=useState<Phase>("explain"),[rect,setRect]=useState<DOMRect|null>(null),[position,setPosition]=useState<Position|null>(()=>readPosition());
+  const [open,setOpen]=useState(false),[index,setIndex]=useState(0),[phase,setPhase]=useState<Phase>("explain"),[rect,setRect]=useState<DOMRect|null>(null),[position,setPosition]=useState<Position|null>(()=>readPosition()),[showInstallPrompt,setShowInstallPrompt]=useState(false);
   const anchor=useRef<HTMLDivElement|null>(null);
   const drag=useRef({active:false,moved:false,pointerId:-1,offsetX:0,offsetY:0,originX:0,originY:0,latest:null as Position|null});
   const step=steps[index]||steps[0];
@@ -124,14 +124,15 @@ export default function PalmiGuide(){
     if(index===0)return;
     const prev=index-1;setIndex(prev);setPhase(steps[prev]?.requiresAction&&steps[prev]?.navSelector?"action":"explain");setRect(null);
   };
-  const finish=()=>{try{localStorage.setItem(KEY+":completed",new Date().toISOString())}catch{}setOpen(false);setRect(null)};
+  const finish=()=>{try{localStorage.setItem(KEY+":completed",new Date().toISOString())}catch{}setOpen(false);setRect(null);setShowInstallPrompt(true)};
   const close=()=>{setOpen(false);setRect(null)};
   const reset=()=>{try{localStorage.removeItem(KEY+":auto-open");localStorage.removeItem(KEY+":completed")}catch{}setIndex(0);setPhase("explain");setOpen(true)};
 
+  const dockRef=useRef<HTMLDivElement|null>(null);
   const onDown=(e:React.PointerEvent<HTMLDivElement>)=>{
-    const r=anchor.current?.getBoundingClientRect();if(!r)return;
+    const r=dockRef.current?.getBoundingClientRect();if(!r)return;
     drag.current={active:true,moved:false,pointerId:e.pointerId,offsetX:e.clientX-r.left,offsetY:e.clientY-r.top,originX:r.left,originY:r.top,latest:null};
-    anchor.current?.setPointerCapture?.(e.pointerId);e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);e.preventDefault();
   };
   const onMove=(e:React.PointerEvent<HTMLDivElement>)=>{const d=drag.current;if(!d.active||d.pointerId!==e.pointerId)return;const p=clamp({left:e.clientX-d.offsetX,top:e.clientY-d.offsetY});if(Math.abs(p.left-d.originX)>4||Math.abs(p.top-d.originY)>4)d.moved=true;d.latest=p;setPosition(p)};
   const onUp=(e:React.PointerEvent<HTMLDivElement>)=>{const d=drag.current;if(!d.active||d.pointerId!==e.pointerId)return;d.active=false;try{anchor.current?.releasePointerCapture?.(e.pointerId)}catch{}if(!d.moved)setOpen(v=>!v);else if(d.latest)try{localStorage.setItem(KEY+":position",JSON.stringify(d.latest))}catch{}};
@@ -145,16 +146,16 @@ export default function PalmiGuide(){
     {open&&rect&&<div className={"palmi-guide-spotlight "+(isActionStep?"is-command":"is-content")} style={{top:Math.max(4,rect.top-7),left:Math.max(4,rect.left-7),width:Math.min(window.innerWidth-8,rect.width+14),height:Math.min(window.innerHeight-8,rect.height+14)}} aria-hidden="true"/>}
     {open&&rect&&isActionStep&&<div className="palmi-action-cue" style={{top:Math.max(10,rect.top-44),left:Math.max(8,Math.min(rect.left,window.innerWidth-150))}} aria-hidden="true"><span className="palmi-action-cue-label">PRESIONA AQUÍ</span><span className="palmi-action-cue-arrow">↓</span></div>}
     <div ref={anchor} className={"palmi-guide-anchor "+(!position?"is-edge":"")} style={anchorStyle as React.CSSProperties}>
-      {open&&<div className={"palmi-guide-panel "+(darkMode?"dark ":"")+(isActionStep?"is-command":"is-explain")} role="dialog" aria-label="Guía interactiva de PALMYRA" aria-live="polite">
-        <div className="palmi-guide-brandbar"><div className="palmi-guide-brand"><div className="palmi-guide-brand-orb"><Sparkles className="w-3.5 h-3.5"/></div><div><p>PALMYRA · PALMI</p><span>Guía paso a paso</span></div></div><button type="button" className="palmi-guide-close" onClick={close} aria-label="Cerrar guía"><X size={16}/></button></div>
+      {open&&<div className={"palmi-guide-panel "+(darkMode?"dark ":"")+(isActionStep?"is-command":"is-explain")} role="dialog" aria-label="Guía interactiva de Numa para PALMYRA" aria-live="polite">
+        <div className="palmi-guide-brandbar"><div className="palmi-guide-brand"><div className="palmi-guide-brand-orb"><Sparkles className="w-3.5 h-3.5"/></div><div><p>PALMYRA · NUMA</p><span>Guía paso a paso</span></div></div><button type="button" className="palmi-guide-close" onClick={close} aria-label="Cerrar guía"><X size={16}/></button></div>
         <div className="palmi-guide-hero"><div className="palmi-guide-mini-mascot"><PalmiMascot className="palmi-guide-mascot-small"/></div><div className="min-w-0"><p className="palmi-guide-eyebrow">{step?.eyebrow}</p><h2 className="palmi-guide-title">{isActionStep?(step?.actionTitle||"Tu turno"):step?.title}</h2><p className="palmi-guide-current">{helpLabel}</p></div><div className="palmi-guide-step-pill">{index+1}<span>/</span>{steps.length}</div></div>
         <div className="palmi-guide-progress"><div className="palmi-guide-progress-track"><div className="palmi-guide-progress-fill" style={{width:progress+"%"}}/></div></div>
-        {isActionStep?<div className="palmi-guide-command"><div className="palmi-command-badge"><Sparkles className="w-3.5 h-3.5"/> TU TURNO</div><div className="palmi-command-title">{step?.actionMessage}</div><div className="palmi-command-status"><span className="palmi-pulse-dot"/> Esperando tu acción…</div></div>:<div className="palmi-guide-body">{index===0&&<div className="palmi-welcome-line">Palmi te acompaña. Tú haces el recorrido.</div>}<div className="palmi-guide-message">{step?.message}</div>{step?.tip&&<div className="palmi-guide-tip"><strong>Consejo</strong><span>{step.tip}</span></div>}</div>}
+        {isActionStep?<div className="palmi-guide-command"><div className="palmi-command-badge"><Sparkles className="w-3.5 h-3.5"/> TU TURNO</div><div className="palmi-command-title">{step?.actionMessage}</div><div className="palmi-command-status"><span className="palmi-pulse-dot"/> Esperando tu acción…</div></div>:<div className="palmi-guide-body">{index===0&&<div className="palmi-welcome-line">Numa te acompaña. Tú haces el recorrido.</div>}<div className="palmi-guide-message">{step?.message}</div>{step?.tip&&<div className="palmi-guide-tip"><strong>Consejo</strong><span>{step.tip}</span></div>}</div>}
         <div className="palmi-guide-footer"><button type="button" className="palmi-guide-secondary" onClick={close}>Cerrar guía</button><div className="palmi-guide-actions"><button type="button" className="palmi-guide-icon-btn" onClick={goPrevious} disabled={index===0} aria-label="Paso anterior"><ChevronLeft size={16}/></button>{last?<button type="button" className="palmi-guide-primary" onClick={finish}><CircleCheck className="w-4 h-4"/> Terminar</button>:<button type="button" className={"palmi-guide-primary "+(isActionStep?"is-disabled":"")} onClick={goNext} disabled={isActionStep}>Entendido <ChevronRight className="w-4 h-4"/></button>}</div></div>
       </div>}
-      {last && <PWAInstallPrompt />}
-      <div className="palmi-guide-mascot-dock" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onKeyDown={onKeyDown} aria-label="Mover o abrir a Palmi" role="button" tabIndex={0}>
-        <span className="palmi-aura palmi-aura-1"/><span className="palmi-aura palmi-aura-2"/><span className="palmi-spark palmi-spark-1">✦</span><span className="palmi-spark palmi-spark-2">✦</span><span className="palmi-mascot-stage"><PalmiMascot className="palmi-guide-mascot"/></span><span className="palmi-guide-name">PALMI</span>
+      <PWAInstallPrompt visible={showInstallPrompt} onClose={() => setShowInstallPrompt(false)} />
+      <div ref={dockRef} className="palmi-guide-mascot-dock" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onKeyDown={onKeyDown} aria-label="Mover o abrir a Numa" role="button" tabIndex={0}>
+        <span className="palmi-aura palmi-aura-1"/><span className="palmi-aura palmi-aura-2"/><span className="palmi-spark palmi-spark-1">✦</span><span className="palmi-spark palmi-spark-2">✦</span><span className="palmi-mascot-stage"><PalmiMascot className="palmi-guide-mascot"/></span><span className="palmi-guide-name">NUMA</span>
       </div>
       {open&&<button type="button" className="palmi-guide-reset" onClick={reset} aria-label="Reiniciar guía" title="Reiniciar guía"><RotateCcw size={13}/></button>}
     </div>
