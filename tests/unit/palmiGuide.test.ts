@@ -41,15 +41,15 @@ test("administrators receive all guide modules", () => {
 
 
 test("mobile navigation step is filtered on desktop", () => {
-  const desktopIds = getAccessiblePalmiTourSteps({ role: "admin", permissions: [] }, false).map(step => step.id);
-  const mobileIds = getAccessiblePalmiTourSteps({ role: "admin", permissions: [] }, true).map(step => step.id);
+  const desktopIds = getAccessibleNumaTourSteps({ role: "admin", permissions: [] }, false).map(step => step.id);
+  const mobileIds = getAccessibleNumaTourSteps({ role: "admin", permissions: [] }, true).map(step => step.id);
   assert.ok(!desktopIds.includes("open-menu"));
   assert.ok(mobileIds.includes("open-menu"));
 });
 
 test("Numa commands expose exact UI anchors", () => {
-  const dashboard = PALMI_TOUR_STEPS.find(step => step.id === "dashboard");
-  const offline = PALMI_TOUR_STEPS.find(step => step.id === "offline");
+  const dashboard = NUMA_TOUR_STEPS.find(step => step.id === "dashboard");
+  const offline = NUMA_TOUR_STEPS.find(step => step.id === "offline");
   assert.equal(dashboard?.navSelector, '[data-palmi-nav="/"]');
   assert.equal(dashboard?.selector, '[data-palmi-content="dashboard"]');
   assert.match(offline?.selector || "", /offline-status-mobile/);
