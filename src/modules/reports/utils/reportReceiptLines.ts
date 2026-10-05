@@ -111,7 +111,16 @@ export function buildDiscrepancyReceiptLines(
 }
 
 export function buildCashMovementReceiptLines(
-  movement: {\n    turnLabel: string;\n    branchName: string;\n    workerName: string;\n    type: 'income' | 'expense';\n    amount: number;\n    currencyCode: string;\n    description: string;\n    date: string;\n  },
+  movement: {
+    turnLabel: string;
+    branchName: string;
+    workerName: string;
+    type: 'income' | 'expense';
+    amount: number;
+    currencyCode: string;
+    description: string;
+    date: string;
+  },
   deps: { formatMoney: MoneyFormatter; format58mmLine: LineFormatter },
 ): string[] {
   const { formatMoney, format58mmLine } = deps;
