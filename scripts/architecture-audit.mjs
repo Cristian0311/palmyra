@@ -42,17 +42,20 @@ function walk(dir) {
         try { return readFileSync(abs, 'utf8').split(/\r?\n/).length; } catch { return 0; }
       })();
 
+      const baseline = legacyLargeBaseline[rel];
       if (lineCount >= 4000) {
-        findings.push({ level: 'high', message: `Archivo fuente >= 4000 líneas: ${rel} (${lineCount})` });
+        const regressed = baseline ? lineCount > baseline.lines : true;
+        findings.push({ level: regressed ? 'high' : 'medium', message: `Archivo fuente >= 4000 líneas: ${rel} (${lineCount})` });
       } else if (lineCount >= 2500) {
         findings.push({ level: 'medium', message: `Archivo fuente >= 2500 líneas: ${rel} (${lineCount})` });
       }
 
       if (bytes >= 220000) {
-        findings.push({ level: 'high', message: `Archivo fuente >= 220 KB: ${rel} (${bytes} bytes)` });
+        const regressed = baseline ? bytes > baseline.bytes : true;
+        findings.push({ level: regressed ? 'high' : 'medium', message: `Archivo fuente >= 220 KB: ${rel} (${bytes} bytes)` });
       } else if (bytes >= 140000) {
         findings.push({ level: 'medium', message: `Archivo fuente >= 140 KB: ${rel} (${bytes} bytes)` });
-      }
+      }}
     }
   }
 }
