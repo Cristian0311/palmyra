@@ -848,7 +848,7 @@ export const useStore = create<AppState>()(
       }
       const res = await reconcileInventoryToSupabase(op);
       if (res.success && !res.conflict && Number.isFinite(Number(res.data?.quantity))) {
-        set((state) => ({ inventory: setCanonicalInventoryQuantity(state.inventory || [], op.productId, op.branchId, op.variantLabel, Number(res.data.quantity));
+        set((state) => ({ inventory: setCanonicalInventoryQuantity(state.inventory || [], op.productId, op.branchId, op.variantLabel, Number(res.data.quantity)) }));
       }
       if (!res.success || res.conflict) {
         await enqueueOfflineItem('inventory_reconcile', op, op.operationId);
@@ -936,7 +936,7 @@ export const useStore = create<AppState>()(
       if (res.success && !res.conflict) {
         const canonicalQuantity = Number(res.data?.quantity);
         if (Number.isFinite(canonicalQuantity)) {
-          set((state) => ({ inventory: setCanonicalInventoryQuantity(state.inventory || [], productId, branchId, variantLabel, canonicalQuantity);
+          set((state) => ({ inventory: setCanonicalInventoryQuantity(state.inventory || [], productId, branchId, variantLabel, canonicalQuantity) }));
         } else {
           await get().refreshBranchInventory().catch(err =>
             console.warn('[adjustInventory] No se pudo refrescar tras confirmación:', err)
@@ -979,7 +979,7 @@ export const useStore = create<AppState>()(
     }
     reconcileInventoryToSupabase({ ...payload, newQuantity }).then(async res => {
       if (res.success && !res.conflict && Number.isFinite(Number(res.data?.quantity))) {
-        set((state) => ({ inventory: setCanonicalInventoryQuantity(state.inventory || [], productId, branchId, variantLabel, Number(res.data.quantity));
+        set((state) => ({ inventory: setCanonicalInventoryQuantity(state.inventory || [], productId, branchId, variantLabel, Number(res.data.quantity)) }));
       }
       if (!res.success || res.conflict) {
         await enqueueOfflineItem('inventory_reconcile', payload, operationId);
