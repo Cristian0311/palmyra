@@ -249,7 +249,7 @@ export default function Dashboard() {
       {/* Header */}
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h2 className="text-2xl font-black text-primary tracking-tight">Dashboard</h2>
+          <h2 data-palmi-content="dashboard" className="text-2xl font-black text-primary tracking-tight">Dashboard</h2>
           <div className="flex flex-wrap items-center gap-2 text-muted mt-0.5">
             <div className="flex items-center gap-1">
               <MapPin className="w-3 h-3 text-indigo-500" />
