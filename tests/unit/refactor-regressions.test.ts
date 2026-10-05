@@ -10,6 +10,7 @@ import {
   buildTransferReceiptLines,
 } from '../../src/modules/reports/utils/reportReceiptLines';
 import { getClosureReceiptLines } from '../../src/modules/pos/utils/getClosureReceiptLines';
+import { aggregateTransferPayments, buildTransactionTicketId, finalizeCheckoutPayments } from '../../src/modules/pos/utils/checkoutUtils';
 
 const formatMoney = (amount: number, code = 'CUP') => `${code} ${amount.toFixed(2)}`;
 const format58mmLine = (label: string, value: string | number) => `${label} ${value}`;
@@ -233,4 +234,32 @@ test('closure receipt formatter includes session totals, physical count and payr
   assert.ok(lines.some(line => line.includes('TOTAL VENTAS')));
   assert.ok(lines.some(line => line.includes('ARQUEO FISICO')));
   assert.ok(lines.some(line => line.includes('TOTAL SALARIO')));
+});
+
+
+test('checkout helpers normalize currencies, ticket ids and bank transfers', () => {
+  const payments = finalizeCheckoutPayments(
+    [
+      { code: 'CUP', amount: 100.8, method: 'cash' },
+      { code: 'USD', amount: 10.126, method: 'cash' },
+      { code: 'USD', amount: 5, method: 'transfer', bankCardId: 'bank-1' },
+      { code: 'USD', amount: 2, method: 'transfer', bankCardId: 'bank-1' },
+    ],
+    [
+      { code: 'CUP', symbol: 'CUP', rateToBase: 1, isBase: true },
+      { code: 'USD', symbol: 'USD', rateToBase: 370, isBase: false },
+    ] as any,
+    { code: 'CUP', symbol: 'CUP', rateToBase: 1, isBase: true } as any,
+  );
+
+  assert.equal(payments[0].amount, 101);
+  assert.equal(payments[1].amount, 10.13);
+  assert.equal(payments.length, 4);
+  assert.deepEqual(Array.from(aggregateTransferPayments(payments).entries()), [['bank-1', 7]]);
+
+  const ticket = buildTransactionTicketId([
+    { id: 'PALMYRA-TK05-OLD', total: 1 } as any,
+    { id: 'PALMYRA-TK12-OLD', total: 1 } as any,
+  ], 'aabbccdd-1111-2222-3333-444444444444');
+  assert.equal(ticket, 'PALMYRA-TK13-AABBCCDD');
 });
