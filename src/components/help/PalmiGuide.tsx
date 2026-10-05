@@ -29,8 +29,14 @@ function findTarget(selectors:string[]|undefined):HTMLElement|null {
 }
 function getSelectors(step:PalmiTourStep|undefined,phase:Phase){
   if(!step)return [];
-  if(phase==="action"&&step.navSelector)return [step.navSelector];
-  if(phase==="explain"&&step.selector)return step.selector.split(",").map(s=>s.trim()).filter(Boolean);
+  if(phase==="action"){
+    const selector = window.innerWidth < 1024 ? (step.mobileSelector || step.navSelector) : (step.desktopSelector || step.navSelector);
+    if(selector)return [selector];
+  }
+  if(phase==="explain"){
+    const selector = step.selector || step.desktopSelector || step.mobileSelector;
+    if(selector)return selector.split(",").map(s=>s.trim()).filter(Boolean);
+  }
   return [];
 }
 
@@ -44,7 +50,7 @@ export default function PalmiGuide(){
   const drag=useRef({active:false,moved:false,pointerId:-1,offsetX:0,offsetY:0,originX:0,originY:0,latest:null as Position|null});
   const step=steps[index]||steps[0];
   const last=index===steps.length-1;
-  const isActionStep=Boolean(step?.requiresAction&&phase==="action"&&step.navSelector);
+  const isActionStep=Boolean(step?.requiresAction&&phase==="action"&&(!step.mobileOnlyAction || window.innerWidth<1024));
   const progress=steps.length>1?((index+1)/steps.length)*100:100;
 
   const locate=useCallback((wantedPhase:Phase)=>{
@@ -87,12 +93,12 @@ export default function PalmiGuide(){
   },[]);
 
   useEffect(()=>{
-    if(!open||!isActionStep||!step?.navSelector)return;
-    const selector=step.navSelector;
+    if(!open||!isActionStep||!step?.navSelector || step?.mobileSelector)return;
+    const selector=window.innerWidth<1024 ? (step.mobileSelector || step.navSelector) : step.navSelector;
     const onClick=(event:MouseEvent)=>{
       const target=event.target;
       if(!(target instanceof Element))return;
-      if(!target.closest(selector))return;
+      if(!selector || !target.closest(selector))return;
       window.setTimeout(()=>{setPhase("explain");setRect(null)},160);
     };
     document.addEventListener("click",onClick,true);
@@ -127,16 +133,16 @@ export default function PalmiGuide(){
   return <div className="palmi-guide-root">
     {open&&rect&&<div className={"palmi-guide-spotlight "+(isActionStep?"is-command":"is-content")} style={{top:Math.max(5,rect.top-6),left:Math.max(5,rect.left-6),width:Math.min(window.innerWidth-10,rect.width+12),height:Math.min(window.innerHeight-10,rect.height+12)}} aria-hidden="true" />}
     <div ref={anchor} className={"palmi-guide-anchor "+(!position?"is-edge":"")} style={anchorStyle as React.CSSProperties}>
-      {open&&<div className={"palmi-guide-panel "+(darkMode?"dark ":"")+(isActionStep?"is-command":"is-explain")} role="dialog" aria-label="Guía interactiva de PALMYRA" aria-live="polite">
-        <div className="palmi-guide-brandbar"><div className="palmi-guide-brand"><div className="palmi-guide-brand-orb"><Sparkles className="w-3.5 h-3.5"/></div><div><p>PALMYRA · PALMI</p><span>Guía paso a paso</span></div></div><button type="button" className="palmi-guide-close" onClick={close} aria-label="Cerrar guía"><X size={16}/></button></div>
+      {open&&<div className={"palmi-guide-panel "+(darkMode?"dark ":"")+(isActionStep?"is-command":"is-explain")} role="dialog" aria-label="Guía interactiva de PALMYRA · Sira" aria-live="polite">
+        <div className="palmi-guide-brandbar"><div className="palmi-guide-brand"><div className="palmi-guide-brand-orb"><Sparkles className="w-3.5 h-3.5"/></div><div><p>PALMYRA · SIRA</p><span>Guía paso a paso</span></div></div><button type="button" className="palmi-guide-close" onClick={close} aria-label="Cerrar guía"><X size={16}/></button></div>
         <div className="palmi-guide-hero"><div className="palmi-guide-mini-mascot"><PalmiMascot className="palmi-guide-mascot-small"/></div><div className="min-w-0"><p className="palmi-guide-eyebrow">{step?.eyebrow}</p><h2 className="palmi-guide-title">{isActionStep?(step?.actionTitle||"Tu turno"):step?.title}</h2><p className="palmi-guide-current">{isActionStep?"Hazlo tú dentro del sistema":"Información importante"}</p></div><div className="palmi-guide-step-pill">{index+1}<span>/</span>{steps.length}</div></div>
         <div className="palmi-guide-progress"><div className="palmi-guide-progress-track"><div className="palmi-guide-progress-fill" style={{width:progress+"%"}}/></div></div>
         {isActionStep?<div className="palmi-guide-command"><div className="palmi-command-badge"><Sparkles className="w-3.5 h-3.5"/> TU TURNO</div><div className="palmi-command-title">{step?.actionMessage}</div><div className="palmi-command-status"><span className="palmi-pulse-dot"/> Esperando tu acción…</div></div>:<div className="palmi-guide-body">{index===0&&<div className="palmi-welcome-line">Palmi te acompaña. Tú haces el recorrido.</div>}<div className="palmi-guide-message">{step?.message}</div>{step?.tip&&<div className="palmi-guide-tip"><strong>Consejo</strong><span>{step.tip}</span></div>}</div>}
         <div className="palmi-guide-footer"><button type="button" className="palmi-guide-secondary" onClick={close}>Cerrar guía</button><div className="palmi-guide-actions"><button type="button" className="palmi-guide-icon-btn" onClick={goPrevious} disabled={index===0} aria-label="Paso anterior"><ChevronLeft size={16}/></button>{last?<button type="button" className="palmi-guide-primary" onClick={finish}><CircleCheck className="w-4 h-4"/> Terminar</button>:<button type="button" className={"palmi-guide-primary "+(isActionStep?"is-disabled":"")} onClick={goNext} disabled={isActionStep}>Entendido <ChevronRight className="w-4 h-4"/></button>}</div></div>
       </div>}
-      <div className="palmi-guide-mascot-dock" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onKeyDown={onKeyDown} aria-label="Mover o abrir a Palmi" role="button" tabIndex={0}>
+      <div className="palmi-guide-mascot-dock" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onKeyDown={onKeyDown} aria-label="Mover o abrir a Sira" role="button" tabIndex={0}>
         <span className="palmi-aura palmi-aura-1"/><span className="palmi-aura palmi-aura-2"/><span className="palmi-spark palmi-spark-1">✦</span><span className="palmi-spark palmi-spark-2">✦</span>
-        <span className="palmi-mascot-stage"><PalmiMascot className="palmi-guide-mascot"/></span><span className="palmi-guide-name">PALMI</span>
+        <span className="palmi-mascot-stage"><PalmiMascot className="palmi-guide-mascot"/></span><span className="palmi-guide-name" aria-hidden="true">SIRA</span>
       </div>
       {open&&<button type="button" className="palmi-guide-reset" onClick={reset} aria-label="Reiniciar guía" title="Reiniciar guía"><RotateCcw size={13}/></button>}
     </div>
