@@ -121,6 +121,8 @@ export default function POS() {
   }, [activeCashSessions]);
   const activeTransactions = useMemo(() => transactions.filter(t => !t.deletedAt), [transactions]);
   const [showConfigModal, setShowConfigModal] = useState(false);
+  const [showReceiptModal, setShowReceiptModal] = useState<Transaction | null>(null);
+  const [returnConfirm, setReturnConfirm] = useState<{ tx: Transaction, item: any } | null>(null);
 
 
 
@@ -836,6 +838,7 @@ export default function POS() {
     inventory,
     currentBranchId,
     currentSessionBranchId: currentSession?.branchId,
+    cart,
     pendingOrders,
     addToCart,
     clearCart,
