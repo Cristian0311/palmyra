@@ -1,4 +1,4 @@
-import type { ExcelExportData } from "../../types";
+import type { ExcelExportData } from "../../../types";
 
 export function generateDiscrepanciesSheet(data: ExcelExportData): any[][] {
   const { cashSessions, transactions, branches, currencies, baseCurrency } = data;
