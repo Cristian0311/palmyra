@@ -1,59 +1,68 @@
-# OmniSync POS — arquitectura estabilizada
+# PALMYRA — arquitectura actual
 
-## Regla principal
+## Fuente de verdad
 
-Las operaciones que cambian inventario tienen una sola autoridad por modo:
+PALMYRA es un SaaS multiempresa sobre React/Vite + Supabase Auth + PostgreSQL/RLS/RPC. El modelo operativo es:
 
-- **Online:** UI → RPC transaccional Supabase → commit → espejo local.
-- **Offline:** UI → estado local + cola idempotente → RPC al recuperar conexión → reconciliación.
+**Empresa → Almacenes → Empleados → Roles/Permisos → Acceso por almacén → Operaciones**
 
-El cliente ya no realiza un descuento local y después otro descuento equivalente en el servidor para una misma venta.
+El inventario pertenece al almacén. El código conserva algunos nombres históricos como `branchId`/`currentBranchId` por compatibilidad durante la migración progresiva de nomenclatura; no se debe reintroducir una arquitectura de sucursales en la base de datos.
 
-## Operaciones críticas
+## Reglas de operaciones críticas
 
-| Operación | Autoridad | Idempotencia | Movimiento de inventario |
-|---|---|---|---|
-| Venta | `process_pos_transaction_v2` | ID de venta | `SALE` / `KIT_CONSUMPTION` |
-| Anulación | `void_pos_transaction_v2` | ID de venta | `VOID_RETURN` / `KIT_RETURN` |
-| Devolución | `complete_return_v2` | ID de devolución | `RETURN` / reemplazo de garantía |
-| Transferencia | `process_inventory_transfer_v2` | `operation_id` | `TRANSFER_OUT` + `TRANSFER_IN` |
-| Recepción proveedor | `receive_supplier_order_v2` | ID de orden | `PURCHASE` |
-| Auditoría física | `complete_inventory_audit_v2` | ID de auditoría | `AUDIT` |
-| Apertura caja | `open_cash_session_v2` | bloqueo por sucursal | — |
-| Cierre caja | `close_cash_session_v2` | `session_id` | — |
+- Venta online: UI → RPC transaccional → Supabase → espejo local.
+- Venta offline: UI → estado local + outbox durable → replay idempotente → Supabase → reconciliación.
+- Inventario: los cambios críticos pasan por RPCs atómicos en PostgreSQL.
+- Transferencias: la operación remota es la autoridad y usa identificadores de operación estables.
+- Caja: apertura/cierre y numeración de turnos son autoritativos en Supabase.
+- Un turno nunca se renumera por borrar otro turno. Los reportes deben mostrar el `turnNumber` persistido.
+- El stock por variante se mantiene separado y normalizado.
+- Supabase es la fuente de verdad para identidad, tenant, permisos y datos empresariales.
 
-## Inventario
+## Offline
 
-`inventory` representa el estado actual. `inventory_movements` representa el historial de cambios. Las cantidades críticas se validan y bloquean en PostgreSQL antes de modificarse.
+La cola durable debe sobrevivir a recargas y cierres del navegador. Las operaciones críticas conservan su ID para que un replay después de un timeout no genere una segunda venta, transferencia o movimiento.
 
-Las variantes se normalizan a `''` en vez de mezclar `NULL` y cadena vacía.
+## Organización del frontend
 
-## Kits
+La refactorización es incremental para no cambiar el flujo de trabajadores:
 
-Los productos kit conservan `kit_components`. Una venta de kit consume componentes; una anulación revierte componentes. El kit no se trata como una unidad de inventario independiente cuando sus componentes son los que realmente representan stock.
+```
+src/
+  app/
+  modules/
+    pos/
+    reports/
+    inventory/
+    cash/
+  pages/
+  components/
+  services/
+    supabaseSync/
+    offline/
+    cash/
+  store/
+    utils/
+  hooks/
+  utils/
+  config/
+```
 
-## Sincronización
+Las páginas grandes se convierten progresivamente en composición de componentes, hooks, servicios y utilidades. No se permite seguir acumulando dominio nuevo en `useStore.ts`, `POS.tsx` o `Reports.tsx`.
 
-Se eliminó el límite artificial de 500 ventas/movimientos y se usa paginación de 1000 registros. El estado local se conserva solo cuando existe una operación pendiente en la cola; no se reintroducen automáticamente registros antiguos que ya no existen en Supabase.
+## Base de datos
 
-## Cola offline
+Las migraciones nuevas viven únicamente en `supabase/migrations/`. Los SQL históricos de reparación pueden documentar incidentes, pero no son la fuente actual de esquema.
 
-Estados: `pending`, `failed`, `conflict`. Una operación con cinco fallos consecutivos deja de reintentarse indefinidamente y se marca para revisión. Las operaciones críticas conservan su identificador de operación.
+RLS debe permanecer habilitado en tablas públicas expuestas. Las funciones `SECURITY DEFINER` se usan solo cuando una operación necesita privilegio controlado y deben validar identidad, empresa y alcance.
 
-## Sucursales
+## Calidad
 
-La sincronización identifica sucursales por ID, no por nombre. Esto evita que dos almacenes legítimos con el mismo nombre sean fusionados silenciosamente.
+CI debe ejecutar, como mínimo:
 
-La migración genera `duplicate_branch_candidates` y `branch_usage_audit` para revisar duplicados antes de eliminar o migrar cualquiera.
+1. TypeScript sin errores.
+2. Auditoría de arquitectura.
+3. Pruebas unitarias de lógica crítica.
+4. Build de producción.
 
-## Organización
-
-Se mantienen las páginas grandes existentes para minimizar el riesgo de una refactorización visual masiva, pero las responsabilidades críticas están separadas en:
-
-- `src/services/supabaseSync.ts`: transporte/sincronización y RPC wrappers.
-- `src/services/offlineSync.ts`: cola y reintentos.
-- `src/store/useStore.ts`: estado de UI y espejo local.
-- `SUPABASE_MIGRATION.sql`: única migración canónica de Supabase; `update-schema.sql` y `HOTFIX_OFFLINE_FIRST.sql` quedan deprecated para evitar drift.
-- `scripts/integrity-smoke.mjs`: comprobaciones automatizadas de invariantes críticas.
-
-La siguiente división natural de los archivos grandes sería extraer dominios de POS, Reportes y Store en módulos separados, pero se evita hacerlo durante esta reparación para no introducir cambios visuales o de comportamiento innecesarios.
+Los archivos fuente de varios miles de líneas deben modularizarse antes de añadir más lógica de dominio.
