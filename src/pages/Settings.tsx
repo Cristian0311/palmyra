@@ -3,6 +3,8 @@ import React, { useMemo, useState, useEffect, useRef } from "react";
 import { Settings as SettingsIcon, Save, DollarSign, Building2, Users, Plus, Trash2, Edit, LayoutGrid, Store, AlertTriangle, RefreshCw, Usb, Bluetooth, Wifi, Printer, CheckCircle2, ExternalLink, AlertCircle, Sparkles, ChevronRight, Package, Search, X, Database, CreditCard, CloudUpload, CloudDownload, Check, Sun, Moon, Type, Palette } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { InfoTooltip } from "../components/InfoTooltip";
+import { SettingsWarehousesSection } from "../components/settings/SettingsWarehousesSection";
+import { SettingsCategoriesSection } from "../components/settings/SettingsCategoriesSection";
 import { Branch, Category, User } from "../types";
 import { cn } from "../lib/utils";
 import { normalizeSemanticText } from "../utils/textUtils";
@@ -926,102 +928,27 @@ export default function Settings() {
           </button>
         </div>
 
-        {/* Categorías (Compact) */}
-        <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4" style={{ display: activeTab === 'categories' ? undefined : 'none' }}>
-          <div className="flex items-center gap-3 border-b border-base pb-3">
-            <div className="bg-amber-50 dark:bg-amber-950/30 p-2 rounded-lg text-amber-600 dark:text-amber-400">
-              <LayoutGrid size={16} />
-            </div>
-            <div>
-              <h3 className="text-xs font-black text-primary uppercase tracking-wider">Categorías</h3>
-              <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Clasificación de Inventario</p>
-            </div>
-          </div>
+        <SettingsCategoriesSection
+          active={activeTab === "categories"}
+          categories={categories}
+          editingCategory={editingCategory}
+          newCategory={newCategory}
+          setEditingCategory={setEditingCategory}
+          setNewCategory={setNewCategory}
+          setCategoryToDelete={setCategoryToDelete}
+          onAddCategory={handleAddCategory}
+        />
 
-          <div className="space-y-3">
-            <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
-              {categories.map(cat => (
-                <div key={cat.id} className="flex justify-between items-center bg-subtle p-2 rounded-xl border border-base group">
-                  <div className="flex-1 min-w-0 mr-2">
-                    <div className="text-[11px] font-black text-primary uppercase tracking-tight break-words leading-snug">{cat.name}</div>
-                    <div className="text-[8px] font-bold text-muted uppercase tracking-wider">{cat.department}</div>
-                  </div>
-                  <div className="flex gap-1 shrink-0">
-                    <button onClick={() => { setEditingCategory(cat); setNewCategory({ name: cat.name, department: cat.department }); }} className="p-1.5 text-muted hover:text-rose-600 rounded-lg transition-colors cursor-pointer" title="Editar"><Edit size={13} /></button>
-                    <button onClick={() => setCategoryToDelete({ id: cat.id, name: cat.name })} className="p-1.5 text-muted hover:text-rose-500 rounded-lg transition-colors cursor-pointer" title="Eliminar"><Trash2 size={13} /></button>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="space-y-3">
-              <div className="flex flex-col sm:flex-row gap-2">
-                <input 
-                  type="text" 
-                  value={newCategory.name}
-                  onChange={e => setNewCategory({ ...newCategory, name: e.target.value })}
-                  placeholder="Categoría"
-                  className="flex-[2] min-w-0 w-full px-3 py-2 bg-primary border border-base rounded-xl text-xs font-bold text-primary outline-none focus:ring-1 focus:ring-rose-500 shadow-sm" 
-                />
-                <input 
-                  type="text" 
-                  value={newCategory.department}
-                  onChange={e => setNewCategory({ ...newCategory, department: e.target.value })}
-                  placeholder="Depto"
-                  className="flex-1 min-w-0 w-full px-3 py-2 bg-primary border border-base rounded-xl text-xs font-bold text-primary outline-none focus:ring-1 focus:ring-rose-500 shadow-sm" 
-                />
-                <button 
-                  onClick={handleAddCategory} 
-                  className="p-2.5 bg-rose-600 text-white rounded-xl hover:bg-rose-700 active:scale-95 transition-all flex items-center justify-center shadow-md shrink-0 cursor-pointer"
-                >
-                  {editingCategory ? <Save size={16} /> : <Plus size={16} />}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Sucursales (Branches) */}
-        <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4" style={{ display: activeTab === 'branches' ? undefined : 'none' }}>
-          <div className="flex items-center gap-3 border-b border-base pb-3">
-            <div className="bg-rose-50 dark:bg-rose-950/30 p-2 rounded-lg text-rose-600 dark:text-rose-400">
-              <Store size={16} />
-            </div>
-            <div>
-              <h3 className="text-xs font-black text-primary uppercase tracking-wider">Almacenes</h3>
-              <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Gestión de Ubicaciones</p>
-            </div>
-          </div>
-
-          <div className="space-y-3">
-            <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
-              {branches.map(branch => (
-                <div key={branch.id} className="flex justify-between items-center bg-subtle p-2 rounded-xl border border-base group">
-                  <div className="text-[11px] font-black text-primary uppercase tracking-tight break-words leading-snug flex-1 min-w-0 mr-2">{branch.name}</div>
-                  <div className="flex gap-1 shrink-0 ml-1">
-                    <button onClick={() => { setEditingBranch(branch); setNewBranchName(branch.name); }} className="p-1.5 text-muted hover:text-rose-600 rounded-lg transition-colors cursor-pointer" title="Editar"><Edit size={13} /></button>
-                    {branches.length > 1 && (
-                      <button onClick={() => setBranchToDelete({ id: branch.id, name: branch.name })} className="p-1.5 text-muted hover:text-rose-500 rounded-lg transition-colors cursor-pointer" title="Eliminar"><Trash2 size={13} /></button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="space-y-3">
-              <div className="flex gap-2">
-                <input 
-                  type="text" 
-                  value={newBranchName}
-                  onChange={e => setNewBranchName(e.target.value)}
-                  placeholder="Nombre"
-                  className="flex-1 min-w-0 px-3 py-2 bg-primary border border-base rounded-xl text-xs font-bold text-primary outline-none focus:ring-1 focus:ring-rose-500" 
-                />
-                <button onClick={handleAddBranch} className="p-2 bg-rose-600 text-white rounded-xl hover:bg-rose-700 active:scale-95 transition-all shrink-0 cursor-pointer">
-                  {editingBranch ? <Save size={16} /> : <Plus size={16} />}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <SettingsWarehousesSection
+          active={activeTab === "branches"}
+          branches={branches}
+          editingBranch={editingBranch}
+          newBranchName={newBranchName}
+          setEditingBranch={setEditingBranch}
+          setNewBranchName={setNewBranchName}
+          setBranchToDelete={setBranchToDelete}
+          onAddBranch={handleAddBranch}
+        />
 
         {/* Apariencia y Visibilidad (Mejorado para Miopía) */}
         <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4 lg:col-span-3" style={{ display: activeTab === 'visual' ? undefined : 'none' }}>
