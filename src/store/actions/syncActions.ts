@@ -14,7 +14,7 @@ import {
 import { getSupabaseCredentials } from '../../lib/supabase';
 import { loadSaaSContext, signInSaaSAccount, signOutSaaSAccount } from '../../services/saas';
 import { getOfflineQueue, enqueueOfflineItem, removeFromOfflineQueue, waitForOfflineQueueReady } from '../../services/offlineQueue';
-import { normalizeSemanticText, areSemanticallyEqual } from '../../utils/textUtils';
+import { areSemanticallyEqual } from '../../utils/textUtils';
 import { localStateStorage, clearLocalStateStorage, flushLocalStateStorage } from '../../services/localStateStorage';
 import { getPalmyraScopedStorageKey } from '../../services/localScope';
 import { setCanonicalInventoryQuantity, validateTransferStock } from '../utils/inventoryTransforms';
@@ -32,6 +32,7 @@ import {
   type LocalNcfRange,
 } from '../../services/fiscal/ncfLocal';
 import type { AppState } from '../storeTypes';
+import { mergeById, mergeUnique } from '../utils/syncMerges';
 
 
 type StoreSet = (
@@ -49,18 +50,6 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
       const d: any = res.data;
       set((state) => {
         const queue = getOfflineQueue();
-        const mergeById = <T extends { id: string }>(
-          remote: T[],
-          local: T[],
-          protectedIds: Set<string | number> = new Set()
-        ) => {
-          const localMap = new Map(local.map(x => [x.id, x]));
-          const map = new Map(remote.map(x => [x.id, x]));
-          for (const [id, item] of localMap) {
-            if (!map.has(id) || protectedIds.has(id)) map.set(id, item);
-          }
-          return Array.from(map.values());
-        };
         const pendingStoreConfig = [...queue]
           .filter(i => i.type === 'store_config' && i.data && typeof i.data === 'object')
           .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
@@ -268,64 +257,6 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
       const { data, result } = await pullAllFromSupabase();
       if (result.success && data) {
         set((state) => {
-          // Helper para deduplicar arrays por ID o clave personalizada
-          // AHORA ES ADITIVO: No descarta datos locales que no están en Supabase, 
-          // simplemente prioriza Supabase para los conflictos de ID.
-          const mergeUnique = <T extends Record<string, any>>(supabaseData: T[] | undefined, localData: T[], options?: { offlineIds?: Set<string | number>, semanticDedupe?: boolean, idKey?: string, semanticKeys?: string[] }): T[] => {
-            const idKey = options?.idKey || 'id';
-            const semanticKeys = options?.semanticKeys || (options?.semanticDedupe ? ['name'] : []);
-            const map = new Map<string | number, T>();
-            const semanticMap = new Map<string, string | number>(); 
-            
-            const getSemanticKey = (item: T): string | null => {
-              if (semanticKeys.length === 0) return null;
-              const values = semanticKeys.map(k => normalizeSemanticText(String(item[k] || ''))).filter(Boolean);
-              return values.length > 0 ? values.join('::') : null;
-            };
-
-            // 1. Cargar TODOS los datos locales primero
-            localData.forEach(item => {
-              const sKey = getSemanticKey(item);
-              if (sKey) {
-                semanticMap.set(sKey, item[idKey]);
-              }
-              map.set(item[idKey], item);
-            });
-            
-            // 2. Sobrescribir con datos de Supabase (la fuente de verdad principal)
-            if (supabaseData) {
-              supabaseData.forEach(item => {
-                const sKey = getSemanticKey(item);
-                if (sKey) {
-                  const existingId = semanticMap.get(sKey);
-                  if (existingId && existingId !== item[idKey]) {
-                    map.delete(existingId);
-                  }
-                  semanticMap.set(sKey, item[idKey]);
-                }
-                
-                // Si es una sesión de caja y localmente ya fue cerrada pero en la nube está abierta, preservar el estado cerrado
-                if (item.status === 'open') {
-                  const localItem = map.get(item[idKey]);
-                  if (localItem && localItem.status === 'closed') {
-                    map.set(item[idKey], {
-                      ...item,
-                      status: 'closed',
-                      closedAt: localItem.closedAt || item.closed_at || new Date().toISOString(),
-                      closingDate: localItem.closingDate || localItem.closedAt,
-                      closingBalances: localItem.closingBalances || []
-                    });
-                    return;
-                  }
-                }
-
-                map.set(item[idKey], item);
-              });
-            }
-            
-            return Array.from(map.values());
-          };
-
           // --- 1. Sucursales ---
           const offlineQueueSnapshot = getOfflineQueue();
           const offlineQueuedBranchItems = offlineQueueSnapshot.filter(i => i.type === 'branch');
