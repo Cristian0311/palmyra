@@ -5,6 +5,7 @@ import { NUMA_TOUR_STEPS, getAccessibleNumaTourSteps } from "../../src/component
 test("Palmi guide contains a complete ordered product journey", () => {
   const ids = NUMA_TOUR_STEPS.map(step => step.id);
   assert.equal(ids[0], "welcome");
+  assert.ok(ids.includes("open-menu"));
   assert.equal(ids.at(-1), "finish");
   assert.ok(ids.includes("pos"));
   assert.ok(ids.includes("inventory"));
@@ -36,4 +37,20 @@ test("administrators receive all guide modules", () => {
   assert.ok(ids.includes("inventory"));
   assert.ok(ids.includes("settings"));
   assert.ok(ids.includes("subscription"));
+});
+
+
+test("mobile navigation step is filtered on desktop", () => {
+  const desktopIds = getAccessiblePalmiTourSteps({ role: "admin", permissions: [] }, false).map(step => step.id);
+  const mobileIds = getAccessiblePalmiTourSteps({ role: "admin", permissions: [] }, true).map(step => step.id);
+  assert.ok(!desktopIds.includes("open-menu"));
+  assert.ok(mobileIds.includes("open-menu"));
+});
+
+test("Numa commands expose exact UI anchors", () => {
+  const dashboard = PALMI_TOUR_STEPS.find(step => step.id === "dashboard");
+  const offline = PALMI_TOUR_STEPS.find(step => step.id === "offline");
+  assert.equal(dashboard?.navSelector, '[data-palmi-nav="/"]');
+  assert.equal(dashboard?.selector, '[data-palmi-content="dashboard"]');
+  assert.match(offline?.selector || "", /offline-status-mobile/);
 });
