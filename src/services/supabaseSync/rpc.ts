@@ -26,7 +26,7 @@ export async function callOpenSessionRPCWithId(session:CashRegisterSession){
 export async function callProcessTransactionRPC(tx:Transaction){
   try { const {companyId,authUserId}=await getActiveTenant(); const supabase=getSupabase()!; const items=(tx.items||[]).map(item=>{const prod=typeof item.product==='string'?null:item.product;return {id:item.id,product_id:typeof item.product==='string'?item.product:prod?.id,product_name:prod?.name||null,quantity:Number(item.quantity)||0,price:Number(item.price??prod?.price)||0,total:Number(item.total)||((Number(item.price??prod?.price)||0)*(Number(item.quantity)||0)),variant_label:item.variantLabel||null,variant_id:null,serial_number:item.serialNumber||null,discount:0,tax:0};});
     const payments=(tx.payments||[]).map((p:any)=>({method:p.method==='transfer'?'bank_transfer':p.method||'cash',currency_code:p.currencyCode||null,amount:Number(p.amount)||0,exchange_rate:Number(p.exchangeRate)||1,reference:p.reference||null}));
-    const data=await rpc('palmyra_record_sale',{p_sale_id:tx.id,p_company_id:companyId,p_warehouse_id:tx.branchId,p_cash_session_id:tx.sessionId||null,p_user_id:tx.userId||authUserId,p_total:Number(tx.total)||0,p_currency_code:payments[0]?.currency_code||null,p_notes:tx.notes||'',p_customer_id:tx.customerId||null,p_items:items,p_payments:payments});
+    const data=await rpc('palmyra_record_sale',{p_sale_id:tx.id,p_company_id:companyId,p_warehouse_id:tx.branchId,p_cash_session_id:tx.sessionId||null,p_user_id:tx.userId||authUserId,p_total:Number(tx.total)||0,p_currency_code:null,p_notes:tx.notes||'',p_customer_id:tx.customerId||null,p_items:items,p_payments:payments});
     if(tx.ncf||tx.ncfType){ const {error:metadataError}=await supabase.from('sales').update({metadata:{ncf:tx.ncf||null,ncfType:tx.ncfType||null,subtotal:Number(tx.subtotal)||0,changeGiven:Number(tx.changeGiven)||0,sellerEmployeeIds:tx.sellerEmployeeIds||[]}}).eq('id',tx.id).eq('company_id',companyId); if(metadataError) throw metadataError; }
     return {success:true as const,error:undefined,errorCode:undefined,data};
   } catch(e:any){ return errorResult(e); }
@@ -69,8 +69,24 @@ export async function callDeleteBankCardRPC(cardId:string){ try{const supabase=g
 export async function callCompleteReturnRPC(returnId:string,userId:string){try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_complete_return',{p_return_id:returnId,p_company_id:companyId});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);}}
 export async function callVoidTransactionRPC(id:string,userId:string,reason:string){try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_void_sale',{p_sale_id:id,p_company_id:companyId,p_reason:reason||'Anulación de venta'});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);}}
 export async function callCancelSessionRPC(sessionId:string,userId:string,reason:string){try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_cancel_cash_session',{p_session_id:sessionId,p_company_id:companyId,p_reason:reason||'Cancelación de turno'});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);}}
-export async function callCloseSessionRPC(sessionId:string,closingBalances:any[],closedAt:string,notes:string,settlement:SalarySettlement){
-  try{const {companyId}=await getActiveTenant();const cash=closingBalances?.find(x=>x.method==='cash')?.amount??closingBalances?.[0]?.amount??0;const expected=Number(settlement?.total)||0;const data=await rpc('palmyra_close_cash_session',{p_session_id:sessionId,p_company_id:companyId,p_closed_at:closedAt,p_physical_cash:Number(cash)||0,p_expected_cash:expected,p_difference:(Number(cash)||0)-expected,p_notes:notes||''});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);}
+export async function callCloseSessionRPC(sessionId:string,closingBalances:any[],closedAt:string,notes:string,settlement:SalarySettlement,expectedCash?:number){
+  try{
+    const {companyId}=await getActiveTenant();
+    const physicalCashBase=(closingBalances||[])
+      .filter((p:any)=>p?.method==='cash')
+      .reduce((sum:number,p:any)=>sum+(Number(p?.amount)||0)*(Number(p?.exchangeRate)||1),0);
+    const expected=Number.isFinite(Number(expectedCash)) ? Number(expectedCash) : null;
+    const data=await rpc('palmyra_close_cash_session',{
+      p_session_id:sessionId,
+      p_company_id:companyId,
+      p_closed_at:closedAt,
+      p_physical_cash:physicalCashBase,
+      p_expected_cash:expected,
+      p_difference:expected===null?0:physicalCashBase-expected,
+      p_notes:notes||''
+    });
+    return {success:true as const,error:undefined,errorCode:undefined,data};
+  }catch(e:any){return errorResult(e);}
 }
 export async function callProcessBankTransactionRPC(params:{id:string;cardId:string;type:string;amount:number;date?:string;reference?:string;description?:string;transactionId?:string}){try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_process_bank_transaction',{p_id:params.id,p_company_id:companyId,p_bank_account_id:params.cardId,p_type:params.type,p_amount:Number(params.amount)||0,p_date:params.date||new Date().toISOString(),p_reference:params.reference||null,p_description:params.description||'',p_transaction_id:params.transactionId||null});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);}}
 export async function callBankInternalTransferRPC(params:{operationId:string;fromCardId:string;toCardId:string;amount:number;targetAmount:number;date:string;reason?:string}){try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_bank_internal_transfer',{p_operation_id:params.operationId,p_company_id:companyId,p_from_bank_account_id:params.fromCardId,p_to_bank_account_id:params.toCardId,p_amount:Number(params.amount)||0,p_target_amount:Number(params.targetAmount)||0,p_date:params.date,p_reason:params.reason||''});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);}}
