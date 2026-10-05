@@ -1,6 +1,6 @@
 import type { User } from "../../types";
 
-export type PalmiTourStep = {
+export type SiraTourStep = {
   id: string;
   path?: string;
   navSelector?: string;
@@ -18,7 +18,7 @@ export type PalmiTourStep = {
 
 const nav = (path: string) => `[data-palmi-nav="${path}"]`;
 
-export const PALMI_TOUR_STEPS: PalmiTourStep[] = [
+export const SIRA_TOUR_STEPS: SiraTourStep[] = [
   { id:"welcome", eyebrow:"Guía interactiva PALMYRA", title:"Soy Numa", actionTitle:"Empezamos juntos", actionMessage:"Yo te indico el camino y tú haces cada paso dentro de PALMYRA. No voy a abrir las secciones por ti: quiero que aprendas dónde está cada cosa.", message:"En cada área te explicaré qué es, qué debes mirar y cómo encaja con el resto del negocio. Tú marcas el ritmo.", tip:"Numa no modifica datos ni ejecuta operaciones por ti." },
   { id:"open-menu", navSelector:'[data-tour="sidebar-toggle"]', eyebrow:"01 · Navegación", title:"Menú principal", actionTitle:"Abre el menú", actionMessage:"En móvil y tablet, toca el botón ☰ del encabezado para abrir el menú lateral. Cuando lo abras, te señalaré el siguiente paso.", message:"Este menú es el mapa de PALMYRA. Desde aquí tú eliges a qué área quieres ir.", tip:"En PC el menú ya está visible, por eso este paso se salta automáticamente.", requiresAction:true, mobileOnly:true },
   { id:"dashboard", path:"/", navSelector:nav("/"), selector:'[data-palmi-content="dashboard"]', eyebrow:"02 · Tu punto de partida", title:"Dashboard", actionTitle:"Ahora abre Dashboard", actionMessage:"Busca «Dashboard» en el menú lateral y presiónalo. Esperaré aquí hasta que entres.", message:"Perfecto. Este es tu centro de mando: ventas, tickets, stock y clientes aparecen resumidos para que entiendas el estado del negocio antes de operar.", tip:"Mira tendencias y alertas; no necesitas memorizar todas las cifras.", permission:"reports.view", requiresAction:true },
@@ -39,7 +39,7 @@ export const PALMI_TOUR_STEPS: PalmiTourStep[] = [
   { id:"finish", eyebrow:"Recorrido completado", title:"Ahora ya sabes dónde trabajar", message:"Has recorrido la estructura principal de PALMYRA. Numa queda disponible como ayuda contextual y puedes repetir el recorrido cuando quieras.", tip:"Aprende el camino primero; después trabaja cada sección con seguridad." }
 ];
 
-export function getAccessiblePalmiTourSteps(currentUser: Pick<User, "role" | "permissions"> | null | undefined, isMobile = false) {
+export function getAccessibleSiraTourSteps(currentUser: Pick<User, "role" | "permissions"> | null | undefined, isMobile = false) {
   const isAdmin = currentUser?.role === "admin";
-  return PALMI_TOUR_STEPS.filter(step => (!step.mobileOnly || isMobile) && (!step.permission || isAdmin || currentUser?.permissions?.includes(step.permission)));
+  return SIRA_TOUR_STEPS.filter(step => (!step.mobileOnly || isMobile) && (!step.permission || isAdmin || currentUser?.permissions?.includes(step.permission)));
 }
