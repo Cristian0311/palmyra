@@ -178,7 +178,7 @@ export default function Transfers() {
             <ArrowLeftRight className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-lg sm:text-xl font-black text-primary tracking-tight uppercase leading-none">Transferencias</h2>
+            <h2 data-palmi-content="transfers" className="text-lg sm:text-xl font-black text-primary tracking-tight uppercase leading-none">Transferencias</h2>
             <p className="text-[9px] font-bold text-muted uppercase tracking-widest mt-1">Gestión de inventario entre sucursales</p>
           </div>
         </div>
