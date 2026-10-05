@@ -5,6 +5,9 @@ export type PalmiTourStep = {
   path?: string;
   navSelector?: string;
   selector?: string;
+  mobileSelector?: string;
+  desktopSelector?: string;
+  mobileOnlyAction?: boolean;
   eyebrow: string;
   title: string;
   actionTitle?: string;
@@ -19,6 +22,7 @@ const nav = (path: string) => `[data-palmi-nav="${path}"]`;
 
 export const PALMI_TOUR_STEPS: PalmiTourStep[] = [
   { id:"welcome", eyebrow:"Guía interactiva PALMYRA", title:"Soy Palmi", actionTitle:"Empezamos juntos", actionMessage:"Yo te indico el camino y tú haces cada paso dentro de PALMYRA. No voy a abrir las secciones por ti: quiero que aprendas dónde está cada cosa.", message:"En cada área te explicaré qué es, qué debes mirar y cómo encaja con el resto del negocio. Puedes pausar, cerrar o volver a empezar cuando quieras.", tip:"Tu ritmo manda. Palmi no modifica datos ni ejecuta operaciones por ti." },
+  { id:"menu", mobileSelector:"[data-palmy-menu-toggle]", desktopSelector:"[data-palmy-sidebar]", eyebrow:"00 · Orientación", title:"Tu menú principal", actionTitle:"Abre el menú principal", actionMessage:"En móvil o tablet, toca el botón de menú que voy a señalar. En computadora, el menú lateral ya está visible: solo reconoce dónde está.", message:"Este menú es el mapa de PALMYRA. Desde aquí entrarás a cada módulo y volverás al Dashboard cuando lo necesites.", tip:"Palmi no abrirá el módulo por ti. Primero haces tú la acción y después te explico qué debes mirar.", requiresAction:true, mobileOnlyAction:true },
   { id:"dashboard", path:"/", navSelector:nav("/"), selector:'[data-palmi-content="dashboard"]', eyebrow:"01 · Tu punto de partida", title:"Dashboard", actionTitle:"Tu turno", actionMessage:"Busca «Dashboard» en el menú lateral y presiónalo. Cuando entres, te mostraré qué información es importante aquí.", message:"Perfecto. Este es tu centro de mando: aquí ves una lectura rápida de ventas, tickets, stock y clientes. Úsalo para entender cómo está el negocio antes de entrar a una operación.", tip:"Mira tendencias y alertas; no necesitas memorizar todas las cifras.", permission:"reports.view", requiresAction:true },
   { id:"pos", path:"/pos", navSelector:nav("/pos"), selector:'[data-palmi-content="pos"]', eyebrow:"02 · Operación diaria", title:"Punto de Venta", actionTitle:"Vamos a la caja", actionMessage:"Busca «Punto de Venta» en el menú y ábrelo. No cobres nada todavía; solo entra para reconocer el espacio.", message:"Aquí ocurre la operación de venta: catálogo, carrito, cobro, vendedor, caja, impresión y continuidad offline. Primero aprende el espacio; después podrás practicar.", tip:"Antes de vender, confirma el almacén y el turno de caja que estás usando.", permission:"pos.access", requiresAction:true },
   { id:"transfers", path:"/transfers", navSelector:nav("/transfers"), selector:'[data-palmi-content="transfers"]', eyebrow:"03 · Logística", title:"Transferencias", actionTitle:"Mueve mercancía con control", actionMessage:"Busca «Transferencias» en el menú lateral y ábrelo. Vamos a reconocer la sección antes de hacer cualquier traslado.", message:"Aquí organizas el movimiento de mercancía entre almacenes. Revisa origen, destino e historial sin mezclar este proceso con la venta.", tip:"Palmi nunca ejecutará un traslado durante el recorrido.", permission:"inventory.manage", requiresAction:true },
