@@ -269,7 +269,7 @@ function Overview({ snapshot, onRefresh }: { snapshot: PlatformSnapshot; onRefre
             {[
               "El CRM de cada empresa permanece aislado del panel administrativo.",
               "Las decisiones críticas se ejecutan mediante funciones seguras en Supabase.",
-              "El navegador nunca recibe una service_role key.",
+              "El navegador nunca recibe una clave secreta de Supabase.",
               "Las acciones administrativas deben quedar registradas en auditoría.",
             ].map((item) => <div key={item}><Check size={14} /><span>{item}</span></div>)}
           </div>
