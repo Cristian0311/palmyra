@@ -309,3 +309,18 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior:auto !important; animation-duration:.01ms !important; transition-duration:.01ms !important; }
 }
+
+.admin-support-settings{overflow:hidden}
+.admin-settings-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px;padding:22px}
+.admin-settings-form label{display:block;min-width:0}
+.admin-settings-form label:nth-child(3),.admin-settings-footer,.admin-settings-message{grid-column:1/-1}
+.admin-settings-form label>span{display:flex;align-items:center;gap:7px;margin-bottom:7px;font-size:10px;font-weight:850;letter-spacing:.05em;text-transform:uppercase;color:var(--admin-muted)}
+.admin-field-icon{height:46px;display:flex;align-items:center;gap:9px;padding:0 12px;border:1px solid var(--admin-border);border-radius:14px;background:var(--admin-surface)}
+.admin-field-icon>svg{color:#8b63e6;flex:0 0 auto}
+.admin-field-icon input{width:100%;height:100%;border:0;outline:0;background:transparent;color:var(--admin-text);font:600 12px inherit}
+.admin-settings-form small{display:block;margin-top:6px;color:var(--admin-muted);font-size:9px;line-height:1.45}
+.admin-settings-message{padding:11px 12px;border-radius:12px;font-size:10px;font-weight:750}
+.admin-settings-message--error{background:#fff2f4;border:1px solid #f2c8d0;color:#9f1c36}
+.admin-settings-message--success{background:#edfbf2;border:1px solid #caead6;color:#177142}
+.admin-settings-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:4px;border-top:1px solid var(--admin-border);font-size:9px;color:var(--admin-muted)}
+@media(max-width:760px){.admin-settings-form{grid-template-columns:1fr;padding:16px}.admin-settings-form label:nth-child(3),.admin-settings-footer,.admin-settings-message{grid-column:1}.admin-settings-footer{flex-direction:column;align-items:stretch}.admin-settings-footer .admin-btn{width:100%}}
