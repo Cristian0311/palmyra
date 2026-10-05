@@ -114,7 +114,7 @@ export default function PalmiGuide() {
           </div>
         </div>
       </div>}
-      <div className="palmi-guide-drag-handle" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} aria-label="Mover a Palmi" role="button" tabIndex={0}>
+      <div className="palmi-guide-drag-handle" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onKeyDown={onKeyDown} aria-label="Mover a Palmi o abrir la guía" role="button" tabIndex={0}>
         <PalmiMascot className="palmi-guide-mascot"/>
       </div>
       {open&&<button type="button" className="palmi-guide-reset" onClick={reset} aria-label="Reiniciar guía" title="Reiniciar guía"><RotateCcw size={13}/></button>}
