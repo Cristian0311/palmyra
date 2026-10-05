@@ -242,7 +242,7 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): Partial<Ap
     const product = get().products.find(p => p.id === productId);
     const fromBranch = get().branches.find(b => b.id === fromBranchId);
     const toBranch = get().branches.find(b => b.id === toBranchId);
-    const transferRecord: import('../types').InventoryTransfer = {
+    const transferRecord: import('../../types').InventoryTransfer = {
       id: operationId, operationId, productId, productName: product?.name || 'Producto',
       fromBranchId, fromBranchName: fromBranch?.name || 'Sucursal Origen',
       toBranchId, toBranchName: toBranch?.name || 'Sucursal Destino',
