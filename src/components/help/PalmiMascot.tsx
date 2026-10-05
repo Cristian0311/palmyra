@@ -1,59 +1,69 @@
 import React from "react";
 
+/** Numa: mascota vectorial propia de PALMYRA. Mantenerla en SVG evita dependencias externas y conserva nitidez en cualquier DPI. */
 export function PalmiMascot({ className = "" }: { className?: string }) {
   return (
-    <svg className={className} viewBox="0 0 280 320" role="img" aria-label="Numa, guía inteligente de PALMYRA" xmlns="http://www.w3.org/2000/svg">
+    <svg className={className} viewBox="0 0 280 320" role="img" aria-label="Numa, el camello guía de PALMYRA" xmlns="http://www.w3.org/2000/svg">
       <defs>
-        <linearGradient id="sira-fur" x1="15%" y1="5%" x2="85%" y2="100%"><stop offset="0" stopColor="#F6D09B"/><stop offset=".52" stopColor="#C9874D"/><stop offset="1" stopColor="#87502F"/></linearGradient>
-        <linearGradient id="sira-muzzle" x1="25%" y1="15%" x2="80%" y2="90%"><stop offset="0" stopColor="#FFF8EA"/><stop offset="1" stopColor="#E8B477"/></linearGradient>
-        <linearGradient id="sira-scarf" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#B49AFF"/><stop offset=".55" stopColor="#6D3BD2"/><stop offset="1" stopColor="#47208F"/></linearGradient>
-        <radialGradient id="sira-cheek"><stop offset="0" stopColor="#F0A37C" stopOpacity=".6"/><stop offset="1" stopColor="#F0A37C" stopOpacity="0"/></radialGradient>
-        <filter id="sira-shadow" x="-30%" y="-30%" width="160%" height="180%"><feDropShadow dx="0" dy="13" stdDeviation="10" floodColor="#2B1840" floodOpacity=".22"/></filter>
+        <radialGradient id="numa-halo" cx="50%" cy="35%" r="70%"><stop offset="0%" stopColor="#F4ECFF"/><stop offset="72%" stopColor="#E8D9FF"/><stop offset="100%" stopColor="#D8C4FA"/></radialGradient>
+        <linearGradient id="numa-fur" x1="18%" y1="0%" x2="82%" y2="100%"><stop offset="0%" stopColor="#FFD39B"/><stop offset="38%" stopColor="#E8A96C"/><stop offset="72%" stopColor="#C77D4B"/><stop offset="100%" stopColor="#9D5A38"/></linearGradient>
+        <radialGradient id="numa-face" cx="45%" cy="24%" r="82%"><stop offset="0%" stopColor="#FFFDF6"/><stop offset="65%" stopColor="#F0C38C"/><stop offset="100%" stopColor="#D58E55"/></radialGradient>
+        <linearGradient id="numa-scarf" x1="10%" y1="0%" x2="90%" y2="100%"><stop offset="0%" stopColor="#A482F3"/><stop offset="45%" stopColor="#7443DA"/><stop offset="100%" stopColor="#5224A8"/></linearGradient>
+        <linearGradient id="numa-patch" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stopColor="#F7EEFF"/><stop offset="100%" stopColor="#E1CEFF"/></linearGradient>
+        <filter id="numa-shadow" x="-35%" y="-30%" width="170%" height="185%"><feDropShadow dx="0" dy="14" stdDeviation="11" floodColor="#241235" floodOpacity=".24"/></filter>
+        <filter id="numa-glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="7"/></filter>
       </defs>
 
-      <ellipse cx="142" cy="299" rx="88" ry="12" fill="#2B1840" opacity=".12"/>
-      <g filter="url(#sira-shadow)">
-        <!-- distinctive camel silhouette -->
-        <path d="M93 118C72 99 48 101 29 121C49 121 65 131 77 151L96 158Z" fill="#8F5634"/>
-        <path d="M190 112C213 94 238 100 251 122C232 120 216 131 204 151L185 157Z" fill="#8F5634"/>
-        <path d="M111 118C108 82 118 52 139 45C161 52 172 83 168 119L183 178C188 223 170 254 139 262C108 254 90 223 95 178Z" fill="url(#sira-fur)"/>
-        <!-- crown tuft -->
-        <path d="M114 92C117 57 127 34 140 34C153 34 163 57 166 92C157 83 149 78 140 78C131 78 123 83 114 92Z" fill="#AA673D"/>
-        <path d="M98 143C106 112 121 97 140 97C159 97 174 112 182 143L177 191C173 227 159 248 140 255C121 248 107 227 103 191Z" fill="url(#sira-muzzle)"/>
-        <!-- eyes -->
-        <ellipse cx="112" cy="144" rx="27" ry="31" fill="#FFFDF9"/>
-        <ellipse cx="166" cy="140" rx="26" ry="30" fill="#FFFDF9"/>
-        <ellipse cx="116" cy="147" rx="9" ry="13" fill="#24152F"/>
-        <ellipse cx="169" cy="143" rx="9" ry="12" fill="#24152F"/>
-        <circle cx="120" cy="142" r="3.5" fill="#FFF"/>
-        <circle cx="173" cy="138" r="3.3" fill="#FFF"/>
-        <path d="M94 123C100 112 108 107 118 107" fill="none" stroke="#673A2B" strokeWidth="5.5" strokeLinecap="round"/>
-        <path d="M185 120C178 109 169 105 160 105" fill="none" stroke="#673A2B" strokeWidth="5.5" strokeLinecap="round"/>
-        <!-- cheeks and friendly muzzle -->
-        <circle cx="103" cy="180" r="18" fill="url(#sira-cheek)"/>
-        <circle cx="177" cy="176" r="17" fill="url(#sira-cheek)"/>
-        <ellipse cx="140" cy="190" rx="42" ry="33" fill="#E5AD73"/>
-        <ellipse cx="126" cy="188" rx="8.5" ry="6.5" fill="#6B3B2A"/>
-        <ellipse cx="154" cy="187" rx="8.5" ry="6.5" fill="#6B3B2A"/>
-        <path d="M128 207C135 213 145 213 152 207" fill="none" stroke="#663426" strokeWidth="3.2" strokeLinecap="round"/>
-        <path d="M132 217C137 221 143 221 148 217" fill="none" stroke="#663426" strokeWidth="2.2" strokeLinecap="round"/>
-        <!-- body + branded scarf -->
-        <path d="M101 232C109 250 119 263 140 266C161 263 171 250 179 232L194 286C179 301 101 301 86 286Z" fill="url(#sira-scarf)"/>
-        <path d="M91 238C106 248 123 255 140 258C157 255 174 248 189 238L184 264C169 276 111 276 96 264Z" fill="#805BE0"/>
-        <path d="M111 247L140 259L169 247L164 263L140 271L116 263Z" fill="#D8CAFF" opacity=".5"/>
-        <!-- compass badge -->
-        <circle cx="140" cy="284" r="13" fill="#F8F3FF"/>
-        <circle cx="140" cy="284" r="9" fill="none" stroke="#6D3BD2" strokeWidth="2"/>
-        <path d="M140 277L144 285L140 292L136 285Z" fill="#6D3BD2"/>
-        <!-- arms -->
-        <path d="M86 241C65 242 51 253 43 268" fill="none" stroke="#9B6038" strokeWidth="13" strokeLinecap="round"/>
-        <path d="M194 241C215 242 229 253 237 268" fill="none" stroke="#9B6038" strokeWidth="13" strokeLinecap="round"/>
-        <path d="M44 268L32 277" stroke="#F2C38B" strokeWidth="10" strokeLinecap="round"/>
-        <path d="M236 268L248 277" stroke="#F2C38B" strokeWidth="10" strokeLinecap="round"/>
-        <!-- guide spark -->
-        <circle cx="58" cy="75" r="18" fill="#6D3BD2"/>
-        <path d="M49 75L55 81L67 68" fill="none" stroke="#FFF" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
+      <ellipse cx="140" cy="299" rx="91" ry="12" fill="#2B1745" opacity=".12" filter="url(#numa-glow)"/>
+      <circle cx="140" cy="142" r="122" fill="url(#numa-halo)"/>
+      <circle cx="140" cy="142" r="111" fill="none" stroke="#7A50DD" strokeWidth="1.5" strokeDasharray="2 9" opacity=".22"/>
+
+      <g filter="url(#numa-shadow)">
+        <path d="M89 111C66 94 45 97 27 119C49 118 62 129 77 147Z" fill="#9C5D3A"/>
+        <path d="M191 111C214 94 235 97 253 119C231 118 218 129 203 147Z" fill="#9C5D3A"/>
+        <path d="M100 116C103 82 117 55 140 55C163 55 177 82 180 116L191 176C195 219 174 250 140 258C106 250 85 219 89 176Z" fill="url(#numa-fur)"/>
+        <path d="M111 94C113 61 124 35 140 35C156 35 167 61 169 94C160 86 151 82 140 82C129 82 120 86 111 94Z" fill="#B97245"/>
+        <path d="M99 141C106 113 121 97 140 97C159 97 174 113 181 141L179 184C176 224 160 244 140 251C120 244 104 224 101 184Z" fill="url(#numa-face)"/>
+
+        <ellipse cx="111" cy="139" rx="29" ry="32" fill="#FFFEFA"/>
+        <ellipse cx="169" cy="139" rx="29" ry="32" fill="#FFFEFA"/>
+        <ellipse cx="112" cy="144" rx="10" ry="13" fill="#251733"/>
+        <ellipse cx="168" cy="144" rx="10" ry="13" fill="#251733"/>
+        <ellipse cx="114" cy="142" rx="2.3" ry="3.2" fill="#FFF"/>
+        <ellipse cx="170" cy="142" rx="2.3" ry="3.2" fill="#FFF"/>
+
+        <path d="M92 121C99 110 107 105 118 105" fill="none" stroke="#6E3B2B" strokeWidth="5.8" strokeLinecap="round"/>
+        <path d="M188 121C181 110 173 105 162 105" fill="none" stroke="#6E3B2B" strokeWidth="5.8" strokeLinecap="round"/>
+        <path d="M91 164C100 171 104 172 109 174" fill="none" stroke="#D9915F" strokeWidth="3.5" strokeLinecap="round" opacity=".7"/>
+        <path d="M189 164C180 171 176 172 171 174" fill="none" stroke="#D9915F" strokeWidth="3.5" strokeLinecap="round" opacity=".7"/>
+
+        <ellipse cx="140" cy="189" rx="41" ry="32" fill="#EAB47E"/>
+        <ellipse cx="126" cy="186" rx="9" ry="7" fill="#74422F"/>
+        <ellipse cx="154" cy="186" rx="9" ry="7" fill="#74422F"/>
+        <path d="M126 207C133 214 147 214 154 207" fill="none" stroke="#6B382A" strokeWidth="3.2" strokeLinecap="round"/>
+        <path d="M130 217C136 222 144 222 150 217" fill="none" stroke="#7A4330" strokeWidth="2.2" strokeLinecap="round"/>
+        <circle cx="107" cy="198" r="5" fill="#E89291" opacity=".24"/><circle cx="173" cy="198" r="5" fill="#E89291" opacity=".24"/>
+
+        <path d="M104 244C109 260 108 276 105 292" fill="none" stroke="#A7643E" strokeWidth="18" strokeLinecap="round"/>
+        <path d="M176 244C171 260 172 276 175 292" fill="none" stroke="#A7643E" strokeWidth="18" strokeLinecap="round"/>
+        <path d="M112 257C122 242 132 235 140 235C148 235 158 242 168 257L160 299C148 307 132 307 120 299Z" fill="url(#numa-fur)"/>
+
+        <path d="M103 240C114 248 125 254 140 257C155 254 166 248 177 240L173 271C160 283 120 283 107 271Z" fill="url(#numa-scarf)"/>
+        <path d="M117 249L140 258L163 249L157 264L140 272L123 264Z" fill="#D9C7FF" opacity=".48"/>
+        <path d="M124 258L140 265L156 258V275C149 281 131 281 124 275Z" fill="#4D209B" opacity=".9"/>
+
+        <rect x="119" y="272" width="42" height="20" rx="8" fill="url(#numa-patch)"/>
+        <path d="M140 277L144 284L152 285L146 290L148 297L140 293L132 297L134 290L128 285L136 284Z" fill="#6D3BD2"/>
+
+        <path d="M81 236C59 240 48 251 40 267" fill="none" stroke="#A56740" strokeWidth="13" strokeLinecap="round"/>
+        <path d="M199 236C221 240 232 251 240 267" fill="none" stroke="#A56740" strokeWidth="13" strokeLinecap="round"/>
+        <path d="M42 266L31 275" stroke="#FFD39B" strokeWidth="10" strokeLinecap="round"/><path d="M238 266L249 275" stroke="#FFD39B" strokeWidth="10" strokeLinecap="round"/>
+
+        <circle cx="57" cy="76" r="18" fill="#6D3BD2"/>
+        <path d="M50 76H64M57 69V83" stroke="#FFF" strokeWidth="3.2" strokeLinecap="round"/>
       </g>
+
+      <g className="palmi-mascot-blink"><circle cx="112" cy="145" r="2.2" fill="#FFF"/><circle cx="168" cy="145" r="2.2" fill="#FFF"/></g>
     </svg>
   );
 }
