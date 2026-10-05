@@ -80,6 +80,7 @@ export default function Transfers() {
   }, [showAddModal]);
 
   // Calculate live available stock in source/target branch.
+  const hasVariants = (selectedProduct?.availableSizes?.length || 0) + (selectedProduct?.availableColors?.length || 0) > 0;
   const variantsList: string[] = hasVariants
     ? Array.from(new Set([...(selectedProduct?.availableSizes || []), ...(selectedProduct?.availableColors || [])]))
     : [''];
