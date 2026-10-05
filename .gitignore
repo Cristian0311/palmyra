@@ -1,0 +1,11 @@
+node_modules/
+dist/
+dev-dist/
+.env
+.env.*
+!.env.example
+*.bak
+*.bak_*
+*.legacy.sql
+*.tmp
+.DS_Store
