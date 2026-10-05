@@ -97,9 +97,9 @@ html, body, #root {
    temporarily opts the document root into normal vertical scrolling. */
 /* The marketing page must scroll even before React effects finish mounting.
    This also makes /landing easy to preview while authenticated. */
-html:has(.palmyra-landing-page),
-body:has(.palmyra-landing-page),
-#root:has(.palmyra-landing-page) {
+html:has(.landing-page),
+body:has(.landing-page),
+#root:has(.landing-page) {
   height: auto !important;
   min-height: 100dvh;
   overflow-x: hidden !important;
