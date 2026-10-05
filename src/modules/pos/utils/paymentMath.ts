@@ -33,3 +33,12 @@ export function formatMoney(amount: number, symbol: string): string {
   });
   return symbol + ' ' + formatted;
 }
+
+
+export function createPaymentMath(baseCurrency: Currency, currencies: Currency[], isBaseCurrency: boolean) {
+  return {
+    getSafeRateToBase: (code: string) => getSafeRateToBase(code, baseCurrency, currencies),
+    toBaseAmount: (amount: number, code: string) => toBaseAmount(amount, code, baseCurrency, currencies),
+    roundBaseAmount: (amount: number) => roundBaseAmount(amount, isBaseCurrency)
+  };
+}
