@@ -58,7 +58,7 @@ export async function applyInventoryAdjustmentToSupabase(params:{operationId:str
       minQuantity:params.minQuantity,
       notes:params.movementType || 'Ajuste de inventario'
     });
-    if(!result.success){
+    if(result.success === false){
       if(result.conflict) return {success:false,conflict:true,error:result.error};
       throw new Error(result.error);
     }
