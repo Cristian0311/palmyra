@@ -1,11 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowDown } from "lucide-react";
+import { ArrowDown, ArrowRight } from "lucide-react";
 import { landingModules, ProductScene } from "./ProductScene";
 
-const storyIds = ["dashboard", "cash", "customers", "inventory", "suppliers", "audit", "bank", "reports", "settings", "team", "plan"];
+const storyIds = ["menu", "dashboard", "cash", "inventory", "suppliers", "customers", "reports", "settings", "team", "plan"];
 const storyModules = storyIds.map((id) => landingModules.find((module) => module.id === id)).filter((module): module is (typeof landingModules)[number] => Boolean(module));
-const gallery = storyModules.slice(0, 8);
 
 export function ProductStory() {
   const sectionRef = useRef<HTMLElement | null>(null);
@@ -16,55 +15,72 @@ export function ProductStory() {
   useEffect(() => {
     const section = sectionRef.current;
     if (!section) return;
-    let frame = 0;
-    let lastIndex = -1;
 
-    const updateFromScroll = () => {
+    const anchors = Array.from(section.querySelectorAll<HTMLElement>("[data-story-id]"));
+    if (!anchors.length) return;
+
+    let frame = 0;
+    const updateProgress = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
-        const vh = window.innerHeight || 1;
-        const center = vh * 0.53;
         const rect = section.getBoundingClientRect();
-        const distance = Math.max(section.offsetHeight - vh, 1);
-        setSectionProgress(Math.max(0, Math.min(1, -rect.top / distance)));
-
-        const anchors = Array.from(section.querySelectorAll<HTMLElement>("[data-story-id]"));
-        let nextIndex = 0;
-        let best = Number.POSITIVE_INFINITY;
-        anchors.forEach((anchor, index) => {
-          const r = anchor.getBoundingClientRect();
-          const centerPoint = r.top + r.height / 2;
-          const inside = r.top <= center && r.bottom >= center;
-          const score = inside ? Math.abs(centerPoint - center) * 0.2 : Math.abs(centerPoint - center);
-          if (score < best) { best = score; nextIndex = index; }
-        });
-        if (nextIndex !== lastIndex) { lastIndex = nextIndex; setActiveIndex(nextIndex); }
+        const total = Math.max(section.offsetHeight - window.innerHeight, 1);
+        setSectionProgress(Math.max(0, Math.min(1, -rect.top / total)));
       });
     };
 
-    updateFromScroll();
-    window.addEventListener("scroll", updateFromScroll, { passive: true });
-    window.addEventListener("resize", updateFromScroll);
-    return () => { cancelAnimationFrame(frame); window.removeEventListener("scroll", updateFromScroll); window.removeEventListener("resize", updateFromScroll); };
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => Math.abs(a.boundingClientRect.top - window.innerHeight * 0.5) - Math.abs(b.boundingClientRect.top - window.innerHeight * 0.5));
+
+        if (!visible.length) return;
+        const id = (visible[0].target as HTMLElement).dataset.storyId;
+        const index = storyModules.findIndex((module) => module.id === id);
+        if (index >= 0) setActiveIndex(index);
+      },
+      { rootMargin: "-42% 0px -42% 0px", threshold: 0 },
+    );
+
+    anchors.forEach((anchor) => observer.observe(anchor));
+    updateProgress();
+    window.addEventListener("scroll", updateProgress, { passive: true });
+    window.addEventListener("resize", updateProgress);
+
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener("scroll", updateProgress);
+      window.removeEventListener("resize", updateProgress);
+    };
   }, []);
 
   return (
     <section id="modulos" ref={sectionRef} className="landing-story">
+      <div className="landing-story__intro-shell landing-shell">
+        <div>
+          <p className="landing-eyebrow">UN MENÚ. TODO TU NEGOCIO.</p>
+          <h2>Conoce el producto<br /><span>mientras avanzas.</span></h2>
+        </div>
+        <p>Esta vez no hay una galería separada ni un texto que repite las pantallas. Cada escena aparece dentro del recorrido y cambia sola mientras haces scroll.</p>
+      </div>
+
       <div className="landing-shell landing-story__layout">
         <div className="landing-story__visual-column">
           <div className="landing-story__sticky">
-            <div className="landing-story__sticky-label"><span>CAPTURA EN ESCENA</span><b>{String(activeIndex + 1).padStart(2, "0")} / {String(storyModules.length).padStart(2, "0")}</b></div>
+            <div className="landing-story__sticky-label"><span>ESCENA ACTIVA</span><b>{String(activeIndex + 1).padStart(2, "0")} / {String(storyModules.length).padStart(2, "0")}</b></div>
             <div className="landing-story__stage-frame">
               <AnimatePresence mode="wait" initial={false}>
                 <motion.div key={active.id} className="landing-story__scene-transition"
-                  initial={{ opacity: 0, scale: 0.84, y: 70, rotateX: 10, rotateY: -9, filter: "blur(10px)" }}
+                  initial={{ opacity: 0, scale: 0.84, y: 80, rotateX: 9, rotateY: -8, filter: "blur(10px)" }}
                   animate={{ opacity: 1, scale: 1, y: 0, rotateX: 0, rotateY: -2, filter: "blur(0px)" }}
-                  exit={{ opacity: 0, scale: 1.08, y: -55, rotateX: -8, rotateY: 8, filter: "blur(8px)" }}
-                  transition={{ duration: 0.66, ease: [0.16, 1, 0.3, 1] }}>
+                  exit={{ opacity: 0, scale: 1.06, y: -55, rotateX: -7, rotateY: 7, filter: "blur(7px)" }}
+                  transition={{ duration: 0.68, ease: [0.16, 1, 0.3, 1] }}>
                   <ProductScene module={active} />
                 </motion.div>
               </AnimatePresence>
-              <div className="landing-story__stage-depth" style={{ opacity: 0.35 + sectionProgress * 0.5 }} />
+              <div className="landing-story__stage-depth" style={{ transform: "scale(" + (0.88 + sectionProgress * 0.12) + ")", opacity: 0.28 + sectionProgress * 0.42 }} />
             </div>
             <div className="landing-story__progress"><span style={{ transform: "scaleX(" + sectionProgress + ")" }} /></div>
             <div className="landing-story__stage-caption"><span>{active.screenLabel}</span><strong>{active.label}</strong><p>{active.description}</p></div>
@@ -72,33 +88,22 @@ export function ProductStory() {
         </div>
 
         <div className="landing-story__chapters">
-          <div className="landing-story__intro">
-            <div><p className="landing-eyebrow">UN MENÚ. TODO TU NEGOCIO.</p><h2>Conoce cada área.<br /><span>Mientras avanzas.</span></h2></div>
-            <p>Las capturas reales del CRM toman el escenario automáticamente. No tienes que pulsar para cambiar de producto: <strong>sigue bajando</strong> y la pantalla cambia contigo.</p>
-          </div>
+          {storyModules.map((module, index) => {
+            const selected = index === activeIndex;
+            return (
+              <article key={module.id} id={"landing-story-anchor-" + module.id} data-story-id={module.id} className={"landing-story__chapter" + (selected ? " is-active" : "")}>
+                <div className="landing-story__chapter-index">{String(index + 1).padStart(2, "0")}</div>
+                <div className="landing-story__chapter-copy">
+                  <p className="landing-eyebrow">{module.eyebrow}</p>
+                  <h3>{module.title}</h3>
+                  <p>{module.description}</p>
+                  <div className="landing-story__chapter-meta"><span><span className="landing-live-dot" /> Pantalla real</span><button type="button" onClick={() => document.getElementById("landing-story-anchor-" + module.id)?.scrollIntoView({ behavior: "smooth", block: "center" })}>Ver escena <ArrowRight size={13} /></button></div>
+                </div>
+              </article>
+            );
+          })}
 
-          <div className="landing-story__gallery" aria-label="Capturas reales de PALMYRA">
-            {gallery.map((module, index) => (
-              <div key={module.id} className="landing-story__gallery-card">
-                <img src={module.screenSrc} alt={"Captura real de " + module.label} loading="lazy" />
-                <span>{module.label}</span>
-              </div>
-            ))}
-          </div>
-
-          <div className="landing-story__chapter-list">
-            {storyModules.map((module, index) => {
-              const selected = index === activeIndex;
-              return (
-                <article key={module.id} id={"landing-story-anchor-" + module.id} data-story-id={module.id} className={"landing-story__chapter" + (selected ? " is-active" : "")}>
-                  <div className="landing-story__chapter-index">{String(index + 1).padStart(2, "0")}</div>
-                  <div className="landing-story__chapter-copy"><p className="landing-eyebrow">{module.eyebrow}</p><h3>{module.title}</h3><p>{module.description}</p></div>
-                </article>
-              );
-            })}
-          </div>
-
-          <div className="landing-story__scroll-hint"><ArrowDown size={15} /><span>Continúa bajando. Las capturas cambian solas.</span></div>
+          <div className="landing-story__scroll-hint"><ArrowDown size={15} /><span>Sigue bajando. La escena cambia automáticamente.</span></div>
         </div>
       </div>
     </section>

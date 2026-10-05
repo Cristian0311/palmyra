@@ -12,9 +12,9 @@ function Brand({ footer = false }: { footer?: boolean }) {
 }
 
 const highlights = [
-  ["01", "Vista general", "Todo el negocio en una lectura."],
-  ["02", "Operación", "Caja, inventario y ventas conectados."],
-  ["03", "Control", "Reportes para decidir con contexto."],
+  ["01", "Una sola operación", "Ventas, inventario, caja y reportes comparten contexto."],
+  ["02", "Cada persona, su espacio", "Roles, almacenes y dispositivos se mantienen separados."],
+  ["03", "Listo para crecer", "Empieza con lo esencial y escala sin cambiar de sistema."],
 ];
 
 export default function LandingPage() {
@@ -67,7 +67,7 @@ export default function LandingPage() {
         <a href="#producto" className="landing-header__brand" aria-label="PALMYRA, inicio"><Brand /></a>
         <nav className="landing-nav" aria-label="Navegación principal">
           <a href="#producto">Producto</a>
-          <a href="#modulos">Módulos</a>
+          <a href="#modulos">El producto</a>
           <a href="#conexion">Cómo funciona</a>
           <a href="#planes">Planes</a>
         </nav>
@@ -81,7 +81,7 @@ export default function LandingPage() {
         {mobileOpen ? (
           <div className="landing-mobile-nav">
             <a href="#producto" onClick={() => setMobileOpen(false)}>Producto</a>
-            <a href="#modulos" onClick={() => setMobileOpen(false)}>Módulos</a>
+            <a href="#modulos" onClick={() => setMobileOpen(false)}>El producto</a>
             <a href="#conexion" onClick={() => setMobileOpen(false)}>Cómo funciona</a>
             <a href="#planes" onClick={() => setMobileOpen(false)}>Planes</a>
             <button type="button" onClick={goSignup}>Crear cuenta <ArrowRight size={15} /></button>
@@ -96,10 +96,10 @@ export default function LandingPage() {
             <div className="landing-hero__copy">
               <p className="landing-eyebrow">BUSINESS OS · PALMYRA</p>
               <h1>Tu negocio.<br /><span>En un solo lugar.</span></h1>
-              <p className="landing-hero__lead">Ventas, inventario, cajas, compras, clientes, almacenes, equipo y reportes conectados en una sola experiencia de trabajo.</p>
+              <p className="landing-hero__lead">La operación diaria, el control y las decisiones importantes viven en una misma experiencia. Menos piezas sueltas. Más claridad para trabajar.</p>
               <div className="landing-hero__actions">
                 <button type="button" className="landing-btn landing-btn--primary landing-btn--large" onClick={goSignup}>Empezar con PALMYRA <ArrowRight size={16} /></button>
-                <a className="landing-btn landing-btn--light landing-btn--large" href="#modulos">Ver el producto <Sparkles size={15} /></a>
+                <a className="landing-btn landing-btn--light landing-btn--large" href="#modulos">Entrar al producto <Sparkles size={15} /></a>
               </div>
               <div className="landing-hero__highlights">
                 {highlights.map(([index, title, copy]) => (
@@ -111,14 +111,12 @@ export default function LandingPage() {
             </div>
 
             <div className="landing-hero__visual">
-              <div className="landing-hero__visual-label"><span>CAPTURA REAL · CRM PALMYRA</span><b>01</b></div>
+              <div className="landing-hero__visual-label"><span>PRODUCTO REAL · CRM PALMYRA</span><b>01</b></div>
               <ProductScene module={landingModules.find((module) => module.id === "dashboard") || landingModules[0]} />
-              <div className="landing-hero__visual-note">
-                <span className="landing-live-dot" /> La pantalla que ves es una captura real del CRM.
-              </div>
+              <div className="landing-hero__visual-note"><span className="landing-live-dot" /> Captura limpia del CRM, sin interfaz del navegador.</div>
             </div>
           </div>
-          <div className="landing-scroll-cue"><span>Desliza para entrar al producto</span><i /></div>
+          <div className="landing-scroll-cue"><span>Sigue bajando</span><i /></div>
         </section>
 
         <ProductStory />
@@ -128,19 +126,21 @@ export default function LandingPage() {
           <div className="landing-shell">
             <div className="landing-section-heading landing-section-heading--light">
               <p className="landing-eyebrow">TODO CONECTADO</p>
-              <h2>Una operación que se <span>mueve como una sola.</span></h2>
-              <p>El mismo negocio alimenta POS, inventario, compras, clientes, caja y reportes. Menos pantallas aisladas; más contexto compartido.</p>
+              <h2>Una operación que <span>se mueve como una sola.</span></h2>
+              <p>PALMYRA conecta empresa, almacenes, personas y operaciones para que la información viaje con el trabajo en lugar de obligarte a reconstruirla.</p>
             </div>
-            <div className="landing-network" aria-label="Módulos conectados de PALMYRA">
+
+            <div className="landing-network" aria-label="Ecosistema conectado de PALMYRA">
               <div className="landing-network__orbit landing-network__orbit--one" />
               <div className="landing-network__orbit landing-network__orbit--two" />
               <div className="landing-network__core"><img src="/palmyra-mark-exact.svg" alt="" /><strong>PALMYRA</strong><span>BUSINESS OS</span></div>
-              {[["POS", "9%", "23%"], ["Inventario", "72%", "18%"], ["Compras", "78%", "62%"], ["Clientes", "8%", "65%"], ["Equipo", "42%", "82%"], ["Reportes", "69%", "83%"]].map(([label, left, top], index) => (
-                <div key={label} className="landing-network__node" style={{ left, top, animationDelay: String(index * 0.18) + "s" }}><span className="landing-network__pulse" />{label}</div>
+              {[["VENTAS", "8%", "24%"], ["INVENTARIO", "73%", "18%"], ["COMPRAS", "78%", "62%"], ["CLIENTES", "8%", "67%"], ["EQUIPO", "42%", "82%"], ["REPORTES", "69%", "83%"]].map(([label, left, top], index) => (
+                <div key={label} className="landing-network__node" style={{ left, top, animationDelay: (index * 0.18) + "s" }}><span className="landing-network__pulse" />{label}</div>
               ))}
               {[1,2,3,4,5,6].map((number) => <span key={number} className={"landing-network__line landing-network__line--" + number} />)}
             </div>
-            <div className="landing-connection__footer"><strong>Una fuente de verdad.</strong><span>Empresa → almacenes → operaciones → reportes</span></div>
+
+            <div className="landing-connection__footer"><strong>Una fuente de verdad.</strong><span>Empresa → almacenes → operaciones → decisiones</span></div>
           </div>
         </section>
 
@@ -148,10 +148,10 @@ export default function LandingPage() {
           <div className="landing-shell landing-offline__grid">
             <div className="landing-offline__copy">
               <p className="landing-eyebrow">OFFLINE DE VERDAD</p>
-              <h2>La conexión puede fallar.<br /><span>El negocio no.</span></h2>
-              <p>PALMYRA mantiene la operación local, conserva el contexto y sincroniza cuando la red vuelve. Para quien trabaja, el proceso sigue siendo simple.</p>
+              <h2>La conexión puede fallar.<br /><span>El negocio sigue.</span></h2>
+              <p>La operación local conserva el contexto y sincroniza cuando la red vuelve. Para el trabajador, el proceso debe sentirse normal; la complejidad queda detrás.</p>
               <div className="landing-offline__steps">
-                {["Trabaja normalmente", "Guarda la operación localmente", "Recupera la conexión", "Sincroniza y continúa"].map((item, index) => (
+                {["Trabaja normalmente", "La operación queda local", "La conexión regresa", "PALMYRA sincroniza"].map((item, index) => (
                   <div key={item}><b>{"0" + (index + 1)}</b><span>{item}</span></div>
                 ))}
               </div>
@@ -161,7 +161,7 @@ export default function LandingPage() {
               <div className="landing-sync-card">
                 <div className="landing-sync-card__top"><span className="landing-live-dot" /> SINCRONIZACIÓN ACTIVA</div>
                 <div className="landing-sync-card__route">
-                  <div className="landing-sync-device landing-sync-device--local"><strong>POS</strong><span>Operación local</span><i /></div>
+                  <div className="landing-sync-device"><strong>POS</strong><span>Operación local</span><i /></div>
                   <div className="landing-sync-card__beam"><i /><i /><i /></div>
                   <div className="landing-sync-device landing-sync-device--cloud"><strong>NUBE</strong><span>Datos sincronizados</span><i /></div>
                 </div>
@@ -174,21 +174,21 @@ export default function LandingPage() {
         <section className="landing-section">
           <div className="landing-shell">
             <div className="landing-section-heading">
-              <p className="landing-eyebrow">HECHO PARA EL TRABAJO REAL</p>
+              <p className="landing-eyebrow">DISEÑADO PARA EL TRABAJO REAL</p>
               <h2>Simple para quien trabaja.<br /><span>Potente para quien decide.</span></h2>
-              <p>La complejidad vive detrás. La interfaz enseña exactamente lo que cada persona necesita para hacer su trabajo.</p>
+              <p>La interfaz reduce la complejidad a lo que cada persona necesita para hacer bien su trabajo.</p>
             </div>
             <div className="landing-system-grid">
               {[
-                [MonitorSmartphone, "Desde cualquier dispositivo", "Misma empresa, mismo contexto y permisos adaptados a móvil, tablet y PC."],
-                [Users, "Equipo con roles claros", "Cada persona entra con su identidad y usa solo las funciones que necesita."],
-                [LockKeyhole, "Aislamiento por empresa", "Los datos quedan dentro de la empresa y los almacenes autorizados."],
-                [ShieldCheck, "Trazabilidad", "Cajas, movimientos y decisiones importantes conservan contexto para revisar lo ocurrido."],
-                [CloudOff, "Operación resistente", "El trabajo no depende de que la conexión sea perfecta en cada momento."],
-                [Check, "Diseño que no estorba", "Acciones cortas, jerarquía clara y superficies pensadas para jornadas largas."],
+                [MonitorSmartphone, "En cualquier dispositivo", "Mismo negocio y mismo contexto en móvil, tablet y PC."],
+                [Users, "Roles claros", "Cada persona usa solamente las funciones que necesita."],
+                [LockKeyhole, "Empresa aislada", "Los datos viven dentro de la empresa y los almacenes autorizados."],
+                [ShieldCheck, "Trazabilidad", "Operaciones y decisiones importantes conservan contexto."],
+                [CloudOff, "Operación resistente", "La jornada no depende de una conexión perfecta."],
+                [Check, "Menos fricción", "Jerarquía clara y acciones pensadas para uso diario."],
               ].map(([Icon, title, copy]) => {
                 const I = Icon as typeof MonitorSmartphone;
-                return <article key={String(title)} className="landing-system-card"><div className="landing-system-card__icon"><I size={20} /></div><h3>{title as string}</h3><p>{copy as string}</p></article>;
+                return <article key={String(title)} className="landing-system-card"><div className="landing-system-card__icon"><I size={21} /></div><h3>{title as string}</h3><p>{copy as string}</p></article>;
               })}
             </div>
           </div>
@@ -203,13 +203,13 @@ export default function LandingPage() {
               <div className="landing-heritage__image-card">
                 <div className="landing-heritage__image-label"><span>PALMYRA · SIRIA</span><b>RUTAS ANTIGUAS</b></div>
                 <img src="/landing/palmyra-city.svg" alt="Ilustración editorial de la antigua ciudad de Palmyra" />
-                <div className="landing-heritage__image-caption"><strong>Una ciudad construida alrededor del movimiento.</strong><span>Comercio, encuentro y rutas.</span></div>
+                <div className="landing-heritage__image-caption"><strong>Una ciudad nacida del movimiento.</strong><span>Comercio, encuentro y rutas.</span></div>
               </div>
             </div>
             <div className="landing-heritage__copy">
               <p className="landing-eyebrow">HISTORIA DE PALMYRA</p>
-              <h2>Un nombre que nació de una ciudad de encuentro.</h2>
-              <p>Palmyra fue un cruce histórico de rutas comerciales entre territorios. Nuestra identidad toma esa idea y la convierte en producto: conectar las partes del negocio para que la información pueda moverse con ellas.</p>
+              <h2>Un nombre que viene de una ciudad de encuentro.</h2>
+              <p>La antigua Palmyra fue un punto de paso de rutas comerciales. Esa idea inspira el producto: conectar las partes del negocio para que la información también pueda moverse con ellas.</p>
               <div className="landing-heritage__facts">
                 <div><strong>Conexión</strong><span>Un mismo contexto.</span></div>
                 <div><strong>Comercio</strong><span>Movimiento que crea valor.</span></div>
