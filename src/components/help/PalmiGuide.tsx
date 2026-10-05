@@ -73,7 +73,7 @@ export default function PalmiGuide(){
 
   useEffect(()=>{
     if(!open)return;
-    const refresh=()=>{const t=findTarget(selectorsFor(step,phase));setRect(t?.getBoundingClientRect()||null)};
+    const refresh=()=>{let t=findTarget(selectorsFor(step,phase));if(t&&phase==="explain"&&/^(H1|H2|H3)$/.test(t.tagName))t=t.parentElement||t;setRect(t?.getBoundingClientRect()||null)};
     window.addEventListener("resize",refresh);window.addEventListener("scroll",refresh,true);
     return()=>{window.removeEventListener("resize",refresh);window.removeEventListener("scroll",refresh,true)};
   },[open,step,phase]);
