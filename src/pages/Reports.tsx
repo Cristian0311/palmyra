@@ -133,6 +133,28 @@ export default function Reports() {
   const updateSalarySettlement = store.updateSalarySettlement;
   const updateCashSession = store.updateCashSession;
   const receiptConfig = store.receiptConfig;
+  const handleVoidTransaction = async (transaction: import('../types').Transaction) => {
+    const confirmed = window.confirm(
+      `¿Anular la venta ${transaction.id}? Se repondrá el inventario y la operación quedará registrada como anulada.`,
+    );
+    if (!confirmed) return;
+
+    const success = await store.deleteTransaction(
+      transaction.id,
+      'Anulación de venta desde Reportes',
+    );
+
+    if (success) {
+      setSelectedDirectTxModal(null);
+      addNotification('Venta anulada correctamente.', 'success');
+    } else {
+      addNotification(
+        'La anulación no pudo confirmarse ahora. La operación quedó protegida para reintento si corresponde.',
+        'warning',
+      );
+    }
+  };
+
 
   const [activeTab, setActiveTab] = useState<'sales' | 'payroll' | 'sessions' | 'discrepancies' | 'movements' | 'transfers'>('sales');
   const [salesViewMode, setSalesViewMode] = useState<'by_shift' | 'all_tickets'>('by_shift');
@@ -171,14 +193,6 @@ export default function Reports() {
     date: string;
     session: CashRegisterSession;
   } | null>(null);
-  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{
-    type: 'transaction';
-    id: string;
-    label: string;
-  } | null>(null);
-  const [deletePin, setDeletePin] = useState("");
-  const [deletePinError, setDeletePinError] = useState(false);
-
   const [editingSessionDateId, setEditingSessionDateId] = useState<string | null>(null);
   const [newSessionDate, setNewSessionDate] = useState<string>("");
   const [isUpdatingSessionDate, setIsUpdatingSessionDate] = useState(false);
@@ -261,8 +275,6 @@ export default function Reports() {
   const [auditCurrencyCode, setAuditCurrencyCode] = useState<string>('CUP');
   const [auditActionMode, setAuditActionMode] = useState<'add' | 'subtract'>('add');
   const [isAddingAuditProduct, setIsAddingAuditProduct] = useState(false);
-
-  const REQUIRED_DELETE_PIN = "03111166702";
 
   const {
     categoryData,
@@ -1219,11 +1231,9 @@ export default function Reports() {
                                 <Printer className="w-3.5 h-3.5" />
                               </button>
                               <button
-                                onClick={() => setDeleteConfirmTarget({ 
-                                  type: 'transaction', 
-                                  id: tx.id, 
-                                  label: `Ticket #${tx.id} - ${workerName}` 
-                                })}
+                                onClick={() => {
+                                  void handleVoidTransaction(tx);
+                                }}
                                 title="Anular Venta"
                                 className="h-7 w-7 p-0 inline-flex items-center justify-center bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-all border border-rose-200 active:scale-95 cursor-pointer shadow-2xs"
                               >
@@ -2415,13 +2425,7 @@ export default function Reports() {
                 </button>
                 <button
                   onClick={() => {
-                    const idToDelete = selectedDirectTxModal.id;
-                    setSelectedDirectTxModal(null);
-                    setDeleteConfirmTarget({
-                      type: 'transaction',
-                      id: idToDelete,
-                      label: `Ticket #${idToDelete}`
-                    });
+                    void handleVoidTransaction(selectedDirectTxModal);
                   }}
                   className="px-3 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer border border-rose-200"
                   title="Anular este Ticket"
