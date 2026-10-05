@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { CashRegisterSession, InventoryTransfer, Product, Transaction, User } from '../../../types';
 import { printThermalReceipt, format58mmLine } from '../../../lib/escpos';
+import type { SessionDiscrepancyInfo } from '../utils/getSessionDiscrepancyInfo';
 import {
   buildCashMovementReceiptLines,
   buildDiscrepancyReceiptLines,
@@ -18,14 +19,7 @@ type PayrollItem = {
   userId?: string;
 };
 
-type DiscrepancyInfo = (session: CashRegisterSession) => {
-  hasDiscrepancy: true;
-  details: { currencyCode: string; method: 'cash' | 'transfer'; expected: number; actual: number; difference: number }[];
-  totalShortageBase: number;
-  totalOverageBase: number;
-  deducted: boolean;
-  deductionAmount: number;
-};
+type DiscrepancyInfo = (session: CashRegisterSession) => SessionDiscrepancyInfo | null;
 
 type PrintMovement = {
   id: string;
