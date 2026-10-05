@@ -1396,7 +1396,7 @@ export const useStore = create<AppState>()(
     try {
       const res = await callVoidTransactionRPC(id, userId, finalReason);
       if (!res.success) throw new Error(res.error || 'No se pudo anular la venta');
-      applyLocalVoidTransaction(tx);
+      set(current => buildLocalVoidTransactionPatch(current, tx));
       const deletedAt = new Date().toISOString();
       set((current) => ({
         transactions: current.transactions.map(t => t.id === id ? { ...t, deletedAt, deletedBy: userId, deleteReason: finalReason } : t)
