@@ -13,6 +13,7 @@ import { Transaction, Product, CashRegisterSession, CashMovement } from "../type
 
 const AddItemToShiftModal = lazy(() => import("../components/reports/AddItemToShiftModal"));
 const ReportsCharts = lazy(() => import("../components/reports/ReportsCharts"));
+import { buildCashMovementReceiptLines, buildDiscrepancyReceiptLines, buildShiftReceiptLines, buildTransferReceiptLines } from '../modules/reports/utils/reportReceiptLines';
 import { getSessionDiscrepancyInfo as getSessionDiscrepancyInfoUtil } from '../modules/reports/utils/getSessionDiscrepancyInfo';
 import { cn } from "../lib/utils";
 import { InfoTooltip } from "../components/InfoTooltip";
@@ -349,68 +350,28 @@ export default function Reports() {
     }
 
     try {
-
       const branch = branches.find(b => b.id === session.branchId);
       const payrollItem = payrollList.find(p => p.sessionId === session.id);
       const sequentialTurn = sessionTurnMap.get(session.id) || session.id;
       const workerName = session.workerName || users.find(u => u.id === session.userId)?.name || 'Vendedor';
+      const sessionTx = transactions.filter(t => t.branchId === session.branchId && t.sessionId === session.id);
 
-      const sessionTx = transactions.filter(t => 
-        t.branchId === session.branchId && 
-        t.sessionId === session.id
-      );
-
-      const totalSales = sessionTx.reduce((sum, tx) => sum + (tx.total || 0), 0);
-      const totalItems = sessionTx.reduce((sum, tx) => sum + (tx.items || []).reduce((s, i) => s + (i.quantity || 0), 0), 0);
-
-      const grouped: {[key: string]: {name: string, quantity: number, total: number}} = {};
-      sessionTx.forEach(tx => {
-        (tx.items || []).forEach(item => {
-          const prodObj = typeof item.product === 'object' ? item.product : products.find(p => p.id === (item.product as unknown as string));
-          const name = prodObj?.name || getProductName(item.product);
-          if (!grouped[name]) grouped[name] = { name, quantity: 0, total: 0 };
-          grouped[name].quantity += (item.quantity || 0);
-          const price = prodObj?.price || 0;
-          grouped[name].total += (price * (item.quantity || 0));
-        });
+      const lines = buildShiftReceiptLines(session, {
+        branchName: branch?.name || 'Sucursal Principal',
+        sequentialTurn,
+        workerName,
+        transactions: sessionTx,
+        products,
+        payrollItem: payrollItem ? {
+          baseSalary: payrollItem.baseSalary,
+          commissions: payrollItem.commissions,
+          totalSalary: payrollItem.totalSalary,
+          status: payrollItem.status,
+        } : undefined,
+        getProductName,
+        formatMoney,
+        format58mmLine,
       });
-
-      const lines: string[] = [];
-      lines.push("CENTER|BOLD|MARÉ");
-      lines.push(`CENTER|${(branch?.name || 'Sucursal Principal').toUpperCase()}`);
-      lines.push("CENTER|BOLD|CIERRE DE TURNO");
-      lines.push("---");
-      lines.push(format58mmLine("FECHA:", new Date(session.closingDate || session.closedAt || session.openedAt).toLocaleDateString(), 32));
-      lines.push(format58mmLine("HORA:", new Date(session.closingDate || session.closedAt || session.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 32));
-      lines.push(format58mmLine("TURNO:", sequentialTurn, 32));
-      lines.push(format58mmLine("TRABAJADOR:", workerName.slice(0, 18), 32));
-      lines.push("---");
-      lines.push("BOLD|DETALLE PRODUCTOS:");
-      const itemsList = Object.values(grouped);
-      if (itemsList.length === 0) {
-        lines.push("Sin productos vendidos");
-      } else {
-        itemsList.forEach(item => {
-          lines.push(format58mmLine(`${item.quantity}x ${item.name.slice(0, 16)}`, formatMoney(item.total), 32));
-        });
-      }
-      lines.push("---");
-      lines.push(format58mmLine("TOTAL VENTAS:", formatMoney(totalSales), 32));
-      lines.push(format58mmLine("ITEMS VENDIDOS:", `${totalItems}`, 32));
-
-      if (payrollItem) {
-        lines.push("---");
-        lines.push("BOLD|LIQUIDACION SALARIO:");
-        lines.push(format58mmLine("Salario Base:", formatMoney(payrollItem.baseSalary), 32));
-        lines.push(format58mmLine("Comisiones:", `+${formatMoney(payrollItem.commissions)}`, 32));
-        lines.push(format58mmLine("TOTAL SALARIO:", formatMoney(payrollItem.totalSalary), 32));
-        lines.push(format58mmLine("Estado:", payrollItem.status === 'paid' ? 'PAGADO' : 'PENDIENTE', 32));
-      }
-
-      lines.push("---");
-      lines.push("CENTER|Firma Trabajador: ___________");
-      lines.push("CENTER|Firma Supervisor: ___________");
-      lines.push("CENTER|MARÉ SISTEMA POS");
 
       await printThermalReceipt({
         lines,
@@ -551,47 +512,16 @@ export default function Reports() {
     if (!info) return;
 
     try {
-      const { printThermalReceipt, format58mmLine } = await import('../lib/escpos');
       const branch = branches.find(b => b.id === session.branchId);
       const sequentialTurn = sessionTurnMap.get(session.id) || session.id;
       const workerName = session.workerName || users.find(u => u.id === session.userId)?.name || 'Cajero';
-
-      const lines: string[] = [];
-      lines.push("CENTER|BOLD|MARÉ");
-      lines.push(`CENTER|${(branch?.name || 'Sucursal Principal').toUpperCase()}`);
-      lines.push("CENTER|BOLD|AUDITORIA DE DESCUADRE");
-      lines.push("CENTER|CIERRE FORZADO DE CAJA");
-      lines.push("---");
-      lines.push(format58mmLine("FECHA:", new Date(session.closingDate || session.closedAt || session.openedAt).toLocaleDateString(), 32));
-      lines.push(format58mmLine("HORA:", new Date(session.closingDate || session.closedAt || session.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 32));
-      lines.push(format58mmLine("TURNO:", sequentialTurn, 32));
-      lines.push(format58mmLine("CAJERO:", workerName.slice(0, 18), 32));
-      lines.push("---");
-      lines.push("BOLD|DETALLE DE DIFERENCIAS:");
-      info.details.forEach(d => {
-        const methodLabel = d.method === 'cash' ? 'EFEC' : 'TRANSF';
-        const typeLabel = d.difference > 0 ? '+SOBRANTE' : '-FALTANTE';
-        lines.push(format58mmLine(`${d.currencyCode} (${methodLabel})`, `${d.actual.toFixed(2)} / ${d.expected.toFixed(2)}`, 32));
-        lines.push(format58mmLine(`DIFERENCIA:`, `${typeLabel} ${Math.abs(d.difference).toFixed(2)}`, 32));
+      const lines = buildDiscrepancyReceiptLines(session, info, {
+        branchName: branch?.name || 'Sucursal Principal',
+        sequentialTurn,
+        workerName,
+        formatMoney,
+        format58mmLine,
       });
-      lines.push("---");
-      if (info.totalShortageBase > 0) {
-        lines.push(format58mmLine("TOTAL FALTANTE:", `-${formatMoney(info.totalShortageBase)}`, 32));
-      }
-      if (info.totalOverageBase > 0) {
-        lines.push(format58mmLine("TOTAL SOBRANTE:", `+${formatMoney(info.totalOverageBase)}`, 32));
-      }
-      if (info.deducted) {
-        lines.push(format58mmLine("DESC. SALARIO:", `-${formatMoney(info.deductionAmount)}`, 32));
-      }
-      if (session.auditNotes) {
-        lines.push("---");
-        lines.push(`NOTA: ${session.auditNotes.slice(0, 30)}`);
-      }
-      lines.push("---");
-      lines.push("CENTER|Firma Cajero: ____________");
-      lines.push("CENTER|Firma Auditor: ___________");
-      lines.push("CENTER|MARÉ SISTEMA POS");
 
       await printThermalReceipt({
         lines,
@@ -616,26 +546,7 @@ export default function Reports() {
     date: string;
   }) => {
     try {
-      const { printThermalReceipt, format58mmLine } = await import('../lib/escpos');
-      const lines: string[] = [];
-      lines.push("CENTER|BOLD|MARÉ POS");
-      lines.push(`CENTER|${movement.branchName.toUpperCase()}`);
-      lines.push(`CENTER|BOLD|VALE DE ${movement.type === 'income' ? 'INGRESO (ENTRADA)' : 'EGRESO (GASTO)'}`);
-      lines.push("---");
-      lines.push(format58mmLine("FECHA:", new Date(movement.date).toLocaleDateString(), 32));
-      lines.push(format58mmLine("HORA:", new Date(movement.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), 32));
-      lines.push(format58mmLine("TURNO:", movement.turnLabel, 32));
-      lines.push(format58mmLine("CAJERO:", movement.workerName.slice(0, 18), 32));
-      lines.push("---");
-      lines.push(format58mmLine("CONCEPTO:", movement.description.slice(0, 20), 32));
-      lines.push(format58mmLine("TIPO:", movement.type === 'income' ? 'ENTRADA DE CAJA' : 'GASTO / SALIDA', 32));
-      lines.push(format58mmLine("MONEDA:", movement.currencyCode, 32));
-      lines.push(format58mmLine("IMPORTE:", formatMoney(movement.amount, movement.currencyCode), 32));
-      lines.push("---");
-      lines.push("CENTER|Firma Entrega: ___________");
-      lines.push("CENTER|Firma Recibe:  ___________");
-      lines.push("CENTER|COMPROBANTE DE CAJA");
-
+      const lines = buildCashMovementReceiptLines(movement, { formatMoney, format58mmLine });
       await printThermalReceipt({
         lines,
         openDrawer: false,
@@ -652,37 +563,26 @@ export default function Reports() {
       const user = users.find(u => u.id === transfer.userId);
       const fromB = branches.find(b => b.id === transfer.fromBranchId)?.name || transfer.fromBranchName || 'Origen';
       const toB = branches.find(b => b.id === transfer.toBranchId)?.name || transfer.toBranchName || 'Destino';
-      const dateStr = new Date(transfer.date).toLocaleDateString('es-CU');
-      const timeStr = new Date(transfer.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const width = (receiptConfig?.printerWidth || '58mm') as '58mm' | '80mm';
-      const cols = width === '58mm' ? 32 : 48;
-
-      const lines: string[] = [
-        "CENTER|BOLD|" + (receiptConfig?.businessName || "MARÉ POS"),
-        "CENTER|VALE DE TRANSFERENCIA STOCK",
-        "---",
-        format58mmLine("FECHA:", dateStr, cols),
-        format58mmLine("HORA:", timeStr, cols),
-        format58mmLine("ORIGEN:", fromB, cols),
-        format58mmLine("DESTINO:", toB, cols),
-        format58mmLine("RESPONSABLE:", user?.name || transfer.userId || 'Sistema', cols),
-        "---",
-        "PRODUCTO | VAR | CANT",
-        `${transfer.productName} | ${transfer.variantLabel || 'Base'} | ${transfer.quantity} uds`,
-        "---",
-        format58mmLine("TOTAL UDS:", `${transfer.quantity} UDS`, cols),
-        "---",
-        "CENTER|EMITIDO Y REGISTRADO"
-      ];
+      const lines = buildTransferReceiptLines(transfer, {
+        businessName: receiptConfig?.businessName || "MARÉ POS",
+        userName: user?.name || transfer.userId || 'Sistema',
+        fromBranchName: fromB,
+        toBranchName: toB,
+        width,
+        formatMoney,
+        format58mmLine,
+      });
 
       await printThermalReceipt({
         lines,
         width
       });
       addNotification("Comprobante de transferencia enviado a impresión", "success");
-    } catch (e: any) {
+    } catch (e) {
+      const error = e as Error;
       console.error("Error printing transfer ticket:", e);
-      addNotification(e?.message || "No se pudo imprimir el comprobante de transferencia.", "error");
+      addNotification(error?.message || "No se pudo imprimir el comprobante de transferencia.", "error");
     }
   };
 
@@ -1197,8 +1097,7 @@ export default function Reports() {
           </div>
 
           {/* VIEW 1: POR TURNOS DE CAJA */}
-          {salesViewMode === 'by_shift' ? (
-            <div className="bg-secondary rounded-2xl shadow-sm border border-base overflow-hidden">
+          {salesViewMode === 'by_shift' ? (            <div className="bg-secondary rounded-2xl shadow-sm border border-base overflow-hidden">
               <div className="p-3 border-b border-base flex items-center justify-between bg-subtle/50">
                 <span className="text-[9px] font-black text-primary uppercase tracking-wider">
                   Listado Consecutivo de Turnos de Caja
@@ -1797,8 +1696,7 @@ export default function Reports() {
                               onClick={() => setExpandedSession(session.id)}
                               title="Ver Detalle Completo del Turno"
                               className="h-7 px-2.5 inline-flex items-center justify-center gap-1 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/80 text-rose-700 dark:text-rose-300 text-[9px] font-black uppercase rounded-lg border border-rose-200 dark:border-rose-900/50 transition-all active:scale-95 shadow-2xs cursor-pointer"
-                            >
-                              <Eye className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                            >                              <Eye className="w-3 h-3 text-rose-600 dark:text-rose-400" />
                               <span>Detalle</span>
                             </button>
                             <button
@@ -2397,8 +2295,7 @@ export default function Reports() {
                   <option value="all">Todos los Destinos</option>
                   {branches.map(b => (
                     <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
+                  ))}                </select>
               </div>
 
               {/* Text Search */}
@@ -2997,8 +2894,7 @@ export default function Reports() {
                       <span className="text-[8px] font-black text-muted uppercase tracking-widest block">Total Ventas Turno</span>
                       <span className="text-base font-black text-rose-600 dark:text-rose-400">{formatMoney(totalSalesInSession)}</span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {session.status === 'open' && (
+                    <div className="flex items-center gap-2">                      {session.status === 'open' && (
                         <button
                           onClick={() => {
                             setExpandedSession(null);
@@ -3597,8 +3493,7 @@ export default function Reports() {
                           onClick={async () => {
                             const prod = products.find(p => p.id === auditProductId);
                             if (!prod) {
-                              if (addNotification) addNotification('Selecciona un producto válido', 'warning');
-                              return;
+                              if (addNotification) addNotification('Selecciona un producto válido', 'warning');                              return;
                             }
                             setIsAddingAuditProduct(true);
                             try {
@@ -4197,8 +4092,7 @@ export default function Reports() {
                 Cargando corrección de venta…
               </div>
             </div>
-          }
-        >
+          }        >
           <AddItemToShiftModal
             session={addItemToShiftModal}
             sessionLabel={sessionTurnMap.get(addItemToShiftModal.id) || addItemToShiftModal.id}
