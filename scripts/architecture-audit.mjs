@@ -43,8 +43,8 @@ function walk(dir) {
       })();
       const baseline = legacyLargeBaseline[rel];
 
-      if (lineCount >= 4000) {
-        findings.push({ level: 'high', message: `Archivo fuente >= 4000 líneas: ${rel} (${lineCount}). El límite de mantenimiento es 3999 líneas; extrae lógica a módulos.` });
+      if (lineCount >= 3500) {
+        findings.push({ level: 'high', message: `Archivo fuente >= 3500 líneas: ${rel} (${lineCount}). El límite de mantenimiento es 3499 líneas; extrae lógica a módulos.` });
       } else if (lineCount >= 2500) {
         findings.push({ level: 'medium', message: `Archivo fuente >= 2500 líneas: ${rel} (${lineCount})` });
       }
