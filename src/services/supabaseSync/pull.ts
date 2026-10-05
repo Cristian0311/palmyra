@@ -233,16 +233,19 @@ async function loadSales(branchId?: string, limit = 500) {
   const ids = (sales || []).map((s:any) => s.id);
   if (!ids.length) return [] as Transaction[];
 
-  const [itemsRes, paymentsRes, productsRes, variantsRes] = await Promise.all([
+  const [itemsRes, paymentsRes, productsRes, variantsRes, companyRes] = await Promise.all([
     supabase.from('sale_items').select('*').in('sale_id', ids),
     supabase.from('payments').select('*').in('sale_id', ids),
     supabase.from('products').select('*').eq('company_id', tenant.companyId),
     supabase.from('product_variants').select('id,name').eq('company_id', tenant.companyId),
+    supabase.from('companies').select('default_currency_code').eq('id', tenant.companyId).single(),
   ]);
   if (itemsRes.error) throw itemsRes.error;
   if (paymentsRes.error) throw paymentsRes.error;
   if (productsRes.error) throw productsRes.error;
   if (variantsRes.error) throw variantsRes.error;
+  if (companyRes.error) throw companyRes.error;
+  const defaultCurrencyCode = companyRes.data?.default_currency_code || 'CUP';
 
   const barcodeRes = await supabase.from('product_barcodes').select('product_id,barcode').eq('company_id', tenant.companyId).eq('active', true);
   const productMap = new Map<string,Product>();
@@ -272,7 +275,7 @@ async function loadSales(branchId?: string, limit = 500) {
     const payments = pRows.map((p:any) => ({
       method: p.method || 'cash',
       amount: Number(p.amount) || 0,
-      currencyCode: p.currency_code || s.currency_code || 'CUP',
+      currencyCode: p.currency_code || s.currency_code || defaultCurrencyCode,
       exchangeRate: Number(p.exchange_rate) || 1,
       bankCardId: undefined
     }));
