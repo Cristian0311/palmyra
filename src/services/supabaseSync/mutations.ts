@@ -1,3 +1,4 @@
+import { salePayload } from './salePayload';
 import { getSupabase } from '../../lib/supabase';
 import { enqueueOfflineItem } from '../offlineQueue';
 import { getActiveTenant, getEmployeeForIdentity } from '../tenant';
@@ -101,15 +102,6 @@ export async function pushInventoryToSupabase(level:InventoryLevel){
     const supabase=await onlineClient();const {companyId}=await getActiveTenant();const vid=await resolveVariantId(supabase,companyId,level.productId,level.variantLabel);const table=vid?'variant_stock_balances':'stock_balances';const conflictTarget=vid?'company_id,warehouse_id,product_id,variant_id':'warehouse_id,product_id';
     const {error}=await supabase.from(table).upsert({company_id:companyId,warehouse_id:level.branchId,product_id:level.productId,variant_id:vid,quantity:Math.max(0,Number(level.quantity)||0),updated_at:new Date().toISOString()},{onConflict:conflictTarget});if(error)throw error;return true;
   }catch(e:any){await queue('inventory',level,level.productId+'_'+level.branchId+'_'+(level.variantLabel||''));return false;}
-}
-
-function salePayload(tx:Transaction,companyId:string,authUserId:string){
-  return {
-    p_sale_id:tx.id,p_company_id:companyId,p_warehouse_id:tx.branchId,p_cash_session_id:tx.sessionId||null,p_user_id:tx.userId||authUserId,
-    p_total:Number(tx.total)||0,p_currency_code:null,p_notes:tx.notes||'',p_customer_id:tx.customerId||null,
-    p_items:(tx.items||[]).map(item=>({id:item.id,product_id:typeof item.product==='string'?item.product:item.product?.id,quantity:Number(item.quantity)||0,price:Number(item.price)||0,total:Number(item.total)||((Number(item.price)||0)*(Number(item.quantity)||0)),variant_label:item.variantLabel||null,variant_id:null,serial_number:item.serialNumber||null,discount:0,tax:0})),
-    p_payments:(tx.payments||[]).map((p:any)=>({id:crypto.randomUUID(),method:p.method||'cash',currency_code:p.currencyCode||null,amount:Number(p.amount)||0,exchange_rate:Number(p.exchangeRate)||1}))
-  };
 }
 
 export async function pushTransactionToSupabase(tx:Transaction):Promise<boolean>{
