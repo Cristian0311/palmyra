@@ -75,7 +75,7 @@ export async function pushInventoryToSupabase(level:InventoryLevel){
 function salePayload(tx:Transaction,companyId:string,authUserId:string){
   return {
     p_sale_id:tx.id,p_company_id:companyId,p_warehouse_id:tx.branchId,p_cash_session_id:tx.sessionId||null,p_user_id:tx.userId||authUserId,
-    p_total:Number(tx.total)||0,p_currency_code:(tx.payments||[])[0]?.currencyCode||null,p_notes:tx.notes||'',p_customer_id:tx.customerId||null,
+    p_total:Number(tx.total)||0,p_currency_code:null,p_notes:tx.notes||'',p_customer_id:tx.customerId||null,
     p_items:(tx.items||[]).map(item=>({id:item.id,product_id:typeof item.product==='string'?item.product:item.product?.id,quantity:Number(item.quantity)||0,price:Number(item.price)||0,total:Number(item.total)||((Number(item.price)||0)*(Number(item.quantity)||0)),variant_label:item.variantLabel||null,variant_id:null,serial_number:item.serialNumber||null,discount:0,tax:0})),
     p_payments:(tx.payments||[]).map((p:any)=>({id:crypto.randomUUID(),method:p.method||'cash',currency_code:p.currencyCode||null,amount:Number(p.amount)||0,exchange_rate:Number(p.exchangeRate)||1}))
   };
@@ -94,8 +94,46 @@ async function ensureCashRegister(supabase:any,companyId:string,warehouseId:stri
 }
 export async function pushCashSessionToSupabase(session:CashRegisterSession):Promise<boolean>{
   try{
-    const supabase=await onlineClient();const {companyId,authUserId}=await getActiveTenant();const cashRegisterId=await ensureCashRegister(supabase,companyId,session.branchId);const employee=await getEmployeeForIdentity(session.userId);
-    const payload={id:session.id,company_id:companyId,cash_register_id:cashRegisterId,employee_id:employee?.id||null,opened_by:authUserId,closed_by:session.status!=='open'?authUserId:null,status:session.status,opened_at:session.openedAt,closed_at:session.closedAt||null,opening_amount:Number(session.openingAmount??session.openingBalance)||0,expected_cash:Number(session.expectedBalance)||null,physical_cash:session.closingBalances?.find((p:any)=>p.method==='cash')?.amount??null,difference:0,turn_number:Number(session.turnNumber)||null};
+    const supabase=await onlineClient();
+    const {companyId,authUserId}=await getActiveTenant();
+    const [cashRegisterId,employeeRes,companyRes]=await Promise.all([
+      ensureCashRegister(supabase,companyId,session.branchId),
+      getEmployeeForIdentity(session.userId),
+      supabase.from('companies').select('default_currency_code').eq('id',companyId).single()
+    ]);
+    if(companyRes.error)throw companyRes.error;
+    const defaultCurrency=companyRes.data?.default_currency_code||'CUP';
+    const expected=Number.isFinite(Number(session.expectedBalance))?Number(session.expectedBalance):null;
+    const physicalCashBase=(session.closingBalances||[])
+      .filter((p:any)=>p?.method==='cash')
+      .reduce((sum:number,p:any)=>sum+(Number(p?.amount)||0)*(Number(p?.exchangeRate)||1),0);
+    const metadata={
+      closingBalances:session.closingBalances||[],
+      expectedBalance:expected,
+      isForcedClose:Boolean(session.isForcedClose),
+      forcedCloseReason:session.forcedCloseReason||null,
+      discrepancyNote:session.discrepancyNote||null,
+      hasDiscrepancy:Boolean(session.hasDiscrepancy),
+      discrepancyDetails:session.discrepancyDetails||[],
+      discrepancyDeductionApplied:Number(session.discrepancyDeductionApplied)||0,
+      deductedFromSalary:Boolean(session.deductedFromSalary),
+      aiDiagnostic:session.aiDiagnostic||null,
+      matchingProductsAnalysis:session.matchingProductsAnalysis||[],
+      auditStatus:session.auditStatus||'pending_review',
+      auditNotes:session.auditNotes||'',
+      workerName:session.workerName||null,
+      workingEmployeeIds:session.workingEmployeeIds||[]
+    };
+    const payload={
+      id:session.id,company_id:companyId,cash_register_id:cashRegisterId,
+      employee_id:employeeRes?.id||null,opened_by:authUserId,
+      closed_by:session.status!=='open'?authUserId:null,status:session.status,
+      opened_at:session.openedAt,closed_at:session.closedAt||null,
+      opening_amount:Number(session.openingAmount??session.openingBalance)||0,
+      expected_cash:expected,physical_cash:session.status==='open'?null:physicalCashBase,
+      difference:expected===null?0:physicalCashBase-expected,
+      turn_number:Number(session.turnNumber)||null,metadata
+    };
     const {data:existing,error:re}=await supabase.from('cash_sessions').select('id').eq('id',session.id).eq('company_id',companyId).maybeSingle();if(re)throw re;
     const result=existing?.id?await supabase.from('cash_sessions').update(payload).eq('id',session.id).eq('company_id',companyId):await supabase.from('cash_sessions').insert(payload);
     if(result.error)throw result.error;
@@ -103,7 +141,7 @@ export async function pushCashSessionToSupabase(session:CashRegisterSession):Pro
     if(session.movements?.length){
       const rows=session.movements.map((m:any)=>({
         id:m.id,company_id:companyId,cash_session_id:session.id,movement_type:m.type||'expense',
-        amount:Number(m.amount)||0,currency_code:m.currencyCode||'USD',reference_id:null,note:m.description||'',
+        amount:Number(m.amount)||0,currency_code:m.currencyCode||defaultCurrency,reference_id:null,note:m.description||'',
         created_by:authUserId
       }));
       const {error:movementError}=await supabase.from('cash_movements').insert(rows);if(movementError)throw movementError;
