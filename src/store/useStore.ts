@@ -19,6 +19,7 @@ import { getOfflineQueue, enqueueOfflineItem, removeFromOfflineQueue, waitForOff
 import { normalizeSemanticText, areSemanticallyEqual } from '../utils/textUtils';
 import { localStateStorage, clearLocalStateStorage, flushLocalStateStorage } from '../services/localStateStorage';
 import { getPalmyraScopedStorageKey } from '../services/localScope';
+import { setCanonicalInventoryQuantity, validateTransferStock } from './utils/inventoryTransforms';
 import { buildLocalVoidTransactionPatch } from './utils/localVoidTransaction';
 import { buildLocalCompletedSalePatch } from './utils/localCompletedSale';
 import { replaceRemoteRecords } from './utils/replaceRemoteRecords';
@@ -42,8 +43,7 @@ import {
 
 // --- Definición del Store ---
 
-function validateLocalTransferStock(
-  requirements: { productId: string; branchId: string; variantLabel?: string; quantity: number }[]
+[]
 ): { ok: boolean; message?: string } {
   const inventory = useStore.getState().inventory || [];
   const needed = new Map<string, { productId: string; branchId: string; variantLabel: string; quantity: number }>();
@@ -106,23 +106,7 @@ async function refreshInventoryBranchesFromSupabase(branchIds: string[]): Promis
   }
 }
 
-function applyCanonicalInventoryQuantity(
-  productId: string,
-  branchId: string,
-  variantLabel: string | undefined,
-  quantity: number
-): void {
-  const label = variantLabel || '';
-  useStore.setState(state => ({
-    inventory: (state.inventory || []).map(item =>
-      item.productId === productId &&
-      item.branchId === branchId &&
-      (item.variantLabel || '') === label
-        ? { ...item, quantity: Math.max(0, Number(quantity) || 0) }
-        : item
-    )
-  }));
-}
+
 
 
 
@@ -734,7 +718,7 @@ export const useStore = create<AppState>()(
       return { success: false, error: 'No hay un trabajador válido autenticado para realizar el traslado.' };
     }
 
-    const stockCheck = validateLocalTransferStock(
+    const stockCheck = validateTransferStock(get().inventory || [], 
       activeVariants.map(v => ({
         productId,
         branchId: fromBranchId,
@@ -864,7 +848,7 @@ export const useStore = create<AppState>()(
       }
       const res = await reconcileInventoryToSupabase(op);
       if (res.success && !res.conflict && Number.isFinite(Number(res.data?.quantity))) {
-        applyCanonicalInventoryQuantity(op.productId, op.branchId, op.variantLabel, Number(res.data.quantity));
+        set((state) => ({ inventory: setCanonicalInventoryQuantity(state.inventory || [], op.productId, op.branchId, op.variantLabel, Number(res.data.quantity));
       }
       if (!res.success || res.conflict) {
         await enqueueOfflineItem('inventory_reconcile', op, op.operationId);
@@ -952,7 +936,7 @@ export const useStore = create<AppState>()(
       if (res.success && !res.conflict) {
         const canonicalQuantity = Number(res.data?.quantity);
         if (Number.isFinite(canonicalQuantity)) {
-          applyCanonicalInventoryQuantity(productId, branchId, variantLabel, canonicalQuantity);
+          set((state) => ({ inventory: setCanonicalInventoryQuantity(state.inventory || [], productId, branchId, variantLabel, canonicalQuantity);
         } else {
           await get().refreshBranchInventory().catch(err =>
             console.warn('[adjustInventory] No se pudo refrescar tras confirmación:', err)
@@ -995,7 +979,7 @@ export const useStore = create<AppState>()(
     }
     reconcileInventoryToSupabase({ ...payload, newQuantity }).then(async res => {
       if (res.success && !res.conflict && Number.isFinite(Number(res.data?.quantity))) {
-        applyCanonicalInventoryQuantity(productId, branchId, variantLabel, Number(res.data.quantity));
+        set((state) => ({ inventory: setCanonicalInventoryQuantity(state.inventory || [], productId, branchId, variantLabel, Number(res.data.quantity));
       }
       if (!res.success || res.conflict) {
         await enqueueOfflineItem('inventory_reconcile', payload, operationId);
@@ -1026,7 +1010,7 @@ export const useStore = create<AppState>()(
       return { success: false, pending: false, error: 'No hay un trabajador válido autenticado para realizar el traslado.' };
     }
 
-    const stockCheck = validateLocalTransferStock(
+    const stockCheck = validateTransferStock(get().inventory || [], 
       validItems.map(item => ({
         productId: item.productId,
         branchId: fromBranchId,
