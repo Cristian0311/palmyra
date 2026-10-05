@@ -1,8 +1,0 @@
-
-      set((state) => ({
-        ...state,
-        branches: branchesData?.length ? branchesData.map(b => ({
-          id: b.id,
-          name: b.name,
-          address: b.address || '',
-          phone: b.phone || '', 
