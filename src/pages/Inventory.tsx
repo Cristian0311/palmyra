@@ -1,4 +1,5 @@
 import { buildInventoryViewData } from '../modules/inventory/utils/buildInventoryViewData';
+import { getWarehouseId } from "../modules/warehouse/warehouseScope";
 import { buildInventoryCsv } from '../modules/inventory/utils/buildInventoryCsv';
 import { resizeProductImage } from '../modules/inventory/utils/resizeProductImage';
 import { useShallow } from 'zustand/react/shallow';
@@ -28,7 +29,7 @@ export default function Inventory() {
   );
 
   const getBranchDisplayName = (b: { id: string; name: string }) => {
-    const assignedUser = (users || []).find(u => u.branchId === b.id);
+    const assignedUser = (users || []).find(u => getWarehouseId(u) === b.id);
     return assignedUser ? `${b.name} (${assignedUser.name})` : b.name;
   };
 
