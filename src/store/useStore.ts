@@ -43,41 +43,6 @@ import {
 
 // --- Definición del Store ---
 
-[]
-): { ok: boolean; message?: string } {
-  const inventory = useStore.getState().inventory || [];
-  const needed = new Map<string, { productId: string; branchId: string; variantLabel: string; quantity: number }>();
-
-  for (const req of requirements) {
-    const quantity = Number(req.quantity);
-    if (!req.productId || !req.branchId || !Number.isInteger(quantity) || quantity <= 0) {
-      return { ok: false, message: 'La cantidad de traslado debe ser un número entero mayor que 0.' };
-    }
-    const variantLabel = req.variantLabel || '';
-    const key = req.productId + ':' + req.branchId + ':' + variantLabel;
-    const previous = needed.get(key);
-    if (previous) previous.quantity += quantity;
-    else needed.set(key, { productId: req.productId, branchId: req.branchId, variantLabel, quantity });
-  }
-
-  for (const req of needed.values()) {
-    const current = inventory.find(item =>
-      item.productId === req.productId &&
-      item.branchId === req.branchId &&
-      (item.variantLabel || '') === req.variantLabel
-    );
-    const available = Number(current?.quantity || 0);
-    if (available < req.quantity) {
-      const label = req.variantLabel ? ' (' + req.variantLabel + ')' : '';
-      return {
-        ok: false,
-        message: 'Stock insuficiente en la sucursal de origen para ' + req.productId + label + ': disponible ' + available + ', requerido ' + req.quantity + '.'
-      };
-    }
-  }
-
-  return { ok: true };
-}
 async function refreshInventoryBranchesFromSupabase(branchIds: string[]): Promise<boolean> {
   const ids = Array.from(new Set(branchIds.filter(Boolean)));
   if (!ids.length) return true;
