@@ -75,7 +75,7 @@ export default function Team() {
       setContext(nextContext);
       setSnapshot(nextSnapshot);
       if (!form.roleId) {
-        const employeeRole = nextSnapshot.roles.find(role => role.key === "employee") || nextSnapshot.roles.find(role => role.key !== "admin");
+        const employeeRole = (nextSnapshot.roles || []).find(role => role.key === "employee") || (nextSnapshot.roles || []).find(role => role.key !== "admin");
         if (employeeRole) setForm(prev => ({ ...prev, roleId: employeeRole.id }));
       }
       if (!form.warehouseIds.length && nextSnapshot.warehouses[0]) {
