@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   Activity,
   AlertCircle,
@@ -145,7 +145,7 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (snapshot: Platform
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const submit = async (event: React.FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
     setLoading(true);
     setError("");
