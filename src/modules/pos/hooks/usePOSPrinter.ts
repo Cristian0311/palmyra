@@ -4,14 +4,7 @@ import { getTransactionReceiptLines as getTransactionReceiptLinesUtil } from "..
 import { formatMoney } from "../utils/paymentMath";
 import { printThermalReceipt as printThermalReceiptDirect } from "../../../lib/escpos";
 import { useStore } from "../../../store/useStore";
-import type { CashRegisterSession, Product, User, Transaction } from "../../../types";
-
-type CurrencyLike = {
-  code: string;
-  symbol: string;
-  rateToBase?: number;
-  isBase?: boolean;
-};
+import type { CashRegisterSession, Product, User, Transaction, Currency } from "../../../types";
 
 type ReceiptConfigLike = {
   businessName?: string;
@@ -22,8 +15,8 @@ type ReceiptConfigLike = {
 type UsePOSPrinterOptions = {
   currentSession: CashRegisterSession | null;
   products: Product[];
-  currencies: CurrencyLike[];
-  baseCurrency: CurrencyLike;
+  currencies: Currency[];
+  baseCurrency: Currency;
   branches: { id: string; name: string }[];
   users: User[];
   currentUser: User | null;
@@ -254,6 +247,7 @@ ${storeName}`;
 
   return {
     connectedPrinterName,
+    setConnectedPrinterName,
     showPrinterSetupModal,
     setShowPrinterSetupModal,
     isConnectingPrinter,
