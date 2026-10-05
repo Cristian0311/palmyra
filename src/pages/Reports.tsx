@@ -423,6 +423,27 @@ export default function Reports() {
     });
   }, [allDetailedMovements, selectedBranchFilter, selectedFilterDate, sessionFilter, movementTypeFilter, movementCurrencyFilter]);
 
+  const {
+    handlePrintShiftTicket,
+    handlePrintDiscrepancyTicket,
+    handlePrintCashMovementTicket,
+    handlePrintTransferTicket,
+  } = useReportsPrinting({
+    cashSessions,
+    branches,
+    users,
+    transactions,
+    products,
+    payrollList,
+    sessionTurnMap,
+    receiptConfig,
+    getProductName: product => getProductName(product as any),
+    formatMoney,
+    getSessionDiscrepancyInfo,
+    addNotification,
+    setPrintSessionId,
+  });
+
   // State for Excel Export Menu
   const getExportData = (): ExcelExportData => {
     let dateFilterLabel = 'Todo el historial';
