@@ -478,7 +478,7 @@ export default function Reports() {
       {/* Header */}
       <header className="flex items-center justify-between gap-3 bg-secondary p-2.5 sm:p-3 rounded-2xl shadow-sm border border-base">
         <div className="px-1 sm:px-2 min-w-0">
-          <h2 className="text-sm sm:text-base font-black text-primary tracking-tight flex items-center gap-2 uppercase truncate">
+          <h2 data-palmi-content="reports" className="text-sm sm:text-base font-black text-primary tracking-tight flex items-center gap-2 uppercase truncate">
             Reportes
             <InfoTooltip text="Panel integral de reportes comerciales, registro de ventas por turno, nómina y liquidación diaria del personal." position="bottom" />
           </h2>
