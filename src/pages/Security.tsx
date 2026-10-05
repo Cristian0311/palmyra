@@ -4,6 +4,7 @@ import {loadSaaSContext,signOutSaaSAccount} from "../services/saas";
 import {loadMyDevices,revokeMyDevice,type MyDevice} from "../services/security";
 import {useStore} from "../store/useStore";
 import {cn} from "../lib/utils";
+import "./security.css";
 
 export default function Security(){
  const {addNotification}=useStore();
