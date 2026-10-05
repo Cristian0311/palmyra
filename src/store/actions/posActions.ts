@@ -38,7 +38,7 @@ async function refreshInventoryBranchesFromSupabase(set: StoreSet, get: StoreGet
   } catch { return false; }
 }
 
-export function createPosActions(set: StoreSet, get: StoreGet): Partial<AppState> {
+export function createPosActions(set: StoreSet, get: StoreGet): any {
   return {
   cart: [],
   currentCustomerId: undefined,
