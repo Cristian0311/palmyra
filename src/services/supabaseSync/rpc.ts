@@ -2,7 +2,7 @@ import { getSupabase } from '../../lib/supabase';
 import { getActiveTenant, getEmployeeForIdentity } from '../tenant';
 import type { CashRegisterSession, Transaction, SalarySettlement, InventoryTransfer } from '../../types';
 
-export type RpcFailure = { success: false; error: string; errorCode?: string; data?: any };
+export type RpcFailure = { success: false; error: string; errorCode?: string; data?: any; conflict?: boolean };
 export type RpcSuccess<T = any> = { success: true; data: T; error?: string; errorCode?: string };
 export type RpcResult<T = any> = RpcSuccess<T> | RpcFailure;
 
@@ -15,6 +15,41 @@ export async function logAuditEvent(entry:{userId?:string;action:string;entityTy
 async function rpc(name:string,args:any){
   const supabase=getSupabase(); if(!supabase)throw new Error('Supabase no configurado');
   const {data,error}=await supabase.rpc(name,args); if(error)throw error; if(data&&data.success===false) { const e:any=new Error(data.message||data.error||'Operación rechazada'); e.code=data.code||data.error_code; throw e; } return data;
+}
+
+export async function callAdjustInventoryRPC(params:{
+  operationId:string;
+  companyId?:string;
+  warehouseId:string;
+  productId:string;
+  variantId?:string|null;
+  delta:number;
+  expectedQuantity?:number|null;
+  minQuantity?:number;
+  notes?:string;
+}):Promise<RpcResult<{quantity:number;already_applied?:boolean;conflict?:boolean}>>{
+  try{
+    const {companyId}=await getActiveTenant();
+    const data=await rpc('palmyra_adjust_inventory',{
+      p_operation_id:params.operationId,
+      p_company_id:companyId,
+      p_warehouse_id:params.warehouseId,
+      p_product_id:params.productId,
+      p_variant_id:params.variantId||null,
+      p_delta:Number(params.delta)||0,
+      p_expected_quantity:params.expectedQuantity ?? null,
+      p_min_quantity:Number(params.minQuantity)||0,
+      p_notes:params.notes||null
+    });
+    if(data?.success===false){
+      return {
+        success:false,
+        conflict:Boolean(data.conflict),
+        error:String(data.error||data.message||'El ajuste de inventario fue rechazado.')
+      };
+    }
+    return {success:true,data:data};
+  }catch(e:any){return errorResult(e);}
 }
 
 export async function callOpenSessionRPC(session:CashRegisterSession){ return callOpenSessionRPCWithId(session); }
