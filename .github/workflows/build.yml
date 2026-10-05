@@ -17,4 +17,5 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run lint
       - run: npm run audit:architecture
+      - run: npm run test:unit
       - run: npm run build
