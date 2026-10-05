@@ -38,7 +38,7 @@ import { INITIAL_FISCAL_CONFIGS } from '../storeInitialData';
 type StoreSet = (partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void;
 type StoreGet = () => AppState;
 
-export function createSupportActions(set: StoreSet, get: StoreGet): Partial<AppState> {
+export function createSupportActions(set: StoreSet, get: StoreGet): any {
   return {
   fiscalConfigs: INITIAL_FISCAL_CONFIGS,
   updateFiscalConfig: (id, c) => {
