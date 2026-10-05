@@ -37,7 +37,7 @@ export function mapBranch(w: any, index: number): Branch {
   };
 }
 
-export function mapUser(e: any, locations: any[], admin?: any): User {
+export function mapUser(e: any, locations: any[], _admin?: any): User {
   const access = locations.filter((location: any) => location.employee_id === e.id);
   const warehouseIds = access.map((location: any) => location.warehouse_id).filter(Boolean);
 
@@ -46,15 +46,13 @@ export function mapUser(e: any, locations: any[], admin?: any): User {
     name: e.full_name,
     email: '',
     password: '',
-    role: admin?.id === e.id ? 'admin' : 'employee',
+    role: 'employee',
     baseSalary: Number(e.base_salary) || 0,
     branchId: warehouseIds.find((id: string) =>
       access.find((location: any) => location.warehouse_id === id)?.is_default
     ) || warehouseIds[0],
     allowedBranches: warehouseIds,
-    permissions: admin?.id === e.id
-      ? ['pos_access', 'reports.view', 'inventory.manage', 'products.manage', 'customers.manage', 'employees.manage', 'suppliers.manage', 'settings.manage']
-      : ['pos_access'],
+    permissions: ['pos_access'],
     isActive: e.active !== false,
   };
 }
