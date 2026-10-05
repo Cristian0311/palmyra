@@ -509,11 +509,11 @@ export default function Team() {
                 <div className="team-employee-hero-icon" aria-hidden="true"><BriefcaseBusiness className="w-5 h-5" /></div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="team-employee-kicker">{editing ? "Equipo · Editar" : "Equipo · Nuevo acceso"}</span>
+                    <span className="team-employee-kicker">{editing ? "Equipo · Configuración" : "Equipo · Alta segura"}</span>
                     <span className="team-employee-status"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Seguro y vinculado</span>
                   </div>
-                  <h2 className="text-xl sm:text-2xl font-black text-primary tracking-tight mt-1">{editing ? "Editar trabajador" : "Agregar trabajador"}</h2>
-                  <p className="text-[11px] sm:text-xs text-muted mt-1.5 leading-5 max-w-xl">Crea la ficha del trabajador y, en el mismo flujo, decide si tendrá acceso web independiente.</p>
+                  <h2 className="text-xl sm:text-2xl font-black text-primary tracking-tight mt-1">{editing ? "Trabajador y acceso" : "Trabajador y acceso"}</h2>
+                  <p className="text-[11px] sm:text-xs text-muted mt-1.5 leading-5 max-w-xl">Completa la ficha, define su operación y decide si tendrá una cuenta web independiente. Todo queda vinculado a la empresa sin compartir las credenciales del propietario.</p>
                 </div>
               </div>
               <button type="button" onClick={() => setShowForm(false)} className="w-10 h-10 rounded-2xl bg-subtle text-muted hover:text-primary hover:bg-primary border border-base flex items-center justify-center shrink-0 transition" aria-label="Cerrar formulario"><X className="w-4 h-4" /></button>
@@ -551,10 +551,10 @@ export default function Team() {
               <section className={cn("team-form-section team-access-section", form.sendInvite && "is-enabled")} data-section="employee-access">
                 <div className="team-form-section-head"><div className="team-form-section-icon"><Link2 className="w-4 h-4" /></div><div className="min-w-0"><h3>Acceso al sistema</h3><p>La cuenta del trabajador es independiente de la del dueño.</p></div><label className="team-switch ml-auto shrink-0"><input type="checkbox" checked={form.sendInvite} onChange={e => setForm({...form, sendInvite:e.target.checked})} disabled={busy || Boolean(editing?.user_id)} className="sr-only" /><span className="team-switch-track"><span className="team-switch-thumb" /></span></label></div>
                 <div className="team-access-card">
-                  <div className="flex items-start gap-3"><div className="team-access-icon"><AtSign className="w-4 h-4" /></div><div className="min-w-0 flex-1"><p className="text-xs font-black text-primary">Crear acceso al sistema</p><p className="text-[10px] sm:text-[11px] text-muted leading-5 mt-0.5">Genera una invitación única. El trabajador la abre desde su dispositivo y se registra con ese mismo correo.</p></div></div>
+                  <div className="flex items-start gap-3"><div className="team-access-icon"><AtSign className="w-4 h-4" /></div><div className="min-w-0 flex-1"><p className="text-xs font-black text-primary">Cuenta web del trabajador</p><p className="text-[10px] sm:text-[11px] text-muted leading-5 mt-0.5">Activa una cuenta independiente. PALMYRA generará una invitación segura para que el trabajador configure sus propias credenciales.</p></div></div>
                   {form.sendInvite && !editing?.user_id && <label className="team-field-wrap mt-3"><span className="team-field-label">Correo del trabajador <b>*</b></span><span className="team-field"><span className="team-field-icon"><Mail className="w-4 h-4" /></span><input type="email" value={form.email} onChange={e => setForm({...form, email:e.target.value})} disabled={busy} className="team-field-input" placeholder="trabajador@empresa.com" autoComplete="email" /></span></label>}
                   {editing?.user_id && <div className="team-linked-account"><CheckCircle2 className="w-4 h-4 shrink-0" /><span>Cuenta vinculada: {editing.login_email || form.email || "correo registrado"} · Sus credenciales son independientes.</span></div>}
-                  {!form.sendInvite && !editing?.user_id && <div className="team-access-off"><Info className="w-4 h-4 shrink-0" />El trabajador quedará registrado sin acceso web. Puedes activar la invitación más adelante.</div>}
+                  {!form.sendInvite && !editing?.user_id && <div className="team-access-off"><Info className="w-4 h-4 shrink-0" />El trabajador quedará registrado sin cuenta web. Podrás habilitar su acceso más adelante desde este mismo flujo.</div>}
                 </div>
               </section>
             </div>
