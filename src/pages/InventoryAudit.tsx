@@ -268,7 +268,7 @@ export default function InventoryAuditPage() {
         <div>
           <div className="flex items-center gap-2">
             <ClipboardCheck className="w-5 h-5 text-indigo-600" />
-            <h1 className="text-xl sm:text-2xl font-black text-primary uppercase tracking-tight">Auditoría de Stock</h1>
+            <h1 data-palmi-content="inventory-audit" className="text-xl sm:text-2xl font-black text-primary uppercase tracking-tight">Auditoría de Stock</h1>
           </div>
           <p className="text-[9px] font-black text-muted uppercase tracking-[0.18em] mt-1">
             Conteo físico • Variación • Recuento • Aprobación • Ajuste controlado
