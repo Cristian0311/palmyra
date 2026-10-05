@@ -93,7 +93,7 @@ export default function PalmiGuide(){
   },[]);
 
   useEffect(()=>{
-    if(!open||!isActionStep||!step?.navSelector || step?.mobileSelector)return;
+    if(!open||!isActionStep||(!step?.navSelector && !step?.mobileSelector))return;
     const selector=window.innerWidth<1024 ? (step.mobileSelector || step.navSelector) : step.navSelector;
     const onClick=(event:MouseEvent)=>{
       const target=event.target;
