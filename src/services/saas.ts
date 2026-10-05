@@ -2,6 +2,7 @@ import type { User } from '../types';
 import { getSupabase } from '../lib/supabase';
 import { slugifyCompany, type PlanCode } from '../config/saas';
 import { setPalmyraLocalScope, clearPalmyraLocalScope } from './localScope';
+import { clearActiveTenant } from './tenant';
 
 export interface SaaSContext {
   authUserId: string;
@@ -49,6 +50,7 @@ export async function signUpSaaSAccount(fullName: string, email: string, passwor
 }
 
 export async function signInSaaSAccount(email: string, password: string) {
+  clearActiveTenant();
   const supabase = getSupabase();
   if (!supabase) throw new Error('Supabase no está configurado.');
   return supabase.auth.signInWithPassword({
@@ -58,9 +60,12 @@ export async function signInSaaSAccount(email: string, password: string) {
 }
 
 export async function signOutSaaSAccount() {
+  clearActiveTenant();
   const supabase = getSupabase();
   if (!supabase) return;
   await supabase.auth.signOut();
+  clearPalmyraLocalScope();
+  clearActiveTenant();
 }
 
 export async function getAuthenticatedUser() {
@@ -306,6 +311,8 @@ export async function createCompanyOnboarding(input: {
 export async function selectCompanyPlan(companyId: string, planCode: PlanCode) {
   const supabase = getSupabase();
   if (!supabase) throw new Error('Supabase no está configurado.');
+  const tenant = await import('./tenant').then(m => m.getActiveTenant());
+  if (tenant.companyId !== companyId) throw new Error('No puedes cambiar el plan de una empresa distinta a la empresa activa.');
   const { data: plan, error: planError } = await supabase.from('plans').select('id,code').eq('code',planCode).maybeSingle();
   if (planError || !plan) throw planError || new Error('Plan no encontrado.');
   const { data, error } = await supabase.rpc('select_company_plan', { p_company_id: companyId, p_plan_id: plan.id });
