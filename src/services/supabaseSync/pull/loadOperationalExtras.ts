@@ -12,19 +12,32 @@ import type {
 export async function loadReturnsWarrantiesQuotesTimePayroll() {
   const tenant = await getActiveTenant();
   const supabase = getSupabase()!;
-  const [rr,ri,w,qs,qi,ts,pr,pi,aa,ai] = await Promise.all([
+  const [rr,w,qs,ts,pr,pi,aa] = await Promise.all([
     supabase.from('sales_returns').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(1000),
-    supabase.from('sales_return_items').select('*'),
     supabase.from('warranties').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(1000),
     supabase.from('quotes').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(1000),
-    supabase.from('quote_items').select('*'),
     supabase.from('employee_time_shifts').select('*').eq('company_id',tenant.companyId).order('clock_in',{ascending:false}).limit(1000),
     supabase.from('payroll_runs').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(500),
     supabase.from('payroll_items').select('*').eq('company_id',tenant.companyId),
     supabase.from('inventory_audits').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(500),
-    supabase.from('inventory_audit_items').select('*'),
   ]);
-  for(const x of [rr,ri,w,qs,qi,ts,pr,pi,aa,ai]) if(x.error) throw x.error;
+  for(const x of [rr,w,qs,ts,pr,pi,aa]) if(x.error) throw x.error;
+
+  const returnIds = (rr.data || []).map((row:any) => row.id).filter(Boolean);
+  const quoteIds = (qs.data || []).map((row:any) => row.id).filter(Boolean);
+  const auditIds = (aa.data || []).map((row:any) => row.id).filter(Boolean);
+  const [ri,qi,ai] = await Promise.all([
+    returnIds.length
+      ? supabase.from('sales_return_items').select('*').in('return_id', returnIds)
+      : Promise.resolve({ data: [], error: null }),
+    quoteIds.length
+      ? supabase.from('quote_items').select('*').in('quote_id', quoteIds)
+      : Promise.resolve({ data: [], error: null }),
+    auditIds.length
+      ? supabase.from('inventory_audit_items').select('*').in('audit_id', auditIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  for(const x of [ri,qi,ai]) if(x.error) throw x.error;
 
   const productRes = await supabase.from('products').select('id,name').eq('company_id',tenant.companyId);
   if(productRes.error) throw productRes.error;
