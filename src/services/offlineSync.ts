@@ -205,7 +205,8 @@ async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<
           session.closingBalances || [],
           session.closedAt || new Date().toISOString(),
           session.notes || '',
-          recalculatedSettlement
+          recalculatedSettlement,
+          Number.isFinite(Number(session.expectedBalance)) ? Number(session.expectedBalance) : undefined
         );
         if (!res.success) throw new Error(res.error || 'No se pudo cerrar el turno');
         return true;
