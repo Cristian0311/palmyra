@@ -1,3 +1,4 @@
+import { buildInventoryViewData } from '../modules/inventory/utils/buildInventoryViewData';
 import { useShallow } from 'zustand/react/shallow';
 import React, { useMemo, useState } from "react";
 import { ArrowLeftRight, PackagePlus, AlertCircle, Search, ShieldCheck, X, DollarSign, Trash2, Edit, History, Package, TrendingUp, Filter, Download, Plus, ArrowRightLeft, LayoutGrid, List, Settings2, Tag, Building2, Save, RefreshCw, Minus, ChevronDown } from "lucide-react";
@@ -318,68 +319,15 @@ export default function Inventory() {
 
   const [displayLimit, setDisplayLimit] = useState(200);
 
-  const inventoryByProduct = useMemo(() => {
-    const map = new Map<string, typeof inventory>();
-    for (const level of inventory || []) {
-      const existing = map.get(level.productId);
-      if (existing) existing.push(level);
-      else map.set(level.productId, [level]);
-    }
-    return map;
-  }, [inventory]);
-
-  const inventoryData = useMemo(() => {
-    if (!products || !inventory) return { full: [], paginated: [] };
-
-    const query = debouncedSearchQuery.trim().toLowerCase();
-    // Apply cheap text/category filters before calculating stock levels.
-    // This avoids touching every inventory row when the user is searching.
-    let candidateProducts = products;
-
-    if (query) {
-      candidateProducts = candidateProducts.filter(product =>
-        (product.name || '').toLowerCase().includes(query) ||
-        (product.sku || '').toLowerCase().includes(query) ||
-        (!!product.barcode && product.barcode.toLowerCase().includes(query))
-      );
-    }
-
-    if (selectedCategory !== "all") {
-      candidateProducts = candidateProducts.filter(product => product.categoryId === selectedCategory);
-    }
-
-    let filtered = candidateProducts.map(product => {
-      const allLevels = inventoryByProduct.get(product.id) || [];
-      const productLevels = selectedBranch === 'all'
-        ? allLevels
-        : allLevels.filter(level => level.branchId === selectedBranch);
-
-      const totalStock = productLevels.reduce((acc, curr) => acc + curr.quantity, 0);
-      const isLowStock = productLevels.some(i => i.quantity <= (product.minStockAlert || i.minQuantity));
-      const variantLevels = productLevels.filter(level => !!level.variantLabel);
-
-      return {
-        ...product,
-        totalStock,
-        isLowStock,
-        levels: productLevels,
-        variantLevels
-      };
-    });
-
-    if (stockFilter === 'in_stock') {
-      filtered = filtered.filter(p => p.totalStock > 0);
-    } else if (stockFilter === 'low') {
-      filtered = filtered.filter(p => p.isLowStock);
-    } else if (stockFilter === 'out') {
-      filtered = filtered.filter(p => p.totalStock === 0);
-    }
-
-    return {
-      full: filtered,
-      paginated: filtered.slice(0, displayLimit)
-    };
-  }, [products, inventoryByProduct, debouncedSearchQuery, selectedBranch, selectedCategory, stockFilter, displayLimit]);
+  const inventoryData = buildInventoryViewData(
+    products || [],
+    inventory || [],
+    debouncedSearchQuery,
+    selectedBranch,
+    selectedCategory,
+    stockFilter,
+    displayLimit
+  );
 
   const inventoryView = inventoryData.paginated;
 
