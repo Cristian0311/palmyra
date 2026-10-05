@@ -9,12 +9,14 @@ import {
   callTransferInventoryRPC,
   callTransferInventoryBulkRPC,
 } from '../../services/supabaseSync';
-import { enqueueOfflineItem, removeFromOfflineQueueByAction } from '../../services/offlineQueue';
+import { enqueueOfflineItem } from '../../services/offlineQueue';
+import { removeFromOfflineQueueByAction } from '../../services/offlineQueue/outboxUtils';
 import { generateId } from '../../lib/utils';
 import { setCanonicalInventoryQuantity, validateTransferStock } from '../utils/inventoryTransforms';
 import { buildLocalCompletedSalePatch } from '../utils/localCompletedSale';
 import { normalizeSemanticText } from '../../utils/textUtils';
 import { getActiveTenant } from '../../services/tenant';
+import { INITIAL_PRODUCTS, INITIAL_INVENTORY } from '../storeInitialData';
 
 type StoreSet = (
   partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)
@@ -22,7 +24,7 @@ type StoreSet = (
 type StoreGet = () => AppState;
 
 
-async function refreshInventoryBranchesFromSupabase(set, get, set: StoreSet, get: StoreGet, branchIds: string[]): Promise<boolean> {
+async function refreshInventoryBranchesFromSupabase(set: StoreSet, get: StoreGet, branchIds: string[]): Promise<boolean> {
   const ids = Array.from(new Set(branchIds.filter(Boolean)));
   if (!ids.length) return true;
   try {
