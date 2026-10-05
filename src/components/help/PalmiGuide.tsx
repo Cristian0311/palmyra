@@ -147,7 +147,7 @@ export default function PalmiGuide(){
     {open&&rect&&isActionStep&&<div className="palmi-action-cue" style={{top:Math.max(10,rect.top-44),left:Math.max(8,Math.min(rect.left,window.innerWidth-150))}} aria-hidden="true"><span className="palmi-action-cue-label">PRESIONA AQUÍ</span><span className="palmi-action-cue-arrow">↓</span></div>}
     <div ref={anchor} className={"palmi-guide-anchor "+(!position?"is-edge":"")} style={anchorStyle as React.CSSProperties}>
       {open&&<div className={"palmi-guide-panel "+(darkMode?"dark ":"")+(isActionStep?"is-command":"is-explain")} role="dialog" aria-label="Guía interactiva de PALMYRA" aria-live="polite">
-        <div className="palmi-guide-brandbar"><div className="palmi-guide-brand"><div className="palmi-guide-brand-orb"><Sparkles className="w-3.5 h-3.5"/></div><div><p>PALMYRA · NUMA</p><span>Guía paso a paso</span></div></div><button type="button" className="palmi-guide-close" onClick={close} aria-label="Cerrar guía"><X size={16}/></button></div>
+        <div className="palmi-guide-brandbar"><div className="palmi-guide-brand"><div className="palmi-guide-brand-orb"><Sparkles className="w-3.5 h-3.5"/></div><div><p>PALMYRA · PALMI</p><span>Guía paso a paso</span></div></div><button type="button" className="palmi-guide-close" onClick={close} aria-label="Cerrar guía"><X size={16}/></button></div>
         <div className="palmi-guide-hero"><div className="palmi-guide-mini-mascot"><PalmiMascot className="palmi-guide-mascot-small"/></div><div className="min-w-0"><p className="palmi-guide-eyebrow">{step?.eyebrow}</p><h2 className="palmi-guide-title">{isActionStep?(step?.actionTitle||"Tu turno"):step?.title}</h2><p className="palmi-guide-current">{helpLabel}</p></div><div className="palmi-guide-step-pill">{index+1}<span>/</span>{steps.length}</div></div>
         <div className="palmi-guide-progress"><div className="palmi-guide-progress-track"><div className="palmi-guide-progress-fill" style={{width:progress+"%"}}/></div></div>
         {isActionStep?<div className="palmi-guide-command"><div className="palmi-command-badge"><Sparkles className="w-3.5 h-3.5"/> TU TURNO</div><div className="palmi-command-title">{step?.actionMessage}</div><div className="palmi-command-status"><span className="palmi-pulse-dot"/> Esperando tu acción…</div></div>:<div className="palmi-guide-body">{index===0&&<div className="palmi-welcome-line">Palmi te acompaña. Tú haces el recorrido.</div>}<div className="palmi-guide-message">{step?.message}</div>{step?.tip&&<div className="palmi-guide-tip"><strong>Consejo</strong><span>{step.tip}</span></div>}</div>}
@@ -158,5 +158,6 @@ export default function PalmiGuide(){
       </div>
       {open&&<button type="button" className="palmi-guide-reset" onClick={reset} aria-label="Reiniciar guía" title="Reiniciar guía"><RotateCcw size={13}/></button>}
     </div>
-  </div>;
+        {last && <PWAInstallPrompt />}
+    </div>;
 }
