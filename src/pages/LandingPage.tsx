@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ArrowRight, Check, ChevronDown, CloudOff, LockKeyhole, MonitorSmartphone, ShieldCheck, Sparkles, Users, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ImmersiveBackdrop } from "../components/landing/ImmersiveBackdrop";
@@ -15,6 +15,22 @@ export default function LandingPage() {
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen] = useState(false);
   const goSignup = () => navigate("/auth?mode=signup");
+
+  useEffect(() => {
+    // La landing debe recuperar el scroll aunque otra pantalla/modal haya dejado
+    // un bloqueo global de body antes de montar esta ruta.
+    const previousOverflow = document.body.style.overflow;
+    const previousOverflowY = document.body.style.overflowY;
+    const previousTouchAction = document.body.style.touchAction;
+    document.body.style.overflow = "auto";
+    document.body.style.overflowY = "auto";
+    document.body.style.touchAction = "pan-y";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.overflowY = previousOverflowY;
+      document.body.style.touchAction = previousTouchAction;
+    };
+  }, []);
 
   return (
     <div className="landing-page">
