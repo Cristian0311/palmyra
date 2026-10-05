@@ -17,6 +17,7 @@ import { InfoTooltip } from "../components/InfoTooltip";
 import MultiCurrencyTotal from "../components/reports/MultiCurrencyTotal";
 import { getLocalDateYMD } from "../utils/dateUtils";
 import { useReportsContext } from "../modules/reports/useReportsContext";
+import { useReportsPayroll } from "../modules/reports/useReportsPayroll";
 import { useReportsAnalytics } from "../hooks/useReportsAnalytics";
 import type { ExcelExportData } from "../utils/excelExport";
 import { pullPosBootstrapFromSupabase } from "../services/supabaseSync/pull";
@@ -386,125 +387,18 @@ export default function Reports() {
     return filteredSessions.filter(s => s.status === 'closed');
   }, [filteredSessions]);
 
-  // Complete payroll settlements per closed session
-  const payrollList = useMemo(() => {
-    const settlementMap = new Map<string, typeof salarySettlements[0]>();
-    (salarySettlements || []).forEach(st => {
-      settlementMap.set(st.sessionId, st);
-    });
-
-    return closedSessions
-      .map(session => {
-        const turnLabel = sessionTurnMap.get(session.id) || session.id;
-      const sessionTx = transactionsBySession.get(session.id) || [];
-
-      const totalSales = sessionTx.reduce((sum, tx) => sum + (tx.total || 0), 0);
-      const totalItems = sessionTx.reduce((sum, tx) => sum + (tx.items || []).reduce((s, i) => s + (i.quantity || 0), 0), 0);
-
-      const existing = settlementMap.get(session.id);
-      const emp = userById.get(session.userId) || (session.workerName ? userByName.get(session.workerName.trim().toLowerCase()) : undefined);
-      const workerName = session.workerName || existing?.userName || emp?.name || 'Vendedor';
-
-      // Calculate commissions if not in existing settlement
-      let commissions = existing ? existing.commissions : 0;
-      if (!existing) {
-        commissions = sessionTx.reduce((sum, tx) => {
-          return sum + (tx.items || []).reduce((s, item) => {
-            const prodId = typeof item.product === 'string' ? item.product : item.product?.id;
-            const prod = prodId ? productById.get(prodId) : undefined;
-            if (!prod) return s;
-            const commValue = prod.commissionValue || 0;
-            return s + (commValue * item.quantity);
-          }, 0);
-        }, 0);
-      }
-
-      const baseSalary = existing ? existing.baseSalary : (emp?.baseSalary || 0);
-      const totalSalary = existing ? existing.total : (baseSalary + commissions);
-      const status = existing ? existing.status : 'pending';
-      const date = existing?.date || session.closingDate || session.closedAt || session.openedAt;
-
-      return {
-        settlementId: existing?.id,
-        sessionId: session.id,
-        turnLabel,
-        date,
-        workerName,
-        userId: session.userId,
-        branchId: session.branchId,
-        baseSalary,
-        commissions,
-        totalSalary,
-        totalSales,
-        totalItems,
-        status: status as 'pending' | 'paid',
-        sessionTx
-      };
-    });
-  }, [closedSessions, salarySettlements, transactionsBySession, userById, userByName, productById, sessionTurnMap]);
-
-  const filteredPayrollList = useMemo(() => {
-    return payrollList.filter(item => {
-      if (selectedBranchFilter !== 'all' && item.branchId !== selectedBranchFilter) {
-        return false;
-      }
-      const dateObj = new Date(item.date);
-      if (selectedFilterDate) {
-        return dateObj.toISOString().split('T')[0] === selectedFilterDate;
-      }
-      if (sessionFilter === 'today') {
-        return dateObj.toLocaleDateString() === new Date().toLocaleDateString();
-      }
-      return true;
-    });
-  }, [payrollList, selectedBranchFilter, selectedFilterDate, sessionFilter]);
-
-  const filteredCashSessions = filteredSessions;
-
-  // Aggregated payroll totals per worker
-  const aggregatedPayrollByWorker = useMemo(() => {
-    const map = new Map<string, {
-      userId: string;
-      workerName: string;
-      shiftsCount: number;
-      totalSales: number;
-      totalBaseSalary: number;
-      totalCommissions: number;
-      totalSalary: number;
-      pendingSalary: number;
-      paidSalary: number;
-    }>();
-
-    filteredPayrollList.forEach(item => {
-      const key = item.workerName;
-      if (!map.has(key)) {
-        map.set(key, {
-          userId: item.userId,
-          workerName: item.workerName,
-          shiftsCount: 0,
-          totalSales: 0,
-          totalBaseSalary: 0,
-          totalCommissions: 0,
-          totalSalary: 0,
-          pendingSalary: 0,
-          paidSalary: 0
-        });
-      }
-      const agg = map.get(key)!;
-      agg.shiftsCount += 1;
-      agg.totalSales += item.totalSales;
-      agg.totalBaseSalary += item.baseSalary;
-      agg.totalCommissions += item.commissions;
-      agg.totalSalary += item.totalSalary;
-      if (item.status === 'paid') {
-        agg.paidSalary += item.totalSalary;
-      } else {
-        agg.pendingSalary += item.totalSalary;
-      }
-    });
-
-    return Array.from(map.values());
-  }, [filteredPayrollList]);
+  const { payrollList, filteredPayrollList, aggregatedPayrollByWorker } = useReportsPayroll({
+    closedSessions,
+    salarySettlements,
+    transactionsBySession,
+    userById,
+    userByName,
+    productById,
+    sessionTurnMap,
+    selectedBranchFilter,
+    selectedFilterDate,
+    sessionFilter,
+  });
 
   // Toggle payment status handler
   const handleTogglePayment = (item: typeof payrollList[0]) => {
