@@ -2,7 +2,7 @@ name: PALMYRA CI
 
 on:
   push:
-    branches: [main, 'refactor/**']
+    branches: [main, 'refactor/**', 'feature/**']
   pull_request:
     branches: [main, 'refactor/**']
 
