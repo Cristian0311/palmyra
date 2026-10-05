@@ -57,10 +57,11 @@ export default function PalmiGuide(){
     let attempts=0,cancelled=false;
     const poll=()=>{
       if(cancelled)return;
-      const target=findTarget(selectors);
+      let target=findTarget(selectors);
       if(target){
+        if(wantedPhase==="explain" && /^(H1|H2|H3)$/.test(target.tagName)) target=target.parentElement || target;
         if(wantedPhase==="explain")target.scrollIntoView({behavior:"smooth",block:"nearest",inline:"nearest"});
-        window.setTimeout(()=>{if(!cancelled)setRect(target.getBoundingClientRect())},wantedPhase==="explain"?240:80);
+        window.setTimeout(()=>{if(!cancelled)setRect(target!.getBoundingClientRect())},wantedPhase==="explain"?240:80);
         return;
       }
       if(++attempts<35)window.setTimeout(poll,90);else setRect(null);
