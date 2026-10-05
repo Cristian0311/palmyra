@@ -67,7 +67,7 @@ export function calculateExpectedSessionBalances(
         currencyCode: movement.currencyCode as Payment['currencyCode'],
         amount: movement.amount,
         exchangeRate:
-          currencyByCode.get(movement.currencyCode)?.rateToBase || 1,
+          currencyByCode.get(movement.currencyCode as Currency['code'])?.rateToBase || 1,
         method: 'cash',
       },
       movement.type === 'income' ? movement.amount : -movement.amount,
