@@ -360,7 +360,7 @@ export default function Inventory() {
     <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500 h-full flex flex-col min-h-0">
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-2 px-1 shrink-0">
         <div>
-          <h2 className="text-lg sm:text-xl font-black text-primary tracking-tight flex items-center gap-2 uppercase">
+          <h2 data-palmi-content="inventory" className="text-lg sm:text-xl font-black text-primary tracking-tight flex items-center gap-2 uppercase">
             Inventario
           </h2>
           <p className="text-[9px] sm:text-[10px] font-black text-muted uppercase tracking-widest">Stock Control</p>
