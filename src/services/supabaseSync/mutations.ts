@@ -1,6 +1,7 @@
 import { getSupabase } from '../../lib/supabase';
 import { enqueueOfflineItem } from '../offlineQueue';
 import { getActiveTenant, getEmployeeForIdentity } from '../tenant';
+import { callAdjustInventoryRPC } from './rpc';
 export type ResetSection =
   | 'inventory' | 'reports' | 'catalog' | 'customers' | 'suppliers'
   | 'purchases' | 'cash' | 'bank' | 'users' | 'branches' | 'quotes' | 'settings';
@@ -45,24 +46,54 @@ async function resolveVariantId(supabase:any,companyId:string,productId:string,v
 
 export async function applyInventoryAdjustmentToSupabase(params:{operationId:string;productId:string;branchId:string;variantLabel?:string;delta:number;minQuantity?:number;userId?:string;movementType?:string}): Promise<{success:true;conflict:false;data:{quantity:number};error?:string}|{success:false;conflict?:boolean;error:string;data?:never}>{
   try{
-    const supabase=await onlineClient();const {companyId,authUserId}=await getActiveTenant();const vid=await resolveVariantId(supabase,companyId,params.productId,params.variantLabel);const table=vid?'variant_stock_balances':'stock_balances';const filter=vid?{variant_id:vid}:{variant_id:null};const conflictTarget=vid?'company_id,warehouse_id,product_id,variant_id':'warehouse_id,product_id';
-    const {data:row,error:readErr}=await supabase.from(table).select('quantity').eq('company_id',companyId).eq('warehouse_id',params.branchId).eq('product_id',params.productId).match(filter).maybeSingle();if(readErr)throw readErr;
-    const next=Math.max(0,(Number(row?.quantity)||0)+(Number(params.delta)||0));
-    const {error}=await supabase.from(table).upsert({company_id:companyId,warehouse_id:params.branchId,product_id:params.productId,quantity:next,updated_at:new Date().toISOString(),...filter},{onConflict:conflictTarget});if(error)throw error;
-    const {error:me}=await supabase.from('stock_movements').insert({id:crypto.randomUUID(),company_id:companyId,warehouse_id:params.branchId,product_id:params.productId,movement_type:(params.movementType||'adjustment').toLowerCase(),quantity:Number(params.delta)||0,reference_type:'inventory_adjustment',reference_id:params.operationId,created_by:authUserId,occurred_at:new Date().toISOString(),variant_id:vid});if(me)throw me;
-    return {success:true,conflict:false,data:{quantity:next}};
-  }catch(e:any){await queue('inventory_adjustment',params,params.operationId);return {success:false,error:e?.message||'Error de inventario'};}
+    const supabase=await onlineClient();
+    const {companyId}=await getActiveTenant();
+    const vid=await resolveVariantId(supabase,companyId,params.productId,params.variantLabel);
+    const result=await callAdjustInventoryRPC({
+      operationId:params.operationId,
+      warehouseId:params.branchId,
+      productId:params.productId,
+      variantId:vid,
+      delta:Number(params.delta)||0,
+      minQuantity:params.minQuantity,
+      notes:params.movementType || 'Ajuste de inventario'
+    });
+    if(!result.success){
+      if(result.conflict) return {success:false,conflict:true,error:result.error};
+      throw new Error(result.error);
+    }
+    return {success:true,conflict:false,data:{quantity:Number(result.data?.quantity)||0}};
+  }catch(e:any){
+    await queue('inventory_adjustment',params,params.operationId);
+    return {success:false,error:e?.message||'Error de inventario'};
+  }
 }
 
 export async function reconcileInventoryToSupabase(params:{operationId:string;productId:string;branchId:string;variantLabel?:string;expectedQuantity:number;newQuantity:number;minQuantity?:number;userId?:string}): Promise<{success:true;conflict:false;data:{quantity:number};error?:string}|{success:false;conflict?:boolean;error:string;data?:never}>{
   try{
-    const supabase=await onlineClient();const {companyId,authUserId}=await getActiveTenant();const vid=await resolveVariantId(supabase,companyId,params.productId,params.variantLabel);const table=vid?'variant_stock_balances':'stock_balances';const filter=vid?{variant_id:vid}:{variant_id:null};const conflictTarget=vid?'company_id,warehouse_id,product_id,variant_id':'warehouse_id,product_id';
-    const {data,error}=await supabase.from(table).select('quantity').eq('company_id',companyId).eq('warehouse_id',params.branchId).eq('product_id',params.productId).match(filter).maybeSingle();if(error)throw error;
-    const current=Number(data?.quantity)||0;if(current!==Number(params.expectedQuantity))return {success:false,conflict:true,error:'El inventario cambió en el servidor; se requiere reconciliación.'};
-    const {error:ue}=await supabase.from(table).upsert({company_id:companyId,warehouse_id:params.branchId,product_id:params.productId,quantity:Math.max(0,Number(params.newQuantity)||0),updated_at:new Date().toISOString(),...filter},{onConflict:conflictTarget});if(ue)throw ue;
-    const {error:me}=await supabase.from('stock_movements').insert({id:crypto.randomUUID(),company_id:companyId,warehouse_id:params.branchId,product_id:params.productId,movement_type:'reconciliation',quantity:Number(params.newQuantity)-current,reference_type:'inventory_reconciliation',reference_id:params.operationId,created_by:authUserId,occurred_at:new Date().toISOString(),variant_id:vid});if(me)throw me;
-    return {success:true,conflict:false,data:{quantity:Number(params.newQuantity)}};
-  }catch(e:any){await queue('inventory_reconcile',params,params.operationId);return {success:false,error:e?.message||'Error de reconciliación'};}
+    const supabase=await onlineClient();
+    const {companyId}=await getActiveTenant();
+    const vid=await resolveVariantId(supabase,companyId,params.productId,params.variantLabel);
+    const delta=Number(params.newQuantity)-Number(params.expectedQuantity);
+    const result=await callAdjustInventoryRPC({
+      operationId:params.operationId,
+      warehouseId:params.branchId,
+      productId:params.productId,
+      variantId:vid,
+      delta,
+      expectedQuantity:Number(params.expectedQuantity),
+      minQuantity:params.minQuantity,
+      notes:'Reconciliación de inventario'
+    });
+    if(!result.success){
+      if(result.conflict) return {success:false,conflict:true,error:result.error};
+      throw new Error(result.error);
+    }
+    return {success:true,conflict:false,data:{quantity:Number(result.data?.quantity)||0}};
+  }catch(e:any){
+    await queue('inventory_reconcile',params,params.operationId);
+    return {success:false,error:e?.message||'Error de reconciliación'};
+  }
 }
 
 export async function pushInventoryToSupabase(level:InventoryLevel){
