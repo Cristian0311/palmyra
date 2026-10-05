@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight, BarChart3, Boxes, Check, ChevronRight, CloudOff, CreditCard, ClipboardCheck,
   MonitorSmartphone, PackageCheck, Users, WifiOff, ShoppingCart, Truck,
@@ -190,6 +190,39 @@ function ModuleScreen({ module }: { module: typeof modules[number] }) {
 }
 
 export default function LandingPage() {
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    const root = document.getElementById("root");
+    const previous = {
+      htmlOverflow: html.style.overflow,
+      bodyOverflow: body.style.overflow,
+      bodyOverflowY: body.style.overflowY,
+      bodyTouchAction: body.style.touchAction,
+      rootOverflow: root?.style.overflow ?? "",
+      rootOverflowY: root?.style.overflowY ?? "",
+    };
+
+    html.style.overflow = "auto";
+    body.style.overflow = "visible";
+    body.style.overflowY = "auto";
+    body.style.touchAction = "pan-y";
+    if (root) {
+      root.style.overflow = "visible";
+      root.style.overflowY = "auto";
+    }
+
+    return () => {
+      html.style.overflow = previous.htmlOverflow;
+      body.style.overflow = previous.bodyOverflow;
+      body.style.overflowY = previous.bodyOverflowY;
+      body.style.touchAction = previous.bodyTouchAction;
+      if (root) {
+        root.style.overflow = previous.rootOverflow;
+        root.style.overflowY = previous.rootOverflowY;
+      }
+    };
+  }, []);
   const navigate = useNavigate();
   const [active, setActive] = useState("dashboard");
   const [mobileMenu, setMobileMenu] = useState(false);
