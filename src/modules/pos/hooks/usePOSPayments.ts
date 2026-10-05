@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import type { CartItem, Currency, BankCard } from '../../types';
-import { createPaymentMath, isCupLikeCurrency } from './utils/paymentMath';
+import type { CartItem, Currency, BankCard } from '../../../types';
+import { createPaymentMath, isCupLikeCurrency } from '../utils/paymentMath';
 
 export type POSPaymentLine = {
   id: string;
@@ -27,9 +27,10 @@ export function usePOSPayments({ cart, currencies, baseCurrency, bankCards }: Us
   const isCupBase = baseCurrency.code === 'CUP' || baseCurrency.code === 'MN';
   const totalBase = isCupBase ? Math.round(rawTotalBase) : Math.round(rawTotalBase * 100) / 100;
 
-  // Todos los importes del checkout se convierten a la moneda base con una
-  // tasa válida. La moneda base siempre vale 1, incluso si la configuración
-  // remota llega momentáneamente sin rateToBase.
+  const [paymentLines, setPaymentLines] = useState<POSPaymentLine[]>([]);
+  const [activePaymentLineId, setActivePaymentLineId] = useState<string | null>(null);
+
+  // Todos los importes del checkout se convierten a la moneda base con una tasa válida.
   const { getSafeRateToBase, toBaseAmount, roundBaseAmount } = createPaymentMath(baseCurrency, currencies, isCupBase);
 
   const totalPaidBase = roundBaseAmount(paymentLines.reduce(
@@ -41,10 +42,6 @@ export function usePOSPayments({ cart, currencies, baseCurrency, bankCards }: Us
   const remainingBase = Math.max(0, balanceBase);
   const changeBase = Math.max(0, -balanceBase);
   const isPaid = remainingBase <= (isCupBase ? 0 : 0.01) && totalBase > 0;
-  const { getSafeRateToBase, toBaseAmount, roundBaseAmount } = createPaymentMath(baseCurrency, currencies, isCupBase);
-  const [paymentLines, setPaymentLines] = useState<POSPaymentLine[]>([]);
-  const [activePaymentLineId, setActivePaymentLineId] = useState<string | null>(null);
-
   const addPaymentLine = () => {
     const newId = crypto.randomUUID();
     const curr = currencies.find(c => c.code === baseCurrency.code);
@@ -58,7 +55,7 @@ export function usePOSPayments({ cart, currencies, baseCurrency, bankCards }: Us
     setActivePaymentLineId(newId);
   };
 
-  const updatePaymentLine = (id: string, field: keyof PaymentLine, value: any) => {
+  const updatePaymentLine = (id: string, field: keyof POSPaymentLine, value: any) => {
     setPaymentLines(prev => {
       let nextLines = prev.map(p => {
         if (p.id !== id) return p;
