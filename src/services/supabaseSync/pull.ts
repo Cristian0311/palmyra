@@ -217,8 +217,7 @@ async function loadInventory(branchId?: string) {
       branchId: r.warehouse_id,
       variantLabel: r.product_variants?.name || r.variant_id,
       quantity: Number(r.quantity) || 0,
-      minQuantity: minByProduct.get(r.product_id) || 0
-    });
+      minQuantity: minByProduct.get(r.product_id) || 0    });
   }
   return inventory;
 }
@@ -407,14 +406,18 @@ async function loadBanks() {
 }
 async function loadSuppliersOrders() {
   const tenant=await getActiveTenant(); const supabase=getSupabase()!;
-  const [s,o,i]=await Promise.all([
+  const [s,o] = await Promise.all([
     supabase.from('suppliers').select('*').eq('company_id',tenant.companyId).eq('active',true).order('name'),
     supabase.from('purchase_orders').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(1000),
-    supabase.from('purchase_items').select('*')
   ]);
-  if(s.error)throw s.error;if(o.error)throw o.error;if(i.error)throw i.error;
-  const pIds=(o.data||[]).map((x:any)=>x.id);
-  const productsRes=await supabase.from('products').select('id,name').eq('company_id',tenant.companyId); if(productsRes.error)throw productsRes.error;
+  if(s.error)throw s.error;if(o.error)throw o.error;
+  const orderIds=(o.data||[]).map((x:any)=>x.id).filter(Boolean);
+  const i=orderIds.length
+    ? await supabase.from('purchase_items').select('*').in('purchase_order_id',orderIds)
+    : {data:[],error:null};
+  if(i.error)throw i.error;
+  const productsRes=await supabase.from('products').select('id,name').eq('company_id',tenant.companyId);
+  if(productsRes.error)throw productsRes.error;
   const pMap=new Map<string,string>((productsRes.data||[]).map((p:any)=>[p.id,p.name]));
   const supplierMap=new Map<string,string>((s.data||[]).map((x:any)=>[x.id,x.name]));
   return {
@@ -437,8 +440,7 @@ async function loadAllData(branchId?:string) {
     loadCustomers(),
     loadBanks(),
     loadReturnsWarrantiesQuotesTimePayroll(),
-    loadSuppliersOrders()
-  ]);
+    loadSuppliersOrders()  ]);
   const lastTurnNumber = cashSessions.reduce((m:number,s:any)=>Math.max(m,Number(s.turnNumber)||0),0);
   return {
     products:catalog.products,categories:catalog.categories,inventory,branches:catalog.branches,users:catalog.users,
