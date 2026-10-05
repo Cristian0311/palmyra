@@ -43,7 +43,6 @@ export default function Transfers() {
   const getBranchDisplayName = (b: { id: string; name: string }) => {
     const assignedUser = (users || []).find(u => u.branchId === b.id);
     return assignedUser ? `${b.name} (${assignedUser.name})` : b.name;
-    return b.name;
   };
 
   const [activeTab, setActiveTab] = useState<'history' | 'new'>('history');
