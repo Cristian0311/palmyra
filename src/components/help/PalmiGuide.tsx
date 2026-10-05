@@ -142,6 +142,7 @@ export default function PalmiGuide(){
 
   return <div className="palmi-guide-root">
     {open&&rect&&<div className={"palmi-guide-spotlight "+(isActionStep?"is-command":"is-content")} style={{top:Math.max(4,rect.top-7),left:Math.max(4,rect.left-7),width:Math.min(window.innerWidth-8,rect.width+14),height:Math.min(window.innerHeight-8,rect.height+14)}} aria-hidden="true"/>}
+    {open&&rect&&isActionStep&&<div className="palmi-action-cue" style={{top:Math.max(10,rect.top-44),left:Math.max(8,Math.min(rect.left,window.innerWidth-150))}} aria-hidden="true"><span className="palmi-action-cue-label">PRESIONA AQUÍ</span><span className="palmi-action-cue-arrow">↓</span></div>}
     <div ref={anchor} className={"palmi-guide-anchor "+(!position?"is-edge":"")} style={anchorStyle as React.CSSProperties}>
       {open&&<div className={"palmi-guide-panel "+(darkMode?"dark ":"")+(isActionStep?"is-command":"is-explain")} role="dialog" aria-label="Guía interactiva de PALMYRA" aria-live="polite">
         <div className="palmi-guide-brandbar"><div className="palmi-guide-brand"><div className="palmi-guide-brand-orb"><Sparkles className="w-3.5 h-3.5"/></div><div><p>PALMYRA · NUMA</p><span>Guía paso a paso</span></div></div><button type="button" className="palmi-guide-close" onClick={close} aria-label="Cerrar guía"><X size={16}/></button></div>
