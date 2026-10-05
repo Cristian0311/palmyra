@@ -1,4 +1,4 @@
-import type { ExcelExportData } from "../../types";
+import type { ExcelExportData } from "../../../types";
 
 export function generatePayrollSheet(data: ExcelExportData): any[][] {
   const { salarySettlements, cashSessions, transactions, products, baseCurrency } = data;
