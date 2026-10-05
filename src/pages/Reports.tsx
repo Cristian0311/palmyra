@@ -16,6 +16,7 @@ import { cn } from "../lib/utils";
 import { InfoTooltip } from "../components/InfoTooltip";
 import MultiCurrencyTotal from "../components/reports/MultiCurrencyTotal";
 import { getLocalDateYMD } from "../utils/dateUtils";
+import { useReportsContext } from "../modules/reports/useReportsContext";
 import { useReportsAnalytics } from "../hooks/useReportsAnalytics";
 import type { ExcelExportData } from "../utils/excelExport";
 import { pullPosBootstrapFromSupabase } from "../services/supabaseSync/pull";
@@ -73,130 +74,51 @@ export default function Reports() {
   const categories = store.categories || [];
   const salarySettlements = store.salarySettlements || [];
 
-  const currencyByCode = useMemo(() => new Map<string, (typeof currencies)[number]>(currencies.map(currency => [currency.code, currency])), [currencies]);
-  const userById = useMemo(() => new Map(users.map(user => [user.id, user])), [users]);
-  const productById = useMemo(() => new Map(products.map(product => [product.id, product])), [products]);
-  const branchById = useMemo(() => new Map(branches.map(branch => [branch.id, branch])), [branches]);
-  const bankCardById = useMemo(() => new Map(bankCards.map(card => [card.id, card])), [bankCards]);
-  const addSalarySettlement = store.addSalarySettlement;
-  const updateSalarySettlement = store.updateSalarySettlement;
-  const updateCashSession = store.updateCashSession;
-  const addNotification = store.addNotification;
-  const receiptConfig = store.receiptConfig;
-  const getBaseCurrency = store.getBaseCurrency;
+  const {
+    currencyByCode,
+    userById,
+    productById,
+    branchById,
+    bankCardById,
+    userByName,
+    transactionsBySession,
+    baseCurrency,
+    totalSales,
+    allMovements,
+    totalCashIncomes,
+    totalCashExpenses,
+    bankPaymentsReceived,
+    bankOtherDeposits,
+    bankSupplierPayments,
+    bankOtherWithdrawals,
+    totalBankDeposits,
+    totalBankWithdrawals,
+    totalIncomes,
+    totalExpenses,
+    netFlow,
+    txCount,
+    formatMoney,
+    getProductName,
+  } = useReportsContext({
+    transactions,
+    cashSessions,
+    users,
+    branches,
+    currencies,
+    warranties,
+    returns,
+    supplierOrders,
+    products,
+    inventory,
+    transfers,
+    bankTransactions,
+    bankCards,
+    customers,
+    categories,
+    salarySettlements,
+    getBaseCurrency,
+  });
 
-  useEffect(() => {
-    if (typeof navigator === 'undefined' || !navigator.onLine) return;
-
-    // Reports is an administrative, cross-branch view. It must use the complete
-    // operational snapshot from Supabase, not only the current branch cache.
-    let cancelled = false;
-    const refreshReportsFromCloud = async () => {
-      try {
-        await store.syncWithSupabase();
-        if (cancelled) return;
-
-        const cloud = await pullPosBootstrapFromSupabase();
-        if (!cloud.success || !cloud.data) return;
-
-        // Never overwrite local state while an offline write is waiting to be replayed.
-        if (getOfflineQueueCount() > 0) return;
-
-        useStore.setState({
-          transactions: cloud.data.transactions || [],
-          cashSessions: cloud.data.cashSessions || [],
-          transfers: cloud.data.transfers || [],
-          bankCards: cloud.data.bankCards || [],
-          bankTransactions: cloud.data.bankTransactions || []
-        });
-      } catch (error) {
-        console.warn('[Reports] No se pudo actualizar la vista global:', error);
-      }
-    };
-
-    void refreshReportsFromCloud();
-    return () => { cancelled = true; };
-  }, [store.syncWithSupabase]);
-
-  const userByName = useMemo(() => {
-    const map = new Map<string, typeof users[number]>();
-    users.forEach(user => {
-      if (user.name) map.set(user.name.trim().toLowerCase(), user);
-    });
-    return map;
-  }, [users]);
-
-  const transactionsBySession = useMemo(() => {
-    const map = new Map<string, Transaction[]>();
-    for (const tx of transactions) {
-      if (!tx.sessionId) continue;
-      const list = map.get(tx.sessionId);
-      if (list) list.push(tx);
-      else map.set(tx.sessionId, [tx]);
-    }
-    return map;
-  }, [transactions]);
-
-  const baseCurrency = getBaseCurrency ? getBaseCurrency() : (currencyByCode.get('CUP') || currencies.find(c => c.isBase) || currencies[0] || { code: 'CUP', name: 'Peso Cubano', symbol: '$', rateToBase: 1, isBase: true });
-  const totalSales = transactions.reduce((sum, t) => sum + (t?.total || 0), 0);
-  
-  // Calculate cash movements total
-  const allMovements = cashSessions.flatMap(s => s.movements || []);
-  const totalCashIncomes = allMovements.filter(m => m.type === 'income').reduce((s, m) => s + (m.amount * (currencyByCode.get(m.currencyCode)?.rateToBase || 1)), 0);
-  const totalCashExpenses = allMovements.filter(m => m.type === 'expense').reduce((s, m) => s + (m.amount * (currencyByCode.get(m.currencyCode)?.rateToBase || 1)), 0);
-  
-  // Bank movements breakdown
-  const bankPaymentsReceived = bankTransactions.filter(t => t.type === 'payment_received').reduce((sum, t) => {
-    const card = bankCardById.get(t.cardId);
-    const rate = currencyByCode.get(card?.currency || '')?.rateToBase || 1;
-    return sum + (t.amount * rate);
-  }, 0);
-
-  const bankOtherDeposits = bankTransactions.filter(t => t.type === 'deposit').reduce((sum, t) => {
-    const card = bankCards.find(c => c.id === t.cardId);
-    const rate = currencies.find(c => c.code === card?.currency)?.rateToBase || 1;
-    return sum + (t.amount * rate);
-  }, 0);
-
-  const bankSupplierPayments = bankTransactions.filter(t => t.type === 'supplier_payment').reduce((sum, t) => {
-    const card = bankCards.find(c => c.id === t.cardId);
-    const rate = currencies.find(c => c.code === card?.currency)?.rateToBase || 1;
-    return sum + (t.amount * rate);
-  }, 0);
-
-  const bankOtherWithdrawals = bankTransactions.filter(t => t.type === 'withdrawal').reduce((sum, t) => {
-    const card = bankCards.find(c => c.id === t.cardId);
-    const rate = currencies.find(c => c.code === card?.currency)?.rateToBase || 1;
-    return sum + (t.amount * rate);
-  }, 0);
-
-  const totalBankDeposits = bankPaymentsReceived + bankOtherDeposits;
-  const totalBankWithdrawals = bankSupplierPayments + bankOtherWithdrawals;
-
-  const totalIncomes = totalCashIncomes + bankOtherDeposits;
-  const totalExpenses = totalCashExpenses + totalBankWithdrawals;
-  const netFlow = totalSales + totalIncomes - totalExpenses;
-
-  const txCount = (transactions || []).length;
-
-  const formatMoney = (amount: number, code: string = baseCurrency.code) => {
-    const currency = currencyByCode.get(code) || baseCurrency;
-    const hasDecimals = amount % 1 !== 0;
-    const formatted = amount.toLocaleString('es-CU', {
-      minimumFractionDigits: hasDecimals ? 2 : 0,
-      maximumFractionDigits: 2
-    });
-    return `${currency.symbol}${formatted} ${currency.code}`;
-  };
-
-  const getProductName = (itemProduct: any) => {
-    if (!itemProduct) return 'Desconocido';
-    if (typeof itemProduct === 'string') {
-      const p = productById.get(itemProduct);
-      return p ? p.name : itemProduct;
-    }
-    return itemProduct.name || 'Desconocido';
-  };
   const [activeTab, setActiveTab] = useState<'sales' | 'payroll' | 'sessions' | 'discrepancies' | 'movements' | 'transfers'>('sales');
   const [salesViewMode, setSalesViewMode] = useState<'by_shift' | 'all_tickets'>('by_shift');
   const [transferFromFilter, setTransferFromFilter] = useState<string>('all');
