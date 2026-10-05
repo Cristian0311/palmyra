@@ -2,9 +2,10 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ChevronLeft, ChevronRight, CircleCheck, RotateCcw, Sparkles, X } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { useStore } from "../../store/useStore";
-import { getAccessibleNumaTourSteps, type NumaTourStep } from "./palmiGuideSteps";
+import { getAccessiblePalmiTourSteps, type PalmiTourStep } from "./palmiGuideSteps";
 import { PalmiMascot } from "./PalmiMascot";
 import "./palmiGuide.css";
+import PWAInstallPrompt from "./PWAInstallPrompt";
 import PWAInstallPrompt from "./PWAInstallPrompt";
 
 const KEY = "palmyra-numa-guide-v4";
@@ -28,7 +29,7 @@ function findTarget(selectors:string[]|undefined){
   for(const selector of selectors){try{const t=document.querySelector<HTMLElement>(selector);if(t)return t}catch{}}
   return null;
 }
-function selectorsFor(step:NumaTourStep|undefined,phase:Phase){
+function selectorsFor(step:PalmiTourStep|undefined,phase:Phase){
   if(!step)return [];
   if(phase==="action"&&step.navSelector)return [step.navSelector];
   if(phase==="explain"&&step.selector)return step.selector.split(",").map(s=>s.trim()).filter(Boolean);
@@ -40,7 +41,7 @@ export default function PalmiGuide(){
   const darkMode=useStore(s=>s.storeConfig.darkMode);
   const [isMobile,setIsMobile]=useState(()=>typeof window!=="undefined"&&window.matchMedia("(max-width: 720px)").matches);
   useEffect(()=>{const media=window.matchMedia("(max-width: 720px)");const onChange=()=>setIsMobile(media.matches);onChange();media.addEventListener?.("change",onChange);return()=>media.removeEventListener?.("change",onChange)},[]);
-  const steps=useMemo(()=>getAccessibleNumaTourSteps(currentUser,isMobile),[currentUser,isMobile]);
+  const steps=useMemo(()=>getAccessiblePalmiTourSteps(currentUser,isMobile),[currentUser,isMobile]);
   const location=useLocation();
   const [open,setOpen]=useState(false),[index,setIndex]=useState(0),[phase,setPhase]=useState<Phase>("explain"),[rect,setRect]=useState<DOMRect|null>(null),[position,setPosition]=useState<Position|null>(()=>readPosition());
   const anchor=useRef<HTMLDivElement|null>(null);
