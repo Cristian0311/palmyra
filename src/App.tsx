@@ -39,7 +39,6 @@ const Suppliers = lazy(() => import("./pages/Suppliers"));
 const InventoryAudit = lazy(() => import("./pages/InventoryAudit"));
 const Banks = lazy(() => import("./pages/Banks"));
 const PlatformAdmin = lazy(() => import("./pages/PlatformAdmin"));
-const Security = lazy(() => import("./pages/Security"));
 const SupportCenter = lazy(() => import("./pages/SupportCenter"));
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 
