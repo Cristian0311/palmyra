@@ -12,6 +12,7 @@ import { getOfflineQueueCount, getOfflineConflictCount, waitForOfflineQueueReady
 import { normalizeSemanticText } from "../utils/textUtils";
 import { POSCatalog } from "../components/POSCatalog";
 import { printThermalReceipt as printThermalReceiptDirect } from "../lib/escpos";
+import { createPaymentMath, formatMoney, isCupLikeCurrency } from "../modules/pos/utils/paymentMath";
 const CheckoutModal = lazy(() => import("../components/pos/CheckoutModal"));
 
 const POSReceiptModal = lazy(() => import("../components/POSReceiptModal"));
@@ -870,22 +871,7 @@ export default function POS() {
   // Todos los importes del checkout se convierten a la moneda base con una
   // tasa válida. La moneda base siempre vale 1, incluso si la configuración
   // remota llega momentáneamente sin rateToBase.
-  const getSafeRateToBase = (code: string) => {
-    if (code === baseCurrency.code) return 1;
-    const rate = Number(currencies.find(c => c.code === code)?.rateToBase);
-    return Number.isFinite(rate) && rate > 0 ? rate : 1;
-  };
-
-  const toBaseAmount = (amount: number, code: string) => {
-    const value = Number(amount);
-    if (!Number.isFinite(value) || value <= 0) return 0;
-    return value * getSafeRateToBase(code);
-  };
-
-  const roundBaseAmount = (amount: number) => {
-    const value = Number(amount) || 0;
-    return isCupBase ? Math.round(value) : Math.round(value * 100) / 100;
-  };
+  const { getSafeRateToBase, toBaseAmount, roundBaseAmount } = createPaymentMath(baseCurrency, currencies, isCupBase);
 
   const totalPaidBase = roundBaseAmount(paymentLines.reduce(
     (sum, line) => sum + toBaseAmount(line.amount, line.code),
@@ -896,6 +882,7 @@ export default function POS() {
   const remainingBase = Math.max(0, balanceBase);
   const changeBase = Math.max(0, -balanceBase);
   const isPaid = remainingBase <= (isCupBase ? 0 : 0.01) && totalBase > 0;
+
 
   const generateSerial = () => {
     const randomSN = `SN-${Math.floor(Math.random() * 100000000).toString().padStart(8, '0')}`;
@@ -1087,17 +1074,6 @@ export default function POS() {
     }
   };
 
-  const formatMoney = (amount: number, symbol: string) => {
-    // Determine decimals: CUP/MN/CUC should be integer
-    const isCup = symbol === 'CUP' || symbol === 'MN' || symbol === 'CUC' || symbol === '₱';
-    const decimals = isCup ? 0 : 2;
-    const formatted = amount.toLocaleString('es-CU', { 
-      minimumFractionDigits: decimals, 
-      maximumFractionDigits: decimals 
-    });
-    return `${symbol} ${formatted}`;
-  };
-
   const addPaymentLine = () => {
     const newId = crypto.randomUUID();
     const curr = currencies.find(c => c.code === baseCurrency.code);
@@ -1112,8 +1088,6 @@ export default function POS() {
   };
 
   const updatePaymentLine = (id: string, field: keyof PaymentLine, value: any) => {
-    const isCupSymbol = (s: string) => s === 'CUP' || s === 'MN' || s === 'CUC' || s === '₱';
-
     setPaymentLines(prev => {
       let nextLines = prev.map(p => {
         if (p.id !== id) return p;
@@ -1127,12 +1101,12 @@ export default function POS() {
             const amountInBase = p.amount * oldCurrency.rateToBase;
             const convertedAmount = amountInBase / newCurrency.rateToBase;
             // If new currency is CUP-like, round to integer, otherwise keep 2 decimals
-            updated.amount = isCupSymbol(value) ? Math.round(convertedAmount) : Math.round(convertedAmount * 100) / 100;
+            updated.amount = isCupLikeCurrency(value) ? Math.round(convertedAmount) : Math.round(convertedAmount * 100) / 100;
           }
         }
 
         // If amount is directly edited and it's CUP, round to integer
-        if (field === 'amount' && isCupSymbol(updated.code)) {
+        if (field === 'amount' && isCupLikeCurrency(updated.code)) {
           updated.amount = Math.round(updated.amount);
         }
 
@@ -1157,7 +1131,7 @@ export default function POS() {
         }
 
         // Ensure that if it's CUP, it's ALWAYS an integer regardless of the field being changed
-        if (isCupSymbol(updated.code)) {
+        if (isCupLikeCurrency(updated.code)) {
           updated.amount = Math.round(updated.amount);
         }
 
