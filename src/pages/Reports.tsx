@@ -13,6 +13,7 @@ import { Transaction, Product, CashRegisterSession, CashMovement } from "../type
 
 const AddItemToShiftModal = lazy(() => import("../components/reports/AddItemToShiftModal"));
 const ReportsCharts = lazy(() => import("../components/reports/ReportsCharts"));
+import { getSessionDiscrepancyInfo as getSessionDiscrepancyInfoUtil } from '../modules/reports/utils/getSessionDiscrepancyInfo';
 import { cn } from "../lib/utils";
 import { InfoTooltip } from "../components/InfoTooltip";
 import MultiCurrencyTotal from "../components/reports/MultiCurrencyTotal";
@@ -424,181 +425,19 @@ export default function Reports() {
     }
   };
 
-  // Helper to compute discrepancy data for any session (persisted or computed)
-  const getSessionDiscrepancyInfo = (session: typeof cashSessions[0]) => {
-    // 1. If it already has persisted discrepancy details
-    if (session.discrepancyDetails && session.discrepancyDetails.length > 0) {
-      let totalShortageBase = 0;
-      let totalOverageBase = 0;
-      session.discrepancyDetails.forEach(dd => {
-        const rate = currencies.find(c => c.code === dd.currencyCode)?.rateToBase || 1;
-        if (dd.difference < 0) {
-          totalShortageBase += Math.abs(dd.difference) * rate;
-        } else if (dd.difference > 0) {
-          totalOverageBase += dd.difference * rate;
-        }
-      });
-
-      const settlement = salarySettlements.find(st => st.sessionId === session.id);
-      const deductionAmount = session.discrepancyDeductionApplied ?? settlement?.discrepancyDeduction ?? 0;
-
-      return {
-        hasDiscrepancy: true,
-        isForcedClose: Boolean(session.isForcedClose),
-        details: session.discrepancyDetails,
-        totalShortageBase,
-        totalOverageBase,
-        netDifferenceBase: totalOverageBase - totalShortageBase,
-        deducted: session.deductedFromSalary || deductionAmount > 0,
-        deductionAmount,
-        aiDiagnostic: session.aiDiagnostic,
-        matchingProducts: session.matchingProductsAnalysis || [],
-        auditStatus: session.auditStatus || 'pending_review',
-        auditNotes: session.auditNotes || ''
-      };
-    }
-
-    // 2. Dynamic check for any session with closingBalances
-    if (!session.closingBalances || session.closingBalances.length === 0) {
-      if (session.isForcedClose || session.hasDiscrepancy) {
-        return {
-          hasDiscrepancy: true,
-          isForcedClose: true,
-          details: [],
-          totalShortageBase: 0,
-          totalOverageBase: 0,
-          netDifferenceBase: 0,
-          deducted: false,
-          deductionAmount: 0,
-          aiDiagnostic: session.aiDiagnostic,
-          matchingProducts: session.matchingProductsAnalysis || [],
-          auditStatus: session.auditStatus || 'pending_review',
-          auditNotes: session.auditNotes || ''
-        };
-      }
-      return null;
-    }
-
-    const expected: { currencyCode: string; method: 'cash' | 'transfer'; amount: number }[] = [
-      { currencyCode: baseCurrency.code, method: 'cash', amount: session.openingBalance || 0 }
-    ];
-
-    const sessionTxs = transactions.filter(t => 
-      t.sessionId 
-        ? t.sessionId === session.id
-        : (t.branchId === session.branchId && 
-           new Date(t.date).getTime() >= new Date(session.openedAt).getTime() && 
-           (!session.closedAt || new Date(t.date).getTime() <= new Date(session.closedAt).getTime()))
-    );
-
-    sessionTxs.forEach(tx => {
-      (tx.payments || []).forEach(p => {
-        const ex = expected.find(e => e.currencyCode === p.currencyCode && e.method === p.method);
-        if (ex) ex.amount += p.amount;
-        else expected.push({ currencyCode: p.currencyCode, method: p.method as any, amount: p.amount });
-      });
-      if (tx.changePayments && tx.changePayments.length > 0) {
-        tx.changePayments.forEach(cp => {
-          const ex = expected.find(e => e.currencyCode === cp.currencyCode && e.method === cp.method);
-          if (ex) ex.amount -= cp.amount;
-          else expected.push({ currencyCode: cp.currencyCode, method: cp.method as any, amount: -cp.amount });
-        });
-      } else if (tx.changeGiven && tx.changeGiven > 0) {
-        const ex = expected.find(e => e.currencyCode === baseCurrency.code && e.method === 'cash');
-        if (ex) ex.amount -= tx.changeGiven;
-        else expected.push({ currencyCode: baseCurrency.code, method: 'cash', amount: -tx.changeGiven });
-      }
+  // Helper de discrepancias con dependencias explícitas para mantener Reports desacoplado.
+  const getSessionDiscrepancyInfo = (session: typeof cashSessions[0]) =>
+    getSessionDiscrepancyInfoUtil(session, {
+      currencies,
+      salarySettlements,
+      baseCurrency,
+      transactions,
+      products,
     });
-
-    (session.movements || []).forEach(m => {
-      const ex = expected.find(e => e.currencyCode === m.currencyCode && e.method === 'cash');
-      if (ex) ex.amount += (m.type === 'income' ? m.amount : -m.amount);
-      else expected.push({ currencyCode: m.currencyCode, method: 'cash', amount: m.type === 'income' ? m.amount : -m.amount });
-    });
-
-    const details: {
-      currencyCode: string;
-      method: 'cash' | 'transfer';
-      expected: number;
-      actual: number;
-      difference: number;
-    }[] = [];
-
-    expected.forEach(eb => {
-      const act = session.closingBalances?.find(cb => cb.currencyCode === eb.currencyCode && cb.method === eb.method)?.amount || 0;
-      const diff = act - eb.amount;
-      if (Math.abs(diff) > 0.01) {
-        details.push({
-          currencyCode: eb.currencyCode,
-          method: eb.method,
-          expected: eb.amount,
-          actual: act,
-          difference: diff
-        });
-      }
-    });
-
-    session.closingBalances?.forEach(cb => {
-      if (!expected.some(eb => eb.currencyCode === cb.currencyCode && eb.method === cb.method)) {
-        if (cb.amount > 0.01) {
-          details.push({
-            currencyCode: cb.currencyCode,
-            method: cb.method as any,
-            expected: 0,
-            actual: cb.amount,
-            difference: cb.amount
-          });
-        }
-      }
-    });
-
-    if (details.length === 0 && !session.isForcedClose && !session.hasDiscrepancy) {
-      return null;
-    }
-
-    let totalShortageBase = 0;
-    let totalOverageBase = 0;
-    details.forEach(dd => {
-      const rate = currencies.find(c => c.code === dd.currencyCode)?.rateToBase || 1;
-      if (dd.difference < 0) totalShortageBase += Math.abs(dd.difference) * rate;
-      else if (dd.difference > 0) totalOverageBase += dd.difference * rate;
-    });
-
-    const matchingProducts = details.map(dd => {
-      const matchedProducts = products
-        .filter(p => Math.abs(p.price - Math.abs(dd.difference)) < 1)
-        .slice(0, 3)
-        .map(p => ({ id: p.id, name: p.name, price: p.price }));
-      return {
-        currencyCode: dd.currencyCode,
-        difference: dd.difference,
-        matchedProducts
-      };
-    }).filter(m => m.matchedProducts.length > 0);
-
-    const settlement = salarySettlements.find(st => st.sessionId === session.id);
-    const deductionAmount = session.discrepancyDeductionApplied ?? settlement?.discrepancyDeduction ?? 0;
-
-    return {
-      hasDiscrepancy: true,
-      isForcedClose: Boolean(session.isForcedClose),
-      details,
-      totalShortageBase,
-      totalOverageBase,
-      netDifferenceBase: totalOverageBase - totalShortageBase,
-      deducted: deductionAmount > 0,
-      deductionAmount,
-      aiDiagnostic: session.aiDiagnostic,
-      matchingProducts,
-      auditStatus: session.auditStatus || 'pending_review',
-      auditNotes: session.auditNotes || ''
-    };
-  };
 
   const allDiscrepancySessions = useMemo(() => {
     const list: {
-      session: typeof cashSessions[0];
-      info: NonNullable<ReturnType<typeof getSessionDiscrepancyInfo>>;
+      session: typeof cashSessions[0];      info: NonNullable<ReturnType<typeof getSessionDiscrepancyInfo>>;
     }[] = [];
 
     cashSessions.forEach(s => {
@@ -1197,8 +1036,7 @@ export default function Reports() {
               onChange={(e) => setSelectedBranchFilter(e.target.value)}
               className="bg-transparent text-[8px] leading-none font-black text-primary uppercase outline-none cursor-pointer max-w-[8rem] sm:max-w-[12rem] truncate"
             >
-              <option value="all" className="bg-secondary">Todos</option>
-              {branches.map(b => (
+              <option value="all" className="bg-secondary">Todos</option>              {branches.map(b => (
                 <option key={b.id} value={b.id} className="bg-secondary">{b.name}</option>
               ))}
             </select>
@@ -1797,8 +1635,7 @@ export default function Reports() {
                               title="Ver Detalle del Turno y Liquidación"
                               className="h-7 px-2.5 inline-flex items-center justify-center gap-1 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/80 text-rose-700 dark:text-rose-300 text-[9px] font-black uppercase rounded-lg border border-rose-200 dark:border-rose-900/50 transition-all active:scale-95 shadow-2xs cursor-pointer"
                             >
-                              <Eye className="w-3 h-3 text-rose-600 dark:text-rose-400" />
-                              <span>Detalle</span>
+                              <Eye className="w-3 h-3 text-rose-600 dark:text-rose-400" />                              <span>Detalle</span>
                             </button>
                             <button
                               onClick={() => handlePrintShiftTicket(item.sessionId)}
@@ -2398,7 +2235,6 @@ export default function Reports() {
                             {m.turnLabel}
                           </span>
                         </td>
-
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           <div className="flex items-center gap-1.5">
                             <span className="text-[11px] font-black text-primary uppercase">
@@ -2997,8 +2833,7 @@ export default function Reports() {
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-[10px] font-black text-rose-700 dark:text-rose-300 uppercase bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-rose-200 dark:border-rose-900">
                           {sequentialTurn}
-                        </span>
-                        <span className="text-[9px] font-bold text-muted uppercase">
+                        </span>                        <span className="text-[9px] font-bold text-muted uppercase">
                           {session.workerName || users.find(u => u.id === session.userId)?.name || 'Vendedor'}
                         </span>
                       </div>
@@ -3597,8 +3432,7 @@ export default function Reports() {
                             )}
                           >
                             <Plus className="w-3.5 h-3.5" />
-                            <span>Registrar venta omitida · Ajustar stock</span>
-                          </button>
+                            <span>Registrar venta omitida · Ajustar stock</span>                          </button>
                           <button
                             type="button"
                             onClick={() => setAuditActionMode('subtract')}
@@ -4197,8 +4031,7 @@ export default function Reports() {
                   <span className="text-muted font-bold">Apertura:</span>
                   <span className="font-mono text-primary">{new Date(sessionToCloseModal.openedAt).toLocaleString('es-CU')}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-muted font-bold">Fondo Inicial:</span>
+                <div className="flex justify-between">                  <span className="text-muted font-bold">Fondo Inicial:</span>
                   <span className="font-black text-primary">{formatMoney(sessionToCloseModal.openingBalance)}</span>
                 </div>
                 {(() => {
