@@ -15,6 +15,8 @@ const AddItemToShiftModal = lazy(() => import("../components/reports/AddItemToSh
 const ReportsCharts = lazy(() => import("../components/reports/ReportsCharts"));
 import { buildCashMovementReceiptLines, buildDiscrepancyReceiptLines, buildShiftReceiptLines, buildTransferReceiptLines } from '../modules/reports/utils/reportReceiptLines';
 import { getSessionDiscrepancyInfo as getSessionDiscrepancyInfoUtil } from '../modules/reports/utils/getSessionDiscrepancyInfo';
+import { buildDetailedMovements, calculatePerfectSessionBalances } from '../modules/reports/utils/reportSessionCalculations';
+import { useReportsPrinting } from '../modules/reports/hooks/useReportsPrinting';
 import { cn } from "../lib/utils";
 import { InfoTooltip } from "../components/InfoTooltip";
 import MultiCurrencyTotal from "../components/reports/MultiCurrencyTotal";
@@ -341,51 +343,6 @@ export default function Reports() {
     }
   };
 
-  const handlePrintShiftTicket = async (sessionId: string) => {
-    setPrintSessionId(sessionId);
-    const session = cashSessions.find(s => s.id === sessionId);
-    if (!session) {
-      setTimeout(() => window.print(), 100);
-      return;
-    }
-
-    try {
-      const branch = branches.find(b => b.id === session.branchId);
-      const payrollItem = payrollList.find(p => p.sessionId === session.id);
-      const sequentialTurn = sessionTurnMap.get(session.id) || session.id;
-      const workerName = session.workerName || users.find(u => u.id === session.userId)?.name || 'Vendedor';
-      const sessionTx = transactions.filter(t => t.branchId === session.branchId && t.sessionId === session.id);
-
-      const lines = buildShiftReceiptLines(session, {
-        branchName: branch?.name || 'Sucursal Principal',
-        sequentialTurn,
-        workerName,
-        transactions: sessionTx,
-        products,
-        payrollItem: payrollItem ? {
-          baseSalary: payrollItem.baseSalary,
-          commissions: payrollItem.commissions,
-          totalSalary: payrollItem.totalSalary,
-          status: payrollItem.status,
-        } : undefined,
-        getProductName,
-        formatMoney,
-        format58mmLine,
-      });
-
-      await printThermalReceipt({
-        lines,
-        openDrawer: false,
-        width: (receiptConfig?.printerWidth || '58mm') as '58mm' | '80mm',
-        onError: (err) => {
-          console.warn('Direct thermal print failed:', err);
-        }
-      });
-    } catch (e) {
-      console.error('Error printing thermal shift ticket:', e);
-    }
-  };
-
   // Helper de discrepancias con dependencias explícitas para mantener Reports desacoplado.
   const getSessionDiscrepancyInfo = (session: typeof cashSessions[0]) =>
     getSessionDiscrepancyInfoUtil(session, {
@@ -439,51 +396,10 @@ export default function Reports() {
     });
   }, [allDiscrepancySessions, selectedBranchFilter, selectedFilterDate, sessionFilter, discrepancyTypeFilter]);
 
-  const allDetailedMovements = useMemo(() => {
-    const list: {
-      id: string;
-      sessionId: string;
-      turnLabel: string;
-      branchId: string;
-      branchName: string;
-      workerName: string;
-      type: 'income' | 'expense';
-      amount: number;
-      currencyCode: string;
-      description: string;
-      date: string;
-      session: typeof cashSessions[0];
-    }[] = [];
-
-    cashSessions.forEach(session => {
-      const turnLabel = sessionTurnMap.get(session.id) || session.id;
-      const branchName = branches.find(b => b.id === session.branchId)?.name || 'Sucursal';
-      const workerName = session.workerName || users.find(u => u.id === session.userId)?.name || 'Cajero';
-
-      (session.movements || []).forEach(m => {
-        list.push({
-          id: m.id,
-          sessionId: session.id,
-          turnLabel,
-          branchId: m.branchId || session.branchId,
-          branchName,
-          workerName: m.workerName || workerName,
-          type: m.type,
-          amount: m.amount,
-          currencyCode: m.currencyCode,
-          description: m.description,
-          date: m.date,
-          session
-        });
-      });
-    });
-
-    return list.sort((a, b) => {
-      const turnOrder = sortSessionsByTurn(a.session, b.session);
-      if (turnOrder !== 0) return turnOrder;
-      return new Date(a.date).getTime() - new Date(b.date).getTime();
-    });
-  }, [cashSessions, sessionTurnMap, branches, users, sortSessionsByTurn]);
+  const allDetailedMovements = useMemo(
+    () => buildDetailedMovements(cashSessions, sessionTurnMap, branches, users, sortSessionsByTurn),
+    [cashSessions, sessionTurnMap, branches, users, sortSessionsByTurn],
+  );
 
   const filteredDetailedMovements = useMemo(() => {
     return allDetailedMovements.filter(m => {
@@ -507,84 +423,26 @@ export default function Reports() {
     });
   }, [allDetailedMovements, selectedBranchFilter, selectedFilterDate, sessionFilter, movementTypeFilter, movementCurrencyFilter]);
 
-  const handlePrintDiscrepancyTicket = async (session: typeof cashSessions[0]) => {
-    const info = getSessionDiscrepancyInfo(session);
-    if (!info) return;
-
-    try {
-      const branch = branches.find(b => b.id === session.branchId);
-      const sequentialTurn = sessionTurnMap.get(session.id) || session.id;
-      const workerName = session.workerName || users.find(u => u.id === session.userId)?.name || 'Cajero';
-      const lines = buildDiscrepancyReceiptLines(session, info, {
-        branchName: branch?.name || 'Sucursal Principal',
-        sequentialTurn,
-        workerName,
-        formatMoney,
-        format58mmLine,
-      });
-
-      await printThermalReceipt({
-        lines,
-        openDrawer: false,
-        width: '58mm'
-      });
-      if (addNotification) addNotification("Comprobante de auditoría enviado a impresión", "success");
-    } catch (e) {
-      console.error("Error printing discrepancy ticket:", e);
-    }
-  };
-
-  const handlePrintCashMovementTicket = async (movement: {
-    id: string;
-    turnLabel: string;
-    branchName: string;
-    workerName: string;
-    type: 'income' | 'expense';
-    amount: number;
-    currencyCode: string;
-    description: string;
-    date: string;
-  }) => {
-    try {
-      const lines = buildCashMovementReceiptLines(movement, { formatMoney, format58mmLine });
-      await printThermalReceipt({
-        lines,
-        openDrawer: false,
-        width: '58mm'
-      });
-      if (addNotification) addNotification("Vale de movimiento enviado a impresión", "success");
-    } catch (e) {
-      console.error("Error printing cash movement voucher:", e);
-    }
-  };
-
-  const handlePrintTransferTicket = async (transfer: import('../types').InventoryTransfer) => {
-    try {
-      const user = users.find(u => u.id === transfer.userId);
-      const fromB = branches.find(b => b.id === transfer.fromBranchId)?.name || transfer.fromBranchName || 'Origen';
-      const toB = branches.find(b => b.id === transfer.toBranchId)?.name || transfer.toBranchName || 'Destino';
-      const width = (receiptConfig?.printerWidth || '58mm') as '58mm' | '80mm';
-      const lines = buildTransferReceiptLines(transfer, {
-        businessName: receiptConfig?.businessName || "MARÉ POS",
-        userName: user?.name || transfer.userId || 'Sistema',
-        fromBranchName: fromB,
-        toBranchName: toB,
-        width,
-        formatMoney,
-        format58mmLine,
-      });
-
-      await printThermalReceipt({
-        lines,
-        width
-      });
-      addNotification("Comprobante de transferencia enviado a impresión", "success");
-    } catch (e) {
-      const error = e as Error;
-      console.error("Error printing transfer ticket:", e);
-      addNotification(error?.message || "No se pudo imprimir el comprobante de transferencia.", "error");
-    }
-  };
+  const {
+    handlePrintShiftTicket,
+    handlePrintDiscrepancyTicket,
+    handlePrintCashMovementTicket,
+    handlePrintTransferTicket,
+  } = useReportsPrinting({
+    cashSessions,
+    branches,
+    users,
+    transactions,
+    products,
+    payrollList,
+    sessionTurnMap,
+    receiptConfig,
+    getProductName: product => getProductName(product as any),
+    formatMoney,
+    getSessionDiscrepancyInfo,
+    addNotification,
+    setPrintSessionId,
+  });
 
   // State for Excel Export Menu
   const getExportData = (): ExcelExportData => {
@@ -3210,49 +3068,11 @@ export default function Reports() {
                           type="button"
                           onClick={() => {
                             // 1. Recalcular saldos esperados para esta sesión
-                            const expected: { currencyCode: string; method: 'cash' | 'transfer'; amount: number }[] = [
-                              { currencyCode: baseCurrency.code, method: 'cash', amount: session.openingBalance || 0 }
-                            ];
-
-                            const sessionTxs = transactions.filter(t => 
-                              t.sessionId 
-                                ? t.sessionId === session.id
-                                : (t.branchId === session.branchId && 
-                                   new Date(t.date).getTime() >= new Date(session.openedAt).getTime() && 
-                                   (!session.closedAt || new Date(t.date).getTime() <= new Date(session.closedAt).getTime()))
-                            );
-
-                            sessionTxs.forEach(tx => {
-                              (tx.payments || []).forEach(p => {
-                                const ex = expected.find(e => e.currencyCode === p.currencyCode && e.method === p.method);
-                                if (ex) ex.amount += p.amount;
-                                else expected.push({ currencyCode: p.currencyCode, method: p.method as any, amount: p.amount });
-                              });
-                              if (tx.changePayments && tx.changePayments.length > 0) {
-                                tx.changePayments.forEach(cp => {
-                                  const ex = expected.find(e => e.currencyCode === cp.currencyCode && e.method === cp.method);
-                                  if (ex) ex.amount -= cp.amount;
-                                  else expected.push({ currencyCode: cp.currencyCode, method: cp.method as any, amount: -cp.amount });
-                                });
-                              } else if (tx.changeGiven && tx.changeGiven > 0) {
-                                const ex = expected.find(e => e.currencyCode === baseCurrency.code && e.method === 'cash');
-                                if (ex) ex.amount -= tx.changeGiven;
-                                else expected.push({ currencyCode: baseCurrency.code, method: 'cash', amount: -tx.changeGiven });
-                              }
+                            const perfectBalances = calculatePerfectSessionBalances(session, {
+                              baseCurrencyCode: baseCurrency.code,
+                              currencies,
+                              transactions,
                             });
-
-                            (session.movements || []).forEach(m => {
-                              const ex = expected.find(e => e.currencyCode === m.currencyCode && e.method === 'cash');
-                              if (ex) ex.amount += (m.type === 'income' ? m.amount : -m.amount);
-                              else expected.push({ currencyCode: m.currencyCode, method: 'cash', amount: m.type === 'income' ? m.amount : -m.amount });
-                            });
-
-                            const perfectBalances = expected.map(e => ({
-                              currencyCode: e.currencyCode as any,
-                              amount: e.amount,
-                              method: e.method,
-                              exchangeRate: currencies.find(c => c.code === e.currencyCode)?.rateToBase || 1
-                            }));
 
                             // 2. Actualizar el turno para un Cuadre Perfecto
                             updateCashSession(session.id, {
