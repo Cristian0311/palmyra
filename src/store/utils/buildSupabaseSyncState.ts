@@ -1,7 +1,7 @@
 import type { AppState } from "../storeTypes";
 import { getOfflineQueue } from "../../services/offlineQueue";
-import { replaceRemoteRecords } from "../utils/replaceRemoteRecords";
-import { mergeUnique } from "../utils/syncMerges";
+import { replaceRemoteRecords } from "./replaceRemoteRecords";
+import { mergeUnique } from "./syncMerges";
 
 type SyncSnapshot = any;
 
@@ -292,9 +292,6 @@ return {
   salarySettlements: mergedSalarySettlements,
   receiptConfig: data.receiptConfig ? { ...state.receiptConfig, ...data.receiptConfig } : state.receiptConfig,
   storeConfig: data.storeConfig ? { ...state.storeConfig, ...data.storeConfig } : state.storeConfig,
-  lastTurnNumber: data.lastTurnNumber !== undefined ? Math.max(state.lastTurnNumber, data.lastTurnNumber) : state.lastTurnNumber,
-  lastSyncTime: new Date().toISOString(),
-  syncResult: result,
-  isSyncing: false
+  lastTurnNumber: data.lastTurnNumber !== undefined ? Math.max(state.lastTurnNumber, data.lastTurnNumber) : state.lastTurnNumber
 };
 }
