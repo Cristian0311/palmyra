@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Check, Copy, Edit3, Mail, MapPin, MoreHorizontal, Plus, RefreshCw, ShieldCheck, UserRound, UserX, X, Shield, Save } from "lucide-react";
+import { AtSign, BriefcaseBusiness, Check, CheckCircle2, Copy, Edit3, Hash, Info, Link2, Mail, MapPin, MoreHorizontal, Plus, RefreshCw, ShieldCheck, UserRound, UserX, WalletCards, Warehouse, X, Shield, Save } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useStore } from "../store/useStore";
 import { loadSaaSContext } from "../services/saas";
@@ -17,6 +17,7 @@ import {
   type TeamSnapshot
 } from "../services/team";
 import { cn } from "../lib/utils";
+import "./team.css";
 
 function copyText(value: string) {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
@@ -501,82 +502,66 @@ export default function Team() {
       </section>
 
       {showForm && (
-        <div className="fixed inset-0 z-[200] bg-slate-950/60 backdrop-blur-sm p-3 sm:p-5 flex items-center justify-center" onClick={() => setShowForm(false)}>
-          <form onSubmit={submit} onClick={e => e.stopPropagation()} className="palmyra-mobile-modal w-full max-w-xl bg-secondary border border-base rounded-2xl sm:rounded-3xl shadow-2xl p-3 sm:p-5 max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain">
-            <div className="flex items-start justify-between gap-2 mb-3 sm:mb-4">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-rose-500">{editing ? "Editar" : "Nuevo"}</p>
-                <h2 className="text-lg sm:text-xl font-black text-primary break-words">{editing ? "Trabajador" : "Trabajador y acceso"}</h2>
-                <p className="text-[10px] sm:text-xs text-muted mt-1 leading-4">El empleado y la cuenta web quedan vinculados, pero no comparten credenciales con el dueño.</p>
+        <div className="fixed inset-0 z-[200] bg-slate-950/70 backdrop-blur-md p-3 sm:p-5 flex items-center justify-center" onClick={() => setShowForm(false)}>
+          <form onSubmit={submit} onClick={e => e.stopPropagation()} className="team-employee-modal w-full max-w-2xl bg-secondary border border-base rounded-[28px] shadow-2xl overflow-hidden">
+            <div className="team-employee-modal-head">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="team-employee-hero-icon" aria-hidden="true"><BriefcaseBusiness className="w-5 h-5" /></div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="team-employee-kicker">{editing ? "Equipo · Editar" : "Equipo · Nuevo acceso"}</span>
+                    <span className="team-employee-status"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Seguro y vinculado</span>
+                  </div>
+                  <h2 className="text-xl sm:text-2xl font-black text-primary tracking-tight mt-1">{editing ? "Editar trabajador" : "Agregar trabajador"}</h2>
+                  <p className="text-[11px] sm:text-xs text-muted mt-1.5 leading-5 max-w-xl">Crea la ficha del trabajador y, en el mismo flujo, decide si tendrá acceso web independiente.</p>
+                </div>
               </div>
-              <button type="button" onClick={() => setShowForm(false)} className="w-9 h-9 rounded-xl bg-subtle text-muted flex items-center justify-center">
-                <X className="w-4 h-4" />
-              </button>
+              <button type="button" onClick={() => setShowForm(false)} className="w-10 h-10 rounded-2xl bg-subtle text-muted hover:text-primary hover:bg-primary border border-base flex items-center justify-center shrink-0 transition" aria-label="Cerrar formulario"><X className="w-4 h-4" /></button>
             </div>
-
-            <div className="grid sm:grid-cols-2 gap-2.5 sm:gap-3">
-              <label className="block">
-                <span className="label">Nombre completo</span>
-                <input className="field" value={form.fullName} onChange={e => setForm({...form, fullName:e.target.value})} disabled={busy} />
-              </label>
-              <label className="block">
-                <span className="label">Código de empleado</span>
-                <input className="field" value={form.employeeCode} onChange={e => setForm({...form, employeeCode:e.target.value})} disabled={busy} />
-              </label>
-              <label className="block">
-                <span className="label">Salario base</span>
-                <input type="number" min="0" step="0.01" className="field" value={form.baseSalary} onChange={e => setForm({...form, baseSalary:e.target.value})} disabled={busy} />
-              </label>
-              <label className="block">
-                <span className="label">Rol</span>
-                <select className="field" value={form.roleId} onChange={e => setForm({...form, roleId:e.target.value})} disabled={busy || availableRoles.length===0}>
-                  {availableRoles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}
-                </select>
-                {!canManageRoles && <span className="help">Solo puedes asignar el rol operativo estándar.</span>}
-              </label>
+            <div className="team-employee-stepbar" aria-label="Secciones del formulario">
+              <div className="team-step-item team-step-active"><span>01</span><div><strong>Información</strong><small>Datos personales</small></div></div>
+              <div className="team-step-line" />
+              <div className="team-step-item"><span>02</span><div><strong>Operación</strong><small>Rol y almacenes</small></div></div>
+              <div className="team-step-line" />
+              <div className="team-step-item"><span>03</span><div><strong>Acceso</strong><small>Cuenta web</small></div></div>
             </div>
-
-            <div className="mt-3 sm:mt-4">
-              <span className="label">Almacenes permitidos</span>
-              <div className="grid sm:grid-cols-2 gap-1.5 mt-2">
-                {(snapshot?.warehouses || []).filter(warehouse => warehouse.active).map(warehouse => (
-                  <label key={warehouse.id} className={cn("flex items-center gap-2 p-2.5 rounded-xl border cursor-pointer min-w-0", form.warehouseIds.includes(warehouse.id) ? "border-rose-300 bg-rose-50/50 dark:bg-rose-950/20" : "border-base bg-primary")}>
-                    <input type="checkbox" checked={form.warehouseIds.includes(warehouse.id)} onChange={() => toggleWarehouse(warehouse.id)} disabled={busy} />
-                    <span className="text-xs font-bold text-primary">{warehouse.name}</span>
-                  </label>
-                ))}
-              </div>
+            <div className="team-employee-modal-body">
+              <section className="team-form-section" data-section="employee-info">
+                <div className="team-form-section-head"><div className="team-form-section-icon"><UserRound className="w-4 h-4" /></div><div><h3>Información del trabajador</h3><p>Identifica a la persona que formará parte del equipo.</p></div></div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <label className="team-field-wrap sm:col-span-2"><span className="team-field-label">Nombre completo <b>*</b></span><span className="team-field"><span className="team-field-icon"><UserRound className="w-4 h-4" /></span><input value={form.fullName} onChange={e => setForm({...form, fullName:e.target.value})} disabled={busy} className="team-field-input" placeholder="Ej. María González Pérez" autoComplete="name" /></span></label>
+                  <label className="team-field-wrap"><span className="team-field-label">Código de empleado <b>*</b></span><span className="team-field"><span className="team-field-icon"><Hash className="w-4 h-4" /></span><input value={form.employeeCode} onChange={e => setForm({...form, employeeCode:e.target.value})} disabled={busy} className="team-field-input" placeholder="Ej. EMP-001" autoComplete="off" /></span></label>
+                  <label className="team-field-wrap"><span className="team-field-label">Salario base</span><span className="team-field"><span className="team-field-icon"><WalletCards className="w-4 h-4" /></span><input type="number" min="0" step="0.01" inputMode="decimal" value={form.baseSalary} onChange={e => setForm({...form, baseSalary:e.target.value})} disabled={busy} className="team-field-input" placeholder="0.00" /></span></label>
+                </div>
+              </section>
+              <section className="team-form-section" data-section="employee-operation">
+                <div className="team-form-section-head"><div className="team-form-section-icon"><ShieldCheck className="w-4 h-4" /></div><div><h3>Rol y almacenes</h3><p>Define dónde trabaja y qué nivel de operación tendrá.</p></div></div>
+                <label className="team-field-wrap"><span className="team-field-label">Rol <b>*</b></span><span className="team-field"><span className="team-field-icon"><ShieldCheck className="w-4 h-4" /></span><select value={form.roleId} onChange={e => setForm({...form, roleId:e.target.value})} disabled={busy || availableRoles.length===0} className="team-field-input team-field-select">{availableRoles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}</select></span>{!canManageRoles && <span className="team-field-help"><Info className="w-3.5 h-3.5" />Solo puedes asignar el rol operativo estándar.</span>}</label>
+                <div className="mt-4">
+                  <div className="flex items-end justify-between gap-3 mb-2"><div><span className="team-field-label">Almacenes permitidos <b>*</b></span><span className="team-field-subtext">Selecciona uno o varios almacenes a los que podrá acceder.</span></div><span className="team-selection-count">{form.warehouseIds.length} seleccionado{form.warehouseIds.length === 1 ? "" : "s"}</span></div>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    {(snapshot?.warehouses || []).filter(warehouse => warehouse.active).map(warehouse => {
+                      const selected = form.warehouseIds.includes(warehouse.id);
+                      return <label key={warehouse.id} className={cn("team-warehouse-option", selected && "is-selected")}><input type="checkbox" checked={selected} onChange={() => toggleWarehouse(warehouse.id)} disabled={busy} className="sr-only" /><span className="team-warehouse-icon"><Warehouse className="w-4 h-4" /></span><span className="min-w-0 flex-1"><span className="team-warehouse-name">{warehouse.name}</span>{snapshot?.warehouses[0]?.id === warehouse.id && <span className="team-warehouse-main">Principal sugerido</span>}</span><span className={cn("team-check", selected && "is-selected")}>{selected && <Check className="w-3.5 h-3.5" />}</span></label>;
+                    })}
+                  </div>
+                  {!(snapshot?.warehouses || []).some(warehouse => warehouse.active) && <div className="team-empty-inline"><Warehouse className="w-4 h-4" />No hay almacenes activos disponibles. Crea uno en Configuración antes de asignar acceso.</div>}
+                </div>
+              </section>
+              <section className={cn("team-form-section team-access-section", form.sendInvite && "is-enabled")} data-section="employee-access">
+                <div className="team-form-section-head"><div className="team-form-section-icon"><Link2 className="w-4 h-4" /></div><div className="min-w-0"><h3>Acceso al sistema</h3><p>La cuenta del trabajador es independiente de la del dueño.</p></div><label className="team-switch ml-auto shrink-0"><input type="checkbox" checked={form.sendInvite} onChange={e => setForm({...form, sendInvite:e.target.checked})} disabled={busy || Boolean(editing?.user_id)} className="sr-only" /><span className="team-switch-track"><span className="team-switch-thumb" /></span></label></div>
+                <div className="team-access-card">
+                  <div className="flex items-start gap-3"><div className="team-access-icon"><AtSign className="w-4 h-4" /></div><div className="min-w-0 flex-1"><p className="text-xs font-black text-primary">Crear acceso al sistema</p><p className="text-[10px] sm:text-[11px] text-muted leading-5 mt-0.5">Genera una invitación única. El trabajador la abre desde su dispositivo y se registra con ese mismo correo.</p></div></div>
+                  {form.sendInvite && !editing?.user_id && <label className="team-field-wrap mt-3"><span className="team-field-label">Correo del trabajador <b>*</b></span><span className="team-field"><span className="team-field-icon"><Mail className="w-4 h-4" /></span><input type="email" value={form.email} onChange={e => setForm({...form, email:e.target.value})} disabled={busy} className="team-field-input" placeholder="trabajador@empresa.com" autoComplete="email" /></span></label>}
+                  {editing?.user_id && <div className="team-linked-account"><CheckCircle2 className="w-4 h-4 shrink-0" /><span>Cuenta vinculada: {editing.login_email || form.email || "correo registrado"} · Sus credenciales son independientes.</span></div>}
+                  {!form.sendInvite && !editing?.user_id && <div className="team-access-off"><Info className="w-4 h-4 shrink-0" />El trabajador quedará registrado sin acceso web. Puedes activar la invitación más adelante.</div>}
+                </div>
+              </section>
             </div>
-
-            <div className="mt-3 p-3 rounded-xl border border-base bg-subtle">
-              <label className="flex items-start gap-3 cursor-pointer">
-                <input type="checkbox" checked={form.sendInvite} onChange={e => setForm({...form, sendInvite:e.target.checked})} disabled={busy || Boolean(editing?.user_id)} className="mt-1" />
-                <span>
-                  <span className="block text-xs font-black text-primary">Crear acceso al sistema</span>
-                  <span className="block text-[11px] text-muted mt-1">Genera un enlace único. El trabajador debe abrirlo en su dispositivo y registrarse con ese mismo correo.</span>
-                </span>
-              </label>
-              {form.sendInvite && !editing?.user_id && (
-                <label className="block mt-3">
-                  <span className="label">Correo del trabajador</span>
-                  <input type="email" className="field" value={form.email} onChange={e => setForm({...form, email:e.target.value})} disabled={busy} placeholder="trabajador@empresa.com" />
-                </label>
-              )}
-              {editing?.user_id && (
-                <p className="text-[10px] text-muted mt-3">Este trabajador ya tiene una cuenta vinculada. Cambia permisos o almacenes sin modificar su contraseña.</p>
-              )}
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-1.5 mt-4">
-              <button type="button" onClick={() => setShowForm(false)} className="h-11 px-4 rounded-xl bg-subtle text-primary font-black text-xs uppercase tracking-wider">Cancelar</button>
-              <button type="submit" disabled={busy} className="h-11 px-4 rounded-xl bg-rose-600 text-white font-black text-xs uppercase tracking-wider flex-1">
-                {busy ? "Guardando..." : editing ? "Guardar cambios" : "Crear trabajador"}
-              </button>
-            </div>
+            <div className="team-employee-modal-footer"><div className="flex items-start gap-2 min-w-0"><div className="team-footer-icon"><Info className="w-3.5 h-3.5" /></div><p>Los datos se guardan en la empresa activa. El acceso web se mantiene separado de las credenciales del propietario.</p></div><div className="team-footer-actions"><button type="button" onClick={() => setShowForm(false)} className="team-footer-secondary">Cancelar</button><button type="submit" disabled={busy} className="team-footer-primary">{busy ? <><RefreshCw className="w-4 h-4 animate-spin" /> Guardando…</> : editing ? <><Save className="w-4 h-4" /> Guardar cambios</> : <><Check className="w-4 h-4" /> Crear trabajador</>}</button></div></div>
           </form>
         </div>
       )}
-
       {showRoleForm && (
         <div className="fixed inset-0 z-[210] bg-slate-950/60 backdrop-blur-sm p-3 sm:p-5 flex items-center justify-center" onClick={() => setShowRoleForm(false)}>
           <form onSubmit={submitRole} onClick={e => e.stopPropagation()} className="palmyra-mobile-modal w-full max-w-xl bg-secondary border border-base rounded-2xl sm:rounded-3xl shadow-2xl p-3 sm:p-5 max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain">
