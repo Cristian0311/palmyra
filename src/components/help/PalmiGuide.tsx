@@ -27,7 +27,7 @@ export default function PalmiGuide() {
   const steps = useMemo(()=>getAccessiblePalmiTourSteps(currentUser),[currentUser]);
   const navigate=useNavigate(); const location=useLocation();
   const [open,setOpen]=useState(false); const [index,setIndex]=useState(0); const [rect,setRect]=useState<DOMRect|null>(null); const [position,setPosition]=useState<Position|null>(()=>readPosition());
-  const drag=useRef({active:false,moved:false,pointerId:-1,offsetX:0,offsetY:0,originX:0,originY:0});
+  const drag=useRef({active:false,moved:false,pointerId:-1,offsetX:0,offsetY:0,originX:0,originY:0,latest:null as Position|null});
   const anchor=useRef<HTMLDivElement|null>(null);
   const step=steps[index]||steps[0]; const last=index===steps.length-1; const progress=steps.length>1?((index+1)/steps.length)*100:100;
 
@@ -58,6 +58,12 @@ export default function PalmiGuide() {
     const timer=window.setTimeout(()=>setOpen(true),1100); return()=>window.clearTimeout(timer);
   },[currentUser?.id,steps.length]);
 
+  useEffect(()=>{
+    const openFromShell=()=>setOpen(true);
+    window.addEventListener("palmyra:open-guide",openFromShell);
+    return()=>window.removeEventListener("palmyra:open-guide",openFromShell);
+  },[]);
+
   const go=(next:number)=>{
     const safe=Math.max(0,Math.min(next,steps.length-1)); setIndex(safe);
     const nextStep=steps[safe];
@@ -68,19 +74,20 @@ export default function PalmiGuide() {
   const reset=()=>{try{localStorage.removeItem(KEY+":auto-open");localStorage.removeItem(KEY+":completed")}catch{} setIndex(0);setOpen(true)};
   const onDown=(e:React.PointerEvent<HTMLDivElement>)=>{
     const r=anchor.current?.getBoundingClientRect(); if(!r)return;
-    drag.current={active:true,moved:false,pointerId:e.pointerId,offsetX:e.clientX-r.left,offsetY:e.clientY-r.top,originX:r.left,originY:r.top};
+    drag.current={active:true,moved:false,pointerId:e.pointerId,offsetX:e.clientX-r.left,offsetY:e.clientY-r.top,originX:r.left,originY:r.top,latest:null};
     anchor.current?.setPointerCapture?.(e.pointerId); e.preventDefault();
   };
   const onMove=(e:React.PointerEvent<HTMLDivElement>)=>{
     const d=drag.current;if(!d.active||d.pointerId!==e.pointerId)return;
     const p=clamp({left:e.clientX-d.offsetX,top:e.clientY-d.offsetY});
     if(Math.abs(p.left-d.originX)>4||Math.abs(p.top-d.originY)>4)d.moved=true;
+    d.latest=p;
     setPosition(p);
   };
   const onUp=(e:React.PointerEvent<HTMLDivElement>)=>{
     const d=drag.current;if(!d.active||d.pointerId!==e.pointerId)return;d.active=false;
     try{anchor.current?.releasePointerCapture?.(e.pointerId)}catch{}
-    if(!d.moved)setOpen(v=>!v); else try{localStorage.setItem(KEY+":position",JSON.stringify(position))}catch{}
+    if(!d.moved)setOpen(v=>!v); else if(d.latest) try{localStorage.setItem(KEY+":position",JSON.stringify(d.latest))}catch{}
   };
 
   if(!currentUser||steps.length===0)return null;
