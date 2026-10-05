@@ -7,7 +7,8 @@ import {
   callVoidTransactionRPC,
   callCompleteReturnRPC,
 } from '../../services/supabaseSync';
-import { enqueueOfflineItem, getOfflineQueue, waitForOfflineQueueReady, removeFromOfflineQueueByAction, removeFromOfflineQueueByTransactionId } from '../../services/offlineQueue';
+import { enqueueOfflineItem, getOfflineQueue, waitForOfflineQueueReady } from '../../services/offlineQueue';
+import { removeFromOfflineQueueByAction, removeFromOfflineQueueByTransactionId } from '../../services/offlineQueue/outboxUtils';
 import { buildLocalCompletedSalePatch } from '../utils/localCompletedSale';
 import { buildLocalVoidTransactionPatch } from '../utils/localVoidTransaction';
 import { setCanonicalInventoryQuantity } from '../utils/inventoryTransforms';
@@ -23,7 +24,7 @@ type StoreSet = (
 type StoreGet = () => AppState;
 
 
-async function refreshInventoryBranchesFromSupabase(set, get, set: StoreSet, get: StoreGet, branchIds: string[]): Promise<boolean> {
+async function refreshInventoryBranchesFromSupabase(set: StoreSet, get: StoreGet, branchIds: string[]): Promise<boolean> {
   const ids = Array.from(new Set(branchIds.filter(Boolean)));
   if (!ids.length) return true;
   try {
