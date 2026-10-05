@@ -89,6 +89,9 @@ export default function PalmiGuide() {
     try{anchor.current?.releasePointerCapture?.(e.pointerId)}catch{}
     if(!d.moved)setOpen(v=>!v); else if(d.latest) try{localStorage.setItem(KEY+":position",JSON.stringify(d.latest))}catch{}
   };
+  const onKeyDown=(e:React.KeyboardEvent<HTMLDivElement>)=>{
+    if(e.key==="Enter"||e.key===" "){e.preventDefault();setOpen(true);}
+  };
 
   if(!currentUser||steps.length===0)return null;
   const style=position?{left:position.left,top:position.top}:{right:EDGE,bottom:EDGE};
