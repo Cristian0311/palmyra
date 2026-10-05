@@ -57,7 +57,7 @@ export function createBankActions(set: StoreSet, get: StoreGet): Partial<AppStat
     pushBankCardToSupabase(card).catch(() => {});
   },
   updateBankCard: (id, card) => {
-    let found: import('../types').BankCard | undefined;
+    let found: import('../../types').BankCard | undefined;
     let previousBalance = 0;
     let requestedBalance: number | undefined;
     set(state => {
@@ -81,7 +81,7 @@ export function createBankActions(set: StoreSet, get: StoreGet): Partial<AppStat
 
     const metadata = { ...found };
     delete (metadata as any).balance;
-    updateBankCardMetadataToSupabase(metadata as import('../types').BankCard).then(ok => {
+    updateBankCardMetadataToSupabase(metadata as import('../../types').BankCard).then(ok => {
       if (!ok) {
         enqueueOfflineItem('bank_card', { ...metadata, __metadata_only: true }, 'bank-metadata:' + metadata.id)
           .catch(err => console.warn('[Bank] metadata queue failed:', err));
@@ -366,7 +366,7 @@ export function createBankActions(set: StoreSet, get: StoreGet): Partial<AppStat
     const seenIds = new Set<string>();
     const seenTxIds = new Set<string>();
     const seenRefs = new Set<string>();
-    const uniqueTxs: import('../types').BankTransaction[] = [];
+    const uniqueTxs: import('../../types').BankTransaction[] = [];
     let removedDuplicates = 0;
 
     // Local de-duplication only. Never delete cloud data from a potentially
