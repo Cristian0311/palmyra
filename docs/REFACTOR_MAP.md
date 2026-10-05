@@ -10,6 +10,7 @@
 - Offline: procesamiento y reconciliación ya están separados; `offlineSync.ts` está en 382 líneas.
 - Supabase Sync: mutations y pull ya están separados por dominios; no se consolidaron nuevamente.
 - Excel: generadores de hojas separados por dominio y `excelExport.ts` convertido en fachada de 198 líneas.
+- Offline: tipos de cola y adaptador IndexedDB extraídos, conservando reexportaciones públicas para compatibilidad.
 - Settings: categorías, almacenes y configuración de empleados extraídos; página en 1.524 líneas.
 - Warehouse migration: creada una frontera de compatibilidad canónica que prefiere `warehouseId/allowedWarehouseIds` y conserva `branchId/allowedBranches` solo como fallback. La política evita ampliar permisos accidentalmente.
 - Inventory/Transfers/POS: las asignaciones de trabajador ya pueden resolverse mediante la frontera Warehouse sin romper los campos históricos.
@@ -23,6 +24,8 @@
 | `src/pages/Reports.tsx` | 3.492 |
 | `src/store/useStore.ts` | 449 |
 | `src/services/offlineSync.ts` | 382 |
+| `src/services/offlineQueue.ts` | 399 |
+| `src/store/actions/syncActions.ts` | 280 |
 | `src/services/supabaseSync/mutations.ts` | 295 |
 | `src/services/supabaseSync/pull.ts` | 433 |
 | `src/pages/Inventory.tsx` | 1.653 |
@@ -30,6 +33,8 @@
 | `src/pages/Transfers.tsx` | 995 |
 | `src/pages/CashRegister.tsx` | 1.017 |
 | `src/utils/excelExport.ts` | 198 |
+| `src/services/offlineQueueStorage.ts` | 150 |
+| `src/services/offlineQueueTypes.ts` | 25 |
 
 ## Próxima fase
 
