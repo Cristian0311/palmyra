@@ -38,7 +38,7 @@ async function refreshInventoryBranchesFromSupabase(set: StoreSet, get: StoreGet
   } catch { return false; }
 }
 
-export function createInventoryActions(set: StoreSet, get: StoreGet): Partial<AppState> {
+export function createInventoryActions(set: StoreSet, get: StoreGet): any {
   return {
   products: INITIAL_PRODUCTS,
   inventory: INITIAL_INVENTORY,
