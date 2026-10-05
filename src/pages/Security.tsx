@@ -38,7 +38,7 @@ export default function Security(){
  if(loading)return <div className="min-h-[50vh] flex items-center justify-center text-sm font-bold text-muted">Cargando seguridad...</div>;
  return <div className="space-y-5 max-w-5xl mx-auto pb-10">
   <header className="bg-secondary border border-base rounded-3xl p-5 flex items-center justify-between gap-3">
-   <div><p className="text-[10px] font-black uppercase tracking-[.18em] text-rose-500">Seguridad</p><h1 className="text-2xl font-black text-primary mt-1">Dispositivos y sesiones</h1><p className="text-xs text-muted mt-1">Controla desde qué dispositivos puede utilizarse tu cuenta en esta empresa.</p></div>
+   <div><p className="text-[10px] font-black uppercase tracking-[.18em] text-rose-500">Seguridad</p><h1 data-palmi-content="security" className="text-2xl font-black text-primary mt-1">Dispositivos y sesiones</h1><p className="text-xs text-muted mt-1">Controla desde qué dispositivos puede utilizarse tu cuenta en esta empresa.</p></div>
    <button onClick={()=>void refresh()} disabled={busy} className="h-10 px-4 rounded-xl border border-base bg-primary text-primary text-xs font-black flex items-center gap-2"><RefreshCw className={cn("w-4 h-4",loading&&"animate-spin")}/>Actualizar</button>
   </header>
   {error&&<div className="rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold p-3">{error}</div>}
