@@ -702,14 +702,20 @@ export default function POS() {
         }
       }
 
+      const expectedCashBase = expectedBalances
+        .filter(line => line.method === 'cash')
+        .reduce((sum, line) => sum + (Number(line.amount) || 0) * (Number(line.exchangeRate) || getSafeRateToBase(line.currencyCode) || 1), 0);
+
       const sessionToClose: CashRegisterSession = {
         ...currentSession,
+        expectedBalance: expectedCashBase,
         status: 'closed' as const,
         closedAt: finalClosingDate,
         closingBalances: balances,
         workerName: sessionWorkerName || currentSession.workerName,
         closingDate: finalClosingDate,
-        ...(sessionMeta || {})
+        ...(sessionMeta || {}),
+        expectedBalance: expectedCashBase
       };
 
       const confirmed = await closeSession(
@@ -718,7 +724,7 @@ export default function POS() {
         sessionWorkerName || currentSession.workerName,
         finalClosingDate,
         discrepancyDeduction,
-        sessionMeta
+        { ...(sessionMeta || {}), expectedBalance: expectedCashBase }
       );
 
       if (!confirmed) {
