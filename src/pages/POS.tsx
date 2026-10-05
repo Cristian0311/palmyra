@@ -708,7 +708,6 @@ export default function POS() {
 
       const sessionToClose: CashRegisterSession = {
         ...currentSession,
-        expectedBalance: expectedCashBase,
         status: 'closed' as const,
         closedAt: finalClosingDate,
         closingBalances: balances,
