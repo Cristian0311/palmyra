@@ -291,6 +291,107 @@ export const useStore = create<AppState>()(
   ...createCashActions(set, get),
   ...createOperationsActions(set, get),
   ...createSupportActions(set, get),
+transfers: [],
+  addTransfer: (transfer) => {
+    // The transfer RPC is the only authority for inventory transfers. Calling a
+    // second upsert here used to duplicate/overwrite a transfer after the RPC
+    // had already committed it. This action only updates the local ledger.
+    set((state) => ({
+      transfers: [transfer, ...state.transfers.filter(t => t.id !== transfer.id && t.operationId !== transfer.operationId)]
+    }));
+  },
+
+  warranties: [],
+  addWarranty: (warranty) => {
+    set((state) => ({ warranties: [warranty, ...state.warranties] }));
+    import('../../services/supabaseSync').then(({ pushWarrantyToSupabase }) => {
+      pushWarrantyToSupabase(warranty).catch(() => {});
+    }).catch(() => {});
+  },
+  updateWarranty: (id, warranty) => {
+    set((state) => ({
+      warranties: state.warranties.map(w => w.id === id ? { ...w, ...warranty } : w)
+    }));
+    const updated = get().warranties.find(w => w.id === id);
+    if (updated) {
+      import('../../services/supabaseSync').then(({ pushWarrantyToSupabase }) => {
+        pushWarrantyToSupabase(updated).catch(() => {});
+      }).catch(() => {});
+    }
+  },
+
+  ...createBankActions(set, get),
+  ...createSyncActions(set, get),
+  seedDemoProducts: () => {
+    set({
+      products: INITIAL_PRODUCTS,
+      inventory: INITIAL_INVENTORY,
+      categories: INITIAL_CATEGORIES,
+      branches: INITIAL_BRANCHES,
+      bankCards: INITIAL_BANK_CARDS,
+      currencies: INITIAL_CURRENCIES
+    });
+  },
+
+  restoreTransactionsFromBackup: () => {
+    try {
+      const currentTxs = get().transactions || [];
+
+      // El outbox durable es la primera fuente de recuperación de ventas offline.
+      // Tras una recarga, la transacción debe reaparecer aunque el snapshot de
+      // Zustand no hubiera alcanzado a persistirse antes de cerrar la pestaña.
+      const durableTransactions = getOfflineQueue()
+        .filter(item => item.type === 'transaction' && item.status !== 'conflict')
+        .map(item => ({ ...(item.data as Transaction), offlinePending: true }))
+        .filter((tx: any) => tx?.id && tx.status !== 'refunded' && tx.status !== 'cancelled');
+
+      const durableById = new Map(durableTransactions.map((tx: any) => [String(tx.id), tx]));
+      const missingDurable = durableTransactions.filter(
+        (tx: any) => !currentTxs.some((ct: any) => ct.id === tx.id)
+      );
+
+      if (missingDurable.length > 0 || durableById.size > 0) {
+        set((state) => ({
+          transactions: (state.transactions || []).map((tx: any) =>
+            durableById.has(String(tx.id)) ? { ...tx, offlinePending: true } : tx
+          ).concat(missingDurable)
+        }));
+        get().addNotification(
+          'Se recuperaron ' + missingDurable.length + ' venta(s) offline pendientes de sincronización.',
+          'info'
+        );
+      }
+
+      // Respaldo legacy: solo recupera una venta que siga representada por el outbox.
+      const backupKey = getPalmyraScopedStorageKey('palmyra-sales-backup-v1');
+      const backupRaw = backupKey ? localStorage.getItem(backupKey) : null;
+      if (!backupRaw) return;
+      const backupList = JSON.parse(backupRaw);
+      if (!Array.isArray(backupList) || backupList.length === 0) return;
+
+      const queuedTransactionIds = new Set(
+        getOfflineQueue()
+          .filter(item => item.type === 'transaction' && item.status !== 'conflict')
+          .map(item => item.actionId)
+      );
+      const afterDurable = get().transactions || [];
+      const recoverable = backupList.filter((bt: any) =>
+        bt?.id &&
+        queuedTransactionIds.has(bt.id) &&
+        !afterDurable.some((ct: any) => ct.id === bt.id)
+      );
+
+      if (recoverable.length > 0) {
+        set((state) => ({ transactions: [...recoverable, ...(state.transactions || [])] }));
+        get().addNotification(
+          'Se recuperaron ' + recoverable.length + ' venta(s) del respaldo local.',
+          'info'
+        );
+      }
+    } catch (e) {
+      console.error('[Backup Safety] Error recuperando ventas locales:', e);
+    }
+  },
   notifications: [],
   addNotification: (message, type = 'info', details) => {
     const id = crypto.randomUUID();
