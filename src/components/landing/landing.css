@@ -296,3 +296,23 @@
 @media (prefers-reduced-motion: reduce) {
   .landing-scene__window { transform:none; }
 }
+
+
+.landing-mobile-nav {
+  position:absolute; top:calc(100% + 1px); left:12px; right:12px; z-index:60;
+  display:grid; gap:5px; padding:10px; border:1px solid var(--lp-line); border-radius:15px;
+  background:rgba(255,255,255,.98); box-shadow:0 22px 48px -28px rgba(36,17,67,.34);
+}
+.landing-mobile-nav a,
+.landing-mobile-nav button {
+  display:flex; align-items:center; justify-content:space-between; min-height:38px;
+  padding:0 11px; border:0; border-radius:9px; text-decoration:none; text-align:left;
+  background:#fbfaff; color:#6d6179; font-size:9px; font-weight:900;
+}
+.landing-mobile-nav button { color:#fff; background:#5d2dbb; }
+.landing-header__brand { min-width:0; text-decoration:none; }
+.landing-footer-logo { display:block; }
+@media (max-width:640px) {
+  .landing-header { position:sticky; }
+  .landing-mobile-nav { top:calc(100% + 1px); }
+}
