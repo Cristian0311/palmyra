@@ -9,6 +9,7 @@ import { addSyncLog } from '../utils/syncLogger';
 import { getPalmyraLocalScopeKey } from './localScope';
 import { idbClear, idbDelete, idbGetAll, idbPut, idbReplaceAll, resetOfflineQueueDbCache } from './offlineQueueStorage';
 import type { OfflineActionType, OfflineQueueItem } from './offlineQueueTypes';
+export type { OfflineActionType, OfflineQueueItem } from './offlineQueueTypes';
 
 
 let STORAGE_KEY = 'palmyra-offline-queue__anonymous';
