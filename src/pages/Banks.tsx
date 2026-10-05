@@ -394,7 +394,7 @@ export default function Banks() {
       {/* Main Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-1">
         <div className="flex items-center gap-2">
-          <h1 className="text-base sm:text-lg font-black text-primary tracking-tight uppercase">Cuentas Bancarias</h1>
+          <h1 data-palmi-content="banks" className="text-base sm:text-lg font-black text-primary tracking-tight uppercase">Cuentas Bancarias</h1>
           <InfoTooltip text="Gestiona tus cuentas bancarias, tarjetas y transferencias. Reconcilia con la base de datos en Supabase y mantén el control exacto de tus saldos." position="bottom" />
         </div>
         
