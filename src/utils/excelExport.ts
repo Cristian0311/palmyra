@@ -30,29 +30,9 @@ export {
   generateTransfersSheet,
 } from './excel/sheets';
 
-import * as XLSX from 'xlsx';
-import { formatWorksheet } from './excel/worksheet';
-import { generateSummarySheet } from './excel/summarySheet';
-import { generateSalesSheet } from './excel/salesSheet';
-import { generateItemsSoldDetailSheet } from './excel/itemsSheet';
-import type { AIDiagnosticReport, ExcelExportData } from './excel/types';
-
-export type { AIDiagnosticReport, ExcelExportData } from './excel/types';
-export { generateSummarySheet } from './excel/summarySheet';
-export { generateSalesSheet } from './excel/salesSheet';
-export { generateItemsSoldDetailSheet } from './excel/itemsSheet';
-
-import { 
-  Transaction, CashRegisterSession, Product, Category, 
-  Currency, Branch, User, Customer, BankTransaction, BankCard, SalarySettlement,
-  InventoryLevel, InventoryTransfer
 } from '../types';
-
 // 1. SHEET: RESUMEN FINANCIERO Y EJECUTIVO
-
-
 // 2. SHEET: REGISTRO DE VENTAS Y TICKETS (Comprobante por fila)
-
 
 // 3. SHEET: DETALLE DE ARTÍCULOS VENDIDOS (Línea por línea de venta)
 
