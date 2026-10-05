@@ -14,6 +14,8 @@ const AddItemToShiftModal = lazy(() => import("../components/reports/AddItemToSh
 const ReportsCharts = lazy(() => import("../components/reports/ReportsCharts"));
 import { cn } from "../lib/utils";
 import { InfoTooltip } from "../components/InfoTooltip";
+import MultiCurrencyTotal from "../components/reports/MultiCurrencyTotal";
+import { getLocalDateYMD } from "../utils/dateUtils";
 import { useReportsAnalytics } from "../hooks/useReportsAnalytics";
 import type { ExcelExportData } from "../utils/excelExport";
 import { pullPosBootstrapFromSupabase } from "../services/supabaseSync/pull";
@@ -187,21 +189,6 @@ export default function Reports() {
     return `${currency.symbol}${formatted} ${currency.code}`;
   };
 
-  const MultiCurrencyTotal = ({ amount, className = "" }: { amount: number, className?: string }) => (
-    <div className={`flex flex-col gap-0.5 mt-1 ${className}`}>
-      {currencies.map(c => {
-        const converted = c.isBase ? amount : amount / (c.rateToBase || 1);
-        const hasDecimals = converted % 1 !== 0;
-        return (
-          <div key={c.code} className={cn("flex justify-between items-center text-[10px]", c.isBase ? "font-black text-primary" : "font-bold text-muted")}>
-            <span>{c.symbol} {converted.toLocaleString('es-CU', { minimumFractionDigits: hasDecimals ? 2 : 0, maximumFractionDigits: 2 })}</span>
-            <span className="text-[8px] uppercase">{c.code}</span>
-          </div>
-        );
-      })}
-    </div>
-  );
-
   const getProductName = (itemProduct: any) => {
     if (!itemProduct) return 'Desconocido';
     if (typeof itemProduct === 'string') {
@@ -231,15 +218,7 @@ export default function Reports() {
   const [selectedFilterDate, setSelectedFilterDate] = useState<string>('');
   const [selectedBranchFilter, setSelectedBranchFilter] = useState<string>('all');
 
-  const getLocalDateYMD = (dStr: string | null | undefined): string => {
-    if (!dStr) return '';
-    const d = new Date(dStr);
-    if (isNaN(d.getTime())) return '';
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
+
   const [printSessionId, setPrintSessionId] = useState<string | null>(null);
   const [selectedMovementDetail, setSelectedMovementDetail] = useState<{
     id: string;
@@ -1441,7 +1420,7 @@ export default function Reports() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[7px] font-black text-muted uppercase tracking-widest truncate">Ingresos Ventas</p>
-            <MultiCurrencyTotal amount={totalSales} />
+            <MultiCurrencyTotal amount={totalSales} currencies={currencies} />
           </div>
         </div>
 
@@ -1451,7 +1430,7 @@ export default function Reports() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[7px] font-black text-muted uppercase tracking-widest truncate">Gastos / Egresos</p>
-            <MultiCurrencyTotal amount={totalExpenses} />
+            <MultiCurrencyTotal amount={totalExpenses} currencies={currencies} />
           </div>
         </div>
         
@@ -1461,7 +1440,7 @@ export default function Reports() {
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[7px] font-black text-muted uppercase tracking-widest truncate">Flujo Neto</p>
-            <MultiCurrencyTotal amount={netFlow} />
+            <MultiCurrencyTotal amount={netFlow} currencies={currencies} />
           </div>
         </div>
 
