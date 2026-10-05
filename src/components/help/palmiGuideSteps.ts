@@ -43,3 +43,9 @@ export function getAccessibleNumaTourSteps(currentUser: Pick<User, "role" | "per
   const isAdmin = currentUser?.role === "admin";
   return NUMA_TOUR_STEPS.filter(step => (!step.mobileOnly || isMobile) && (!step.permission || isAdmin || currentUser?.permissions?.includes(step.permission)));
 }
+
+// Compatibilidad de nombres durante la transición de identidad de Palmi → Numa.
+// Evita que módulos antiguos queden rotos mientras consumen el nuevo recorrido.
+export type PalmiTourStep = NumaTourStep;
+export const PALMI_TOUR_STEPS = NUMA_TOUR_STEPS;
+export const getAccessiblePalmiTourSteps = getAccessibleNumaTourSteps;
