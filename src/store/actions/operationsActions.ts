@@ -37,7 +37,7 @@ import type { AppState } from '../storeTypes';
 type StoreSet = (partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)) => void;
 type StoreGet = () => AppState;
 
-export function createOperationsActions(set: StoreSet, get: StoreGet): Partial<AppState> {
+export function createOperationsActions(set: StoreSet, get: StoreGet): any {
   return {
   pendingOrders: [],
   createPendingOrder: (order) => set((state) => ({
