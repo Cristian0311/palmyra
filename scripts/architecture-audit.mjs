@@ -4,6 +4,10 @@ import { join, relative } from 'node:path';
 const root = process.cwd();
 const strict = process.argv.includes('--strict');
 const findings = [];
+const legacyLargeBaseline = {
+  'src/pages/POS.tsx': { lines: 4420, bytes: 235386 },
+  'src/pages/Reports.tsx': { lines: 4455, bytes: 248513 },
+};
 const ignoredDirs = new Set(['node_modules', '.git', 'dist', 'coverage', '.cache']);
 
 for (const dir of ['fixrender', 'dev-dist']) {
