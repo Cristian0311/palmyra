@@ -5,6 +5,7 @@ import { useStore } from "../../store/useStore";
 import { getAccessibleNumaTourSteps, type NumaTourStep } from "./palmiGuideSteps";
 import { PalmiMascot } from "./PalmiMascot";
 import "./palmiGuide.css";
+import PWAInstallPrompt from "./PWAInstallPrompt";
 
 const KEY = "palmyra-numa-guide-v4";
 const EDGE = 20;
