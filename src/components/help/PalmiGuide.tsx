@@ -158,6 +158,5 @@ export default function PalmiGuide(){
       </div>
       {open&&<button type="button" className="palmi-guide-reset" onClick={reset} aria-label="Reiniciar guía" title="Reiniciar guía"><RotateCcw size={13}/></button>}
     </div>
-  </div>
-  );
+  </div>;
 }
