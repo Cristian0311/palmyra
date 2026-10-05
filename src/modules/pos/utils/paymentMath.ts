@@ -1,7 +1,7 @@
 import type { Currency } from '../../../types';
 
-export const isCupLikeCurrency = (code: string): boolean =>
-  code === 'CUP' || code === 'MN' || code === 'CUC' || code === '₱';
+export const isCupLikeCurrency = (codeOrSymbol: string): boolean =>
+  codeOrSymbol === 'CUP' || codeOrSymbol === 'MN' || codeOrSymbol === 'CUC' || codeOrSymbol === '₱';
 
 export function getSafeRateToBase(code: string, baseCurrency: Currency, currencies: Currency[]): number {
   if (code === baseCurrency.code) return 1;
@@ -25,11 +25,11 @@ export function roundBaseAmount(amount: number, isBaseCurrency: boolean): number
   return isBaseCurrency ? Math.round(value) : Math.round(value * 100) / 100;
 }
 
-export function formatMoney(amount: number, currencyCode: string): string {
-  const decimals = isCupLikeCurrency(currencyCode) ? 0 : 2;
+export function formatMoney(amount: number, symbol: string): string {
+  const decimals = isCupLikeCurrency(symbol) ? 0 : 2;
   const formatted = Number(amount || 0).toLocaleString('es-CU', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals
   });
-  return currencyCode + ' ' + formatted;
+  return symbol + ' ' + formatted;
 }
