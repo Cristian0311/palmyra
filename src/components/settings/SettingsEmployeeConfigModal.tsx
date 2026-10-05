@@ -7,6 +7,7 @@ type Props = {
   branches: Branch[];
   employeeSalaries: Record<string, number>;
   setEmployeeSalaries: (value: Record<string, number>) => void;
+  setUser: (user: User | null) => void;
   updateUser: (userId: string, changes: Partial<User>) => void;
   setUserToDelete: (value: { id: string; name: string } | null) => void;
   onClose: () => void;
@@ -17,6 +18,7 @@ export function SettingsEmployeeConfigModal({
   branches,
   employeeSalaries,
   setEmployeeSalaries,
+  setUser,
   updateUser,
   setUserToDelete,
   onClose,
@@ -77,6 +79,8 @@ export function SettingsEmployeeConfigModal({
                 value={user.password || ""}
                 onChange={(e) => {
                   const password = e.target.value;
+                  const updated = { ...user, password };
+                  setUser(updated);
                   updateUser(user.id, { password });
                 }}
                 className="w-full px-3 py-2 bg-primary border border-base rounded-lg text-xs font-bold text-primary outline-none focus:ring-1 focus:ring-rose-500"
@@ -117,6 +121,11 @@ export function SettingsEmployeeConfigModal({
                         const newAllowed = e.target.checked
                           ? Array.from(new Set([...current, branch.id]))
                           : current.filter((id) => id !== branch.id);
+                        const updated = {
+                          ...user,
+                          allowedBranches: newAllowed,
+                        };
+                        setUser(updated);
                         updateUser(user.id, {
                           allowedBranches: newAllowed,
                         });
