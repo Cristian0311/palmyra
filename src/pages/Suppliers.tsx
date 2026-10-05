@@ -147,7 +147,7 @@ export default function Suppliers() {
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 pb-20">
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-1">
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-black text-primary uppercase tracking-tight">Proveedores</h1>
+          <h1 data-palmi-content="suppliers" className="text-xl font-black text-primary uppercase tracking-tight">Proveedores</h1>
           <InfoTooltip text="Abastecimiento y Órdenes de Compra." position="bottom" />
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
