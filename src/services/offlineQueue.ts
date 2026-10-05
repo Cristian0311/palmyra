@@ -7,45 +7,21 @@
  */
 import { addSyncLog } from '../utils/syncLogger';
 import { getPalmyraLocalScopeKey } from './localScope';
+import { idbClear, idbDelete, idbGetAll, idbPut, idbReplaceAll, resetOfflineQueueDbCache } from './offlineQueueStorage';
+import type { OfflineActionType, OfflineQueueItem } from './offlineQueueTypes';
 
-
-export type OfflineActionType =
-  | 'transaction' | 'void_transaction' | 'return_complete' | 'transfer'
-  | 'supplier_receive' | 'transfer_bulk' | 'audit_complete' | 'cash_session' | 'inventory' | 'inventory_adjustment' | 'inventory_reconcile'
-  | 'customer' | 'customer_delete' | 'product_delete' | 'return' | 'bank_transaction'
-  | 'branch' | 'product' | 'category' | 'receipt_config' | 'store_config' | 'catalog_config' | 'salary_settlement'
-  | 'user' | 'currency' | 'warranty' | 'time_shift' | 'quote' | 'bank_internal_transfer' | 'bank_internal_transfer_delete' | 'bank_transaction_delete' | 'bank_card_delete'
-  | 'bank_card' | 'bank_card_balance' | 'supplier' | 'supplier_order' | 'inventory_audit'
-  | 'audit_start' | 'audit_recount' | 'audit_approve'
-  | 'branch_delete' | 'category_delete' | 'supplier_delete';
-
-export interface OfflineQueueItem {
-  id: string;
-  actionId: string;
-  type: OfflineActionType;
-  data: any;
-  timestamp: string;
-  retryCount: number;
-  status?: 'pending' | 'processing' | 'failed' | 'conflict';
-  lastError?: string;
-  deviceId?: string;
-}
 
 let STORAGE_KEY = 'palmyra-offline-queue__anonymous';
 let TOMBSTONES_KEY = 'palmyra-offline-queue-tombstones__anonymous';
 let DB_NAME = 'palmyra-offline-v2-anonymous';
-const DB_VERSION = 1;
-const STORE_NAME = 'operations';
 let DEVICE_KEY = 'palmyra_device_id__anonymous';
 let activeScopeKey: string | null = null;
-let activeDbName = '';
 
 let memoryQueue: OfflineQueueItem[] = [];
 let queueReady = false;
 let persistenceChain: Promise<void> = Promise.resolve();
 let persistenceError: Error | null = null;
 let queueInitPromise: Promise<void>;
-let dbPromise: Promise<IDBDatabase | null> | null = null;
 let removedDuringQueueProcess = new Set<string>();
 
 function refreshScopeKeys() {
@@ -117,96 +93,6 @@ function clearQueueTombstones(): void {
   try { localStorage.removeItem(TOMBSTONES_KEY); } catch {}
 }
 
-function openDb(): Promise<IDBDatabase | null> {
-  if (typeof indexedDB === 'undefined' || !activeScopeKey) return Promise.resolve(null);
-  if (dbPromise && activeDbName === DB_NAME) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
-    activeDbName = DB_NAME;
-    const request = indexedDB.open(DB_NAME, DB_VERSION);
-    request.onupgradeneeded = () => {
-      const db = request.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id' });
-        store.createIndex('status', 'status', { unique: false });
-        store.createIndex('action', ['type', 'actionId'], { unique: true });
-        store.createIndex('timestamp', 'timestamp', { unique: false });
-      }
-    };
-    request.onsuccess = () => {
-      const db = request.result;
-      db.onversionchange = () => { db.close(); dbPromise = null; };
-      resolve(db);
-    };
-    request.onerror = () => { dbPromise = null; reject(request.error || new Error('IndexedDB open failed')); };
-  });
-  return dbPromise;
-}
-
-async function idbGetAll(): Promise<OfflineQueueItem[] | null> {
-  const db = await openDb();
-  if (!db) return null;
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readonly');
-    const request = tx.objectStore(STORE_NAME).getAll();
-    request.onsuccess = () => resolve((request.result || []) as OfflineQueueItem[]);
-    request.onerror = () => reject(request.error || new Error('IndexedDB read failed'));
-    tx.onerror = () => reject(tx.error || new Error('IndexedDB transaction read failed'));
-    tx.onabort = () => reject(tx.error || new Error('IndexedDB transaction read aborted'));
-    // Mantener abierta la conexión reutilizable reduce aperturas/cierres repetidos
-    // durante sincronizaciones frecuentes en tablets de baja potencia.
-  });
-}
-
-async function idbReplaceAll(queue: OfflineQueueItem[]): Promise<void> {
-  const db = await openDb();
-  if (!db) throw new Error('IndexedDB no disponible');
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    const store = tx.objectStore(STORE_NAME);
-    store.clear();
-    queue.forEach(item => store.put(item));
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error || new Error('IndexedDB write failed'));
-    tx.onabort = () => reject(tx.error || new Error('IndexedDB write aborted'));
-  });
-}
-
-async function idbPut(item: OfflineQueueItem): Promise<void> {
-  const db = await openDb();
-  if (!db) throw new Error('IndexedDB no disponible');
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    tx.objectStore(STORE_NAME).put(item);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error || new Error('IndexedDB put failed'));
-    tx.onabort = () => reject(tx.error || new Error('IndexedDB put aborted'));
-  });
-}
-
-async function idbDelete(id: string): Promise<void> {
-  const db = await openDb();
-  if (!db) throw new Error('IndexedDB no disponible');
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    tx.objectStore(STORE_NAME).delete(id);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error || new Error('IndexedDB delete failed'));
-    tx.onabort = () => reject(tx.error || new Error('IndexedDB delete aborted'));
-  });
-}
-
-async function idbClear(): Promise<void> {
-  const db = await openDb();
-  if (!db) throw new Error('IndexedDB no disponible');
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, 'readwrite');
-    tx.objectStore(STORE_NAME).clear();
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error || new Error('IndexedDB clear failed'));
-    tx.onabort = () => reject(tx.error || new Error('IndexedDB clear aborted'));
-  });
-}
-
 async function migrateLegacyQueue(): Promise<void> {
   if (typeof window === 'undefined') { queueReady = true; return; }
   if (!activeScopeKey) {
@@ -220,7 +106,7 @@ async function migrateLegacyQueue(): Promise<void> {
   const tombstones = readQueueTombstones();
   let existing: OfflineQueueItem[] | null = null;
   try {
-    existing = await idbGetAll();
+    existing = await idbGetAll(DB_NAME, Boolean(activeScopeKey));
   } catch (e) {
     // Never replace IndexedDB with an empty queue when a read itself failed.
     // The old behavior could erase durable pending sales during startup.
@@ -242,7 +128,7 @@ async function migrateLegacyQueue(): Promise<void> {
     .filter(item => !tombstones.has(String(item.id)))
     .sort((a,b) => a.timestamp.localeCompare(b.timestamp));
   try {
-    await idbReplaceAll(memoryQueue);
+    await idbReplaceAll(DB_NAME, Boolean(activeScopeKey), memoryQueue);
     if (legacyRaw) localStorage.removeItem(STORAGE_KEY);
     clearQueueTombstones();
   } catch (e) {
@@ -271,8 +157,7 @@ export async function setOfflineQueueScope(): Promise<void> {
   removedDuringQueueProcess = new Set<string>();
   queueReady = false;
   persistenceError = null;
-  dbPromise = null;
-  activeDbName = '';
+  resetOfflineQueueDbCache();
 
   queueInitPromise = migrateLegacyQueue();
   await queueInitPromise;
@@ -316,7 +201,7 @@ function persistQueueSnapshot(queue: OfflineQueueItem[]): void {
   persistenceChain = persistenceChain.then(async () => {
     if (!queueReady && queueInitPromise) await queueInitPromise;
     if (typeof indexedDB !== 'undefined') {
-      await idbReplaceAll(snapshot);
+      await idbReplaceAll(DB_NAME, Boolean(activeScopeKey), snapshot);
       return;
     }
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot)); } catch (e) {
@@ -335,7 +220,7 @@ function persistQueueItem(item: OfflineQueueItem): Promise<void> {
     removeQueueTombstone(item.id);
     if (typeof indexedDB !== 'undefined') {
       try {
-        await idbPut(item);
+        await idbPut(DB_NAME, Boolean(activeScopeKey), item);
         persistenceError = null;
         return;
       } catch (idbError) {
@@ -374,7 +259,7 @@ function persistQueueDelete(id: string): Promise<void> {
     if (!queueReady && queueInitPromise) await queueInitPromise;
     if (typeof indexedDB !== 'undefined') {
       try {
-        await idbDelete(id);
+        await idbDelete(DB_NAME, Boolean(activeScopeKey), id);
         return;
       } catch (idbError) {
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(memoryQueue)); } catch {}
@@ -404,7 +289,7 @@ function persistQueueClear(): void {
     if (!queueReady && queueInitPromise) await queueInitPromise;
     if (typeof indexedDB !== 'undefined') {
       try {
-        await idbClear();
+        await idbClear(DB_NAME, Boolean(activeScopeKey));
         clearQueueTombstones();
         return;
       } catch (idbError) {
@@ -492,7 +377,7 @@ export async function persistOfflineQueueSnapshot(queue: OfflineQueueItem[]): Pr
   persistenceChain = persistenceChain.then(async () => {
     if (!queueReady && queueInitPromise) await queueInitPromise;
     if (typeof indexedDB !== 'undefined') {
-      await idbReplaceAll(snapshot);
+      await idbReplaceAll(DB_NAME, Boolean(activeScopeKey), snapshot);
       return;
     }
     if (typeof localStorage !== 'undefined') {
