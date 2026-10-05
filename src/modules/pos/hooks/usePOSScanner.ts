@@ -1,15 +1,17 @@
 import { useCallback, useEffect } from 'react';
 import type { FormEvent } from 'react';
 import type { AppState } from '../../../store/storeTypes';
-import type { InventoryLevel, PendingOrder, Product } from '../../../types';
+import type { InventoryLevel, PendingOrder, Product, CartItem } from '../../../types';
 import { useBarcodeScanner } from '../../../hooks/useBarcodeScanner';
 import { normalizeSemanticText } from '../../../utils/textUtils';
+import type { Html5QrcodeScanner as Html5QrcodeScannerType } from 'html5-qrcode';
 
 type POSScannerArgs = {
   products: Product[];
   inventory: InventoryLevel[];
   currentBranchId: string;
   currentSessionBranchId?: string;
+  cart: CartItem[];
   pendingOrders: PendingOrder[];
   addToCart: AppState['addToCart'];
   clearCart: AppState['clearCart'];
@@ -30,6 +32,7 @@ export function usePOSScanner({
   inventory,
   currentBranchId,
   currentSessionBranchId,
+  cart,
   pendingOrders,
   addToCart,
   clearCart,
@@ -46,7 +49,7 @@ export function usePOSScanner({
 }: POSScannerArgs) {
 const getProductStock = (productId: string, variantLabel?: string) => {
   return (inventory || []).reduce((total, item) => {
-    const stockBranchId = currentSession?.branchId || currentBranchId;
+    const stockBranchId = currentSessionBranchId || currentBranchId;
     if (item.branchId !== stockBranchId || item.productId !== productId) return total;
     if (variantLabel) return item.variantLabel === variantLabel ? total + item.quantity : total;
     return total + item.quantity;
@@ -98,7 +101,7 @@ useBarcodeScanner((barcode) => {
 });
 
 useEffect(() => {
-  let scanner: Html5QrcodeScanner | null = null;
+  let scanner: Html5QrcodeScannerType | null = null;
   let cancelled = false;
 
   if (showCameraScanner) {
