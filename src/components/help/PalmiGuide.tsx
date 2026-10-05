@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ChevronLeft, ChevronRight, CircleCheck, RotateCcw, Sparkles, X } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { useStore } from "../../store/useStore";
-import { getAccessiblePalmiTourSteps, type PalmiTourStep } from "./palmiGuideSteps";
+import { getAccessibleNumaTourSteps, type NumaTourStep } from "./palmiGuideSteps";
 import { PalmiMascot } from "./PalmiMascot";
 import "./palmiGuide.css";
 
