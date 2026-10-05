@@ -126,6 +126,7 @@ export default function PalmiGuide(){
   };
   const finish=()=>{try{localStorage.setItem(KEY+":completed",new Date().toISOString())}catch{}setOpen(false);setRect(null);setShowInstallPrompt(true)};
   const close=()=>{setOpen(false);setRect(null)};
+  const closeInstallPrompt=useCallback(()=>setShowInstallPrompt(false),[]);
   const reset=()=>{try{localStorage.removeItem(KEY+":auto-open");localStorage.removeItem(KEY+":completed")}catch{}setIndex(0);setPhase("explain");setOpen(true)};
 
   const dockRef=useRef<HTMLDivElement|null>(null);
@@ -135,7 +136,7 @@ export default function PalmiGuide(){
     e.currentTarget.setPointerCapture?.(e.pointerId);e.preventDefault();
   };
   const onMove=(e:React.PointerEvent<HTMLDivElement>)=>{const d=drag.current;if(!d.active||d.pointerId!==e.pointerId)return;const p=clamp({left:e.clientX-d.offsetX,top:e.clientY-d.offsetY});if(Math.abs(p.left-d.originX)>4||Math.abs(p.top-d.originY)>4)d.moved=true;d.latest=p;setPosition(p)};
-  const onUp=(e:React.PointerEvent<HTMLDivElement>)=>{const d=drag.current;if(!d.active||d.pointerId!==e.pointerId)return;d.active=false;try{e.currentTarget.releasePointerCapture?.(e.pointerId)}catch{}if(!d.moved)setOpen(v=>!v);else if(d.latest)try{localStorage.setItem(KEY+":position",JSON.stringify(d.latest))}catch{}};
+  const onUp=(e:React.PointerEvent<HTMLDivElement>)=>{const d=drag.current;if(!d.active||d.pointerId!==e.pointerId)return;d.active=false;try{e.currentTarget.releasePointerCapture?.(e.pointerId)}catch{}if(!d.moved)setOpen(true);else if(d.latest)try{localStorage.setItem(KEY+":position",JSON.stringify(d.latest))}catch{}};
   const onKeyDown=(e:React.KeyboardEvent<HTMLDivElement>)=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();setOpen(true)}};
 
   if(!currentUser||steps.length===0)return null;
@@ -153,7 +154,7 @@ export default function PalmiGuide(){
         {isActionStep?<div className="palmi-guide-command"><div className="palmi-command-badge"><Sparkles className="w-3.5 h-3.5"/> TU TURNO</div><div className="palmi-command-title">{step?.actionMessage}</div><div className="palmi-command-status"><span className="palmi-pulse-dot"/> Esperando tu acción…</div></div>:<div className="palmi-guide-body">{index===0&&<div className="palmi-welcome-line">Numa te acompaña. Tú haces el recorrido.</div>}<div className="palmi-guide-message">{step?.message}</div>{step?.tip&&<div className="palmi-guide-tip"><strong>Consejo</strong><span>{step.tip}</span></div>}</div>}
         <div className="palmi-guide-footer"><button type="button" className="palmi-guide-secondary" onClick={close}>Cerrar guía</button><div className="palmi-guide-actions"><button type="button" className="palmi-guide-back" onClick={goPrevious} disabled={index===0} aria-label="Paso anterior"><ChevronLeft size={15}/> Atrás</button>{last?<button type="button" className="palmi-guide-primary" onClick={finish}><CircleCheck className="w-4 h-4"/> Terminar</button>:<button type="button" className={"palmi-guide-primary "+(isActionStep?"is-disabled":"")} onClick={goNext} disabled={isActionStep}>Entendido <ChevronRight className="w-4 h-4"/></button>}</div></div>
       </div>}
-      <PWAInstallPrompt visible={showInstallPrompt} onClose={() => setShowInstallPrompt(false)} />
+      <PWAInstallPrompt visible={showInstallPrompt} onClose={closeInstallPrompt} />
       <div ref={dockRef} className="palmi-guide-mascot-dock" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onKeyDown={onKeyDown} aria-label="Mover o abrir a Numa" role="button" tabIndex={0}>
         <span className="palmi-aura palmi-aura-1"/><span className="palmi-aura palmi-aura-2"/><span className="palmi-spark palmi-spark-1">✦</span><span className="palmi-spark palmi-spark-2">✦</span><span className="palmi-mascot-stage"><PalmiMascot className="palmi-guide-mascot"/></span><span className="palmi-guide-name">NUMA</span>
       </div>
