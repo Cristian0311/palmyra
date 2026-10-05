@@ -12,53 +12,21 @@ export function useReportsExport(getExportData: () => ExcelExportData) {
         setShowExportMenu(false);
       }
     }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const getExportData = (): ExcelExportData => {
-    let dateFilterLabel = 'Todo el historial';
-    if (selectedFilterDate) {
-      dateFilterLabel = `Fecha específica: ${selectedFilterDate}`;
-    } else if (sessionFilter === 'today') {
-      dateFilterLabel = `Hoy: ${new Date().toLocaleDateString('es-CU')}`;
-    }
-
-    return {
-      businessName: receiptConfig?.businessName || 'MARÉ POS',
-      transactions,
-      cashSessions,
-      salarySettlements,
-      products,
-      categories,
-      currencies,
-      branches,
-      users,
-      customers,
-      bankTransactions,
-      bankCards,
-      inventory,
-      transfers,
-      returns,
-      warranties,
-      baseCurrency,
-      dateFilterLabel
-    };
-  };
-
   const handleExportFullExcel = async () => {
-    const { exportFullReportsToExcel } = await import("../utils/excelExport");
-    const data = getExportData();
-    exportFullReportsToExcel(data);
+    const { exportFullReportsToExcel } = await import('../../../utils/excelExport');
+    exportFullReportsToExcel(getExportData());
     setShowExportMenu(false);
     setExportSuccess(true);
     setTimeout(() => setExportSuccess(false), 2500);
   };
 
   const handleExportSectionExcel = async (sec: 'summary' | 'sales' | 'items' | 'sessions' | 'payroll' | 'products' | 'returns' | 'banks' | 'discrepancies' | 'movements' | 'transfers') => {
-    const { exportSingleSectionToExcel } = await import("../utils/excelExport");
-    const data = getExportData();
-    exportSingleSectionToExcel(sec, data);
+    const { exportSingleSectionToExcel } = await import('../../../utils/excelExport');
+    exportSingleSectionToExcel(sec, getExportData());
     setShowExportMenu(false);
     setExportSuccess(true);
     setTimeout(() => setExportSuccess(false), 2500);
