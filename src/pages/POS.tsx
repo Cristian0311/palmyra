@@ -8,7 +8,8 @@ import { cn, generateId } from "../lib/utils";
 import { useStore } from "../store/useStore";
 import { Product, Payment, Transaction, CashRegisterSession } from "../types";
 import { InfoTooltip } from "../components/InfoTooltip";
-import { getOfflineQueueCount, getOfflineConflictCount, waitForOfflineQueueReady } from "../services/offlineQueue";
+import { waitForOfflineQueueReady } from "../services/offlineQueue";
+import { usePOSOfflineStatus } from "../modules/pos/hooks/usePOSOfflineStatus";
 import { POSCatalog } from "../components/POSCatalog";
 import { printThermalReceipt as printThermalReceiptDirect } from "../lib/escpos";
 import { formatMoney } from "../modules/pos/utils/paymentMath";
@@ -130,60 +131,15 @@ export default function POS() {
 
 
 
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [pendingOfflineCount, setPendingOfflineCount] = useState(getOfflineQueueCount());
-  const [offlineConflictCount, setOfflineConflictCount] = useState(getOfflineConflictCount());
-  const [isSyncingOffline, setIsSyncingOffline] = useState(false);
-  const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
+  const {
+    isOnline,
+    pendingOfflineCount,
+    offlineConflictCount,
+    isSyncingOffline,
+    handleManualSync,
+    refreshOfflineCounts,
+  } = usePOSOfflineStatus(addNotification);
 
-  useEffect(() => {
-    const updateCount = () => {
-      setPendingOfflineCount(getOfflineQueueCount());
-      setOfflineConflictCount(getOfflineConflictCount());
-    };
-    const handleOnline = () => {
-      setIsOnline(true);
-      updateCount();
-    };
-    const handleOffline = () => {
-      setIsOnline(false);
-      updateCount();
-    };
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    window.addEventListener('offline_queue_updated', updateCount);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('offline_queue_updated', updateCount);
-    };
-  }, []);
-
-  const handleManualSync = async () => {
-    if (!isOnline) {
-      addNotification('No hay conexión a internet actualmente.', 'warning');
-      return;
-    }
-    setIsSyncingOffline(true);
-    try {
-      const { processOfflineQueue } = await import("../services/offlineSync");
-      const res = await processOfflineQueue();
-      setPendingOfflineCount(res.remaining);
-      setOfflineConflictCount(getOfflineConflictCount());
-      if (res.remaining > 0 || getOfflineConflictCount() > 0) {
-        addNotification(`Sincronización incompleta: ${res.processed} operaciones procesadas y ${res.remaining} siguen pendientes.`, 'warning');
-      } else if (res.processed > 0) {
-        addNotification(`Sincronización manual completada: ${res.processed} operaciones confirmadas.`, 'success');
-      } else if (getOfflineConflictCount() > 0) {
-        addNotification('La cola tiene ' + getOfflineConflictCount() + ' conflicto(s) que requieren revisión.', 'warning');
-      } else {
-        addNotification('Todo está al día y sincronizado con Supabase.', 'info');
-      }
-    } finally {
-      setIsSyncingOffline(false);
-    }
-  };
-  
   // Cash Management State
   const [cashManagementTab, setCashManagementTab] = useState<'movements' | 'close' | 'sales'>('movements');
   const [closingBalances, setClosingBalances] = useState<{ [key: string]: number }>({});
