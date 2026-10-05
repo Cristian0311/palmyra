@@ -143,7 +143,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): Partial<AppState
   quotes: [],
   addQuote: (quote) => {
     set((state) => ({ quotes: [...state.quotes, quote] }));
-    import('../services/supabaseSync').then(({ pushQuoteToSupabase }) => {
+    import('../../services/supabaseSync').then(({ pushQuoteToSupabase }) => {
       pushQuoteToSupabase(quote).catch(() => {});
     }).catch(() => {});
   },
@@ -151,7 +151,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): Partial<AppState
     set((state) => ({ quotes: state.quotes.map(q => q.id === id ? { ...q, ...updates } : q) }));
     const updated = get().quotes.find(q => q.id === id);
     if (updated) {
-      import('../services/supabaseSync').then(({ pushQuoteToSupabase }) => {
+      import('../../services/supabaseSync').then(({ pushQuoteToSupabase }) => {
         pushQuoteToSupabase(updated).catch(() => {});
       }).catch(() => {});
     }
@@ -160,7 +160,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): Partial<AppState
   timeShifts: [],
   addTimeShift: (shift) => {
     set((state) => ({ timeShifts: [shift, ...state.timeShifts] }));
-    import('../services/supabaseSync').then(({ pushTimeShiftToSupabase }) => {
+    import('../../services/supabaseSync').then(({ pushTimeShiftToSupabase }) => {
       pushTimeShiftToSupabase(shift).catch(() => {});
     }).catch(() => {});
   },
@@ -168,7 +168,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): Partial<AppState
     set((state) => ({ timeShifts: state.timeShifts.map(s => s.id === id ? { ...s, ...updates } : s) }));
     const updated = get().timeShifts.find(s => s.id === id);
     if (updated) {
-      import('../services/supabaseSync').then(({ pushTimeShiftToSupabase }) => {
+      import('../../services/supabaseSync').then(({ pushTimeShiftToSupabase }) => {
         pushTimeShiftToSupabase(updated).catch(() => {});
       }).catch(() => {});
     }
@@ -298,7 +298,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): Partial<AppState
       }));
 
       const inventoryReconciled = await get().refreshBranchInventory();
-      const { pullBankDataFromSupabase } = await import('../services/supabaseSync');
+      const { pullBankDataFromSupabase } = await import('../../services/supabaseSync');
       const bankRes = await pullBankDataFromSupabase();
       if (!inventoryReconciled || !bankRes.success) {
         throw new Error('Venta anulada en servidor, pero el inventario/saldos locales aún no pudieron reconciliarse');
@@ -372,7 +372,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): Partial<AppState
         }));
 
         const inventoryReconciled = await get().refreshBranchInventory();
-        const { pullBankDataFromSupabase } = await import('../services/supabaseSync');
+        const { pullBankDataFromSupabase } = await import('../../services/supabaseSync');
         const bankRes = await pullBankDataFromSupabase();
         if (!inventoryReconciled || !bankRes.success) {
           throw new Error('Turno cancelado en servidor, pero el inventario/saldos locales aún no pudieron reconciliarse');
@@ -411,7 +411,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): Partial<AppState
     // Registrar inmediatamente la intención en la cola durable para evitar una
     // carrera entre "crear devolución" y "completar devolución".
     void enqueueOfflineItem('return', newReturn, newReturn.id);
-    import('../services/supabaseSync').then(({ pushReturnToSupabase }) => {
+    import('../../services/supabaseSync').then(({ pushReturnToSupabase }) => {
       pushReturnToSupabase(newReturn).catch(() => {});
     }).catch(() => {});
   },
@@ -421,7 +421,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): Partial<AppState
     }));
     const updated = get().returns.find(r => r.id === id);
     if (updated) {
-      import('../services/supabaseSync').then(({ pushReturnToSupabase }) => {
+      import('../../services/supabaseSync').then(({ pushReturnToSupabase }) => {
         pushReturnToSupabase(updated).catch(() => {});
       }).catch(() => {});
     }
@@ -439,7 +439,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): Partial<AppState
         try {
           // Primero confirmamos la existencia de la devolución en la nube. Así
           // "Completar" nunca corre antes que "Crear devolución".
-          const { pushReturnToSupabase } = await import('../services/supabaseSync');
+          const { pushReturnToSupabase } = await import('../../services/supabaseSync');
           const persisted = await pushReturnToSupabase(returnReq);
           if (!persisted) throw new Error('La devolución todavía no está confirmada en Supabase.');
           removeFromOfflineQueueByAction('return', returnReq.id);
