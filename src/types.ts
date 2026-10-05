@@ -6,7 +6,7 @@ export interface Currency {
   isBase?: boolean;
 }
 
-export interface Branch {
+export interface Warehouse {
   id: string;
   name: string;
   address?: string;
@@ -14,6 +14,9 @@ export interface Branch {
   isMain?: boolean;
   isActive?: boolean;
 }
+
+/** @deprecated Use Warehouse. Kept temporarily for runtime compatibility. */
+export interface Branch extends Warehouse {}
 
 export interface Category {
   id: string;
@@ -64,6 +67,9 @@ export interface Product {
 export interface InventoryLevel {
   id?: string;
   productId: string;
+  /** Canonical warehouse scope. */
+  warehouseId?: string;
+  /** @deprecated Use warehouseId. */
   branchId: string;
   variantLabel?: string; // e.g., 'Talla 42', 'M', 'Rojo'
   quantity: number;
@@ -105,6 +111,9 @@ export interface StoreConfig {
 
 export interface Transaction {
   id: string;
+  /** Canonical warehouse scope. */
+  warehouseId?: string;
+  /** @deprecated Use warehouseId. */
   branchId: string;
   userId: string; // The user who processed the transaction
   sellerEmployeeIds?: string[]; // IDs of employees involved in the sale for commission splitting
@@ -170,6 +179,9 @@ export interface CashRegisterSession {
   id: string;
   /** Persisted global sequential cash-turn number assigned by Supabase. */
   turnNumber?: number;
+  /** Canonical warehouse scope. */
+  warehouseId?: string;
+  /** @deprecated Use warehouseId. */
   branchId: string;
   openedAt: string;
   closedAt?: string;
@@ -232,13 +244,16 @@ export interface User {
   email: string;
   role: 'admin' | 'employee';
   password?: string;
+  /** Canonical warehouse assignment. */
+  warehouseId?: string;
   baseSalary: number; // Salario base o CUP fijo por día
   salesGoal?: number;
   commissionRate?: number;
   phone?: string;
   branchId?: string; // Sucursal asignada
   supervisorId?: string; // Supervisor (empleado principal)
-  allowedBranches?: string[]; // Sucursales donde el usuario puede operar
+  allowedBranches?: string[]; // @deprecated Alias de allowedWarehouseIds
+  allowedWarehouseIds?: string[]; // Almacenes donde el usuario puede operar
   permissions?: string[];
   isActive?: boolean;
 }
@@ -282,6 +297,10 @@ export interface InventoryTransfer {
   id: string;
   productId: string;
   productName: string;
+  /** Canonical warehouse scope. */
+  fromWarehouseId?: string;
+  toWarehouseId?: string;
+  /** @deprecated Use fromWarehouseId/toWarehouseId. */
   fromBranchId: string;
   fromBranchName: string;
   toBranchId: string;
