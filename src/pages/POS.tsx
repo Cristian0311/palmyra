@@ -873,6 +873,17 @@ export default function POS() {
   // remota llega momentáneamente sin rateToBase.
   const { getSafeRateToBase, toBaseAmount, roundBaseAmount } = createPaymentMath(baseCurrency, currencies, isCupBase);
 
+  const totalPaidBase = roundBaseAmount(paymentLines.reduce(
+    (sum, line) => sum + toBaseAmount(line.amount, line.code),
+    0
+  ));
+
+  const balanceBase = roundBaseAmount(totalBase - totalPaidBase);
+  const remainingBase = Math.max(0, balanceBase);
+  const changeBase = Math.max(0, -balanceBase);
+  const isPaid = remainingBase <= (isCupBase ? 0 : 0.01) && totalBase > 0;
+
+
   const generateSerial = () => {
     const randomSN = `SN-${Math.floor(Math.random() * 100000000).toString().padStart(8, '0')}`;
     setConfigData({ ...configData, serialNumber: randomSN });
