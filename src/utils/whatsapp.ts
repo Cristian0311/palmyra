@@ -19,7 +19,7 @@ export function buildWhatsAppPaymentUrl(request: WhatsAppPaymentRequest): string
     : "Efectivo";
 
   const amount = typeof request.amount === "number"
-    ? request.amount.toLocaleString("es-CU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " " + (request.currency || "USD")
+    ? request.amount.toLocaleString("es-CU", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " " + (request.currency || "Moneda del plan")
     : "Por confirmar";
 
   const lines = [
