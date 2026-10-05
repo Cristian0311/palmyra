@@ -9,7 +9,7 @@ import {
   callTransferInventoryRPC,
   callTransferInventoryBulkRPC,
 } from '../../services/supabaseSync';
-import { enqueueOfflineItem } from '../../services/offlineQueue';
+import { enqueueOfflineItem, removeFromOfflineQueueByAction } from '../../services/offlineQueue';
 import { generateId } from '../../lib/utils';
 import { setCanonicalInventoryQuantity, validateTransferStock } from '../utils/inventoryTransforms';
 import { buildLocalCompletedSalePatch } from '../utils/localCompletedSale';
@@ -20,6 +20,21 @@ type StoreSet = (
   partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)
 ) => void;
 type StoreGet = () => AppState;
+
+
+async function refreshInventoryBranchesFromSupabase(set, get, set: StoreSet, get: StoreGet, branchIds: string[]): Promise<boolean> {
+  const ids = Array.from(new Set(branchIds.filter(Boolean)));
+  if (!ids.length) return true;
+  try {
+    const results = await Promise.all(ids.map(id => pullBranchInventoryFromSupabase(id)));
+    if (results.some(result => !result.success)) return false;
+    const byKey = new Map<string, InventoryLevel>();
+    get().inventory.forEach(item => { if (!ids.includes(item.branchId)) byKey.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item); });
+    for (const result of results) for (const item of result.inventory) byKey.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
+    set({ inventory: Array.from(byKey.values()) });
+    return true;
+  } catch { return false; }
+}
 
 export function createInventoryActions(set: StoreSet, get: StoreGet): Partial<AppState> {
   return {
@@ -169,7 +184,7 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): Partial<Ap
           wasOnline = false;
         } else {
           serverConfirmed = true;
-          canonicalRefreshed = await refreshInventoryBranchesFromSupabase([fromBranchId, toBranchId]);
+          canonicalRefreshed = await refreshInventoryBranchesFromSupabase(set, get, [fromBranchId, toBranchId]);
           if (canonicalRefreshed) {
             removeFromOfflineQueueByAction('transfer', actionId);
           } else {
@@ -470,7 +485,7 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): Partial<Ap
           }
         } else {
           serverConfirmed = true;
-          canonicalRefreshed = await refreshInventoryBranchesFromSupabase([fromBranchId, toBranchId]);
+          canonicalRefreshed = await refreshInventoryBranchesFromSupabase(set, get, [fromBranchId, toBranchId]);
           if (canonicalRefreshed) removeFromOfflineQueueByAction('transfer_bulk', actionId);
         }
       } catch (err) {
