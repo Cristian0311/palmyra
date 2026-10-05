@@ -15,7 +15,7 @@ type StoreSet = (
 ) => void;
 type StoreGet = () => AppState;
 
-export function createAuthActions(set: StoreSet, get: StoreGet): Partial<AppState> {
+export function createAuthActions(set: StoreSet, get: StoreGet): any {
   return {
   login: async (email, pass) => {
     try {
