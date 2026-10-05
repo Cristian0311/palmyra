@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { NUMA_TOUR_STEPS, getAccessibleNumaTourSteps } from "../../src/components/help/palmiGuideSteps";
 
-test("Palmi guide contains a complete ordered product journey", () => {
+test("Numa guide contains a complete ordered product journey", () => {
   const ids = NUMA_TOUR_STEPS.map(step => step.id);
   assert.equal(ids[0], "welcome");
   assert.ok(ids.includes("open-menu"));
@@ -23,7 +23,7 @@ test("module steps wait for a real user action before explaining", () => {
   assert.match(dashboard?.actionMessage || "", /busca|presiona/i);
 });
 
-test("Palmi guide respects user permissions", () => {
+test("Numa guide respects user permissions", () => {
   const employee = { role: "employee", permissions: ["pos.access", "employees.manage"] };
   const ids = getAccessibleNumaTourSteps(employee).map(step => step.id);
   assert.ok(ids.includes("pos"));
