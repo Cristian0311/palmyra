@@ -1880,7 +1880,10 @@ export const useStore = create<AppState>()(
             openingBalance: Number(res.data.opening_balance || res.data.opening_amount) || 0,
             openingAmount: Number(res.data.opening_amount || res.data.opening_balance) || 0,
             turnNumber: Number(res.data.turn_number) || undefined,
-            workingEmployeeIds: res.data.working_employee_ids || [],
+            userId: session.userId,
+            branchId: session.branchId,
+            workerName: session.workerName,
+            workingEmployeeIds: session.workingEmployeeIds?.length ? session.workingEmployeeIds : [session.userId],
             movements: res.data.movements || []
           };
           set((state) => {
@@ -1976,8 +1979,10 @@ export const useStore = create<AppState>()(
       date: finalClosingDate,
       status: 'pending'
     };
+    const expectedCashBase = calculateExpectedCashBase(session, sessionTxs, get().currencies || []);
     const updatedSession = {
       ...session,
+      expectedBalance: expectedCashBase,
       closedAt: finalClosingDate,
       status: 'closed' as 'closed',
       closingBalances: closingBalances || [],
@@ -1990,7 +1995,7 @@ export const useStore = create<AppState>()(
 
     if (navigator.onLine) {
       try {
-        const res = await callCloseSessionRPC(sessionId, closingBalances || [], finalClosingDate, session.notes || '', settlement);
+        const res = await callCloseSessionRPC(sessionId, closingBalances || [], finalClosingDate, session.notes || '', settlement, expectedCashBase);
         if (!res.success) throw new Error(res.error || 'No se pudo cerrar el turno');
         set((state) => ({
           cashSessions: (state.cashSessions || []).map(s => s.id === sessionId ? updatedSession : s),
@@ -2369,8 +2374,10 @@ export const useStore = create<AppState>()(
       date: finalClosingDate,
       status: 'pending'
     };
+    const expectedCashBase = calculateExpectedCashBase(session, sessionTxs, get().currencies || []);
     const updatedSession: CashRegisterSession = {
       ...session,
+      expectedBalance: expectedCashBase,
       status: 'closed',
       closedAt: finalClosingDate,
       closingDate: finalClosingDate,
@@ -2382,7 +2389,7 @@ export const useStore = create<AppState>()(
 
     if (navigator.onLine) {
       try {
-        const res = await callCloseSessionRPC(sessionId, finalBalances, finalClosingDate, updatedSession.notes || '', settlement);
+        const res = await callCloseSessionRPC(sessionId, finalBalances, finalClosingDate, updatedSession.notes || '', settlement, expectedCashBase);
         if (!res.success) throw new Error(res.error || 'No se pudo cerrar el turno');
         set(state => ({
           cashSessions: state.cashSessions.map(s => s.id === sessionId ? updatedSession : s),
