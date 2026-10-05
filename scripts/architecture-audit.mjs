@@ -40,6 +40,7 @@ function walk(dir) {
         findings.push({ level: 'high', message: `Archivo fuente >= 220 KB: ${rel} (${bytes} bytes)` });
       } else if (bytes >= 140000) {
         findings.push({ level: 'medium', message: `Archivo fuente >= 140 KB: ${rel} (${bytes} bytes)` });
+      }
     }
   }
 }
