@@ -17,6 +17,7 @@ import { POSConfigProductModal } from "../components/pos/POSConfigProductModal";
 import { POSAddCustomerModal } from "../components/pos/POSAddCustomerModal";
 import { POSCancelShiftModal } from "../components/pos/POSCancelShiftModal";
 import { POSClosurePrintArea } from "../components/pos/POSClosurePrintArea";
+import { getAuthorizedWarehouseIds, getWarehouseId } from "../modules/warehouse/warehouseScope";
 import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
 import { aggregateTransferPayments, buildTransactionTicketId, finalizeCheckoutPayments } from '../modules/pos/utils/checkoutUtils';
 const CheckoutModal = lazy(() => import("../components/pos/CheckoutModal"));
@@ -163,7 +164,7 @@ export default function POS() {
   
   
   const navigate = useNavigate();
-  const fallbackSessionBranchId = currentBranchId || (currentUser?.branchId || branches[0]?.id || '');
+  const fallbackSessionBranchId = currentBranchId || getWarehouseId(currentUser) || branches[0]?.id || '';
   const currentSession = useMemo(() => {
     if (activeSessionId) {
       const active = cashSessions.find(s => s.id === activeSessionId && s.status === 'open' && !s.deletedAt);
@@ -271,8 +272,13 @@ export default function POS() {
     return name ? (users || []).find(u => (u.name || '').trim().toLowerCase() === name) || null : null;
   }, [sessionWorkerId, sessionWorkerName, users]);
 
-  const workerAssignedBranchId = detectedWorker?.branchId ||
-    (detectedWorker?.allowedBranches?.length === 1 ? detectedWorker.allowedBranches[0] : null);
+  const workerAssignedWarehouseIds = React.useMemo(
+    () => getAuthorizedWarehouseIds(detectedWorker),
+    [detectedWorker]
+  );
+  const workerAssignedBranchId =
+    getWarehouseId(detectedWorker) ||
+    (workerAssignedWarehouseIds.length === 1 ? workerAssignedWarehouseIds[0] : null);
 
   const currentSessionWorker = currentSession
     ? (users || []).find(u =>
@@ -299,7 +305,7 @@ export default function POS() {
   const allowedBranches = React.useMemo(() => {
     if (currentUser?.role === 'admin') return branches || [];
     const scopeUser = detectedWorker || currentUser;
-    const ids = scopeUser?.allowedBranches || (scopeUser?.branchId ? [scopeUser.branchId] : []);
+    const ids = getAuthorizedWarehouseIds(scopeUser);
     return (branches || []).filter(b => ids.includes(b.id));
   }, [currentUser, detectedWorker, branches]);
 
@@ -863,7 +869,7 @@ export default function POS() {
     // turno o almacén que pertenezca a otra identidad/sucursal.
     if (currentUser?.role !== 'admin' && currentUser?.id) {
       const assignedBranchId = currentUser.branchId ||
-        (currentUser.allowedBranches?.length === 1 ? currentUser.allowedBranches[0] : null);
+        (getAuthorizedWarehouseIds(currentUser).length === 1 ? getAuthorizedWarehouseIds(currentUser)[0] : null);
       const ownsSession = currentSession.userId === currentUser.id ||
         currentSession.workingEmployeeIds?.includes(currentUser.id);
       const ownsBranch = !assignedBranchId || currentSession.branchId === assignedBranchId;
@@ -1061,9 +1067,7 @@ export default function POS() {
       // y se autentica con la contraseña de ESE trabajador.
       // La sucursal queda limitada a las sucursales asignadas al trabajador seleccionado.
       const workerBranchIds = new Set(
-        workerToAssign.allowedBranches?.length
-          ? workerToAssign.allowedBranches
-          : (workerToAssign.branchId ? [workerToAssign.branchId] : [])
+        getAuthorizedWarehouseIds(workerToAssign)
       );
       const permittedBranchIds = currentUser?.role === 'admin'
         ? new Set((branches || []).map(b => b.id))
@@ -1199,8 +1203,9 @@ export default function POS() {
     }
 
     if (currentUser?.role !== 'admin') {
-      const assignedBranchId = currentUser?.branchId ||
-        (currentUser?.allowedBranches?.length === 1 ? currentUser.allowedBranches[0] : null);
+      const assignedBranchIds = getAuthorizedWarehouseIds(currentUser);
+      const assignedBranchId = getWarehouseId(currentUser) ||
+        (assignedBranchIds.length === 1 ? assignedBranchIds[0] : null);
       const ownIdentity = targetSession.userId === currentUser?.id ||
         targetSession.workingEmployeeIds?.includes(currentUser?.id || '');
       const ownBranch = !assignedBranchId || targetSession.branchId === assignedBranchId;
@@ -1211,9 +1216,7 @@ export default function POS() {
     }
 
     const targetBranchIds = new Set(
-      targetUser.allowedBranches?.length
-        ? targetUser.allowedBranches
-        : (targetUser.branchId ? [targetUser.branchId] : [])
+      getAuthorizedWarehouseIds(targetUser)
     );
 
     if (targetBranchIds.size > 0 && !targetBranchIds.has(targetSession.branchId) && currentUser?.role !== 'admin') {
