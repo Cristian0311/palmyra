@@ -39,7 +39,7 @@ export const NUMA_TOUR_STEPS: NumaTourStep[] = [
   { id:"finish", eyebrow:"Recorrido completado", title:"Ahora ya sabes dónde trabajar", message:"Has recorrido la estructura principal de PALMYRA. Numa queda disponible como ayuda contextual y puedes repetir el recorrido cuando quieras.", tip:"Aprende el camino primero; después trabaja cada sección con seguridad." }
 ];
 
-export function getAccessibleNumaTourSteps(currentUser: Pick<User, "role" | "permissions"> | null | undefined, isMobile = false) {
+export function getAccessiblePalmiTourSteps(currentUser: Pick<User, "role" | "permissions"> | null | undefined, isMobile = false) {
   const isAdmin = currentUser?.role === "admin";
   return NUMA_TOUR_STEPS.filter(step => (!step.mobileOnly || isMobile) && (!step.permission || isAdmin || currentUser?.permissions?.includes(step.permission)));
 }
@@ -48,4 +48,4 @@ export function getAccessibleNumaTourSteps(currentUser: Pick<User, "role" | "per
 // Evita que módulos antiguos queden rotos mientras consumen el nuevo recorrido.
 export type PalmiTourStep = NumaTourStep;
 export const PALMI_TOUR_STEPS = NUMA_TOUR_STEPS;
-export const getAccessiblePalmiTourSteps = getAccessibleNumaTourSteps;
+export const getAccessiblePalmiTourSteps = getAccessiblePalmiTourSteps;
