@@ -76,10 +76,3 @@
 .palmi-action-cue-arrow{width:25px;height:25px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#6d3bd2;color:#fff;font-size:15px;font-weight:900;box-shadow:0 8px 20px rgba(109,59,210,.28)}
 @keyframes palmi-cue-in{from{opacity:0;transform:translateY(7px) scale(.94)}to{opacity:1;transform:none}}
 @keyframes palmi-cue-float{0%,100%{transform:translateY(0)}50%{transform:translateY(4px)}}
-.team-form-hidden{display:none!important}
-.team-step-item{appearance:none;border:0;padding:0;background:transparent;text-align:left;cursor:pointer}
-.team-step-item:disabled{cursor:default}
-.team-step-item.team-step-done>span{background:#f1ebff;border-color:#cdbaff;color:#6d3bd2}
-.team-step-line.is-complete{background:#9a7be5}
-@media(max-width:720px){.palmi-action-cue{transform:translateY(0) scale(.95);transform-origin:left center}.palmi-action-cue-label{font-size:7px}.palmi-action-cue-arrow{width:23px;height:23px;font-size:14px}}
-@media(prefers-reduced-motion:reduce){.palmi-action-cue{animation:none}}
