@@ -13,6 +13,15 @@ test("Palmi guide contains a complete ordered product journey", () => {
   assert.ok(ids.includes("offline"));
 });
 
+test("module steps wait for a real user action before explaining", () => {
+  const dashboard = PALMI_TOUR_STEPS.find(step => step.id === "dashboard");
+  const team = PALMI_TOUR_STEPS.find(step => step.id === "team");
+  assert.equal(dashboard?.requiresAction, true);
+  assert.equal(team?.requiresAction, true);
+  assert.equal(dashboard?.navSelector, '[data-palmi-nav="/"]');
+  assert.match(dashboard?.actionMessage || "", /busca|presiona/i);
+});
+
 test("Palmi guide respects user permissions", () => {
   const employee = { role: "employee", permissions: ["pos.access", "employees.manage"] };
   const ids = getAccessiblePalmiTourSteps(employee).map(step => step.id);
