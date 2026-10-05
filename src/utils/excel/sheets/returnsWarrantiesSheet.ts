@@ -1,4 +1,4 @@
-import type { ExcelExportData } from "../../types";
+import type { ExcelExportData } from "../../../types";
 
 export function generateReturnsAndWarrantiesSheet(data: ExcelExportData): any[][] {
   const { returns = [], warranties = [], products, customers, users, branches, baseCurrency } = data;
