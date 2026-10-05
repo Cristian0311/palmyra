@@ -35,7 +35,7 @@ export function createAuthActions(set: StoreSet, get: StoreGet): Partial<AppStat
   logout: () => {
     set({ currentUser: null, cart: [], activeSessionId: null, currentBranchId: '' });
     void signOutSaaSAccount().catch(() => {});
-    void import('../services/tenant').then(({ clearActiveTenant }) => clearActiveTenant()).catch(() => {});
+    void import('../../services/tenant').then(({ clearActiveTenant }) => clearActiveTenant()).catch(() => {});
   },
   clearAllData: async () => {
     // A full reset must never leave durable business operations behind.
@@ -169,7 +169,7 @@ export function createAuthActions(set: StoreSet, get: StoreGet): Partial<AppStat
     // Primero se confirma la limpieza remota. Nunca debemos vaciar el estado
     // local si Supabase falló, porque eso dejaría el dispositivo divergente de la nube.
     try {
-      const { clearHistoryFromSupabase } = await import('../services/supabaseSync');
+      const { clearHistoryFromSupabase } = await import('../../services/supabaseSync');
       const remote = await clearHistoryFromSupabase();
       if (!remote?.success) {
         const details = Array.isArray(remote?.failed) && remote.failed.length
@@ -311,7 +311,7 @@ export function createAuthActions(set: StoreSet, get: StoreGet): Partial<AppStat
       });
 
       // After local update, sync everything to Supabase
-      const { pushAllToSupabase } = await import('../services/supabaseSync');
+      const { pushAllToSupabase } = await import('../../services/supabaseSync');
       const syncResult = await pushAllToSupabase(true);
       if (!syncResult.success) {
         set(previousImportState);
@@ -340,7 +340,7 @@ export function createAuthActions(set: StoreSet, get: StoreGet): Partial<AppStat
     pushUserToSupabase(user);
   },
   registerEmployee: (name, password) => {
-    const newUser: import('../types').User = {
+    const newUser: import('../../types').User = {
       id: crypto.randomUUID(),
       name,
       email: `${String(name || 'user').toLowerCase().replace(/\s/g, '')}_${Math.floor(1000 + Math.random() * 9000)}@system.local`,
