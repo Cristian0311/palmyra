@@ -20,6 +20,7 @@ import { normalizeSemanticText, areSemanticallyEqual } from '../utils/textUtils'
 import { localStateStorage, clearLocalStateStorage, flushLocalStateStorage } from '../services/localStateStorage';
 import { getPalmyraScopedStorageKey } from '../services/localScope';
 import { calculateExpectedCashBase } from '../services/cash/expectedCash';
+import { removeFromOfflineQueueByAction, removeFromOfflineQueueByTransactionId } from '../services/offlineQueue/outboxUtils';
 import {
   getNcfDeviceId,
   loadNcfRanges,
@@ -37,16 +38,6 @@ import {
 } from './storeInitialData';
 
 // --- Definición del Store ---
-
-function removeFromOfflineQueueByAction(type: string, actionId: string) {
-  const queued = getOfflineQueue().find(item => item.type === type && item.actionId === actionId);
-  if (queued) removeFromOfflineQueue(queued.id);
-}
-
-function removeFromOfflineQueueByTransactionId(transactionId: string) {
-  const queued = getOfflineQueue().find(item => item.type === 'transaction' && item.actionId === transactionId);
-  if (queued) removeFromOfflineQueue(queued.id);
-}
 
 function validateLocalTransferStock(
   requirements: { productId: string; branchId: string; variantLabel?: string; quantity: number }[]
