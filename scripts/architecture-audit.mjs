@@ -41,11 +41,10 @@ function walk(dir) {
       const lineCount = (() => {
         try { return readFileSync(abs, 'utf8').split(/\r?\n/).length; } catch { return 0; }
       })();
-
       const baseline = legacyLargeBaseline[rel];
+
       if (lineCount >= 4000) {
-        const regressed = baseline ? lineCount > baseline.lines : true;
-        findings.push({ level: regressed ? 'high' : 'medium', message: `Archivo fuente >= 4000 líneas: ${rel} (${lineCount})` });
+        findings.push({ level: 'high', message: `Archivo fuente >= 4000 líneas: ${rel} (${lineCount}). El límite de mantenimiento es 3999 líneas; extrae lógica a módulos.` });
       } else if (lineCount >= 2500) {
         findings.push({ level: 'medium', message: `Archivo fuente >= 2500 líneas: ${rel} (${lineCount})` });
       }
