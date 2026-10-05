@@ -1,27 +1,49 @@
 # PALMYRA — Auditoría arquitectónica 2026-10-05
 
-## Hallazgos
+## Estado posterior al saneamiento
 
-- La aplicación activa está en la raíz; `tsconfig.json` excluye `fixrender/`.
-- `fixrender/` contiene una segunda copia de la aplicación con 99 equivalentes del árbol principal.
-- Hay backups `.bak*` versionados dentro de `src/`.
-- Hay SQL históricos fuera de `supabase/migrations/`.
-- Los tres archivos de mayor riesgo son `src/pages/POS.tsx`, `src/pages/Reports.tsx` y `src/store/useStore.ts`.
-- La sincronización offline y el transporte Supabase también concentran demasiadas responsabilidades.
-- El modelo TypeScript conserva nomenclatura legacy `Branch/branchId` aunque el backend canónico es warehouse-centric.
+La aplicación activa permanece en la raíz del repositorio. Esta auditoría comenzó con referencias históricas a `fixrender/`, backups y SQL de reparación en la superficie raíz; esos artefactos ya no forman parte del árbol activo de esta rama.
 
-## Orden de saneamiento
+### Limpieza realizada
 
-1. Eliminar o archivar duplicación de `fixrender/` sin perder blobs históricos.
-2. Extraer lógica pura y de infraestructura del store.
-3. Modularizar POS por catálogo, carrito, pagos, caja, impresión y checkout.
-4. Modularizar Reportes por datos, filtros, cálculos y exportación.
-5. Modularizar offline por replay de dominio y manejo de conflictos.
-6. Modularizar Supabase sync por dominio.
-7. Migrar progresivamente nomenclatura Branch -> Warehouse mediante compatibilidad.
-8. Fortalecer CI con checks arquitectónicos y pruebas.
-9. Auditar funcionalmente cada módulo con escenarios reales.
+- `fixrender/`: no existe en el árbol activo de `main` ni en la rama de refactor.
+- Artefactos históricos de auditoría/reparación: archivados bajo `docs/archive/`.
+- SQL histórico fuera de `supabase/migrations/`: archivado bajo `docs/archive/sql/`.
+- Scripts de pruebas/parches temporales: archivados bajo `scripts/archive/legacy/`.
+- Binarios/residuos raíz `omnisync-pos-reparado-fase28-estabilidad.zip` y `Gg`: retirados.
+- No se modificó la lógica de negocio de ventas, inventario, caja, pagos, offline o permisos como parte del saneamiento.
+
+## Tamaños actuales de los focos principales
+
+| Archivo | Líneas actuales |
+| --- | ---: |
+| `src/store/useStore.ts` | 449 |
+| `src/pages/POS.tsx` | 3.372 |
+| `src/pages/Reports.tsx` | 3.492 |
+| `src/services/offlineSync.ts` | 382 |
+| `src/services/supabaseSync/mutations.ts` | 295 |
+| `src/services/supabaseSync/pull.ts` | 433 |
+| `src/pages/Inventory.tsx` | 1.653 |
+| `src/pages/Settings.tsx` | 1.665 |
+| `src/pages/Transfers.tsx` | 995 |
+| `src/pages/CashRegister.tsx` | 1.017 |
+
+## Modularización ya existente
+
+PALMYRA ya dispone de límites de dominio bajo `src/modules/` y de acciones separadas bajo `src/store/actions/`.
+
+POS cuenta actualmente con hooks/utilidades para pagos, scanner, offline y printer/recibos. Reports cuenta con hooks/utilidades para exportación, impresión, nómina, sesiones y contexto.
+
+## Riesgos restantes
+
+1. POS y Reports siguen siendo los dos componentes de presentación más grandes y deben continuar dividiéndose por dominio visual.
+2. Inventory, Settings y CashRegister todavía pueden dividirse cuando exista una frontera de responsabilidad clara.
+3. La nomenclatura TypeScript conserva compatibilidad histórica `branchId`/Branch mientras el backend es warehouse-centric.
+4. CI debe crecer desde typecheck/tests/audit/build hacia pruebas de integración de flujos críticos.
+5. La verificación funcional debe cubrir onboarding, permisos multiempresa, POS offline/reinicio, caja, vendedor e impresión real.
 
 ## Regla de seguridad
 
-Ninguna extracción puede cambiar contratos externos del store o el comportamiento de una venta. Las operaciones críticas de inventario siguen teniendo a PostgreSQL/RPC como autoridad online y la cola durable como autoridad offline pendiente.
+Ninguna extracción estructural puede cambiar contratos externos del store ni el comportamiento de una venta. Las operaciones críticas de inventario siguen teniendo PostgreSQL/RPC como autoridad online y el outbox durable como autoridad offline pendiente.
+
+Fecha de actualización: 2026-10-05.
