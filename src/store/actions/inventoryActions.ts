@@ -316,8 +316,8 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
     const productIds = Array.from(new Set((ids || []).map(String).map(x => x.trim()).filter(Boolean)));
     if (!productIds.length) return;
     set((state) => ({
-      products: (state.products || []).filter(p => !productIds.includes(p.id)),
-      inventory: (state.inventory || []).filter(i => !productIds.includes(i.productId))
+      products: (state.products || []).filter(p => !productIds.includes(String(p.id))),
+      inventory: (state.inventory || []).filter(i => !productIds.includes(String(i.productId)))
     }));
     for (const productId of productIds) {
       removeFromOfflineQueueByAction('product', productId);
