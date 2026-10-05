@@ -1,4 +1,4 @@
-import type { ExcelExportData } from "../../types";
+import type { ExcelExportData } from "../../../types";
 
 export function generateBankMovementsSheet(data: ExcelExportData): any[][] {
   const { bankTransactions, bankCards, currencies, baseCurrency } = data;
