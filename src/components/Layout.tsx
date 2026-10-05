@@ -503,10 +503,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               "flex items-center text-muted hover:text-violet-700 hover:bg-violet-50 dark:hover:bg-violet-950/40 rounded-xl transition-all font-black uppercase",
               sidebarCollapsed ? "justify-center p-2 w-full" : "space-x-2 px-3 py-2 w-full text-[10px] tracking-wider"
             )}
-            title="Abrir guía PALMYRA"
+            title="Abrir Sira · guía PALMYRA"
           >
             <LifeBuoy className="w-3.5 h-3.5 shrink-0" />
-            {!sidebarCollapsed && <span>Guía PALMYRA</span>}
+            {!sidebarCollapsed && <span>Sira · Guía</span>}
           </button>
 
           <button
