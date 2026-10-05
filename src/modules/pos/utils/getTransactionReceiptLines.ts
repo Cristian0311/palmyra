@@ -24,9 +24,9 @@ export function getTransactionReceiptLines(tx: Transaction, deps: ReceiptLineDep
     lines.push("---");
     lines.push(`Ticket ID: ${tx.id}`);
     lines.push(`Fecha: ${new Date(tx.date).toLocaleDateString()} ${new Date(tx.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
-    const sellerDisplay = tx.cashierName || (currentSession?.workerName) || users.find(u => u.id === tx.userId)?.name || 'Empleado';
+    const sellerDisplay = tx.cashierName || currentSessionWorkerName || users.find(u => u.id === tx.userId)?.name || 'Empleado';
     lines.push(`Empleado: ${sellerDisplay.toUpperCase()}`);
-    const customer = useStore.getState().customers.find(c => c.id === tx.customerId);
+    const customer = customers.find(c => c.id === tx.customerId);
     lines.push(`Cliente: ${(customer?.name || 'Consumidor Final').slice(0, 22)}`);
     lines.push("---");
     
