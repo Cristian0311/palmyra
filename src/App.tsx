@@ -177,6 +177,23 @@ export default function App() {
       }
     }
 
+    // Una PWA instalada debe poder abrir el último espacio válido aunque
+    // el teléfono arranque sin conexión. La identidad/alcance local se usan
+    // únicamente para continuidad offline; al volver la conexión, el contexto
+    // seguro de Supabase vuelve a ser la fuente de verdad.
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      try {
+        await useStore.persist.rehydrate();
+        const localState = useStore.getState();
+        if (localState.currentUser?.id && localState.currentBranchId && localState.branches?.some(b => b.id === localState.currentBranchId)) {
+          setAccessState("ready");
+          return;
+        }
+      } catch (offlineError) {
+        console.warn("[PALMYRA] No se pudo recuperar la sesión local para arranque offline:", offlineError);
+      }
+    }
+
     // Si Auth sigue siendo válida, nunca enviamos al usuario al Landing por un
     // fallo transitorio de contexto. Mostramos recuperación y permitimos reintentar.
     const supabase = getSupabase();
