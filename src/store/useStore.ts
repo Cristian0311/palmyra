@@ -20,6 +20,445 @@ import { normalizeSemanticText, areSemanticallyEqual } from '../utils/textUtils'
 import { localStateStorage, clearLocalStateStorage, flushLocalStateStorage } from '../services/localStateStorage';
 import { getPalmyraScopedStorageKey } from '../services/localScope';
 import { calculateExpectedCashBase } from '../services/cash/expectedCash';
+import { applyLocalVoidTransaction } from './utils/localVoidTransaction';
+import { applyLocalCompletedSale } from './utils/localCompletedSale';
+import { removeFromOfflineQueueByAction, removeFromOfflineQueueByTransactionId } from '../services/offlineQueue/outboxUtils';
+import {
+  getNcfDeviceId,
+  loadNcfRanges,
+  saveNcfRanges,
+  invalidateNcfRange,
+  withNcfLock,
+  type LocalNcfRange,
+} from '../services/fiscal/ncfLocal';
+import { replaceRemoteRecords } from './utils/replaceRemoteRecords';
+import type { AppState } from './storeTypes';
+
+import {
+  INITIAL_USERS, INITIAL_BRANCHES, INITIAL_CATEGORIES, INITIAL_PRODUCTS,
+  INITIAL_INVENTORY, INITIAL_BANK_CARDS, INITIAL_FISCAL_CONFIGS,
+  BASE_CURRENCY_CODE, INITIAL_CURRENCIES
+} from './storeInitialData';
+
+// --- Definición del Store ---
+
+function validateLocalTransferStock(
+  requirements: { productId: string; branchId: string; variantLabel?: string; quantity: number }[]
+): { ok: boolean; message?: string } {
+  const inventory = useStore.getState().inventory || [];
+  const needed = new Map<string, { productId: string; branchId: string; variantLabel: string; quantity: number }>();
+
+  for (const req of requirements) {
+    const quantity = Number(req.quantity);
+    if (!req.productId || !req.branchId || !Number.isInteger(quantity) || quantity <= 0) {
+      return { ok: false, message: 'La cantidad de traslado debe ser un número entero mayor que 0.' };
+    }
+    const variantLabel = req.variantLabel || '';
+    const key = req.productId + ':' + req.branchId + ':' + variantLabel;
+    const previous = needed.get(key);
+    if (previous) previous.quantity += quantity;
+    else needed.set(key, { productId: req.productId, branchId: req.branchId, variantLabel, quantity });
+  }
+
+  for (const req of needed.values()) {
+    const current = inventory.find(item =>
+      item.productId === req.productId &&
+      item.branchId === req.branchId &&
+      (item.variantLabel || '') === req.variantLabel
+    );
+    const available = Number(current?.quantity || 0);
+    if (available < req.quantity) {
+      const label = req.variantLabel ? ' (' + req.variantLabel + ')' : '';
+      return {
+        ok: false,
+        message: 'Stock insuficiente en la sucursal de origen para ' + req.productId + label + ': disponible ' + available + ', requerido ' + req.quantity + '.'
+      };
+    }
+  }
+
+  return { ok: true };
+}
+async function refreshInventoryBranchesFromSupabase(branchIds: string[]): Promise<boolean> {
+  const ids = Array.from(new Set(branchIds.filter(Boolean)));
+  if (!ids.length) return true;
+  try {
+    const results = await Promise.all(ids.map(id => pullBranchInventoryFromSupabase(id)));
+    if (results.some(result => !result.success)) return false;
+
+    const byKey = new Map<string, InventoryLevel>();
+    useStore.getState().inventory.forEach(item => {
+      if (!ids.includes(item.branchId)) {
+        byKey.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
+      }
+    });
+
+    for (const result of results) {
+      for (const item of result.inventory) {
+        byKey.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
+      }
+    }
+
+    useStore.setState({ inventory: Array.from(byKey.values()) });
+    return true;
+  } catch (error) {
+    console.warn('[inventory] No se pudo refrescar el inventario canónico de las sucursales:', error);
+    return false;
+  }
+}
+
+function applyCanonicalInventoryQuantity(
+  productId: string,
+  branchId: string,
+  variantLabel: string | undefined,
+  quantity: number
+): void {
+  const label = variantLabel || '';
+  useStore.setState(state => ({
+    inventory: (state.inventory || []).map(item =>
+      item.productId === productId &&
+      item.branchId === branchId &&
+      (item.variantLabel || '') === label
+        ? { ...item, quantity: Math.max(0, Number(quantity) || 0) }
+        : item
+    )
+  }));
+}
+
+
+
+ from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { Branch, Category, Product, InventoryLevel, CartItem, Transaction, ReturnItem, Currency, Customer, CashRegisterSession, User, PendingOrder, SalarySettlement, InventoryTransfer, Warranty, CashMovement, Supplier, SupplierOrder, InventoryAudit, FiscalConfig, DemandForecast, BankCard, BankTransaction } from '../types';
+import { generateId, generateReadableId } from '../lib/utils';
+import { 
+  pullAllFromSupabase, pullPosBootstrapFromSupabase, pullBranchInventoryFromSupabase, pullBranchOperationalDataFromSupabase, pullGlobalCatalogDataFromSupabase, pullBankDataFromSupabase, pushProductToSupabase, 
+  pushTransactionToSupabase, pushCashSessionToSupabase, pushWarrantyToSupabase, pushUserToSupabase, deleteUserFromSupabase, 
+  SyncResult,
+  pushBranchToSupabase, deleteBranchFromSupabase, pushCategoryToSupabase, deleteCategoryFromSupabase, deleteProductFromSupabase,
+  pushCurrencyToSupabase, clearSupabaseData, pushBankCardToSupabase, updateBankCardMetadataToSupabase, setBankCardBalanceToSupabase, deleteBankCardFromSupabase, pushBankTransactionToSupabase, pushAllToSupabase,
+  pushSupplierToSupabase, deleteSupplierFromSupabase, pushSupplierOrderToSupabase, pushCustomerToSupabase,
+  applyInventoryAdjustmentToSupabase, reconcileInventoryToSupabase,
+  pushReceiptConfigToSupabase, pushStoreConfigToSupabase, deleteTransactionFromSupabase, deleteCustomerFromSupabase, callReserveNCFRangeRPC, callTransferInventoryBulkRPC,
+  deleteBankTransactionFromSupabase, clearSelectedDataFromSupabase, callOpenSessionRPCWithId, callProcessTransactionRPC, callVoidTransactionRPC, callCompleteReturnRPC, callTransferInventoryRPC, callReceiveSupplierOrderRPC, callStartInventoryAuditRPC, callSaveInventoryAuditCountRPC, callRequestInventoryAuditRecountRPC, callApproveInventoryAuditRPC, callCompleteInventoryAuditRPC, callCloseSessionRPC, callCancelSessionRPC, callDeleteBankInternalTransferRPC, callDeleteBankTransactionRPC, callDeleteBankCardRPC, callProcessBankTransactionRPC
+} from '../services/supabaseSync';
+import { getSupabaseCredentials } from '../lib/supabase';
+import { loadSaaSContext, signInSaaSAccount, signOutSaaSAccount } from '../services/saas';
+import { getOfflineQueue, enqueueOfflineItem, removeFromOfflineQueue, waitForOfflineQueueReady } from '../services/offlineQueue';
+import { normalizeSemanticText, areSemanticallyEqual } from '../utils/textUtils';
+import { localStateStorage, clearLocalStateStorage, flushLocalStateStorage } from '../services/localStateStorage';
+import { getPalmyraScopedStorageKey } from '../services/localScope';
+import { calculateExpectedCashBase } from '../services/cash/expectedCash';
+import { removeFromOfflineQueueByAction, removeFromOfflineQueueByTransactionId } from '../services/offlineQueue/outboxUtils';
+import {
+  getNcfDeviceId,
+  loadNcfRanges,
+  saveNcfRanges,
+  invalidateNcfRange,
+  withNcfLock,
+  type LocalNcfRange,
+} from '../services/fiscal/ncfLocal';
+import { replaceRemoteRecords } from './utils/replaceRemoteRecords';
+import type { AppState } from './storeTypes';
+
+import {
+  INITIAL_USERS, INITIAL_BRANCHES, INITIAL_CATEGORIES, INITIAL_PRODUCTS,
+  INITIAL_INVENTORY, INITIAL_BANK_CARDS, INITIAL_FISCAL_CONFIGS,
+  BASE_CURRENCY_CODE, INITIAL_CURRENCIES
+} from './storeInitialData';
+
+// --- Definición del Store ---
+
+function validateLocalTransferStock(
+  requirements: { productId: string; branchId: string; variantLabel?: string; quantity: number }[]
+): { ok: boolean; message?: string } {
+  const inventory = useStore.getState().inventory || [];
+  const needed = new Map<string, { productId: string; branchId: string; variantLabel: string; quantity: number }>();
+
+  for (const req of requirements) {
+    const quantity = Number(req.quantity);
+    if (!req.productId || !req.branchId || !Number.isInteger(quantity) || quantity <= 0) {
+      return { ok: false, message: 'La cantidad de traslado debe ser un número entero mayor que 0.' };
+    }
+    const variantLabel = req.variantLabel || '';
+    const key = req.productId + ':' + req.branchId + ':' + variantLabel;
+    const previous = needed.get(key);
+    if (previous) previous.quantity += quantity;
+    else needed.set(key, { productId: req.productId, branchId: req.branchId, variantLabel, quantity });
+  }
+
+  for (const req of needed.values()) {
+    const current = inventory.find(item =>
+      item.productId === req.productId &&
+      item.branchId === req.branchId &&
+      (item.variantLabel || '') === req.variantLabel
+    );
+    const available = Number(current?.quantity || 0);
+    if (available < req.quantity) {
+      const label = req.variantLabel ? ' (' + req.variantLabel + ')' : '';
+      return {
+        ok: false,
+        message: 'Stock insuficiente en la sucursal de origen para ' + req.productId + label + ': disponible ' + available + ', requerido ' + req.quantity + '.'
+      };
+    }
+  }
+
+  return { ok: true };
+}
+async function refreshInventoryBranchesFromSupabase(branchIds: string[]): Promise<boolean> {
+  const ids = Array.from(new Set(branchIds.filter(Boolean)));
+  if (!ids.length) return true;
+  try {
+    const results = await Promise.all(ids.map(id => pullBranchInventoryFromSupabase(id)));
+    if (results.some(result => !result.success)) return false;
+
+    const byKey = new Map<string, InventoryLevel>();
+    useStore.getState().inventory.forEach(item => {
+      if (!ids.includes(item.branchId)) {
+        byKey.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
+      }
+    });
+
+    for (const result of results) {
+      for (const item of result.inventory) {
+        byKey.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
+      }
+    }
+
+    useStore.setState({ inventory: Array.from(byKey.values()) });
+    return true;
+  } catch (error) {
+    console.warn('[inventory] No se pudo refrescar el inventario canónico de las sucursales:', error);
+    return false;
+  }
+}
+
+function applyCanonicalInventoryQuantity(
+  productId: string,
+  branchId: string,
+  variantLabel: string | undefined,
+  quantity: number
+): void {
+  const label = variantLabel || '';
+  useStore.setState(state => ({
+    inventory: (state.inventory || []).map(item =>
+      item.productId === productId &&
+      item.branchId === branchId &&
+      (item.variantLabel || '') === label
+        ? { ...item, quantity: Math.max(0, Number(quantity) || 0) }
+        : item
+    )
+  }));
+}
+
+
+
+function applyLocalVoidTransaction(transaction: Transaction) {
+  useStore.setState((state: any) => {
+    const updatedInventory = [...state.inventory];
+    const restore = (productId: string, qty: number, variantLabel?: string) => {
+      if (!productId) return;
+      const idx = updatedInventory.findIndex((i: any) =>
+        i.productId === productId &&
+        i.branchId === transaction.branchId &&
+        (i.variantLabel || '') === (variantLabel || '')
+      );
+      if (idx !== -1) {
+        updatedInventory[idx] = { ...updatedInventory[idx], quantity: updatedInventory[idx].quantity + qty };
+      }
+    };
+
+    (transaction.items || []).forEach((item: any) => {
+      if (!item) return;
+      const prod = item.product;
+      if (!prod) return;
+      if (typeof prod === 'object' && prod.isKit && Array.isArray(prod.kitComponents)) {
+        prod.kitComponents.forEach((component: any) =>
+          restore(component.productId, component.quantity * (item.quantity || 1))
+        );
+      } else if (typeof prod === 'object') {
+        restore(prod.id, item.quantity || 1, item.variantLabel);
+      } else if (typeof prod === 'string') {
+        restore(prod, item.quantity || 1, item.variantLabel);
+      }
+    });
+
+    // Anulación de una venta también debe revertir localmente los ingresos por
+    // transferencia asociados a esa venta. El servidor hace la misma reversión
+    // atómicamente; este espejo evita que la UI muestre un saldo artificial hasta
+    // que llegue el siguiente bootstrap/realtime.
+    const bankToReverse = (state.bankTransactions || []).filter(
+      (bt: any) => bt.transactionId === transaction.id && bt.type === 'payment_received'
+    );
+
+    const updatedBankCards = (state.bankCards || []).map((card: any) => {
+      const amount = bankToReverse
+        .filter((bt: any) => bt.cardId === card.id)
+        .reduce((sum: number, bt: any) => sum + Number(bt.amount || 0), 0);
+      return amount > 0
+        ? { ...card, balance: Math.max(0, Number(card.balance || 0) - amount) }
+        : card;
+    });
+
+    const remainingBankTransactions = (state.bankTransactions || []).filter(
+      (bt: any) => !(bt.transactionId === transaction.id && bt.type === 'payment_received')
+    );
+
+    return {
+      inventory: updatedInventory,
+      bankTransactions: remainingBankTransactions,
+      bankCards: updatedBankCards
+    };
+  });
+}
+
+ from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { Branch, Category, Product, InventoryLevel, CartItem, Transaction, ReturnItem, Currency, Customer, CashRegisterSession, User, PendingOrder, SalarySettlement, InventoryTransfer, Warranty, CashMovement, Supplier, SupplierOrder, InventoryAudit, FiscalConfig, DemandForecast, BankCard, BankTransaction } from '../types';
+import { generateId, generateReadableId } from '../lib/utils';
+import { 
+  pullAllFromSupabase, pullPosBootstrapFromSupabase, pullBranchInventoryFromSupabase, pullBranchOperationalDataFromSupabase, pullGlobalCatalogDataFromSupabase, pullBankDataFromSupabase, pushProductToSupabase, 
+  pushTransactionToSupabase, pushCashSessionToSupabase, pushWarrantyToSupabase, pushUserToSupabase, deleteUserFromSupabase, 
+  SyncResult,
+  pushBranchToSupabase, deleteBranchFromSupabase, pushCategoryToSupabase, deleteCategoryFromSupabase, deleteProductFromSupabase,
+  pushCurrencyToSupabase, clearSupabaseData, pushBankCardToSupabase, updateBankCardMetadataToSupabase, setBankCardBalanceToSupabase, deleteBankCardFromSupabase, pushBankTransactionToSupabase, pushAllToSupabase,
+  pushSupplierToSupabase, deleteSupplierFromSupabase, pushSupplierOrderToSupabase, pushCustomerToSupabase,
+  applyInventoryAdjustmentToSupabase, reconcileInventoryToSupabase,
+  pushReceiptConfigToSupabase, pushStoreConfigToSupabase, deleteTransactionFromSupabase, deleteCustomerFromSupabase, callReserveNCFRangeRPC, callTransferInventoryBulkRPC,
+  deleteBankTransactionFromSupabase, clearSelectedDataFromSupabase, callOpenSessionRPCWithId, callProcessTransactionRPC, callVoidTransactionRPC, callCompleteReturnRPC, callTransferInventoryRPC, callReceiveSupplierOrderRPC, callStartInventoryAuditRPC, callSaveInventoryAuditCountRPC, callRequestInventoryAuditRecountRPC, callApproveInventoryAuditRPC, callCompleteInventoryAuditRPC, callCloseSessionRPC, callCancelSessionRPC, callDeleteBankInternalTransferRPC, callDeleteBankTransactionRPC, callDeleteBankCardRPC, callProcessBankTransactionRPC
+} from '../services/supabaseSync';
+import { getSupabaseCredentials } from '../lib/supabase';
+import { loadSaaSContext, signInSaaSAccount, signOutSaaSAccount } from '../services/saas';
+import { getOfflineQueue, enqueueOfflineItem, removeFromOfflineQueue, waitForOfflineQueueReady } from '../services/offlineQueue';
+import { normalizeSemanticText, areSemanticallyEqual } from '../utils/textUtils';
+import { localStateStorage, clearLocalStateStorage, flushLocalStateStorage } from '../services/localStateStorage';
+import { getPalmyraScopedStorageKey } from '../services/localScope';
+import { calculateExpectedCashBase } from '../services/cash/expectedCash';
+import { removeFromOfflineQueueByAction, removeFromOfflineQueueByTransactionId } from '../services/offlineQueue/outboxUtils';
+import {
+  getNcfDeviceId,
+  loadNcfRanges,
+  saveNcfRanges,
+  invalidateNcfRange,
+  withNcfLock,
+  type LocalNcfRange,
+} from '../services/fiscal/ncfLocal';
+import { replaceRemoteRecords } from './utils/replaceRemoteRecords';
+import type { AppState } from './storeTypes';
+
+import {
+  INITIAL_USERS, INITIAL_BRANCHES, INITIAL_CATEGORIES, INITIAL_PRODUCTS,
+  INITIAL_INVENTORY, INITIAL_BANK_CARDS, INITIAL_FISCAL_CONFIGS,
+  BASE_CURRENCY_CODE, INITIAL_CURRENCIES
+} from './storeInitialData';
+
+// --- Definición del Store ---
+
+function validateLocalTransferStock(
+  requirements: { productId: string; branchId: string; variantLabel?: string; quantity: number }[]
+): { ok: boolean; message?: string } {
+  const inventory = useStore.getState().inventory || [];
+  const needed = new Map<string, { productId: string; branchId: string; variantLabel: string; quantity: number }>();
+
+  for (const req of requirements) {
+    const quantity = Number(req.quantity);
+    if (!req.productId || !req.branchId || !Number.isInteger(quantity) || quantity <= 0) {
+      return { ok: false, message: 'La cantidad de traslado debe ser un número entero mayor que 0.' };
+    }
+    const variantLabel = req.variantLabel || '';
+    const key = req.productId + ':' + req.branchId + ':' + variantLabel;
+    const previous = needed.get(key);
+    if (previous) previous.quantity += quantity;
+    else needed.set(key, { productId: req.productId, branchId: req.branchId, variantLabel, quantity });
+  }
+
+  for (const req of needed.values()) {
+    const current = inventory.find(item =>
+      item.productId === req.productId &&
+      item.branchId === req.branchId &&
+      (item.variantLabel || '') === req.variantLabel
+    );
+    const available = Number(current?.quantity || 0);
+    if (available < req.quantity) {
+      const label = req.variantLabel ? ' (' + req.variantLabel + ')' : '';
+      return {
+        ok: false,
+        message: 'Stock insuficiente en la sucursal de origen para ' + req.productId + label + ': disponible ' + available + ', requerido ' + req.quantity + '.'
+      };
+    }
+  }
+
+  return { ok: true };
+}
+async function refreshInventoryBranchesFromSupabase(branchIds: string[]): Promise<boolean> {
+  const ids = Array.from(new Set(branchIds.filter(Boolean)));
+  if (!ids.length) return true;
+  try {
+    const results = await Promise.all(ids.map(id => pullBranchInventoryFromSupabase(id)));
+    if (results.some(result => !result.success)) return false;
+
+    const byKey = new Map<string, InventoryLevel>();
+    useStore.getState().inventory.forEach(item => {
+      if (!ids.includes(item.branchId)) {
+        byKey.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
+      }
+    });
+
+    for (const result of results) {
+      for (const item of result.inventory) {
+        byKey.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
+      }
+    }
+
+    useStore.setState({ inventory: Array.from(byKey.values()) });
+    return true;
+  } catch (error) {
+    console.warn('[inventory] No se pudo refrescar el inventario canónico de las sucursales:', error);
+    return false;
+  }
+}
+
+function applyCanonicalInventoryQuantity(
+  productId: string,
+  branchId: string,
+  variantLabel: string | undefined,
+  quantity: number
+): void {
+  const label = variantLabel || '';
+  useStore.setState(state => ({
+    inventory: (state.inventory || []).map(item =>
+      item.productId === productId &&
+      item.branchId === branchId &&
+      (item.variantLabel || '') === label
+        ? { ...item, quantity: Math.max(0, Number(quantity) || 0) }
+        : item
+    )
+  }));
+}
+
+
+
+ from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { Branch, Category, Product, InventoryLevel, CartItem, Transaction, ReturnItem, Currency, Customer, CashRegisterSession, User, PendingOrder, SalarySettlement, InventoryTransfer, Warranty, CashMovement, Supplier, SupplierOrder, InventoryAudit, FiscalConfig, DemandForecast, BankCard, BankTransaction } from '../types';
+import { generateId, generateReadableId } from '../lib/utils';
+import { 
+  pullAllFromSupabase, pullPosBootstrapFromSupabase, pullBranchInventoryFromSupabase, pullBranchOperationalDataFromSupabase, pullGlobalCatalogDataFromSupabase, pullBankDataFromSupabase, pushProductToSupabase, 
+  pushTransactionToSupabase, pushCashSessionToSupabase, pushWarrantyToSupabase, pushUserToSupabase, deleteUserFromSupabase, 
+  SyncResult,
+  pushBranchToSupabase, deleteBranchFromSupabase, pushCategoryToSupabase, deleteCategoryFromSupabase, deleteProductFromSupabase,
+  pushCurrencyToSupabase, clearSupabaseData, pushBankCardToSupabase, updateBankCardMetadataToSupabase, setBankCardBalanceToSupabase, deleteBankCardFromSupabase, pushBankTransactionToSupabase, pushAllToSupabase,
+  pushSupplierToSupabase, deleteSupplierFromSupabase, pushSupplierOrderToSupabase, pushCustomerToSupabase,
+  applyInventoryAdjustmentToSupabase, reconcileInventoryToSupabase,
+  pushReceiptConfigToSupabase, pushStoreConfigToSupabase, deleteTransactionFromSupabase, deleteCustomerFromSupabase, callReserveNCFRangeRPC, callTransferInventoryBulkRPC,
+  deleteBankTransactionFromSupabase, clearSelectedDataFromSupabase, callOpenSessionRPCWithId, callProcessTransactionRPC, callVoidTransactionRPC, callCompleteReturnRPC, callTransferInventoryRPC, callReceiveSupplierOrderRPC, callStartInventoryAuditRPC, callSaveInventoryAuditCountRPC, callRequestInventoryAuditRecountRPC, callApproveInventoryAuditRPC, callCompleteInventoryAuditRPC, callCloseSessionRPC, callCancelSessionRPC, callDeleteBankInternalTransferRPC, callDeleteBankTransactionRPC, callDeleteBankCardRPC, callProcessBankTransactionRPC
+} from '../services/supabaseSync';
+import { getSupabaseCredentials } from '../lib/supabase';
+import { loadSaaSContext, signInSaaSAccount, signOutSaaSAccount } from '../services/saas';
+import { getOfflineQueue, enqueueOfflineItem, removeFromOfflineQueue, waitForOfflineQueueReady } from '../services/offlineQueue';
+import { normalizeSemanticText, areSemanticallyEqual } from '../utils/textUtils';
+import { localStateStorage, clearLocalStateStorage, flushLocalStateStorage } from '../services/localStateStorage';
+import { getPalmyraScopedStorageKey } from '../services/localScope';
+import { calculateExpectedCashBase } from '../services/cash/expectedCash';
 import { removeFromOfflineQueueByAction, removeFromOfflineQueueByTransactionId } from '../services/offlineQueue/outboxUtils';
 import {
   getNcfDeviceId,
