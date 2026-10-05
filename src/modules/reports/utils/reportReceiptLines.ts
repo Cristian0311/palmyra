@@ -1,8 +1,8 @@
-import type { CashMovement, CashRegisterSession, Product, Transaction, InventoryTransfer } from '../../../types';
+import type { CashRegisterSession, Product, Transaction, InventoryTransfer } from '../../../types';
 import type { SessionDiscrepancyInfo } from './getSessionDiscrepancyInfo';
 
 type MoneyFormatter = (amount: number, currencyCode?: string) => string;
-type LineFormatter = (label: string, value: string, width?: number) => string;
+type LineFormatter = (label: string, value: string | number, width?: number) => string;
 
 type ShiftPayrollItem = {
   baseSalary: number;
@@ -111,7 +111,7 @@ export function buildDiscrepancyReceiptLines(
 }
 
 export function buildCashMovementReceiptLines(
-  movement: Pick<CashMovement, 'turnLabel'|'branchName'|'workerName'|'type'|'amount'|'currencyCode'|'description'|'date'> & { turnLabel: string },
+  movement: {\n    turnLabel: string;\n    branchName: string;\n    workerName: string;\n    type: 'income' | 'expense';\n    amount: number;\n    currencyCode: string;\n    description: string;\n    date: string;\n  },
   deps: { formatMoney: MoneyFormatter; format58mmLine: LineFormatter },
 ): string[] {
   const { formatMoney, format58mmLine } = deps;
