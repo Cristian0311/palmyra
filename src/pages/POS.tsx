@@ -1789,7 +1789,20 @@ export default function POS() {
       sessionId: currentSession.id
     };
 
-    // Generate NCF if customer is selected or if config requires it
+    // La venta debe entrar al outbox DURABLE antes de cualquier operación
+    // fiscal que pueda tardar o depender de la red. Así, si el navegador/dispositivo
+    // se cierra mientras se reserva el NCF, el ticket no desaparece.
+    // processTransaction volverá a encolar el mismo actionId y conservará el NCF
+    // si finalmente se obtiene, sin crear una segunda operación.
+    await waitForOfflineQueueReady();
+    const durablePreNcf = { ...tx, offlinePending: true };
+    await (await import("../services/offlineQueue")).enqueueOfflineItem(
+      'transaction',
+      durablePreNcf,
+      tx.id
+    );
+
+    // Generate NCF if customer is selected or if config requires it.
     // El NCF es complementario al cobro. Nunca debe bloquear indefinidamente
     // una venta si la reserva fiscal está lenta o temporalmente no disponible.
     const nextNcf = await Promise.race([
@@ -1801,7 +1814,7 @@ export default function POS() {
       tx.ncfType = 'B01';
     }
 
-    // processTransaction ya protege la venta con el outbox durable. No usamos
+    // processTransaction ya protege la venta con el mismo outbox durable. No usamos
     // una Promise.race aquí porque podría liberar el botón mientras el cobro
     // real aún sigue en vuelo y permitir una segunda venta accidental.
     const saleConfirmed = await processTransaction(tx);
