@@ -71,8 +71,8 @@ export default function Security(){
 
   <section className="security-panel">
    <div className="security-panel-head"><div><span>SESIÓN ACTUAL</span><h2>Este dispositivo</h2><p>Es el acceso que estás usando ahora mismo.</p></div><span className="security-current-badge"><span/>Activo</span></div>
-   {currentDevice ? (()=>{const Icon=iconFor(currentDevice.name);return <div className="security-device-main">
-    <div className="security-device-icon"><Icon/></div>
+   {currentDevice ? <div className="security-device-main">
+    <div className="security-device-icon">{React.createElement(iconFor(currentDevice.name))}</div>
     <div className="security-device-info"><strong>{currentDevice.name||"Dispositivo actual"}</strong><span>{currentDevice.warehouse_id?"Almacén operativo asignado":"Sin almacén específico"}</span><small>Última actividad: {currentDevice.last_seen_at?new Date(currentDevice.last_seen_at).toLocaleString("es-CU"):"Ahora"}</small></div>
     <button disabled={busy} onClick={()=>setPendingRevoke(currentDevice)} className="security-outline-danger"><LogOut/>Cerrar sesión</button>
    </div> : <div className="security-empty">No se ha identificado una sesión activa en este dispositivo.</div>}
