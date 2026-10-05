@@ -1,6 +1,4 @@
 import React, { lazy, Suspense, useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { getTransactionReceiptLines as getTransactionReceiptLinesUtil } from '../modules/pos/utils/getTransactionReceiptLines';
-import { getClosureReceiptLines as getClosureReceiptLinesUtil } from '../modules/pos/utils/getClosureReceiptLines';
 import { useShallow } from "zustand/react/shallow";
 import { Search, Wifi, WifiOff, RefreshCw, Plus, Minus, CreditCard, Receipt, Trash2, ShoppingCart, ShieldCheck, DollarSign, Banknote, QrCode, ArrowLeftRight, UserPlus, X, Lock, Unlock, Camera, AlertCircle, TrendingUp, Wallet, MessageSquare, Mail, HelpCircle, Calculator, ArrowRight, Package, User, RotateCcw, Printer, Bluetooth, Usb, Smartphone, Send, Copy, Check, CheckCircle, Share2, Store, ChevronDown, ChevronUp, Filter } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -11,10 +9,10 @@ import { InfoTooltip } from "../components/InfoTooltip";
 import { waitForOfflineQueueReady } from "../services/offlineQueue";
 import { usePOSOfflineStatus } from "../modules/pos/hooks/usePOSOfflineStatus";
 import { POSCatalog } from "../components/POSCatalog";
-import { printThermalReceipt as printThermalReceiptDirect } from "../lib/escpos";
 import { formatMoney } from "../modules/pos/utils/paymentMath";
 import { usePOSPayments } from "../modules/pos/hooks/usePOSPayments";
 import { usePOSScanner } from "../modules/pos/hooks/usePOSScanner";
+import { usePOSPrinter } from "../modules/pos/hooks/usePOSPrinter";
 import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
 import { aggregateTransferPayments, buildTransactionTicketId, finalizeCheckoutPayments } from '../modules/pos/utils/checkoutUtils';
 const CheckoutModal = lazy(() => import("../components/pos/CheckoutModal"));
@@ -202,18 +200,6 @@ export default function POS() {
   }, [currentUser?.id, fallbackSessionBranchId]);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [showSalarySummary, setShowSalarySummary] = useState(false);
-  const [connectedPrinterName, setConnectedPrinterName] = useState<string | null>(null);
-  const [showPrinterSetupModal, setShowPrinterSetupModal] = useState(false);
-  const [isConnectingPrinter, setIsConnectingPrinter] = useState(false);
-  const [printerStatusMsg, setPrinterStatusMsg] = useState("");
-
-  useEffect(() => {
-    import('../lib/escpos').then(async ({ getConnectedDeviceName }) => {
-      const name = await getConnectedDeviceName();
-      if (name) setConnectedPrinterName(name);
-    }).catch(() => {});
-  }, []);
-  
   const [salesFilter, setSalesFilter] = useState<'all' | 'usd' | 'transfer' | 'cash_cup' | 'mixed'>('all');
   const [salesSubTab, setSalesSubTab] = useState<'tickets' | 'products'>('tickets');
 
@@ -833,171 +819,32 @@ export default function POS() {
     setShowCheckoutModal(true);
   };
 
-  const handlePairBluetooth = async () => {
-    setIsConnectingPrinter(true);
-    setPrinterStatusMsg("Buscando impresora Bluetooth...");
-    try {
-      const { connectBluetoothPrinter } = await import("../lib/escpos");
-      const device = await connectBluetoothPrinter();
-      setConnectedPrinterName(device.name || "Impresora Bluetooth 58mm");
-      setPosSuccess(`Impresora "${device.name || 'Bluetooth'}" conectada`);
-      setPrinterStatusMsg(`Conectado a ${device.name || 'Bluetooth'}`);
-      setTimeout(() => setPosSuccess(""), 3000);
-    } catch (err: any) {
-      console.warn("Bluetooth connection error:", err);
-      setPosError(err.message || "No se pudo conectar la impresora Bluetooth");
-      setPrinterStatusMsg(err.message || "Error al conectar");
-      setTimeout(() => setPosError(""), 4000);
-    } finally {
-      setIsConnectingPrinter(false);
-    }
-  };
-
-  const handleConnectUsb = async () => {
-    setIsConnectingPrinter(true);
-    setPrinterStatusMsg("Buscando impresora USB...");
-    try {
-      const { connectPrinter } = await import("../lib/escpos");
-      await connectPrinter();
-      setConnectedPrinterName("Impresora USB (Serie)");
-      setPosSuccess("Impresora USB conectada correctamente");
-      setPrinterStatusMsg("Impresora USB conectada");
-      setTimeout(() => setPosSuccess(""), 3000);
-    } catch (err: any) {
-      console.warn("USB connection error:", err);
-      setPosError(err.message || "No se pudo conectar la impresora USB");
-      setPrinterStatusMsg(err.message || "Error al conectar");
-      setTimeout(() => setPosError(""), 4000);
-    } finally {
-      setIsConnectingPrinter(false);
-    }
-  };
-
-  const getTransactionReceiptLines = (tx: import("../types").Transaction): string[] =>
-    getTransactionReceiptLinesUtil(tx, {
-      receiptConfig: useStore.getState().receiptConfig,
-      currentSessionWorkerName: currentSession?.workerName,
-      users,
-      customers: useStore.getState().customers,
-      products,
-      currencies,
-      baseCurrency,
-      formatMoney,
-    });
-
-
-  const getClosureReceiptLines = (session: CashRegisterSession): string[] =>
-    getClosureReceiptLinesUtil(session, {
-      receiptConfig: useStore.getState().receiptConfig,
-      transactions: useStore.getState().transactions,
-      products,
-      currencies,
-      branches,
-      users,
-      currentUser,
-      salarySettlements,
-      baseCurrency,
-      formatMoney,
-      formatSalaryCUP,
-    });
-
-  const handleThermalPrint = async (tx: import("../types").Transaction, options?: { silent?: boolean }) => {
-    try {
-      const lines = getTransactionReceiptLines(tx);
-      await printThermalReceiptDirect({
-        lines,
-        openDrawer: receiptConfig.openDrawer ?? true,
-        width: (receiptConfig.printerWidth || '58mm') as '58mm' | '80mm',
-        onSuccess: (method) => {
-          if (!options?.silent) {
-            setPosSuccess(`Ticket enviado a impresora (${method === 'bluetooth' ? 'Bluetooth' : 'USB/Serie'})`);
-            setTimeout(() => setPosSuccess(""), 2500);
-          }
-        },
-        onError: (error) => {
-          if (!options?.silent) {
-            setPosError(error?.message || "Sin conexión activa con impresora");
-            setTimeout(() => setPosError(""), 3500);
-          }
-        }
-      });
-    } catch (err: any) {
-      console.warn("Thermal print:", err);
-      if (!options?.silent) {
-        setPosError(err?.message || "No se pudo imprimir el ticket");
-        setTimeout(() => setPosError(""), 3500);
-      }
-    }
-  };
-
-  const handlePrintClosureThermal = async (session: CashRegisterSession | null, options?: { silent?: boolean }) => {
-    if (!session) return;
-    try {
-      const lines = getClosureReceiptLines(session);
-      await printThermalReceiptDirect({
-        lines,
-        openDrawer: false,
-        width: (receiptConfig.printerWidth || '58mm') as '58mm' | '80mm',
-        onSuccess: (method) => {
-          if (!options?.silent) {
-            setPosSuccess(`Cierre impreso (${method === 'bluetooth' ? 'Bluetooth' : 'USB/Serie'})`);
-            setTimeout(() => setPosSuccess(""), 2500);
-          }
-        },
-        onError: (error) => {
-          if (!options?.silent) {
-            setPosError(error?.message || "Sin conexión a impresora");
-            setTimeout(() => setPosError(""), 3500);
-          }
-        }
-      });
-    } catch (err: any) {
-      console.error('Error al imprimir comprobante de cierre:', err);
-      if (!options?.silent) {
-        setPosError(err?.message || "No se pudo imprimir el comprobante de cierre");
-        setTimeout(() => setPosError(""), 3500);
-      }
-    }
-  };
-
-  const handleWhatsAppReceipt = (tx: Transaction) => {
-    let phone = "";
-    const customer = useStore.getState().customers.find(c => c.id === tx.customerId);
-    if (customer?.phone) {
-      phone = String(customer.phone || '').replace(/\D/g,'');
-    } else {
-      const input = window.prompt("Ingrese el número de WhatsApp del cliente:");
-      if (!input) return;
-      phone = String(input || '').replace(/\D/g,'');
-    }
-    
-    if (!phone) {
-      addNotification("Número de teléfono inválido.", 'error');
-      return;
-    }
-    
-    const storeName = useStore.getState().storeConfig.storeName;
-    let itemsText = (tx.items || []).map(i => {
-      const pName = typeof (i.product as any) === 'object' ? ((i.product as any)?.name || 'Producto') : (products.find(p => p.id === (i.product as any))?.name || (i.product as any) || 'Producto');
-      const pPrice = typeof (i.product as any) === 'object' ? ((i.product as any)?.price || 0) : (products.find(p => p.id === (i.product as any))?.price || i.price || 0);
-      return `${i.quantity}x ${pName} - ${formatMoney(pPrice * i.quantity, baseCurrency.symbol)}`;    }).join('%0A');
-    const text = `Hola, gracias por tu compra en *${storeName}*.%0A%0A*Detalle del recibo ${tx.id}:*%0A${itemsText}%0A%0A*Total:* ${formatMoney(tx.total, baseCurrency.symbol)}%0A%0A¡Vuelve pronto!`;
-    const url = `https://wa.me/${phone}?text=${text}`;
-    window.open(url, '_blank');
-  };
-
-  const handleEmailReceipt = (tx: Transaction) => {
-    const customer = useStore.getState().customers.find(c => c.id === tx.customerId);
-    if (!customer?.email) {
-      addNotification("El cliente no tiene un correo registrado.", 'warning');
-      return;
-    }
-    const storeName = useStore.getState().storeConfig.storeName;
-    const subject = `Tu Recibo de Compra - ${storeName}`;
-    const body = `Hola ${customer?.name || 'Cliente'},\n\nGracias por tu compra. Tu recibo es ${tx.id} por un total de ${formatMoney(tx.total, baseCurrency.symbol)}.\n\nSaludos,\n${storeName}`;
-    const url = `mailto:${customer.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.open(url, '_blank');
-  };
+  const {
+    connectedPrinterName,
+    showPrinterSetupModal,
+    setShowPrinterSetupModal,
+    isConnectingPrinter,
+    printerStatusMsg,
+    handlePairBluetooth,
+    handleConnectUsb,
+    handleThermalPrint,
+    handlePrintClosureThermal,
+    handleWhatsAppReceipt,
+    handleEmailReceipt,
+  } = usePOSPrinter({
+    currentSession,
+    products,
+    currencies,
+    baseCurrency,
+    branches,
+    users,
+    currentUser,
+    salarySettlements,
+    receiptConfig,
+    addNotification,
+    setPosError,
+    setPosSuccess,
+  });
 
   const handleCheckout = async () => {
     if (isSubmittingCheckout) return;
