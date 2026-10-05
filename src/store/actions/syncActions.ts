@@ -276,18 +276,5 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
       return errRes;
     }
   },
-      } else {
-        set({ isSyncing: false, syncResult: result });
-      }
-      if (result.success) {
-        get().reconcileBankBalances().catch(() => {});
-      }
-      return result;
-    } catch (e: any) {
-      const errRes: SyncResult = { success: false, message: e?.message || 'Error al sincronizar con Supabase' };
-      set({ isSyncing: false, syncResult: errRes });
-      return errRes;
-    }
-  },
   };
 }
