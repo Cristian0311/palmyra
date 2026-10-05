@@ -18,7 +18,7 @@ export function buildInventoryViewData(
 const inventoryData = (() => {
     if (!products || !inventory) return { full: [], paginated: [] };
 
-    const query = debouncedSearchQuery.trim().toLowerCase();
+    const query = queryText.trim().toLowerCase();
     // Apply cheap text/category filters before calculating stock levels.
     // This avoids touching every inventory row when the user is searching.
     let candidateProducts = products;
@@ -68,4 +68,5 @@ const inventoryData = (() => {
     };
   })();
 
+  return inventoryData;
 }
