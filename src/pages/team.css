@@ -71,3 +71,29 @@
 .team-employee-modal-footer{padding:10px 12px 12px;align-items:stretch;flex-direction:column}.team-employee-modal-footer p{max-width:none}
 .team-footer-actions{width:100%;display:grid;grid-template-columns:1fr 1.35fr}.team-footer-secondary,.team-footer-primary{width:100%}
 }
+
+/* Premium employee workspace */
+.team-employee-modal{border:1px solid rgba(109,59,210,.13);background:var(--bg-secondary);box-shadow:0 38px 110px rgba(33,16,58,.28)}
+.team-employee-modal-head{background:linear-gradient(135deg,rgba(109,59,210,.075),rgba(142,104,231,.025) 58%,transparent)}
+.team-employee-hero-icon{position:relative;overflow:hidden}
+.team-employee-hero-icon:after{content:"";position:absolute;inset:-30%;background:linear-gradient(120deg,transparent 35%,rgba(255,255,255,.28),transparent 65%);transform:translateX(-60%);animation:team-hero-shine 4.5s ease-in-out infinite}
+@keyframes team-hero-shine{0%,65%{transform:translateX(-65%)}82%,100%{transform:translateX(65%)}}
+.team-employee-stepbar{position:relative;gap:0}
+.team-step-item{position:relative}
+.team-step-item:not(.team-step-active)>span{background:var(--bg-primary)}
+.team-form-section{position:relative;overflow:hidden}
+.team-form-section:before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:3px;border-radius:999px;background:linear-gradient(#6d3bd2,#9b79f0);opacity:.14}
+.team-form-section-head{position:relative}
+.team-field{box-shadow:inset 0 1px 0 rgba(255,255,255,.5),0 2px 7px rgba(39,20,65,.025)}
+.team-field-icon{width:42px}
+.team-field-input{font-size:12px;letter-spacing:.005em}
+.team-field-input:disabled{opacity:.58;cursor:not-allowed}
+.team-field-select{appearance:auto}
+.team-warehouse-option{min-height:58px}
+.team-warehouse-option:focus-within{outline:3px solid rgba(109,59,210,.1);outline-offset:1px}
+.team-access-card{position:relative;overflow:hidden;background:linear-gradient(135deg,rgba(109,59,210,.07),rgba(142,104,231,.025) 58%,transparent)}
+.team-access-card:after{content:"";position:absolute;width:130px;height:130px;border-radius:50%;right:-58px;top:-70px;background:radial-gradient(circle,rgba(142,104,231,.18),transparent 68%);pointer-events:none}
+.team-switch-track{box-shadow:inset 0 1px 2px rgba(0,0,0,.08)}
+.team-footer-primary:hover{transform:translateY(-1px);box-shadow:0 11px 24px rgba(109,59,210,.28)}
+.team-footer-secondary:hover{transform:translateY(-1px)}
+@media(prefers-reduced-motion:reduce){.team-employee-hero-icon:after{animation:none}.team-footer-primary:hover,.team-footer-secondary:hover{transform:none}}
