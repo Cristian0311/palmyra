@@ -153,11 +153,11 @@ export default function PalmiGuide(){
         {isActionStep?<div className="palmi-guide-command"><div className="palmi-command-badge"><Sparkles className="w-3.5 h-3.5"/> TU TURNO</div><div className="palmi-command-title">{step?.actionMessage}</div><div className="palmi-command-status"><span className="palmi-pulse-dot"/> Esperando tu acción…</div></div>:<div className="palmi-guide-body">{index===0&&<div className="palmi-welcome-line">Palmi te acompaña. Tú haces el recorrido.</div>}<div className="palmi-guide-message">{step?.message}</div>{step?.tip&&<div className="palmi-guide-tip"><strong>Consejo</strong><span>{step.tip}</span></div>}</div>}
         <div className="palmi-guide-footer"><button type="button" className="palmi-guide-secondary" onClick={close}>Cerrar guía</button><div className="palmi-guide-actions"><button type="button" className="palmi-guide-icon-btn" onClick={goPrevious} disabled={index===0} aria-label="Paso anterior"><ChevronLeft size={16}/></button>{last?<button type="button" className="palmi-guide-primary" onClick={finish}><CircleCheck className="w-4 h-4"/> Terminar</button>:<button type="button" className={"palmi-guide-primary "+(isActionStep?"is-disabled":"")} onClick={goNext} disabled={isActionStep}>Entendido <ChevronRight className="w-4 h-4"/></button>}</div></div>
       </div>}
+      {last && <PWAInstallPrompt />}
       <div className="palmi-guide-mascot-dock" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} onKeyDown={onKeyDown} aria-label="Mover o abrir a Palmi" role="button" tabIndex={0}>
         <span className="palmi-aura palmi-aura-1"/><span className="palmi-aura palmi-aura-2"/><span className="palmi-spark palmi-spark-1">✦</span><span className="palmi-spark palmi-spark-2">✦</span><span className="palmi-mascot-stage"><PalmiMascot className="palmi-guide-mascot"/></span><span className="palmi-guide-name">PALMI</span>
       </div>
       {open&&<button type="button" className="palmi-guide-reset" onClick={reset} aria-label="Reiniciar guía" title="Reiniciar guía"><RotateCcw size={13}/></button>}
     </div>
-        {last && <PWAInstallPrompt />}
     </div>;
 }
