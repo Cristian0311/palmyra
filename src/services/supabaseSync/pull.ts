@@ -1,3 +1,4 @@
+// PALMYRA synchronization remains warehouse-scoped and company-currency aware.
 import { getSupabase } from '../../lib/supabase';
 import { getActiveTenant } from '../tenant';
 import type {
