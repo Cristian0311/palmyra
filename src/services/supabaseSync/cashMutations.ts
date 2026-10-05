@@ -1,5 +1,6 @@
 import { getSupabase } from '../../lib/supabase';
 import { enqueueOfflineItem } from '../offlineQueue';
+import type { OfflineActionType } from '../offlineQueue';
 import { getActiveTenant, getEmployeeForIdentity } from '../tenant';
 import type { CashRegisterSession } from '../../types';
 
@@ -10,7 +11,7 @@ async function onlineClient() {
   return supabase;
 }
 
-const queue = async (type: string, data: unknown, id: string) => {
+const queue = async (type: OfflineActionType, data: unknown, id: string) => {
   await enqueueOfflineItem(type, data, id);
 };
 
