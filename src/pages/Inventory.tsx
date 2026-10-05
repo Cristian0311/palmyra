@@ -16,9 +16,8 @@ export default function Inventory() {
     products, inventory, branches, addProduct, updateProduct, 
     transferInventory, setInventoryQuantity, deleteProduct, deleteCategory,
     transfers, categories, batchDeleteProducts, batchUpdateProducts, getBaseCurrency, currencies,
-    currentUser, addNotification, users
-  } = useStore(useShallow((state) => ({ products: state.products, inventory: state.inventory, branches: state.branches, addProduct: state.addProduct, updateProduct: state.updateProduct, transferInventory: state.transferInventory, setInventoryQuantity: state.setInventoryQuantity, deleteProduct: state.deleteProduct, deleteCategory: state.deleteCategory, transfers: state.transfers, categories: state.categories, batchDeleteProducts: state.batchDeleteProducts, batchUpdateProducts: state.batchUpdateProducts, getBaseCurrency: state.getBaseCurrency, currencies: state.currencies, currentUser: state.currentUser, addNotification: state.addNotification, users: state.users })));
-  const currentBranchId = currentUser?.branchId || branches[0]?.id || '';
+    currentBranchId, addNotification, users
+  } = useStore(useShallow((state) => ({ products: state.products, inventory: state.inventory, branches: state.branches, addProduct: state.addProduct, updateProduct: state.updateProduct, transferInventory: state.transferInventory, setInventoryQuantity: state.setInventoryQuantity, deleteProduct: state.deleteProduct, deleteCategory: state.deleteCategory, transfers: state.transfers, categories: state.categories, batchDeleteProducts: state.batchDeleteProducts, batchUpdateProducts: state.batchUpdateProducts, getBaseCurrency: state.getBaseCurrency, currencies: state.currencies, currentBranchId: state.currentBranchId, addNotification: state.addNotification, users: state.users })));
   const baseCurrency = getBaseCurrency();
   const categoryById = useMemo(
     () => new Map((categories || []).map(category => [category.id, category])),
@@ -28,7 +27,6 @@ export default function Inventory() {
   const getBranchDisplayName = (b: { id: string; name: string }) => {
     const assignedUser = (users || []).find(u => u.branchId === b.id);
     return assignedUser ? `${b.name} (${assignedUser.name})` : b.name;
-    return b.name;
   };
 
   const [searchQuery, setSearchQuery] = useState("");
