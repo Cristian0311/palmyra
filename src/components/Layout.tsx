@@ -25,7 +25,8 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
-  LifeBuoy
+  LifeBuoy,
+  Headphones
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
 import { cn } from "../lib/utils";
@@ -54,7 +55,7 @@ const adminNavItems = [
   { name: "Reportes", href: "/reports", icon: BarChart, permission: "reports.view" },
   { name: "Configuración", href: "/settings", icon: Settings, permission: "settings.manage" },
   { name: "Equipo", href: "/team", icon: Users, permission: "employees.manage" },
-  { name: "Seguridad", href: "/security", icon: ShieldCheck, permission: "security.manage" },
+  { name: "Centro de atención", href: "/help", icon: Headphones, public: true },
   { name: "Plan", href: "/subscription", icon: CreditCard, permission: "settings.manage" },
 ];
 
@@ -80,7 +81,7 @@ function getPlanCountdown(target: string | null | undefined, nowMs: number) {
 }
 
 const cashierNavItems = [
-  { name: "Seguridad", href: "/security", icon: ShieldCheck },
+  { name: "Centro de atención", href: "/help", icon: Headphones, public: true },
   { name: "Punto de Venta", href: "/pos", icon: ShoppingCart },
 ];
 
@@ -153,6 +154,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     "/returns": "Cargando Devoluciones…",
     "/reports": "Cargando Reportes…",
     "/settings": "Cargando Configuración…",
+    "/help": "Cargando Centro de atención…",
   };
 
   const startNavigationFeedback = (targetPath: string) => {
@@ -265,7 +267,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const navItems =
     currentUser?.role === "admin"
       ? adminNavItems
-      : adminNavItems.filter(item => currentUser?.permissions?.includes(item.permission) || item.href === "/pos");
+      : adminNavItems.filter(item => Boolean(item.public) || currentUser?.permissions?.includes(item.permission) || item.href === "/pos");
 
   const visibleNavItems = navItems.length > 0 ? navItems : cashierNavItems;
 
