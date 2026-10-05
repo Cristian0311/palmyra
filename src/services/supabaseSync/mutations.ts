@@ -2,6 +2,8 @@ import { getSupabase } from '../../lib/supabase';
 import { enqueueOfflineItem } from '../offlineQueue';
 import { getActiveTenant, getEmployeeForIdentity } from '../tenant';
 import { callAdjustInventoryRPC } from './rpc';
+export * from './bank';
+
 export type ResetSection =
   | 'inventory' | 'reports' | 'catalog' | 'customers' | 'suppliers'
   | 'purchases' | 'cash' | 'bank' | 'users' | 'branches' | 'quotes' | 'settings';
@@ -271,25 +273,13 @@ export async function pushQuoteToSupabase(quote:Quote){
   try{const supabase=await onlineClient();const {companyId,authUserId}=await getActiveTenant();const {error}=await supabase.from('quotes').upsert({id:quote.id,company_id:companyId,quote_number:quote.id,customer_id:quote.customerId||null,warehouse_id:quote.branchId,currency_code:'USD',status:quote.status,total:Number(quote.total)||0,valid_until:null,notes:quote.notes||null,created_by:authUserId},{onConflict:'id'});if(error)throw error;await supabase.from('quote_items').delete().eq('quote_id',quote.id);if(quote.items?.length){const {error:ie}=await supabase.from('quote_items').insert(quote.items.map(i=>({id:crypto.randomUUID(),quote_id:quote.id,product_id:typeof i.product==='string'?i.product:i.product.id,quantity:Number(i.quantity)||0,unit_price:Number(i.price)||0,discount:0,tax:0,line_total:Number(i.total)||0})));if(ie)throw ie;}return true;}catch(e:any){await queue('quote',quote,quote.id);return false;}
 }
 
-export async function pushBankTransactionToSupabase(tx:BankTransaction){
-  try{
-    const { callProcessBankTransactionRPC } = await import('./rpc');
-    const res=await callProcessBankTransactionRPC({
-      id:tx.id,cardId:tx.cardId,type:tx.type,amount:Number(tx.amount)||0,date:tx.date,
-      reference:tx.reference,description:tx.description,transactionId:tx.transactionId
-    });
-    if(!res.success)throw new Error(res.error||'No se pudo registrar el movimiento bancario.');
-    return true;
-  }catch(e:any){await queue('bank_transaction',tx,tx.id);return false;}
-}
-export async function deleteBankTransactionFromSupabase(id:string){try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {error}=await supabase.from('bank_transactions').delete().eq('id',id).eq('company_id',companyId);if(error)throw error;}catch{}}
 
-export async function pushBankCardToSupabase(card:BankCard){
-  try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {error}=await supabase.from('bank_accounts').upsert({id:card.id,company_id:companyId,name:card.name||card.bankName||'Cuenta bancaria',bank_name:card.bankName||card.bank||'Banco',last_four:(card.lastFour||card.lastFourDigits||'').slice(-4),currency_code:card.currency||'USD',balance:Number(card.balance)||0,active:card.isActive!==false,updated_at:new Date().toISOString()},{onConflict:'id'});if(error)throw error;return true;}catch(e:any){await queue('bank_card',card,card.id);return false;}
-}
-export async function setBankCardBalanceToSupabase(cardId:string,expectedBalance:number,newBalance:number):Promise<boolean>{try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {data,error}=await supabase.from('bank_accounts').update({balance:Number(newBalance)||0,updated_at:new Date().toISOString()}).eq('id',cardId).eq('company_id',companyId).eq('balance',Number(expectedBalance)||0).select('id');if(error)throw error;return Boolean(data?.length);}catch{return false;}}
-export async function updateBankCardMetadataToSupabase(card:BankCard):Promise<boolean>{return pushBankCardToSupabase(card);}
-export async function deleteBankCardFromSupabase(id:string){try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {error}=await supabase.from('bank_accounts').update({active:false}).eq('id',id).eq('company_id',companyId);if(error)throw error;}catch{}}
+
+
+
+
+
+
 
 export async function pushSupplierToSupabase(supplier:Supplier){
   try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {error}=await supabase.from('suppliers').upsert({id:supplier.id,company_id:companyId,name:supplier.name,phone:supplier.phone||null,address:supplier.address||null,email:supplier.email||null,rating:Number(supplier.rating)||0,merchandise_type:supplier.typeOfMerchandise||null,active:true},{onConflict:'id'});if(error)throw error;return true;}catch(e:any){await queue('supplier',supplier,supplier.id);return false;}
