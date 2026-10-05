@@ -2,6 +2,21 @@ import { useCallback, useMemo } from 'react';
 import type { CashRegisterSession, Transaction, User } from '../../types';
 import { getLocalDateYMD } from '../../utils/dateUtils';
 
+export function buildSessionTurnMap(
+  sessions: CashRegisterSession[],
+): Map<string, string> {
+  const map = new Map<string, string>();
+  sessions.forEach(session => {
+    const turnNumber = Number(session.turnNumber);
+    if (Number.isFinite(turnNumber) && turnNumber > 0) {
+      map.set(session.id, `Turno-${Math.trunc(turnNumber)}`);
+    } else {
+      map.set(session.id, session.id);
+    }
+  });
+  return map;
+}
+
 export function useReportsSessions(params: {
   cashSessions: CashRegisterSession[];
   transactions: Transaction[];
@@ -58,20 +73,10 @@ export function useReportsSessions(params: {
     return Array.from(sessionMap.values());
   }, [cashSessions, transactions]);
 
-  const sessionTurnMap = useMemo(() => {
-    const map = new Map<string, string>();
-    reconciledSessions.forEach(session => {
-      const turnNumber = Number(session.turnNumber);
-      if (Number.isFinite(turnNumber) && turnNumber > 0) {
-        map.set(session.id, `Turno-${Math.trunc(turnNumber)}`);
-      } else {
-        // Do not renumber persistent sessions based on their screen position.
-        // Recovered legacy rows have no authoritative turn number.
-        map.set(session.id, session.id);
-      }
-    });
-    return map;
-  }, [reconciledSessions]);
+  const sessionTurnMap = useMemo(
+    () => buildSessionTurnMap(reconciledSessions),
+    [reconciledSessions],
+  );
 
   const getSessionTurnNumber = useCallback(
     (session: CashRegisterSession) => {
