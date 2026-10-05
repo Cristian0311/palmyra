@@ -304,7 +304,7 @@ transfers: [],
   warranties: [],
   addWarranty: (warranty) => {
     set((state) => ({ warranties: [warranty, ...state.warranties] }));
-    import('../../services/supabaseSync').then(({ pushWarrantyToSupabase }) => {
+    import('../services/supabaseSync').then(({ pushWarrantyToSupabase }) => {
       pushWarrantyToSupabase(warranty).catch(() => {});
     }).catch(() => {});
   },
@@ -314,7 +314,7 @@ transfers: [],
     }));
     const updated = get().warranties.find(w => w.id === id);
     if (updated) {
-      import('../../services/supabaseSync').then(({ pushWarrantyToSupabase }) => {
+      import('../services/supabaseSync').then(({ pushWarrantyToSupabase }) => {
         pushWarrantyToSupabase(updated).catch(() => {});
       }).catch(() => {});
     }
