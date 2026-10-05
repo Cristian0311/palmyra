@@ -40,6 +40,7 @@ const InventoryAudit = lazy(() => import("./pages/InventoryAudit"));
 const Banks = lazy(() => import("./pages/Banks"));
 const PlatformAdmin = lazy(() => import("./pages/PlatformAdmin"));
 const Security = lazy(() => import("./pages/Security"));
+const HelpCenter = lazy(() => import("./pages/HelpCenter"));
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 
 function PageLoading() {
@@ -57,6 +58,7 @@ function PageLoading() {
     "/reports": "Cargando Reportes…",
     "/settings": "Cargando Configuración…",
     "/team": "Cargando equipo…",
+    "/help": "Cargando Centro de atención…",
     "/invite": "Cargando invitación…",
   };
   const label = labels[location] || "Cargando sección…";
@@ -380,7 +382,7 @@ export default function App() {
           <Routes>
           <Route path="/landing" element={<LandingPage />} />
           <Route path="/platform-admin" element={<PlatformAdmin />} />
-          <Route path="/security" element={<Security />} />
+          <Route path="/security" element={<Navigate to="/help?section=security" replace />} />
           <Route path="/invite" element={<SaaSInvite />} />
           <Route path="/auth/confirm" element={<AuthConfirm />} />
           <Route path="/auth" element={accessState === "signed_out" ? <SaaSAuth /> : <Navigate to={accessState === "needs_onboarding" || pendingOnboarding ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/"} replace />} />
@@ -404,6 +406,7 @@ export default function App() {
                     <Route path="/settings" element={can("settings.manage") ? <Settings /> : <Navigate to="/pos" replace />} />
                     <Route path="/team" element={can("employees.manage") ? <Team /> : <Navigate to="/pos" replace />} />
                     <Route path="/subscription" element={can("settings.manage") ? <Subscription /> : <Navigate to="/pos" replace />} />
+                    <Route path="/help" element={<HelpCenter />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </Suspense>
