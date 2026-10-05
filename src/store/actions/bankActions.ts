@@ -32,6 +32,7 @@ import {
   type LocalNcfRange,
 } from '../../services/fiscal/ncfLocal';
 import type { AppState } from '../storeTypes';
+import { INITIAL_BANK_CARDS } from '../storeInitialData';
 
 
 type StoreSet = (
