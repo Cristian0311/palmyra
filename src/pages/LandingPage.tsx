@@ -17,18 +17,43 @@ export default function LandingPage() {
   const goSignup = () => navigate("/auth?mode=signup");
 
   useEffect(() => {
-    // La landing debe recuperar el scroll aunque otra pantalla/modal haya dejado
-    // un bloqueo global de body antes de montar esta ruta.
-    const previousOverflow = document.body.style.overflow;
-    const previousOverflowY = document.body.style.overflowY;
-    const previousTouchAction = document.body.style.touchAction;
-    document.body.style.overflow = "auto";
-    document.body.style.overflowY = "auto";
-    document.body.style.touchAction = "pan-y";
+    // El resto del ERP utiliza un shell con overflow:hidden. La landing es un
+    // documento largo y debe tomar control vertical también en html y #root.
+    const html = document.documentElement;
+    const root = document.getElementById("root");
+    const elements = [html, document.body, root].filter((element): element is HTMLElement => Boolean(element));
+    const previous = elements.map((element) => ({
+      element,
+      overflow: element.style.overflow,
+      overflowY: element.style.overflowY,
+      overflowX: element.style.overflowX,
+      touchAction: element.style.touchAction,
+      height: element.style.height,
+    }));
+
+    elements.forEach((element) => {
+      element.style.overflow = "visible";
+      element.style.overflowY = "auto";
+      element.style.overflowX = "hidden";
+      element.style.touchAction = "pan-y";
+      element.style.height = "auto";
+    });
+
+    html.classList.add("palmyra-landing-active");
+    document.body.classList.add("palmyra-landing-active");
+    root?.classList.add("palmyra-landing-active");
+
     return () => {
-      document.body.style.overflow = previousOverflow;
-      document.body.style.overflowY = previousOverflowY;
-      document.body.style.touchAction = previousTouchAction;
+      html.classList.remove("palmyra-landing-active");
+      document.body.classList.remove("palmyra-landing-active");
+      root?.classList.remove("palmyra-landing-active");
+      previous.forEach(({ element, overflow, overflowY, overflowX, touchAction, height }) => {
+        element.style.overflow = overflow;
+        element.style.overflowY = overflowY;
+        element.style.overflowX = overflowX;
+        element.style.touchAction = touchAction;
+        element.style.height = height;
+      });
     };
   }, []);
 
