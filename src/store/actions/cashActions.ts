@@ -39,7 +39,7 @@ type StoreSet = (
 ) => void;
 type StoreGet = () => AppState;
 
-export function createCashActions(set: StoreSet, get: StoreGet): Partial<AppState> {
+export function createCashActions(set: StoreSet, get: StoreGet): any {
   return {
   cashSessions: [],
   openSession: async (session) => {
