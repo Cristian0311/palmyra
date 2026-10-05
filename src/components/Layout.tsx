@@ -24,10 +24,12 @@ import {
   Clock,
   ChevronLeft,
   ChevronRight,
-  RefreshCw
+  RefreshCw,
+  LifeBuoy
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
 import { cn } from "../lib/utils";
+import PalmiGuide from "./help/PalmiGuide";
 import { loadSaaSContext } from "../services/saas";
 import { useStore } from "../store/useStore";
 import { getOfflineQueueCount } from "../services/offlineQueue";
@@ -415,6 +417,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20 hover:bg-rose-500/20 cursor-pointer"
                   : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
               )}
+              data-tour="offline-status"
               title={pendingOfflineCount > 0 ? "Clic para sincronizar datos pendientes con Supabase" : undefined}
             >
               <div className="flex items-center gap-1.5 truncate">
@@ -491,6 +494,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           })()}
 
           <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event("palmyra:open-guide"))}
+            className={cn(
+              "flex items-center text-muted hover:text-violet-700 hover:bg-violet-50 dark:hover:bg-violet-950/40 rounded-xl transition-all font-black uppercase",
+              sidebarCollapsed ? "justify-center p-2 w-full" : "space-x-2 px-3 py-2 w-full text-[10px] tracking-wider"
+            )}
+            title="Abrir guía PALMYRA"
+          >
+            <LifeBuoy className="w-3.5 h-3.5 shrink-0" />
+            {!sidebarCollapsed && <span>Guía PALMYRA</span>}
+          </button>
+
+          <button
             onClick={logout}
             className={cn(
               "flex items-center text-muted hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-xl transition-all font-black uppercase",
@@ -529,7 +545,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className={cn("flex-1 min-w-0 h-full flex flex-col scroll-touch keyboard-safe-scroll", isPosPage ? "overflow-hidden p-0" : "overflow-y-auto p-3 sm:p-4 lg:p-6 pb-20 lg:pb-12")}>
           {children}
         </div>
-      </main>
+        </main>
+      <PalmiGuide />
     </div>
   );
 }
