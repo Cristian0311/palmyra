@@ -6,6 +6,10 @@ import { generateItemsSoldDetailSheet } from './excel/itemsSheet';
 import type { AIDiagnosticReport, ExcelExportData } from './excel/types';
 
 export type { AIDiagnosticReport, ExcelExportData } from './excel/types';
+export { generateSummarySheet } from './excel/summarySheet';
+export { generateSalesSheet } from './excel/salesSheet';
+export { generateItemsSoldDetailSheet } from './excel/itemsSheet';
+
 
 import { 
   Transaction, CashRegisterSession, Product, Category, 
