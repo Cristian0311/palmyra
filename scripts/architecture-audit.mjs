@@ -8,7 +8,7 @@ const legacyLargeBaseline = {
   'src/pages/POS.tsx': { lines: 4420, bytes: 235600 },
   'src/pages/Reports.tsx': { lines: 4455, bytes: 248691 },
 };
-const ignoredDirs = new Set(['node_modules', '.git', 'dist', 'coverage', '.cache']);
+const ignoredDirs = new Set(['node_modules', '.git', 'dist', 'dist-admin', 'coverage', '.cache']);
 
 for (const dir of ['fixrender', 'dev-dist']) {
   if (existsSync(join(root, dir))) {
