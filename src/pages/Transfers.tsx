@@ -1,3 +1,4 @@
+import { getTransferStockHelpers } from '../modules/transfers/utils/transferStock';
 import { useShallow } from 'zustand/react/shallow';
 import React, { useMemo, useState, useEffect } from "react";
 import { 
@@ -78,41 +79,25 @@ export default function Transfers() {
     }
   }, [showAddModal]);
 
-  // Calculate live available stock in source branch
-  const hasVariants = (selectedProduct?.availableSizes?.length || 0) + (selectedProduct?.availableColors?.length || 0) > 0;
-  const variantsList: string[] = hasVariants 
+  // Calculate live available stock in source/target branch.
+  const variantsList: string[] = hasVariants
     ? Array.from(new Set([...(selectedProduct?.availableSizes || []), ...(selectedProduct?.availableColors || [])]))
     : [''];
 
-  const getSourceStockForVariant = (variantLabel: string = ''): number => {
-    if (!selectedProduct || !effectiveFromBranchId) return 0;
-    const item = inventory.find(
-      i => i.productId === selectedProduct.id && 
-           i.branchId === effectiveFromBranchId && 
-           (i.variantLabel || '') === (variantLabel || '')
-    );
-    return item ? Number(item.quantity) : 0;
-  };
-
-  const getTargetStockForVariant = (variantLabel: string = ''): number => {
-    if (!selectedProduct || !effectiveToBranchId) return 0;
-    const item = inventory.find(
-      i => i.productId === selectedProduct.id && 
-           i.branchId === effectiveToBranchId && 
-           (i.variantLabel || '') === (variantLabel || '')
-    );
-    return item ? Number(item.quantity) : 0;
-  };
-
-  const totalSourceStock: number = variantsList.reduce((acc: number, v: string) => acc + getSourceStockForVariant(v), 0);
-  const totalTargetStock: number = effectiveToBranchId 
-    ? variantsList.reduce((acc: number, v: string) => acc + getTargetStockForVariant(v), 0) 
-    : 0;
-
-  const totalTransferring: number = Object.keys(variantQuantities).reduce((acc: number, key: string) => {
-    const val = Number(variantQuantities[key]);
-    return acc + (isNaN(val) ? 0 : val);
-  }, 0);
+  const {
+    getSourceStockForVariant,
+    getTargetStockForVariant,
+    totalSourceStock,
+    totalTargetStock,
+    totalTransferring,
+  } = getTransferStockHelpers(
+    inventory,
+    selectedProduct?.id || '',
+    effectiveFromBranchId,
+    effectiveToBranchId,
+    variantsList,
+    variantQuantities
+  );
 
   const handleTransfer = async (e: React.FormEvent) => {
     e.preventDefault();
