@@ -8,7 +8,7 @@ import "./palmiGuide.css";
 import PWAInstallPrompt from "./PWAInstallPrompt";
 import PWAInstallPrompt from "./PWAInstallPrompt";
 
-const KEY = "palmyra-numa-guide-v4";
+const KEY = "palmyra-palmi-guide-v5";
 const EDGE = 20;
 type Position = { left:number; top:number };
 type Phase = "action" | "explain";
