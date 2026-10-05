@@ -231,25 +231,7 @@ export default function Inventory() {
   };
 
   const exportToCSV = () => {
-    const headers = ["ID", "Nombre", "SKU", "EAN", "Departamento", "Costo", "Precio", "Stock Total", "Unidad", "Estado"];
-    const rows = inventoryView.map(p => [
-      p.id,
-      p.name,
-      p.sku,
-      p.barcode || "",
-      categories.find(c => c.id === p.categoryId)?.name || "",
-      p.costPrice,
-      p.price,
-      p.totalStock,
-      p.unit || "uds",
-      p.status || "active"
-    ]);
-
-    const csvContent = [
-      headers.join(","),
-      ...rows.map(r => r.join(","))
-    ].join("\n");
-
+    const csvContent = buildInventoryCsv(inventoryView, categories);
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
@@ -259,6 +241,7 @@ export default function Inventory() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleCategorySubmit = (e: React.FormEvent) => {
@@ -276,44 +259,14 @@ export default function Inventory() {
     setCategoryFormData({ name: "", department: "" });
   };
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const img = new Image();
-        img.onload = () => {
-          // Resize and compress
-          const canvas = document.createElement('canvas');
-          const MAX_WIDTH = 600;
-          const MAX_HEIGHT = 600;
-          let width = img.width;
-          let height = img.height;
-
-          if (width > height) {
-            if (width > MAX_WIDTH) {
-              height *= MAX_WIDTH / width;
-              width = MAX_WIDTH;
-            }
-          } else {
-            if (height > MAX_HEIGHT) {
-              width *= MAX_HEIGHT / height;
-              height = MAX_HEIGHT;
-            }
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
-          
-          // Use a medium quality jpeg for better compression
-          const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
-          setFormData(prev => ({ ...prev, image: dataUrl }));
-        };
-        img.src = event.target?.result as string;
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+    try {
+      const image = await resizeProductImage(file);
+      setFormData(prev => ({ ...prev, image }));
+    } catch (error) {
+      console.error('No se pudo procesar la imagen del producto:', error);
     }
   };
 
@@ -598,7 +551,6 @@ export default function Inventory() {
         })}
         </div>
       </div>
-
 
       {/* Tab Content */}
       {activeTab === 'labels' && <PrintLabels />}
@@ -1197,8 +1149,7 @@ export default function Inventory() {
                                 <input type="text" value={newColor} onChange={e => setNewColor(e.target.value)} className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none" placeholder="Ej: Azul" />
                                 <button type="button" onClick={() => { if(newColor) { setFormData({...formData, availableColors: [...(formData.availableColors || []), newColor]}); setNewColor(""); } }} className="px-3 bg-slate-900 text-white rounded-xl">+</button>
                               </div>
-                              <div className="flex flex-wrap gap-1.5">
-                                {(formData.availableColors || []).map(color => (
+                              <div className="flex flex-wrap gap-1.5">                                {(formData.availableColors || []).map(color => (
                                   <span key={color} className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-[9px] font-black flex items-center gap-1 uppercase">
                                     {color}
                                     <button type="button" onClick={() => setFormData({...formData, availableColors: (formData.availableColors || []).filter(c => c !== color)})}><X className="w-3 h-3" /></button>
