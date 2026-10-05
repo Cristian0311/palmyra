@@ -25,9 +25,6 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import {
-  adminSignIn,
-  adminSignOut,
-  adminUser,
   approveRequest,
   changeCompanyStatus,
   loadPlatformSnapshot,
@@ -36,7 +33,7 @@ import {
   type PlatformCompany,
   type PlatformSnapshot,
 } from "./platformAdminApi";
-import { getAdminSupabase } from "./supabase";
+import { adminSignIn, adminSignOut, adminUser, getAdminSupabase } from "./supabase";
 import "./admin.css";
 
 type View = "overview" | "companies" | "billing" | "support" | "audit" | "settings";
