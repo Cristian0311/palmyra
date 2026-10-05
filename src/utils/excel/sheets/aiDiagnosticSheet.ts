@@ -1,4 +1,4 @@
-import type { AIDiagnosticReport, ExcelExportData } from "../../../types";
+import type { AIDiagnosticReport, ExcelExportData } from "../types";
 import type { Currency } from "../../../types";
 
 export function generateAIDiagnosticSheet(diagnostic: AIDiagnosticReport, baseCurrency: Currency): any[][] {
