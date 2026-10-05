@@ -19,6 +19,9 @@ import { getOfflineQueue, enqueueOfflineItem, removeFromOfflineQueue, waitForOff
 import { normalizeSemanticText, areSemanticallyEqual } from '../utils/textUtils';
 import { localStateStorage, clearLocalStateStorage, flushLocalStateStorage } from '../services/localStateStorage';
 import { getPalmyraScopedStorageKey } from '../services/localScope';
+import { buildLocalVoidTransactionPatch } from './utils/localVoidTransaction';
+import { buildLocalCompletedSalePatch } from './utils/localCompletedSale';
+import { replaceRemoteRecords } from './utils/replaceRemoteRecords';
 import { calculateExpectedCashBase } from '../services/cash/expectedCash';
 import { removeFromOfflineQueueByAction, removeFromOfflineQueueByTransactionId } from '../services/offlineQueue/outboxUtils';
 import {
@@ -121,159 +124,11 @@ function applyCanonicalInventoryQuantity(
   }));
 }
 
-function replaceRemoteRecords<T extends Record<string, any>>(
-  remoteData: T[] | undefined,
-  localData: T[],
-  pendingIds: Set<string>,
-  idKey = 'id'
-): T[] {
-  // An authoritative successful pull must be allowed to clear local records that
-  // no longer exist in Supabase. Only operations still present in the durable
-  // offline outbox survive the replacement.
-  if (!Array.isArray(remoteData)) return localData;
 
-  const byId = new Map<string, T>();
-  for (const item of remoteData) {
-    const id = item?.[idKey];
-    if (id != null) byId.set(String(id), item);
-  }
 
-  for (const item of localData) {
-    const id = item?.[idKey];
-    if (id != null && pendingIds.has(String(id)) && !byId.has(String(id))) {
-      byId.set(String(id), item);
-    }
-  }
 
-  return Array.from(byId.values());
-}
 
-function applyLocalVoidTransaction(transaction: Transaction) {
-  useStore.setState((state: any) => {
-    const updatedInventory = [...state.inventory];
-    const restore = (productId: string, qty: number, variantLabel?: string) => {
-      if (!productId) return;
-      const idx = updatedInventory.findIndex((i: any) =>
-        i.productId === productId &&
-        i.branchId === transaction.branchId &&
-        (i.variantLabel || '') === (variantLabel || '')
-      );
-      if (idx !== -1) {
-        updatedInventory[idx] = { ...updatedInventory[idx], quantity: updatedInventory[idx].quantity + qty };
-      }
-    };
 
-    (transaction.items || []).forEach((item: any) => {
-      if (!item) return;
-      const prod = item.product;
-      if (!prod) return;
-      if (typeof prod === 'object' && prod.isKit && Array.isArray(prod.kitComponents)) {
-        prod.kitComponents.forEach((component: any) =>
-          restore(component.productId, component.quantity * (item.quantity || 1))
-        );
-      } else if (typeof prod === 'object') {
-        restore(prod.id, item.quantity || 1, item.variantLabel);
-      } else if (typeof prod === 'string') {
-        restore(prod, item.quantity || 1, item.variantLabel);
-      }
-    });
-
-    // Anulación de una venta también debe revertir localmente los ingresos por
-    // transferencia asociados a esa venta. El servidor hace la misma reversión
-    // atómicamente; este espejo evita que la UI muestre un saldo artificial hasta
-    // que llegue el siguiente bootstrap/realtime.
-    const bankToReverse = (state.bankTransactions || []).filter(
-      (bt: any) => bt.transactionId === transaction.id && bt.type === 'payment_received'
-    );
-
-    const updatedBankCards = (state.bankCards || []).map((card: any) => {
-      const amount = bankToReverse
-        .filter((bt: any) => bt.cardId === card.id)
-        .reduce((sum: number, bt: any) => sum + Number(bt.amount || 0), 0);
-      return amount > 0
-        ? { ...card, balance: Math.max(0, Number(card.balance || 0) - amount) }
-        : card;
-    });
-
-    const remainingBankTransactions = (state.bankTransactions || []).filter(
-      (bt: any) => !(bt.transactionId === transaction.id && bt.type === 'payment_received')
-    );
-
-    return {
-      inventory: updatedInventory,
-      bankTransactions: remainingBankTransactions,
-      bankCards: updatedBankCards
-    };
-  });
-}
-
-function applyLocalCompletedSale(transaction: Transaction) {
-  const generatedWarranties: any[] = [];
-  useStore.setState((state: any) => {
-    // Local mirror is idempotent too. A retry after a server-confirmed sale
-    // must not consume inventory or create duplicate warranties twice.
-    const existing = (state.transactions || []).find((t: any) => t.id === transaction.id && !t.deletedAt);
-    if (existing) {
-      return {
-        transactions: (state.transactions || []).map((t: any) => t.id === transaction.id ? { ...t, ...transaction } : t),
-        cart: [],
-        currentCustomerId: undefined
-      };
-    }
-    const newWarranties = generatedWarranties;
-    const updatedInventory = [...state.inventory];
-    const finalItems = (transaction.items || []).map((item: any) => {
-      if (!item) return item;
-      const finalItem = { ...item };
-      const prod = item.product;
-      if (prod && typeof prod === 'object' && prod.warrantyDays && prod.warrantyDays > 0) {
-        const expiryDate = new Date(transaction.date);
-        expiryDate.setDate(expiryDate.getDate() + prod.warrantyDays);
-        const customer = state.customers.find((c: any) => c.id === transaction.customerId);
-        const wrnId = generateReadableId('GDA', state.warranties.length + newWarranties.length);
-        newWarranties.push({
-          id: wrnId, productId: prod.id, productName: prod.name,
-          transactionId: transaction.id, customerId: transaction.customerId,
-          customerName: customer?.name || 'Cliente Genérico', purchaseDate: transaction.date,
-          expiryDate: expiryDate.toISOString(), serialNumber: item.serialNumber, status: 'active'
-        });
-        finalItem.warrantyCode = wrnId;
-      }
-      return finalItem;
-    });
-
-    const consume = (productId: string, qty: number, variantLabel?: string) => {
-      if (!productId) return;
-      const idx = updatedInventory.findIndex((i: any) => i.productId === productId && i.branchId === transaction.branchId && (i.variantLabel || '') === (variantLabel || ''));
-      if (idx !== -1) updatedInventory[idx] = { ...updatedInventory[idx], quantity: Math.max(0, updatedInventory[idx].quantity - qty) };
-    };
-
-    (transaction.items || []).forEach((item: any) => {
-      if (!item) return;
-      const prod = item.product;
-      if (!prod) return;
-      if (typeof prod === 'object' && prod.isKit && Array.isArray(prod.kitComponents)) {
-        prod.kitComponents.forEach((c: any) => consume(c.productId, c.quantity * (item.quantity || 1)));
-      } else if (typeof prod === 'object') {
-        consume(prod.id, item.quantity || 1, item.variantLabel);
-      } else if (typeof prod === 'string') {
-        consume(prod, item.quantity || 1, item.variantLabel);
-      }
-    });
-
-    return {
-      transactions: [{ ...transaction, items: finalItems }, ...state.transactions.filter((t: any) => t.id !== transaction.id)],
-      inventory: updatedInventory,
-      warranties: [...newWarranties, ...state.warranties],
-      cart: [], currentCustomerId: undefined
-    };
-  });
-  // Warranty records generated by a POS sale must follow the same offline-first
-  // contract as the sale itself. Previously they existed only in local state.
-  for (const warranty of generatedWarranties) {
-    void pushWarrantyToSupabase(warranty);
-  }
-}
 
 export const useStore = create<AppState>()(
   persist(
@@ -1442,7 +1297,18 @@ export const useStore = create<AppState>()(
       const alreadyLocal = useStore.getState().transactions.some(
         t => t.id === transaction.id && !t.deletedAt
       );
-      if (!alreadyLocal || pending === false) applyLocalCompletedSale(localTransaction);
+      if (!alreadyLocal || pending === false) {
+        let generatedWarranties: Warranty[] = [];
+        set((state) => {
+          const patch = buildLocalCompletedSalePatch(state, localTransaction);
+          generatedWarranties = patch.generatedWarranties;
+          const { generatedWarranties: _generated, ...statePatch } = patch;
+          return statePatch;
+        });
+        for (const warranty of generatedWarranties) {
+          void pushWarrantyToSupabase(warranty);
+        }
+      }
       await flushLocalStateStorage();
     };
 
@@ -1518,7 +1384,7 @@ export const useStore = create<AppState>()(
 
     if (!navigator.onLine) {
       await enqueueOfflineItem('void_transaction', { id, userId, reason: finalReason }, 'void:' + id);
-      applyLocalVoidTransaction(tx);
+      set(current => buildLocalVoidTransactionPatch(current, tx));
       const deletedAt = new Date().toISOString();
       set((current) => ({
         transactions: current.transactions.map(t => t.id === id ? { ...t, deletedAt, deletedBy: userId, deleteReason: finalReason } : t)
@@ -1597,7 +1463,7 @@ export const useStore = create<AppState>()(
         if (!res.success) throw new Error(res.error || 'No se pudo cancelar el turno');
 
         const sessionTxs = (get().transactions || []).filter(t => t.sessionId === sessionId && !t.deletedAt);
-        sessionTxs.forEach(tx => applyLocalVoidTransaction(tx));
+        sessionTxs.forEach(tx => set(current => buildLocalVoidTransactionPatch(current, tx)));
         set(current => ({
           cashSessions: (current.cashSessions || []).map(s => s.id === sessionId ? {
             ...s, status: 'cancelled', closedAt: cancelledAt, closingDate: cancelledAt, deleteReason: reason
@@ -1627,7 +1493,7 @@ export const useStore = create<AppState>()(
     }
 
     const sessionTxs = (state.transactions || []).filter(t => t.sessionId === sessionId && !t.deletedAt);
-    sessionTxs.forEach(tx => applyLocalVoidTransaction(tx));
+    sessionTxs.forEach(tx => set(current => buildLocalVoidTransactionPatch(current, tx)));
     set(current => ({
       cashSessions: (current.cashSessions || []).map(s => s.id === sessionId ? {
         ...s, status: 'cancelled', closedAt: cancelledAt, closingDate: cancelledAt, deleteReason: reason
