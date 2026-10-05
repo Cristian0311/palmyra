@@ -503,7 +503,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): Partial<AppStat
         set(state => ({
           salarySettlements: state.salarySettlements.map(st => st.id === existingSettlement.id ? updatedSettlement : st)
         }));
-        import('../services/supabaseSync').then(({ pushSalarySettlementToSupabase }) => {
+        import('../../services/supabaseSync').then(({ pushSalarySettlementToSupabase }) => {
           pushSalarySettlementToSupabase(updatedSettlement).catch(() => {});
         });
       }
