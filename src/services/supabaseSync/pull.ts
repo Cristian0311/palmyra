@@ -332,7 +332,6 @@ async function loadCashSessions(branchId?: string) {
     closedAt:s.closed_at || undefined,
     openingBalance:Number(s.opening_amount)||0,
     openingAmount:Number(s.opening_amount)||0,
-    expectedBalance:Number(s.expected_cash)||undefined,
     status:s.status || 'open',
     userId:employeeUserMap.get(s.employee_id) || s.opened_by || s.employee_id || '',
     workerName:(s.metadata?.workerName || employeeMap.get(s.employee_id)) || undefined,
