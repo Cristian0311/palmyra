@@ -6,7 +6,6 @@ import { getAccessiblePalmiTourSteps, type PalmiTourStep } from "./palmiGuideSte
 import { PalmiMascot } from "./PalmiMascot";
 import "./palmiGuide.css";
 import PWAInstallPrompt from "./PWAInstallPrompt";
-import PWAInstallPrompt from "./PWAInstallPrompt";
 
 const KEY = "palmyra-palmi-guide-v5";
 const EDGE = 20;
