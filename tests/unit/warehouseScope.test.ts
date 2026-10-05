@@ -11,18 +11,36 @@ test("warehouse scope prefers canonical warehouseId and supports legacy branchId
   assert.equal(getWarehouseId({ branchId: "b2" }), "b2");
 });
 
-test("authorized warehouse ids merge canonical and legacy assignments without duplicates", () => {
+test("explicit canonical or legacy allowlists are authoritative", () => {
   assert.deepEqual(
     getAuthorizedWarehouseIds({
       warehouseId: "w1",
-      allowedWarehouseIds: ["w1", "w2"],
-      allowedBranches: ["w2", "w3"],
+      allowedWarehouseIds: ["w2"],
+      allowedBranches: ["w3"],
     }),
-    ["w1", "w2", "w3"]
+    ["w2"]
+  );
+  assert.deepEqual(
+    getAuthorizedWarehouseIds({
+      warehouseId: "w1",
+      allowedBranches: ["w3", "w4"],
+    }),
+    ["w3", "w4"]
   );
 });
 
-test("warehouse access remains compatible with legacy branch assignments", () => {
+test("warehouse access remains compatible with legacy single assignment", () => {
   assert.equal(hasWarehouseAccess({ branchId: "b1" }, "b1"), true);
   assert.equal(hasWarehouseAccess({ branchId: "b1" }, "b2"), false);
+});
+
+test("an explicit empty canonical allowlist does not fall back to legacy scope", () => {
+  assert.deepEqual(
+    getAuthorizedWarehouseIds({
+      warehouseId: "w1",
+      allowedWarehouseIds: [],
+      allowedBranches: ["b1"],
+    }),
+    []
+  );
 });
