@@ -40,7 +40,7 @@ type StoreSet = (
 ) => void;
 type StoreGet = () => AppState;
 
-export function createBankActions(set: StoreSet, get: StoreGet): Partial<AppState> {
+export function createBankActions(set: StoreSet, get: StoreGet): any {
   return {
   bankCards: INITIAL_BANK_CARDS,
   addBankCard: (card) => {
