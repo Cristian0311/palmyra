@@ -97,3 +97,9 @@
 .team-footer-primary:hover{transform:translateY(-1px);box-shadow:0 11px 24px rgba(109,59,210,.28)}
 .team-footer-secondary:hover{transform:translateY(-1px)}
 @media(prefers-reduced-motion:reduce){.team-employee-hero-icon:after{animation:none}.team-footer-primary:hover,.team-footer-secondary:hover{transform:none}}
+
+.team-form-hidden{display:none!important}
+.team-step-item{appearance:none;border:0;padding:0;background:transparent;text-align:left;cursor:pointer}
+.team-step-item:disabled{cursor:default}
+.team-step-item.team-step-done>span{background:#f1ebff;border-color:#cdbaff;color:#6d3bd2}
+.team-step-line.is-complete{background:#9a7be5}
