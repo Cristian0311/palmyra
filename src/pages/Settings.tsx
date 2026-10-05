@@ -1,5 +1,6 @@
 import { useShallow } from 'zustand/react/shallow';
 import React, { useMemo, useState, useEffect, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import { Settings as SettingsIcon, Save, DollarSign, Building2, Users, Plus, Trash2, Edit, LayoutGrid, Store, AlertTriangle, RefreshCw, Usb, Bluetooth, Wifi, Printer, CheckCircle2, ExternalLink, AlertCircle, Sparkles, ChevronRight, Package, Search, X, Database, CreditCard, CloudUpload, CloudDownload, Check, Sun, Moon, Type, Palette } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { InfoTooltip } from "../components/InfoTooltip";
@@ -13,6 +14,7 @@ import { connectBluetoothPrinter, connectPrinter, printESCPOS, isInsideIframe } 
 import { getSupabase } from "../lib/supabase";
 
 export default function Settings() {
+  const navigate = useNavigate();
   const { 
     currencies, updateCurrencyRate, 
     storeConfig, updateStoreConfig, 
@@ -406,7 +408,6 @@ export default function Settings() {
             { id: 'currency', label: 'Monedas', icon: DollarSign },
             { id: 'branches', label: 'Almacenes', icon: Building2 },
             { id: 'categories', label: 'Categorías', icon: LayoutGrid },
-            { id: 'employees', label: 'Empleados', icon: Users },
             { id: 'visual', label: 'Estilo visual', icon: Palette },
             { id: 'advanced', label: 'Avanzado', icon: AlertTriangle },
           ].map(tab => {
@@ -429,6 +430,15 @@ export default function Settings() {
             );
           })}
         </div>
+      </div>
+
+      <div className="bg-violet-50/70 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-900/40 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[9px] font-black uppercase tracking-[0.16em] text-violet-600 dark:text-violet-300">Gestión de trabajadores</p>
+          <h3 className="mt-1 text-sm font-black text-primary">Todo el equipo se administra desde una sola vista</h3>
+          <p className="mt-1 text-[10px] leading-4 text-secondary">Crear empleados, enviar invitaciones, asignar roles, permisos, salarios y almacenes ahora vive en <strong>Equipo</strong>.</p>
+        </div>
+        <button type="button" onClick={() => navigate("/team")} className="shrink-0 w-full sm:w-auto h-10 px-4 rounded-xl bg-violet-600 text-white text-[10px] font-black uppercase tracking-wider shadow-sm hover:bg-violet-700 transition-colors">Abrir Equipo</button>
       </div>
 
       <div ref={settingsContentRef} id="settings-section-content" className="grid grid-cols-1 gap-3 min-w-0 scroll-mt-2">
