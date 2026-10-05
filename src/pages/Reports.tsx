@@ -119,6 +119,13 @@ export default function Reports() {
     getBaseCurrency,
   });
 
+  const getBaseCurrency = store.getBaseCurrency;
+  const addNotification = store.addNotification;
+  const addSalarySettlement = store.addSalarySettlement;
+  const updateSalarySettlement = store.updateSalarySettlement;
+  const updateCashSession = store.updateCashSession;
+  const receiptConfig = store.receiptConfig;
+
   const [activeTab, setActiveTab] = useState<'sales' | 'payroll' | 'sessions' | 'discrepancies' | 'movements' | 'transfers'>('sales');
   const [salesViewMode, setSalesViewMode] = useState<'by_shift' | 'all_tickets'>('by_shift');
   const [transferFromFilter, setTransferFromFilter] = useState<string>('all');
