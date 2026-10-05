@@ -157,5 +157,5 @@ export default function PalmiGuide(){
         <span className="palmi-aura palmi-aura-1"/><span className="palmi-aura palmi-aura-2"/><span className="palmi-spark palmi-spark-1">✦</span><span className="palmi-spark palmi-spark-2">✦</span><span className="palmi-mascot-stage"><PalmiMascot className="palmi-guide-mascot"/></span><span className="palmi-guide-name">PALMI</span>
       </div>
       {open&&<button type="button" className="palmi-guide-reset" onClick={reset} aria-label="Reiniciar guía" title="Reiniciar guía"><RotateCcw size={13}/></button>}
-    </div>;
+  </div>;
 }
