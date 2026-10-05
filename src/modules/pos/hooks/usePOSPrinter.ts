@@ -199,7 +199,7 @@ export function usePOSPrinter({
     const customer = useStore.getState().customers.find((c) => c.id === tx.customerId);
 
     if (customer?.phone) {
-      phone = String(customer.phone || "").replace(/D/g, "");
+      phone = String(customer.phone || "").replace(/\D/g, "");
     } else {
       const input = window.prompt("Ingrese el número de WhatsApp del cliente:");
       if (!input) return;
