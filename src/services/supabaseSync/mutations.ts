@@ -85,7 +85,7 @@ export async function reconcileInventoryToSupabase(params:{operationId:string;pr
       minQuantity:params.minQuantity,
       notes:'Reconciliación de inventario'
     });
-    if(!result.success){
+    if(result.success === false){
       if(result.conflict) return {success:false,conflict:true,error:result.error};
       throw new Error(result.error);
     }
