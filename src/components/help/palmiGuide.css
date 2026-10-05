@@ -19,7 +19,7 @@
 @keyframes palmi-float{0%,100%{transform:translateY(0) rotate(0);opacity:.55}50%{transform:translateY(-6px) rotate(8deg);opacity:1}}
 .palmi-mascot-blink{animation:palmi-blink 5.5s infinite;transform-origin:130px 141px}
 @keyframes palmi-blink{0%,93%,100%{opacity:1}95%,97%{opacity:.08}}
-.palmi-guide-panel{position:fixed;right:12px;bottom:14px;width:min(410px,calc(100vw - 22px));max-height:min(690px,calc(100dvh - 132px));overflow:hidden;pointer-events:auto;border:1px solid rgba(112,88,157,.18);border-radius:27px;background:rgba(255,255,255,.985);color:#241538;box-shadow:0 30px 90px rgba(39,20,65,.3);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);transform-origin:bottom right;animation:palmi-panel-in .24s ease-out}
+.palmi-guide-panel{position:fixed;right:12px;bottom:140px;width:min(410px,calc(100vw - 22px));max-height:min(690px,calc(100dvh - 132px));overflow:hidden;pointer-events:auto;border:1px solid rgba(112,88,157,.18);border-radius:27px;background:rgba(255,255,255,.985);color:#241538;box-shadow:0 30px 90px rgba(39,20,65,.3);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);transform-origin:bottom right;animation:palmi-panel-in .24s ease-out}
 .palmi-guide-panel{z-index:1305}.palmi-guide-panel.dark{background:rgba(35,25,49,.985);color:#f9f5ff;border-color:rgba(180,154,221,.18)}
 @keyframes palmi-panel-in{from{opacity:0;transform:translateY(10px) scale(.975)}to{opacity:1;transform:translateY(0) scale(1)}}
 .palmi-guide-brandbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px 16px;border-bottom:1px solid rgba(112,88,157,.1)}
