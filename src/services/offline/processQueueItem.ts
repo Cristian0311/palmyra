@@ -32,7 +32,7 @@ class PermanentSyncError extends Error {
   permanent = true;
 }
 
-async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<boolean> {
+export async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<boolean> {
   const { type, data } = item;
   switch (type) {
     case 'cash_session': {
@@ -82,7 +82,7 @@ async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<
           total: (Number(settlement.baseSalary) || 0) + commissions - discrepancyDeduction
         };
 
-        const res = await (await import('./supabaseSync')).callCloseSessionRPC(
+        const res = await (await import('../supabaseSync')).callCloseSessionRPC(
           session.id,
           session.closingBalances || [],
           session.closedAt || new Date().toISOString(),
@@ -139,7 +139,7 @@ async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<
     }
     case 'audit_start': {
       const d = data;
-      const res = await (await import('./supabaseSync')).callStartInventoryAuditRPC(
+      const res = await (await import('../supabaseSync')).callStartInventoryAuditRPC(
         d.id, d.branchId, d.userId, d.mode || 'cycle_count', d.blindCount === true, d.notes || ''
       );
       if (!res.success) throw new Error(res.error || 'No se pudo iniciar la auditoría');
@@ -154,13 +154,13 @@ async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<
     }
     case 'audit_recount': {
       const d = data;
-      const res = await (await import('./supabaseSync')).callRequestInventoryAuditRecountRPC(d.id, d.userId, d.notes || '');
+      const res = await (await import('../supabaseSync')).callRequestInventoryAuditRecountRPC(d.id, d.userId, d.notes || '');
       if (!res.success) throw new Error(res.error || 'No se pudo solicitar el recuento');
       return true;
     }
     case 'audit_approve': {
       const d = data;
-      const res = await (await import('./supabaseSync')).callApproveInventoryAuditRPC(d.id, d.userId, d.notes || '');
+      const res = await (await import('../supabaseSync')).callApproveInventoryAuditRPC(d.id, d.userId, d.notes || '');
       if (!res.success) throw new Error(res.error || 'No se pudo aprobar la auditoría');
       return true;
     }
