@@ -9,6 +9,7 @@ import type {
 } from '../../types';
 import { fetchAllRows, type SyncResult } from './core';
 import { loadSaaSContext } from '../saas';
+import { loadReturnsWarrantiesQuotesTimePayroll } from './pull/loadOperationalExtras';
 
 function mapProduct(p:any, barcode?: string, kitComponents:any[] = []): Product {
   return {
@@ -197,8 +198,7 @@ async function loadInventory(branchId?: string) {
   if (variantErr) throw variantErr;
 
   const productsRes = await supabase.from('products').select('id,minimum_stock').eq('company_id', tenant.companyId);
-  if (productsRes.error) throw productsRes.error;
-  const minByProduct = new Map<string, number>((productsRes.data || []).map((p:any) => [p.id, Number(p.minimum_stock) || 0]));
+  if (productsRes.error) throw productsRes.error;  const minByProduct = new Map<string, number>((productsRes.data || []).map((p:any) => [p.id, Number(p.minimum_stock) || 0]));
 
   const inventory: InventoryLevel[] = [];
   for (const r of baseRows || []) {
@@ -397,8 +397,7 @@ async function loadCustomers() {
 async function loadBanks() {
   const tenant=await getActiveTenant(); const supabase=getSupabase()!;
   const [a,t]=await Promise.all([
-    supabase.from('bank_accounts').select('*').eq('company_id',tenant.companyId).eq('active',true).order('created_at',{ascending:false}),
-    supabase.from('bank_transactions').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(1000)
+    supabase.from('bank_accounts').select('*').eq('company_id',tenant.companyId).eq('active',true).order('created_at',{ascending:false}),    supabase.from('bank_transactions').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(1000)
   ]);
   if(a.error)throw a.error;if(t.error)throw t.error;
   return {
@@ -426,39 +425,6 @@ async function loadSuppliersOrders() {
       items:(i.data||[]).filter((it:any)=>it.purchase_order_id===x.id).map((it:any)=>({productId:it.product_id,productName:pMap.get(it.product_id)||'Producto',quantity:Number(it.quantity)||0,cost:Number(it.unit_cost)||0}))
     }))
   };
-}
-
-async function loadReturnsWarrantiesQuotesTimePayroll() {
-  const tenant=await getActiveTenant(); const supabase=getSupabase()!;
-  const [rr,ri,w,qs,qi,ts,pr,pi,aa,ai]=await Promise.all([
-    supabase.from('sales_returns').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(1000),
-    supabase.from('sales_return_items').select('*'),
-    supabase.from('warranties').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(1000),
-    supabase.from('quotes').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(1000),
-    supabase.from('quote_items').select('*'),
-    supabase.from('employee_time_shifts').select('*').eq('company_id',tenant.companyId).order('clock_in',{ascending:false}).limit(1000),
-    supabase.from('payroll_runs').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(500),
-    supabase.from('payroll_items').select('*').eq('company_id',tenant.companyId),
-    supabase.from('inventory_audits').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(500),
-    supabase.from('inventory_audit_items').select('*'),
-  ]);
-  for(const x of [rr,ri,w,qs,qi,ts,pr,pi,aa,ai])if(x.error)throw x.error;
-  const productRes=await supabase.from('products').select('id,name').eq('company_id',tenant.companyId);if(productRes.error)throw productRes.error;
-  const customerRes=await supabase.from('customers').select('id,name').eq('company_id',tenant.companyId);if(customerRes.error)throw customerRes.error;
-  const employeeRes=await supabase.from('employees').select('id,full_name').eq('company_id',tenant.companyId);if(employeeRes.error)throw employeeRes.error;
-  const pMap=new Map<string,string>((productRes.data||[]).map((p:any)=>[p.id,p.name]));
-  const eMap=new Map<string,string>((employeeRes.data||[]).map((e:any)=>[e.id,e.full_name]));
-  const cMap=new Map<string,string>((customerRes.data||[]).map((c:any)=>[c.id,c.name]));
-  const returns:ReturnItem[]=[];
-  for(const r of rr.data||[]) for(const item of (ri.data||[]).filter((x:any)=>x.return_id===r.id)){
-    returns.push({id:item.id,transactionId:r.sale_id,productId:item.product_id,quantity:Number(item.quantity)||0,reason:r.reason||'',date:r.created_at,status:r.status||'pending',type:r.return_type||'refund',notes:r.reason||'',branchId:undefined,processedBy:r.created_by,refundStatus:r.refund_status||'not_required',refundAmount:Number(r.refund_amount)||0,refundCurrencyCode:r.refund_currency_code||undefined,refundMethod:r.refund_method||undefined});
-  }
-  const warranties:Warranty[]=(w.data||[]).map((x:any)=>({id:x.id,productId:'',productName:'',transactionId:'',purchaseDate:x.starts_at,expiryDate:x.expires_at,status:x.status||'active'}));
-  const quotes:Quote[]=(qs.data||[]).map((x:any):Quote=>({id:x.id,branchId:x.warehouse_id,userId:x.created_by||'',customerId:x.customer_id||undefined,date:x.created_at,subtotal:Number(x.total)||0,tax:0,total:Number(x.total)||0,status:x.status==='converted'?'converted':x.status==='expired'?'expired':'pending',notes:x.notes||'',items:(qi.data||[]).filter((it:any)=>it.quote_id===x.id).map((it:any)=>({id:it.id,product:{id:it.product_id,name:pMap.get(it.product_id)||'Producto',sku:'',costPrice:0,price:Number(it.unit_price)||0,margin:0,categoryId:'',color:'bg-rose-50 text-rose-700',commissionValue:0},quantity:Number(it.quantity)||0,price:Number(it.unit_price)||0,total:Number(it.line_total)||0}))}));
-  const timeShifts:TimeShift[]=(ts.data||[]).map((x:any)=>({id:x.id,userId:x.employee_id,clockIn:x.clock_in,clockOut:x.clock_out||undefined,notes:x.notes||undefined}));
-  const salarySettlements:SalarySettlement[]=(pi.data||[]).map((x:any)=>({id:x.id,userId:x.employee_id,userName:eMap.get(x.employee_id)||'Empleado',sessionId:'',baseSalary:Number(x.base_salary)||0,commissions:Number(x.commission_amount)||0,total:Number(x.total_amount)||0,date:(pr.data||[]).find((run:any)=>run.id===x.payroll_run_id)?.created_at||new Date().toISOString(),status:(pr.data||[]).find((run:any)=>run.id===x.payroll_run_id)?.status==='paid'?'paid':'pending'}));
-  const audits:InventoryAudit[]=(aa.data||[]).map((x:any)=>({id:x.id,date:x.created_at,branchId:x.warehouse_id,userId:x.created_by,status:x.status==='approved'?'completed':'pending',mode:'cycle_count',blindCount:Boolean(x.blind_count),submittedAt:x.submitted_at,reviewedBy:x.reviewed_by,reviewedAt:x.reviewed_at,notes:x.notes||'',items:(ai.data||[]).filter((it:any)=>it.audit_id===x.id).map((it:any)=>({productId:it.product_id,productName:pMap.get(it.product_id)||'Producto',expected:Number(it.expected_quantity)||0,counted:Number(it.counted_quantity),difference:Number(it.difference)||0}))}));
-  return {returns,warranties,quotes,timeShifts,salarySettlements,audits};
 }
 
 async function loadAllData(branchId?:string) {
