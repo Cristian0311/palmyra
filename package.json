@@ -11,7 +11,8 @@
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
     "audit:architecture": "node scripts/architecture-audit.mjs",
-    "audit:architecture:strict": "node scripts/architecture-audit.mjs --strict"
+    "audit:architecture:strict": "node scripts/architecture-audit.mjs --strict",
+    "test:unit": "tsx --test tests/unit/*.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
