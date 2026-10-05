@@ -78,7 +78,7 @@ export interface AppState {
   returns: ReturnItem[];
   processTransaction: (transaction: Transaction) => Promise<boolean>;
   updateTransaction: (id: string, updates: Partial<Transaction>) => void;
-  deleteTransaction: (id: string, reason?: string) => void;
+  deleteTransaction: (id: string, reason?: string) => Promise<boolean>;
   createReturn: (returnItem: ReturnItem) => void;
   updateReturn: (id: string, returnItem: Partial<ReturnItem>) => void;
   processReturn: (id: string, action: 'complete' | 'reject') => void;
