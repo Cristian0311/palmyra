@@ -9,3 +9,8 @@ dev-dist/
 *.legacy.sql
 *.tmp
 .DS_Store
+
+# Legacy/non-active source copies
+fixrender/
+# Temporary local artifacts
+temp.txt
