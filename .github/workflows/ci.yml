@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, 'refactor/**']
   pull_request:
-    branches: [main]
+    branches: [main, 'refactor/**']
 
 concurrency:
   group: palmyra-ci-${{ github.ref }}
@@ -34,6 +34,12 @@ jobs:
 
       - name: Unit tests
         run: npm run test:unit
+
+      - name: Admin TypeScript
+        run: npx tsc -p admin/tsconfig.json --noEmit
+
+      - name: Admin build
+        run: npm run build:admin
 
       - name: Architecture audit
         run: npm run audit:architecture:strict
