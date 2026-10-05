@@ -313,7 +313,7 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
     return { repaired: repairedCount, message: `Se repararon ${repairedCount} registros huérfanos.` };
   },
   batchDeleteProducts: (ids) => {
-    const productIds = Array.from(new Set((ids || []).map(String).map(x => x.trim()).filter(Boolean)));
+    const productIds: string[] = Array.from(new Set((ids || []).map((id) => String(id).trim()).filter(Boolean)));
     if (!productIds.length) return;
     set((state) => ({
       products: (state.products || []).filter(p => !productIds.includes(String(p.id))),
