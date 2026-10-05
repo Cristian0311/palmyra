@@ -13,6 +13,7 @@ import { normalizeSemanticText } from "../utils/textUtils";
 import { POSCatalog } from "../components/POSCatalog";
 import { printThermalReceipt as printThermalReceiptDirect } from "../lib/escpos";
 import { createPaymentMath, formatMoney, isCupLikeCurrency } from "../modules/pos/utils/paymentMath";
+import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
 const CheckoutModal = lazy(() => import("../components/pos/CheckoutModal"));
 
 const POSReceiptModal = lazy(() => import("../components/POSReceiptModal"));
@@ -470,67 +471,10 @@ export default function POS() {
     return configured;
   }, [currencies]);
 
-  const expectedBalances = React.useMemo(() => {
-    if (!currentSession) return [];
-    
-    // Start with opening balance as cash in base currency
-    const expected: Payment[] = [
-      { currencyCode: baseCurrency.code as any, amount: currentSession.openingBalance, exchangeRate: 1, method: 'cash' }
-    ];
-
-    // Add all transaction payments from this session. Aggregate with a Map
-    // instead of repeatedly scanning the expected lines.
-    const sessionTxs = activeTransactions.filter(t => 
-      t.branchId === currentBranchId && 
-      t.sessionId === currentSession.id
-    );
-
-    const expectedMap = new Map<string, Payment>();
-    const addExpected = (payment: Payment, amountDelta?: number) => {
-      const key = payment.currencyCode + '::' + payment.method;
-      const existing = expectedMap.get(key);
-      if (existing) {
-        existing.amount += amountDelta ?? payment.amount;
-      } else {
-        expectedMap.set(key, {
-          ...payment,
-          amount: amountDelta ?? payment.amount
-        });
-      }
-    };
-
-    addExpected(expected[0]);
-
-    sessionTxs.forEach(tx => {
-      (tx.payments || []).forEach(p => addExpected(p));
-
-      // Subtract change given in each currency.
-      if (tx.changePayments && tx.changePayments.length > 0) {
-        tx.changePayments.forEach(cp => addExpected(cp, -cp.amount));
-      } else if (tx.changeGiven && tx.changeGiven > 0) {
-        addExpected({
-          currencyCode: baseCurrency.code as any,
-          amount: tx.changeGiven,
-          exchangeRate: 1,
-          method: 'cash'
-        }, -tx.changeGiven);
-      }
-    });
-
-    // Add cash movements.
-    if (currentSession?.movements) {
-      currentSession.movements.forEach(m => {
-        addExpected({
-          currencyCode: m.currencyCode as any,
-          amount: m.amount,
-          exchangeRate: currencyByCode.get(m.currencyCode as Payment['currencyCode'])?.rateToBase || 1,
-          method: 'cash'
-        }, m.type === 'income' ? m.amount : -m.amount);
-      });
-    }
-
-    return Array.from(expectedMap.values()).filter(e => e.amount !== 0);
-  }, [currentSession, activeTransactions, currentBranchId, baseCurrency, currencyByCode]);
+  const expectedBalances = React.useMemo(
+    () => calculateExpectedSessionBalances(currentSession, activeTransactions, currentBranchId, baseCurrency, currencies),
+    [currentSession, activeTransactions, currentBranchId, baseCurrency, currencies]
+  );
 
   // Liquidación por producto del turno actual.
   const turnProductSalaryRows = React.useMemo(() => {
