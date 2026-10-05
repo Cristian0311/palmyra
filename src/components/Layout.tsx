@@ -316,7 +316,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {(
         <div className="lg:hidden bg-white text-slate-700 p-3.5 flex justify-between items-center shadow-sm border-b border-violet-100 shrink-0">
           <div className="flex items-center gap-2 min-w-0"><img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="w-[150px] h-[39px] object-contain object-left" /><span className="text-[9px] font-black text-slate-400 tracking-wider shrink-0">{APP_VERSION}</span></div>
-          <button data-palmy-menu-toggle type="button" onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1 rounded-xl" aria-label="Abrir menú principal" title="Abrir menú principal">
+          <button data-palmy-menu-toggle data-tour="sidebar-toggle" type="button" onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 rounded-xl hover:bg-slate-100 transition" aria-label="Abrir menú principal" title="Abrir menú principal" aria-expanded={sidebarOpen}>
             <Menu className="w-5 h-5" />
           </button>
         </div>
