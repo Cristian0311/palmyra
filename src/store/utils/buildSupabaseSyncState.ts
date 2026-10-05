@@ -1,4 +1,5 @@
 import type { AppState } from "../storeTypes";
+import type { InventoryLevel } from "../../types";
 import { getOfflineQueue } from "../../services/offlineQueue";
 import { replaceRemoteRecords } from "./replaceRemoteRecords";
 import { mergeUnique } from "./syncMerges";
