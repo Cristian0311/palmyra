@@ -1261,7 +1261,7 @@ export default function POS() {
 
 
   return (
-    <div className="h-full flex flex-col min-h-0 relative">
+    <div data-palmi-content="pos" className="h-full flex flex-col min-h-0 relative">
       {/* Global High-Priority Toast Overlay */}
       {(posError || posSuccess) && (
         <div className="fixed top-2 sm:top-6 left-1/2 -translate-x-1/2 z-[200] w-[calc(100vw-1rem)] sm:w-full max-w-md min-w-0 px-0 sm:px-4 animate-in fade-in slide-in-from-top-4 duration-300">
