@@ -56,6 +56,9 @@ alter policy "employee_time_shifts_update" on public.employee_time_shifts
   );
 
 drop policy if exists "employee_warehouse_access_manage" on public.employee_warehouse_access;
+drop policy if exists "employee_warehouse_access_insert" on public.employee_warehouse_access;
+drop policy if exists "employee_warehouse_access_update" on public.employee_warehouse_access;
+drop policy if exists "employee_warehouse_access_delete" on public.employee_warehouse_access;
 
 create policy "employee_warehouse_access_insert"
   on public.employee_warehouse_access
@@ -74,6 +77,9 @@ create policy "employee_warehouse_access_delete"
   using ((select private.has_permission(company_id, 'employees.manage'::text)));
 
 drop policy if exists "supplier_products_modify" on public.supplier_products;
+drop policy if exists "supplier_products_insert" on public.supplier_products;
+drop policy if exists "supplier_products_update" on public.supplier_products;
+drop policy if exists "supplier_products_delete" on public.supplier_products;
 
 create policy "supplier_products_insert"
   on public.supplier_products
