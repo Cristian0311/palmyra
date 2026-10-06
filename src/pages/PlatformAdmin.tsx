@@ -2,12 +2,13 @@ import React,{useEffect,useState} from "react";
 import {Check,Clock3,RefreshCw,ShieldAlert,Building2,Ban,XCircle,Headphones,Save,MessageCircle,Link2} from "lucide-react";
 import {loadPlatformAdminSnapshot,approvePlanRequest,rejectPlanRequest,setPlatformCompanyStatus,setPlatformSupportSettings,type PlatformSupportSettings} from "../services/platformAdmin";
 import {useStore} from "../store/useStore";
+import {DEFAULT_FACEBOOK_URL} from "../services/platformSupport";
 
 const EMPTY_SUPPORT:PlatformSupportSettings={
   whatsapp_number:null,
   support_email:null,
   privacy_url:null,
-  facebook_url:null,
+  facebook_url:DEFAULT_FACEBOOK_URL,
   whatsapp_channel_url:null
 };
 
