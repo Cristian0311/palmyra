@@ -22,6 +22,7 @@ export interface CheckoutModalProps {
   changeBase: number;
   paymentLines: CheckoutPaymentLine[];
   activePaymentLineId: string | null;
+  lockedPaymentMethod?: 'cash' | 'transfer';
   bankCards: Array<{
     id: string;
     bank?: string;
@@ -55,6 +56,7 @@ export default function CheckoutModal({
   changeBase,
   paymentLines,
   activePaymentLineId,
+  lockedPaymentMethod,
   bankCards,
   isSubmittingCheckout,
   onClose,
@@ -136,20 +138,20 @@ export default function CheckoutModal({
               <div className="space-y-1.5">
                 {paymentLines.map((line) => (
                   <div 
-                    key={line.id} 
+                    key={line.id}
                     onClick={() => onSetActivePaymentLine(line.id)}
                     className={cn(
-                      "flex items-center gap-3 p-2.5 rounded-2xl border-2 transition-all cursor-pointer group",
-                      activePaymentLineId === line.id ? "bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800" : "bg-secondary border-base hover:border-slate-300 dark:hover:border-slate-700"
+                      "flex items-center gap-3 p-2.5 rounded-2xl border-2 transition-all cursor-pointer",
+                      activePaymentLineId === line.id ? "bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800" : "bg-secondary border-base"
                     )}
                   >
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
                         <span className={cn(
                           "px-1.5 py-0.5 rounded-md text-[7px] font-black uppercase tracking-wider",
                           line.method === 'cash' ? "bg-emerald-600 text-white" : "bg-blue-600 text-white"
                         )}>
-                          {line.method === 'cash' ? 'EFECTIVO' : 'TRANSF.'}
+                          {line.method === 'cash' ? 'EFECTIVO' : 'TRANSFERENCIA'}
                         </span>
                         <span className="text-[9px] font-black text-muted uppercase tracking-widest">{line.code}</span>
                       </div>
@@ -157,72 +159,42 @@ export default function CheckoutModal({
                         {formatMoney(line.amount, currencies.find(c => c.code === line.code)?.symbol || '')}
                       </div>
                     </div>
-                    
-                    <div className="flex items-center gap-1">
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); onRemovePaymentLine(line.id); }}
-                        className="p-2 text-slate-300 hover:text-rose-500 hover:bg-rose-50 rounded-xl transition-all"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
                   </div>
                 ))}
-                
-                <button 
-                  onClick={onAddPaymentLine} 
-                  className="w-full py-2 bg-subtle border-2 border-dashed border-base text-muted text-[10px] font-black uppercase tracking-widest rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-indigo-600 hover:border-indigo-200 transition-all flex items-center justify-center gap-2"
-                >
-                  <Plus className="w-3 h-3" /> Agregar Pago
-                </button>
               </div>
 
               {activePaymentLineId && (
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 animate-in slide-in-from-bottom-2 duration-300">
                   <div className="flex gap-2 mb-4">
-                    <div className="flex-1 grid grid-cols-2 gap-1 p-1 bg-white rounded-xl border border-slate-100">
-                      <button
-                        onClick={() => onUpdatePaymentLine(activePaymentLineId, 'method', 'cash')}
-                        className={cn(
-                          "py-2 rounded-lg text-[9px] font-black uppercase transition-all",
-                          paymentLines.find(l => l.id === activePaymentLineId)?.method === 'cash' ? "bg-emerald-600 text-white shadow-sm" : "text-slate-400 hover:bg-slate-50"
-                        )}
-                      >Efectivo</button>
-                      <button
-                        onClick={() => {
-                          onUpdatePaymentLine(activePaymentLineId, 'method', 'transfer');
-                        }}
-                        className={cn(
-                          "py-2 rounded-lg text-[9px] font-black uppercase transition-all",
-                          paymentLines.find(l => l.id === activePaymentLineId)?.method === 'transfer' ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:bg-slate-50"
-                        )}
-                      >Transf.</button>
-                    </div>
-                    <div className="flex-[1.2] flex gap-1 p-1 bg-white rounded-xl border border-slate-100 overflow-x-auto scrollbar-hide">
-                      {currencies
-                        .filter(c => {
-                          const activeLine = paymentLines.find(l => l.id === activePaymentLineId);
-                          if (activeLine?.method === 'transfer') {
-                            return c.code === 'CUP' || c.code === 'MN';
-                          }
-                          return true;
-                        })
-                        .map(c => (
+                  <div className={cn(
+                    "flex-1 grid p-1 bg-white rounded-xl border border-slate-100",
+                    lockedPaymentMethod ? "grid-cols-1" : "grid-cols-2"
+                  )}>
+                    {lockedPaymentMethod ? (
+                      <div className={cn(
+                        "py-2 rounded-lg text-[9px] font-black uppercase text-center",
+                        lockedPaymentMethod === 'cash' ? "bg-emerald-600 text-white" : "bg-blue-600 text-white"
+                      )}>
+                        {lockedPaymentMethod === 'cash' ? 'Efectivo' : 'Transferencia'}
+                      </div>
+                    ) : (
+                      <>
                         <button
-                          key={c.code}
-                          onClick={() => {
-                            const line = paymentLines.find(l => l.id === activePaymentLineId);
-                            if (line) {
-                              onUpdatePaymentLine(line.id, 'code', c.code);
-                            }
-                          }}
+                          onClick={() => onUpdatePaymentLine(activePaymentLineId, 'method', 'cash')}
                           className={cn(
-                            "flex-1 py-2 px-3 rounded-lg text-[9px] font-black transition-all",
-                            paymentLines.find(l => l.id === activePaymentLineId)?.code === c.code ? "bg-indigo-600 text-white shadow-sm" : "text-slate-400 hover:bg-slate-50 disabled:opacity-30"
+                            "py-2 rounded-lg text-[9px] font-black uppercase transition-all",
+                            paymentLines.find(l => l.id === activePaymentLineId)?.method === 'cash' ? "bg-emerald-600 text-white shadow-sm" : "text-slate-400 hover:bg-slate-50"
                           )}
-                        >{c.code}</button>
-                      ))}
-                    </div>
+                        >Efectivo</button>
+                        <button
+                          onClick={() => onUpdatePaymentLine(activePaymentLineId, 'method', 'transfer')}
+                          className={cn(
+                            "py-2 rounded-lg text-[9px] font-black uppercase transition-all",
+                            paymentLines.find(l => l.id === activePaymentLineId)?.method === 'transfer' ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:bg-slate-50"
+                          )}
+                        >Transf.</button>
+                      </>
+                    )}
                   </div>
 
                   <div className="space-y-4">
