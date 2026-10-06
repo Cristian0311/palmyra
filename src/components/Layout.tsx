@@ -133,6 +133,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [isSyncingOffline, setIsSyncingOffline] = useState(false);
   const [expandedNotificationId, setExpandedNotificationId] = useState<string | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
   const [navigationTargetPath, setNavigationTargetPath] = useState<string | null>(null);
   const navigationTimerRef = useRef<number | null>(null);
   const [saasContext, setSaaSContext] = useState<Awaited<ReturnType<typeof loadSaaSContext>>>(null);
@@ -256,6 +257,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         window.clearTimeout(navigationTimerRef.current);
       }
     };
+  }, []);
+
+  useEffect(() => {
+    const onUpdate = () => setUpdateAvailable(true);
+    window.addEventListener('palmyra:update-available', onUpdate);
+    return () => window.removeEventListener('palmyra:update-available', onUpdate);
   }, []);
 
   useEffect(() => {
@@ -692,6 +699,25 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </aside>
 
       {/* Main Content */}
+      {updateAvailable && (
+        <div className="fixed inset-0 z-[300] flex items-center justify-center px-4 pointer-events-none">
+          <div className="pointer-events-auto w-full max-w-md rounded-3xl border border-indigo-100 bg-white/95 dark:bg-slate-900/95 dark:border-slate-700 shadow-2xl backdrop-blur-xl p-5">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 flex items-center justify-center shrink-0"><RefreshCw className="w-5 h-5" /></div>
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-indigo-600">Actualización disponible</p>
+                <h3 className="text-base font-black text-primary mt-1">PALMYRA ha sido actualizado</h3>
+                <p className="text-xs text-muted mt-1.5 leading-5">Hay mejoras y correcciones listas. Puedes recargar ahora o continuar trabajando y aplicarlas más tarde.</p>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button type="button" onClick={() => setUpdateAvailable(false)} className="flex-1 h-10 rounded-xl border border-base bg-primary text-secondary text-[9px] font-black uppercase tracking-wider">Continuar</button>
+              <button type="button" onClick={() => (window as typeof window & { __palmyraApplyUpdate?: () => void }).__palmyraApplyUpdate?.()} className="flex-1 h-10 rounded-xl bg-indigo-600 text-white text-[9px] font-black uppercase tracking-wider shadow-lg">Recargar y actualizar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <main className="flex-1 min-w-0 overflow-hidden flex flex-col relative h-full">
         {/* Indicador de navegación centrado dentro del área principal/POS.
             Usa la ruta destino para no mostrar el nombre de otra sección. */}
