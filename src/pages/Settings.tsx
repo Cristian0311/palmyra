@@ -14,7 +14,7 @@ import { connectBluetoothPrinter, connectPrinter, printESCPOS, isInsideIframe } 
 import { getSupabase } from "../lib/supabase";
 import { loadSaaSContext } from "../services/saas";
 import { canUsePlanFeature } from "../services/planAccess";
-import { PlanFeatureGate } from "../components/PlanFeatureGate";
+import PlanFeatureGate from "../components/PlanFeatureGate";
 
 export default function Settings() {
   const navigate = useNavigate();
