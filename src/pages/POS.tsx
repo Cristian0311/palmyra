@@ -1064,9 +1064,9 @@ export default function POS() {
         return;
       }
 
-      // La cuenta que inició sesión solo identifica al usuario del sistema.
-      // La identidad que opera el POS se determina por el trabajador seleccionado
-      // y se autentica con la contraseña de ESE trabajador.
+      // La cuenta que inició sesión identifica al usuario del sistema.
+      // El administrador/propietario usa la misma contraseña de su cuenta PALMYRA;
+      // los trabajadores mantienen su credencial operativa propia.
       // La sucursal queda limitada a las sucursales asignadas al trabajador seleccionado.
       const workerBranchIds = new Set(
         getAuthorizedWarehouseIds(workerToAssign)
@@ -1085,20 +1085,20 @@ export default function POS() {
       if (!enteredPassword) {
         setPosError(
           currentUser?.role === 'admin' && workerToAssign.id === currentUser.id
-            ? "Introduce tu contraseña de Punto de Venta."
+            ? "Introduce tu contraseña de PALMYRA."
             : `Introduce la contraseña de ${workerToAssign.name || 'empleado'}.`
         );
         return;
       }
 
-      // El administrador/propietario usa una credencial POS independiente de
-      // la contraseña principal de su cuenta Supabase. La validación ocurre en
-      // servidor y la contraseña nunca se guarda en el estado persistido.
+      // El administrador/propietario usa la misma contraseña de su cuenta PALMYRA.
+      // La validación ocurre en servidor contra Supabase Auth y la contraseña nunca
+      // se guarda en el estado persistido del POS.
       if (currentUser?.role === 'admin' && workerToAssign.id === currentUser.id) {
         const { companyId } = await getActiveTenant();
         const valid = await verifySaaSPosAccessPassword(companyId, workerToAssign.id, enteredPassword);
         if (!valid) {
-          setPosError("Contraseña de Punto de Venta incorrecta. Acceso denegado.");
+          setPosError("Contraseña de la cuenta incorrecta. La contraseña del Administrador en POS es la misma que usas para entrar en PALMYRA.");
           return;
         }
       } else {
@@ -1283,8 +1283,6 @@ export default function POS() {
 
   return (
     <div
-      data-palmi-content="pos"
-      data-palmi-pos-ready={currentSession ? "true" : "false"}
       className="h-full flex flex-col min-h-0 relative"
     >
       {/* Global High-Priority Toast Overlay */}
@@ -1316,7 +1314,6 @@ export default function POS() {
       )}
       {!currentSession && (
         <div
-          data-palmi-pos-gate="open"
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4 overflow-y-auto space-y-4">
           {joiningSessionId ? (
             /* Modal Formulario de Ingreso a Turno Abierto Existente */
@@ -1504,7 +1501,7 @@ export default function POS() {
                           Seleccionar Empleado / Empleado del Turno
                         </label>
                         <div className="space-y-1.5">
-                          <div className="relative" ref={employeePickerRef} data-palmi-guide="pos-employee-selector">
+                          <div className="relative" ref={employeePickerRef}>
                             <div className="relative">
                               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
                               <input
@@ -1633,10 +1630,10 @@ export default function POS() {
                       </div>
                       )}
 
-                      <div data-palmi-guide="pos-access-password">
+                      <div>
                         <label className="block text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">
                           {currentUser?.role === 'admin' && detectedWorker?.id === currentUser.id
-                            ? 'Contraseña de Punto de Venta (Administrador)'
+                            ? 'Contraseña de PALMYRA (Administrador)'
                             : 'Contraseña del Empleado'}
                         </label>
                         <input
@@ -1645,7 +1642,13 @@ export default function POS() {
                           autoComplete="current-password"
                           value={sessionPassword}
                           onChange={e => setSessionPassword(e.target.value)}
-                          placeholder={detectedWorker ? `Ingresa la contraseña de ${detectedWorker?.name || 'trabajador'}` : "Ingresa la contraseña del trabajador"}
+                          placeholder={
+                            currentUser?.role === 'admin' && detectedWorker?.id === currentUser.id
+                              ? "La misma contraseña con la que entras a PALMYRA"
+                              : detectedWorker
+                                ? `Ingresa la contraseña de ${detectedWorker?.name || 'trabajador'}`
+                                : "Ingresa la contraseña del trabajador"
+                          }
                           className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 rounded-xl text-[11px] font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                         />
                       </div>
