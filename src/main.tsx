@@ -56,6 +56,27 @@ window.addEventListener('vite:preloadError', (event) => {
 // Register Service Worker for Offline-First PWA support.
 // The app must update itself after every Render deployment without requiring
 // the user to manually clear the browser cache.
+
+/**
+ * PWA install bridge.
+ * The browser can emit beforeinstallprompt before the authenticated shell
+ * mounts, so keep the deferred event globally until Layout can present it.
+ */
+window.addEventListener('beforeinstallprompt', (event) => {
+  const installEvent = event as Event & {
+    prompt?: () => Promise<void>;
+    userChoice?: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
+  };
+  event.preventDefault();
+  (window as typeof window & { __palmyraInstallPrompt?: typeof installEvent }).__palmyraInstallPrompt = installEvent;
+  window.dispatchEvent(new Event('palmyra:pwa-install-available'));
+});
+
+window.addEventListener('appinstalled', () => {
+  delete (window as typeof window & { __palmyraInstallPrompt?: unknown }).__palmyraInstallPrompt;
+  window.dispatchEvent(new Event('palmyra:pwa-installed'));
+});
+
 import { registerSW } from 'virtual:pwa-register';
 
 const SW_CHECK_INTERVAL_MS = 300_000;
