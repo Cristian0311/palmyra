@@ -585,6 +585,15 @@ export default function PalmiGuide() {
         ? "↑"
         : "↓";
 
+  // Never render a navigation hint until the real sidebar target and the
+  // sidebar container have been measured. This prevents the emergency
+  // top-left fallback from covering the sidebar while React is rendering.
+  const canRenderActionCard =
+    open &&
+    isActionStep &&
+    Boolean(targetRect) &&
+    (!step?.navTarget || Boolean(sidebarRect));
+
   const onMascotOpen = () => setOpen(true);
 
   return (
@@ -602,7 +611,7 @@ export default function PalmiGuide() {
         />
       ) : null}
 
-      {open && isActionStep ? (
+      {canRenderActionCard ? (
         <div
           className="palmi-guide-action-card"
           style={{

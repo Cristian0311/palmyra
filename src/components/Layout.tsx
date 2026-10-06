@@ -339,7 +339,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           // Desktop (lg+): relative in-flow column, NEVER covers or overlaps the right content
           "lg:relative lg:inset-auto lg:z-auto lg:translate-x-0",
-          sidebarCollapsed ? "lg:w-16" : "lg:w-64"
+          sidebarCollapsed ? "lg:w-16" : "lg:w-72"
         )}
       >
         {/* Header with Collapse toggle */}
@@ -492,11 +492,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   </div>
                   <span className="text-[7px] font-black uppercase text-muted shrink-0">Vence en</span>
                 </div>
-                <div className="grid grid-cols-5 gap-1 text-center">
+                <div className="grid grid-cols-5 gap-1.5 text-center">
                   {units.map(([label, value]) => (
                     <div key={label} className="min-w-0 rounded-lg bg-primary/70 dark:bg-slate-900/30 px-0.5 py-1">
                       <p className="text-[11px] font-black text-primary leading-none tabular-nums">{String(value).padStart(2, "0")}</p>
-                      <p className="mt-1 text-[6px] font-black uppercase tracking-tight text-muted truncate">{label}</p>
+                      <p className="mt-1 text-[7px] font-black uppercase tracking-tight text-muted whitespace-nowrap">{label}</p>
                     </div>
                   ))}
                 </div>
