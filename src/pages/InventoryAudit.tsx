@@ -7,6 +7,7 @@ import {
 import { useStore } from "../store/useStore";
 import { InventoryAudit } from "../types";
 import { cn } from "../lib/utils";
+import PlanFeatureGate from "../components/PlanFeatureGate";
 
 type AuditItem = InventoryAudit["items"][number];
 
@@ -263,6 +264,7 @@ export default function InventoryAuditPage() {
   }, [selectedAudit, products]);
 
   return (
+    <PlanFeatureGate feature="inventory_audit" title="Auditoría de inventario" description="El conteo y ajuste formal de inventario requiere un plan con funciones de control avanzado." >
     <div className="space-y-5 animate-in fade-in duration-300 pb-16">
       <header className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
         <div>
@@ -594,5 +596,6 @@ export default function InventoryAuditPage() {
         </div>
       )}
     </div>
+    </PlanFeatureGate>
   );
 }
