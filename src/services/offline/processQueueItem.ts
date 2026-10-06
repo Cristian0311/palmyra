@@ -181,9 +181,9 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         return true;
       }
 
-      // Usamos el mismo adaptador protegido que el flujo online: mezcla
-      // movimientos/colaboradores y evita reabrir un turno cerrado.
-      const synced = await pushCashSessionToSupabase(session);
+      // Un snapshot administrativo solo cambia metadata. Usamos el RPC
+      // protegido para no depender del UPDATE de cash_sessions bajo RLS.
+      const synced = await pushCashSessionMetadataToSupabase(session);
       if (!synced) throw new Error('El snapshot del turno no fue confirmado en Supabase.');
       await syncLegacySessionMovements();
       return true;
