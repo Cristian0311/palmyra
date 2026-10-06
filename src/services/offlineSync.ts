@@ -115,6 +115,12 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
         }
         break;
       }
+      case 'cash_movement':
+        add(cashOp(data.sessionId, 'open'));
+        break;
+      case 'cash_movement_delete':
+        add(cashOp(data.sessionId, 'open'));
+        break;
       case 'cash_session':
         if (data.__operation === 'open' || String(item.actionId).startsWith('cash-open:')) {
           add(dep('branch', data.branchId)); add(dep('user', data.userId));
@@ -249,12 +255,11 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
       remainingFromRun.push(item);
       errors.push({ type: item.type, actionId: item.actionId, message: item.lastError, retryCount: item.retryCount });
       addSyncLog({ level:'error', source:'offline_queue', title:`Error al procesar item (${item.type})`, details:item.lastError, entityType:item.type, actionId:item.actionId, retryAttempt:item.retryCount, maxRetries:8 });
-      if (!permanent && (item.type === 'transaction' || item.type === 'cash_session' || item.type === 'transfer' || item.type === 'transfer_bulk' || item.type === 'return_complete')) {
-        // Las operaciones críticas mantienen el orden temporal: una dependencia
-        // fallida no permite que las posteriores la salten.
-        for (let tail = index + 1; tail < sorted.length; tail++) remainingFromRun.push(sorted[tail]);
-        break;
-      }
+      // No detener toda la cola por un fallo transitorio. Solo quedan
+      // bloqueados los elementos que dependan de esta operación mediante
+      // failedDependencyIds; los demás turnos/ventas pueden continuar. Esto evita
+      // que una incidencia del turno 1 congele el turno 2/3/4.
+
     }
   }
 
