@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { NUMA_TOUR_STEPS, getAccessibleNumaTourSteps } from "../../src/components/help/palmiGuideSteps";
 
 test("Numa guide contains a complete ordered product journey", () => {
   const ids = NUMA_TOUR_STEPS.map(step => step.id);
+  assert.equal(ids.length, 12);
   assert.equal(ids[0], "welcome");
   assert.equal(ids.at(-1), "finish");
   assert.ok(ids.includes("pos"));
@@ -43,4 +46,14 @@ test("Numa steps expose real UI anchors", () => {
   assert.equal(dashboard?.target?.[0], '[data-palmy-nav="/"]');
   assert.ok(dashboard?.contentTarget?.includes('[data-palmi-content="dashboard"]'));
   assert.ok(offline?.target?.some(selector => selector.includes("offline-status")));
+});
+
+test("Numa uses exactly one canonical mascot asset", () => {
+  const mascotPath = join(process.cwd(), "src/components/help/PalmiMascot.tsx");
+  const canonicalAsset = join(process.cwd(), "src/assets/numa-official.webp");
+  const source = readFileSync(mascotPath, "utf8");
+
+  assert.ok(existsSync(canonicalAsset), "The canonical NUMA asset must exist");
+  assert.match(source, /..\/..\/assets\/numa-official\.webp/);
+  assert.doesNotMatch(source, /numa-mascot\.webp/);
 });
