@@ -88,7 +88,7 @@ export default function Inventory() {
   }, []);
   const [showBatchPriceModal, setShowBatchPriceModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [activeFormTab, setActiveFormTab] = useState<'general' | 'stock' | 'extra'>('general');
+  const [activeFormTab, setActiveFormTab] = useState<'general' | 'extra'>('general');
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [categoryFormData, setCategoryFormData] = useState({ name: "", department: "" });
   const [batchPriceAdjust, setBatchPriceAdjust] = useState({ type: 'percentage' as 'percentage' | 'fixed', value: 0, direction: 'increase' as 'increase' | 'decrease' });
@@ -1061,7 +1061,6 @@ export default function Inventory() {
             <nav className="px-4 sm:px-6 pt-1 bg-slate-50/50 flex gap-3 sm:gap-6 border-b border-slate-100 overflow-x-auto">
               {[
                 { id: 'general', label: 'Datos Generales', icon: Tag },
-                { id: 'stock', label: 'Inventario y Stock', icon: Package },
                 { id: 'extra', label: 'Precios y Extras', icon: DollarSign },
               ].map(tab => (
                 <button
@@ -1082,10 +1081,10 @@ export default function Inventory() {
             </nav>
 
             <form onSubmit={handleAddSubmit} className="flex-1 overflow-hidden flex flex-col">
-              <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto p-3 sm:p-5 custom-scrollbar">
                 {activeFormTab === 'general' && (
-                  <div className="space-y-8">
-                    <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-8">
+                  <div className="space-y-5 sm:space-y-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] md:grid-cols-[170px_1fr] gap-4 sm:gap-5">
                       <div className="space-y-3">
                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 text-center">Imagen de Producto</label>
                         <div className="relative group w-full aspect-square bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden hover:border-indigo-300 transition-all">
@@ -1175,117 +1174,6 @@ export default function Inventory() {
                             </select>
                           </div>
                         </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {activeFormTab === 'stock' && (
-                  <div className="space-y-8">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      <div className="space-y-6">
-                        <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 space-y-4">
-                          <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
-                            <ShieldCheck className="w-4 h-4 text-indigo-500" />
-                            Seguimiento Avanzado
-                          </h3>
-                          <div className="space-y-3">
-                            <label className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-slate-200 cursor-pointer hover:border-indigo-300 transition-all">
-                              <input type="checkbox" checked={formData.hasSerial || false} onChange={e => setFormData({...formData, hasSerial: e.target.checked})} className="w-5 h-5 text-indigo-600 rounded-lg" />
-                              <div className="flex-1">
-                                <p className="text-[10px] font-black text-slate-900 uppercase">Rastrear por Serial / IMEI</p>
-                                <p className="text-[8px] font-bold text-slate-400 uppercase">Obligatorio para equipos electrónicos</p>
-                              </div>
-                            </label>
-                            <label className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-slate-200 cursor-pointer hover:border-indigo-300 transition-all">
-                              <input type="checkbox" checked={formData.isKit || false} onChange={e => setFormData({...formData, isKit: e.target.checked})} className="w-5 h-5 text-indigo-600 rounded-lg" />
-                              <div className="flex-1">
-                                <p className="text-[10px] font-black text-slate-900 uppercase">Combo / Kit de Productos</p>
-                                <p className="text-[8px] font-bold text-slate-400 uppercase">Agrupa varios productos en uno</p>
-                              </div>
-                            </label>
-                          </div>
-                        </div>
-
-                        {formData.isKit && (
-                          <div className="bg-indigo-50/50 p-6 rounded-[2rem] border border-indigo-100 space-y-4">
-                            <div className="flex justify-between items-center">
-                              <h4 className="text-[10px] font-black text-indigo-900 uppercase tracking-widest">Componentes</h4>
-                              <button type="button" onClick={() => setShowKitPicker(true)} className="px-3 py-1.5 bg-indigo-600 text-white rounded-xl text-[8px] font-black uppercase">Agregar</button>
-                            </div>
-                            <div className="space-y-2">
-                              {(formData.kitComponents || []).map((comp, idx) => (
-                                <div key={idx} className="flex items-center justify-between bg-white p-3 rounded-xl border border-indigo-100">
-                                  <span className="text-[10px] font-bold text-slate-600 uppercase truncate pr-2">
-                                    {products.find(p => p.id === comp.productId)?.name}
-                                  </span>
-                                  <div className="flex items-center gap-2">
-                                    <input type="number" value={comp.quantity} onChange={e => {
-                                      const newComps = [...(formData.kitComponents || [])];
-                                      newComps[idx].quantity = parseInt(e.target.value) || 1;
-                                      setFormData({...formData, kitComponents: newComps});
-                                    }} className="w-12 py-1 border-slate-100 rounded text-center text-xs font-black" />
-                                    <button type="button" onClick={() => setFormData({...formData, kitComponents: (formData.kitComponents || []).filter((_, i) => i !== idx)})} className="p-1 text-rose-500 hover:bg-rose-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="space-y-6">
-                        <div className="bg-slate-50 p-6 rounded-[2rem] border border-slate-100 space-y-4">
-                          <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
-                            <Plus className="w-4 h-4 text-emerald-500" />
-                            Variantes (Tallas / Colores)
-                          </h3>
-                          <div className="space-y-4">
-                            <div className="space-y-2">
-                              <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Tallas / Números</label>
-                              <div className="flex gap-2">
-                                <input type="text" value={newSize} onChange={e => setNewSize(e.target.value)} className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none" placeholder="Ej: L o 42" />
-                                <button type="button" onClick={() => { if(newSize) { setFormData({...formData, availableSizes: [...(formData.availableSizes || []), newSize]}); setNewSize(""); } }} className="px-3 bg-slate-900 text-white rounded-xl">+</button>
-                              </div>
-                              <div className="flex flex-wrap gap-1.5">
-                                {(formData.availableSizes || []).map(size => (
-                                  <span key={size} className="px-2 py-1 bg-indigo-100 text-indigo-700 rounded-lg text-[9px] font-black flex items-center gap-1 uppercase">
-                                    {size}
-                                    <button type="button" onClick={() => setFormData({...formData, availableSizes: (formData.availableSizes || []).filter(s => s !== size)})}><X className="w-3 h-3" /></button>
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                            <div className="space-y-2">
-                              <label className="text-[9px] font-black text-slate-500 uppercase ml-1">Colores / Otros</label>
-                              <div className="flex gap-2">
-                                <input type="text" value={newColor} onChange={e => setNewColor(e.target.value)} className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold outline-none" placeholder="Ej: Azul" />
-                                <button type="button" onClick={() => { if(newColor) { setFormData({...formData, availableColors: [...(formData.availableColors || []), newColor]}); setNewColor(""); } }} className="px-3 bg-slate-900 text-white rounded-xl">+</button>
-                              </div>
-                              <div className="flex flex-wrap gap-1.5">                                {(formData.availableColors || []).map(color => (
-                                  <span key={color} className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-[9px] font-black flex items-center gap-1 uppercase">
-                                    {color}
-                                    <button type="button" onClick={() => setFormData({...formData, availableColors: (formData.availableColors || []).filter(c => c !== color)})}><X className="w-3 h-3" /></button>
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {!editingProduct && (
-                          <div className="bg-indigo-50/70 p-5 rounded-[2rem] border border-indigo-100 space-y-2">
-                            <h3 className="text-xs font-black text-indigo-900 uppercase tracking-widest flex items-center gap-2">
-                              <PackagePlus className="w-4 h-4 text-indigo-600" />
-                              Inventario separado
-                            </h3>
-                            <p className="text-[10px] leading-5 font-bold text-indigo-700">
-                              Este formulario solo crea el producto. Para agregar existencias usa la
-                              <strong> caja de gestionar stock </strong>
-                              ubicada junto a Editar en el listado de Inventario.
-                            </p>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
