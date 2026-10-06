@@ -232,3 +232,123 @@ grant execute on function public.create_employee_pos_secure(uuid,uuid,text,text,
 
 revoke all on function public.palmyra_reserve_ncf_range(uuid,text,uuid,integer) from public, anon;
 grant execute on function public.palmyra_reserve_ncf_range(uuid,text,uuid,integer) to authenticated;
+
+
+create or replace function public.verify_employee_pos_password(
+  p_company_id uuid,
+  p_employee_id uuid,
+  p_password text
+)
+returns boolean
+language plpgsql
+security definer
+set search_path to 'public','private','extensions','pg_temp'
+as $function$
+declare
+  v_actor uuid := auth.uid();
+  v_employee public.employees%rowtype;
+  v_hash text;
+  v_auth_hash text;
+begin
+  if v_actor is null then raise exception 'authentication_required'; end if;
+  if p_password is null or trim(p_password) = '' then return false; end if;
+  if not private.has_permission(p_company_id,'pos.access') then raise exception 'permission_denied'; end if;
+
+  select e.* into v_employee
+  from public.employees e
+  where e.id=p_employee_id
+    and e.company_id=p_company_id
+    and e.active=true;
+
+  if not found then return false; end if;
+
+  if v_employee.user_id is not null then
+    select u.encrypted_password into v_auth_hash
+    from auth.users u
+    where u.id=v_employee.user_id;
+    if v_auth_hash is null then return false; end if;
+    return v_auth_hash = extensions.crypt(trim(p_password),v_auth_hash);
+  end if;
+
+  select c.password_hash into v_hash
+  from private.employee_pos_credentials c
+  where c.employee_id=v_employee.id;
+
+  if v_hash is null then return false; end if;
+  return v_hash = extensions.crypt(trim(p_password),v_hash);
+end;
+$function$;
+
+revoke all on function public.verify_employee_pos_password(uuid,uuid,text) from public,anon;
+grant execute on function public.verify_employee_pos_password(uuid,uuid,text) to authenticated;
+
+create or replace function private.company_has_plan_feature(p_company_id uuid, p_feature text)
+returns boolean
+language sql
+stable
+security definer
+set search_path to 'public','pg_temp'
+as $function$
+  select exists(
+    select 1
+    from public.subscriptions s
+    join public.plans p on p.id=s.plan_id
+    where s.company_id=p_company_id
+      and p.active
+      and (
+        s.status='active'
+        or (
+          s.status='trialing'
+          and (s.trial_ends_at is null or s.trial_ends_at>timezone('utc',now()))
+          and (s.current_period_end is null or s.current_period_end>timezone('utc',now()))
+        )
+      )
+      and (
+        (
+          jsonb_typeof(p.features)='array'
+          and (
+            p.features ? p_feature
+            or (
+              lower(p_feature)='pos'
+              and exists (
+                select 1 from jsonb_array_elements_text(p.features) f(value)
+                where lower(value) in ('pos','punto de venta')
+              )
+            )
+          )
+        )
+        or
+        (
+          jsonb_typeof(p.features)='object'
+          and jsonb_typeof(p.features->'features')='array'
+          and exists (
+            select 1 from jsonb_array_elements_text(p.features->'features') f(value)
+            where
+              lower(value)=lower(p_feature)
+              or (lower(p_feature)='pos' and lower(value) in ('pos','punto de venta'))
+              or (lower(p_feature)='purchases' and lower(value) in ('compras','compras y recepción'))
+              or (lower(p_feature)='payroll' and lower(value) in ('nómina','nomina','nómina y compensaciones'))
+          )
+        )
+      )
+  );
+$function$;
+
+do $$
+declare
+  v_def text;
+begin
+  select pg_get_functiondef(p.oid) into v_def
+  from pg_proc p
+  join pg_namespace n on n.oid=p.pronamespace
+  where n.nspname='public'
+    and p.proname='palmyra_record_sale'
+    and pg_get_function_identity_arguments(p.oid) =
+      'p_sale_id uuid, p_company_id uuid, p_warehouse_id uuid, p_cash_session_id uuid, p_user_id uuid, p_total numeric, p_currency_code text, p_notes text, p_customer_id uuid, p_items jsonb, p_payments jsonb';
+
+  if v_def is not null then
+    v_def := replace(v_def, '-v_component_qty,''sale''', 'v_component_qty,''sale''');
+    v_def := replace(v_def, '-v_qty,''sale''', 'v_qty,''sale''');
+    execute v_def;
+  end if;
+end $$;
