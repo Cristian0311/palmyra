@@ -121,40 +121,6 @@ const updateSW = registerSW({
     window.dispatchEvent(new CustomEvent('palmyra:update-available'));
   },
 
-// La burbuja de actualización puede aparecer por una marca persistente aunque
-// el evento onNeedRefresh haya ocurrido en una sesión anterior. Exponemos una
-// acción estable desde el arranque para que el botón SIEMPRE funcione.
-// Primero intenta aplicar el Service Worker que está esperando y, si no existe,
-// fuerza una comprobación; después recarga una sola vez la aplicación.
-const applyPalmyraUpdate = async () => {
-  try {
-    const registration = await navigator.serviceWorker?.getRegistration();
-
-    if (registration?.waiting) {
-      const waiting = registration.waiting;
-      await new Promise<void>((resolve) => {
-        const timeout = window.setTimeout(resolve, 5000);
-        const onControllerChange = () => {
-          window.clearTimeout(timeout);
-          navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
-          resolve();
-        };
-        navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
-        waiting.postMessage({ type: 'SKIP_WAITING' });
-      });
-    } else {
-      await updateSW(true);
-      await registration?.update?.();
-    }
-  } catch (error) {
-    console.warn('[PWA] No se pudo aplicar inmediatamente la actualización:', error);
-  } finally {
-    try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
-    window.location.reload();
-  }
-};
-
-(window as typeof window & { __palmyraApplyUpdate?: () => Promise<void> }).__palmyraApplyUpdate = applyPalmyraUpdate;
 
   onRegisteredSW(swUrl, registration) {
     if (!registration) return;
@@ -203,6 +169,41 @@ const applyPalmyraUpdate = async () => {
     console.warn('[PWA] Service Worker registration error:', error);
   },
 });
+
+// La burbuja de actualización puede aparecer por una marca persistente aunque
+// el evento onNeedRefresh haya ocurrido en una sesión anterior. Exponemos una
+// acción estable desde el arranque para que el botón SIEMPRE funcione.
+// Primero intenta aplicar el Service Worker que está esperando y, si no existe,
+// fuerza una comprobación; después recarga una sola vez la aplicación.
+const applyPalmyraUpdate = async () => {
+  try {
+    const registration = await navigator.serviceWorker?.getRegistration();
+
+    if (registration?.waiting) {
+      const waiting = registration.waiting;
+      await new Promise<void>((resolve) => {
+        const timeout = window.setTimeout(resolve, 5000);
+        const onControllerChange = () => {
+          window.clearTimeout(timeout);
+          navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+          resolve();
+        };
+        navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+        waiting.postMessage({ type: 'SKIP_WAITING' });
+      });
+    } else {
+      await updateSW(true);
+      await registration?.update?.();
+    }
+  } catch (error) {
+    console.warn('[PWA] No se pudo aplicar inmediatamente la actualización:', error);
+  } finally {
+    try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
+    window.location.reload();
+  }
+};
+
+(window as typeof window & { __palmyraApplyUpdate?: () => Promise<void> }).__palmyraApplyUpdate = applyPalmyraUpdate;
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
