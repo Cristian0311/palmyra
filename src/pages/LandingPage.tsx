@@ -32,19 +32,19 @@ const modules = [
 
 const plans = [
   {
-    code: "starter", icon: Sparkles, name: "Oasis", price: "$10", note: "Inicio esencial", warehouses: "1 almacén", employees: "2 empleados", products: "50 productos",
+    code: "starter", icon: Sparkles, name: "Oasis", price: "$10", note: "Inicio esencial", warehouses: "1 almacén", employees: "2 empleados + administrador", products: "50 tipos de productos/SKUs",
     description: "Para comenzar a vender y controlar lo esencial sin complicaciones.",
     features: ["Punto de venta", "Inventario y caja", "Clientes y proveedores", "Reportes básicos", "Modo offline"], featured: false
   },
   {
-    code: "growth", icon: CaravanIcon, name: "Caravana", price: "$15", note: "Operación en expansión", warehouses: "3 almacenes", employees: "4 empleados", products: "150 productos",
+    code: "growth", icon: CaravanIcon, name: "Caravana", price: "$15", note: "Operación en expansión", warehouses: "3 almacenes", employees: "4 empleados + administrador", products: "150 tipos de productos/SKUs",
     description: "Para negocios que ya mueven mercancía entre varios puntos y necesitan más control.",
-    features: ["Compras y recepción", "Transferencias entre almacenes", "Reportes avanzados", "Equipo con roles", "Operación multi-almacén"], featured: true
+    features: ["Punto de venta", "Inventario y caja", "Clientes y proveedores", "Modo offline", "Compras y recepción", "Transferencias entre almacenes", "Reportes avanzados", "Equipo con roles", "Operación multi-almacén"], featured: true
   },
   {
-    code: "pro", icon: CitadelIcon, name: "Ciudadela", price: "$25", note: "Control empresarial", warehouses: "7 almacenes", employees: "10 empleados", products: "300 productos",
+    code: "pro", icon: CitadelIcon, name: "Ciudadela", price: "$25", note: "Control empresarial", warehouses: "7 almacenes", employees: "10 empleados + administrador", products: "300 tipos de productos/SKUs",
     description: "Para empresas con mayor estructura, más ubicaciones y análisis profundo.",
-    features: ["Analítica avanzada", "7 almacenes operativos", "10 empleados + administrador", "300 productos/SKUs", "Soporte prioritario"], featured: false
+    features: ["Punto de venta", "Inventario y caja", "Clientes y proveedores", "Modo offline", "Compras y recepción", "Transferencias entre almacenes", "Reportes avanzados", "Equipo con roles", "Operación multi-almacén", "Analítica avanzada", "Soporte prioritario"], featured: false
   }
 ];
 
