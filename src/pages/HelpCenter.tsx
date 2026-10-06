@@ -44,7 +44,7 @@ export default function HelpCenter(){
 
   const tutorialSteps = useMemo(
     ()=>getAccessibleNumaTourSteps(currentUser)
-      .filter(step=>step.id!=="welcome" && step.id!=="finish" && !step.mobileOnly),
+      .filter(step=>step.id!=="welcome" && step.id!=="finish"),
     [currentUser]
   );
 
