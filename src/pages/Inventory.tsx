@@ -207,6 +207,21 @@ export default function Inventory() {
 
   const [newSize, setNewSize] = useState("");
   const [newColor, setNewColor] = useState("");
+  const [stockDrafts, setStockDrafts] = useState<Record<string, { quantity: string; minQuantity: string }>>({});
+  const stockDraftKey = (productId: string, branchId: string, variant?: string) => `${productId}::${branchId}::${variant || ''}`;
+  const readStockDraft = (productId: string, branchId: string, variant: string | undefined, quantity: number, minQuantity: number) => stockDrafts[stockDraftKey(productId, branchId, variant)] || { quantity: quantity ? String(quantity) : '', minQuantity: minQuantity ? String(minQuantity) : '' };
+  const updateStockDraft = (productId: string, branchId: string, variant: string | undefined, field: 'quantity' | 'minQuantity', value: string) => {
+    const key = stockDraftKey(productId, branchId, variant);
+    setStockDrafts(prev => ({ ...prev, [key]: { ...(prev[key] || { quantity: '', minQuantity: '' }), [field]: value } }));
+  };
+  const commitStockDraft = (productId: string, branchId: string, variant: string | undefined, fallbackQuantity: number, fallbackMin: number) => {
+    const draft = stockDrafts[stockDraftKey(productId, branchId, variant)];
+    if (!draft) return;
+    const quantity = draft.quantity === '' ? 0 : Math.max(0, parseInt(draft.quantity, 10) || 0);
+    const minQuantity = draft.minQuantity === '' ? 0 : Math.max(0, parseInt(draft.minQuantity, 10) || 0);
+    if (quantity !== fallbackQuantity || minQuantity !== fallbackMin) setInventoryQuantity(productId, branchId, quantity, variant, minQuantity);
+  };
+
   const [showKitPicker, setShowKitPicker] = useState(false);
   const [kitQuery, setKitQuery] = useState("");
 
@@ -1402,10 +1417,11 @@ export default function Inventory() {
                                   <input 
                                     type="number" 
                                     min="0"
-                                    value={level.minQuantity === 0 ? '' : level.minQuantity} 
+                                    value={readStockDraft(managingStockProduct.id, branch.id, variant, level.quantity, level.minQuantity).minQuantity} 
                                     placeholder="0"
                                     onFocus={(e) => e.target.select()}
-                                    onChange={(e) => setInventoryQuantity(managingStockProduct.id, branch.id, level.quantity, variant, e.target.value === '' ? 0 : (parseInt(e.target.value) || 0))}
+                                    onChange={(e) => updateStockDraft(managingStockProduct.id, branch.id, variant, 'minQuantity', e.target.value)}
+                                     onBlur={() => commitStockDraft(managingStockProduct.id, branch.id, variant, level.quantity, level.minQuantity)}
                                     className="w-10 px-1 py-0.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-[9px] text-slate-900 dark:text-slate-100 outline-none focus:ring-1 focus:ring-indigo-500 text-center font-bold"
                                   />
                                 </div>
@@ -1415,10 +1431,12 @@ export default function Inventory() {
                                 <input 
                                     type="number" 
                                     min="0"
-                                    value={level.quantity === 0 ? '' : level.quantity} 
+                                    value={readStockDraft(managingStockProduct.id, branch.id, variant, level.quantity, level.minQuantity).quantity} 
                                     placeholder="0"
                                     onFocus={(e) => e.target.select()}
-                                    onChange={(e) => setInventoryQuantity(managingStockProduct.id, branch.id, e.target.value === '' ? 0 : (parseInt(e.target.value) || 0), variant, level.minQuantity)}
+                                    onChange={(e) => updateStockDraft(managingStockProduct.id, branch.id, variant, 'quantity', e.target.value)}
+                                     onBlur={() => commitStockDraft(managingStockProduct.id, branch.id, variant, level.quantity, level.minQuantity)}
+                                     onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
                                     className="w-16 px-2 py-1 bg-white dark:bg-slate-900 border border-indigo-400 dark:border-indigo-600 rounded-lg font-black text-indigo-600 dark:text-indigo-400 text-right outline-none text-xs focus:ring-2 focus:ring-indigo-500 shadow-2xs"
                                 />
                               </div>
