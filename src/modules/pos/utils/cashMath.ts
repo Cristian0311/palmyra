@@ -21,8 +21,8 @@ export function calculateExpectedSessionBalances(
 
   const sessionTxs = transactions.filter(
     transaction =>
-      transaction.branchId === currentBranchId &&
-      transaction.sessionId === session.id,
+      transaction.sessionId === session.id &&
+      (!session.branchId || transaction.branchId === session.branchId || transaction.branchId === currentBranchId),
   );
 
   const expectedMap = new Map<string, Payment>();
