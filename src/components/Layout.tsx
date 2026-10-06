@@ -504,8 +504,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
           <button
             type="button"
-
-          <button
             onClick={logout}
             className={cn(
               "flex items-center text-muted hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-xl transition-all font-black uppercase",
