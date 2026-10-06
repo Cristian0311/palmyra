@@ -384,13 +384,19 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       // Confirmamos que la fila existe realmente en Supabase antes de retirar la
       // operación de IndexedDB. Así una respuesta incompleta o una caída durante
       // la confirmación nunca puede dejar una venta perdida y una cola vacía.
-      const { data: persisted, error: verifyError } = await supabase
-        .from('sales')
-        .select('id,status,total,warehouse_id')
-        .eq('id', transaction.id)
-        .maybeSingle();
+      const remoteIdFromResult = res.data?.remote_id;
+      const remoteSaleId = remoteIdFromResult && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(remoteIdFromResult))
+        ? String(remoteIdFromResult)
+        : (transaction.remoteId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(transaction.remoteId)
+          ? transaction.remoteId
+          : (transaction.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(transaction.id) ? transaction.id : null)));
+
+      const persistedQuery = remoteSaleId
+        ? supabase.from('sales').select('id,status,total,warehouse_id').eq('id',remoteSaleId).maybeSingle()
+        : Promise.resolve({data:null,error:null});
+      const { data: persisted, error: verifyError } = await persistedQuery;
       if (verifyError) throw verifyError;
-      if (!persisted || persisted.id !== transaction.id || persisted.status === 'refunded' || persisted.status === 'cancelled') {
+      if (!persisted || persisted.status === 'refunded' || persisted.status === 'cancelled') {
         throw new Error('Supabase no confirmó la venta como completada después de procesarla');
       }
 
@@ -417,8 +423,8 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         const exists = (state.transactions || []).some(t => t.id === transaction.id);
         return {
           transactions: exists
-            ? (state.transactions || []).map(t => t.id === transaction.id ? { ...t, ...transaction, offlinePending: false } : t)
-            : [{ ...transaction, offlinePending: false }, ...(state.transactions || [])]
+            ? (state.transactions || []).map(t => t.id === transaction.id ? { ...t, ...transaction, ...(persisted?.id ? { remoteId: persisted.id } : {}), offlinePending: false } : t)
+            : [{ ...transaction, ...(persisted?.id ? { remoteId: persisted.id } : {}), offlinePending: false }, ...(state.transactions || [])]
         };
       });
       return true;
