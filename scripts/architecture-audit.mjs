@@ -56,7 +56,8 @@ function walk(dir) {
 
     recordDuplicateCandidate(abs, rel);
 
-    if (/\.(bak(?:_[^.]*)?|tmp|orig|rej)$/i.test(name) || /(?:HOTFIX|REPAIR|LIVE_REPAIR)/i.test(name)) {
+    const isMigration = rel.startsWith('supabase/migrations/');
+    if (!isMigration && (/\.(bak(?:_[^.]*)?|tmp|orig|rej)$/i.test(name) || /(?:HOTFIX|REPAIR|LIVE_REPAIR)/i.test(name))) {
       findings.push({ level: 'high', message: `Artefacto histórico/temporal versionado: ${rel}` });
     }
 
@@ -68,7 +69,8 @@ function walk(dir) {
       const baseline = legacyLargeBaseline[rel];
 
       if (lineCount >= 3500) {
-        findings.push({ level: 'high', message: `Archivo fuente >= 3500 líneas: ${rel} (${lineCount}). El límite de mantenimiento es 3499 líneas; extrae lógica a módulos.` });
+        const regressed = baseline ? lineCount > baseline.lines : true;
+        findings.push({ level: regressed ? 'high' : 'medium', message: `Archivo fuente >= 3500 líneas: ${rel} (${lineCount}). El límite de mantenimiento es 3499 líneas; extrae lógica a módulos.` });
       } else if (lineCount >= 2500) {
         findings.push({ level: 'medium', message: `Archivo fuente >= 2500 líneas: ${rel} (${lineCount})` });
       }

@@ -333,7 +333,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         // Solo códigos de negocio explícitamente irreversibles se consideran
         // conflictos permanentes. Un timeout, 5xx, PostgREST o pérdida de
         // conexión debe volver a intentarse aunque incluya metadata de error.
-        const permanentCodes = new Set(['P0001','23503','23505','22P02','22003','22007','IDEMPOTENCY_CONFLICT']);
+        const permanentCodes = new Set(['P0001','23503','23505','23502','23514','42501','42883','22P02','22003','22007','IDEMPOTENCY_CONFLICT']);
         if (res.errorCode && permanentCodes.has(String(res.errorCode))) {
           // La venta existía localmente por modo offline, pero Supabase la rechazó
           // definitivamente. No debe seguir apareciendo como completada ni dejar

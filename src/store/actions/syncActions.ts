@@ -66,10 +66,10 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
         const validProductIds = new Set((d.products || []).map((p: any) => p.id));
         const validCategoryIds = new Set((d.categories || []).map((x: any) => x.id));
         return {
-          branches: mergeById(d.branches || [], state.branches || [], pendingBranchIds).filter(x => !pendingBranchDeleteIds.has(x.id)),
-          categories: mergeById(d.categories || [], state.categories || [], pendingCategoryIds).filter(x => !pendingCategoryDeleteIds.has(x.id) && (validCategoryIds.has(x.id) || pendingCategoryIds.has(x.id))),
-          products: mergeById(d.products || [], state.products || [], pendingProductIds).filter(x => !pendingProductDeleteIds.has(x.id) && (validProductIds.has(x.id) || pendingProductIds.has(x.id))),
-          users: mergeById(d.users || [], state.users || [], pendingUserIds),
+          branches: replaceRemoteRecords(d.branches || [], state.branches || [], pendingBranchIds).filter(x => !pendingBranchDeleteIds.has(x.id)),
+          categories: replaceRemoteRecords(d.categories || [], state.categories || [], pendingCategoryIds).filter(x => !pendingCategoryDeleteIds.has(x.id)),
+          products: replaceRemoteRecords(d.products || [], state.products || [], pendingProductIds).filter(x => !pendingProductDeleteIds.has(x.id)),
+          users: replaceRemoteRecords(d.users || [], state.users || [], pendingUserIds),
           currencies: Array.isArray(d.currencies) && d.currencies.length
             ? (() => {
                 const currencyMap = new Map<string, Currency>((state.currencies || []).map(currency => [currency.code, currency]));
@@ -172,12 +172,17 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
       .filter(i => i.type === 'store_config' && i.data && typeof i.data === 'object')
       .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
       .at(-1)?.data;
+    const queueSnapshot = getOfflineQueue();
+    const pendingBranchIds = new Set(queueSnapshot.filter(i => i.type === 'branch').map(i => i.data?.id).filter(Boolean));
+    const pendingBranchDeleteIds = new Set(queueSnapshot.filter(i => i.type === 'branch_delete').map(i => i.data?.id).filter(Boolean));
+    const pendingCategoryIds = new Set(queueSnapshot.filter(i => i.type === 'category').map(i => i.data?.id).filter(Boolean));
+    const pendingCategoryDeleteIds = new Set(queueSnapshot.filter(i => i.type === 'category_delete').map(i => i.data?.id).filter(Boolean));
+    const pendingProductIds = new Set(queueSnapshot.filter(i => i.type === 'product').map(i => i.data?.id).filter(Boolean));
+    const pendingProductDeleteIds = new Set(queueSnapshot.filter(i => i.type === 'product_delete').map(i => i.data?.id).filter(Boolean));
+    const pendingUserIds = new Set(queueSnapshot.filter(i => i.type === 'user').map(i => i.data?.id).filter(Boolean));
+    const pendingCustomerIds = new Set(queueSnapshot.filter(i => i.type === 'customer').map(i => i.data?.id).filter(Boolean));
+
     set((state) => {
-      const mergeById = <T extends { id: string }>(remote: T[] | undefined, local: T[]) => {
-        const map = new Map(local.map(x => [x.id, x]));
-        for (const item of remote || []) map.set(item.id, item);
-        return Array.from(map.values());
-      };
       // Never blank a branch because a reconnect pull returned zero rows.
       // Keep the last local branch snapshot until a non-empty authoritative
       // snapshot arrives; pending offline operations are then replayed normally.
@@ -190,12 +195,12 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
       }
       for (const item of branchInv) invMap.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
       return {
-        branches: mergeById(d.branches, state.branches || []),
-        categories: mergeById(d.categories, state.categories || []),
-        products: mergeById(d.products, state.products || []).filter((p: any) => !new Set(getOfflineQueue().filter(i => i.type === 'product_delete').map(i => i.data?.id).filter(Boolean)).has(p.id)),
+        branches: replaceRemoteRecords(d.branches || [], state.branches || [], pendingBranchIds).filter((b: any) => !pendingBranchDeleteIds.has(b.id)),
+        categories: replaceRemoteRecords(d.categories || [], state.categories || [], pendingCategoryIds).filter((c: any) => !pendingCategoryDeleteIds.has(c.id)),
+        products: replaceRemoteRecords(d.products || [], state.products || [], pendingProductIds).filter((p: any) => !pendingProductDeleteIds.has(p.id)),
         inventory: Array.from(invMap.values()),
-        users: mergeById(d.users, state.users || []),
-        customers: mergeById(d.customers, state.customers || []),
+        users: replaceRemoteRecords(d.users || [], state.users || [], pendingUserIds),
+        customers: replaceRemoteRecords(d.customers || [], state.customers || [], pendingCustomerIds),
         currencies: d.currencies?.length ? d.currencies : state.currencies,
         fiscalConfigs: Array.isArray(queuedStoreConfig?.fiscalConfigs)
           ? queuedStoreConfig.fiscalConfigs

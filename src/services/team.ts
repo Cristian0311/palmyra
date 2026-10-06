@@ -267,14 +267,15 @@ export async function updateEmployee(input: {
 }) {
   const supabase = getSupabase();
   if (!supabase) throw new Error("Supabase no está configurado.");
-  const { data, error } = await supabase.rpc("create_employee_secure", {
+  const { data, error } = await supabase.rpc("create_employee_pos_secure", {
     p_company_id: input.companyId,
     p_employee_id: input.employeeId,
     p_employee_code: input.employeeCode,
     p_full_name: input.fullName,
     p_base_salary: input.baseSalary,
     p_role_id: input.roleId,
-    p_warehouse_ids: input.warehouseIds
+    p_warehouse_ids: input.warehouseIds,
+    p_pos_password: null
   });
   if (error) throwRpcError(error);
   return data as { id: string };
