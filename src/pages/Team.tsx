@@ -1,16 +1,18 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AtSign, BriefcaseBusiness, Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, Edit3, Hash, Info, Link2, Mail, MapPin, MoreHorizontal, Plus, RefreshCw, ShieldCheck, UserRound, UserX, WalletCards, Warehouse, X, Shield, Save } from "lucide-react";
+import { AtSign, BriefcaseBusiness, Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, Edit3, Hash, Info, Link2, LockKeyhole, Mail, MapPin, MoreHorizontal, Plus, RefreshCw, ShieldCheck, UserRound, UserX, WalletCards, Warehouse, X, Shield, Save } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useStore } from "../store/useStore";
 import { loadSaaSContext } from "../services/saas";
 import {
   createEmployee,
+  createEmployeePosSecure,
   createEmployeeWithInvitation,
   loadTeamSnapshot,
   resendEmployeeInvitation,
   revokeEmployeeInvitation,
   setEmployeeStatus,
   updateEmployee,
+  updateEmployeePosSecure,
   upsertCompanyRole,
   type TeamEmployee,
   type TeamRole,
@@ -65,7 +67,8 @@ export default function Team() {
     roleId: "",
     warehouseIds: [] as string[],
     email: "",
-    sendInvite: true
+    sendInvite: true,
+    posPassword: ""
   });
 
   const refresh = async () => {
@@ -111,7 +114,8 @@ export default function Team() {
       roleId: availableRoles.find(role => role.key === "employee")?.id || availableRoles[0]?.id || "",
       warehouseIds: snapshot?.warehouses[0] ? [snapshot.warehouses[0].id] : [],
       email: "",
-      sendInvite: true
+      sendInvite: true,
+      posPassword: ""
     });
   };
 
@@ -193,7 +197,8 @@ export default function Team() {
       roleId: employee.role_id,
       warehouseIds: [...employee.warehouse_ids],
       email: employee.login_email || employee.pending_invitation?.email || "",
-      sendInvite: !employee.user_id
+      sendInvite: !employee.user_id,
+      posPassword: ""
     });
     setFormStep(1);
     setShowForm(true);
@@ -220,20 +225,38 @@ export default function Team() {
     if (!form.employeeCode.trim()) return setError("Escribe un código de empleado.");
     if (!form.roleId) return setError("Selecciona un rol.");
     if (!form.warehouseIds.length) return setError("Selecciona al menos un almacén.");
-    if (form.sendInvite && !form.email.trim()) return setError("Escribe el correo del trabajador para crear su acceso.");
+    if (form.sendInvite && !form.email.trim()) return setError("Escribe el correo del trabajador para crear su acceso web.");
+    if (!form.sendInvite && !editing && form.posPassword.trim().length < 6) {
+      return setError("Define una contraseña de al menos 6 caracteres para usar este empleado en el POS.");
+    }
+    if (!form.sendInvite && editing && form.posPassword.trim().length > 0 && form.posPassword.trim().length < 6) {
+      return setError("La nueva contraseña del POS debe tener al menos 6 caracteres.");
 
     setBusy(true);
     try {
       if (editing) {
-        await updateEmployee({
-          companyId: snapshot.companyId,
-          employeeId: editing.id,
-          employeeCode: form.employeeCode,
-          fullName: form.fullName,
-          baseSalary: Number(form.baseSalary) || 0,
-          roleId: form.roleId,
-          warehouseIds: form.warehouseIds
-        });
+        if (form.sendInvite) {
+          await updateEmployee({
+            companyId: snapshot.companyId,
+            employeeId: editing.id,
+            employeeCode: form.employeeCode,
+            fullName: form.fullName,
+            baseSalary: Number(form.baseSalary) || 0,
+            roleId: form.roleId,
+            warehouseIds: form.warehouseIds
+          });
+        } else {
+          await updateEmployeePosSecure({
+            companyId: snapshot.companyId,
+            employeeId: editing.id,
+            employeeCode: form.employeeCode,
+            fullName: form.fullName,
+            baseSalary: Number(form.baseSalary) || 0,
+            roleId: form.roleId,
+            warehouseIds: form.warehouseIds,
+            posPassword: form.posPassword.trim() || undefined
+          });
+        }
 
         if (form.sendInvite && !editing.user_id) {
           const invite = await resendEmployeeInvitation({
@@ -264,15 +287,16 @@ export default function Team() {
           setInviteLink(link);
           setMessage(invite.email_sent ? "Empleado creado y correo de invitación enviado." : "Empleado creado. El correo automático no fue enviado; usa el enlace generado.");
         } else {
-          await createEmployee({
+          await createEmployeePosSecure({
             companyId: snapshot.companyId,
             employeeCode: form.employeeCode,
             fullName: form.fullName,
             baseSalary: Number(form.baseSalary) || 0,
             roleId: form.roleId,
-            warehouseIds: form.warehouseIds
+            warehouseIds: form.warehouseIds,
+            posPassword: form.posPassword.trim()
           });
-          setMessage("Empleado creado sin acceso web.");
+          setMessage("Empleado creado sin acceso web y con contraseña para POS.");
         }
       }
       await refresh();
@@ -560,15 +584,23 @@ export default function Team() {
                   {!(snapshot?.warehouses || []).some(warehouse => warehouse.active) && <div className="team-empty-inline"><Warehouse className="w-4 h-4" />No hay almacenes activos disponibles. Crea uno en Configuración antes de asignar acceso.</div>}
                 </div>
               </section>
-              <section className={cn("team-form-section team-access-section", form.sendInvite && "is-enabled", formStep !== 3 && "team-form-hidden")} data-section="employee-access" aria-hidden={formStep !== 3}>
-                <div className="team-form-section-head"><div className="team-form-section-icon"><Link2 className="w-4 h-4" /></div><div className="min-w-0"><h3>Acceso al sistema</h3><p>La cuenta del trabajador es independiente de la del dueño.</p></div><label className="team-switch ml-auto shrink-0"><input type="checkbox" checked={form.sendInvite} onChange={e => setForm({...form, sendInvite:e.target.checked})} disabled={busy || Boolean(editing?.user_id)} className="sr-only" /><span className="team-switch-track"><span className="team-switch-thumb" /></span></label></div>
-                <div className="team-access-card">
-                  <div className="flex items-start gap-3"><div className="team-access-icon"><AtSign className="w-4 h-4" /></div><div className="min-w-0 flex-1"><p className="text-xs font-black text-primary">Cuenta web del trabajador</p><p className="text-[10px] sm:text-[11px] text-muted leading-5 mt-0.5">Activa una cuenta independiente. PALMYRA generará una invitación segura para que el trabajador configure sus propias credenciales.</p></div></div>
-                  {form.sendInvite && !editing?.user_id && <label className="team-field-wrap mt-3"><span className="team-field-label">Correo del trabajador <b>*</b></span><span className="team-field"><span className="team-field-icon"><Mail className="w-4 h-4" /></span><input type="email" value={form.email} onChange={e => setForm({...form, email:e.target.value})} disabled={busy} className="team-field-input" placeholder="trabajador@empresa.com" autoComplete="email" /></span></label>}
-                  {editing?.user_id && <div className="team-linked-account"><CheckCircle2 className="w-4 h-4 shrink-0" /><span>Cuenta vinculada: {editing.login_email || form.email || "correo registrado"} · Sus credenciales son independientes.</span></div>}
-                  {!form.sendInvite && !editing?.user_id && <div className="team-access-off"><Info className="w-4 h-4 shrink-0" />El trabajador quedará registrado sin cuenta web. Podrás habilitar su acceso más adelante desde este mismo flujo.</div>}
-                </div>
-              </section>
+                            <section className={cn("team-form-section team-access-section", form.sendInvite && "is-enabled", formStep !== 3 && "team-form-hidden")} data-section="employee-access" aria-hidden={formStep !== 3}>
+                <div className="team-form-section-head"><div className="team-form-section-icon"><Link2 className="w-4 h-4" /></div><div className="min-w-0"><h3>Acceso al sistema</h3><p>Elige si tendrá cuenta web o solo contraseña para operar en el POS.</p></div><label className="team-switch ml-auto shrink-0"><input type="checkbox" checked={form.sendInvite} onChange={e => setForm({...form, sendInvite:e.target.checked, posPassword: e.target.checked ? "" : form.posPassword})} disabled={busy || Boolean(editing?.user_id)} className="sr-only" /><span className="team-switch-track"><span className="team-switch-thumb" /></span></label></div>
+
+                {form.sendInvite ? (
+                  <div className="team-access-card">
+                    <div className="flex items-start gap-3"><div className="team-access-icon"><AtSign className="w-4 h-4" /></div><div className="min-w-0 flex-1"><p className="text-xs font-black text-primary">Cuenta web del trabajador</p><p className="text-[10px] sm:text-[11px] text-muted leading-5 mt-0.5">El trabajador recibirá una invitación y creará o verificará su propia cuenta PALMYRA. La contraseña que configure allí será la que podrá usar para reanudar su turno en el POS.</p></div></div>
+                    {form.sendInvite && !editing?.user_id && <label className="team-field-wrap mt-3"><span className="team-field-label">Correo del trabajador <b>*</b></span><span className="team-field"><span className="team-field-icon"><Mail className="w-4 h-4" /></span><input type="email" value={form.email} onChange={e => setForm({...form,email:e.target.value})} disabled={busy} className="team-field-input" placeholder="trabajador@empresa.com" autoComplete="email" /></span></label>}
+                    {editing?.user_id && <div className="team-linked-account"><CheckCircle2 className="w-4 h-4 shrink-0" /><span>Cuenta vinculada: {editing.login_email || form.email || "correo registrado"} · La contraseña de esa cuenta se usa también para validar el POS.</span></div>}
+                  </div>
+                ) : (
+                  <div className="team-access-card">
+                    <div className="flex items-start gap-3"><div className="team-access-icon"><LockKeyhole className="w-4 h-4" /></div><div className="min-w-0 flex-1"><p className="text-xs font-black text-primary">Solo acceso al POS</p><p className="text-[10px] sm:text-[11px] text-muted leading-5 mt-0.5">Este trabajador no tendrá cuenta web. Define aquí una contraseña que quedará protegida y se usará para seleccionar y reanudar su turno en el POS.</p></div></div>
+                    <label className="team-field-wrap mt-3"><span className="team-field-label">{editing ? "Nueva contraseña del POS" : "Contraseña del POS"} <b>{editing ? "" : "*"}</b></span><span className="team-field"><span className="team-field-icon"><LockKeyhole className="w-4 h-4" /></span><input type="password" value={form.posPassword} onChange={e => setForm({...form,posPassword:e.target.value})} disabled={busy} className="team-field-input" placeholder={editing ? "Dejar vacío para conservar la actual" : "Mínimo 6 caracteres"} autoComplete="new-password" /></span></label>
+                    <div className="team-access-off"><Info className="w-4 h-4 shrink-0" />La contraseña se guarda protegida en Supabase; nunca se muestra en la lista de empleados.</div>
+                  </div>
+                )}
+              </section>    </section>
             </div>
             <div className="team-employee-modal-footer">
               <div className="flex items-start gap-2 min-w-0"><div className="team-footer-icon"><Info className="w-3.5 h-3.5" /></div><p>{formStep === 1 ? "Empieza por identificar al trabajador. Podrás revisar todo antes de guardar." : formStep === 2 ? "Define el rol y los almacenes. El trabajador solo tendrá acceso a lo que aquí autorices." : "La cuenta web es independiente de la del propietario. El trabajador configurará sus propias credenciales."}</p></div>
