@@ -140,10 +140,20 @@ export default function Subscription(){
         return <article key={plan.id} className={cn("bg-secondary border rounded-3xl p-5 flex flex-col",current?"border-[#8B63E6] ring-1 ring-[#DCCBFF]":"border-base")}>
           <div className="flex items-center justify-between gap-2"><div><p className="text-lg font-black text-primary">{plan.name}</p><p className="text-[10px] uppercase text-muted font-black">{plan.code}</p></div>{current&&<span className="text-[9px] px-2 py-1 rounded-full bg-[#EFE8FF] text-[#6535C5] font-black">Actual</span>}</div>
           <p className="text-2xl font-black text-primary mt-5">{money(Number(plan.monthly_price)||0)} <span className="text-base font-black text-primary">{plan.billing_currency_code || "USD"}</span><span className="text-xs text-muted font-bold"> / mes</span></p>
-          <div className="mt-5 space-y-2 text-[10px] text-muted flex-1">
-            <div className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5"/>{String(plan.limits?.employees||"Ilimitados")} empleados</div>
-            <div className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5"/>{String(plan.limits?.warehouses||"Ilimitados")} almacenes</div>
-            <div className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5"/>{String(plan.limits?.products||"Ilimitados")} productos</div>
+          <div className="mt-4 space-y-1.5 text-[9px] text-muted flex-1">
+            <div className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 shrink-0"/>{String(plan.limits?.employees||"Ilimitados")} empleados + administrador</div>
+            <div className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 shrink-0"/>{String(plan.limits?.warehouses||"Ilimitados")} almacenes</div>
+            <div className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 shrink-0"/>{String(plan.limits?.products||"Ilimitados")} productos/SKUs</div>
+            {(() => {
+              const rawFeatures = (plan.features as any)?.features;
+              const features = Array.isArray(rawFeatures) ? rawFeatures : (Array.isArray(plan.features) ? plan.features : []);
+              return features.map((feature:string) => (
+                <div key={feature} className="flex items-start gap-2">
+                  <CheckCircle2 className="w-3 h-3 shrink-0 mt-0.5 text-emerald-600"/>
+                  <span>{feature}</span>
+                </div>
+              ));
+            })()}
           </div>
           <button disabled={busy||current} onClick={()=>void choose(plan)} className={cn("h-11 mt-6 rounded-xl font-black text-xs flex items-center justify-center gap-2",current?"bg-subtle text-muted":"bg-slate-950 text-white disabled:opacity-50")}>{current?<><ShieldCheck className="w-4 h-4"/>Plan actual</>:<><CreditCard className="w-4 h-4"/>Solicitar {plan.name}</>}</button>
         </article>;
