@@ -12,6 +12,7 @@ import { usePOSOfflineStatus } from "../modules/pos/hooks/usePOSOfflineStatus";
 import { POSCatalog } from "../components/POSCatalog";
 import { formatMoney } from "../modules/pos/utils/paymentMath";
 import { verifySaaSPosAccessPassword } from "../services/saas";
+import { verifyEmployeePosAccessPassword } from "../services/team";
 import { usePOSPayments } from "../modules/pos/hooks/usePOSPayments";
 import { usePOSScanner } from "../modules/pos/hooks/usePOSScanner";
 import { usePOSPrinter } from "../modules/pos/hooks/usePOSPrinter";
@@ -1185,14 +1186,16 @@ export default function POS() {
           return;
         }
       } else {
-        // Compatibilidad con la credencial operativa existente de empleados.
-        const requiredPassword = (workerToAssign.password || '').trim();
-        if (!requiredPassword) {
-          setPosError(`El empleado ${workerToAssign.name || 'empleado'} no tiene contraseña operativa asignada.`);
-          return;
-        }
-        if (enteredPassword !== requiredPassword) {
-          setPosError(`Contraseña incorrecta para ${workerToAssign.name || 'empleado'}. Acceso denegado.`);
+        try {
+          const { companyId } = await getActiveTenant();
+          const valid = await verifyEmployeePosAccessPassword(companyId, workerToAssign.id, enteredPassword);
+          if (!valid) {
+            setPosError(`Contraseña incorrecta para ${workerToAssign.name || 'empleado'}. Acceso denegado.`);
+            return;
+          }
+        } catch (error) {
+          console.error("[POS] No se pudo validar la contraseña del empleado:", error);
+          setPosError("No se pudo validar la contraseña del empleado. Verifica la conexión y vuelve a intentarlo.");
           return;
         }
       }
@@ -1435,13 +1438,22 @@ export default function POS() {
         return;
       }
     } else {
-      const requiredPassword = (targetUser.password || '').trim();
-      if (!requiredPassword) {
-        setPosError(`El empleado ${targetUser.name || 'empleado'} no tiene contraseña asignada. El administrador debe asignarle una.`);
-        return;
-      }
-      if (enteredPassword !== requiredPassword) {
-        setPosError(`Contraseña incorrecta para ${targetUser.name || 'empleado'}. Acceso denegado.`);
+      try {
+        const { companyId } = await getActiveTenant();
+        const targetEmployee = (activeCashSessions || []).find(s => s.id === joiningSessionId)?.userId || targetSession.userId;
+        const employeeRow = targetEmployee
+          ? targetEmployee
+          : null;
+        const employeesForValidation = users || [];
+        const matchingUser = employeesForValidation.find(u => u.id === targetSession.userId);
+        const valid = await verifyEmployeePosAccessPassword(companyId, targetSession.userId, enteredPassword);
+        if (!valid) {
+          setPosError(`Contraseña incorrecta para ${matchingUser?.name || targetUser.name || 'empleado'}. Acceso denegado.`);
+          return;
+        }
+      } catch (error) {
+        console.error("[POS] No se pudo validar la contraseña del empleado al reanudar:", error);
+        setPosError("No se pudo validar la contraseña del empleado. Verifica la conexión y vuelve a intentarlo.");
         return;
       }
     }
