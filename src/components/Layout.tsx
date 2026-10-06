@@ -94,6 +94,7 @@ function formatPlanExpiry(target: string | null | undefined) {
   });
 }
 const PALMYRA_PWA_INSTALLED_KEY = "palmyra:pwa-installed";
+const PALMYRA_UPDATE_AVAILABLE_KEY = "palmyra:update-available";
 
 function isPALMYRAPWAInstalled() {
   if (typeof window === "undefined") return false;
@@ -261,8 +262,27 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const onUpdate = () => setUpdateAvailable(true);
+    const checkPersistedUpdate = () => {
+      try {
+        if (window.localStorage.getItem(PALMYRA_UPDATE_AVAILABLE_KEY) === '1') {
+          setUpdateAvailable(true);
+        }
+      } catch {}
+    };
+
+    // El SW puede encontrar la actualización antes de que esta vista exista.
+    // Revisamos la marca persistente al montar, al volver al primer plano y al
+    // cambiar de pestaña, tanto en navegador como en PWA instalada.
+    checkPersistedUpdate();
     window.addEventListener('palmyra:update-available', onUpdate);
-    return () => window.removeEventListener('palmyra:update-available', onUpdate);
+    window.addEventListener('focus', checkPersistedUpdate);
+    document.addEventListener('visibilitychange', checkPersistedUpdate);
+
+    return () => {
+      window.removeEventListener('palmyra:update-available', onUpdate);
+      window.removeEventListener('focus', checkPersistedUpdate);
+      document.removeEventListener('visibilitychange', checkPersistedUpdate);
+    };
   }, []);
 
   useEffect(() => {
