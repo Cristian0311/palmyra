@@ -226,6 +226,20 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
         if (permanentCodes.has(code)) {
           removeFromOfflineQueueByTransactionId(transaction.id);
           console.error('[processTransaction] Operación rechazada por servidor:', res.error);
+          const friendly = {
+            'invalid_product': 'El producto de la venta no existe o no está activo en la empresa.',
+            'invalid_warehouse': 'El almacén seleccionado no es válido para esta empresa.',
+            'location_access_denied': 'La cuenta no tiene acceso al almacén seleccionado.',
+            'invalid_cash_session': 'El turno de caja ya no está abierto o pertenece a otro almacén.',
+            'insufficient_stock': 'No hay stock suficiente para completar la venta.',
+            'insufficient_component_stock': 'No hay stock suficiente para uno de los componentes del producto.',
+            'invalid_variant': 'La variante seleccionada ya no está disponible.',
+            'serial_not_available': 'El número de serie seleccionado ya no está disponible.',
+            'total_mismatch': 'El total de la venta no coincide con sus artículos.',
+            'payment_total_mismatch': 'El total cobrado no coincide con el total de la venta.',
+            'cash_session_required': 'El pago en efectivo necesita un turno de caja abierto.'
+          }[String(res.error || '')] || String(res.error || 'El servidor rechazó la venta.');
+          get().addNotification('Venta rechazada', 'error', friendly);
           return false;
         }
 
