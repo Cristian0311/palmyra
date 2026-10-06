@@ -135,6 +135,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [expandedNotificationId, setExpandedNotificationId] = useState<string | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [isApplyingUpdate, setIsApplyingUpdate] = useState(false);
   const [navigationTargetPath, setNavigationTargetPath] = useState<string | null>(null);
   const navigationTimerRef = useRef<number | null>(null);
   const [saasContext, setSaaSContext] = useState<Awaited<ReturnType<typeof loadSaaSContext>>>(null);
@@ -329,6 +330,26 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       window.removeEventListener('offline_queue_updated', updateCount);
     };
   }, []);
+
+  const handleApplyUpdate = async () => {
+    if (isApplyingUpdate) return;
+    setIsApplyingUpdate(true);
+    try {
+      const apply = (window as typeof window & { __palmyraApplyUpdate?: () => Promise<void> }).__palmyraApplyUpdate;
+      if (apply) {
+        await apply();
+        return;
+      }
+
+      // Último respaldo: si la acción global no estuviera disponible todavía,
+      // recargamos directamente. El navegador/PWA conserva los datos locales.
+      try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
+      window.location.reload();
+    } catch (error) {
+      console.warn('[PALMYRA] No se pudo aplicar la actualización:', error);
+      setIsApplyingUpdate(false);
+    }
+  };
 
   const handleManualSync = async () => {
     if (!isOnline || isSyncingOffline) return;
@@ -720,19 +741,50 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Main Content */}
       {updateAvailable && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center px-4 pointer-events-none">
-          <div className="pointer-events-auto w-full max-w-md rounded-3xl border border-indigo-100 bg-white/95 dark:bg-slate-900/95 dark:border-slate-700 shadow-2xl backdrop-blur-xl p-5">
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 flex items-center justify-center shrink-0"><RefreshCw className="w-5 h-5" /></div>
-              <div className="min-w-0">
-                <p className="text-[9px] font-black uppercase tracking-[0.18em] text-indigo-600">Actualización disponible</p>
-                <h3 className="text-base font-black text-primary mt-1">PALMYRA ha sido actualizado</h3>
-                <p className="text-xs text-muted mt-1.5 leading-5">Hay mejoras y correcciones listas. Puedes recargar ahora o continuar trabajando y aplicarlas más tarde.</p>
+        <div className="fixed inset-0 z-[300] flex items-center justify-center px-4 py-6 pointer-events-none bg-slate-950/20 dark:bg-slate-950/45 backdrop-blur-[2px]">
+          <div
+            className="pointer-events-auto w-full max-w-sm overflow-hidden rounded-[28px] border border-indigo-100/80 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_24px_80px_rgba(0,0,0,0.45)]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="palmyra-update-title"
+          >
+            <div className="px-5 pt-5 pb-4 sm:px-6 sm:pt-6">
+              <div className="flex items-start gap-3.5">
+                <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300">
+                  <RefreshCw className={cn("h-6 w-6", isApplyingUpdate && "animate-spin")} />
+                  {!isApplyingUpdate && <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-emerald-500 ring-4 ring-white dark:ring-slate-900" />}
+                </div>
+                <div className="min-w-0 pt-0.5">
+                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-indigo-600 dark:text-indigo-300">Novedad de PALMYRA</p>
+                  <h3 id="palmyra-update-title" className="mt-1 text-lg font-black tracking-tight text-slate-900 dark:text-white">PALMYRA acaba de actualizarse</h3>
+                  <p className="mt-1.5 text-sm leading-5 text-slate-600 dark:text-slate-300">
+                    Hay mejoras y correcciones listas para ti. Puedes aplicarlas ahora o continuar trabajando y actualizarlas después.
+                  </p>
+                </div>
               </div>
             </div>
-            <div className="flex gap-2 mt-4">
-              <button type="button" onClick={() => setUpdateAvailable(false)} className="flex-1 h-10 rounded-xl border border-base bg-primary text-secondary text-[9px] font-black uppercase tracking-wider">Continuar</button>
-              <button type="button" onClick={() => (window as typeof window & { __palmyraApplyUpdate?: () => void }).__palmyraApplyUpdate?.()} className="flex-1 h-10 rounded-xl bg-indigo-600 text-white text-[9px] font-black uppercase tracking-wider shadow-lg">Recargar y actualizar</button>
+            <div className="border-t border-slate-100 bg-slate-50/80 px-5 py-4 dark:border-slate-800 dark:bg-slate-950/40 sm:px-6">
+              <div className="flex flex-col-reverse gap-2.5 sm:flex-row">
+                <button
+                  type="button"
+                  disabled={isApplyingUpdate}
+                  onClick={() => {
+                    try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
+                    setUpdateAvailable(false);
+                  }}
+                  className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-[10px] font-black uppercase tracking-[0.08em] text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                >
+                  Continuar sin actualizar
+                </button>
+                <button
+                  type="button"
+                  disabled={isApplyingUpdate}
+                  onClick={handleApplyUpdate}
+                  className="h-11 flex-1 rounded-xl bg-indigo-600 px-4 text-[10px] font-black uppercase tracking-[0.08em] text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-70"
+                >
+                  {isApplyingUpdate ? "Aplicando actualización…" : "Actualizar ahora"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
