@@ -140,10 +140,15 @@ export default function Subscription(){
         return <article key={plan.id} className={cn("bg-secondary border rounded-3xl p-5 flex flex-col",current?"border-[#8B63E6] ring-1 ring-[#DCCBFF]":"border-base")}>
           <div className="flex items-center justify-between gap-2"><div><p className="text-lg font-black text-primary">{plan.name}</p><p className="text-[10px] uppercase text-muted font-black">{plan.code}</p></div>{current&&<span className="text-[9px] px-2 py-1 rounded-full bg-[#EFE8FF] text-[#6535C5] font-black">Actual</span>}</div>
           <p className="text-2xl font-black text-primary mt-5">{money(Number(plan.monthly_price)||0)} <span className="text-base font-black text-primary">{plan.billing_currency_code || "USD"}</span><span className="text-xs text-muted font-bold"> / mes</span></p>
-          <div className="mt-4 space-y-1.5 text-[9px] text-muted flex-1">
-            <div className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 shrink-0"/>{String(plan.limits?.employees||"Ilimitados")} empleados + administrador</div>
-            <div className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 shrink-0"/>{String(plan.limits?.warehouses||"Ilimitados")} almacenes</div>
-            <div className="flex items-center gap-2"><CheckCircle2 className="w-3.5 h-3.5 shrink-0"/>{String(plan.limits?.products||"Ilimitados")} productos/SKUs</div>
+          <div className="mt-3 rounded-xl bg-subtle border border-base p-2.5">
+            <p className="text-[9px] font-bold text-primary leading-4">{String((plan.features as any)?.description || "Plan PALMYRA para gestión empresarial.")}</p>
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-1.5 text-[8px]">
+            <div className="rounded-lg bg-subtle border border-base p-2"><span className="block text-muted font-black uppercase">Empleados</span><b className="text-primary">{String(plan.limits?.employees||"Ilimitados")}</b></div>
+            <div className="rounded-lg bg-subtle border border-base p-2"><span className="block text-muted font-black uppercase">Almacenes</span><b className="text-primary">{String(plan.limits?.warehouses||"Ilimitados")}</b></div>
+            <div className="rounded-lg bg-subtle border border-base p-2"><span className="block text-muted font-black uppercase">Productos</span><b className="text-primary">{String(plan.limits?.products||"Ilimitados")}</b></div>
+          </div>
+          <div className="mt-3 space-y-1.5 text-[9px] text-muted flex-1">
             {(() => {
               const rawFeatures = (plan.features as any)?.features;
               const features = Array.isArray(rawFeatures) ? rawFeatures : (Array.isArray(plan.features) ? plan.features : []);
@@ -154,6 +159,9 @@ export default function Subscription(){
                 </div>
               ));
             })()}
+            <div className="pt-2 mt-2 border-t border-base text-[8px] font-black uppercase tracking-wider text-muted">
+              Reportes: {String(plan.limits?.reports||"—")} · Soporte: {String(plan.limits?.support||"—")}
+            </div>
           </div>
           <button disabled={busy||current} onClick={()=>void choose(plan)} className={cn("h-11 mt-6 rounded-xl font-black text-xs flex items-center justify-center gap-2",current?"bg-subtle text-muted":"bg-slate-950 text-white disabled:opacity-50")}>{current?<><ShieldCheck className="w-4 h-4"/>Plan actual</>:<><CreditCard className="w-4 h-4"/>Solicitar {plan.name}</>}</button>
         </article>;
