@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   Building2,
@@ -21,6 +21,7 @@ import { createCompanyOnboarding } from "../services/saas";
 import { registerCurrentDevice } from "../services/device";
 import { getSupabase } from "../lib/supabase";
 import { goToWhatsAppPayment } from "../utils/whatsapp";
+import { DEFAULT_FACEBOOK_URL, loadPublicSocialLinks, type PlatformSocialLinks } from "../services/platformSupport";
 
 const planIcons: Record<PlanCode, typeof Sparkles> = {
   starter: Sparkles,
@@ -122,6 +123,52 @@ export default function SaaSOnboarding() {
   const [busy, setBusy] = useState(false);
   const [creationStage, setCreationStage] = useState(0);
   const [error, setError] = useState("");
+  const [socialLinks, setSocialLinks] = useState<PlatformSocialLinks>({ facebook_url: DEFAULT_FACEBOOK_URL, whatsapp_channel_url: null });
+  const [socialLoading, setSocialLoading] = useState(false);
+  const [facebookOpened, setFacebookOpened] = useState(false);
+  const [whatsappOpened, setWhatsappOpened] = useState(false);
+  const [socialVerified, setSocialVerified] = useState(false);
+
+  useEffect(() => {
+    if (planCode !== "starter") {
+      setSocialVerified(false);
+      return;
+    }
+    let active = true;
+    setSocialLoading(true);
+    void loadPublicSocialLinks()
+      .then((links) => {
+        if (!active) return;
+        setSocialLinks(links);
+        setSocialVerified(false);
+      })
+      .catch((socialError) => {
+        console.warn("[PALMYRA] No se pudieron cargar los canales sociales en onboarding:", socialError);
+        if (active) {
+          setSocialLinks({ facebook_url: DEFAULT_FACEBOOK_URL, whatsapp_channel_url: null });
+          setSocialVerified(false);
+        }
+      })
+      .finally(() => {
+        if (active) setSocialLoading(false);
+      });
+    return () => { active = false; };
+  }, [planCode]);
+
+  const verifyStarterPromotion = () => {
+    setError("");
+    if (!socialLinks.facebook_url || !socialLinks.whatsapp_channel_url) {
+      setSocialVerified(false);
+      setError("La promoción de 90 días no puede verificarse porque PALMYRA todavía no tiene configurados ambos canales oficiales.");
+      return;
+    }
+    if (!facebookOpened || !whatsappOpened) {
+      setSocialVerified(false);
+      setError("Primero abre Facebook y el canal de WhatsApp oficial. Después pulsa «Verificar promoción».");
+      return;
+    }
+    setSocialVerified(true);
+  };
 
   const selectedPlan = useMemo(
     () =>
@@ -145,6 +192,11 @@ export default function SaaSOnboarding() {
 
     if (normalizedWarehouseName.length < 2) {
       setError("Escribe el nombre del almacén principal.");
+      return;
+    }
+
+    if (planCode === "starter" && !socialVerified) {
+      setError("Verifica primero la promoción de 90 días gratis antes de crear la empresa.");
       return;
     }
 
@@ -488,7 +540,7 @@ export default function SaaSOnboarding() {
                             }
                           >
                             {plan.code === "starter"
-                              ? "90 días gratis"
+                              ? "Verificar primero · 90 días gratis"
                               : "Activación manual"}
                           </p>
                         </button>
@@ -496,6 +548,85 @@ export default function SaaSOnboarding() {
                     })}
                   </div>
                 </div>
+
+                {selectedPlan.code === "starter" && (
+                  <div className="mt-4 rounded-2xl border border-violet-100 bg-[#F8F6FC] p-3.5 sm:p-4">
+                    <div className="flex items-start gap-2.5">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#EEE7FF] text-[#6535C5]">
+                        <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-[8px] font-black uppercase tracking-[.16em] text-[#7C4DDE]">Promoción Oasis</p>
+                            <p className="mt-1 text-[10px] font-black text-[#2A1938]">Verificar primero · 90 días gratis</p>
+                            <p className="mt-1 text-[8px] leading-4 text-slate-500">Abre los dos canales oficiales de PALMYRA y confírmalos aquí antes de crear la empresa. Esta verificación es de confianza; PALMYRA no recibe tus credenciales sociales.</p>
+                          </div>
+                          <span className={"shrink-0 rounded-full px-2 py-1 text-[7px] font-black uppercase tracking-wider " + (socialVerified ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>
+                            {socialVerified ? "Verificado" : "Pendiente"}
+                          </span>
+                        </div>
+
+                        {socialLoading ? (
+                          <div className="mt-3 rounded-xl border border-violet-100 bg-white px-3 py-2.5 text-[8px] font-bold text-slate-400">Cargando canales oficiales…</div>
+                        ) : (
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            {socialLinks.facebook_url && (
+                              <a
+                                href={socialLinks.facebook_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={() => { setFacebookOpened(true); setSocialVerified(false); }}
+                                className={"rounded-xl border p-2.5 transition " + (facebookOpened ? "border-emerald-200 bg-emerald-50" : "border-violet-100 bg-white hover:border-violet-200")}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[9px] font-black text-[#3B1B6E]">Facebook oficial</span>
+                                  <span className="text-[8px] font-black text-[#6535C5]">{facebookOpened ? "✓ Listo" : "Abrir"}</span>
+                                </div>
+                              </a>
+                            )}
+                            {socialLinks.whatsapp_channel_url && (
+                              <a
+                                href={socialLinks.whatsapp_channel_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={() => { setWhatsappOpened(true); setSocialVerified(false); }}
+                                className={"rounded-xl border p-2.5 transition " + (whatsappOpened ? "border-emerald-200 bg-emerald-50" : "border-violet-100 bg-white hover:border-violet-200")}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-[9px] font-black text-[#3B1B6E]">Canal de WhatsApp</span>
+                                  <span className="text-[8px] font-black text-[#6535C5]">{whatsappOpened ? "✓ Listo" : "Abrir"}</span>
+                                </div>
+                              </a>
+                            )}
+                          </div>
+                        )}
+
+                        {(!socialLinks.facebook_url || !socialLinks.whatsapp_channel_url) && !socialLoading && (
+                          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[8px] font-bold leading-4 text-amber-800">
+                            Falta configurar uno de los canales oficiales. La promoción no se podrá verificar todavía.
+                          </div>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={verifyStarterPromotion}
+                          disabled={socialLoading || socialVerified || !facebookOpened || !whatsappOpened || !socialLinks.facebook_url || !socialLinks.whatsapp_channel_url}
+                          className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-xl bg-[#6535C5] px-3 text-[9px] font-black text-white transition-colors hover:bg-[#4F249D] disabled:cursor-not-allowed disabled:opacity-45"
+                        >
+                          {socialVerified ? <Check className="h-3.5 w-3.5" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                          {socialVerified ? "Promoción verificada" : "Verificar promoción para continuar"}
+                        </button>
+
+                        {!socialVerified && (
+                          <p className="mt-2 text-center text-[7px] font-bold text-slate-400">
+                            {facebookOpened && whatsappOpened ? "Los dos pasos están abiertos. Pulsa Verificar promoción." : "Completa ambos pasos para habilitar la verificación."}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {selectedPlan.code !== "starter" && (
                   <div className="mt-4">
@@ -573,13 +704,13 @@ export default function SaaSOnboarding() {
                 <div className="sticky bottom-0 z-20 mt-4 border-t border-violet-100 bg-white/95 pt-3 sm:static sm:border-0 sm:bg-transparent sm:pt-0">
                   <button
                     type="submit"
-                    disabled={busy}
+                    disabled={busy || (selectedPlan.code === "starter" && !socialVerified)}
                     className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#6535C5] px-4 text-xs font-black text-white shadow-sm transition-colors hover:bg-[#4F249D] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {busy
                       ? "Creando empresa..."
                       : selectedPlan.code === "starter"
-                        ? "Crear empresa y comenzar"
+                        ? (socialVerified ? "Crear empresa y comenzar" : "Verificar promoción primero")
                         : "Crear empresa y solicitar activación"}
                     {!busy && <ArrowRight className="h-4 w-4" />}
                   </button>
