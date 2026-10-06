@@ -1,4 +1,4 @@
-import { PlanFeatureGate } from "../components/PlanFeatureGate";
+import PlanFeatureGate from "../components/PlanFeatureGate";
 import { useShallow } from 'zustand/react/shallow';
 import React, { useMemo, useState } from "react";
 import { RotateCcw, Search, CheckCircle, XCircle, AlertTriangle, ShieldCheck, X, Calendar, User, Package, Hash } from "lucide-react";
