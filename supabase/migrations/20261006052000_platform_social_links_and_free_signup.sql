@@ -113,5 +113,5 @@ begin
 end;
 $function$;
 
-revoke all on function public.set_platform_support_settings(text,text,text,text,text) from public;
+revoke all on function public.set_platform_support_settings(text,text,text,text,text) from public, anon, authenticated;
 grant execute on function public.set_platform_support_settings(text,text,text,text,text) to authenticated;
