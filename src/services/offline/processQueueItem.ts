@@ -236,6 +236,115 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       if (!ok) throw new Error('No se pudo sincronizar la desactivación del proveedor.');
       return true;
     }
+    case 'bank_internal_transfer_delete': {
+      const res = await callDeleteBankInternalTransferRPC(String(data?.operationId || ''));
+      if (!res.success) throw new Error(res.error || 'No se pudo eliminar la transferencia bancaria interna.');
+      return true;
+    }
+    case 'bank_transaction_delete': {
+      const res = await callDeleteBankTransactionRPC(String(data?.id || ''));
+      if (!res.success) throw new Error(res.error || 'No se pudo eliminar el movimiento bancario.');
+      return true;
+    }
+    case 'inventory': {
+      const ok = await pushInventoryToSupabase(data as any);
+      if (!ok) throw new Error('No se pudo sincronizar el stock pendiente.');
+      return true;
+    }
+    case 'inventory_adjustment': {
+      const res = await applyInventoryAdjustmentToSupabase(data as any);
+      if (!res.success) {
+        if (res.conflict) {
+          await useStore.getState().refreshBranchInventory();
+          throw new PermanentSyncError(res.error || 'Conflicto de ajuste de inventario.');
+        }
+        throw new Error(res.error || 'No se pudo sincronizar el ajuste de inventario.');
+      }
+      if (Number.isFinite(Number(res.data?.quantity))) {
+        useStore.setState(state => ({
+          inventory: state.inventory.map(item =>
+            item.productId === data.productId &&
+            item.branchId === data.branchId &&
+            (item.variantLabel || '') === (data.variantLabel || '')
+              ? { ...item, quantity: Number(res.data.quantity) }
+              : item
+          )
+        }));
+      }
+      return true;
+    }
+    case 'inventory_reconcile': {
+      const res = await reconcileInventoryToSupabase(data as any);
+      if (!res.success) {
+        if (res.conflict) {
+          await useStore.getState().refreshBranchInventory();
+          throw new PermanentSyncError(res.error || 'Conflicto de reconciliación de inventario.');
+        }
+        throw new Error(res.error || 'No se pudo sincronizar la reconciliación de inventario.');
+      }
+      if (Number.isFinite(Number(res.data?.quantity))) {
+        useStore.setState(state => ({
+          inventory: state.inventory.map(item =>
+            item.productId === data.productId &&
+            item.branchId === data.branchId &&
+            (item.variantLabel || '') === (data.variantLabel || '')
+              ? { ...item, quantity: Number(res.data.quantity), minQuantity: data.minQuantity ?? item.minQuantity }
+              : item
+          )
+        }));
+      }
+      return true;
+    }
+    case 'transfer': {
+      const res = await callTransferInventoryRPC(data as any);
+      if (!res.success) throw new Error(res.error || 'No se pudo sincronizar la transferencia de inventario.');
+      const refreshed = await (async () => {
+        const results = await Promise.all([
+          pullBranchInventoryFromSupabase(data.fromBranchId),
+          pullBranchInventoryFromSupabase(data.toBranchId)
+        ]);
+        return results.every(x => x.success);
+      })();
+      if (!refreshed) throw new Error('Transferencia confirmada, pero no se pudo reconciliar el inventario.');
+      return true;
+    }
+    case 'transfer_bulk': {
+      const res = await callTransferInventoryBulkRPC(data as any);
+      if (!res.success) throw new Error(res.error || 'No se pudo sincronizar el traslado múltiple.');
+      const results = await Promise.all([
+        pullBranchInventoryFromSupabase(data.fromBranchId),
+        pullBranchInventoryFromSupabase(data.toBranchId)
+      ]);
+      if (results.some(x => !x.success)) throw new Error('Traslado confirmado, pero no se pudo reconciliar el inventario.');
+      replaceWarehousesInventory(
+        data.fromBranchId,
+        results[0].inventory || [],
+        data.toBranchId,
+        results[1].inventory || []
+      );
+      return true;
+    }
+    case 'supplier_receive': {
+      const res = await callReceiveSupplierOrderRPC(String(data?.id || ''), String(data?.userId || ''));
+      if (!res.success) throw new Error(res.error || 'No se pudo recibir la orden de compra.');
+      await reconcileSupplierReceiveCanonical(supabase, String(data?.id || ''));
+      return true;
+    }
+    case 'audit_complete': {
+      const res = await callSaveInventoryAuditCountRPC(
+        String(data?.id || ''),
+        String(data?.userId || ''),
+        Array.isArray(data?.items) ? data.items : [],
+        data?.notes || ''
+      );
+      if (!res.success) throw new Error(res.error || 'No se pudo sincronizar el conteo de auditoría.');
+      return true;
+    }
+    case 'return': {
+      const ok = await pushReturnToSupabase(data as ReturnItem);
+      if (!ok) throw new Error('No se pudo sincronizar la devolución pendiente.');
+      return true;
+    }
     case 'salary_settlement': {
       const ok = await pushSalarySettlementToSupabase(data as any);
       if (!ok) throw new Error('No se pudo sincronizar la liquidación pendiente.');
