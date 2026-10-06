@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, CircleCheck, RotateCcw, Sparkles, X } from "lucide-react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import { useStore } from "../../store/useStore";
 import { getAccessibleNumaTourSteps, type NumaTourStep } from "./palmiGuideSteps";
 import { PalmiMascot } from "./PalmiMascot";
@@ -56,7 +56,6 @@ export default function PalmiGuide() {
   const currentUser = useStore((state) => state.currentUser);
   const darkMode = useStore((state) => state.storeConfig.darkMode);
   const location = useLocation();
-  const navigate = useNavigate();
   const [isCompact, setIsCompact] = useState(compactViewport);
   const [open, setOpen] = useState(false);
   const [index, setIndex] = useState(0);
