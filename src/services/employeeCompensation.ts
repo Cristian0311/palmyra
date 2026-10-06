@@ -9,7 +9,7 @@ export function calculateEmployeeSaleCommission(
   if (!employee || employee.role === 'admin') return 0;
   const split = Math.max(1, sellerCount);
   if (employee.compensationType === 'sales_percentage') {
-    return Math.max(0, Number(transaction.total) || 0) * Math.max(0, Number(employee.commissionRate) || 0) / 100 / split;
+    return Math.max(0, Number(transaction.total) || 0) * Math.max(0, Number(employee.salesPercentage ?? employee.commissionRate) || 0) / 100 / split;
   }
   return (transaction.items || []).reduce((sum, item) => {
     const productId = typeof item.product === 'string' ? item.product : item.product?.id;
