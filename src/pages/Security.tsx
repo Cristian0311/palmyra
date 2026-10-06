@@ -11,7 +11,8 @@ export default function Security(){
  const [devices,setDevices]=useState<MyDevice[]>([]);
  const [ctx,setCtx]=useState<Awaited<ReturnType<typeof loadSaaSContext>>>(null);
  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState("");
- const offline=typeof navigator!=="undefined" && !navigator.onLine;
+ const [online,setOnline]=useState(()=>typeof navigator==="undefined" ? true : navigator.onLine);
+ const offline=!online;
 
  const refresh=async()=>{
   setLoading(true);setError("");
@@ -24,7 +25,14 @@ export default function Security(){
   }catch(e:any){setError(e?.message||"No se pudieron cargar las sesiones.")}
   finally{setLoading(false);}
  };
- useEffect(()=>{void refresh()},[offline,currentUser?.id]);
+ useEffect(()=>{
+  const onOnline=()=>setOnline(true);
+  const onOffline=()=>setOnline(false);
+  window.addEventListener("online",onOnline);
+  window.addEventListener("offline",onOffline);
+  void refresh();
+  return()=>{window.removeEventListener("online",onOnline);window.removeEventListener("offline",onOffline)};
+ },[online,currentUser?.id]);
 
  const revoke=async(device:MyDevice)=>{
   if(!ctx?.companyId)return;
