@@ -226,6 +226,7 @@ export function initKeyboardViewport() {
     settleTimer = setTimeout(() => {
       if (!isFormControl(document.activeElement)) {
         document.body.classList.remove('keyboard-open');
+        document.documentElement.classList.remove('pos-keyboard-open');
         restoreScrollContainers();
         clearModalPlacement(activeModalSurface);
         activeModalSurface?.classList.remove('keyboard-modal-surface');
