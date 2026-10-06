@@ -1450,7 +1450,7 @@ export default function POS() {
 
   return (
     <div
-      className="h-full flex flex-col min-h-0 relative"
+      className="pos-page h-full flex flex-col min-h-0 relative text-[9px]" style={{ WebkitTextSizeAdjust: "100%", textSizeAdjust: "100%" }}
     >
       {/* Global High-Priority Toast Overlay */}
       {(posError || posSuccess) && (
@@ -1754,8 +1754,8 @@ export default function POS() {
                                   setPosError('');
                                   setEmployeePickerOpen(true);
                                 }}
-                                placeholder="Toca para seleccionar o buscar empleado"
-                                className="w-full pl-9 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                                placeholder="Seleccionar empleado"
+                                className="w-full pl-9 pr-10 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[9px] font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                                 autoComplete="off"
                                 aria-label="Seleccionar empleado"
                               />
@@ -1847,20 +1847,7 @@ export default function POS() {
                             )}
                           </div>
 
-                          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 pt-0.5 text-[7px] font-black uppercase tracking-wider">
-                            <span className="inline-flex items-center gap-1 text-rose-700">
-                              <span className="w-2 h-2 rounded-full bg-indigo-600" />
-                              EMPLEADO
-                            </span>
-                            <span className="inline-flex items-center gap-1 text-rose-700">
-                              <span className="w-2 h-2 rounded-full bg-rose-500" />
-                              EMPLEADO PALMYRA
-                            </span>
-                            <span className="inline-flex items-center gap-1 text-emerald-700">
-                              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-                              TURNO ABIERTO
-                            </span>
-                          </div>
+
                         </div>
                       </div>
                       )}
