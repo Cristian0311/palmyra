@@ -1261,7 +1261,11 @@ export default function POS() {
 
 
   return (
-    <div data-palmi-content="pos" className="h-full flex flex-col min-h-0 relative">
+    <div
+      data-palmi-content="pos"
+      data-palmi-pos-ready={currentSession ? "true" : "false"}
+      className="h-full flex flex-col min-h-0 relative"
+    >
       {/* Global High-Priority Toast Overlay */}
       {(posError || posSuccess) && (
         <div className="fixed top-2 sm:top-6 left-1/2 -translate-x-1/2 z-[200] w-[calc(100vw-1rem)] sm:w-full max-w-md min-w-0 px-0 sm:px-4 animate-in fade-in slide-in-from-top-4 duration-300">
@@ -1290,7 +1294,9 @@ export default function POS() {
         </div>
       )}
       {!currentSession && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4 overflow-y-auto space-y-4">
+        <div
+          data-palmi-pos-gate="open"
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4 overflow-y-auto space-y-4">
           {joiningSessionId ? (
             /* Modal Formulario de Ingreso a Turno Abierto Existente */
             <div className="bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-[2rem] shadow-2xl text-center max-w-sm w-full animate-in zoom-in-95 border border-white/20">
