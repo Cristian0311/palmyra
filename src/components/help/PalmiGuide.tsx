@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, CircleCheck, Sparkles, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, CircleCheck, X } from "lucide-react";
 import { useLocation } from "react-router-dom";
 import { useStore } from "../../store/useStore";
 import { getAccessibleNumaTourSteps, type NumaTourStep } from "./palmiGuideSteps";
@@ -96,7 +96,6 @@ export default function PalmiGuide() {
     left: SAFE,
     width: getPanelWidth()
   });
-  const [showInstallPrompt, setShowInstallPrompt] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
   const steps = useMemo(
@@ -393,7 +392,6 @@ export default function PalmiGuide() {
 
     setOpen(false);
     setTargetRect(null);
-    setShowInstallPrompt(true);
     window.dispatchEvent(new Event("palmyra:tutorial-finished"));
   };
 
