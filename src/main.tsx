@@ -108,14 +108,20 @@ if (isPALMYRAPWAInstalledAtBoot()) {
 import { registerSW } from 'virtual:pwa-register';
 
 const SW_CHECK_INTERVAL_MS = 300_000;
+const PALMYRA_UPDATE_AVAILABLE_KEY = 'palmyra:update-available';
 let swCheckTimer: ReturnType<typeof setInterval> | null = null;
 
 const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {
-    // El usuario decide cuándo aplicar una nueva versión para no interrumpir
-    // una venta, un arqueo o una operación offline.
-    (window as typeof window & { __palmyraApplyUpdate?: () => void }).__palmyraApplyUpdate = () => updateSW(true);
+    // Persistimos el aviso porque el Service Worker puede detectar la nueva
+    // versión antes de que Layout termine de montar, especialmente en PWA.
+    // Así web y PWA muestran la misma burbuja al usuario.
+    try { localStorage.setItem(PALMYRA_UPDATE_AVAILABLE_KEY, '1'); } catch {}
+    (window as typeof window & { __palmyraApplyUpdate?: () => void }).__palmyraApplyUpdate = () => {
+      try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
+      void updateSW(true);
+    };
     window.dispatchEvent(new CustomEvent('palmyra:update-available'));
   },
   onRegisteredSW(swUrl, registration) {
