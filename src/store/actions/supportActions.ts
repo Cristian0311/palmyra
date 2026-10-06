@@ -199,14 +199,26 @@ export function createSupportActions(set: StoreSet, get: StoreGet): any {
     if (!updated) return;
 
     const actionId = `cash-movement:${sessionId}:${movement.id}`;
-    await enqueueOfflineItem('cash_session', updated, actionId);
+    await enqueueOfflineItem('cash_movement', {
+      id: movement.id,
+      sessionId,
+      type: movement.type,
+      amount: Math.abs(Number(movement.amount) || 0),
+      currencyCode: movement.currencyCode,
+      description: movement.description || ''
+    }, actionId);
 
     if (navigator.onLine) {
-      const synced = await pushCashSessionToSupabase(updated);
-      // Solo retiramos la operación cuando el snapshot fue confirmado. Si falla,
-      // pushCashSessionToSupabase deja una operación durable para replay.
-      if (synced) removeFromOfflineQueueByAction('cash_session', actionId);
-      else console.warn('[addCashMovement] Movimiento no confirmado; permanece protegido para replay.');
+      const { pushCashMovementToSupabase } = await import('../../services/supabaseSync');
+      const synced = await pushCashMovementToSupabase({
+        id: movement.id,
+        sessionId,
+        type: movement.type,
+        amount: Math.abs(Number(movement.amount) || 0),
+        currencyCode: movement.currencyCode,
+        description: movement.description || ''
+      });
+      if (synced) removeFromOfflineQueueByAction('cash_movement', actionId);
       return synced;
     }
     return true;
@@ -240,12 +252,15 @@ export function createSupportActions(set: StoreSet, get: StoreGet): any {
     if (!updated) return;
 
     const actionId = `cash-movement-remove:${sessionId}:${movementId}`;
-    await enqueueOfflineItem('cash_session', updated, actionId);
+    await enqueueOfflineItem('cash_movement_delete', {
+      id: movementId,
+      sessionId
+    }, actionId);
 
     if (navigator.onLine) {
-      const synced = await pushCashSessionToSupabase(updated);
-      if (synced) removeFromOfflineQueueByAction('cash_session', actionId);
-      else console.warn('[removeCashMovement] Eliminación de movimiento no confirmada; permanece protegida para replay.');
+      const { deleteCashMovementFromSupabase } = await import('../../services/supabaseSync');
+      const synced = await deleteCashMovementFromSupabase({ id: movementId, sessionId });
+      if (synced) removeFromOfflineQueueByAction('cash_movement_delete', actionId);
       return synced;
     }
     return true;
