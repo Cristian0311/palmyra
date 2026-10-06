@@ -52,7 +52,7 @@ export default function HelpCenter(){
     let active=true;
     loadPlatformSupportSettings()
       .then(value=>{if(active)setSupport(value)})
-      .catch(()=>{if(active)setError("No se pudo cargar el canal de atención.")}
+      .catch(()=>{if(active)setError("No se pudo cargar el canal de atención.")})
       .finally(()=>{if(active)setLoading(false)});
     return()=>{active=false};
   },[]);
