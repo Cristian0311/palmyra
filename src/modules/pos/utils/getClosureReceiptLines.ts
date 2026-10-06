@@ -145,6 +145,23 @@ export function getClosureReceiptLines(session: CashRegisterSession, deps: Closu
       lines.push(`${label}${" ".repeat(Math.max(1, 32 - label.length - val.length))}${val}`);
     });
   }
+  // Movimientos de caja del turno: también deben aparecer en el ticket de cierre
+  // para explicar cualquier diferencia entre efectivo esperado y arqueo físico.
+  const movements = Array.isArray(session.movements) ? session.movements : [];
+  lines.push("---");
+  lines.push("BOLD|INGRESOS / EGRESOS:");
+  if (movements.length === 0) {
+    lines.push("Sin movimientos de caja");
+  } else {
+    movements.forEach(m => {
+      const typeLabel = m.type === 'income' ? 'INGRESO' : 'EGRESO';
+      const sign = m.type === 'income' ? '+' : '-';
+      const amount = formatMoney(Math.abs(Number(m.amount || 0)), currencies.find(c => c.code === m.currencyCode)?.symbol || '');
+      const reason = String(m.description || 'Sin motivo').slice(0, 22);
+      const label = `${typeLabel}: ${reason}`;
+      lines.push(`${label}${" ".repeat(Math.max(1, 32 - label.length - amount.length - 1))}${sign}${amount}`);
+    });
+  }
   lines.push("---");
   lines.push("BOLD|ARQUEO DE FONDOS:");
   const fondoLabel = "Fondo Inicial:";
