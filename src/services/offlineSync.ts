@@ -120,6 +120,10 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
         break;
       case 'cash_movement_delete':
         add(cashOp(data.sessionId, 'open'));
+        // Si el movimiento se creó offline en esta misma sesión, la eliminación
+        // debe esperar a su alta remota; de lo contrario podría borrarse "antes"
+        // de existir y reaparecer al sincronizar el alta.
+        add(dep('cash_movement', `cash-movement:${data.sessionId}:${data.id}`));
         break;
       case 'cash_session':
         if (data.__operation === 'open' || String(item.actionId).startsWith('cash-open:')) {
