@@ -245,11 +245,11 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 pb-8">
+    <div className="space-y-2.5 text-[9px] animate-in fade-in slide-in-from-bottom-2 duration-500 pb-5">
       {/* Header */}
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h2 className="text-2xl font-black text-primary tracking-tight">Dashboard</h2>
+          <h2 className="text-sm font-black text-primary tracking-tight">Dashboard</h2>
           <div className="flex flex-wrap items-center gap-2 text-muted mt-0.5">
             <div className="flex items-center gap-1">
               <MapPin className="w-3 h-3 text-indigo-500" />
@@ -295,7 +295,7 @@ export default function Dashboard() {
 
       {/* AI Summary Card */}
       {aiSummary && (
-        <div className="bg-indigo-600 text-white p-5 rounded-3xl shadow-xl shadow-indigo-200 dark:shadow-none border border-indigo-500 relative overflow-hidden animate-in slide-in-from-top-4 duration-500">
+        <div className="bg-indigo-600 text-white p-3 rounded-2xl shadow-xl shadow-indigo-200 dark:shadow-none border border-indigo-500 relative overflow-hidden animate-in slide-in-from-top-4 duration-500">
           <div className="absolute top-0 right-0 p-4 opacity-10">
             <Sparkles size={120} />
           </div>
@@ -305,7 +305,7 @@ export default function Dashboard() {
             </div>
             <div className="flex-1">
               <h3 className="text-xs font-black uppercase tracking-[0.2em] mb-2 text-indigo-100">Visión de Negocio (IA)</h3>
-              <p className="text-sm font-bold leading-relaxed max-w-3xl whitespace-pre-wrap">{aiSummary}</p>
+              <p className="text-[10px] font-bold leading-relaxed max-w-3xl whitespace-pre-wrap">{aiSummary}</p>
             </div>
             <button 
               onClick={() => setAiSummary("")}
@@ -318,8 +318,8 @@ export default function Dashboard() {
       )}
 
       {/* Metrics Grid (Compact & Clear Currency Indicators) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <div className="bg-secondary p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl border border-base shadow-xs hover:shadow-md transition-all flex flex-col justify-between min-w-0 overflow-hidden">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+        <div className="bg-secondary p-2.5 rounded-2xl border border-base shadow-xs hover:shadow-md transition-all flex flex-col justify-between min-w-0 overflow-hidden">
           <div className="flex justify-between items-start mb-2 gap-1">
             <div className="p-1.5 sm:p-2 rounded-xl text-white shrink-0 shadow-xs bg-indigo-600">
               <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -334,7 +334,7 @@ export default function Dashboard() {
               <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300">
                 {baseCurrency.code}
               </span>
-              <h4 className="text-sm sm:text-base lg:text-lg font-black text-primary tracking-tight truncate tabular-nums">
+              <h4 className="text-sm font-black text-primary tracking-tight truncate tabular-nums">
                 {baseCurrency.symbol}{formatMoney(totalSalesToday)}
               </h4>
             </div>
@@ -381,9 +381,9 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
         {/* Sales Chart (Compact) */}
-        <div className="lg:col-span-2 bg-secondary p-5 rounded-3xl border border-base shadow-xs">
+        <div className="lg:col-span-2 bg-secondary p-3 rounded-2xl border border-base shadow-xs">
           <div className="flex justify-between items-center mb-6">
             <div>
               <h3 className="text-sm font-black text-primary uppercase tracking-widest">Evolución Semanal</h3>
@@ -391,7 +391,7 @@ export default function Dashboard() {
             </div>
             <div className="text-right">
               <p className="text-[9px] font-black text-muted uppercase">Total 7 Días</p>
-              <p className="text-lg font-black text-indigo-600 dark:text-indigo-400">
+              <p className="text-sm font-black text-indigo-600 dark:text-indigo-400">
                 {baseCurrency.code} {formatMoney(last7DaysData.reduce((sum, d) => sum + d.total, 0))}
               </p>
             </div>
@@ -430,7 +430,7 @@ export default function Dashboard() {
         </div>
 
         {/* Currency Breakdown (Detailed Sales by Currency & Payment Method) */}
-        <div className="bg-secondary p-5 rounded-3xl border border-base flex flex-col shadow-xs">
+        <div className="bg-secondary p-3 rounded-2xl border border-base flex flex-col shadow-xs">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-xs font-black uppercase tracking-widest text-primary">Recaudación por Moneda</h3>
@@ -464,7 +464,7 @@ export default function Dashboard() {
                       )}
                     </div>
                     <div className="text-right">
-                      <p className="text-base sm:text-lg font-black text-primary leading-tight">
+                      <p className="text-sm font-black text-primary leading-tight">
                         {sale.symbol}{formatMoney(sale.total, sale.symbol, sale.code)}
                       </p>
                     </div>
@@ -518,9 +518,9 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
         {/* Branch Performance */}
-        <div className="bg-secondary p-5 rounded-3xl border border-base shadow-xs col-span-1 md:col-span-2">
+        <div className="bg-secondary p-3 rounded-2xl border border-base shadow-xs col-span-1 md:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-xs font-black text-primary uppercase tracking-widest">Desempeño por Sucursal</h3>
@@ -530,7 +530,7 @@ export default function Dashboard() {
               {branches.length} Sucursales
             </span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
             {branches.map(branch => {
               const branchTx = transactions.filter(t => t.branchId === branch.id);
               const branchTotal = branchTx.reduce((sum, t) => sum + (t.total || 0), 0);
