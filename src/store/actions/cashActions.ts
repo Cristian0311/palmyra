@@ -531,7 +531,8 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       const existingSettlement = (get().salarySettlements || []).find(st => st.sessionId === session.id);
       if (existingSettlement) {
         const productObj = get().products.find(p => p.id === itemData.productId);
-        const commValue = productObj?.commissionValue || 0;
+        const employee = get().users.find(u => u.id === session.userId);
+        const commValue = employee?.compensationType === 'sales_percentage' ? 0 : (productObj?.commissionValue || 0);
         const commDelta = commValue * Math.abs(itemData.quantity);
         const newCommissions = isDeduction
           ? Math.max(0, (existingSettlement.commissions || 0) - commDelta)
