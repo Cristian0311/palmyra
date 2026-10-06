@@ -88,3 +88,14 @@
   .palmi-guide-mascot-dock:hover .palmi-guide-mascot{transform:translateY(5px)}
   .palmi-aura-2,.palmi-spark,.palmi-pulse-dot,.palmi-mascot-blink{animation:none}
 }
+.numa-mascot{transform-box:fill-box;transform-origin:50% 70%}
+.numa-mascot .numa-mascot-body{transition:transform .25s ease}
+.numa-mood-thinking .numa-mascot-body{animation:numa-thinking 3.2s ease-in-out infinite}
+.numa-mood-waiting .numa-mascot-body{animation:numa-waiting 1.6s ease-in-out infinite}
+.numa-mood-success .numa-mascot-body{animation:numa-success 1.8s ease-in-out infinite}
+.numa-mood-alert .numa-mascot-body{animation:numa-alert 2.3s ease-in-out infinite}
+@keyframes numa-thinking{0%,100%{transform:translateY(0) rotate(0deg)}50%{transform:translateY(-2px) rotate(-1deg)}}
+@keyframes numa-waiting{0%,100%{transform:translateY(0) scale(1)}50%{transform:translateY(-3px) scale(1.015)}}
+@keyframes numa-success{0%,100%{transform:translateY(0)}50%{transform:translateY(-4px)}}
+@keyframes numa-alert{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-1.5px)}40%,80%{transform:translateX(1.5px)}}
+@media(prefers-reduced-motion:reduce){.numa-mascot .numa-mascot-body{animation:none}}
