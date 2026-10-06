@@ -656,88 +656,103 @@ export default function SaaSOnboarding() {
                 </div>
 
                 {selectedPlan.code === "starter" && (
-                  <div className="mt-4 rounded-2xl border border-violet-100 bg-[#F8F6FC] p-3.5 sm:p-4">
-                    <div className="flex items-start gap-2.5">
-                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#EEE7FF] text-[#6535C5]">
-                        <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-[8px] font-black uppercase tracking-[.16em] text-[#7C4DDE]">Promoción Oasis</p>
-                            <p className="mt-1 text-[10px] font-black text-[#2A1938]">Verificar primero · 90 días gratis</p>
-                            <p className="mt-1 text-[8px] leading-4 text-slate-500">Para recibir los 90 días gratis: <b>1)</b> sigue Facebook, <b>2)</b> únete al canal de WhatsApp y <b>3)</b> vuelve aquí para verificar. PALMYRA confía en tu confirmación y nunca recibe tus credenciales sociales.</p>
-                          </div>
-                          <span className={"shrink-0 rounded-full px-2 py-1 text-[7px] font-black uppercase tracking-wider " + (socialVerified ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>
-                            {socialVerified ? "Verificado" : "Pendiente"}
-                          </span>
+                  <section className="mt-3 rounded-2xl border border-violet-100 bg-[#F8F6FC] p-3">
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-[#EEE7FF] text-[#6535C5]">
+                          <ShieldCheck className="h-4 w-4" aria-hidden="true" />
                         </div>
+                        <div className="min-w-0">
+                          <p className="text-[7px] font-black uppercase tracking-[.16em] text-[#7C4DDE]">Promoción Oasis</p>
+                          <p className="mt-0.5 text-[10px] font-black text-[#2A1938] leading-tight">90 días gratis</p>
+                        </div>
+                      </div>
+                      <span className={"shrink-0 rounded-full px-2 py-1 text-[6.5px] font-black uppercase tracking-wider " + (socialVerified ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>
+                        {socialVerified ? "Verificado" : "Pendiente"}
+                      </span>
+                    </div>
 
-                        {socialLoading ? (
-                          <div className="mt-3 rounded-xl border border-violet-100 bg-white px-3 py-2.5 text-[8px] font-bold text-slate-400">Cargando canales oficiales…</div>
-                        ) : (
-                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                            {socialLinks.facebook_url && (
-                              <a
-                                href={socialLinks.facebook_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={() => { setFacebookOpened(true); }}
-                                className={"rounded-xl border p-2.5 transition " + (facebookOpened ? "border-emerald-200 bg-emerald-50" : "border-violet-100 bg-white hover:border-violet-200")}
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="text-[9px] font-black text-[#3B1B6E]">Facebook oficial</span>
-                                  <span className="text-[8px] font-black text-[#6535C5]">{facebookOpened ? "✓ Listo" : "Abrir"}</span>
-                                </div>
-                              </a>
-                            )}
-                            {socialLinks.whatsapp_channel_url && (
-                              <a
-                                href={socialLinks.whatsapp_channel_url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={() => { setWhatsappOpened(true); }}
-                                className={"rounded-xl border p-2.5 transition " + (whatsappOpened ? "border-emerald-200 bg-emerald-50" : "border-violet-100 bg-white hover:border-violet-200")}
-                              >
-                                <div className="flex items-center justify-between gap-2">
-                                  <span className="text-[9px] font-black text-[#3B1B6E]">Canal de WhatsApp</span>
-                                  <span className="text-[8px] font-black text-[#6535C5]">{whatsappOpened ? "✓ Listo" : "Abrir"}</span>
-                                </div>
-                              </a>
-                            )}
-                          </div>
+                    <p className="mt-2 text-[7.5px] leading-4 text-slate-500">
+                      Completa los dos pasos y después pulsa <b>Verificar promoción</b>. PALMYRA no solicita ni recibe tus credenciales de Facebook o WhatsApp.
+                    </p>
+
+                    {socialLoading ? (
+                      <div className="mt-2 rounded-xl border border-violet-100 bg-white px-3 py-2 text-[8px] font-bold text-slate-400">Cargando canales oficiales…</div>
+                    ) : (
+                      <div className="mt-2 grid gap-1.5 sm:grid-cols-2">
+                        {socialLinks.facebook_url && (
+                          <a
+                            href={socialLinks.facebook_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => setFacebookOpened(true)}
+                            className={"flex min-w-0 items-center gap-2 rounded-xl border px-2.5 py-2 transition-colors " + (facebookOpened ? "border-emerald-200 bg-emerald-50" : "border-violet-100 bg-white hover:border-violet-200")}
+                          >
+                            <span className={"flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-[8px] font-black " + (facebookOpened ? "bg-emerald-100 text-emerald-700" : "bg-violet-100 text-[#6535C5]")}>
+                              {facebookOpened ? <Check className="h-3 w-3" /> : "1"}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-[8px] font-black text-[#3B1B6E] leading-tight">Facebook oficial</span>
+                              <span className="block text-[6.5px] font-bold text-slate-400 mt-0.5">{facebookOpened ? "Paso completado" : "Abrir y seguir"}</span>
+                            </span>
+                            <ArrowRight className="h-3 w-3 shrink-0 text-[#6535C5]" />
+                          </a>
                         )}
-
-                        {(!socialLinks.facebook_url || !socialLinks.whatsapp_channel_url) && !socialLoading && (
-                          <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[8px] font-bold leading-4 text-amber-800">
-                            Falta configurar uno de los canales oficiales. La promoción no se podrá verificar todavía.
-                          </div>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={verifyStarterPromotion}
-                          disabled={socialLoading || socialVerified || Boolean(socialVerifyingUntil) || !facebookOpened || !whatsappOpened || !socialLinks.facebook_url || !socialLinks.whatsapp_channel_url}
-                          className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-xl bg-[#6535C5] px-3 text-[9px] font-black text-white transition-colors hover:bg-[#4F249D] disabled:cursor-not-allowed disabled:opacity-45"
-                        >
-                          {socialVerified ? <Check className="h-3.5 w-3.5" /> : <ShieldCheck className="h-3.5 w-3.5" />}
-                          {socialVerified
-                            ? "Promoción verificada"
-                            : socialVerifyingUntil
-                              ? `Verificando… ${socialRemaining}s`
-                              : "Verificar promoción (5 s)"}
-                        </button>
-
-                        {!socialVerified && (
-                          <p className="mt-2 text-center text-[7px] font-bold text-slate-400">
-                            {socialVerifyingUntil ? `PALMYRA está verificando tu promoción. No cierres esta página; faltan ${socialRemaining} s.` : socialVerified ? "Los dos pasos están listos. Puedes crear tu empresa." : "Completa los dos pasos y después pulsa Verificar promoción (5 s)."}
-                          </p>
+                        {socialLinks.whatsapp_channel_url && (
+                          <a
+                            href={socialLinks.whatsapp_channel_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => setWhatsappOpened(true)}
+                            className={"flex min-w-0 items-center gap-2 rounded-xl border px-2.5 py-2 transition-colors " + (whatsappOpened ? "border-emerald-200 bg-emerald-50" : "border-violet-100 bg-white hover:border-violet-200")}
+                          >
+                            <span className={"flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-[8px] font-black " + (whatsappOpened ? "bg-emerald-100 text-emerald-700" : "bg-violet-100 text-[#6535C5]")}>
+                              {whatsappOpened ? <Check className="h-3 w-3" /> : "2"}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block text-[8px] font-black text-[#3B1B6E] leading-tight">Canal de WhatsApp</span>
+                              <span className="block text-[6.5px] font-bold text-slate-400 mt-0.5">{whatsappOpened ? "Paso completado" : "Abrir y unirse"}</span>
+                            </span>
+                            <ArrowRight className="h-3 w-3 shrink-0 text-[#6535C5]" />
+                          </a>
                         )}
                       </div>
-                    </div>
-                  </div>
-                )}
+                    )}
 
+                    {(!socialLinks.facebook_url || !socialLinks.whatsapp_channel_url) && !socialLoading && (
+                      <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-2 text-[7px] font-bold leading-4 text-amber-800">
+                        Uno de los canales oficiales todavía no está configurado. La promoción no puede verificarse.
+                      </div>
+                    )}
+
+                    <div className="mt-2 rounded-xl border border-amber-200/80 bg-amber-50/70 px-2.5 py-2 flex items-start gap-2">
+                      <LockKeyhole className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-700" aria-hidden="true" />
+                      <p className="text-[7px] leading-4 font-bold text-amber-900">
+                        <span className="font-black">Aviso de seguridad:</span> debes seguir correctamente los enlaces solicitados. Intentar manipular o falsear la verificación puede provocar la suspensión de la cuenta, incluso después del registro.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={verifyStarterPromotion}
+                      disabled={socialLoading || socialVerified || Boolean(socialVerifyingUntil) || !facebookOpened || !whatsappOpened || !socialLinks.facebook_url || !socialLinks.whatsapp_channel_url}
+                      className="mt-2 flex h-8.5 w-full items-center justify-center gap-2 rounded-xl bg-[#6535C5] px-3 text-[8px] font-black text-white transition-colors hover:bg-[#4F249D] disabled:cursor-not-allowed disabled:opacity-45"
+                    >
+                      {socialVerified ? <Check className="h-3.5 w-3.5" /> : <ShieldCheck className="h-3.5 w-3.5" />}
+                      {socialVerified
+                        ? "Promoción verificada"
+                        : socialVerifyingUntil
+                          ? `Verificando… ${socialRemaining}s`
+                          : "Verificar promoción"}
+                    </button>
+
+                    {!socialVerified && (
+                      <p className="mt-1.5 text-center text-[6.5px] font-bold text-slate-400">
+                        {socialVerifyingUntil ? `PALMYRA está verificando. Faltan ${socialRemaining} s.` : "Completa Facebook y WhatsApp antes de verificar."}
+                      </p>
+                    )}
+                  </section>
+                )}
                 {selectedPlan.code !== "starter" && (
                   <div className="mt-4">
                     <p className="form-label">Método de pago</p>
