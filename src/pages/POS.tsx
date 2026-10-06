@@ -167,14 +167,12 @@ export default function POS() {
   
   const navigate = useNavigate();
   const fallbackSessionBranchId = currentBranchId || getWarehouseId(currentUser) || branches[0]?.id || '';
+  // La reanudación de una caja persistida siempre es explícita. El ID de
+  // activeSessionId solo representa la sesión validada en esta pestaña.
   const currentSession = useMemo(() => {
-    if (activeSessionId) {
-      const active = cashSessions.find(s => s.id === activeSessionId && s.status === 'open' && !s.deletedAt);
-      if (active) return active;
-    }
-    // Recuperación automática para cuentas que son propietarias del turno.
-    return getCurrentSession(fallbackSessionBranchId, currentUser?.id || '');
-  }, [activeSessionId, cashSessions, fallbackSessionBranchId, currentUser?.id, getCurrentSession]);
+    if (!activeSessionId) return null;
+    return cashSessions.find(s => s.id === activeSessionId && s.status === 'open' && !s.deletedAt) || null;
+  }, [activeSessionId, cashSessions]);
 
   useEffect(() => {
     if (currentSession || !currentUser || !fallbackSessionBranchId || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
@@ -191,12 +189,8 @@ export default function POS() {
     return () => { cancelled = true; };
   }, [currentSession?.id, currentUser?.id, fallbackSessionBranchId, setCurrentBranch]);
 
-  useEffect(() => {
-    if (activeSessionId) return;
-    if (!currentUser?.id) return;
-    const own = getCurrentSession(fallbackSessionBranchId, currentUser.id);
-    if (own?.id && activeSessionId !== own.id) setActiveSessionId(own.id);
-  }, [activeSessionId, currentUser?.id, fallbackSessionBranchId, cashSessions, getCurrentSession, setActiveSessionId]);
+  // Los turnos abiertos se muestran para reanudar y exigir contraseña después
+  // de una recarga. No activamos una caja abandonada automáticamente.
 
   // Al entrar al POS/volver al foco, actualizar operaciones de caja y catálogo.
   // Esto evita que un selector abierto durante horas conserve una lista vieja.
@@ -338,8 +332,10 @@ export default function POS() {
     return (activeCashSessions || [])
       .filter(s => {
         if (s.status !== 'open' || s.deletedAt) return false;
-        if (allowedIds.size > 0 && !allowedIds.has(s.branchId)) return false;
+        // El administrador tiene alcance sobre toda la empresa; no depender de
+        // allowedBranches evita ocultar una caja durante la hidratación inicial.
         if (currentUser?.role === 'admin') return true;
+        if (allowedIds.size > 0 && !allowedIds.has(s.branchId)) return false;
         const uid = currentUser?.id || '';
         return !!uid && (s.userId === uid || s.workingEmployeeIds?.includes(uid));
       })
