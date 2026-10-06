@@ -124,7 +124,22 @@ export async function pushCashSessionToSupabase(session: CashRegisterSession): P
         id: movement.id,
         company_id: companyId,
         cash_session_id: session.id,
-        movement_type: movement.type || 'expense',
+        movement_type: (() => {
+          const raw = String(movement.type || '').toLowerCase();
+          const aliases: Record<string, string> = {
+            expense: 'cash_out',
+            withdrawal: 'cash_out',
+            ingreso: 'cash_in',
+            income: 'cash_in',
+            deposit: 'cash_in',
+            entrada: 'cash_in',
+            salida: 'cash_out',
+            adjustment: 'closing_adjustment',
+          };
+          return aliases[raw] || (['sale', 'refund', 'cash_in', 'cash_out', 'opening', 'closing_adjustment'].includes(raw)
+            ? raw
+            : 'cash_out');
+        })(),
         amount: Number(movement.amount) || 0,
         currency_code: movement.currencyCode || defaultCurrency,
         reference_id: null,
