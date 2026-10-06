@@ -17,7 +17,7 @@ import { useBarcodeScanner } from "../hooks/useBarcodeScanner";
 import * as XLSX from 'xlsx';
 import { loadSaaSContext } from '../services/saas';
 import { canUsePlanFeature } from '../services/planAccess';
-import { PlanFeatureGate } from '../components/PlanFeatureGate';
+import PlanFeatureGate from '../components/PlanFeatureGate';
 
 export default function Inventory() {
   const { 
