@@ -73,7 +73,9 @@ export async function signOutSaaSAccount() {
     const userId = data.session?.user?.id || null;
     if (userId) clearCachedSaaSContext(userId);
   } catch {}
-  await supabase.auth.signOut();
+  try { await supabase.auth.signOut(); } catch (error) {
+    console.warn("[PALMYRA] Cierre de sesión remoto no disponible; se limpia la sesión local.", error);
+  }
   clearPalmyraLocalScope();
   clearActiveTenant();
 }
