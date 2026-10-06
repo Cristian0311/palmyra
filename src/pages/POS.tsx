@@ -1126,10 +1126,22 @@ export default function POS() {
     // Generate NCF if customer is selected or if config requires it.
     // El NCF es complementario al cobro. Nunca debe bloquear indefinidamente
     // una venta si la reserva fiscal está lenta o temporalmente no disponible.
-    const nextNcf = await Promise.race([
-      useStore.getState().getNextNCF('B01'),
-      new Promise<string | undefined>(resolve => setTimeout(() => resolve(undefined), 7000))
-    ]);
+    let nextNcf: string | undefined;
+    try {
+      nextNcf = await Promise.race([
+        useStore.getState().getNextNCF('B01'),
+        new Promise<string | undefined>(resolve => setTimeout(() => resolve(undefined), 7000))
+      ]);
+    } catch (ncfError: any) {
+      // Fiscal numbering is supplemental to the sale. A temporary fiscal
+      // configuration error must not cancel a valid checkout.
+      console.warn('[POS] No se pudo reservar el NCF; la venta continuará sin NCF:', ncfError);
+      addNotification(
+        'No se pudo reservar el rango fiscal. La venta continuará sin NCF y quedará pendiente de configuración fiscal.',
+        'warning',
+        ncfError?.message || 'Error al reservar NCF.'
+      );
+    }
     if (nextNcf) {
       tx.ncf = nextNcf;
       tx.ncfType = 'B01';
