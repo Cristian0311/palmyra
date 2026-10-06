@@ -34,6 +34,7 @@ import { cn } from "../lib/utils";
 import { loadSaaSContext } from "../services/saas";
 import { useStore } from "../store/useStore";
 import { getOfflineQueueCount } from "../services/offlineQueue";
+import { canUsePlanFeature, type PlanFeature } from "../services/planAccess";
 import { 
   CheckCircle2, 
   AlertTriangle, 
@@ -45,12 +46,12 @@ import {
 const adminNavItems = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard, permission: "reports.view" },
   { name: "POS", href: "/pos", icon: ShoppingCart, permission: "pos.access" },
-  { name: "Transferencias", href: "/transfers", icon: ArrowLeftRight, permission: "inventory.manage" },
+  { name: "Transferencias", href: "/transfers", icon: ArrowLeftRight, permission: "inventory.manage", requiredFeature: "transfers" as PlanFeature },
   { name: "Clientes", href: "/customers", icon: UserCircle, permission: "customers.manage" },
   { name: "Inventario", href: "/inventory", icon: Package, permission: "inventory.manage" },
-  { name: "Auditoría", href: "/inventory-audit", icon: ClipboardCheck, permission: "inventory.manage" },
+  { name: "Auditoría", href: "/inventory-audit", icon: ClipboardCheck, permission: "inventory.manage", requiredFeature: "inventory_audit" as PlanFeature },
   { name: "Proveedores", href: "/suppliers", icon: Truck, permission: "suppliers.manage" },
-  { name: "Bancos", href: "/banks", icon: CreditCard, permission: "settings.manage" },
+  { name: "Bancos", href: "/banks", icon: CreditCard, permission: "settings.manage", requiredFeature: "banking" as PlanFeature },
   { name: "Devoluciones", href: "/returns", icon: RotateCcw, permission: "pos.access" },
   { name: "Reportes", href: "/reports", icon: BarChart, permission: "reports.view" },
   { name: "Configuración", href: "/settings", icon: Settings, permission: "settings.manage" },
@@ -344,6 +345,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       : adminNavItems.filter(item => Boolean(item.public) || currentUser?.permissions?.includes(item.permission) || item.href === "/pos");
 
   const visibleNavItems = navItems.length > 0 ? navItems : cashierNavItems;
+  const currentPlanCode = saasContext?.subscription?.planCode || "";
+  const isPlanLocked = (item: { requiredFeature?: PlanFeature }) => Boolean(item.requiredFeature && !canUsePlanFeature(currentPlanCode, item.requiredFeature));
 
   const navSections = currentUser?.role === "admin"
     ? [
@@ -559,6 +562,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                             <span className="min-w-0 flex-1 font-black text-[8px] uppercase tracking-[-0.01em] leading-[1.1] whitespace-normal break-words">
                               {item.name}
                             </span>
+                            {!sidebarCollapsed && isPlanLocked(item) && (
+                              <span className="shrink-0 rounded-full bg-amber-50 px-1 py-0.5 text-[5px] font-black uppercase tracking-tight text-amber-700 border border-amber-200">
+                                Caravana
+                              </span>
+                            )}
                           )}
                         </div>
                       )}
