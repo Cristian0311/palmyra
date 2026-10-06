@@ -293,6 +293,7 @@ export async function createCompanyOnboarding(input: {
   employeeCode?: string;
   planCode: PlanCode;
   paymentMethod?: 'manual_cash' | 'manual_bank_transfer';
+  adminPosPassword: string;
 }) {
   const supabase = getSupabase();
   if (!supabase) throw new Error('Supabase no está configurado.');
@@ -306,10 +307,14 @@ export async function createCompanyOnboarding(input: {
     p_warehouse_name: input.warehouseName.trim(),
     p_plan_code: input.planCode,
     p_employee_name: input.employeeName?.trim() || null,
-    p_employee_code: input.employeeCode?.trim() || null
+    p_employee_code: input.employeeCode?.trim() || null,
+    p_admin_pos_password: input.adminPosPassword.trim()
   };
 
-  const { data, error } = await supabase.rpc('palmyra_onboard_company_with_payment', { ...payload, p_payment_method: input.paymentMethod || 'manual_cash' });
+  const { data, error } = await supabase.rpc('palmyra_onboard_company_with_payment_v2', {
+    ...payload,
+    p_payment_method: input.paymentMethod || 'manual_cash'
+  });
   if (error) throw error;
   return data as {
     company_id: string;
@@ -323,6 +328,18 @@ export async function createCompanyOnboarding(input: {
     request_id?: string | null;
     invoice?: unknown;
   };
+}
+
+export async function verifySaaSPosAccessPassword(companyId: string, userId: string, password: string) {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error("Supabase no está configurado.");
+  const { data, error } = await supabase.rpc("verify_pos_access_password", {
+    p_company_id: companyId,
+    p_user_id: userId,
+    p_password: password
+  });
+  if (error) throw error;
+  return data === true;
 }
 
 export async function selectCompanyPlan(companyId: string, planCode: PlanCode) {
