@@ -7,9 +7,11 @@ import { useStore } from "../store/useStore";
 import { Product, Payment, Transaction, CashRegisterSession } from "../types";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { waitForOfflineQueueReady } from "../services/offlineQueue";
+import { getActiveTenant } from "../services/tenant";
 import { usePOSOfflineStatus } from "../modules/pos/hooks/usePOSOfflineStatus";
 import { POSCatalog } from "../components/POSCatalog";
 import { formatMoney } from "../modules/pos/utils/paymentMath";
+import { verifySaaSPosAccessPassword } from "../services/saas";
 import { usePOSPayments } from "../modules/pos/hooks/usePOSPayments";
 import { usePOSScanner } from "../modules/pos/hooks/usePOSScanner";
 import { usePOSPrinter } from "../modules/pos/hooks/usePOSPrinter";
@@ -1078,19 +1080,38 @@ export default function POS() {
         return;
       }
 
-      const requiredPassword = (workerToAssign.password || '').trim();
       const enteredPassword = (sessionPassword || '').trim();
 
-      if (!requiredPassword) {
-        setPosError(`El empleado ${workerToAssign.name || 'empleado'} no tiene contraseña asignada. El administrador debe asignarle una en Configuración -> Usuarios.`);
+      if (!enteredPassword) {
+        setPosError(
+          currentUser?.role === 'admin' && workerToAssign.id === currentUser.id
+            ? "Introduce tu contraseña de Punto de Venta."
+            : `Introduce la contraseña de ${workerToAssign.name || 'empleado'}.`
+        );
         return;
       }
 
-      // La contraseña SIEMPRE se valida contra el trabajador seleccionado.
-      // También al reanudar un turno que ya estaba abierto.
-      if (enteredPassword !== requiredPassword) {
-        setPosError(`Contraseña incorrecta para ${workerToAssign.name || 'empleado'}. Acceso denegado.`);
-        return;
+      // El administrador/propietario usa una credencial POS independiente de
+      // la contraseña principal de su cuenta Supabase. La validación ocurre en
+      // servidor y la contraseña nunca se guarda en el estado persistido.
+      if (currentUser?.role === 'admin' && workerToAssign.id === currentUser.id) {
+        const { companyId } = await getActiveTenant();
+        const valid = await verifySaaSPosAccessPassword(companyId, workerToAssign.id, enteredPassword);
+        if (!valid) {
+          setPosError("Contraseña de Punto de Venta incorrecta. Acceso denegado.");
+          return;
+        }
+      } else {
+        // Compatibilidad con la credencial operativa existente de empleados.
+        const requiredPassword = (workerToAssign.password || '').trim();
+        if (!requiredPassword) {
+          setPosError(`El empleado ${workerToAssign.name || 'empleado'} no tiene contraseña operativa asignada.`);
+          return;
+        }
+        if (enteredPassword !== requiredPassword) {
+          setPosError(`Contraseña incorrecta para ${workerToAssign.name || 'empleado'}. Acceso denegado.`);
+          return;
+        }
       }
 
       // Si ya existe un turno abierto para ese trabajador/sucursal, reutilizarlo.
@@ -1483,7 +1504,7 @@ export default function POS() {
                           Seleccionar Empleado / Empleado del Turno
                         </label>
                         <div className="space-y-1.5">
-                          <div className="relative" ref={employeePickerRef}>
+                          <div className="relative" ref={employeePickerRef} data-palmi-guide="pos-employee-selector">
                             <div className="relative">
                               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
                               <input
@@ -1612,9 +1633,11 @@ export default function POS() {
                       </div>
                       )}
 
-                      <div>
+                      <div data-palmi-guide="pos-access-password">
                         <label className="block text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                          {currentUser?.role === 'admin' ? 'Contraseña del Empleado Seleccionado' : 'Contraseña del Empleado'}
+                          {currentUser?.role === 'admin' && detectedWorker?.id === currentUser.id
+                            ? 'Contraseña de Punto de Venta (Administrador)'
+                            : 'Contraseña del Empleado'}
                         </label>
                         <input
                           type="password"
