@@ -638,6 +638,19 @@ export default function PalmiGuide() {
         </div>
       ) : null}
 
+      {open && step?.id === "pos" && posGateOpen ? (
+        <div
+          className="palmi-guide-pos-gate-note"
+          role="status"
+          aria-live="polite"
+        >
+          <strong>NUMA · Apertura del Punto de Venta</strong>
+          <span>
+            1. Selecciona tu perfil <b>Administrador</b>. 2. Escribe la contraseña de Punto de Venta que definiste al registrar la empresa. 3. Abre el turno. Cuando termine, NUMA continuará automáticamente con la explicación.
+          </span>
+        </div>
+      ) : null}
+
       {open && !isActionStep && !posGateOpen ? (
         <div
           ref={panelRef}
