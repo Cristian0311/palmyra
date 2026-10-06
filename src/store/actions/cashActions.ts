@@ -152,6 +152,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
     // Offline-first: never fire-and-forget a master write. The session must
     // survive a reload and be retried through the operation queue.
     await enqueueOfflineItem('cash_session', sessionWithSequentialId, `cash-open:${sessionWithSequentialId.id}`);
+    await flushLocalStateStorage();
     return true;
   },
   closeSession: async (sessionId, closingBalances, workerName, closingDate, discrepancyDeduction, sessionMeta) => {
@@ -243,6 +244,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       salarySettlements: [...(state.salarySettlements || []).filter(st => st.sessionId !== sessionId), settlement],
       cart: []
     }));
+    await flushLocalStateStorage();
     return true;
   },
   updateCashSession: (id, updates) => {
