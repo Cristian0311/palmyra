@@ -247,7 +247,7 @@ export default function SaaSAuth() {
                 <div className="rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold p-3">{message}</div>
               ) : null}
 
-              <button disabled={busy || (requiresSocialUnlock && (!facebookOpened || !whatsappOpened || !socialLinks.facebook_url || !socialLinks.whatsapp_channel_url))} className="w-full h-11 mt-1 rounded-xl bg-[#6535C5] hover:bg-[#4F249D] text-white text-xs font-black flex items-center justify-center gap-2 disabled:opacity-50">
+              <button disabled={busy} className="w-full h-11 mt-1 rounded-xl bg-[#6535C5] hover:bg-[#4F249D] text-white text-xs font-black flex items-center justify-center gap-2 disabled:opacity-50">
                 {busy
                   ? "Procesando..."
                   : mode === "signup"
