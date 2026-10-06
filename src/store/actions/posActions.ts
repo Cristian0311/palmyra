@@ -293,7 +293,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
     const finalReason = reason || 'Anulación de venta';
 
     if (!navigator.onLine) {
-      await enqueueOfflineItem('void_transaction', { id, userId, reason: finalReason }, 'void:' + id);
+      await enqueueOfflineItem('void_transaction', { id, remoteId: tx.remoteId || id, userId, reason: finalReason }, 'void:' + id);
       set(current => buildLocalVoidTransactionPatch(current, tx));
       const deletedAt = new Date().toISOString();
       set((current) => ({
@@ -304,7 +304,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
 
     await enqueueOfflineItem('void_transaction', { id, userId, reason: finalReason }, 'void:' + id);
     try {
-      const res = await callVoidTransactionRPC(id, userId, finalReason);
+      const res = await callVoidTransactionRPC(tx.remoteId || id, userId, finalReason);
       if (!res.success) throw new Error(res.error || 'No se pudo anular la venta');
       set(current => buildLocalVoidTransactionPatch(current, tx));
       const deletedAt = new Date().toISOString();
