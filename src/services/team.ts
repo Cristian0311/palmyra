@@ -221,6 +221,19 @@ export async function createEmployeePosSecure(input: {
   return data as { id: string };
 }
 
+export async function updateEmployeePosSecure(input: {
+  companyId: string;
+  employeeId: string;
+  employeeCode: string;
+  fullName: string;
+  baseSalary: number;
+  roleId: string;
+  warehouseIds: string[];
+  posPassword?: string;
+}) {
+  return createEmployeePosSecure(input);
+}
+
 export async function createEmployee(input: {
   companyId: string;
   employeeCode: string;
