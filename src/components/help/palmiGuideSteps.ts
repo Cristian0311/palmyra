@@ -5,6 +5,7 @@ export interface NumaTourStep {
   eyebrow: string;
   title: string;
   message: string;
+  action?: string;
   tip?: string;
   permission?: string;
   route?: string;
@@ -18,25 +19,38 @@ const STEPS: NumaTourStep[] = [
     id: "welcome",
     eyebrow: "BIENVENIDA",
     title: "Soy NUMA",
-    message: "Soy la guía de PALMYRA. Te acompaño por el sistema sin bloquear la pantalla y te llevo hasta el lugar exacto que necesitas.",
-    tip: "Puedes cerrar NUMA en cualquier momento y volver a abrirla desde el menú."
+    message:
+      "Soy la guía de PALMYRA. Te explico qué hace cada área y te acompaño con instrucciones concretas, sin quitarte el control.",
+    tip:
+      "En cada paso verás primero qué debes tocar y, después, qué puedes hacer dentro de esa sección."
   },
   {
     id: "dashboard",
     eyebrow: "CONTROL",
     title: "Dashboard",
-    message: "Aquí ves la actividad principal del negocio, sus indicadores y accesos rápidos.",
+    action: "Toca “Dashboard” en el menú lateral.",
+    message:
+      "Ya estás en Dashboard. Aquí obtienes una vista rápida del negocio: indicadores, actividad reciente y accesos importantes para saber qué necesita atención.",
+    tip:
+      "Úsalo para orientarte antes de entrar en una operación concreta.",
     permission: "reports.view",
     route: "/",
     navTarget: true,
     target: ['[data-palmy-nav="/"]'],
-    contentTarget: ['[data-palmi-content="dashboard"]', '[data-palmi-heading="dashboard"]']
+    contentTarget: [
+      '[data-palmi-content="dashboard"]',
+      '[data-palmi-heading="dashboard"]'
+    ]
   },
   {
     id: "pos",
     eyebrow: "VENTAS",
     title: "Punto de Venta",
-    message: "Este es el centro de ventas. Desde aquí puedes cobrar, gestionar el carrito y continuar trabajando con el modo offline.",
+    action: "Toca “Punto de Venta” en el menú lateral.",
+    message:
+      "Ya estás en Punto de Venta. Aquí puedes crear la venta, buscar productos, revisar el carrito, seleccionar el vendedor, cobrar y continuar trabajando cuando la conexión falle.",
+    tip:
+      "La venta debe quedar controlada desde el carrito hasta el comprobante final.",
     permission: "pos.access",
     route: "/pos",
     navTarget: true,
@@ -47,7 +61,11 @@ const STEPS: NumaTourStep[] = [
     id: "inventory",
     eyebrow: "INVENTARIO",
     title: "Inventario",
-    message: "Consulta existencias, productos y alertas del almacén autorizado.",
+    action: "Toca “Inventario” en el menú lateral.",
+    message:
+      "Ya estás en Inventario. Aquí controlas productos, existencias y movimientos del almacén autorizado para saber qué hay disponible y qué necesita reposición.",
+    tip:
+      "Las existencias son la referencia para compras, ventas y movimientos entre almacenes.",
     permission: "inventory.manage",
     route: "/inventory",
     navTarget: true,
@@ -58,7 +76,11 @@ const STEPS: NumaTourStep[] = [
     id: "transfers",
     eyebrow: "ABASTECIMIENTO",
     title: "Transferencias",
-    message: "Gestiona movimientos de mercancía entre los almacenes a los que tienes acceso.",
+    action: "Toca “Transferencias” en el menú lateral.",
+    message:
+      "Ya estás en Transferencias. Aquí registras los movimientos de mercancía entre almacenes a los que tienes acceso y puedes revisar su historial operativo.",
+    tip:
+      "Antes de registrar un movimiento, confirma siempre el almacén de origen y el de destino.",
     permission: "inventory.manage",
     route: "/transfers",
     navTarget: true,
@@ -69,7 +91,11 @@ const STEPS: NumaTourStep[] = [
     id: "customers",
     eyebrow: "CLIENTES",
     title: "Clientes",
-    message: "Registra y consulta clientes para asociarlos a las operaciones que correspondan.",
+    action: "Toca “Clientes” en el menú lateral.",
+    message:
+      "Ya estás en Clientes. Aquí puedes registrar, consultar y mantener la información de las personas o negocios que se relacionan con tus operaciones.",
+    tip:
+      "Mantener los datos limpios evita duplicados y facilita las consultas posteriores.",
     permission: "customers.manage",
     route: "/customers",
     navTarget: true,
@@ -78,9 +104,13 @@ const STEPS: NumaTourStep[] = [
   },
   {
     id: "reports",
-    eyebrow: "ANÁLISIS",
+    eyebrow: "RESULTADOS",
     title: "Reportes",
-    message: "Aquí revisas ventas, caja e historial para controlar lo que ocurre en el negocio.",
+    action: "Toca “Reportes” en el menú lateral.",
+    message:
+      "Ya estás en Reportes. Aquí conviertes las operaciones en información para revisar ventas, caja, inventario y otros resultados del negocio.",
+    tip:
+      "Los reportes sirven para revisar lo ocurrido; las operaciones se realizan en sus módulos correspondientes.",
     permission: "reports.view",
     route: "/reports",
     navTarget: true,
@@ -91,7 +121,11 @@ const STEPS: NumaTourStep[] = [
     id: "team",
     eyebrow: "PERSONAL",
     title: "Equipo",
-    message: "Administra empleados, roles y los accesos que necesita cada trabajador.",
+    action: "Toca “Equipo” en el menú lateral.",
+    message:
+      "Ya estás en Equipo. Aquí administras empleados, roles y permisos para que cada persona vea y haga únicamente lo que corresponde a su trabajo.",
+    tip:
+      "Los permisos determinan qué áreas puede utilizar cada trabajador.",
     permission: "employees.manage",
     route: "/team",
     navTarget: true,
@@ -102,7 +136,11 @@ const STEPS: NumaTourStep[] = [
     id: "settings",
     eyebrow: "CONFIGURACIÓN",
     title: "Configuración",
-    message: "Configura la empresa y las opciones operativas de tu cuenta.",
+    action: "Toca “Configuración” en el menú lateral.",
+    message:
+      "Ya estás en Configuración. Aquí defines opciones de la empresa y de la operación para adaptar PALMYRA a la forma en que trabaja tu negocio.",
+    tip:
+      "Haz cambios de configuración con cuidado porque pueden afectar el comportamiento del sistema.",
     permission: "settings.manage",
     route: "/settings",
     navTarget: true,
@@ -113,7 +151,11 @@ const STEPS: NumaTourStep[] = [
     id: "help",
     eyebrow: "AYUDA",
     title: "Centro de atención",
-    message: "Aquí viven el tutorial, soporte, seguridad y política de privacidad. NUMA también se abre desde este lugar.",
+    action: "Toca “Centro de atención” en el menú lateral.",
+    message:
+      "Ya estás en Centro de atención. Aquí encuentras el tutorial, soporte, seguridad y política de privacidad; también puedes volver a abrir NUMA cuando necesites orientación.",
+    tip:
+      "Este es el punto de ayuda cuando una función no está clara o necesitas contactar con soporte.",
     route: "/help",
     navTarget: true,
     target: ['[data-palmy-nav="/help"]', '[data-palmy-nav="/help-center"]'],
@@ -123,21 +165,28 @@ const STEPS: NumaTourStep[] = [
     id: "offline",
     eyebrow: "CONTINUIDAD",
     title: "Estado offline",
-    message: "El indicador de conexión te muestra si estás online y cuántas operaciones permanecen pendientes de sincronización.",
+    message:
+      "El indicador de conexión te muestra si PALMYRA está online o offline y, cuando corresponde, cuántas operaciones quedan pendientes de sincronización.",
+    tip:
+      "Cuando vuelva la conexión, revisa el estado de sincronización antes de considerar el trabajo completamente enviado.",
     target: ['[data-tour="offline-status"]', '[data-tour="offline-status-mobile"]']
   },
   {
     id: "finish",
     eyebrow: "LISTO",
     title: "NUMA está contigo",
-    message: "Terminaste el recorrido. A partir de ahora NUMA puede ayudarte desde cualquier sección sin esconder la información que necesitas.",
-    tip: "La guía recuerda tu progreso y respeta el tamaño de la pantalla."
+    message:
+      "Terminaste el recorrido. Desde ahora puedes abrir NUMA desde el menú de PALMYRA y recibir una explicación contextual sin perder de vista lo que estás haciendo.",
+    tip:
+      "NUMA se adapta a móvil, tablet y PC y no mueve tu contenido ni modifica una operación por su cuenta."
   }
 ];
 
 export const NUMA_TOUR_STEPS = STEPS;
 
-export function getAccessibleNumaTourSteps(user: User | null | undefined): NumaTourStep[] {
+export function getAccessibleNumaTourSteps(
+  user: User | null | undefined
+): NumaTourStep[] {
   return STEPS.filter((step) => {
     if (!step.permission) return true;
     if (user?.role === "admin") return true;
