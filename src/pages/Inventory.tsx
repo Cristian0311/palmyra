@@ -1272,21 +1272,21 @@ export default function Inventory() {
                         </div>
 
                         <div className="space-y-1.5">
-                          {hasFixedProductEmployees ? (
-                            <>
+                          {hasFixedProductEmployees && (
+                            <div className="space-y-1.5">
                               <div className="flex items-center justify-between">
                                 <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Comisión Vendedor (CUP Fijo)</label>
                                 <InfoTooltip text="Monto fijo en CUP que recibe el vendedor por cada unidad vendida de este producto." />
                               </div>
                               <input type="number" min="0" value={formData.commissionValue === 0 ? '' : (formData.commissionValue ?? '')} placeholder="0.00" onFocus={(e) => e.target.select()} onChange={e => setFormData({...formData, commissionValue: e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0)})} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-black outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                            </>
-                          ) : (
+                            </div>
+                          )}
+                          {!hasFixedProductEmployees && (
                             <div className="p-3 rounded-2xl bg-slate-100 border border-slate-200 text-[9px] font-bold text-slate-500">
                               Los empleados están configurados para <b>% sobre el total de venta</b>. La comisión fija por producto queda desactivada.
                             </div>
                           )}
                         </div>
-
 
                       <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100 space-y-6">
                         <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
