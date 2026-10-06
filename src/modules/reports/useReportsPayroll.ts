@@ -81,20 +81,27 @@ export function useReportsPayroll(params: {
       const workerName = session.workerName || existing?.userName || emp?.name || 'Vendedor';
 
       let commissions = existing?.commissions || 0;
+      const compensationType = emp?.compensationType || 'fixed_product';
+      const salesPercentage = Number(emp?.salesPercentage || 0);
+
       if (!existing) {
-        commissions = sessionTx.reduce(
-          (sum, tx) =>
-            sum +
-            (tx.items || []).reduce((itemsSum, item) => {
-              const productId = typeof item.product === 'string' ? item.product : item.product?.id;
-              const product = productId ? productById.get(productId) : undefined;
-              return itemsSum + (product?.commissionValue || 0) * item.quantity;
-            }, 0),
-          0
-        );
+        if (compensationType === 'sales_percentage') {
+          commissions = totalSales * Math.max(0, Math.min(100, salesPercentage)) / 100;
+        } else {
+          commissions = sessionTx.reduce(
+            (sum, tx) =>
+              sum +
+              (tx.items || []).reduce((itemsSum, item) => {
+                const productId = typeof item.product === 'string' ? item.product : item.product?.id;
+                const product = productId ? productById.get(productId) : undefined;
+                return itemsSum + (product?.commissionValue || 0) * item.quantity;
+              }, 0),
+            0
+          );
+        }
       }
 
-      const baseSalary = existing?.baseSalary ?? emp?.baseSalary ?? 0;
+      const baseSalary = existing?.baseSalary ?? (compensationType === 'sales_percentage' ? 0 : (emp?.baseSalary ?? 0));
       const totalSalary = existing?.total ?? (baseSalary + commissions);
       const status = existing?.status === 'paid' ? 'paid' : 'pending';
       const date = existing?.date || session.closingDate || session.closedAt || session.openedAt;
