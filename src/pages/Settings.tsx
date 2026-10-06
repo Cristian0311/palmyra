@@ -6,8 +6,7 @@ import { useStore } from "../store/useStore";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { SettingsWarehousesSection } from "../components/settings/SettingsWarehousesSection";
 import { SettingsCategoriesSection } from "../components/settings/SettingsCategoriesSection";
-import { SettingsEmployeeConfigModal } from "../components/settings/SettingsEmployeeConfigModal";
-import { Branch, Category, User } from "../types";
+import { Branch, Category } from "../types";
 import { cn } from "../lib/utils";
 import { normalizeSemanticText } from "../utils/textUtils";
 import { connectBluetoothPrinter, connectPrinter, printESCPOS, isInsideIframe } from "../lib/escpos";
@@ -24,10 +23,9 @@ export default function Settings() {
     branches, addBranch, updateBranch, deleteBranch,
     categories, addCategory, updateCategory, deleteCategory,
     receiptConfig, updateReceiptConfig,
-    users, updateUser, addUser, deleteUser, currentUser,
+    users, currentUser,
     getBaseCurrency, clearAllData,
     exportData, importData,
-    registerEmployee,
     products,
     inventory, transactions, cashSessions,
     syncWithSupabase,
@@ -67,7 +65,6 @@ export default function Settings() {
 
   const baseCurrency = getBaseCurrency();
   const productById = useMemo(() => new Map(products.map(product => [product.id, product])), [products]);
-  const employees = useMemo(() => users.filter(user => user.role === 'employee'), [users]);
 
   const [rates, setRates] = useState<{ [code: string]: number }>(
     currencies.reduce((acc, c) => ({ ...acc, [c.code]: c.rateToBase }), {})
@@ -78,7 +75,6 @@ export default function Settings() {
   useEffect(() => {
     setTicketConfig(receiptConfig);
   }, [receiptConfig]);
-  const [employeeSalaries, setEmployeeSalaries] = useState<{ [id: string]: number }>({});
   
   const [printerStatus, setPrinterStatus] = useState<{
     type: 'idle' | 'loading' | 'success' | 'error' | 'warning';
@@ -96,7 +92,6 @@ export default function Settings() {
   };
 
   // In-app Deletion Confirmations (Bypasses iframe blocked window.confirm)
-  const [userToDelete, setUserToDelete] = useState<{ id: string; name: string } | null>(null);
   const [branchToDelete, setBranchToDelete] = useState<{ id: string; name: string } | null>(null);
   const [categoryToDelete, setCategoryToDelete] = useState<{ id: string; name: string } | null>(null);
 
@@ -107,21 +102,6 @@ export default function Settings() {
       setIsInIframe(true);
     }
   }, []);
-
-  // Sync employee salaries when users are loaded
-  useEffect(() => {
-    if (users.length > 0) {
-      setEmployeeSalaries(prev => {
-        const next = { ...prev };
-        users.forEach(u => {
-          if (!(u.id in next)) {
-            next[u.id] = u.baseSalary || 0;
-          }
-        });
-        return next;
-      });
-    }
-  }, [users]);
 
   const [newBranchName, setNewBranchName] = useState("");
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
@@ -148,7 +128,6 @@ export default function Settings() {
   const [newCategory, setNewCategory] = useState({ name: "", department: "" });
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   
-  const [newEmployee, setNewEmployee] = useState({ name: "", password: "" });
 
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -171,7 +150,6 @@ export default function Settings() {
   ] as const;
   const [resetSections, setResetSections] = useState<string[]>([]);
 
-  const [selectedUserForConfig, setSelectedUserForConfig] = useState<User | null>(null);
   const settingsContentRef = useRef<HTMLDivElement | null>(null);
 
   const [activeTab, setActiveTab] = useState<'connectivity' | 'company' | 'currency' | 'branches' | 'categories' | 'visual' | 'advanced'>('connectivity');
@@ -257,109 +235,6 @@ export default function Settings() {
   const handleSaveTicket = () => {
     updateReceiptConfig(ticketConfig);
     showToast("Configuración de ticket guardada.");
-  };
-
-  const handleSaveEmployeeSalary = (userId: string) => {
-    const salary = employeeSalaries[userId];
-    updateUser(userId, { baseSalary: salary });
-    showToast("Salario actualizado correctamente.");
-  };
-
-  const confirmDeleteUserAction = () => {
-    if (userToDelete) {
-      deleteUser(userToDelete.id);
-      showToast(`Empleado "${userToDelete.name}" desactivado. Se conserva su historial.`);
-      setUserToDelete(null);
-    }
-  };
-
-  const confirmDeleteBranchAction = () => {
-    if (branchToDelete) {
-      const hasStock = (inventory || []).some(l => l.branchId === branchToDelete.id && l.quantity > 0);
-      const hasTx = (transactions || []).some(t => t.branchId === branchToDelete.id && !t.deletedAt);
-      const hasSessions = (cashSessions || []).some(s => s.branchId === branchToDelete.id && !s.deletedAt);
-
-      if (hasStock || hasTx || hasSessions) {
-        showToast(`No se puede eliminar "${branchToDelete.name}" porque contiene existencias, ventas o turnos registrados. Considere desactivarla.`, "error");
-        setBranchToDelete(null);
-        return;
-      }
-
-      deleteBranch(branchToDelete.id);
-      showToast(`Almacén "${branchToDelete.name}" eliminado.`);
-      setBranchToDelete(null);
-    }
-  };
-
-  const confirmDeleteCategoryAction = () => {
-    if (categoryToDelete) {
-      const hasProducts = (products || []).some(p => p.categoryId === categoryToDelete.id);
-      if (hasProducts) {
-        showToast(`No se puede eliminar la categoría "${categoryToDelete.name}" porque tiene productos asignados.`, "error");
-        setCategoryToDelete(null);
-        return;
-      }
-
-      deleteCategory(categoryToDelete.id);
-      showToast(`Categoría "${categoryToDelete.name}" eliminada.`);
-      setCategoryToDelete(null);
-    }
-  };
-
-  const handleAddBranch = () => {
-    const trimmed = newBranchName.trim();
-    if (trimmed) {
-      const normInput = normalizeSemanticText(trimmed);
-      const duplicate = branches.find(b =>
-        normalizeSemanticText(b.name) === normInput &&
-        (!editingBranch || b.id !== editingBranch.id)
-      );
-
-      if (duplicate) {
-        showToast(`Ya existe un almacén con este nombre ("${duplicate.name}"). No se permiten duplicados.`, "error");
-        return;
-      }
-
-      if (editingBranch) {
-        updateBranch(editingBranch.id, { name: trimmed });
-        setEditingBranch(null);
-        showToast("Almacén actualizado.");
-      } else {
-        const activeWarehouseCount = branches.filter(b => b.isActive !== false).length;
-        if (warehousePlanLimit !== null && activeWarehouseCount >= warehousePlanLimit) {
-          showToast(
-            `${warehousePlanName || "Tu plan actual"} permite un máximo de ${warehousePlanLimit} almacén${warehousePlanLimit === 1 ? "" : "es"}. Para agregar otro, debes cambiar de plan.`,
-            "error"
-          );
-          return;
-        }
-        addBranch({ id: crypto.randomUUID(), name: trimmed });
-        showToast("Almacén agregado y guardado en Supabase.");
-      }
-      setNewBranchName("");
-    }
-  };
-
-  const handleAddCategory = () => {
-    if (newCategory.name.trim() && newCategory.department.trim()) {
-      if (editingCategory) {
-        updateCategory(editingCategory.id, { name: newCategory.name.trim(), department: newCategory.department.trim() });
-        setEditingCategory(null);
-        showToast("Categoría actualizada.");
-      } else {
-        addCategory({ id: crypto.randomUUID(), name: newCategory.name.trim(), department: newCategory.department.trim() });
-        showToast("Categoría registrada.");
-      }
-      setNewCategory({ name: "", department: "" });
-    }
-  };
-
-  const handleRegisterEmployeeManual = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newEmployee.name.trim() || !newEmployee.password) return;
-    registerEmployee(newEmployee.name.trim(), newEmployee.password);
-    setNewEmployee({ name: "", password: "" });
-    showToast("Empleado registrado con éxito. Ya aparecerá en el punto de venta.");
   };
 
   const handleManualSync = async () => {
@@ -825,17 +700,6 @@ export default function Settings() {
           </div>
         </div>
       )}
-
-      <SettingsEmployeeConfigModal
-        user={selectedUserForConfig}
-        branches={branches}
-        employeeSalaries={employeeSalaries}
-        setEmployeeSalaries={setEmployeeSalaries}
-        setUser={setSelectedUserForConfig}
-        updateUser={updateUser}
-        setUserToDelete={setUserToDelete}
-        onClose={() => setSelectedUserForConfig(null)}
-      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         {/* Tasas de Cambio (Compacto Lineal: CUP, USD, EUR) */}
