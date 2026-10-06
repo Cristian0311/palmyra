@@ -2292,6 +2292,23 @@ export default function POS() {
                       });
                     });
 
+                    // Ingresos y egresos son parte del efectivo real del turno,
+                    // no ventas. Ingreso suma y egreso resta.
+                    const cashMovementsByCurrency = (currentSession?.movements || []).reduce((acc, movement) => {
+                      const amount = Math.abs(Number(movement.amount) || 0);
+                      const sign = movement.type === 'income' ? 1 : -1;
+                      acc[movement.currencyCode] = (acc[movement.currencyCode] || 0) + sign * amount;
+                      return acc;
+                    }, {} as Record<string, number>);
+
+                    if (baseCurrency.code === 'USD') {
+                      cashUsdSum += cashMovementsByCurrency.USD || 0;
+                    } else {
+                      cashCupSum += cashMovementsByCurrency[baseCurrency.code] || 0;
+                      cashCupSum += cashMovementsByCurrency.CUP || 0;
+                    }
+                    cashUsdSum += baseCurrency.code === 'USD' ? 0 : (cashMovementsByCurrency.USD || 0);
+
                     const totalSalesAmount = sessionTx.reduce((sum, tx) => sum + (tx.total || 0), 0);
 
                     // Helper to determine payment category for a transaction
