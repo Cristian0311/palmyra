@@ -4,9 +4,9 @@ import type { NumaMood } from "./numa";
 export type { NumaMood };
 
 /**
- * Mascota gráfica de NUMA.
- * La ilustración vive como asset independiente para que el componente sea ligero,
- * cacheable y fácil de sustituir sin tocar la lógica de la guía.
+ * Mascota oficial de NUMA.
+ * Un único render 3D consistente; los estados se diferencian visualmente
+ * mediante clases de animación sin sustituir el personaje.
  */
 export function PalmiMascot({
   className = "",
@@ -17,7 +17,7 @@ export function PalmiMascot({
 }) {
   return (
     <img
-      src="/numa-mascot.svg"
+      src="/numa-mascot.webp"
       alt="NUMA, mascota guía de PALMYRA"
       className={`numa-mascot numa-mood-${mood} ${className}`}
       draggable={false}

@@ -94,3 +94,5 @@
   .palmi-guide-panel,.palmi-guide-action-card{animation:none}
   .palmi-aura-2,.palmi-spark,.numa-mood-thinking,.numa-mood-waiting,.numa-mood-success,.numa-mood-alert{animation:none}
 }
+
+.palmi-guide-action-card .palmi-action-card-arrow.is-side{top:50%;left:-14px;bottom:auto;transform:translateY(-50%);}

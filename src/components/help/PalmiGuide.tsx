@@ -10,11 +10,12 @@ import PwaInstallPrompt from "./PwaInstallPrompt";
 type Phase = "action" | "explain";
 type Position = { top: number; left: number; width: number };
 
-const GUIDE_KEY = "palmyra-numa-guide-v7";
+const GUIDE_KEY = "palmyra-numa-guide-v8";
 const SAFE = 14;
 const TOP_SAFE = 68;
 const BOTTOM_SAFE = 22;
 const GAP = 14;
+const SIDEBAR_GAP = 18;
 
 function compactViewport() {
   return typeof window !== "undefined" && window.innerWidth < 1024;
@@ -60,6 +61,10 @@ function findContentTarget(step: NumaTourStep) {
       'main [role="heading"]'
     ])
   );
+}
+
+function findSidebarRect() {
+  return document.querySelector<HTMLElement>("[data-palmy-sidebar]")?.getBoundingClientRect() || null;
 }
 
 function clamp(value: number, min: number, max: number) {
@@ -326,19 +331,26 @@ export default function PalmiGuide() {
 
     let cancelled = false;
     let boundTarget: HTMLElement | null = null;
+    let phaseTimer: number | null = null;
     let fallbackTimer: number | null = null;
 
     const handleTargetClick = () => {
       if (cancelled) return;
-      setPhase("explain");
-      setTargetRect(null);
+
+      // Dejamos que NavLink/React Router procese primero el click real.
+      // Cambiar la capa durante pointerup podía bloquear la navegación.
+      phaseTimer = window.setTimeout(() => {
+        if (cancelled) return;
+        setPhase("explain");
+        setTargetRect(null);
+      }, 80);
 
       if (step.route) {
         fallbackTimer = window.setTimeout(() => {
           if (!cancelled && !isCurrentRoute(step.route, window.location.pathname)) {
             navigate(step.route);
           }
-        }, 350);
+        }, 700);
       }
     };
 
@@ -349,8 +361,8 @@ export default function PalmiGuide() {
         window.setTimeout(bind, 80);
         return;
       }
+
       boundTarget = target;
-      target.addEventListener("pointerup", handleTargetClick, true);
       target.addEventListener("click", handleTargetClick, true);
     };
 
@@ -359,9 +371,9 @@ export default function PalmiGuide() {
     return () => {
       cancelled = true;
       if (boundTarget) {
-        boundTarget.removeEventListener("pointerup", handleTargetClick, true);
         boundTarget.removeEventListener("click", handleTargetClick, true);
       }
+      if (phaseTimer !== null) window.clearTimeout(phaseTimer);
       if (fallbackTimer !== null) window.clearTimeout(fallbackTimer);
     };
   }, [open, isActionStep, step?.id, step?.route, step?.target, navigate]);
@@ -435,9 +447,16 @@ export default function PalmiGuide() {
 
   const actionHintWidth = Math.min(252, Math.max(198, window.innerWidth - SAFE * 2));
   const actionHintHeight = 104;
+  const sidebarRect = isActionStep ? findSidebarRect() : null;
   const actionCandidates = targetRect
     ? [
-        { left: targetRect.right + GAP, top: targetRect.top, side: "right" as const },
+        ...(sidebarRect && !isCompact
+          ? [{
+              left: sidebarRect.right + SIDEBAR_GAP,
+              top: targetRect.top,
+              side: "right" as const
+            }]
+          : []),
         { left: targetRect.left, top: targetRect.bottom + GAP, side: "below" as const },
         { left: targetRect.left, top: targetRect.top - actionHintHeight - GAP, side: "above" as const },
         { left: window.innerWidth - actionHintWidth - SAFE, top: TOP_SAFE, side: "top" as const }
@@ -448,29 +467,44 @@ export default function PalmiGuide() {
     .map(candidate => ({
       ...candidate,
       left: clamp(candidate.left, SAFE, Math.max(SAFE, window.innerWidth - actionHintWidth - SAFE)),
-      top: clamp(candidate.top, TOP_SAFE, Math.max(TOP_SAFE, window.innerHeight - actionHintHeight - BOTTOM_SAFE))
+      top: clamp(
+        candidate.top,
+        TOP_SAFE,
+        Math.max(TOP_SAFE, window.innerHeight - actionHintHeight - BOTTOM_SAFE)
+      )
     }))
     .sort((a, b) => {
-      const overlap = (candidate: typeof a) => {
+      const overlapScore = (candidate: typeof a) => {
         if (!targetRect) return 0;
-        const overlapX = Math.max(
-          0,
-          Math.min(candidate.left + actionHintWidth, targetRect.right) -
-            Math.max(candidate.left, targetRect.left)
-        );
-        const overlapY = Math.max(
-          0,
-          Math.min(candidate.top + actionHintHeight, targetRect.bottom) -
-            Math.max(candidate.top, targetRect.top)
-        );
-        return overlapX * overlapY;
+
+        const overlap = (rect: DOMRect) => {
+          const overlapX = Math.max(
+            0,
+            Math.min(candidate.left + actionHintWidth, rect.right) -
+              Math.max(candidate.left, rect.left)
+          );
+          const overlapY = Math.max(
+            0,
+            Math.min(candidate.top + actionHintHeight, rect.bottom) -
+              Math.max(candidate.top, rect.top)
+          );
+          return overlapX * overlapY;
+        };
+
+        return overlap(targetRect) + (sidebarRect ? overlap(sidebarRect) * 3 : 0);
       };
-      return overlap(a) - overlap(b);
+
+      return overlapScore(a) - overlapScore(b);
     })[0];
 
   const actionHintLeft = actionPlacement.left;
   const actionHintTop = actionPlacement.top;
-  const actionHintAbove = actionPlacement.side === "above";
+  const actionHintArrow =
+    actionPlacement.side === "right"
+      ? "←"
+      : actionPlacement.side === "below"
+        ? "↑"
+        : "↓";
 
   const onMascotOpen = () => setOpen(true);
 
@@ -506,7 +540,7 @@ export default function PalmiGuide() {
           </div>
           <strong>{title}</strong>
           <p>{actionText}</p>
-          <span className="palmi-action-card-arrow" aria-hidden="true">{actionHintAbove ? "↓" : "↑"}</span>
+          <span className={`palmi-action-card-arrow ${actionPlacement.side === "right" ? "is-side" : ""}`} aria-hidden="true">{actionHintArrow}</span>
         </div>
       ) : null}
 
