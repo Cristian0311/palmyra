@@ -1573,9 +1573,10 @@ export default function POS() {
                     value={joiningSessionPassword}
                     onChange={e => {
                       setJoiningSessionPassword(e.target.value);
-                      setPosError("");
+                      if (posError) setPosError("");
                     }}
-                    placeholder="Ingresa la contraseña"
+                    autoComplete="current-password"
+                    placeholder="Contraseña para reanudar"
                     className="w-full px-2.5 py-2 bg-slate-50 border border-slate-100 dark:bg-slate-800 dark:border-slate-700 rounded-lg text-[9px] font-bold text-slate-900 dark:text-slate-100 outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-300"
                   />
                 </div>
@@ -2993,12 +2994,12 @@ export default function POS() {
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <div className="flex items-center gap-1.5 bg-slate-800/90 px-2.5 py-1 rounded-lg border border-slate-700/80">
             <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-            <span className="text-[10px] font-black uppercase tracking-wider text-slate-200 truncate max-w-[110px] sm:max-w-[150px]">
+            <span className="text-[8px] font-black uppercase tracking-[0.05em] text-slate-200 truncate max-w-[100px] sm:max-w-[140px]">
               {currentSession?.workerName || currentUser?.name || 'Caja Activa'}
             </span>
           </div>
 
-          <div className="hidden sm:flex items-center gap-1.5 text-slate-400 text-[10px] font-bold">
+          <div className="hidden sm:flex items-center gap-1.5 text-slate-400 text-[8px] font-bold">
             <span>•</span>
             <span className="truncate max-w-[160px] text-slate-300 flex items-center gap-1.5">
               {branches.find(b => b.id === currentBranchId)?.name || branches[0]?.name || 'Sucursal General'}
@@ -3013,7 +3014,7 @@ export default function POS() {
           {/* Exchange Rates Ticker */}
           <div className="hidden md:flex items-center gap-2 bg-indigo-950/60 border border-indigo-500/20 px-2.5 py-1 rounded-lg">
             {currencies.filter(c => !c.isBase).slice(0, 2).map(c => (
-              <span key={c.code} className="text-[9px] font-black text-indigo-300">
+              <span key={c.code} className="text-[8px] font-black text-indigo-300">
                 1 {c.code} = {c.rateToBase.toLocaleString('es-CU')} {baseCurrency.code}
               </span>
             ))}
@@ -3028,7 +3029,7 @@ export default function POS() {
               setCashManagementTab('close');
               setShowCashManagementModal(true);
             }}
-            className="px-2.5 sm:px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-rose-950/40 active:scale-95 border border-rose-500/40"
+            className="px-2.5 sm:px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[8px] sm:text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-rose-950/40 active:scale-95 border border-rose-500/40"
             title="Cerrar Caja y Finalizar Turno"
           >
             <Lock className="w-3.5 h-3.5 text-rose-200" />
@@ -3040,7 +3041,7 @@ export default function POS() {
             <button
               type="button"
               onClick={() => setShowCancelShiftModal(true)}
-              className="px-2 sm:px-2.5 py-1 bg-slate-100 hover:bg-rose-50 text-rose-600 rounded-lg text-[9px] sm:text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border border-slate-200 active:scale-95"
+              className="px-2 sm:px-2.5 py-1 bg-slate-100 hover:bg-rose-50 text-rose-600 rounded-lg text-[8px] sm:text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border border-slate-200 active:scale-95"
               title="Anular Turno Completo"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -3165,7 +3166,7 @@ export default function POS() {
                           <p className="text-[8px] font-semibold text-muted">{formatMoney(prodPrice, baseCurrency.symbol)} / u.</p>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
-                          <span className="text-[10px] sm:text-[11px] font-black text-primary font-mono">{formatMoney(prodPrice * item.quantity, baseCurrency.symbol)}</span>
+                          <span className="text-[9px] sm:text-[10px] font-black text-primary font-mono">{formatMoney(prodPrice * item.quantity, baseCurrency.symbol)}</span>
                           <button
                             type="button"
                             onClick={() => updateCartQty(item.id, -item.quantity)}
@@ -3219,8 +3220,8 @@ export default function POS() {
                 <span className="text-primary font-black">{formatMoney(subtotalBase, baseCurrency.symbol)}</span>
               </div>
               <div className="flex justify-between items-center pt-1 border-t border-base">
-                <span className="text-[11px] font-black text-primary uppercase tracking-wider">Total</span>
-                <span className="text-xl font-black text-indigo-600 dark:text-indigo-400 tracking-tight">{formatMoney(totalBase, baseCurrency.symbol)}</span>
+                <span className="text-[9px] font-black text-primary uppercase tracking-wider">Total</span>
+                <span className="text-lg font-black text-indigo-600 dark:text-indigo-400 tracking-tight">{formatMoney(totalBase, baseCurrency.symbol)}</span>
               </div>
             </div>
 
@@ -3238,7 +3239,7 @@ export default function POS() {
                   setActivePaymentLineId(lineId);
                   setShowCheckoutModal(true);
                 }}
-                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-[11px] uppercase tracking-wider transition-all shadow-md shadow-indigo-600/20 disabled:opacity-20 active:scale-98 flex items-center justify-center gap-2"
+                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-[9px] uppercase tracking-wider transition-all shadow-md shadow-indigo-600/20 disabled:opacity-20 active:scale-98 flex items-center justify-center gap-2"
               >
                 <Banknote className="w-4 h-4 text-emerald-300" />
                 Cobrar Efectivo
@@ -3433,7 +3434,7 @@ export default function POS() {
                           <span className="text-[9px] font-black text-slate-900 dark:text-white uppercase tracking-wider block">Neto a Recibir</span>
                           <span className="text-[7px] font-bold text-slate-400 uppercase">Liquidación Total Turno</span>
                         </div>
-                        <span className="text-lg sm:text-xl font-black text-indigo-600 dark:text-indigo-400 font-mono tracking-tight">
+                        <span className="text-lg sm:text-lg font-black text-indigo-600 dark:text-indigo-400 font-mono tracking-tight">
                           {formatSalaryCUP(totalSalary)}
                         </span>
                       </div>
