@@ -1,5 +1,5 @@
 import { useShallow } from 'zustand/react/shallow';
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { useStore } from "../store/useStore";
 import { Supplier, SupplierOrder } from "../types";
 import { 
@@ -24,6 +24,8 @@ import {
 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { InfoTooltip } from "../components/InfoTooltip";
+import { loadSaaSContext } from "../services/saas";
+import { canUsePlanFeature } from "../services/planAccess";
 
 export default function Suppliers() {
   const { suppliers, addSupplier, updateSupplier, deleteSupplier, supplierOrders, products, createSupplierOrder, updateSupplierOrder, branches, getBaseCurrency } = useStore(useShallow((state) => ({ suppliers: state.suppliers, addSupplier: state.addSupplier, updateSupplier: state.updateSupplier, deleteSupplier: state.deleteSupplier, supplierOrders: state.supplierOrders, products: state.products, createSupplierOrder: state.createSupplierOrder, updateSupplierOrder: state.updateSupplierOrder, branches: state.branches, getBaseCurrency: state.getBaseCurrency })));
@@ -32,6 +34,8 @@ export default function Suppliers() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showOrderModal, setShowOrderModal] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
+  const [planAllowsPurchases, setPlanAllowsPurchases] = useState(false);
+  useEffect(() => { void loadSaaSContext().then(ctx => setPlanAllowsPurchases(canUsePlanFeature(ctx?.subscription?.planCode, "purchases"))).catch(() => setPlanAllowsPurchases(false)); }, []);
   
   const [formData, setFormData] = useState<Partial<Supplier>>({
     name: "",
@@ -57,6 +61,7 @@ export default function Suppliers() {
   });
 
   const handleOpenOrderModal = (order?: SupplierOrder) => {
+    if (!planAllowsPurchases) return;
     if (order) {
       setEditingOrder(order);
       setOrderFormData({
@@ -160,6 +165,8 @@ export default function Suppliers() {
           </button>
           <button 
             onClick={() => handleOpenOrderModal()}
+            disabled={!planAllowsPurchases}
+            title={!planAllowsPurchases ? "Las compras y órdenes de compra están disponibles desde Caravana." : "Nueva orden de compra"}
             className="flex-1 sm:flex-none px-4 py-2 bg-secondary border border-base text-primary rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-subtle transition-all flex items-center justify-center gap-2"
           >
             <Truck size={14} />
@@ -297,7 +304,7 @@ export default function Suppliers() {
                           <Edit size={10} />
                         </button>
                         <button 
-                          onClick={() => updateSupplierOrder(order.id, { status: 'received' })}
+                          onClick={() => { if (planAllowsPurchases) updateSupplierOrder(order.id, { status: 'received' }); }}
                           title="Marcar como recibida"
                           aria-label="Marcar orden como recibida"
                           className="p-1.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 rounded-lg border border-emerald-100 dark:border-emerald-800"
@@ -306,7 +313,7 @@ export default function Suppliers() {
                         </button>
                         <button 
                           onClick={() => {
-                            if (window.confirm('¿Cancelar esta orden de compra? La orden se conservará en el historial y no se agregará inventario.')) {
+                            if (!planAllowsPurchases) return; if (window.confirm('¿Cancelar esta orden de compra? La orden se conservará en el historial y no se agregará inventario.')) {
                               updateSupplierOrder(order.id, { status: 'cancelled' });
                             }
                           }}
