@@ -304,7 +304,8 @@ as $function$
         )
       )
       and (
-        (
+        lower(p_feature)='pos'
+        or (
           jsonb_typeof(p.features)='array'
           and (
             p.features ? p_feature
@@ -317,12 +318,12 @@ as $function$
             )
           )
         )
-        or
-        (
+        or (
           jsonb_typeof(p.features)='object'
           and jsonb_typeof(p.features->'features')='array'
           and exists (
-            select 1 from jsonb_array_elements_text(p.features->'features') f(value)
+            select 1
+            from jsonb_array_elements_text(p.features->'features') f(value)
             where
               lower(value)=lower(p_feature)
               or (lower(p_feature)='pos' and lower(value) in ('pos','punto de venta'))
