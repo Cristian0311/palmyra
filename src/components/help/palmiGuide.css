@@ -7,8 +7,8 @@
 @keyframes palmi-panel-in{from{opacity:0;transform:translateY(6px) scale(.985)}to{opacity:1;transform:none}}
 .palmi-guide-brandbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-bottom:1px solid rgba(112,88,157,.1)}
 .palmi-guide-brand{display:flex;align-items:center;gap:8px;min-width:0}
-.palmi-guide-brand-mascot{width:48px;height:48px;border-radius:14px;display:flex;align-items:center;justify-content:center;overflow:hidden;background:linear-gradient(180deg,#faf7ff,#ece2ff);border:1px solid rgba(109,59,210,.12)}
-.palmi-guide-mascot-small{width:68px;height:68px;object-fit:contain;object-position:center center;transform:translateY(3px) scale(1.12);filter:drop-shadow(0 5px 7px rgba(47,26,73,.16))}
+.palmi-guide-brand-mascot{width:46px;height:50px;border-radius:12px;display:flex;align-items:center;justify-content:center;overflow:visible;background:transparent;border:0}
+.palmi-guide-mascot-small{width:58px;height:70px;object-fit:contain;object-position:center center;transform:translateY(2px);filter:drop-shadow(0 5px 7px rgba(47,26,73,.12))}
 .palmi-guide-brand p{margin:0;font-size:8px;font-weight:900;letter-spacing:.13em;color:#6d3bd2}
 .palmi-guide-brand span{display:block;margin-top:2px;font-size:8px;color:#8a7d96}
 .palmi-guide-close,.palmi-guide-back,.palmi-guide-secondary{display:inline-flex;align-items:center;justify-content:center}
@@ -43,9 +43,9 @@
 .palmi-guide-primary:hover{background:#5f32c1}
 .palmi-guide-mascot-dock{position:fixed;right:16px;bottom:max(18px,env(safe-area-inset-bottom));z-index:1310;width:84px;height:108px;border:0;padding:0;background:transparent;pointer-events:auto;touch-action:manipulation;user-select:none;cursor:pointer}
 .palmi-guide-mascot-dock:focus-visible{outline:3px solid rgba(109,59,210,.28);outline-offset:4px;border-radius:24px}
-.palmi-mascot-stage{position:absolute;left:0;bottom:0;width:84px;height:96px;display:flex;align-items:flex-end;justify-content:center;border-radius:26px;background:linear-gradient(180deg,rgba(255,255,255,.94),rgba(244,236,255,.96));border:1px solid rgba(109,59,210,.13);box-shadow:0 16px 34px rgba(42,22,66,.18);overflow:hidden}
-.palmi-guide-mascot{width:108px;height:108px;object-fit:contain;object-position:center center;display:block;filter:drop-shadow(0 10px 14px rgba(47,26,73,.22));transform:translateY(6px) scale(1.16);transition:transform .2s ease}
-.palmi-guide-mascot-dock:hover .palmi-guide-mascot{transform:translateY(4px) scale(1.19)}
+.palmi-mascot-stage{position:absolute;left:0;bottom:2px;width:96px;height:118px;display:flex;align-items:flex-end;justify-content:center;border-radius:0;background:transparent;border:0;box-shadow:none;overflow:visible}
+.palmi-guide-mascot{width:96px;height:118px;object-fit:contain;object-position:center bottom;display:block;filter:drop-shadow(0 8px 12px rgba(47,26,73,.16));transform:none;transition:transform .2s ease}
+.palmi-guide-mascot-dock:hover .palmi-guide-mascot{transform:translateY(-2px) scale(1.02)}
 .palmi-guide-name{position:absolute;left:50%;bottom:4px;transform:translateX(-50%);padding:4px 8px;border-radius:999px;background:#2d1c46;color:#fff;font-size:7px;font-weight:900;letter-spacing:.15em;box-shadow:0 4px 14px rgba(45,28,70,.18)}
 .palmi-aura{position:absolute;border-radius:50%;pointer-events:none}
 .palmi-aura-1{left:-8px;bottom:10px;width:96px;height:66px;background:radial-gradient(circle at 50% 70%,rgba(142,104,231,.24),transparent 66%);filter:blur(2px)}
@@ -73,9 +73,9 @@
 @media(max-width:1023px){
   .palmi-guide-panel{max-height:min(70dvh,520px);border-radius:20px}
   .palmi-guide-body{max-height:min(240px,28dvh)}
-  .palmi-guide-mascot-dock{right:12px;width:76px;height:98px}
-  .palmi-mascot-stage{width:76px;height:86px;border-radius:23px}
-  .palmi-guide-mascot{width:98px;height:98px}
+  .palmi-guide-mascot-dock{right:10px;width:84px;height:124px}
+  .palmi-mascot-stage{width:84px;height:116px}
+  .palmi-guide-mascot{width:84px;height:116px}
   .palmi-guide-name{font-size:6px;bottom:3px;padding:3px 7px}
 }
 @media(max-width:560px){
@@ -95,7 +95,32 @@
   .palmi-aura-2,.palmi-spark,.numa-mood-thinking,.numa-mood-waiting,.numa-mood-success,.numa-mood-alert{animation:none}
 }
 
-.palmi-guide-action-card .palmi-action-card-arrow.is-side{top:50%;left:-14px;bottom:auto;transform:translateY(-50%);}
+.palmi-guide-action-card .palmi-action-card-arrow.is-side{
+  top:50%;
+  left:-32px;
+  bottom:auto;
+  transform:translateY(-50%);
+  width:38px;
+  height:22px;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  color:#9b79f0;
+  box-shadow:none;
+  font-size:22px;
+  line-height:1;
+}
+.palmi-guide-action-card .palmi-action-card-arrow.is-side::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:50%;
+  width:26px;
+  height:2px;
+  transform:translateY(-50%);
+  background:#9b79f0;
+}
+
 
 .palmi-guide-pos-gate-note{
   position:fixed;
@@ -124,17 +149,6 @@
   font-size:8px;
   line-height:1.5;
   color:rgba(255,255,255,.82);
-}
-.palmi-guide-action-card::before{
-  content:"";
-  position:absolute;
-  left:-18px;
-  top:50%;
-  width:18px;
-  height:2px;
-  transform:translateY(-50%);
-  background:#9b79f0;
-  box-shadow:0 0 0 1px rgba(155,121,240,.08);
 }
 @media(max-width:1023px){
   .palmi-guide-action-card{
