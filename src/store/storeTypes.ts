@@ -191,6 +191,7 @@ export interface AppState {
   refreshGlobalCatalogData: () => Promise<boolean>;
   seedDemoProducts: () => void;
   restoreTransactionsFromBackup: () => void;
+  restoreCashSessionsFromBackup: () => void;
 
   isInitialized: boolean;
   
