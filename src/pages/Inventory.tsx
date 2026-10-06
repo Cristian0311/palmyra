@@ -210,7 +210,44 @@ export default function Inventory() {
   const [newColor, setNewColor] = useState("");
   const [stockDrafts, setStockDrafts] = useState<Record<string, { quantity: string; minQuantity: string }>>({});
   const stockDraftKey = (productId: string, branchId: string, variant?: string) => `${productId}::${branchId}::${variant || ''}`;
-  const readStockDraft = (productId: string, branchId: string, variant: string | undefined, quantity: number, minQuantity: number) => stockDrafts[stockDraftKey(productId, branchId, variant)] || { quantity: quantity ? String(quantity) : '', minQuantity: minQuantity ? String(minQuantity) : '' };
+  const readStockDraft = (productId: string, branchId: string, variant: string | undefined, quantity: number, minQuantity: number) => {
+    const key = stockDraftKey(productId, branchId, variant);
+    const draft = stockDrafts[key];
+    return draft ?? { quantity: quantity ? String(quantity) : '', minQuantity: minQuantity ? String(minQuantity) : '' };
+  };
+
+  const openStockManager = (product: Product) => {
+    const hasVariants =
+      (product.availableSizes || []).length > 0 ||
+      (product.availableColors || []).length > 0;
+    const variants = Array.from(new Set([
+      ...(hasVariants ? [] : [undefined]),
+      ...(product.availableSizes || []),
+      ...(product.availableColors || [])
+    ]));
+    const next: Record<string, { quantity: string; minQuantity: string }> = {};
+    branches.forEach(branch => {
+      variants.forEach(variant => {
+        const level = inventory.find(i =>
+          i.productId === product.id &&
+          i.branchId === branch.id &&
+          (i.variantLabel || '') === (variant || '')
+        );
+        next[stockDraftKey(product.id, branch.id, variant)] = {
+          quantity: level ? String(level.quantity ?? '') : '',
+          minQuantity: level ? String(level.minQuantity ?? '') : ''
+        };
+      });
+    });
+    setStockDrafts(prev => {
+      const cleaned = { ...prev };
+      Object.keys(cleaned).forEach(key => {
+        if (key.startsWith(product.id + '::')) delete cleaned[key];
+      });
+      return { ...cleaned, ...next };
+    });
+    setManagingStockProduct(product);
+  };
   const updateStockDraft = (productId: string, branchId: string, variant: string | undefined, field: 'quantity' | 'minQuantity', value: string) => {
     const key = stockDraftKey(productId, branchId, variant);
     setStockDrafts(prev => ({ ...prev, [key]: { ...(prev[key] || { quantity: '', minQuantity: '' }), [field]: value } }));
@@ -258,12 +295,16 @@ export default function Inventory() {
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingProduct) {
-      updateProduct(editingProduct.id, formData);
+      updateProduct(editingProduct.id, {
+        ...formData,
+        commissionValue: hasFixedProductEmployees ? Number(formData.commissionValue || 0) : 0,
+      });
       addNotification("Producto actualizado correctamente.", 'success');
     } else {
       const newProduct: Product = {
         ...formData as Product,
         id: generateId('PRD'),
+        commissionValue: hasFixedProductEmployees ? Number(formData.commissionValue || 0) : 0,
       };
       addProduct(newProduct);
     }
@@ -867,7 +908,7 @@ export default function Inventory() {
                         <button 
                           onClick={() => {
                             const { totalStock, isLowStock, levels, ...productOnly } = item as any;
-                            setManagingStockProduct(productOnly);
+                            openStockManager(productOnly);
                           }}
                           className="text-muted hover:text-emerald-600 transition-colors p-1.5 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-950/50 border border-base shadow-sm"
                           title="Gestionar Stock"
@@ -974,7 +1015,7 @@ export default function Inventory() {
                     onClick={(e) => {
                       e.stopPropagation();
                       const { totalStock, isLowStock, levels, ...productOnly } = item as any;
-                      setManagingStockProduct(productOnly);
+                      openStockManager(productOnly);
                     }}
                     className="absolute -top-1 -right-1 p-1 bg-white border border-base rounded-lg text-slate-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
                   >
@@ -1442,7 +1483,7 @@ export default function Inventory() {
                                   {variant ? variant : 'Stock Base'}
                                 </p>
                                 <div className="flex items-center gap-1 mt-0.5">
-                                  <label className="text-[8px] font-semibold text-slate-400 uppercase">Mín:</label>
+                                  <label className="text-[8px] font-semibold text-slate-400 uppercase flex items-center gap-0.5">Mín: <InfoTooltip text="Solo sirve como umbral de alerta de stock bajo. No limita ni impide guardar una cantidad menor." /></label>
                                   <input 
                                     type="number" 
                                     min="0"
