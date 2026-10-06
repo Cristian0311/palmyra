@@ -121,6 +121,8 @@ export function initKeyboardViewport() {
   let scheduled = false;
   let settleTimer: ReturnType<typeof setTimeout> | null = null;
   let activeModalSurface: HTMLElement | null = null;
+  let lastFocusedControl: HTMLElement | null = null;
+  let keyboardWasOpen = false;
   let delayedRuns: ReturnType<typeof setTimeout>[] = [];
   const touchedScrollContainers = new Map<HTMLElement, string>();
 
@@ -151,13 +153,19 @@ export function initKeyboardViewport() {
       clearModalPlacement(activeModalSurface);
       activeModalSurface?.classList.remove('keyboard-modal-surface');
       activeModalSurface = null;
+      lastFocusedControl = null;
+      keyboardWasOpen = false;
       return;
     }
 
-    document.body.classList.toggle('keyboard-open', metrics.keyboardInset > 0);
+    const keyboardOpen = metrics.keyboardInset > 0;
+    const focusChanged = validControl !== lastFocusedControl;
+    const keyboardJustOpened = keyboardOpen && !keyboardWasOpen;
+
+    document.body.classList.toggle('keyboard-open', keyboardOpen);
     document.documentElement.classList.toggle(
       'pos-keyboard-open',
-      metrics.keyboardInset > 0 && Boolean(validControl?.closest('.pos-page')),
+      keyboardOpen && Boolean(validControl?.closest('.pos-page')),
     );
 
     if (activeModalSurface) {
@@ -197,7 +205,12 @@ export function initKeyboardViewport() {
       }
     }
 
-    scrollControlIntoViewport(validControl);
+    if (focusChanged || keyboardJustOpened) {
+      scrollControlIntoViewport(validControl);
+    }
+
+    lastFocusedControl = validControl;
+    keyboardWasOpen = keyboardOpen;
   };
 
   const schedule = () => {
@@ -231,6 +244,8 @@ export function initKeyboardViewport() {
         clearModalPlacement(activeModalSurface);
         activeModalSurface?.classList.remove('keyboard-modal-surface');
         activeModalSurface = null;
+        lastFocusedControl = null;
+        keyboardWasOpen = false;
       }
     }, 120);
   };
