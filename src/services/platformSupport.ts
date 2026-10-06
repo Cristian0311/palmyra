@@ -4,7 +4,14 @@ export type PlatformSupportSettings = {
   whatsapp_number: string | null;
   support_email: string | null;
   privacy_url: string | null;
+  facebook_url: string | null;
+  whatsapp_channel_url: string | null;
 };
+
+export type PlatformSocialLinks = Pick<
+  PlatformSupportSettings,
+  "facebook_url" | "whatsapp_channel_url"
+>;
 
 const SUPPORT_CACHE_KEY = "palmyra_platform_support_settings_v1";
 
@@ -27,7 +34,13 @@ export type SupportRequestInput = {
 
 export async function loadPlatformSupportSettings(): Promise<PlatformSupportSettings> {
   const supabase = getSupabase();
-  if (!supabase) return getCachedPlatformSupportSettings() || { whatsapp_number: null, support_email: null, privacy_url: null };
+  if (!supabase) return getCachedPlatformSupportSettings() || {
+    whatsapp_number: null,
+    support_email: null,
+    privacy_url: null,
+    facebook_url: null,
+    whatsapp_channel_url: null,
+  };
   const { data, error } = await supabase.rpc("get_platform_support_settings");
   if (error) {
     const cached = getCachedPlatformSupportSettings();
@@ -39,6 +52,8 @@ export async function loadPlatformSupportSettings(): Promise<PlatformSupportSett
     whatsapp_number: value.whatsapp_number ? String(value.whatsapp_number) : null,
     support_email: value.support_email ? String(value.support_email) : null,
     privacy_url: value.privacy_url ? String(value.privacy_url) : null,
+    facebook_url: value.facebook_url ? String(value.facebook_url) : null,
+    whatsapp_channel_url: value.whatsapp_channel_url ? String(value.whatsapp_channel_url) : null,
   };
   try { localStorage.setItem(SUPPORT_CACHE_KEY, JSON.stringify(settings)); } catch {}
   return settings;
@@ -66,4 +81,25 @@ export function buildWhatsAppUrl(number: string, message: string) {
   const normalized = normalizeWhatsAppNumber(number);
   if (!normalized) return null;
   return `https://wa.me/${normalized}?text=${encodeURIComponent(message)}`;
+}
+
+
+export async function loadPublicSocialLinks(): Promise<PlatformSocialLinks> {
+  const supabase = getSupabase();
+  if (!supabase) {
+    return { facebook_url: null, whatsapp_channel_url: null };
+  }
+
+  const { data, error } = await supabase
+    .from("platform_social_links")
+    .select("facebook_url,whatsapp_channel_url")
+    .eq("id", 1)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  return {
+    facebook_url: data?.facebook_url ? String(data.facebook_url) : null,
+    whatsapp_channel_url: data?.whatsapp_channel_url ? String(data.whatsapp_channel_url) : null,
+  };
 }
