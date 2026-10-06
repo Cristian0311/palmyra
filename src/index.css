@@ -880,3 +880,42 @@ body,
 html.pos-keyboard-open,html.pos-keyboard-open body{overflow:hidden!important;overscroll-behavior:none!important;scroll-behavior:auto!important}
 html.pos-keyboard-open .pos-page .animate-in,html.pos-keyboard-open .pos-page [class*=animate-]{animation:none!important;transition:none!important;transform:none!important}
 .pos-page .fixed.inset-0{height:var(--pos-viewport-height,100dvh);top:var(--pos-viewport-top,0px);bottom:auto;min-height:0}.pos-page .palmyra-mobile-modal{max-height:calc(var(--pos-viewport-height,100dvh) - 1rem)!important;overflow-anchor:none}
+
+
+/* POS mobile keyboard contract: keep the visual surface inside the viewport
+   actually visible above Android/iOS keyboards. */
+:root {
+  --pos-visual-height: 100dvh;
+}
+.pos-keyboard-open .pos-page {
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
+}
+@media (max-width: 767px) {
+  .pos-page input,
+  .pos-page textarea,
+  .pos-page select {
+    font-size: 10px !important;
+    line-height: 1.2 !important;
+  }
+  .pos-page input::placeholder,
+  .pos-page textarea::placeholder {
+    font-size: 9px !important;
+  }
+  .pos-keyboard-open .pos-page [class*="fixed"][class*="inset-0"] {
+    top: 0 !important;
+    bottom: auto !important;
+    height: var(--pos-visual-height) !important;
+    max-height: var(--pos-visual-height) !important;
+  }
+  .pos-keyboard-open .pos-page .palmyra-mobile-modal {
+    max-height: calc(var(--pos-visual-height) - 12px) !important;
+    transform: none !important;
+  }
+  .pos-keyboard-open .pos-page input:focus,
+  .pos-keyboard-open .pos-page textarea:focus,
+  .pos-keyboard-open .pos-page select:focus {
+    scroll-margin-top: 10px;
+    scroll-margin-bottom: 10px;
+  }
+}
