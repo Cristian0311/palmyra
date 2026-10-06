@@ -26,6 +26,7 @@ import { useStore } from "../store/useStore";
 import { cn } from "../lib/utils";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { getBusinessSummaryAI } from "../services/gemini";
+import { loadSaaSContext } from "../services/saas";
 import type { Transaction, CartItem, Payment } from "../types";
 
 export default function Dashboard() {
@@ -40,7 +41,18 @@ export default function Dashboard() {
   const [showAllSalesModal, setShowAllSalesModal] = useState<boolean>(false);
   const [aiSummary, setAiSummary] = useState<string>("");
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [planCode, setPlanCode] = useState<string | null>(null);
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    void loadSaaSContext().then((ctx) => {
+      if (mounted) setPlanCode(ctx?.subscription?.planCode || null);
+    }).catch(() => {
+      if (mounted) setPlanCode(null);
+    });
+    return () => { mounted = false; };
+  }, []);
 
   useEffect(() => {
     if (!branchPickerOpen) return;
@@ -109,6 +121,7 @@ export default function Dashboard() {
   }, [todayTransactions, productById, categoryById]);
 
   const handleGenerateAI = async () => {
+    if (planCode !== "pro") return;
     setIsGeneratingAI(true);
     const summary = await getBusinessSummaryAI({
       salesToday: totalSalesToday,
@@ -281,11 +294,11 @@ export default function Dashboard() {
         <div className="flex items-center gap-1.5 w-full sm:w-auto">
           <button
             onClick={handleGenerateAI}
-            disabled={isGeneratingAI}
+            disabled={isGeneratingAI || (planCode !== null && planCode !== "pro")}
             className="btn-secondary h-7 min-h-0 px-2 rounded-lg text-[8px] font-black uppercase tracking-tight gap-1.5 shadow-none"
           >
             {isGeneratingAI ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 text-amber-500" />}
-            <span>{aiSummary ? "Actualizar IA" : "Analizar con IA"}</span>
+            <span>{planCode !== "pro" && planCode ? "IA · Ciudadela" : aiSummary ? "Actualizar IA" : "Analizar con IA"}</span>
           </button>
 
           <div className="relative min-w-0 w-[clamp(9.5rem,28vw,12.5rem)]" data-dashboard-branch-picker>
