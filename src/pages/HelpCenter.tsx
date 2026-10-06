@@ -4,7 +4,7 @@ import {
   LockKeyhole, MessageCircle, Send, ShieldCheck, Smartphone, Sparkles,
   TicketCheck, TriangleAlert, X
 } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useStore } from "../store/useStore";
 import { loadSaaSContext } from "../services/saas";
 import { buildWhatsAppUrl, createSupportRequest, loadPlatformSupportSettings, type PlatformSupportSettings } from "../services/platformSupport";
@@ -31,7 +31,6 @@ const requestTypes = [
 
 export default function HelpCenter(){
   const [params,setParams] = useSearchParams();
-  const navigate = useNavigate();
   const currentUser = useStore(s=>s.currentUser);
   const fallbackCompanyName = useStore(s=>s.storeConfig.storeName || "Mi empresa");
   const [companyName,setCompanyName] = useState(fallbackCompanyName);
