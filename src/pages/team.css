@@ -103,3 +103,132 @@
 .team-step-item:disabled{cursor:default}
 .team-step-item.team-step-done>span{background:#f1ebff;border-color:#cdbaff;color:#6d3bd2}
 .team-step-line.is-complete{background:#9a7be5}
+
+@media(max-width:480px){
+  .team-employee-modal{
+    max-height:calc(100dvh - .5rem);
+    border-radius:18px;
+  }
+  .team-employee-modal-head{
+    padding:10px 11px 9px;
+    gap:8px;
+  }
+  .team-employee-modal-head .team-employee-hero-icon{
+    width:34px;height:34px;border-radius:11px;
+  }
+  .team-employee-modal-head h2{
+    font-size:15px!important;
+    margin-top:2px;
+  }
+  .team-employee-modal-head p{
+    display:none;
+  }
+  .team-employee-modal-head>button{
+    width:34px;height:34px;border-radius:11px;
+  }
+  .team-employee-stepbar{
+    padding:7px 10px;
+  }
+  .team-step-item{
+    flex:1;
+    justify-content:center;
+    gap:4px;
+  }
+  .team-step-item>span{
+    width:21px;height:21px;border-radius:7px;
+    font-size:7px;
+  }
+  .team-step-item strong{
+    font-size:7px;
+  }
+  .team-step-line{
+    min-width:5px;
+    margin:0 2px;
+  }
+  .team-employee-modal-body{
+    padding:8px 9px 9px;
+  }
+  .team-form-section{
+    padding:9px;
+    border-radius:14px;
+  }
+  .team-form-section+.team-form-section{margin-top:8px}
+  .team-form-section-head{
+    gap:7px;
+    margin-bottom:8px;
+  }
+  .team-form-section-icon{
+    width:27px;height:27px;border-radius:8px;
+  }
+  .team-form-section-head h3{font-size:10px}
+  .team-form-section-head p{font-size:7px;line-height:1.25}
+  .team-field-label{
+    margin-bottom:4px;
+    font-size:7px;
+  }
+  .team-field{
+    height:38px;
+    border-radius:11px;
+  }
+  .team-field-icon{
+    width:33px;
+  }
+  .team-field-input{
+    padding:0 9px;
+    font-size:11px;
+  }
+  .team-field-help,.team-field-subtext{
+    font-size:7px;
+    margin-top:4px;
+  }
+  .team-employee-modal-body .grid{
+    gap:7px!important;
+  }
+  .team-warehouse-option{
+    min-height:45px;
+    padding:7px;
+    border-radius:11px;
+    gap:6px;
+  }
+  .team-warehouse-icon{
+    width:25px;height:25px;border-radius:8px;
+  }
+  .team-warehouse-name{font-size:8px}
+  .team-warehouse-main{font-size:6px}
+  .team-check{
+    width:19px;height:19px;border-radius:6px;
+  }
+  .team-access-card{
+    margin-top:7px;
+    padding:8px;
+    border-radius:12px;
+  }
+  .team-access-icon{
+    width:26px;height:26px;border-radius:8px;
+  }
+  .team-access-card p.text-xs{font-size:9px!important}
+  .team-access-card p.text-\[10px\],
+  .team-access-card p.text-\[11px\]{
+    font-size:8px!important;
+    line-height:1.35!important;
+  }
+  .team-employee-modal-footer{
+    padding:8px 9px 9px;
+    gap:7px;
+  }
+  .team-employee-modal-footer p{
+    display:none;
+  }
+  .team-footer-actions{
+    gap:6px;
+  }
+  .team-footer-secondary,.team-footer-primary{
+    height:36px;
+    border-radius:10px;
+    padding:0 10px;
+    font-size:8px;
+  }
+  .team-employee-modal .mt-4{margin-top:9px!important}
+  .team-employee-modal .mt-3{margin-top:7px!important}
+  .team-employee-modal .mb-3{margin-bottom:7px!important}
+}
