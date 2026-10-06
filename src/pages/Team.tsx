@@ -231,6 +231,7 @@ export default function Team() {
     }
     if (!form.sendInvite && editing && form.posPassword.trim().length > 0 && form.posPassword.trim().length < 6) {
       return setError("La nueva contraseña del POS debe tener al menos 6 caracteres.");
+    }
 
     setBusy(true);
     try {
