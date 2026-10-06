@@ -4,6 +4,8 @@ export interface PlatformSupportSettings {
   whatsapp_number: string | null;
   support_email: string | null;
   privacy_url: string | null;
+  facebook_url: string | null;
+  whatsapp_channel_url: string | null;
 }
 
 export interface PlatformSupportRequest {
@@ -48,7 +50,9 @@ export async function setPlatformSupportSettings(settings: PlatformSupportSettin
   const {data,error}=await supabase.rpc("set_platform_support_settings",{
     p_whatsapp_number:settings.whatsapp_number?.trim()||null,
     p_support_email:settings.support_email?.trim()||null,
-    p_privacy_url:settings.privacy_url?.trim()||null
+    p_privacy_url:settings.privacy_url?.trim()||null,
+    p_facebook_url:settings.facebook_url?.trim()||null,
+    p_whatsapp_channel_url:settings.whatsapp_channel_url?.trim()||null
   });
   if(error) throw error;
   return (data||{}) as PlatformSupportSettings;
