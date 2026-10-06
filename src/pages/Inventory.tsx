@@ -1371,11 +1371,11 @@ export default function Inventory() {
             <div className="p-4 overflow-y-auto custom-scrollbar flex-1 bg-white dark:bg-slate-900">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {branches.map(branch => {
-                  const productVariants = [
-                    undefined, 
-                    ...(managingStockProduct.availableSizes || []), 
+                  const productVariants = Array.from(new Set([
+                    undefined,
+                    ...(managingStockProduct.availableSizes || []),
                     ...(managingStockProduct.availableColors || [])
-                  ];
+                  ]));
 
                   // Calculate total in this branch
                   const totalInBranch = productVariants.reduce((sum, v) => {
