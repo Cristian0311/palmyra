@@ -875,3 +875,8 @@ body,
   .palmyra-loading-icon { width: 1.3rem; height: 1.3rem; border-radius: 0.55rem; }
   .palmyra-loading-spinner { width: 0.75rem; height: 0.75rem; }
 }
+
+/* Mobile POS viewport lock */
+html.pos-keyboard-open,html.pos-keyboard-open body{overflow:hidden!important;overscroll-behavior:none!important;scroll-behavior:auto!important}
+html.pos-keyboard-open .pos-page .animate-in,html.pos-keyboard-open .pos-page [class*=animate-]{animation:none!important;transition:none!important;transform:none!important}
+.pos-page .fixed.inset-0{height:var(--pos-viewport-height,100dvh);top:var(--pos-viewport-top,0px);bottom:auto}
