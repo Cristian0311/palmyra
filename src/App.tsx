@@ -255,6 +255,15 @@ export default function App() {
 
 
   useEffect(() => {
+    // Si existe una sesión local válida, abre inmediatamente la interfaz
+    // cacheada mientras la identidad cloud se verifica en segundo plano.
+    // Evita la pantalla blanca/loader de arranque en dispositivos lentos.
+    if (isInitialized && currentUser?.id && currentBranchId && accessState === "loading") {
+      setAccessState("ready");
+    }
+  }, [isInitialized, currentUser?.id, currentBranchId, accessState]);
+
+  useEffect(() => {
     if (!isInitialized) return;
     let active = true;
 
@@ -384,10 +393,10 @@ export default function App() {
       </div>
     );
   }
-  if (!isInitialized || authBootstrapping) {
+  if (!isInitialized || (authBootstrapping && !currentUser?.id)) {
     return (
-      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-rose-500"></div>
+      <div className="min-h-screen bg-[#F7F5FC] flex items-center justify-center">
+        <div className="palmyra-loading-bubble">Preparando PALMYRA… <span className="palmyra-loading-dots">•••</span></div>
       </div>
     );
   }
