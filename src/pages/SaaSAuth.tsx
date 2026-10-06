@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { ArrowRight, Check, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Sparkles, Users, Warehouse, MonitorSmartphone } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getSupabase } from "../lib/supabase";
-import { loadPublicSocialLinks, type PlatformSocialLinks } from "../services/platformSupport";
+import { DEFAULT_FACEBOOK_URL, loadPublicSocialLinks, type PlatformSocialLinks } from "../services/platformSupport";
 import {
   loadSaaSContext,
   requestSaaSPasswordReset,
@@ -50,7 +50,7 @@ export default function SaaSAuth() {
     ? (sessionStorage.getItem("palmyra_signup_plan") || "starter")
     : "starter";
   const requiresSocialUnlock = mode === "signup" && signupPlanCode === "starter";
-  const [socialLinks, setSocialLinks] = useState<PlatformSocialLinks>({ facebook_url: null, whatsapp_channel_url: null });
+  const [socialLinks, setSocialLinks] = useState<PlatformSocialLinks>({ facebook_url: DEFAULT_FACEBOOK_URL, whatsapp_channel_url: null });
   const [socialLoading, setSocialLoading] = useState(false);
   const [facebookOpened, setFacebookOpened] = useState(false);
   const [whatsappOpened, setWhatsappOpened] = useState(false);
@@ -65,7 +65,7 @@ export default function SaaSAuth() {
       })
       .catch((socialError) => {
         console.warn("[PALMYRA] No se pudieron cargar los canales sociales:", socialError);
-        if (active) setSocialLinks({ facebook_url: null, whatsapp_channel_url: null });
+        if (active) setSocialLinks({ facebook_url: DEFAULT_FACEBOOK_URL, whatsapp_channel_url: null });
       })
       .finally(() => {
         if (active) setSocialLoading(false);
@@ -228,40 +228,52 @@ export default function SaaSAuth() {
 
                 {socialLoading ? (
                   <div className="mt-4 rounded-xl bg-white border border-violet-100 px-3 py-3 text-[9px] font-bold text-slate-400">Cargando canales oficiales…</div>
-                ) : !socialLinks.facebook_url || !socialLinks.whatsapp_channel_url ? (
-                  <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-[9px] font-bold text-amber-800">La promoción gratuita está temporalmente pendiente de configuración por PALMYRA.</div>
                 ) : (
                   <>
                     <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                      <a
-                        href={socialLinks.facebook_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() => setFacebookOpened(true)}
-                        className={"rounded-xl border p-3 text-left transition " + (facebookOpened ? "border-emerald-200 bg-emerald-50" : "border-violet-100 bg-white hover:border-violet-200")}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] font-black text-[#3B1B6E]">Facebook oficial</span>
-                          {facebookOpened ? <Check className="h-4 w-4 text-emerald-600" /> : <ArrowRight className="h-4 w-4 text-[#6535C5]" />}
-                        </div>
-                        <span className="mt-1 block text-[8px] text-slate-400">{facebookOpened ? "Paso completado" : "Seguir página"}</span>
-                      </a>
-                      <a
-                        href={socialLinks.whatsapp_channel_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() => setWhatsappOpened(true)}
-                        className={"rounded-xl border p-3 text-left transition " + (whatsappOpened ? "border-emerald-200 bg-emerald-50" : "border-violet-100 bg-white hover:border-violet-200")}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] font-black text-[#3B1B6E]">Canal de WhatsApp</span>
-                          {whatsappOpened ? <Check className="h-4 w-4 text-emerald-600" /> : <ArrowRight className="h-4 w-4 text-[#6535C5]" />}
-                        </div>
-                        <span className="mt-1 block text-[8px] text-slate-400">{whatsappOpened ? "Paso completado" : "Unirse al canal"}</span>
-                      </a>
+                      {socialLinks.facebook_url ? (
+                        <a
+                          href={socialLinks.facebook_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => setFacebookOpened(true)}
+                          className={"rounded-xl border p-3 text-left transition " + (facebookOpened ? "border-emerald-200 bg-emerald-50" : "border-violet-100 bg-white hover:border-violet-200")}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-black text-[#3B1B6E]">Facebook oficial</span>
+                            {facebookOpened ? <Check className="h-4 w-4 text-emerald-600" /> : <ArrowRight className="h-4 w-4 text-[#6535C5]" />}
+                          </div>
+                          <span className="mt-1 block text-[8px] text-slate-400">{facebookOpened ? "Paso completado" : "Seguir página"}</span>
+                        </a>
+                      ) : null}
+
+                      {socialLinks.whatsapp_channel_url ? (
+                        <a
+                          href={socialLinks.whatsapp_channel_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => setWhatsappOpened(true)}
+                          className={"rounded-xl border p-3 text-left transition " + (whatsappOpened ? "border-emerald-200 bg-emerald-50" : "border-violet-100 bg-white hover:border-violet-200")}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10px] font-black text-[#3B1B6E]">Canal de WhatsApp</span>
+                            {whatsappOpened ? <Check className="h-4 w-4 text-emerald-600" /> : <ArrowRight className="h-4 w-4 text-[#6535C5]" />}
+                          </div>
+                          <span className="mt-1 block text-[8px] text-slate-400">{whatsappOpened ? "Paso completado" : "Unirse al canal"}</span>
+                        </a>
+                      ) : null}
                     </div>
+
+                    {(!socialLinks.facebook_url || !socialLinks.whatsapp_channel_url) ? (
+                      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-[9px] leading-4 font-bold text-amber-800">
+                        {socialLinks.facebook_url
+                          ? "Facebook ya está configurado. Falta configurar el enlace del canal oficial de WhatsApp para completar los 90 días gratis."
+                          : "PALMYRA debe configurar sus canales oficiales para activar la promoción de 90 días gratis."}
+                      </div>
+                    ) : null}
+
                     <p className="mt-3 text-[8px] leading-4 font-bold text-slate-400">
-                      <span className="text-emerald-600">●</span> {facebookOpened && whatsappOpened ? "Los dos pasos están listos. Ya puedes crear tu cuenta." : "Cuando completes los dos pasos, se habilitará Crear cuenta."}
+                      <span className="text-emerald-600">●</span> {facebookOpened && whatsappOpened ? "Los dos pasos están listos. Ya puedes crear tu cuenta." : "Completa los dos pasos sociales para habilitar Crear cuenta."}
                     </p>
                   </>
                 )}
