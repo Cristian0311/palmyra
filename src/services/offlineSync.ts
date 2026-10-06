@@ -135,7 +135,11 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
             // del turno que esté encolada. No dependemos del reloj local porque una
             // operación puede reintentarse horas después y recibir un timestamp nuevo.
             for (const candidate of queueAtStart) {
-              if (candidate.type === 'transaction' && candidate.data?.sessionId === data.id) add(candidate);
+              if (
+                (candidate.type === 'transaction' && candidate.data?.sessionId === data.id) ||
+                (candidate.type === 'cash_movement' && candidate.data?.sessionId === data.id) ||
+                (candidate.type === 'cash_movement_delete' && candidate.data?.sessionId === data.id)
+              ) add(candidate);
             }
           }
         } else {
