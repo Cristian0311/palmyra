@@ -483,88 +483,97 @@ export default function PalmiGuide() {
           : "thinking";
 
   const baseActionWidth = Math.min(
-    isCompact ? 152 : 252,
+    isCompact ? 200 : 252,
     Math.max(isCompact ? 118 : 198, window.innerWidth - SAFE * 2)
   );
-  const actionHintHeight = isCompact ? 124 : 104;
+  const actionHintHeight = isCompact ? 112 : 104;
   const sidebarRect = isActionStep ? findSidebarRect() : null;
-  const sidebarAvailableWidth = sidebarRect
-    ? Math.max(0, window.innerWidth - sidebarRect.right - SAFE - SIDEBAR_GAP)
-    : 0;
-  const sideActionWidth = sidebarRect && sidebarAvailableWidth > 0
-    ? Math.min(baseActionWidth, sidebarAvailableWidth)
-    : 0;
-  const compactSidebarOnly = Boolean(isCompact && sidebarRect);
 
-  const actionCandidates = targetRect
-    ? [
-        ...(sidebarRect && sideActionWidth >= 108
-          ? [{
-              width: sideActionWidth,
-              left: sidebarRect.right + SIDEBAR_GAP,
-              top: targetRect.top + targetRect.height / 2 - actionHintHeight / 2,
-              side: "right" as const
-            }]
-          : []),
-        ...(!compactSidebarOnly
-          ? [
-              { width: baseActionWidth, left: targetRect.left, top: targetRect.bottom + GAP, side: "below" as const },
-              { width: baseActionWidth, left: targetRect.left, top: targetRect.top - actionHintHeight - GAP, side: "above" as const }
-            ]
-          : []),
-        {
-          width: compactSidebarOnly && sidebarAvailableWidth > 0 ? Math.min(baseActionWidth, sidebarAvailableWidth) : baseActionWidth,
-          left: compactSidebarOnly && sidebarRect
-            ? sidebarRect.right + SIDEBAR_GAP
-            : window.innerWidth - baseActionWidth - SAFE,
-          top: TOP_SAFE,
-          side: compactSidebarOnly && sidebarRect ? "right" as const : "top" as const
-        }
-      ]
-    : [{
+  const actionPlacement = (() => {
+    if (!targetRect) {
+      return {
         width: baseActionWidth,
         left: SAFE,
         top: TOP_SAFE,
         side: "top" as const
-      }];
+      };
+    }
 
-  const actionPlacement = actionCandidates
-    .map(candidate => ({
-      ...candidate,
-      left: clamp(candidate.left, SAFE, Math.max(SAFE, window.innerWidth - candidate.width - SAFE)),
-      top: clamp(
-        candidate.top,
-        TOP_SAFE,
-        Math.max(TOP_SAFE, window.innerHeight - actionHintHeight - BOTTOM_SAFE)
-      )
-    }))
-    .sort((a, b) => {
-      const overlapScore = (candidate: typeof a) => {
-        if (!targetRect) return 0;
+    if (sidebarRect) {
+      const availableWidth = Math.max(
+        118,
+        Math.min(baseActionWidth, window.innerWidth - sidebarRect.right - SAFE - SIDEBAR_GAP)
+      );
 
-        const overlap = (rect: DOMRect) => {
+      return {
+        width: availableWidth,
+        left: clamp(
+          sidebarRect.right + SIDEBAR_GAP,
+          SAFE,
+          Math.max(SAFE, window.innerWidth - availableWidth - SAFE)
+        ),
+        top: clamp(
+          targetRect.top + targetRect.height / 2 - actionHintHeight / 2,
+          TOP_SAFE,
+          Math.max(TOP_SAFE, window.innerHeight - actionHintHeight - BOTTOM_SAFE)
+        ),
+        side: "right" as const
+      };
+    }
+
+    const below = {
+      width: baseActionWidth,
+      left: targetRect.left,
+      top: targetRect.bottom + GAP,
+      side: "below" as const
+    };
+    const above = {
+      width: baseActionWidth,
+      left: targetRect.left,
+      top: targetRect.top - actionHintHeight - GAP,
+      side: "above" as const
+    };
+    const right = {
+      width: baseActionWidth,
+      left: targetRect.right + GAP,
+      top: targetRect.top + targetRect.height / 2 - actionHintHeight / 2,
+      side: "right" as const
+    };
+
+    const candidates = isCompact ? [below, above, right] : [right, below, above];
+
+    return candidates
+      .map(candidate => ({
+        ...candidate,
+        left: clamp(
+          candidate.left,
+          SAFE,
+          Math.max(SAFE, window.innerWidth - candidate.width - SAFE)
+        ),
+        top: clamp(
+          candidate.top,
+          TOP_SAFE,
+          Math.max(TOP_SAFE, window.innerHeight - actionHintHeight - BOTTOM_SAFE)
+        )
+      }))
+      .sort((a, b) => {
+        const overlap = (candidate: typeof a) => {
           const overlapX = Math.max(
             0,
-            Math.min(candidate.left + candidate.width, rect.right) -
-              Math.max(candidate.left, rect.left)
+            Math.min(candidate.left + candidate.width, targetRect!.right) -
+              Math.max(candidate.left, targetRect!.left)
           );
           const overlapY = Math.max(
             0,
-            Math.min(candidate.top + actionHintHeight, rect.bottom) -
-              Math.max(candidate.top, rect.top)
+            Math.min(candidate.top + actionHintHeight, targetRect!.bottom) -
+              Math.max(candidate.top, targetRect!.top)
           );
           return overlapX * overlapY;
         };
+        return overlap(a) - overlap(b);
+      })[0];
+  })();
 
-        const sidebarPenalty =
-          sidebarRect && candidate.side === "right"
-            ? overlap(sidebarRect) * 6
-            : 0;
-        return overlap(targetRect) + sidebarPenalty;
-      };
-
-      return overlapScore(a) - overlapScore(b);
-    })[0];
 
   const actionHintLeft = actionPlacement.left;
   const actionHintTop = actionPlacement.top;
