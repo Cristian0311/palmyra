@@ -333,7 +333,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         className={cn(
           "bg-secondary border-r border-base transition-all duration-300 ease-in-out flex flex-col h-full shrink-0 shadow-sm",
           // Mobile: off-canvas drawer with fixed overlay
-          "fixed inset-y-0 left-0 z-50 w-[52vw] max-w-[360px]",
+          "fixed inset-y-0 left-0 z-50 w-[92vw] max-w-[360px] overflow-hidden",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           // Desktop (lg+): relative in-flow column, NEVER covers or overlaps the right content
           "lg:relative lg:inset-auto lg:z-auto lg:translate-x-0",
@@ -342,13 +342,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       >
         {/* Header with Collapse toggle */}
         <div className={cn("p-3.5 shrink-0 flex items-center justify-between border-b border-subtle", sidebarCollapsed && "lg:p-3 lg:justify-center")}>
-          <div className={cn("flex items-center gap-2 min-w-0", sidebarCollapsed && "lg:hidden")}>
+          <div className={cn("flex items-center gap-1.5 min-w-0 pr-1", sidebarCollapsed && "lg:hidden")}>
             <img
               src="/palmyra-logo-exact.svg"
               alt="PALMYRA"
-              className="w-[188px] h-[46px] object-contain object-left"
+              className="w-[172px] h-[42px] max-w-full object-contain object-left"
             />
-            <span className="rounded-full bg-subtle px-2 py-1 text-[8px] font-black text-primary tracking-wider shrink-0">{APP_VERSION}</span>
+            <span className="shrink-0 rounded-full bg-subtle px-1.5 py-1 text-[7px] font-black text-primary tracking-wider leading-none">{APP_VERSION}</span>
           </div>
 
           <div className={cn("hidden items-center justify-center", sidebarCollapsed && "lg:flex")}>
@@ -373,14 +373,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             data-palmy-sidebar-collapse
             type="button"
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            className="hidden lg:flex shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
             title={sidebarCollapsed ? "Expandir menú" : "Minimizar menú"}
           >
             {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>
         </div>
 
-        <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 min-h-0 px-2 py-3 space-y-1 overflow-y-auto custom-scrollbar">
           {visibleNavItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -413,7 +413,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className={cn("shrink-0 p-3 bg-secondary border-t border-subtle", sidebarCollapsed && "lg:p-2 lg:items-center")}>
+        <div className={cn("shrink-0 min-w-0 overflow-hidden p-3 bg-secondary border-t border-subtle", sidebarCollapsed && "lg:p-2 lg:items-center")}>
           <div className={cn("mb-2 space-y-1.5", sidebarCollapsed && "lg:hidden")}>
             <button
               type="button"
@@ -480,7 +480,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               ["Segundos", countdown.seconds],
             ] as const;
             return (
-              <div className="mb-2 rounded-xl border border-violet-200 dark:border-violet-900/40 bg-violet-50/70 dark:bg-violet-950/20 px-2.5 py-2">
+              <div className="mb-2 w-full max-w-full overflow-hidden rounded-xl border border-violet-200 dark:border-violet-900/40 bg-violet-50/70 dark:bg-violet-950/20 px-2.5 py-2">
                 <div className="flex items-center justify-between gap-2 mb-1.5">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <Clock className="w-3 h-3 text-violet-600 shrink-0" />
@@ -490,11 +490,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   </div>
                   <span className="text-[7px] font-black uppercase text-muted shrink-0">Vence en</span>
                 </div>
-                <div className="grid grid-cols-5 gap-1.5 text-center">
+                <div className="grid grid-cols-5 gap-1 text-center min-w-0">
                   {units.map(([label, value]) => (
-                    <div key={label} className="min-w-0 rounded-lg bg-primary/70 dark:bg-slate-900/30 px-0.5 py-1">
+                    <div key={label} className="min-w-0 overflow-hidden rounded-lg bg-primary/70 dark:bg-slate-900/30 px-0.5 py-1">
                       <p className="text-[11px] font-black text-primary leading-none tabular-nums">{String(value).padStart(2, "0")}</p>
-                      <p className="mt-1 text-[7px] font-black uppercase tracking-tight text-muted whitespace-nowrap">{label}</p>
+                      <p className="mt-1 truncate text-[6px] sm:text-[7px] font-black uppercase tracking-tight text-muted">{label}</p>
                     </div>
                   ))}
                 </div>
