@@ -3,7 +3,7 @@ import { getWarehouseId } from "../modules/warehouse/warehouseScope";
 import { buildInventoryCsv } from '../modules/inventory/utils/buildInventoryCsv';
 import { resizeProductImage } from '../modules/inventory/utils/resizeProductImage';
 import { useShallow } from 'zustand/react/shallow';
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { ArrowLeftRight, PackagePlus, AlertCircle, Search, ShieldCheck, X, DollarSign, Trash2, Edit, History, Package, TrendingUp, Filter, Download, Plus, ArrowRightLeft, LayoutGrid, List, Settings2, Tag, Building2, Save, RefreshCw, Minus, ChevronDown } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { cn, generateId } from "../lib/utils";
