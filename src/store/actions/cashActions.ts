@@ -256,28 +256,25 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
     const updated = get().cashSessions.find(s => s.id === id);
     if (!updated) return;
 
-    // Los cambios administrativos del turno (incluida la auditoría de
-    // descuadres) también deben ser durables cuando el dispositivo está
-    // offline o el push online falla. Usamos una operación snapshot separada
-    // para no pisar una operación pendiente de cierre/cancelación.
+    // Los cambios administrativos (incluido el estado de auditoría) usan un
+    // RPC de metadata. No hacemos UPDATE directo de cash_sessions porque el RLS
+    // normal de POS puede bloquearlo aunque la modificación sea legítima.
     const actionId = `cash-snapshot:${id}`;
-    void enqueueOfflineItem('cash_session', { ...updated, __operation: 'snapshot' }, actionId)
-      .then(async () => {
-        try {
-          const synced = await pushCashSessionToSupabase(updated);
-          if (!synced) return;
+    void (async () => {
+      try {
+        await enqueueOfflineItem('cash_session', { ...updated, __operation: 'snapshot' }, actionId);
+        await flushLocalStateStorage();
 
-          const queued = getOfflineQueue().find(
-            item => item.type === 'cash_session' && item.actionId === actionId
-          );
-          if (queued) removeFromOfflineQueue(queued.id);
-        } catch (error) {
-          console.warn('[CashSession] La actualización quedó en cola para reintento:', error);
-        }
-      })
-      .catch(error => {
-        console.warn('[CashSession] No se pudo persistir el cambio administrativo en la cola offline:', error);
-      });
+        if (!navigator.onLine) return;
+
+        const synced = await pushCashSessionMetadataToSupabase(updated);
+        if (!synced) return;
+
+        removeFromOfflineQueueByAction('cash_session', actionId);
+      } catch (error) {
+        console.warn('[CashSession] La actualización quedó en cola para reintento:', error);
+      }
+    })();
   },
   updateCashSessionDateCascade: async (sessionId, newDateYMD) => {
     const state = get();
