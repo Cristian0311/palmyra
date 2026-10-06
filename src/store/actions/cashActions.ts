@@ -186,7 +186,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
     const user = get().users.find(u => u.id === session.userId || u.name?.toLowerCase() === (workerName || session.workerName)?.toLowerCase());
     const commissions = sessionTxs.reduce((sum, tx) =>
       sum + calculateEmployeeSaleCommission(user, tx, get().products || [], 1), 0);
-     const baseSalary = user?.baseSalary || 0;
+     const baseSalary = user?.compensationType === 'sales_percentage' ? 0 : (user?.baseSalary || 0);
     const deduction = discrepancyDeduction || 0;
     const settlement: SalarySettlement = {
       id: crypto.randomUUID(),
