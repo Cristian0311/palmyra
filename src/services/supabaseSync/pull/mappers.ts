@@ -48,6 +48,8 @@ export function mapUser(e: any, locations: any[], _admin?: any): User {
     password: '',
     role: 'employee',
     baseSalary: Number(e.base_salary) || 0,
+    commissionRate: Number(e.sales_percentage) || 0,
+    compensationType: e.compensation_type === 'sales_percentage' ? 'sales_percentage' : 'fixed_product',
     branchId: warehouseIds.find((id: string) =>
       access.find((location: any) => location.warehouse_id === id)?.is_default
     ) || warehouseIds[0],
