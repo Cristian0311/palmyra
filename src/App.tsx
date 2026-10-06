@@ -18,6 +18,8 @@ import { flushLocalStateStorage } from "./services/localStateStorage";
 import { setPalmyraLocalScope, clearPalmyraLocalScope } from "./services/localScope";
 import { registerCurrentDevice } from "./services/device";
 import { touchCurrentDevice } from "./services/security";
+import NumaGuide from "./components/help/NumaGuide";
+import PwaInstallPrompt from "./components/help/PwaInstallPrompt";
 
 // Code-splitting de rutas para acelerar inicio en tablets y reducir consumo de memoria
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -40,6 +42,7 @@ const InventoryAudit = lazy(() => import("./pages/InventoryAudit"));
 const Banks = lazy(() => import("./pages/Banks"));
 const PlatformAdmin = lazy(() => import("./pages/PlatformAdmin"));
 const Security = lazy(() => import("./pages/Security"));
+const HelpCenter = lazy(() => import("./pages/HelpCenter"));
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 
 function PageLoading() {
@@ -58,6 +61,8 @@ function PageLoading() {
     "/settings": "Cargando Configuración…",
     "/team": "Cargando equipo…",
     "/invite": "Cargando invitación…",
+    "/help-center": "Cargando Centro de atención…",
+    "/help": "Cargando Centro de atención…",
   };
   const label = labels[location] || "Cargando sección…";
 
@@ -377,10 +382,12 @@ export default function App() {
     <ErrorBoundary>
       <Router>
         <Suspense fallback={<PageLoading />}>
+          <NumaGuide />
+          <PwaInstallPrompt />
           <Routes>
           <Route path="/landing" element={<LandingPage />} />
           <Route path="/platform-admin" element={<PlatformAdmin />} />
-          <Route path="/security" element={<Security />} />
+          <Route path="/security" element={<Navigate to="/help-center?section=security" replace />} />
           <Route path="/invite" element={<SaaSInvite />} />
           <Route path="/auth/confirm" element={<AuthConfirm />} />
           <Route path="/auth" element={accessState === "signed_out" ? <SaaSAuth /> : <Navigate to={accessState === "needs_onboarding" || pendingOnboarding ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/"} replace />} />
@@ -404,6 +411,9 @@ export default function App() {
                     <Route path="/settings" element={can("settings.manage") ? <Settings /> : <Navigate to="/pos" replace />} />
                     <Route path="/team" element={can("employees.manage") ? <Team /> : <Navigate to="/pos" replace />} />
                     <Route path="/subscription" element={can("settings.manage") ? <Subscription /> : <Navigate to="/pos" replace />} />
+                    <Route path="/help-center" element={<HelpCenter />} />
+                    <Route path="/help" element={<Navigate to="/help-center" replace />} />
+                    <Route path="/security" element={<Navigate to="/help-center?section=security" replace />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </Suspense>
