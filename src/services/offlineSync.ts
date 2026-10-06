@@ -199,6 +199,16 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
         break;
       case 'salary_settlement': add(cashOp(data.sessionId, 'close')); break;
       case 'bank_transaction': add(dep('bank_card', data.cardId)); add(dep('transaction', data.transactionId)); break;
+      case 'bank_transaction_delete':
+        add(dep('bank_transaction', data.id ? 'bank-transaction:' + data.id : undefined));
+        break;
+      case 'bank_internal_transfer':
+        add(dep('bank_card', data.fromCardId));
+        add(dep('bank_card', data.toCardId));
+        break;
+      case 'bank_internal_transfer_delete':
+        add(dep('bank_internal_transfer', data.operationId ? 'bank-transfer:' + data.operationId : undefined));
+        break;
       case 'bank_card_balance': add(dep('bank_card', data.id)); break;
       case 'time_shift': add(dep('user', data.userId)); break;
       case 'quote': add(dep('branch', data.branchId)); add(dep('user', data.userId)); add(dep('customer', data.customerId)); break;
