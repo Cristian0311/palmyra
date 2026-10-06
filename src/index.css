@@ -930,4 +930,7 @@ html.pos-keyboard-open .pos-page .animate-in,html.pos-keyboard-open .pos-page [c
   .pos-page .pos-keyboard-surface {
     max-height: calc(var(--pos-visual-height, 100dvh) - 20px) !important;
   }
+  .pos-keyboard-open .pos-page .pos-keyboard-surface {
+    transform: translateY(24px);
+  }
 }
