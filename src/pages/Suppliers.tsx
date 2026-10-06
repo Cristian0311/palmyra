@@ -1,3 +1,4 @@
+import { PlanFeatureGate } from "../components/PlanFeatureGate";
 import { useShallow } from 'zustand/react/shallow';
 import React, { useMemo, useState, useEffect } from "react";
 import { useStore } from "../store/useStore";
@@ -27,7 +28,7 @@ import { InfoTooltip } from "../components/InfoTooltip";
 import { loadSaaSContext } from "../services/saas";
 import { canUsePlanFeature } from "../services/planAccess";
 
-export default function Suppliers() {
+function SuppliersContent() {
   const { suppliers, addSupplier, updateSupplier, deleteSupplier, supplierOrders, products, createSupplierOrder, updateSupplierOrder, branches, getBaseCurrency } = useStore(useShallow((state) => ({ suppliers: state.suppliers, addSupplier: state.addSupplier, updateSupplier: state.updateSupplier, deleteSupplier: state.deleteSupplier, supplierOrders: state.supplierOrders, products: state.products, createSupplierOrder: state.createSupplierOrder, updateSupplierOrder: state.updateSupplierOrder, branches: state.branches, getBaseCurrency: state.getBaseCurrency })));
   const baseCurrency = getBaseCurrency();
   const [searchTerm, setSearchTerm] = useState("");
@@ -630,5 +631,14 @@ export default function Suppliers() {
         </div>
       )}
     </div>
+  );
+}
+
+
+export default function Suppliers() {
+  return (
+    <PlanFeatureGate feature="customers_suppliers" title="Proveedores" description="Esta función está incluida en Caravana para negocios que necesitan ampliar el control de su operación.">
+      <SuppliersContent />
+    </PlanFeatureGate>
   );
 }
