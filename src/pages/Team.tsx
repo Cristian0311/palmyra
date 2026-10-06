@@ -119,8 +119,8 @@ export default function Team() {
       email: "",
       sendInvite: true,
       posPassword: "",
-      compensationType: employee.compensation_type,
-      salesPercentage: String(employee.sales_percentage || 0)
+      compensationType: 'fixed_product',
+      salesPercentage: '0'
     });
   };
 
@@ -209,8 +209,8 @@ export default function Team() {
       email: employee.login_email || employee.pending_invitation?.email || "",
       sendInvite: !employee.user_id,
       posPassword: "",
-      compensationType: 'fixed_product',
-      salesPercentage: '0'
+      compensationType: employee.compensation_type,
+      salesPercentage: String(employee.sales_percentage || 0)
     });
     setFormStep(1);
     setShowForm(true);
