@@ -593,6 +593,32 @@ export default function Team() {
               <section className={cn("team-form-section", formStep !== 2 && "team-form-hidden")} data-section="employee-operation" aria-hidden={formStep !== 2}>
                 <div className="team-form-section-head"><div className="team-form-section-icon"><ShieldCheck className="w-4 h-4" /></div><div><h3>Rol y almacenes</h3><p>Define dónde trabaja y qué nivel de operación tendrá.</p></div></div>
                 <label className="team-field-wrap"><span className="team-field-label">Rol <b>*</b></span><span className="team-field"><span className="team-field-icon"><ShieldCheck className="w-4 h-4" /></span><select value={form.roleId} onChange={e => setForm({...form, roleId:e.target.value})} disabled={busy || availableRoles.length===0} className="team-field-input team-field-select">{availableRoles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}</select></span>{!canManageRoles && <span className="team-field-help"><Info className="w-3.5 h-3.5" />Solo puedes asignar el rol operativo estándar.</span>}</label>
+                <div className="mt-4 p-3 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40">
+                  <div className="flex items-start gap-2 mb-3">
+                    <WalletCards className="w-4 h-4 text-indigo-600 mt-0.5" />
+                    <div>
+                      <p className="text-[10px] font-black text-indigo-900 dark:text-indigo-200 uppercase tracking-wider">Forma de pago del trabajador</p>
+                      <p className="text-[9px] font-bold text-indigo-700/80 dark:text-indigo-300/80 mt-0.5">Elige cómo se calcula su pago por ventas. Esta configuración controla también qué comisión por producto aplica.</p>
+                    </div>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    <button type="button" onClick={() => setForm(prev => ({...prev, compensationType:'fixed_product', salesPercentage:'0'}))} className={cn("text-left p-3 rounded-xl border transition", form.compensationType==='fixed_product' ? "bg-white border-indigo-400 shadow-sm" : "bg-transparent border-indigo-100 dark:border-indigo-900")}>
+                      <p className="text-[10px] font-black text-primary uppercase">CUP fijo por producto</p>
+                      <p className="text-[9px] text-muted mt-1">Usa el monto CUP configurado en cada producto.</p>
+                    </button>
+                    <button type="button" onClick={() => setForm(prev => ({...prev, compensationType:'sales_percentage'}))} className={cn("text-left p-3 rounded-xl border transition", form.compensationType==='sales_percentage' ? "bg-white border-indigo-400 shadow-sm" : "bg-transparent border-indigo-100 dark:border-indigo-900")}>
+                      <p className="text-[10px] font-black text-primary uppercase">% sobre el total de venta</p>
+                      <p className="text-[9px] text-muted mt-1">Calcula el porcentaje sobre el total vendido por el trabajador.</p>
+                    </button>
+                  </div>
+                  {form.compensationType === 'sales_percentage' && (
+                    <label className="team-field-wrap mt-3">
+                      <span className="team-field-label">Porcentaje sobre ventas <b>*</b></span>
+                      <span className="team-field"><span className="team-field-icon"><WalletCards className="w-4 h-4" /></span><input type="number" min="0" max="100" step="0.01" inputMode="decimal" value={form.salesPercentage} onChange={e => setForm({...form,salesPercentage:e.target.value})} disabled={busy} className="team-field-input" placeholder="Ej. 5" /><span className="pr-3 font-black text-muted">%</span></span>
+                    </label>
+                  )}
+                </div>
+
                 <div className="mt-4">
                   <div className="flex items-end justify-between gap-3 mb-2"><div><span className="team-field-label">Almacenes permitidos <b>*</b></span><span className="team-field-subtext">Selecciona uno o varios almacenes a los que podrá acceder.</span></div><span className="team-selection-count">{form.warehouseIds.length} seleccionado{form.warehouseIds.length === 1 ? "" : "s"}</span></div>
                   <div className="grid sm:grid-cols-2 gap-2">
