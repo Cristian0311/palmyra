@@ -14,6 +14,10 @@ import { PrintLabels } from "../components/PrintLabels";
 import { ABCAnalysis } from "../components/ABCAnalysis";
 import { RestockAlerts } from "../components/RestockAlerts";
 import { useBarcodeScanner } from "../hooks/useBarcodeScanner";
+import * as XLSX from 'xlsx';
+import { loadSaaSContext } from '../services/saas';
+import { canUsePlanFeature } from '../services/planAccess';
+import { PlanFeatureGate } from '../components/PlanFeatureGate';
 
 export default function Inventory() {
   const { 
@@ -74,7 +78,13 @@ export default function Inventory() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [stockFilter, setStockFilter] = useState<'all' | 'in_stock' | 'low' | 'out'>('all');
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'products' | 'transfers' | 'labels' | 'abc' | 'restock' | 'bulk'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'transfers' | 'labels' | 'abc' | 'restock' | 'bulk' | 'excel'>('products');
+  const [planCode, setPlanCode] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    void loadSaaSContext().then(ctx => { if (active) setPlanCode(ctx?.subscription?.planCode || null); }).catch(() => { if (active) setPlanCode(null); });
+    return () => { active = false; };
+  }, []);
   const [showBatchPriceModal, setShowBatchPriceModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [activeFormTab, setActiveFormTab] = useState<'general' | 'stock' | 'extra'>('general');
@@ -247,6 +257,28 @@ export default function Inventory() {
     URL.revokeObjectURL(url);
   };
 
+  const exportToExcel = () => {
+    const rows = inventoryView.map((item: any) => ({
+      Producto: item.name || '',
+      SKU: item.sku || '',
+      'Código de barras': item.barcode || '',
+      Categoría: categoryById.get(item.categoryId)?.name || '',
+      'Precio de costo': Number(item.costPrice || 0),
+      'Precio de venta': Number(item.price || 0),
+      'Stock actual': Number(item.totalStock ?? item.quantity ?? 0),
+      'Stock mínimo': Number(item.minQuantity || 0),
+      'Valor de inventario': Number(item.costPrice || 0) * Number(item.totalStock ?? item.quantity ?? 0),
+    }));
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, 'Inventario');
+    XLSX.writeFile(wb, `Inventario_PALMYRA_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const canExcel = canUsePlanFeature(planCode, 'excel_exports');
+  const canLabels = canUsePlanFeature(planCode, 'labels');
+  const canABC = canUsePlanFeature(planCode, 'abc_analysis');
+
   const handleCategorySubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const { addCategory, updateCategory } = useStore.getState();
@@ -367,21 +399,21 @@ export default function Inventory() {
         </div>
         <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide w-full sm:w-auto py-1">
           <button 
-            onClick={exportToCSV}
+            onClick={() => canExcel ? exportToExcel() : setActiveTab('excel')}
             className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 bg-secondary border border-base text-muted rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-subtle transition-all shadow-sm active:scale-95"
           >
             <Download className="w-3 h-3" />
-            <span>CSV</span>
+            <span>{canExcel ? 'Excel' : 'Excel · Ciudadela'}</span>
           </button>
           <button 
             onClick={() => setActiveTab('labels')}
-            className="shrink-0 bg-slate-900 dark:bg-slate-800 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-slate-800 dark:hover:bg-slate-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
+            className={cn("shrink-0 bg-slate-900 dark:bg-slate-800 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-slate-800 dark:hover:bg-slate-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
           >
             Etiquetas
           </button>
           <button 
             onClick={() => setActiveTab('abc')}
-            className="shrink-0 bg-blue-600 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-blue-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
+            className={cn("shrink-0 bg-blue-600 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-blue-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
           >
             Análisis ABC
           </button>
