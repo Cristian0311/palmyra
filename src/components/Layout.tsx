@@ -21,6 +21,7 @@ import {
   CloudOff,
   CreditCard,
   FileText,
+  LifeBuoy,
   Clock,
   ChevronLeft,
   ChevronRight,
@@ -53,6 +54,7 @@ const adminNavItems = [
   { name: "Configuración", href: "/settings", icon: Settings, permission: "settings.manage" },
   { name: "Equipo", href: "/team", icon: Users, permission: "employees.manage" },
   { name: "Plan", href: "/subscription", icon: CreditCard, permission: "settings.manage" },
+  { name: "Centro de atención", href: "/help-center", icon: LifeBuoy },
 ];
 
 const APP_VERSION = "V 1.0.0";
@@ -77,8 +79,8 @@ function getPlanCountdown(target: string | null | undefined, nowMs: number) {
 }
 
 const cashierNavItems = [
-  { name: "Seguridad", href: "/security", icon: ShieldCheck },
-  { name: "Punto de Venta", href: "/pos", icon: ShoppingCart },
+  { name: "Centro de atención", href: "/help-center", icon: LifeBuoy },
+  { name: "Punto de Venta", href: "/pos", icon: ShoppingCart, permission: "pos.access" },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -262,7 +264,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const navItems =
     currentUser?.role === "admin"
       ? adminNavItems
-      : adminNavItems.filter(item => currentUser?.permissions?.includes(item.permission) || item.href === "/pos");
+      : adminNavItems.filter(item => !item.permission || currentUser?.permissions?.includes(item.permission) || item.href === "/pos");
 
   const visibleNavItems = navItems.length > 0 ? navItems : cashierNavItems;
 
@@ -370,7 +372,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto custom-scrollbar">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
             return (
               <NavLink
