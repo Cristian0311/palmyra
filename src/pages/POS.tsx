@@ -1265,7 +1265,7 @@ export default function POS() {
     }
   };
 
-  const handleJoinExistingSession = (e: React.FormEvent) => {
+  const handleJoinExistingSession = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!joiningSessionId) return;
 
