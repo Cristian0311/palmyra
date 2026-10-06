@@ -298,14 +298,17 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
     case 'transfer': {
       const res = await callTransferInventoryRPC(data as any);
       if (!res.success) throw new Error(res.error || 'No se pudo sincronizar la transferencia de inventario.');
-      const refreshed = await (async () => {
-        const results = await Promise.all([
-          pullBranchInventoryFromSupabase(data.fromBranchId),
-          pullBranchInventoryFromSupabase(data.toBranchId)
-        ]);
-        return results.every(x => x.success);
-      })();
-      if (!refreshed) throw new Error('Transferencia confirmada, pero no se pudo reconciliar el inventario.');
+      const results = await Promise.all([
+        pullBranchInventoryFromSupabase(data.fromBranchId),
+        pullBranchInventoryFromSupabase(data.toBranchId)
+      ]);
+      if (results.some(x => !x.success)) throw new Error('Transferencia confirmada, pero no se pudo reconciliar el inventario.');
+      replaceWarehousesInventory(
+        data.fromBranchId,
+        results[0].inventory || [],
+        data.toBranchId,
+        results[1].inventory || []
+      );
       return true;
     }
     case 'transfer_bulk': {
