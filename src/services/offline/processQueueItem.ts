@@ -122,6 +122,10 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
           total: (Number(settlement.baseSalary) || 0) + commissions - discrepancyDeduction
         };
 
+        // Compatibilidad con snapshots antiguos: sus movimientos deben existir
+        // antes de cerrar el turno, porque el RPC de movimientos exige una sesión abierta.
+        await syncLegacySessionMovements();
+
         const res = await (await import('../supabaseSync')).callCloseSessionRPC(
           session.id,
           session.closingBalances || [],
@@ -137,7 +141,6 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         // descuadres/liquidaciones incluso después de reiniciar el dispositivo.
         const metadataOk = await pushCashSessionMetadataToSupabase(session);
         if (!metadataOk) throw new Error('El cierre fue confirmado, pero el metadata del turno aún no pudo sincronizarse.');
-        await syncLegacySessionMovements();
         return true;
       }
       if (session.__operation === 'cancel') {
