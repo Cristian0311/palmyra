@@ -280,7 +280,17 @@ export async function pushBankCardToSupabase(card:BankCard){
 }
 export async function setBankCardBalanceToSupabase(cardId:string,expectedBalance:number,newBalance:number):Promise<boolean>{try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {data,error}=await supabase.from('bank_accounts').update({balance:Number(newBalance)||0,updated_at:new Date().toISOString()}).eq('id',cardId).eq('company_id',companyId).eq('balance',Number(expectedBalance)||0).select('id');if(error)throw error;return Boolean(data?.length);}catch{return false;}}
 export async function updateBankCardMetadataToSupabase(card:BankCard):Promise<boolean>{return pushBankCardToSupabase(card);}
-export async function deleteBankCardFromSupabase(id:string){try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {error}=await supabase.from('bank_accounts').update({active:false}).eq('id',id).eq('company_id',companyId);if(error)throw error;}catch{}}
+export async function deleteBankCardFromSupabase(id:string):Promise<boolean>{
+  try{
+    const supabase=await onlineClient();
+    const {companyId}=await getActiveTenant();
+    const {error}=await supabase.from('bank_accounts').update({active:false}).eq('id',id).eq('company_id',companyId);
+    if(error) throw error;
+    return true;
+  }catch{
+    return false;
+  }
+}
 
 export async function pushSupplierToSupabase(supplier:Supplier){
   try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {error}=await supabase.from('suppliers').upsert({id:supplier.id,company_id:companyId,name:supplier.name,phone:supplier.phone||null,address:supplier.address||null,email:supplier.email||null,rating:Number(supplier.rating)||0,merchandise_type:supplier.typeOfMerchandise||null,active:true},{onConflict:'id'});if(error)throw error;return true;}catch(e:any){await queue('supplier',supplier,supplier.id);return false;}
