@@ -48,10 +48,24 @@ test("Numa steps expose real UI anchors", () => {
   assert.ok(offline?.target?.some(selector => selector.includes("offline-status")));
 });
 
-test("POS tutorial points to the explicit gate and access anchors", () => {
+test("POS tutorial points to explicit semantic anchors in the real DOM", () => {
   const pos = NUMA_TOUR_STEPS.find(step => step.id === "pos");
+  const layoutSource = readFileSync(
+    join(process.cwd(), "src/components/Layout.tsx"),
+    "utf8"
+  );
+  const posSource = readFileSync(
+    join(process.cwd(), "src/pages/POS.tsx"),
+    "utf8"
+  );
+
   assert.equal(pos?.target?.[0], '[data-palmi-guide-nav="pos"]');
   assert.ok(pos?.contentTarget?.includes('[data-palmi-content="pos"]'));
+  assert.match(layoutSource, /data-palmi-guide-nav=/);
+  assert.match(posSource, /data-palmi-pos-gate="open"/);
+  assert.match(posSource, /data-palmi-guide="pos-employee-selector"/);
+  assert.match(posSource, /data-palmi-guide="pos-access-password"/);
+  assert.match(posSource, /verifySaaSPosAccessPassword/);
 });
 
 test("Numa uses exactly one canonical mascot asset", () => {
