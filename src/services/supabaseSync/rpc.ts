@@ -122,7 +122,7 @@ export async function callReserveNCFRangeRPC(params:{fiscalType:string;deviceId:
 }
 export async function callTransferInventoryRPC(params:{operationId:string;batchId?:string;productId:string;fromBranchId:string;toBranchId:string;variants:{variantLabel:string;quantity:number}[];userId:string}){
   try{const {companyId}=await getActiveTenant();
-    if(params.variants?.length){ for(const v of params.variants){const vid=await resolveVariantId(params.productId,v.variantLabel);await rpc('palmyra_transfer_inventory',{p_operation_id:params.operationId,p_company_id:companyId,p_from_warehouse_id:params.fromBranchId,p_to_warehouse_id:params.toBranchId,p_product_id:params.productId,p_variant_id:vid,p_quantity:Number(v.quantity)||0,p_notes:''});} }
+    if(params.variants?.length){ for(const v of params.variants){const vid=await resolveVariantId(params.productId,v.variantLabel);await rpc('palmyra_transfer_inventory',{p_operation_id:normalizeUuidOperationId(params.operationId),p_company_id:companyId,p_from_warehouse_id:params.fromBranchId,p_to_warehouse_id:params.toBranchId,p_product_id:params.productId,p_variant_id:vid,p_quantity:Number(v.quantity)||0,p_notes:''});} }
     return {success:true as const,error:undefined,errorCode:undefined,data:{success:true}};
   }catch(e:any){return errorResult(e);}
 }
