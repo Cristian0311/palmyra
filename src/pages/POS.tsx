@@ -177,6 +177,21 @@ export default function POS() {
   }, [activeSessionId, cashSessions, fallbackSessionBranchId, currentUser?.id, getCurrentSession]);
 
   useEffect(() => {
+    if (currentSession || !currentUser || !fallbackSessionBranchId || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
+    let cancelled = false;
+    const hydrateOpenCash = async () => {
+      try {
+        setCurrentBranch(fallbackSessionBranchId);
+        await useStore.getState().refreshBranchOperationalData();
+      } catch (error) {
+        if (!cancelled) console.warn('[POS] Reintento de hidratación de turnos abiertos:', error);
+      }
+    };
+    void hydrateOpenCash();
+    return () => { cancelled = true; };
+  }, [currentSession?.id, currentUser?.id, fallbackSessionBranchId, setCurrentBranch]);
+
+  useEffect(() => {
     if (activeSessionId) return;
     if (!currentUser?.id) return;
     const own = getCurrentSession(fallbackSessionBranchId, currentUser.id);
@@ -1291,17 +1306,37 @@ export default function POS() {
       return;
     }
 
-    const requiredPassword = (targetUser.password || '').trim();
     const enteredPassword = (joiningSessionPassword || '').trim();
-
-    if (!requiredPassword) {
-      setPosError(`El empleado ${targetUser.name || 'empleado'} no tiene contraseña asignada. El administrador debe asignarle una.`);
+    if (!enteredPassword) {
+      setPosError("Introduce la contraseña para reanudar este turno.");
       return;
     }
 
-    if (enteredPassword !== requiredPassword) {
-      setPosError(`Contraseña incorrecta para ${targetUser.name || 'empleado'}. Acceso denegado.`);
-      return;
+    // El Administrador entra al POS con la misma contraseña de su cuenta PALMYRA.
+    // Los empleados mantienen su contraseña operativa.
+    if (currentUser?.role === 'admin' && targetSession.userId === currentUser.id) {
+      try {
+        const { companyId } = await getActiveTenant();
+        const valid = await verifySaaSPosAccessPassword(companyId, currentUser.id, enteredPassword);
+        if (!valid) {
+          setPosError("Contraseña de PALMYRA incorrecta. No se puede reanudar el turno.");
+          return;
+        }
+      } catch (error) {
+        console.error("[POS] No se pudo validar la contraseña del administrador al reanudar:", error);
+        setPosError("No se pudo validar tu contraseña. Verifica la conexión y vuelve a intentarlo.");
+        return;
+      }
+    } else {
+      const requiredPassword = (targetUser.password || '').trim();
+      if (!requiredPassword) {
+        setPosError(`El empleado ${targetUser.name || 'empleado'} no tiene contraseña asignada. El administrador debe asignarle una.`);
+        return;
+      }
+      if (enteredPassword !== requiredPassword) {
+        setPosError(`Contraseña incorrecta para ${targetUser.name || 'empleado'}. Acceso denegado.`);
+        return;
+      }
     }
 
     // Reanudar no convierte la cuenta que inició sesión en el trabajador del turno.
@@ -1539,7 +1574,36 @@ export default function POS() {
                     </div>
                   )}
 
-                  <form onSubmit={handleOpenSession} className="space-y-2">
+                  {(() => {
+                const sameBranchOpen = (activeCashSessions || []).find(s =>
+                  s.status === 'open' &&
+                  !s.deletedAt &&
+                  s.branchId === sessionBranchId
+                );
+                if (!sameBranchOpen || currentSession) return null;
+                return (
+                  <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-left">
+                    <div className="min-w-0">
+                      <p className="text-[7px] font-black uppercase tracking-tight text-emerald-700">Caja abierta</p>
+                      <p className="text-[8px] font-bold leading-3 text-emerald-800 whitespace-normal break-words">
+                        Turno {sameBranchOpen.turnNumber || "—"} · {sameBranchOpen.workerName || "Administrador"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setJoiningSessionId(sameBranchOpen.id);
+                        setJoiningSessionPassword("");
+                        setPosError("");
+                      }}
+                      className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[7px] font-black uppercase tracking-tight text-white"
+                    >
+                      Reanudar
+                    </button>
+                  </div>
+                );
+              })()}
+              <form onSubmit={handleOpenSession} className="space-y-2">
                     <div className="text-left space-y-2">
                       {!false && (
                       <div>
@@ -1849,19 +1913,19 @@ export default function POS() {
                 const otherOpenSessions = (activeCashSessions || []).filter(s => s.status === 'open');
                 if (otherOpenSessions.length === 0) return null;
                 return (
-                  <div className="bg-white dark:bg-slate-900 p-4 rounded-[2rem] shadow-xl border border-slate-100 dark:border-slate-800 text-left max-w-sm w-full mt-2 shrink-0">
-                    <span className="text-[8px] font-black uppercase text-indigo-600 tracking-wider flex items-center gap-1.5 mb-2.5">
+                  <div className="bg-white dark:bg-slate-900 p-2.5 sm:p-3 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-800 text-left max-w-sm w-full mt-1 shrink-0">
+                    <span className="text-[7px] font-black uppercase text-indigo-600 tracking-tight flex items-center gap-1 mb-1.5">
                       <RefreshCw className="w-3.5 h-3.5 animate-spin-slow text-indigo-500" />
                       Turnos Abiertos Actualmente
                     </span>
                     <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
                       {otherOpenSessions.map(s => (
-                        <div key={s.id} className="p-2.5 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3">
+                        <div key={s.id} className="p-2 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
                           <div className="min-w-0">
-                            <span className="text-[10px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight block truncate">
+                            <span className="text-[9px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight block whitespace-normal break-words leading-tight">
                               {s.workerName || 'Empleado'}
                             </span>
-                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wide block">
+                            <span className="text-[6px] font-bold text-slate-400 uppercase tracking-tight block whitespace-normal break-words leading-tight">
                               {branches.find(b => b.id === s.branchId)?.name || 'Sucursal'} • ID: {s.id.slice(0, 6)}
                             </span>
                           </div>
@@ -1872,7 +1936,7 @@ export default function POS() {
                               setJoiningSessionPassword("");
                               setPosError("");
                             }}
-                            className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400 font-black text-[8px] uppercase tracking-wide rounded-lg transition-all active:scale-95 cursor-pointer shrink-0"
+                            className="px-2 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400 font-black text-[7px] uppercase tracking-tight rounded-lg transition-all active:scale-95 cursor-pointer shrink-0"
                           >
                             Reanudar
                           </button>
