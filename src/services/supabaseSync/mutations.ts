@@ -82,40 +82,56 @@ export async function pushProductToSupabase(product:Product){
         if (deactivateError) throw deactivateError;
       }
     }
-    // Las variantes del formulario son parte del catálogo, no del stock.
-    // Persistirlas aquí es crítico: el gestor de stock las resuelve por nombre
-    // para escribir en variant_stock_balances.
-    await supabase.from('product_variants')
-      .delete()
+    // Las variantes del formulario son catálogo estable. Nunca eliminamos
+    // físicamente una variante porque puede tener stock/historial asociado.
+    const { data: existingVariants, error: existingVariantError } = await supabase
+      .from('product_variants')
+      .select('id,name,sku,attributes,active')
       .eq('company_id', companyId)
       .eq('product_id', product.id);
+    if (existingVariantError) throw existingVariantError;
 
-    const variantRows = [
+    const desiredVariantRows = [
       ...(Array.isArray(product.availableSizes) ? product.availableSizes.map((name, index) => ({
-        id: crypto.randomUUID(),
-        company_id: companyId,
-        product_id: product.id,
-        name: String(name).trim(),
-        sku: `${product.sku || product.id}-SIZE-${index + 1}`,
-        attributes: { type: 'size' }
+        name: String(name).trim(), type: 'size', order: index + 1
       })) : []),
       ...(Array.isArray(product.availableColors) ? product.availableColors.map((name, index) => ({
-        id: crypto.randomUUID(),
-        company_id: companyId,
-        product_id: product.id,
-        name: String(name).trim(),
-        sku: `${product.sku || product.id}-COLOR-${index + 1}`,
-        attributes: { type: 'color' }
+        name: String(name).trim(), type: 'color', order: index + 1
       })) : [])
     ].filter(row => row.name);
 
-    // Evita duplicados de nombre cuando el mismo valor se escribió como talla y color.
-    const uniqueVariantRows = Array.from(
-      new Map(variantRows.map(row => [row.name.toLowerCase(), row])).values()
+    const uniqueDesired = Array.from(
+      new Map(desiredVariantRows.map(row => [row.name.toLowerCase(), row])).values()
     );
-    if (uniqueVariantRows.length) {
-      const { error: variantError } = await supabase.from('product_variants').insert(uniqueVariantRows);
-      if (variantError) throw variantError;
+    const existingByName = new Map((existingVariants || []).map((row: any) => [String(row.name).trim().toLowerCase(), row]));
+    const desiredIds: string[] = [];
+
+    for (const [index, row] of uniqueDesired.entries()) {
+      const existing = existingByName.get(row.name.toLowerCase());
+      const id = existing?.id || crypto.randomUUID();
+      desiredIds.push(id);
+      const { error: upsertVariantError } = await supabase.from('product_variants').upsert({
+        id,
+        company_id: companyId,
+        product_id: product.id,
+        name: row.name,
+        sku: existing?.sku || `${product.sku || product.id}-VAR-${index + 1}`,
+        attributes: { type: row.type },
+        active: true
+      }, { onConflict: 'id' });
+      if (upsertVariantError) throw upsertVariantError;
+    }
+
+    // Las variantes quitadas del producto quedan inactivas para conservar su
+    // inventario e historial, pero ya no aparecen como opciones nuevas.
+    const removedIds = (existingVariants || []).map((row: any) => row.id).filter((id: string) => !desiredIds.includes(id));
+    if (removedIds.length) {
+      const { error: deactivateVariantError } = await supabase
+        .from('product_variants')
+        .update({ active: false })
+        .in('id', removedIds)
+        .eq('company_id', companyId);
+      if (deactivateVariantError) throw deactivateVariantError;
     }
 
     await supabase.from('product_kit_components').delete().eq('company_id',companyId).eq('kit_product_id',product.id);
