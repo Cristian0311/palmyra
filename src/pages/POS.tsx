@@ -33,87 +33,12 @@ const EMPTY_TRANSACTIONS: Transaction[] = [];
 const EMPTY_CASH_SESSIONS: CashRegisterSession[] = [];
 
 export default function POS() {
-  // POS viewport keyboard bridge: keep dialogs inside the actually visible
-  // mobile viewport when Android/iOS opens the software keyboard.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const viewport = window.visualViewport;
-    if (!viewport) return;
-    const root = document.documentElement;
-
-    const update = () => {
-      const visibleHeight = Math.max(320, Math.round(viewport.height));
-      const keyboardInset = Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
-      root.style.setProperty("--pos-visual-height", visibleHeight + "px");
-      root.classList.toggle("pos-keyboard-open", keyboardInset > 80);
-    };
-
-    update();
-    viewport.addEventListener("resize", update);
-    viewport.addEventListener("scroll", update);
-    return () => {
-      viewport.removeEventListener("resize", update);
-      viewport.removeEventListener("scroll", update);
-      root.classList.remove("pos-keyboard-open");
-      root.style.removeProperty("--pos-visual-height");
-    };
-  }, []);
   const [showCashManagementModal, setShowCashManagementModal] = useState(false);
   const [lastClosedSession, setLastClosedSession] = useState<CashRegisterSession | null>(null);
   const [showOpenShiftModal, setShowOpenShiftModal] = useState(false);
   const [joiningSessionId, setJoiningSessionId] = useState<string | null>(null);
   const [showOpenSessionsModal, setShowOpenSessionsModal] = useState(false);
   const [isRefreshingOpenSessions, setIsRefreshingOpenSessions] = useState(false);
-
-  // Mantiene el POS anclado al viewport visible cuando Android abre el teclado.
-  // Evita que los diálogos salten/parpadeen por cambios repetidos del layout.
-  useEffect(() => {
-    const root = document.documentElement;
-    const body = document.body;
-    const original = {
-      overflow: body.style.overflow,
-      overscrollBehavior: body.style.overscrollBehavior,
-      touchAction: body.style.touchAction,
-    };
-
-    const syncViewport = () => {
-      const vv = window.visualViewport;
-      const height = Math.max(320, Math.round(vv?.height || window.innerHeight));
-      const top = Math.max(0, Math.round(vv?.offsetTop || 0));
-      root.style.setProperty("--pos-viewport-height", `${height}px`);
-      root.style.setProperty("--pos-viewport-top", `${top}px`);
-      const keyboardOpen = Boolean(vv && window.innerHeight - vv.height > 120);
-      root.classList.toggle("pos-keyboard-open", keyboardOpen);
-
-      if (keyboardOpen) {
-        body.style.overflow = "hidden";
-        body.style.overscrollBehavior = "none";
-        body.style.touchAction = "none";
-      } else {
-        body.style.overflow = original.overflow;
-        body.style.overscrollBehavior = original.overscrollBehavior;
-        body.style.touchAction = original.touchAction;
-      }
-    };
-
-    const schedule = () => window.requestAnimationFrame(syncViewport);
-    syncViewport();
-    window.visualViewport?.addEventListener("resize", schedule);
-    window.visualViewport?.addEventListener("scroll", schedule);
-    window.addEventListener("resize", schedule);
-
-    return () => {
-      window.visualViewport?.removeEventListener("resize", schedule);
-      window.visualViewport?.removeEventListener("scroll", schedule);
-      window.removeEventListener("resize", schedule);
-      root.classList.remove("pos-keyboard-open");
-      root.style.removeProperty("--pos-viewport-height");
-      root.style.removeProperty("--pos-viewport-top");
-      body.style.overflow = original.overflow;
-      body.style.overscrollBehavior = original.overscrollBehavior;
-      body.style.touchAction = original.touchAction;
-    };
-  }, []);
 
   // Suscripción única al estado operativo del POS. currentBranchId es el alias
   // interno existente del almacén activo y no reintroduce la capa legacy.
