@@ -33,6 +33,31 @@ const EMPTY_TRANSACTIONS: Transaction[] = [];
 const EMPTY_CASH_SESSIONS: CashRegisterSession[] = [];
 
 export default function POS() {
+  // POS viewport keyboard bridge: keep dialogs inside the actually visible
+  // mobile viewport when Android/iOS opens the software keyboard.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const root = document.documentElement;
+
+    const update = () => {
+      const visibleHeight = Math.max(320, Math.round(viewport.height));
+      const keyboardInset = Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
+      root.style.setProperty("--pos-visual-height", visibleHeight + "px");
+      root.classList.toggle("pos-keyboard-open", keyboardInset > 80);
+    };
+
+    update();
+    viewport.addEventListener("resize", update);
+    viewport.addEventListener("scroll", update);
+    return () => {
+      viewport.removeEventListener("resize", update);
+      viewport.removeEventListener("scroll", update);
+      root.classList.remove("pos-keyboard-open");
+      root.style.removeProperty("--pos-visual-height");
+    };
+  }, []);
   const [showCashManagementModal, setShowCashManagementModal] = useState(false);
   const [lastClosedSession, setLastClosedSession] = useState<CashRegisterSession | null>(null);
   const [showOpenShiftModal, setShowOpenShiftModal] = useState(false);
@@ -1574,7 +1599,8 @@ export default function POS() {
       )}
       {!currentSession && (
         <div
-          className={cn("pos-modal-layer fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center px-3 py-5 sm:px-4 sm:py-6", joiningSessionId ? "overflow-hidden" : "overflow-y-auto overscroll-contain")}>
+          onFocusCapture={(event) => { const target = event.target as HTMLElement | null; if (!target || !("focus" in target)) return; window.setTimeout(() => { try { target.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" }); } catch {} }, 40); }}
+          className={cn("pos-keyboard-overlay pos-modal-layer fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center px-3 py-5 sm:px-4 sm:py-6", "overflow-y-auto overscroll-contain")}>
           {showOpenSessionsModal && !joiningSessionId && (
             <div className="fixed inset-0 z-[65] bg-slate-950/55 backdrop-blur-sm flex items-center justify-center p-3">
               <div className="w-full max-w-[min(94vw,31rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
@@ -1616,7 +1642,7 @@ export default function POS() {
           )}
           {joiningSessionId ? (
             /* Modal Formulario de Ingreso a Turno Abierto Existente */
-            <div className="bg-white dark:bg-slate-900 p-3 sm:p-3.5 rounded-2xl shadow-2xl text-center max-w-[19rem] w-full border border-white/20">
+            <div className="palmyra-mobile-modal keyboard-modal-surface bg-white dark:bg-slate-900 p-3 sm:p-3.5 rounded-2xl shadow-2xl text-center max-w-[19rem] w-full border border-white/20">
               <div className="w-8 h-8 bg-amber-50 dark:bg-amber-950/40 rounded-xl flex items-center justify-center mx-auto mb-1.5">
                 <Lock className="w-3.5 h-3.5 text-amber-600" />
               </div>
@@ -2127,8 +2153,8 @@ export default function POS() {
       {showCheckoutModal && (
         <Suspense
           fallback={
-            <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[80] flex items-center justify-center p-4">
-              <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-2xl text-center text-xs font-bold text-slate-500">
+            <div className="pos-keyboard-overlay fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[80] flex items-center justify-center p-4">
+              <div className="palmyra-mobile-modal keyboard-modal-surface bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-2xl text-center text-[9px] font-bold text-slate-500">
                 Cargando cobro…
               </div>
             </div>
