@@ -1,9 +1,11 @@
 import React from "react";
 
 /** Numa: mascota vectorial propia de PALMYRA. Mantenerla en SVG evita dependencias externas y conserva nitidez en cualquier DPI. */
-export function PalmiMascot({ className = "" }: { className?: string }) {
+export type NumaMood = "idle" | "thinking" | "waiting" | "success" | "alert";
+
+export function PalmiMascot({ className = "", mood = "idle" }: { className?: string; mood?: NumaMood }) {
   return (
-    <svg className={className} viewBox="0 0 280 320" role="img" aria-label="Numa, el camello guía de PALMYRA" xmlns="http://www.w3.org/2000/svg">
+    <svg className={`${className} numa-mascot numa-mood-${mood}`} viewBox="0 0 280 320" role="img" aria-label="Numa, el camello guía de PALMYRA" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <radialGradient id="numa-halo" cx="50%" cy="35%" r="70%"><stop offset="0%" stopColor="#F4ECFF"/><stop offset="72%" stopColor="#E8D9FF"/><stop offset="100%" stopColor="#D8C4FA"/></radialGradient>
         <linearGradient id="numa-fur" x1="18%" y1="0%" x2="82%" y2="100%"><stop offset="0%" stopColor="#FFD39B"/><stop offset="38%" stopColor="#E8A96C"/><stop offset="72%" stopColor="#C77D4B"/><stop offset="100%" stopColor="#9D5A38"/></linearGradient>
@@ -18,7 +20,7 @@ export function PalmiMascot({ className = "" }: { className?: string }) {
       <circle cx="140" cy="142" r="122" fill="url(#numa-halo)"/>
       <circle cx="140" cy="142" r="111" fill="none" stroke="#7A50DD" strokeWidth="1.5" strokeDasharray="2 9" opacity=".22"/>
 
-      <g filter="url(#numa-shadow)">
+      <g className="numa-mascot-body" filter="url(#numa-shadow)">
         <path d="M89 111C66 94 45 97 27 119C49 118 62 129 77 147Z" fill="#9C5D3A"/>
         <path d="M191 111C214 94 235 97 253 119C231 118 218 129 203 147Z" fill="#9C5D3A"/>
         <path d="M100 116C103 82 117 55 140 55C163 55 177 82 180 116L191 176C195 219 174 250 140 258C106 250 85 219 89 176Z" fill="url(#numa-fur)"/>
@@ -64,6 +66,8 @@ export function PalmiMascot({ className = "" }: { className?: string }) {
       </g>
 
       <g className="palmi-mascot-blink"><circle cx="112" cy="145" r="2.2" fill="#FFF"/><circle cx="168" cy="145" r="2.2" fill="#FFF"/></g>
+      {mood === "success" ? <path d="M118 221C128 231 152 231 162 221" fill="none" stroke="#6D3BD2" strokeWidth="3.4" strokeLinecap="round"/> : null}
+      {mood === "alert" ? <path d="M119 218C130 210 150 210 161 218" fill="none" stroke="#6D3BD2" strokeWidth="3.2" strokeLinecap="round"/> : null}
     </svg>
   );
 }
