@@ -1739,31 +1739,6 @@ export default function POS() {
                         setShowOpenSessionsModal(true);
                         void refreshOpenSessions();
                       }}
-                      className="group w-full mb-2 flex items-center gap-2 rounded-xl border border-emerald-200/80 bg-emerald-50/70 px-2.5 py-2 text-left transition-all hover:bg-emerald-50 hover:shadow-sm active:scale-[0.99]"
-                    >
-                      <span className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
-                        <Wallet className="w-3.5 h-3.5" />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-1.5 min-w-0">
-                          <span className="text-[8px] font-black uppercase tracking-[0.11em] text-emerald-800">Turnos abiertos</span>
-                          <span className="rounded-full bg-white/80 border border-emerald-200 px-1.5 py-0.5 text-[6px] font-black text-emerald-700">
-                            {isRefreshingOpenSessions ? "…" : openSessionsForResume.length}
-                          </span>
-                        </span>
-                        <span className="block mt-0.5 text-[6.5px] font-bold text-emerald-700/80 leading-tight">
-                          {openSessionsForResume.length > 0 ? "Ver cajas en curso y reanudar" : "Buscar cajas abiertas en este momento"}
-                        </span>
-                      </span>
-                      {isRefreshingOpenSessions ? <RefreshCw className="w-3 h-3 shrink-0 text-emerald-600 animate-spin" /> : <ArrowRight className="w-3 h-3 shrink-0 text-emerald-600 transition-transform group-hover:translate-x-0.5" />}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowOpenSessionsModal(true);
-                        void refreshOpenSessions();
-                      }}
                       className="group w-full mb-2 flex items-center gap-2 rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-white px-2.5 py-2 text-left transition-all hover:border-emerald-300 hover:shadow-sm active:scale-[0.99]"
                     >
                       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
