@@ -135,6 +135,8 @@ const STEPS: NumaTourStep[] = [
   }
 ];
 
+export const NUMA_TOUR_STEPS = STEPS;
+
 export function getAccessibleNumaTourSteps(user: User | null | undefined): NumaTourStep[] {
   return STEPS.filter((step) => {
     if (!step.permission) return true;
