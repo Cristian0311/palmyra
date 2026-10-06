@@ -460,16 +460,23 @@ export default function PalmiGuide() {
           ? "alert"
           : "thinking";
 
-  const baseActionWidth = Math.min(252, Math.max(198, window.innerWidth - SAFE * 2));
-  const actionHintHeight = 104;
+  const baseActionWidth = Math.min(
+    isCompact ? 220 : 252,
+    Math.max(isCompact ? 190 : 198, window.innerWidth - SAFE * 2)
+  );
+  const actionHintHeight = isCompact ? 96 : 104;
   const sidebarRect = isActionStep ? findSidebarRect() : null;
-  const sideActionWidth = sidebarRect
-    ? Math.max(148, Math.min(baseActionWidth, window.innerWidth - sidebarRect.right - SAFE - 8))
-    : baseActionWidth;
+  const sidebarAvailableWidth = sidebarRect
+    ? window.innerWidth - sidebarRect.right - SAFE - SIDEBAR_GAP
+    : 0;
+  const sideActionWidth =
+    sidebarAvailableWidth >= 160
+      ? Math.min(baseActionWidth, sidebarAvailableWidth)
+      : 0;
 
   const actionCandidates = targetRect
     ? [
-        ...(sidebarRect
+        ...(sidebarRect && sideActionWidth >= 160
           ? [{
               width: sideActionWidth,
               left: sidebarRect.right + SIDEBAR_GAP,
@@ -511,7 +518,11 @@ export default function PalmiGuide() {
           return overlapX * overlapY;
         };
 
-        return overlap(targetRect) + (sidebarRect ? overlap(sidebarRect) * 6 : 0);
+        const sidebarPenalty =
+          sidebarRect && candidate.side === "right"
+            ? overlap(sidebarRect) * 6
+            : 0;
+        return overlap(targetRect) + sidebarPenalty;
       };
 
       return overlapScore(a) - overlapScore(b);
@@ -693,8 +704,6 @@ export default function PalmiGuide() {
         >
           <span className="palmi-aura palmi-aura-1" />
           <span className="palmi-aura palmi-aura-2" />
-          <span className="palmi-spark palmi-spark-1">✦</span>
-          <span className="palmi-spark palmi-spark-2">✦</span>
           <span className="palmi-mascot-stage">
             <PalmiMascot className="palmi-guide-mascot" mood="idle" />
           </span>
