@@ -19,7 +19,6 @@ import { setPalmyraLocalScope, clearPalmyraLocalScope } from "./services/localSc
 import { registerCurrentDevice } from "./services/device";
 import { touchCurrentDevice } from "./services/security";
 import NumaGuide from "./components/help/NumaGuide";
-import PwaInstallPrompt from "./components/help/PwaInstallPrompt";
 import { getCachedSaaSContext, clearCachedSaaSContext } from "./services/offlineAuthContext";
 
 // Code-splitting de rutas para acelerar inicio en tablets y reducir consumo de memoria
@@ -42,7 +41,6 @@ const Suppliers = lazy(() => import("./pages/Suppliers"));
 const InventoryAudit = lazy(() => import("./pages/InventoryAudit"));
 const Banks = lazy(() => import("./pages/Banks"));
 const PlatformAdmin = lazy(() => import("./pages/PlatformAdmin"));
-const Security = lazy(() => import("./pages/Security"));
 const HelpCenter = lazy(() => import("./pages/HelpCenter"));
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 
@@ -425,7 +423,6 @@ export default function App() {
       <Router>
         <Suspense fallback={<PageLoading />}>
           <NumaGuide />
-          <PwaInstallPrompt />
           <Routes>
           <Route path="/landing" element={<LandingPage />} />
           <Route path="/platform-admin" element={<PlatformAdmin />} />
