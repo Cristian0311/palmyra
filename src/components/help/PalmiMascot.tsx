@@ -1,13 +1,13 @@
 import React from "react";
-import numaMascotUrl from "../../assets/numa-mascot.webp";
+import numaMascotUrl from "../../assets/numa-official.webp";
 import type { NumaMood } from "./numa";
 
 export type { NumaMood };
 
 /**
  * Mascota oficial de NUMA.
- * Un único render 3D consistente; los estados se diferencian visualmente
- * mediante clases de animación sin sustituir el personaje.
+ * Esta es la única fuente visual del personaje; los estados se expresan
+ * mediante clases de animación sin sustituir ni duplicar el asset.
  */
 export function PalmiMascot({
   className = "",
