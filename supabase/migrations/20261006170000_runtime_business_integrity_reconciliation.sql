@@ -42,6 +42,6 @@ create index if not exists idx_cash_sessions_not_deleted
   on public.cash_sessions (company_id,cash_register_id,opened_at)
   where deleted_at is null;
 
--- The authoritative runtime functions are recreated by the newer migrations
--- in this repository; this file intentionally avoids destructive replacement
--- of business functions and only reconciles grants/permissions/schema drift.
+-- Business functions are managed by their dedicated hardening migrations.
+-- This reconciliation migration is limited to additive grants/permissions/schema
+-- drift so it can be safely replayed on an existing tenant database.
