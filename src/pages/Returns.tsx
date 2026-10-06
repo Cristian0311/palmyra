@@ -1,3 +1,4 @@
+import { PlanFeatureGate } from "../components/PlanFeatureGate";
 import { useShallow } from 'zustand/react/shallow';
 import React, { useMemo, useState } from "react";
 import { RotateCcw, Search, CheckCircle, XCircle, AlertTriangle, ShieldCheck, X, Calendar, User, Package, Hash } from "lucide-react";
@@ -5,7 +6,7 @@ import { useStore } from "../store/useStore";
 import { cn, generateId } from "../lib/utils";
 import { ReturnItem, Warranty } from "../types";
 
-export default function Returns() {
+function ReturnsContent() {
   const { returns, transactions, products, categories, createReturn, updateReturn, processReturn, warranties, updateWarranty } = useStore(useShallow((state) => ({ returns: state.returns, transactions: state.transactions, products: state.products, categories: state.categories, createReturn: state.createReturn, updateReturn: state.updateReturn, processReturn: state.processReturn, warranties: state.warranties, updateWarranty: state.updateWarranty })));
   const [activeTab, setActiveTab] = useState<'returns' | 'warranties'>('returns');
   const [searchQuery, setSearchQuery] = useState("");
@@ -492,5 +493,14 @@ function ProcedureGuide() {
         </ul>
       </div>
     </div>
+  );
+}
+
+
+export default function Returns() {
+  return (
+    <PlanFeatureGate feature="warranty_returns" title="Sistema de garantías y devoluciones" description="Esta función está incluida en Caravana para negocios que necesitan ampliar el control de su operación.">
+      <ReturnsContent />
+    </PlanFeatureGate>
   );
 }
