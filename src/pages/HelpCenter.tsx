@@ -183,7 +183,12 @@ export default function HelpCenter(){
         <section className="help-center-support">
           <div className="help-support-copy"><span className="help-section-kicker">ATENCIÓN AL CLIENTE</span><h2>Cuéntanos qué necesitas</h2><p>La solicitud queda registrada con tu empresa y se prepara un mensaje con el contexto necesario para que el equipo de PALMYRA pueda ayudarte más rápido.</p>
             <div className="help-contact-card"><MessageCircle/><div><strong>Canal oficial</strong><span>{support.whatsapp_number ? "WhatsApp configurado en PALMYRA Admin" : "Pendiente de configuración administrativa"}</span>{support.support_email&&<small>{support.support_email}</small>}</div></div>
-            {(support.facebook_url || support.whatsapp_channel_url) && <div className="help-social-links help-social-links--compact">{support.facebook_url && <a href={support.facebook_url} target="_blank" rel="noopener noreferrer" className="help-social-link"><FacebookMark/><span><strong>Facebook</strong><small>Seguir página</small></span></a>}{support.whatsapp_channel_url && <a href={support.whatsapp_channel_url} target="_blank" rel="noopener noreferrer" className="help-social-link"><WhatsAppMark/><span><strong>WhatsApp</strong><small>Unirse al canal</small></span></a>}</div>
+            {(support.facebook_url || support.whatsapp_channel_url) && (
+              <div className="help-social-links help-social-links--compact">
+                {support.facebook_url && <a href={support.facebook_url} target="_blank" rel="noopener noreferrer" className="help-social-link"><FacebookMark/><span><strong>Facebook</strong><small>Seguir página</small></span></a>}
+                {support.whatsapp_channel_url && <a href={support.whatsapp_channel_url} target="_blank" rel="noopener noreferrer" className="help-social-link"><WhatsAppMark/><span><strong>WhatsApp</strong><small>Unirse al canal</small></span></a>}
+              </div>
+            )}
           </div>
           <form className="help-support-form" onSubmit={submitSupport}>
             <label><span>Nombre de la empresa</span><div className="help-readonly"><BuildingIcon/><input value={companyName} readOnly aria-describedby="registered-company-help"/></div><small id="registered-company-help" className="help-form-hint">Nombre real registrado en tu cuenta PALMYRA.</small></label>
