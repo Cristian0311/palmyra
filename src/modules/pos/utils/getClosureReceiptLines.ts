@@ -52,7 +52,6 @@ export function getClosureReceiptLines(session: CashRegisterSession, deps: Closu
     || users.find(u => u.role === 'employee')
     || currentUser;
 
-  const totalSales = sessionTx.reduce((sum, tx) => sum + tx.total, 0);
   const commissions = employee?.compensationType === 'sales_percentage'
     ? totalSales * Math.max(0, Math.min(100, Number(employee.salesPercentage || 0))) / 100
     : sessionTx.reduce((sum, tx) => sum + tx.items.reduce((s, item) => {
@@ -69,7 +68,7 @@ export function getClosureReceiptLines(session: CashRegisterSession, deps: Closu
     return s + (cost * item.quantity);
   }, 0), 0);
 
-  const baseSalary = employee?.baseSalary || 0;
+  const baseSalary = employee?.compensationType === 'sales_percentage' ? 0 : (employee?.baseSalary || 0);
   const totalSalary = baseSalary + commissions;
   const lines: string[] = [];
   lines.push(`CENTER|BOLD|${receiptConfig.businessName || 'PALMYRA POS'}`);
