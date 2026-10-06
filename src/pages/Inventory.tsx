@@ -220,6 +220,7 @@ export default function Inventory() {
     const quantity = draft.quantity === '' ? 0 : Math.max(0, parseInt(draft.quantity, 10) || 0);
     const minQuantity = draft.minQuantity === '' ? 0 : Math.max(0, parseInt(draft.minQuantity, 10) || 0);
     if (quantity !== fallbackQuantity || minQuantity !== fallbackMin) setInventoryQuantity(productId, branchId, quantity, variant, minQuantity);
+    setStockDrafts(prev => { const next = { ...prev }; delete next[stockDraftKey(productId, branchId, variant)]; return next; });
   };
 
   const [showKitPicker, setShowKitPicker] = useState(false);
