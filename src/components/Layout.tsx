@@ -323,7 +323,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="lg:hidden bg-white text-slate-700 p-3.5 flex justify-between items-center shadow-sm border-b border-violet-100 shrink-0">
           <div className="flex items-center gap-2 min-w-0"><img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="w-[160px] h-[40px] object-contain object-left" /><span className="rounded-full bg-violet-50 px-1.5 py-1 text-[7px] font-black text-violet-700 tracking-wider shrink-0">{APP_VERSION}</span></div><div className={cn("flex items-center gap-1.5 px-2 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-wider", isOnline ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700")} title="Estado de conexión">{isOnline ? <Wifi className="w-3 h-3 shrink-0" /> : <WifiOff className="w-3 h-3 shrink-0" />}<span>{isOnline ? (pendingOfflineCount > 0 ? pendingOfflineCount+" pendientes" : "Online") : "Offline"}</span></div>
           <div className="flex items-center gap-1.5 shrink-0"><button data-palmy-menu-toggle type="button" onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 rounded-xl hover:bg-slate-100 transition" aria-label="Abrir menú principal" title="Abrir menú principal" aria-expanded={sidebarOpen}>
-            <Menu className="w-5 h-5" />
+            <Menu className="w-3.5 h-3.5" />
           </button></div>
         </div>
       )}
@@ -333,20 +333,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         className={cn(
           "bg-secondary border-r border-base transition-all duration-300 ease-in-out flex flex-col h-full shrink-0 shadow-sm",
           // Mobile: off-canvas drawer with fixed overlay
-          "fixed inset-y-0 left-0 z-50 w-[78vw] max-w-[260px] overflow-hidden",
+          "fixed inset-y-0 left-0 z-50 w-[70vw] max-w-[230px] overflow-hidden",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           // Desktop (lg+): relative in-flow column, NEVER covers or overlaps the right content
           "lg:relative lg:inset-auto lg:z-auto lg:translate-x-0",
-          sidebarCollapsed ? "lg:w-14" : "lg:w-[13rem]"
+          sidebarCollapsed ? "lg:w-12" : "lg:w-[11.5rem]"
         )}
       >
         {/* Header with Collapse toggle */}
-        <div className={cn("p-2.5 shrink-0 flex items-center justify-between gap-2 border-b border-subtle", sidebarCollapsed && "lg:p-3 lg:justify-center")}>
+        <div className={cn("p-2 shrink-0 flex items-center justify-between gap-1.5 border-b border-subtle", sidebarCollapsed && "lg:p-2 lg:justify-center")}>
           <div className={cn("flex items-center gap-1 min-w-0 flex-1 pr-0", sidebarCollapsed && "lg:hidden")}>
             <img
               src="/palmyra-logo-exact.svg"
               alt="PALMYRA"
-              className="w-[104px] h-[28px] max-w-[calc(100%-2rem)] object-contain object-left"
+              className="w-[92px] h-[25px] max-w-[calc(100%-2rem)] object-contain object-left"
             />
             <span className="shrink-0 rounded-full bg-subtle px-1.5 py-1 text-[6px] font-black text-primary tracking-tight leading-none">{APP_VERSION}</span>
           </div>
@@ -355,7 +355,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <img
               src="/palmyra-mark-exact.svg"
               alt="PALMYRA"
-              className="w-9 h-9 object-contain"
+              className="w-8 h-8 object-contain"
             />
           </div>
           
@@ -449,8 +449,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </button>
           </div>
 
-          <div className={cn("flex items-center gap-1.5 mb-1.5", sidebarCollapsed && "lg:justify-center lg:mb-1")}>
-            <div className="w-6 h-6 rounded-full bg-subtle border border-base flex items-center justify-center text-primary font-black text-[9px] uppercase shrink-0 shadow-sm">
+          <div className={cn("flex items-center gap-1 mb-1", sidebarCollapsed && "lg:justify-center lg:mb-1")}>
+            <div className="w-5 h-5 rounded-full bg-subtle border border-base flex items-center justify-center text-primary font-black text-[9px] uppercase shrink-0 shadow-sm">
               {currentUser?.name.charAt(0)}
             </div>
             {!sidebarCollapsed && (
@@ -507,7 +507,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             onClick={logout}
             className={cn(
               "flex items-center text-muted hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-xl transition-all font-black uppercase",
-              sidebarCollapsed ? "justify-center p-2 w-full" : "space-x-2 px-2.5 py-1.5 w-full text-[8px] tracking-tight"
+              sidebarCollapsed ? "justify-center p-1.5 w-full" : "space-x-1.5 px-2 py-1 w-full text-[7px] tracking-tight"
             )}
             title="Cerrar sesión"
           >
