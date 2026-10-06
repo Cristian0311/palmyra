@@ -3,6 +3,7 @@ import { getSupabase } from '../lib/supabase';
 import { slugifyCompany, type PlanCode } from '../config/saas';
 import { setPalmyraLocalScope, clearPalmyraLocalScope } from './localScope';
 import { clearActiveTenant } from './tenant';
+import { cacheSaaSContext, clearCachedSaaSContext } from './offlineAuthContext';
 
 export interface SaaSContext {
   authUserId: string;
@@ -62,8 +63,19 @@ export async function signInSaaSAccount(email: string, password: string) {
 export async function signOutSaaSAccount() {
   clearActiveTenant();
   const supabase = getSupabase();
-  if (!supabase) return;
-  await supabase.auth.signOut();
+  if (!supabase) {
+    clearCachedSaaSContext();
+    clearPalmyraLocalScope();
+    return;
+  }
+  try {
+    const { data } = await supabase.auth.getSession();
+    const userId = data.session?.user?.id || null;
+    if (userId) clearCachedSaaSContext(userId);
+  } catch {}
+  try { await supabase.auth.signOut(); } catch (error) {
+    console.warn("[PALMYRA] Cierre de sesión remoto no disponible; se limpia la sesión local.", error);
+  }
   clearPalmyraLocalScope();
   clearActiveTenant();
 }
@@ -249,7 +261,7 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
       }
     : null;
 
-  return {
+  const context: SaaSContext = {
     authUserId: authUser.id,
     user,
     companyId,
@@ -269,6 +281,9 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
       trialEndsAt
     } : null
   };
+
+  cacheSaaSContext(context);
+  return context;
 }
 
 export async function createCompanyOnboarding(input: {
