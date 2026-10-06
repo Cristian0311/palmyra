@@ -17,7 +17,7 @@ export function PalmiMascot({
 }) {
   return (
     <img
-      src="/numa-mascot.webp"
+      src="/numa-mascot.svg"
       alt="NUMA, mascota guía de PALMYRA"
       className={`numa-mascot numa-mood-${mood} ${className}`}
       draggable={false}

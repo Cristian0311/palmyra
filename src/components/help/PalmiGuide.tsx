@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, CircleCheck, X } from "lucide-react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useStore } from "../../store/useStore";
 import { getAccessibleNumaTourSteps, type NumaTourStep } from "./palmiGuideSteps";
 import { PalmiMascot } from "./PalmiMascot";
@@ -85,6 +85,7 @@ export default function PalmiGuide() {
   const currentUser = useStore((state) => state.currentUser);
   const darkMode = useStore((state) => state.storeConfig.darkMode);
   const location = useLocation();
+  const navigate = useNavigate();
 
   const [isCompact, setIsCompact] = useState(compactViewport);
   const [open, setOpen] = useState(false);
@@ -323,29 +324,47 @@ export default function PalmiGuide() {
   useEffect(() => {
     if (!open || !isActionStep || !step?.target?.length) return;
 
-    const onClick = (event: MouseEvent) => {
-      const target = event.target;
-      if (!(target instanceof Element)) return;
+    let cancelled = false;
+    let boundTarget: HTMLElement | null = null;
+    let fallbackTimer: number | null = null;
 
-      const hit = step.target?.some((selector) => {
-        try {
-          return Boolean(target.closest(selector));
-        } catch {
-          return false;
-        }
-      });
+    const handleTargetClick = () => {
+      if (cancelled) return;
+      setPhase("explain");
+      setTargetRect(null);
 
-      if (!hit) return;
-
-      window.setTimeout(() => {
-        setPhase("explain");
-        setTargetRect(null);
-      }, 260);
+      if (step.route) {
+        fallbackTimer = window.setTimeout(() => {
+          if (!cancelled && !isCurrentRoute(step.route, window.location.pathname)) {
+            navigate(step.route);
+          }
+        }, 350);
+      }
     };
 
-    document.addEventListener("click", onClick, true);
-    return () => document.removeEventListener("click", onClick, true);
-  }, [open, isActionStep, step?.id, step?.target]);
+    const bind = () => {
+      if (cancelled) return;
+      const target = findTarget(step.target) as HTMLElement | null;
+      if (!target) {
+        window.setTimeout(bind, 80);
+        return;
+      }
+      boundTarget = target;
+      target.addEventListener("pointerup", handleTargetClick, true);
+      target.addEventListener("click", handleTargetClick, true);
+    };
+
+    bind();
+
+    return () => {
+      cancelled = true;
+      if (boundTarget) {
+        boundTarget.removeEventListener("pointerup", handleTargetClick, true);
+        boundTarget.removeEventListener("click", handleTargetClick, true);
+      }
+      if (fallbackTimer !== null) window.clearTimeout(fallbackTimer);
+    };
+  }, [open, isActionStep, step?.id, step?.route, step?.target, navigate]);
 
   const prepareStep = (nextIndex: number) => {
     const next = steps[nextIndex];
@@ -414,25 +433,44 @@ export default function PalmiGuide() {
           ? "alert"
           : "thinking";
 
-  const actionHintWidth = Math.min(242, Math.max(190, window.innerWidth - 28));
-  const actionHintLeft = targetRect
-    ? clamp(
-        targetRect.left + targetRect.width / 2 - actionHintWidth / 2,
-        SAFE,
-        Math.max(SAFE, window.innerWidth - actionHintWidth - SAFE)
-      )
-    : SAFE;
-  const actionHintAbove = targetRect
-    ? targetRect.top > 112
-    : true;
-  const actionHintTop = targetRect
-    ? actionHintAbove
-      ? Math.max(TOP_SAFE, targetRect.top - 86)
-      : Math.min(
-          window.innerHeight - 110,
-          targetRect.bottom + GAP
-        )
-    : TOP_SAFE;
+  const actionHintWidth = Math.min(252, Math.max(198, window.innerWidth - SAFE * 2));
+  const actionHintHeight = 104;
+  const actionCandidates = targetRect
+    ? [
+        { left: targetRect.right + GAP, top: targetRect.top, side: "right" as const },
+        { left: targetRect.left, top: targetRect.bottom + GAP, side: "below" as const },
+        { left: targetRect.left, top: targetRect.top - actionHintHeight - GAP, side: "above" as const },
+        { left: window.innerWidth - actionHintWidth - SAFE, top: TOP_SAFE, side: "top" as const }
+      ]
+    : [{ left: SAFE, top: TOP_SAFE, side: "top" as const }];
+
+  const actionPlacement = actionCandidates
+    .map(candidate => ({
+      ...candidate,
+      left: clamp(candidate.left, SAFE, Math.max(SAFE, window.innerWidth - actionHintWidth - SAFE)),
+      top: clamp(candidate.top, TOP_SAFE, Math.max(TOP_SAFE, window.innerHeight - actionHintHeight - BOTTOM_SAFE))
+    }))
+    .sort((a, b) => {
+      const overlap = (candidate: typeof a) => {
+        if (!targetRect) return 0;
+        const overlapX = Math.max(
+          0,
+          Math.min(candidate.left + actionHintWidth, targetRect.right) -
+            Math.max(candidate.left, targetRect.left)
+        );
+        const overlapY = Math.max(
+          0,
+          Math.min(candidate.top + actionHintHeight, targetRect.bottom) -
+            Math.max(candidate.top, targetRect.top)
+        );
+        return overlapX * overlapY;
+      };
+      return overlap(a) - overlap(b);
+    })[0];
+
+  const actionHintLeft = actionPlacement.left;
+  const actionHintTop = actionPlacement.top;
+  const actionHintAbove = actionPlacement.side === "above";
 
   const onMascotOpen = () => setOpen(true);
 
