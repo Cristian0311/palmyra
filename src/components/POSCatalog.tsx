@@ -191,7 +191,7 @@ export const POSCatalog = React.memo(function POSCatalog({
       <select 
         value={activeCategoryId}
         onChange={(e) => setActiveCategoryId(e.target.value)}
-        className="w-full pl-9 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[10px] font-black uppercase tracking-widest outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all appearance-none cursor-pointer shadow-sm"
+        className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[9px] font-black uppercase tracking-[0.06em] outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all appearance-none cursor-pointer shadow-sm"
       >
         <option value="Todos">Todas las Categorías</option>
         {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -209,7 +209,7 @@ export const POSCatalog = React.memo(function POSCatalog({
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         placeholder="Busca productos por nombre, SKU o código de barras..." 
-        className="w-full pl-11 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-all text-sm font-bold text-slate-900 placeholder:text-slate-400 shadow-sm"
+        className="w-full pl-11 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-colors text-[9px] font-bold text-slate-900 placeholder:text-slate-400 shadow-sm"
       />
       {searchQuery && (
         <button
@@ -273,17 +273,17 @@ export const POSCatalog = React.memo(function POSCatalog({
                 }}
                loading="lazy" decoding="async" />
             ) : (
-              <div className={cn("w-full h-full opacity-20 flex items-center justify-center font-black text-muted text-xl", product.color)}>
+              <div className={cn("w-full h-full opacity-20 flex items-center justify-center font-black text-muted text-lg", product.color)}>
                 {(product?.name || "PR").substring(0, 2).toUpperCase()}
               </div>
             )}
           </div>
 
           <div className="w-full space-y-1">
-            <p className="font-bold text-primary text-[11px] leading-snug line-clamp-2 h-[2.4em]">{product?.name || "Producto"}</p>
+            <p className="font-bold text-primary text-[9px] leading-tight line-clamp-2 h-[2.2em]">{product?.name || "Producto"}</p>
             <div className="flex items-center justify-between pt-1 border-t border-base">
               <span className="text-[8px] font-mono text-muted uppercase truncate max-w-[45%]">{product.sku || 'S/SKU'}</span>
-              <span className="text-indigo-600 dark:text-indigo-400 font-black text-xs sm:text-sm">
+              <span className="text-indigo-600 dark:text-indigo-400 font-black text-[9px] sm:text-[10px]">
                 {formatMoney(product.price)}
               </span>
             </div>
