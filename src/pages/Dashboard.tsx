@@ -27,7 +27,7 @@ import { cn } from "../lib/utils";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { getBusinessSummaryAI } from "../services/gemini";
 import { loadSaaSContext } from "../services/saas";
-import { PlanFeatureGate } from "../components/PlanFeatureGate";
+import PlanFeatureGate from "../components/PlanFeatureGate";
 import type { Transaction, CartItem, Payment } from "../types";
 
 export default function Dashboard() {
