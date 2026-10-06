@@ -180,6 +180,7 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
     const pendingProductIds = new Set(queueSnapshot.filter(i => i.type === 'product').map(i => i.data?.id).filter(Boolean));
     const pendingProductDeleteIds = new Set(queueSnapshot.filter(i => i.type === 'product_delete').map(i => i.data?.id).filter(Boolean));
     const pendingUserIds = new Set(queueSnapshot.filter(i => i.type === 'user').map(i => i.data?.id).filter(Boolean));
+    const pendingCustomerIds = new Set(queueSnapshot.filter(i => i.type === 'customer').map(i => i.data?.id).filter(Boolean));
 
     set((state) => {
       // Never blank a branch because a reconnect pull returned zero rows.
@@ -198,8 +199,8 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
         categories: replaceRemoteRecords(d.categories || [], state.categories || [], pendingCategoryIds).filter((c: any) => !pendingCategoryDeleteIds.has(c.id)),
         products: replaceRemoteRecords(d.products || [], state.products || [], pendingProductIds).filter((p: any) => !pendingProductDeleteIds.has(p.id)),
         inventory: Array.from(invMap.values()),
-        users: mergeById(d.users, state.users || []),
-        customers: mergeById(d.customers, state.customers || []),
+        users: replaceRemoteRecords(d.users || [], state.users || [], pendingUserIds),
+        customers: replaceRemoteRecords(d.customers || [], state.customers || [], pendingCustomerIds),
         currencies: d.currencies?.length ? d.currencies : state.currencies,
         fiscalConfigs: Array.isArray(queuedStoreConfig?.fiscalConfigs)
           ? queuedStoreConfig.fiscalConfigs
