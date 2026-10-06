@@ -1,4 +1,4 @@
-import { PlanFeatureGate } from "../components/PlanFeatureGate";
+import PlanFeatureGate from "../components/PlanFeatureGate";
 import { useShallow } from 'zustand/react/shallow';
 import React, { useMemo, useState, useEffect } from "react";
 import { useStore } from "../store/useStore";
