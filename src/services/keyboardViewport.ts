@@ -85,6 +85,7 @@ export function initKeyboardViewport() {
   const apply = () => {
     frame = 0;
     const current = metrics();
+    const previousInset = lastInset;
 
     // Avoid React/layout feedback loops caused by writing the same CSS values.
     if (current.inset !== lastInset) {
@@ -121,7 +122,7 @@ export function initKeyboardViewport() {
     lastControl = control;
 
     // Only reposition once for a new focus or when the keyboard first appears.
-    if (changed || (keyboardOpen && lastInset !== 0)) {
+    if (changed || (keyboardOpen && previousInset === 0)) {
       ensureVisible(control, current);
     }
   };
