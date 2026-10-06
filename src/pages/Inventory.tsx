@@ -191,7 +191,7 @@ export default function Inventory() {
   };
 
   // Form State
-  const [formData, setFormData] = useState<Partial<Product & { initialQuantity: number, initialBranchId: string, initialVariant?: string, initialVariantQuantities?: { [key: string]: number } }>>({
+  const [formData, setFormData] = useState<Partial<Product>>({
     name: "",
     sku: "",
     barcode: "",
@@ -201,11 +201,8 @@ export default function Inventory() {
     categoryId: "",
     color: "bg-slate-100 text-slate-700",
     commissionValue: 0,
-    initialQuantity: 0,
-    initialBranchId: branches?.[0]?.id || "",
     availableSizes: [],
-    availableColors: [],
-    initialVariantQuantities: {}
+    availableColors: []
   });
 
   const [newSize, setNewSize] = useState("");
@@ -224,13 +221,11 @@ export default function Inventory() {
       updateProduct(editingProduct.id, formData);
       addNotification("Producto actualizado correctamente.", 'success');
     } else {
-      const { initialQuantity, initialBranchId, initialVariant, initialVariantQuantities, ...productData } = formData;
-      const finalBranchId = initialBranchId || (branches?.length > 0 ? branches[0].id : "");
       const newProduct: Product = {
-        ...productData as Product,
+        ...formData as Product,
         id: generateId('PRD'),
       };
-      addProduct(newProduct, initialQuantity, finalBranchId, initialVariant, initialVariantQuantities);
+      addProduct(newProduct);
     }
     setShowAddModal(false);
     setEditingProduct(null);
@@ -238,8 +233,7 @@ export default function Inventory() {
     setFormData({ 
       name: "", sku: "", barcode: "", costPrice: 0, price: 0, margin: 0, categoryId: "", 
       color: "bg-slate-100 text-slate-700", commissionValue: 0,
-      initialQuantity: 0, initialBranchId: branches?.[0]?.id || "",
-      availableSizes: [], availableColors: [], initialVariantQuantities: {}
+      availableSizes: [], availableColors: []
     });
   };
 
@@ -423,7 +417,7 @@ export default function Inventory() {
               setFormData({ 
                 name: "", sku: "", barcode: "", costPrice: 0, price: 0, margin: 0, categoryId: "", 
                 color: "bg-slate-100 text-slate-700", commissionType: 'fixed', commissionValue: 0,
-                initialQuantity: 0, initialBranchId: branches[0]?.id || ""
+                availableSizes: [], availableColors: []
               });
               setShowAddModal(true);
             }}
@@ -1199,46 +1193,16 @@ export default function Inventory() {
                         </div>
 
                         {!editingProduct && (
-                          <div className="bg-emerald-50/50 p-6 rounded-[2rem] border border-emerald-100 space-y-4">
-                            <h3 className="text-xs font-black text-emerald-900 uppercase tracking-widest flex items-center gap-2">
-                              <TrendingUp className="w-4 h-4 text-emerald-500" />
-                              Stock Inicial
+                          <div className="bg-indigo-50/70 p-5 rounded-[2rem] border border-indigo-100 space-y-2">
+                            <h3 className="text-xs font-black text-indigo-900 uppercase tracking-widest flex items-center gap-2">
+                              <PackagePlus className="w-4 h-4 text-indigo-600" />
+                              Inventario separado
                             </h3>
-                            <div className="space-y-3">
-                              <select 
-                                value={formData.initialBranchId || (branches?.[0]?.id || '')} 
-                                onChange={e => setFormData({...formData, initialBranchId: e.target.value})}
-                                className="w-full px-4 py-3 bg-white border border-emerald-100 rounded-2xl text-xs font-bold uppercase outline-none focus:ring-2 focus:ring-emerald-500/20"
-                              >
-                                {(branches || []).map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
-                              </select>
-                              {((formData.availableSizes || []).length > 0 || (formData.availableColors || []).length > 0) ? (
-                                <div className="space-y-2 max-h-32 overflow-y-auto pr-1 custom-scrollbar">
-                                  {Array.from(new Set([...(formData.availableSizes || []), ...(formData.availableColors || [])])).map(variant => (
-                                    <div key={variant} className="flex items-center justify-between bg-white p-2.5 rounded-xl border border-emerald-100">
-                                      <span className="text-[10px] font-black text-slate-700 uppercase">{variant}</span>
-                                      <input 
-                                        type="number" min="0" 
-                                        value={formData.initialVariantQuantities?.[variant] || ''} 
-                                        onFocus={(e) => e.target.select()}
-                                        onChange={e => setFormData({...formData, initialVariantQuantities: {...(formData.initialVariantQuantities || {}), [variant]: parseInt(e.target.value) || 0}})}
-                                        className="w-16 px-2 py-1 bg-slate-50 rounded-lg text-center text-xs font-bold outline-none" 
-                                        placeholder="0"
-                                      />
-                                    </div>
-                                  ))}
-                                </div>
-                              ) : (
-                                <input 
-                                  type="number" min="0" 
-                                  value={formData.initialQuantity === 0 ? '' : (formData.initialQuantity || '')} 
-                                  onFocus={(e) => e.target.select()}
-                                  onChange={e => setFormData({...formData, initialQuantity: e.target.value === '' ? 0 : (parseInt(e.target.value) || 0)})} 
-                                  className="w-full px-4 py-3 bg-white border border-emerald-100 rounded-2xl text-xs font-bold outline-none focus:ring-2 focus:ring-emerald-500/20" 
-                                  placeholder="0" 
-                                />
-                              )}
-                            </div>
+                            <p className="text-[10px] leading-5 font-bold text-indigo-700">
+                              Este formulario solo crea el producto. Para agregar existencias usa la
+                              <strong> caja de gestionar stock </strong>
+                              ubicada junto a Editar en el listado de Inventario.
+                            </p>
                           </div>
                         )}
                       </div>
