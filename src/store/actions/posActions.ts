@@ -220,7 +220,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
         // Solo rechazos de negocio/consistencia explícitos son definitivos.
         // Los errores de transporte permanecen pendientes para reintento.
         const permanentCodes = new Set([
-          'P0001', '23503', '23505', '22P02', '22003', '22007', 'IDEMPOTENCY_CONFLICT'
+          'P0001', '23503', '23505', '23502', '23514', '42501', '42883', '22P02', '22003', '22007', 'IDEMPOTENCY_CONFLICT'
         ]);
 
         if (permanentCodes.has(code)) {
