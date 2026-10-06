@@ -277,27 +277,11 @@ export default function CashRegister() {
       const sellers = tx.sellerEmployeeIds && tx.sellerEmployeeIds.length > 0 ? tx.sellerEmployeeIds : [tx.userId];
       const splitFactor = sellers.length;
 
-      tx.items.forEach(item => {
-        // La comisión es FIJA en CUP por unidad y siempre se toma del
-        // catálogo actual del producto. Nunca del precio ni como porcentaje.
-        const rawProduct = item.product as any;
-        const productId = typeof rawProduct === 'string' ? rawProduct : rawProduct?.id;
-        const product = productId ? (products || []).find(p => p.id === productId) : rawProduct;
-        const commissionValue = Number(
-          product?.commissionValue ??
-          rawProduct?.commissionValue ??
-          (item as any).product_snapshot?.commissionValue ??
-          (item as any).commissionValue ??
-          0
-        ) || 0;
-        const itemComm = commissionValue * Number(item.quantity || 0);
-        
-        const splitComm = itemComm / splitFactor;
-        
-        sellers.forEach(sellerId => {
-          if (!employeeCommissions[sellerId]) employeeCommissions[sellerId] = 0;
-          employeeCommissions[sellerId] += splitComm;
-        });
+      sellers.forEach(sellerId => {
+        const employee = users.find(u => u.id === sellerId);
+        const commission = calculateEmployeeSaleCommission(employee, tx, productCatalog, splitFactor);
+        if (!employeeCommissions[sellerId]) employeeCommissions[sellerId] = 0;
+        employeeCommissions[sellerId] += commission;
       });
     });
 
