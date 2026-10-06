@@ -520,31 +520,39 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             const expiryLabel = formatPlanExpiry(planEndsAt);
             if (!subscription || (!countdown && !expiryLabel)) return null;
 
-            const planName = subscription?.planName || "Plan PALMYRA";
+            const statusLabel = subscription.status === "trialing"
+              ? "PRUEBA"
+              : subscription.status === "active"
+                ? "ACTIVO"
+                : subscription.status.replace(/_/g, " ").toUpperCase();
             const timeLabel = countdown?.expired
-              ? "Plan vencido"
+              ? "Vencido"
               : countdown
                 ? countdown.totalDays > 0
                   ? `${countdown.totalDays} día${countdown.totalDays === 1 ? "" : "s"} · ${String(countdown.hours).padStart(2, "0")} h`
                   : `${String(countdown.hours).padStart(2, "0")} h · ${String(countdown.minutes).padStart(2, "0")} min`
-                : "Sin fecha";
+                : "Sin contador";
 
             return (
-              <div className="mt-1.5 min-w-0 rounded-xl border border-violet-200/70 dark:border-violet-900/30 bg-violet-50/80 dark:bg-violet-950/20 px-2.5 py-2">
-                <div className="flex items-start gap-1.5 min-w-0">
-                  <Clock className="mt-0.5 w-3 h-3 text-violet-600 shrink-0" />
+              <div className="mt-1.5 min-w-0 rounded-xl border border-violet-200/70 dark:border-violet-900/30 bg-gradient-to-br from-violet-50 to-white dark:from-violet-950/30 dark:to-slate-900 px-2.5 py-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <div className="w-6 h-6 rounded-lg bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center shrink-0">
+                    <CreditCard className="w-3 h-3 text-violet-600 dark:text-violet-300" />
+                  </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[6.5px] font-black uppercase tracking-[0.12em] text-violet-600 dark:text-violet-400">Tu plan</p>
-                    <p className="mt-0.5 text-[8px] font-black text-primary leading-tight whitespace-normal break-words">{planName}</p>
-                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[6.5px] font-bold leading-tight">
-                      <span className="text-violet-700 dark:text-violet-300">Vence {expiryLabel || "—"}</span>
-                      <span className={cn(countdown?.expired ? "text-rose-600" : "text-muted", "tabular-nums")}>{timeLabel}</span>
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <p className="min-w-0 flex-1 truncate text-[7px] font-black uppercase tracking-[0.11em] text-violet-600 dark:text-violet-400">{planNameForSidebar(subscription.planName)}</p>
+                      <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[5.5px] font-black uppercase tracking-wider", countdown?.expired ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700")}>{statusLabel}</span>
+                    </div>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[6.5px] font-bold leading-tight">
+                      <span className="text-primary">Vence {expiryLabel || "—"}</span>
+                      <span className={cn("tabular-nums", countdown?.expired ? "text-rose-600 font-black" : "text-violet-700 dark:text-violet-300")}>{timeLabel}</span>
                     </div>
                   </div>
                 </div>
               </div>
             );
-          })()}      </div>
+          })()}    </div>
 
       </aside>
 
