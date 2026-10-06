@@ -541,7 +541,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <p className="min-w-0 flex-1 truncate text-[7px] font-black uppercase tracking-[0.11em] text-violet-600 dark:text-violet-400">{planNameForSidebar(subscription.planName)}</p>
+                      <p className="min-w-0 flex-1 truncate text-[7px] font-black uppercase tracking-[0.11em] text-violet-600 dark:text-violet-400">{subscription.planName || "Plan PALMYRA"}</p>
                       <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[5.5px] font-black uppercase tracking-wider", countdown?.expired ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700")}>{statusLabel}</span>
                     </div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[6.5px] font-bold leading-tight">
