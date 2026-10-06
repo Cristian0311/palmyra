@@ -544,15 +544,29 @@ export default function POS() {
           const quantity = Number(rawItem.quantity || 0);
           if (!Number.isFinite(quantity) || quantity <= 0) return;
 
-          // commissionValue es el salario/comisión FIJO en CUP por unidad.
-          // No usar rawItem.price/product.price para calcular el salario fijo.
-          const commissionValue = Number(
+          // La forma de pago del trabajador manda:
+          // - fixed_product: CUP fijo configurado en el producto por unidad.
+          // - sales_percentage: porcentaje sobre el importe vendido.
+          const saleUnitPrice = Number(
+            rawItem.price ??
+            product?.price ??
+            rawItem.product_snapshot?.price ??
+            0
+          ) || 0;
+          const employeeForCompensation = sellers.length === 1
+            ? userById.get(sellers[0])
+            : undefined;
+          const compensationType = employeeForCompensation?.compensationType || 'fixed_product';
+          const salesPercentage = Number(employeeForCompensation?.salesPercentage || 0);
+          const fixedCommission = Number(
             product?.commissionValue ??
             rawItem.product_snapshot?.commissionValue ??
             rawItem.commissionValue ??
             0
           ) || 0;
-          const salaryPerUnit = commissionValue / splitFactor;
+          const salaryPerUnit = compensationType === 'sales_percentage'
+            ? (saleUnitPrice * Math.max(0, Math.min(100, salesPercentage)) / 100) / splitFactor
+            : fixedCommission / splitFactor;
 
           sellers.forEach((sellerId: string) => {
             const employee = userById.get(sellerId);
