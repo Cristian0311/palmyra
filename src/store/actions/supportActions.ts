@@ -224,30 +224,16 @@ export function createSupportActions(set: StoreSet, get: StoreGet): any {
     return true;
   },
   removeCashMovement: async (sessionId, movementId) => {
+    // La baja del movimiento es independiente del snapshot de caja. Esto evita
+    // que un turno offline vuelva a insertar un movimiento eliminado.
     set((state) => ({
-      cashSessions: (state.cashSessions || []).map(s => {
-        if (s.id !== sessionId) return s;
-        const baseNotes = s.notes?.includes('__META__:') ? s.notes.split('__META__:')[0].trim() : (s.notes || '');
-        const existingRemoved = (() => {
-          try {
-            const raw = s.notes?.includes('__META__:') ? JSON.parse(s.notes.split('__META__:').slice(1).join('__META__:')) : null;
-            return Array.isArray(raw?.removed_movement_ids) ? raw.removed_movement_ids.map(String) : [];
-          } catch { return []; }
-        })();
-        const removedMovementIds = Array.from(new Set([...existingRemoved, String(movementId)]));
-        const nextNotes = `${baseNotes}${baseNotes ? ' ' : ''}__META__:${JSON.stringify({
-          closing_balances: s.closingBalances || [],
-          closing_date: s.closingDate || null,
-          movements: (s.movements || []).filter(m => m.id !== movementId),
-          removed_movement_ids: removedMovementIds
-        })}`;
-        return {
-          ...s,
-          notes: nextNotes,
-          movements: (s.movements || []).filter(m => m.id !== movementId)
-        };
-      })
+      cashSessions: (state.cashSessions || []).map(s =>
+        s.id === sessionId
+          ? { ...s, movements: (s.movements || []).filter(m => m.id !== movementId) }
+          : s
+      )
     }));
+
     const updated = get().cashSessions.find(s => s.id === sessionId);
     if (!updated) return;
 
@@ -264,6 +250,6 @@ export function createSupportActions(set: StoreSet, get: StoreGet): any {
       return synced;
     }
     return true;
-  },
+  },,
   };
 }
