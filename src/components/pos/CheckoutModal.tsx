@@ -166,17 +166,19 @@ export default function CheckoutModal({
               {activePaymentLineId && (
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 animate-in slide-in-from-bottom-2 duration-300">
                   <div className="flex gap-2 mb-4">
-                    <div className="flex-1 grid p-1 bg-white rounded-xl border border-slate-100 grid-cols-1">
-                      <div className={cn(
-                        "py-2 rounded-lg text-[9px] font-black uppercase text-center",
-                        (lockedPaymentMethod || paymentLines.find(l => l.id === activePaymentLineId)?.method) === 'transfer'
-                          ? "bg-blue-600 text-white"
-                          : "bg-emerald-600 text-white"
-                      )}>
-                        {(lockedPaymentMethod || paymentLines.find(l => l.id === activePaymentLineId)?.method) === 'transfer'
-                          ? 'Transferencia'
-                          : 'Efectivo'}
-                      </div>
+                    <div className="flex-1 grid grid-cols-2 gap-1 p-1 bg-white rounded-xl border border-slate-100">
+                      {(['cash','transfer'] as const).map(method => (
+                        <button key={method} type="button"
+                          onClick={() => activePaymentLineId && onUpdatePaymentLine(activePaymentLineId, 'method', method)}
+                          className={cn(
+                            "py-2 rounded-lg text-[9px] font-black uppercase text-center transition-all",
+                            paymentLines.find(l => l.id === activePaymentLineId)?.method === method
+                              ? method === 'transfer' ? "bg-blue-600 text-white" : "bg-emerald-600 text-white"
+                              : "text-slate-400 hover:bg-slate-50"
+                          )}>
+                          {method === 'transfer' ? 'Transferencia' : 'Efectivo'}
+                        </button>
+                      ))}
                     </div>
 
                     <div className="flex-[1.2] flex gap-1 p-1 bg-white rounded-xl border border-slate-100 overflow-x-auto scrollbar-hide">
@@ -191,7 +193,7 @@ export default function CheckoutModal({
                             key={c.code}
                             onClick={() => {
                               const line = paymentLines.find(l => l.id === activePaymentLineId);
-                              if (line && !(lockedPaymentMethod === 'transfer' && c.code !== 'CUP' && c.code !== 'MN')) {
+                              if (line && !(line.method === 'transfer' && c.code !== 'CUP' && c.code !== 'MN')) {
                                 onUpdatePaymentLine(line.id, 'code', c.code);
                               }
                             }}
@@ -387,7 +389,7 @@ export default function CheckoutModal({
                           <button 
                             onClick={() => onAutoFillRemaining(activePaymentLineId)}
                             className={cn(
-                              "px-3 py-1 rounded-full transition-all uppercase tracking-tighter animate-bounce shadow-lg flex items-center gap-1.5",
+                              "px-3 py-1 rounded-full transition-all uppercase tracking-tighter shadow-lg flex items-center gap-1.5",
                               paymentLines.find(l => l.id === activePaymentLineId)?.method === 'transfer' 
                                 ? "bg-blue-600 text-white text-[11px] font-black ring-4 ring-blue-100" 
                                 : "bg-indigo-50 text-indigo-600 text-[9px] font-black"
