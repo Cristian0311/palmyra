@@ -879,7 +879,7 @@ body,
 /* Mobile POS viewport lock */
 html.pos-keyboard-open,html.pos-keyboard-open body{overflow:hidden!important;overscroll-behavior:none!important;scroll-behavior:auto!important}
 html.pos-keyboard-open .pos-page .animate-in,html.pos-keyboard-open .pos-page [class*=animate-]{animation:none!important;transition:none!important}
-.pos-page .fixed.inset-0{height:var(--pos-viewport-height,100dvh);top:var(--pos-viewport-top,0px);bottom:auto;min-height:0}.pos-page .palmyra-mobile-modal{max-height:calc(var(--pos-viewport-height,100dvh) - 1rem)!important;overflow-anchor:none}
+.pos-page .fixed.inset-0{height:var(--pos-viewport-height,100dvh);top:0!important;bottom:auto;min-height:0}.pos-page .palmyra-mobile-modal{max-height:calc(var(--pos-viewport-height,100dvh) - 1rem)!important;overflow-anchor:none}
 
 
 /* POS mobile keyboard contract: keep the visual surface inside the viewport
