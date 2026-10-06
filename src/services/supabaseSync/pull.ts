@@ -160,7 +160,7 @@ async function loadInventory(branchId?: string) {
 async function loadSales(branchId?: string, limit = 500) {
   const tenant = await getActiveTenant();
   const supabase = getSupabase()!;
-  let salesQ = supabase.from('sales').select('*').eq('company_id', tenant.companyId).order('created_at', { ascending: false }).limit(limit);
+  let salesQ = supabase.from('sales').select('*').eq('company_id', tenant.companyId).order('created_at', { ascending: false }).limit(Math.max(limit, 5000));
   if (branchId) salesQ = salesQ.eq('warehouse_id', branchId);
   const { data: sales, error: salesErr } = await salesQ;
   if (salesErr) throw salesErr;
@@ -258,9 +258,22 @@ async function loadCashSessions(branchId?: string) {
   const profileMap = new Map<string,string>((profilesRes.data || []).filter((p:any)=>p.id && p.full_name).map((p:any)=>[p.id,p.full_name]));
   const defaultCurrencyCode = companyRes.data?.default_currency_code || 'CUP';
 
-  let q=supabase.from('cash_sessions').select('*').eq('company_id',tenant.companyId).order('opened_at',{ascending:false}).limit(50);
+  let q=supabase.from('cash_sessions').select('*').eq('company_id',tenant.companyId).order('opened_at',{ascending:false}).limit(200);
   const { data, error }=await q;
   if(error) throw error;
+
+  const sessionIds=(data||[]).map((s:any)=>s.id).filter(Boolean);
+  const movementRows=sessionIds.length
+    ? await supabase.from('cash_movements').select('*').eq('company_id',tenant.companyId).in('cash_session_id',sessionIds).order('created_at',{ascending:true})
+    : {data:[],error:null};
+  if(movementRows.error) throw movementRows.error;
+  const movementsBySession=new Map<string, any[]>();
+  for(const movement of movementRows.data||[]) {
+    const list=movementsBySession.get(movement.cash_session_id)||[];
+    list.push(movement);
+    movementsBySession.set(movement.cash_session_id,list);
+  }
+
   return (data||[]).filter((s:any)=>{
     const reg=registerMap.get(s.cash_register_id);
     return !branchId || reg?.warehouse_id===branchId;
@@ -278,6 +291,15 @@ async function loadCashSessions(branchId?: string) {
     workingEmployeeIds:Array.isArray(s.metadata?.workingEmployeeIds) && s.metadata.workingEmployeeIds.length
       ? s.metadata.workingEmployeeIds
       : (s.employee_id ? [employeeUserMap.get(s.employee_id) || s.employee_id] : (s.opened_by ? [s.opened_by] : [])),
+    movements:(movementsBySession.get(s.id)||[]).map((m:any)=>({
+      id:m.id,
+      sessionId:s.id,
+      type:['cash_in','income','ingreso','entrada','deposit'].includes(String(m.movement_type||'').toLowerCase()) ? 'income' : 'expense',
+      amount:Math.abs(Number(m.amount)||0),
+      currencyCode:m.currency_code||defaultCurrencyCode,
+      description:m.note||'',
+      date:m.created_at
+    })),
     closingBalances:Array.isArray(s.metadata?.closingBalances)
       ? s.metadata.closingBalances
       : (s.physical_cash == null ? [] : [{method:'cash',amount:Number(s.physical_cash)||0,currencyCode:defaultCurrencyCode,exchangeRate:1}]),
@@ -410,7 +432,7 @@ async function loadAllData(branchId?:string) {
   const catalog=await loadCatalog();
   const [inventory,transactions,cashSessions,transfers,customers,banks,extras,suppliersOrders]=await Promise.all([
     loadInventory(),
-    loadSales(undefined,1000),
+    loadSales(undefined,5000),
     loadCashSessions(),
     loadTransfers(),
     loadCustomers(),
