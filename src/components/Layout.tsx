@@ -562,11 +562,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                             <span className="min-w-0 flex-1 font-black text-[8px] uppercase tracking-[-0.01em] leading-[1.1] whitespace-normal break-words">
                               {item.name}
                             </span>
-                            {!sidebarCollapsed && isPlanLocked(item) && (
-                              <span className="shrink-0 rounded-full bg-amber-50 px-1 py-0.5 text-[5px] font-black uppercase tracking-tight text-amber-700 border border-amber-200">
-                                Caravana
-                              </span>
-                            )}
+                          )}
+                          {!sidebarCollapsed && isPlanLocked(item) && (
+                            <span className="shrink-0 rounded-full bg-amber-50 px-1 py-0.5 text-[5px] font-black uppercase tracking-tight text-amber-700 border border-amber-200">
+                              Caravana
+                            </span>
                           )}
                         </div>
                       )}
