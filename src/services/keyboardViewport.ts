@@ -39,35 +39,52 @@ function getVisualViewportMetrics() {
 
 function getFixedOverlay(element: HTMLElement): HTMLElement | null {
   let current = element.parentElement;
-
   while (current) {
     const style = window.getComputedStyle(current);
     const rect = current.getBoundingClientRect();
-
     if (
       style.position === 'fixed' &&
-      rect.top <= 2 &&
-      rect.left <= 2 &&
-      rect.width >= window.innerWidth * 0.9 &&
-      rect.height >= window.innerHeight * 0.9
+      rect.width >= window.innerWidth * 0.9
     ) {
       return current;
     }
-
     current = current.parentElement;
   }
-
   return null;
 }
 
 function getModalSurface(element: HTMLElement, overlay: HTMLElement): HTMLElement | null {
   let current: HTMLElement | null = element;
-
   while (current && current.parentElement && current.parentElement !== overlay) {
     current = current.parentElement;
   }
-
   return current && current.parentElement === overlay ? current : null;
+}
+
+function moveModalIntoVisualViewport(surface: HTMLElement, viewportTop: number, viewportHeight: number) {
+  const rect = surface.getBoundingClientRect();
+  const safeTop = viewportTop + EDGE_MARGIN_PX;
+  const safeBottom = viewportTop + viewportHeight - EDGE_MARGIN_PX;
+  let offset = 0;
+
+  if (rect.bottom > safeBottom) offset = safeBottom - rect.bottom;
+  if (rect.top + offset < safeTop) offset += safeTop - (rect.top + offset);
+
+  const previousOffset = Number(surface.dataset.keyboardOffset || '0');
+  if (Math.abs(offset - previousOffset) > 1) {
+    surface.style.transform = `translate3d(0, ${Math.round(offset)}px, 0)`;
+    surface.dataset.keyboardOffset = String(Math.round(offset));
+  }
+  surface.style.transition = 'none';
+  surface.style.willChange = 'transform';
+}
+
+function clearModalPlacement(surface: HTMLElement | null) {
+  if (!surface) return;
+  surface.style.removeProperty('transform');
+  surface.style.removeProperty('transition');
+  surface.style.removeProperty('will-change');
+  delete surface.dataset.keyboardOffset;
 }
 
 function scrollControlIntoViewport(control: HTMLElement) {
@@ -76,51 +93,34 @@ function scrollControlIntoViewport(control: HTMLElement) {
   const viewportTopSafe = viewportTop + EDGE_MARGIN_PX;
 
   let ancestor = control.parentElement;
-  let foundScrollableAncestor = false;
-
   while (ancestor) {
     if (isScrollable(ancestor)) {
-      foundScrollableAncestor = true;
       const rect = control.getBoundingClientRect();
-
       let delta = 0;
-      if (rect.bottom > viewportBottom) {
-        delta = rect.bottom - viewportBottom;
-      } else if (rect.top < viewportTopSafe) {
-        delta = rect.top - viewportTopSafe;
-      }
+      if (rect.bottom > viewportBottom) delta = rect.bottom - viewportBottom;
+      else if (rect.top < viewportTopSafe) delta = rect.top - viewportTopSafe;
 
       if (Math.abs(delta) > 1) {
         const maxScrollTop = Math.max(0, ancestor.scrollHeight - ancestor.clientHeight);
-        const nextScrollTop = Math.min(
+        ancestor.scrollTop = Math.min(
           maxScrollTop,
           Math.max(0, ancestor.scrollTop + delta),
         );
-        ancestor.scrollTop = nextScrollTop;
       }
 
       const nextRect = control.getBoundingClientRect();
-      if (nextRect.top >= viewportTopSafe && nextRect.bottom <= viewportBottom) {
-        return;
-      }
+      if (nextRect.top >= viewportTopSafe && nextRect.bottom <= viewportBottom) return;
     }
-
     ancestor = ancestor.parentElement;
   }
 
-  if (!foundScrollableAncestor) {
-    control.scrollIntoView({
-      block: 'center',
-      inline: 'nearest',
-      behavior: 'auto',
-    });
-  }
+  control.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
 }
 
 export function initKeyboardViewport() {
   let scheduled = false;
+  let settleTimer: ReturnType<typeof setTimeout> | null = null;
   let activeModalSurface: HTMLElement | null = null;
-  let cleanupTimer: ReturnType<typeof setTimeout> | null = null;
   let delayedRuns: ReturnType<typeof setTimeout>[] = [];
   const touchedScrollContainers = new Map<HTMLElement, string>();
 
@@ -135,14 +135,9 @@ export function initKeyboardViewport() {
     scheduled = false;
 
     const metrics = getVisualViewportMetrics();
-    document.documentElement.style.setProperty(
-      '--keyboard-inset',
-      `${metrics.keyboardInset}px`,
-    );
-    document.documentElement.style.setProperty(
-      '--keyboard-viewport-height',
-      `${Math.max(1, Math.round(metrics.height))}px`,
-    );
+    document.documentElement.style.setProperty('--keyboard-inset', `${metrics.keyboardInset}px`);
+    document.documentElement.style.setProperty('--keyboard-viewport-height', `${Math.max(1, Math.round(metrics.height))}px`);
+    document.documentElement.style.setProperty('--keyboard-viewport-top', `${Math.max(0, Math.round(metrics.top))}px`);
 
     const control = document.activeElement;
     const validControl = isFormControl(control) ? control : null;
@@ -150,29 +145,29 @@ export function initKeyboardViewport() {
     if (!validControl) {
       document.body.classList.remove('keyboard-open');
       restoreScrollContainers();
-      if (activeModalSurface) {
-        activeModalSurface.classList.remove('keyboard-modal-surface');
-        activeModalSurface = null;
-      }
+      clearModalPlacement(activeModalSurface);
+      activeModalSurface?.classList.remove('keyboard-modal-surface');
+      activeModalSurface = null;
       return;
     }
 
     document.body.classList.toggle('keyboard-open', metrics.keyboardInset > 0);
 
+    if (activeModalSurface) {
+      activeModalSurface.classList.remove('keyboard-modal-surface');
+      clearModalPlacement(activeModalSurface);
+      activeModalSurface = null;
+    }
+
     if (isNativeKeyboardViewport(validControl)) {
       restoreScrollContainers();
-      if (activeModalSurface) {
-        activeModalSurface.classList.remove('keyboard-modal-surface');
-        activeModalSurface = null;
-      }
       return;
     }
 
     restoreScrollContainers();
 
     let scrollContainer = validControl.parentElement;
-    const scrollPadding = `${metrics.keyboardInset + 28}px`;
-
+    const scrollPadding = `${metrics.keyboardInset + 24}px`;
     while (scrollContainer) {
       if (isScrollable(scrollContainer)) {
         touchedScrollContainers.set(
@@ -186,22 +181,28 @@ export function initKeyboardViewport() {
 
     const overlay = getFixedOverlay(validControl);
     const modalSurface = overlay ? getModalSurface(validControl, overlay) : null;
-
-    if (activeModalSurface && activeModalSurface !== modalSurface) {
-      activeModalSurface.classList.remove('keyboard-modal-surface');
-    }
-
     activeModalSurface = modalSurface;
-    activeModalSurface?.classList.add('keyboard-modal-surface');
+
+    if (modalSurface) {
+      modalSurface.classList.add('keyboard-modal-surface');
+      if (metrics.keyboardInset > 0) {
+        moveModalIntoVisualViewport(modalSurface, metrics.top, metrics.height);
+      }
+    }
 
     scrollControlIntoViewport(validControl);
   };
 
   const schedule = () => {
-    if (!scheduled) {
-      scheduled = true;
-      requestAnimationFrame(applyViewportState);
-    }
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(applyViewportState);
+  };
+
+  const settle = () => {
+    schedule();
+    if (settleTimer) clearTimeout(settleTimer);
+    settleTimer = setTimeout(schedule, 180);
   };
 
   const clearDelayedRuns = () => {
@@ -209,51 +210,28 @@ export function initKeyboardViewport() {
     delayedRuns = [];
   };
 
-  const scheduleKeyboardSettle = () => {
-    schedule();
-    clearDelayedRuns();
-
-    delayedRuns = [
-      setTimeout(schedule, 60),
-      setTimeout(schedule, 180),
-      setTimeout(schedule, 360),
-    ];
-  };
-
   const handleFocusIn = (event: FocusEvent) => {
-    if (isFormControl(event.target as Element | null)) {
-      scheduleKeyboardSettle();
-    }
+    if (isFormControl(event.target as Element | null)) settle();
   };
 
   const handleFocusOut = () => {
-    if (cleanupTimer) clearTimeout(cleanupTimer);
-    cleanupTimer = setTimeout(() => {
+    if (settleTimer) clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => {
       if (!isFormControl(document.activeElement)) {
         document.body.classList.remove('keyboard-open');
         restoreScrollContainers();
-        if (activeModalSurface) {
-          activeModalSurface.classList.remove('keyboard-modal-surface');
-          activeModalSurface = null;
-        }
-      } else {
-        scheduleKeyboardSettle();
+        clearModalPlacement(activeModalSurface);
+        activeModalSurface?.classList.remove('keyboard-modal-surface');
+        activeModalSurface = null;
       }
-    }, 80);
+    }, 120);
   };
 
-  const handleViewportResize = () => {
-    scheduleKeyboardSettle();
-  };
-
-  const handleViewportScroll = () => {
-    schedule();
-  };
+  const handleViewportResize = () => settle();
 
   document.addEventListener('focusin', handleFocusIn);
   document.addEventListener('focusout', handleFocusOut);
   window.visualViewport?.addEventListener('resize', handleViewportResize);
-  window.visualViewport?.addEventListener('scroll', handleViewportScroll);
 
   schedule();
 
@@ -261,13 +239,14 @@ export function initKeyboardViewport() {
     document.removeEventListener('focusin', handleFocusIn);
     document.removeEventListener('focusout', handleFocusOut);
     window.visualViewport?.removeEventListener('resize', handleViewportResize);
-    window.visualViewport?.removeEventListener('scroll', handleViewportScroll);
     clearDelayedRuns();
-    if (cleanupTimer) clearTimeout(cleanupTimer);
-    if (activeModalSurface) activeModalSurface.classList.remove('keyboard-modal-surface');
+    if (settleTimer) clearTimeout(settleTimer);
+    clearModalPlacement(activeModalSurface);
+    activeModalSurface?.classList.remove('keyboard-modal-surface');
     document.body.classList.remove('keyboard-open');
     document.documentElement.style.removeProperty('--keyboard-inset');
     document.documentElement.style.removeProperty('--keyboard-viewport-height');
+    document.documentElement.style.removeProperty('--keyboard-viewport-top');
     restoreScrollContainers();
   };
 }
