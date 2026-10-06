@@ -489,22 +489,29 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       }
       return true;
     }
-    case 'receipt_config': { const { error } = await supabase.from('settings').upsert({ id: 'global', receipt_config: data }); if (error) throw error; return true; }
-    case 'store_config': {
+    case 'receipt_config':
+    case 'store_config':
+    case 'catalog_config': {
+      // La tabla legacy public.settings ya no existe en el esquema actual.
+      // Persistimos estos ajustes dentro del registro tenant-scoped de company_settings
+      // para que la sincronización offline nunca quede reintentando contra una tabla inexistente.
+      const { companyId } = await getActiveTenant();
+      const key = type === 'receipt_config' ? 'receipt_config' : type === 'catalog_config' ? 'catalog_config' : 'store_config';
       const { data: current, error: readError } = await supabase
-        .from('settings')
-        .select('store_config')
-        .eq('id', 'global')
+        .from('company_settings')
+        .select('settings')
+        .eq('company_id', companyId)
         .maybeSingle();
       if (readError) throw readError;
-      const currentConfig = (current?.store_config && typeof current.store_config === 'object') ? current.store_config : {};
+      const currentSettings = (current?.settings && typeof current.settings === 'object') ? current.settings : {};
       const incomingConfig = (data && typeof data === 'object') ? data : {};
-      const mergedConfig = { ...currentConfig, ...incomingConfig };
-      const { error } = await supabase.from('settings').upsert({ id: 'global', store_config: mergedConfig });
+      const mergedSettings = { ...currentSettings, [key]: { ...(currentSettings as any)?.[key], ...incomingConfig } };
+      const { error } = await supabase
+        .from('company_settings')
+        .upsert({ company_id: companyId, settings: mergedSettings, updated_at: new Date().toISOString() }, { onConflict: 'company_id' });
       if (error) throw error;
       return true;
     }
-    case 'catalog_config': { const { error } = await supabase.from('settings').upsert({ id: 'global', catalog_config: data }); if (error) throw error; return true; }
     default: throw new PermanentSyncError(`Tipo de operación offline no soportado: ${String(type)}`);
   }
 }
