@@ -1531,7 +1531,7 @@ export default function POS() {
                         return (
                           <div key={session.id} className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2 rounded-xl border border-slate-100 bg-slate-50/80 px-2.5 py-2">
                             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white border border-slate-200 text-[8px] font-black text-slate-700 shadow-xs">T{session.turnNumber || "—"}</div>
-                            <div className="min-w-0"><p className="text-[8.5px] font-black text-slate-900 truncate">{session.workerName || "Administrador"}</p><div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[6.5px] font-bold text-slate-500"><span>{branchName}</span><span>·</span><span>Abierto {openedLabel}</span></div></div>
+                            <div className="min-w-0"><p className="text-[8px] font-black text-slate-900 truncate">{session.workerName || "Administrador"}</p><div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[6.5px] font-bold text-slate-500"><span>{branchName}</span><span>·</span><span>Abierto {openedLabel}</span></div></div>
                             <button type="button" onClick={() => { setShowOpenSessionsModal(false); setJoiningSessionId(session.id); setJoiningSessionPassword(""); setPosError(""); }} className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[7px] font-black uppercase tracking-tight text-white shadow-sm hover:bg-emerald-700 active:scale-[0.98]">Reanudar</button>
                           </div>
                         );
@@ -1851,7 +1851,7 @@ export default function POS() {
                                           )}
                                         >
                                           <div className="min-w-0">
-                                            <span className="block text-[10px] sm:text-[11px] font-black uppercase tracking-tight leading-tight whitespace-normal break-words">
+                                            <span className="block text-[8px] sm:text-[9px] font-black uppercase tracking-tight leading-tight whitespace-normal break-words">
                                               {u.name || 'Trabajador'}
                                             </span>
                                             <span className={cn(
@@ -1862,7 +1862,7 @@ export default function POS() {
                                             </span>
                                           </div>
                                           <span className={cn(
-                                            "shrink-0 px-1.5 py-0.5 rounded-md border text-[7px] font-black uppercase tracking-wider",
+                                            "shrink-0 px-1.5 py-0.5 rounded-md border text-[5.5px] font-black uppercase tracking-wider",
                                             open ? "bg-emerald-100 border-emerald-300 text-emerald-700" : "bg-slate-100 border-slate-200 text-slate-400"
                                           )}>
                                             {open ? "ABIERTO" : "DISPONIBLE"}
