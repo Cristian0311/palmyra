@@ -1,4 +1,5 @@
 import { getTransferStockHelpers } from '../modules/transfers/utils/transferStock';
+import { getWarehouseId } from "../modules/warehouse/warehouseScope";
 import { useShallow } from 'zustand/react/shallow';
 import React, { useMemo, useState, useEffect } from "react";
 import { 
@@ -42,7 +43,7 @@ export default function Transfers() {
   } = useStore(useShallow((state) => ({ branches: state.branches, products: state.products, inventory: state.inventory, transferInventory: state.transferInventory, transferInventoryBatch: state.transferInventoryBatch, transferProductsBulk: state.transferProductsBulk, transfers: state.transfers, currentBranchId: state.currentBranchId, addNotification: state.addNotification, users: state.users })));
 
   const getBranchDisplayName = (b: { id: string; name: string }) => {
-    const assignedUser = (users || []).find(u => u.branchId === b.id);
+    const assignedUser = (users || []).find(u => getWarehouseId(u) === b.id);
     return assignedUser ? `${b.name} (${assignedUser.name})` : b.name;
   };
 
@@ -177,7 +178,7 @@ export default function Transfers() {
             <ArrowLeftRight className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-lg sm:text-xl font-black text-primary tracking-tight uppercase leading-none">Transferencias</h2>
+            <h2 data-palmi-content="transfers" className="text-lg sm:text-xl font-black text-primary tracking-tight uppercase leading-none">Transferencias</h2>
             <p className="text-[9px] font-bold text-muted uppercase tracking-widest mt-1">Gestión de inventario entre sucursales</p>
           </div>
         </div>

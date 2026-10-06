@@ -1,4 +1,5 @@
 import { buildInventoryViewData } from '../modules/inventory/utils/buildInventoryViewData';
+import { getWarehouseId } from "../modules/warehouse/warehouseScope";
 import { buildInventoryCsv } from '../modules/inventory/utils/buildInventoryCsv';
 import { resizeProductImage } from '../modules/inventory/utils/resizeProductImage';
 import { useShallow } from 'zustand/react/shallow';
@@ -28,7 +29,7 @@ export default function Inventory() {
   );
 
   const getBranchDisplayName = (b: { id: string; name: string }) => {
-    const assignedUser = (users || []).find(u => u.branchId === b.id);
+    const assignedUser = (users || []).find(u => getWarehouseId(u) === b.id);
     return assignedUser ? `${b.name} (${assignedUser.name})` : b.name;
   };
 
@@ -359,7 +360,7 @@ export default function Inventory() {
     <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500 h-full flex flex-col min-h-0">
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-2 px-1 shrink-0">
         <div>
-          <h2 className="text-lg sm:text-xl font-black text-primary tracking-tight flex items-center gap-2 uppercase">
+          <h2 data-palmi-content="inventory" className="text-lg sm:text-xl font-black text-primary tracking-tight flex items-center gap-2 uppercase">
             Inventario
           </h2>
           <p className="text-[9px] sm:text-[10px] font-black text-muted uppercase tracking-widest">Stock Control</p>

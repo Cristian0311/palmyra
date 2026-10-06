@@ -21,14 +21,16 @@ import {
   CloudOff,
   CreditCard,
   FileText,
-  LifeBuoy,
   Clock,
   ChevronLeft,
   ChevronRight,
-  RefreshCw
+  RefreshCw,
+  LifeBuoy,
+  Headphones
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
 import { cn } from "../lib/utils";
+import PalmiGuide from "./help/PalmiGuide";
 import { loadSaaSContext } from "../services/saas";
 import { useStore } from "../store/useStore";
 import { getOfflineQueueCount } from "../services/offlineQueue";
@@ -53,8 +55,8 @@ const adminNavItems = [
   { name: "Reportes", href: "/reports", icon: BarChart, permission: "reports.view" },
   { name: "Configuración", href: "/settings", icon: Settings, permission: "settings.manage" },
   { name: "Equipo", href: "/team", icon: Users, permission: "employees.manage" },
+  { name: "Centro de atención", href: "/help", icon: Headphones, public: true },
   { name: "Plan", href: "/subscription", icon: CreditCard, permission: "settings.manage" },
-  { name: "Centro de atención", href: "/help-center", icon: LifeBuoy },
 ];
 
 const APP_VERSION = "V 1.0.0";
@@ -79,8 +81,8 @@ function getPlanCountdown(target: string | null | undefined, nowMs: number) {
 }
 
 const cashierNavItems = [
-  { name: "Centro de atención", href: "/help-center", icon: LifeBuoy },
-  { name: "Punto de Venta", href: "/pos", icon: ShoppingCart, permission: "pos.access" },
+  { name: "Centro de atención", href: "/help", icon: Headphones, public: true },
+  { name: "Punto de Venta", href: "/pos", icon: ShoppingCart },
 ];
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -152,6 +154,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     "/returns": "Cargando Devoluciones…",
     "/reports": "Cargando Reportes…",
     "/settings": "Cargando Configuración…",
+    "/help": "Cargando Centro de atención…",
   };
 
   const startNavigationFeedback = (targetPath: string) => {
@@ -252,6 +255,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     }
   };
 
+  useEffect(() => {
+    const handleOpenSidebar = () => setSidebarOpen(true);
+    window.addEventListener("palmyra:open-sidebar", handleOpenSidebar);
+    return () => window.removeEventListener("palmyra:open-sidebar", handleOpenSidebar);
+  }, []);
+
   // Auto-collapse sidebar on POS page to maximize tablet space
   useEffect(() => {
     if (isPosPage) {
@@ -264,7 +273,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const navItems =
     currentUser?.role === "admin"
       ? adminNavItems
-      : adminNavItems.filter(item => !item.permission || currentUser?.permissions?.includes(item.permission) || item.href === "/pos");
+      : adminNavItems.filter(item => Boolean(item.public) || currentUser?.permissions?.includes(item.permission) || item.href === "/pos");
 
   const visibleNavItems = navItems.length > 0 ? navItems : cashierNavItems;
 
@@ -314,14 +323,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {/* Mobile / tablet top bar */}
       {(
         <div className="lg:hidden bg-white text-slate-700 p-3.5 flex justify-between items-center shadow-sm border-b border-violet-100 shrink-0">
-          <div className="flex items-center gap-2 min-w-0"><img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="w-[150px] h-[39px] object-contain object-left" /><span className="text-[9px] font-black text-slate-400 tracking-wider shrink-0">{APP_VERSION}</span></div>
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1">
+          <div className="flex items-center gap-2 min-w-0"><img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="w-[150px] h-[39px] object-contain object-left" /><span className="text-[9px] font-black text-slate-400 tracking-wider shrink-0">{APP_VERSION}</span></div><div data-tour="offline-status-mobile" className={cn("flex items-center gap-1.5 px-2 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-wider", isOnline ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700")} title="Estado de conexión">{isOnline ? <Wifi className="w-3 h-3 shrink-0" /> : <WifiOff className="w-3 h-3 shrink-0" />}<span>{isOnline ? (pendingOfflineCount > 0 ? pendingOfflineCount+" pendientes" : "Online") : "Offline"}</span></div>
+          <div className="flex items-center gap-1.5 shrink-0"><button data-palmy-menu-toggle data-tour="sidebar-toggle" type="button" onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 rounded-xl hover:bg-slate-100 transition" aria-label="Abrir menú principal" title="Abrir menú principal" aria-expanded={sidebarOpen}>
             <Menu className="w-5 h-5" />
-          </button>
+          </button></div>
         </div>
       )}
 
       <aside
+        data-palmy-sidebar="true"
         className={cn(
           "bg-secondary border-r border-base transition-all duration-300 ease-in-out flex flex-col h-full shrink-0 shadow-sm",
           // Mobile: off-canvas drawer with fixed overlay
@@ -362,6 +372,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </button>
 
           <button 
+            data-palmy-sidebar-collapse
             type="button"
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             className="hidden lg:flex p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
@@ -385,7 +396,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 title={sidebarCollapsed ? item.name : undefined}
               >
                 {({ isActive }) => (
-                  <div className={cn(
+                  <div data-palmi-nav={item.href} className={cn(
                     "flex items-center rounded-xl transition-all duration-150 group",
                     sidebarCollapsed ? "justify-center p-2.5 my-1" : "space-x-3 px-3.5 py-2.5",
                     isActive
@@ -417,6 +428,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20 hover:bg-rose-500/20 cursor-pointer"
                   : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
               )}
+              data-tour="offline-status"
               title={pendingOfflineCount > 0 ? "Clic para sincronizar datos pendientes con Supabase" : undefined}
             >
               <div className="flex items-center gap-1.5 truncate">
@@ -493,6 +505,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           })()}
 
           <button
+            type="button"
+            onClick={() => window.dispatchEvent(new Event("palmyra:open-guide"))}
+            className={cn(
+              "flex items-center text-muted hover:text-violet-700 hover:bg-violet-50 dark:hover:bg-violet-950/40 rounded-xl transition-all font-black uppercase",
+              sidebarCollapsed ? "justify-center p-2 w-full" : "space-x-2 px-3 py-2 w-full text-[10px] tracking-wider"
+            )}
+            title="Abrir Numa · guía PALMYRA"
+          >
+            <LifeBuoy className="w-3.5 h-3.5 shrink-0" />
+            {!sidebarCollapsed && <span>Numa · Guía</span>}
+          </button>
+
+          <button
             onClick={logout}
             className={cn(
               "flex items-center text-muted hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-xl transition-all font-black uppercase",
@@ -531,7 +556,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className={cn("flex-1 min-w-0 h-full flex flex-col scroll-touch keyboard-safe-scroll", isPosPage ? "overflow-hidden p-0" : "overflow-y-auto p-3 sm:p-4 lg:p-6 pb-20 lg:pb-12")}>
           {children}
         </div>
-      </main>
+        </main>
+      <PalmiGuide />
     </div>
   );
 }

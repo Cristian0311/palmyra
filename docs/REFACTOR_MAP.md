@@ -1,24 +1,54 @@
 # Mapa de refactor PALMYRA
 
-## Completado
-- Estado global: extracción de transformaciones y hooks; `useStore.ts` reducido a 449 líneas.
-- POS: recibos de venta, cierre y cálculos de checkout extraídos a `src/modules/pos/utils/`.
-- Reports: exportación, descuadres, cálculos de sesión y tickets de impresión extraídos a `src/modules/reports/`.
-- Inventory: vista de inventario, CSV y procesamiento de imágenes extraídos a `src/modules/inventory/utils/`.
-- Cash Register: cálculo de salario/comisiones de turnos extraído.
-- Transfers: cálculo de stock extraído.
-- Offline: reconciliación y procesamiento del outbox extraídos.
-- Supabase Sync: payload de ventas, operaciones auxiliares y mappers extraídos.
-- Seguridad SaaS: caché de tenant invalidada al cambiar de cuenta; wrappers de onboarding/plan endurecidos con autenticación/propietario.
-- Consultas hijas de sincronización acotadas por IDs de padres filtrados por tenant.
-- CI: auditoría arquitectónica estricta y pruebas de regresión para módulos extraídos.
+## Completado en esta fase
 
-## Próximos límites
-- Reducir gradualmente POS y Reports por debajo de 3500 líneas sin mover flujos críticos de estado/efectos.
-- Continuar división de Settings cuando exista un bloque de dominio claramente aislable.
-- Migrar `branchId`, `allowedBranches` y nombres derivados hacia `warehouseId`/terminología de almacén mediante compatibilidad progresiva.
-- Completar QA funcional de impresora, cierre de caja, selección de vendedor, offline/reinicio y onboarding con escenarios reales.
-- Mantener verificación de producción en Render después de cada lote de cambios.
+- Saneamiento inicial: históricos retirados de la superficie raíz y conservados en `docs/archive/` y `scripts/archive/legacy/`.
+- Verificación recursiva: sin `fixrender/`, `.bak`, `.orig`, `.rej`, HOTFIX, REPAIR ni LIVE_REPAIR en el árbol activo.
+- Estado global: `useStore.ts` permanece en 449 líneas mediante action creators por dominio.
+- POS: estado offline, printer/recibos, cierre imprimible y modales principales extraídos; `POS.tsx` quedó en 3.372 líneas.
+- Reports: pestaña de ventas y detalle de ticket extraídos; `Reports.tsx` quedó en 3.492 líneas.
+- Offline: procesamiento y reconciliación ya están separados; `offlineSync.ts` está en 382 líneas.
+- Supabase Sync: mutations y pull ya están separados por dominios; no se consolidaron nuevamente.
+- Excel: generadores de hojas separados por dominio y `excelExport.ts` convertido en fachada de 198 líneas.
+- Offline: tipos de cola y adaptador IndexedDB extraídos, conservando reexportaciones públicas para compatibilidad.
+- Settings: categorías, almacenes y configuración de empleados extraídos; página en 1.524 líneas.
+- Warehouse migration: creada una frontera de compatibilidad canónica que prefiere `warehouseId/allowedWarehouseIds` y conserva `branchId/allowedBranches` solo como fallback. La política evita ampliar permisos accidentalmente.
+- Inventory/Transfers/POS: las asignaciones de trabajador ya pueden resolverse mediante la frontera Warehouse sin romper los campos históricos.
+- CI: validación por push/PR con TypeScript, tests unitarios, auditoría estructural y build; además cancela ejecuciones obsoletas por rama.
+
+## Tamaños de mantenimiento actuales
+
+| Archivo | Líneas |
+| --- | ---: |
+| `src/pages/POS.tsx` | 3.372 |
+| `src/pages/Reports.tsx` | 3.492 |
+| `src/store/useStore.ts` | 449 |
+| `src/services/offlineSync.ts` | 382 |
+| `src/services/offlineQueue.ts` | 399 |
+| `src/store/actions/syncActions.ts` | 280 |
+| `src/services/supabaseSync/mutations.ts` | 295 |
+| `src/services/supabaseSync/pull.ts` | 433 |
+| `src/pages/Inventory.tsx` | 1.653 |
+| `src/pages/Settings.tsx` | 1.524 |
+| `src/pages/Transfers.tsx` | 995 |
+| `src/pages/CashRegister.tsx` | 1.017 |
+| `src/utils/excelExport.ts` | 198 |
+| `src/services/offlineQueueStorage.ts` | 150 |
+| `src/services/offlineQueueTypes.ts` | 25 |
+
+## Próxima fase
+
+La siguiente etapa debe ser funcional y de seguridad, no otro cambio de arquitectura global:
+
+1. Auditoría módulo por módulo desde onboarding/login hasta cada área del CRM.
+2. Validación multitenant real en Supabase y permisos por empresa/almacén.
+3. Pruebas E2E de registro, login, permisos, POS, caja, offline/reinicio, impresión y sincronización.
+4. Revisión final de Inventory, CashRegister, Transfers y Settings para extraer solo responsabilidades claramente aislables.
+5. Migración progresiva restante de nombres Branch → Warehouse.
+6. Verificación contra Render y smoke test de producción.
 
 ## Criterio de aceptación
-Cada cambio estructural debe pasar typecheck, tests, auditoría arquitectónica y build antes de integrarse a `main`. Los cambios de Supabase deben quedar además versionados como migración.
+
+Cada lote estructural debe pasar TypeScript, pruebas unitarias, auditoría arquitectónica y build antes de integrarse a `main`. Las migraciones de Supabase deben permanecer versionadas y las operaciones críticas de negocio no deben perder su persistencia offline ni sus límites de tenant.
+
+Fecha: 2026-10-05.

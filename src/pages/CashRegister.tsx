@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from "react";
+import { getWarehouseId } from "../modules/warehouse/warehouseScope";
 import { useTurnProductSalaryRows } from '../modules/cash-register/hooks/useTurnProductSalaryRows';
 import { useShallow } from "zustand/react/shallow";
 import { Calculator, Lock, Unlock, TrendingUp, DollarSign, Clock, AlertCircle, List } from "lucide-react";
@@ -129,7 +130,7 @@ export default function CashRegister() {
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>(currentUser ? [currentUser.id] : []);
   
   const branchStaff = useMemo(() => {
-    return users.filter(u => u.branchId === currentBranchId || u.role === 'admin');
+    return users.filter(u => getWarehouseId(u) === currentBranchId || u.role === 'admin');
   }, [users, currentBranchId]);
 
   const [closingBalances, setClosingBalances] = useState<{ [key: string]: number }>({});

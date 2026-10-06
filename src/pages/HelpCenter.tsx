@@ -43,8 +43,8 @@ export default function HelpCenter(){
   const section = (params.get("section") as CenterSection) || "overview";
 
   const tutorialSteps = useMemo(
-    ()=>getAccessibleNumaTourSteps(currentUser, typeof window!=="undefined" && window.matchMedia("(max-width:720px)").matches)
-      .filter(step=>step.id!=="welcome" && step.id!=="finish" && !step.mobileOnly),
+    ()=>getAccessibleNumaTourSteps(currentUser)
+      .filter(step=>step.id!=="welcome" && step.id!=="finish"),
     [currentUser]
   );
 

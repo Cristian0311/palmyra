@@ -227,6 +227,8 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     baseSalary: Number(employee?.base_salary) || 0,
     permissions,
     isActive: employee?.active !== false,
+    warehouseId: warehouseIds[0],
+    allowedWarehouseIds: warehouseIds,
     branchId: warehouseIds[0],
     allowedBranches: warehouseIds
   };

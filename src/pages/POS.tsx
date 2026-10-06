@@ -1,6 +1,4 @@
 import React, { lazy, Suspense, useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { getTransactionReceiptLines as getTransactionReceiptLinesUtil } from '../modules/pos/utils/getTransactionReceiptLines';
-import { getClosureReceiptLines as getClosureReceiptLinesUtil } from '../modules/pos/utils/getClosureReceiptLines';
 import { useShallow } from "zustand/react/shallow";
 import { Search, Wifi, WifiOff, RefreshCw, Plus, Minus, CreditCard, Receipt, Trash2, ShoppingCart, ShieldCheck, DollarSign, Banknote, QrCode, ArrowLeftRight, UserPlus, X, Lock, Unlock, Camera, AlertCircle, TrendingUp, Wallet, MessageSquare, Mail, HelpCircle, Calculator, ArrowRight, Package, User, RotateCcw, Printer, Bluetooth, Usb, Smartphone, Send, Copy, Check, CheckCircle, Share2, Store, ChevronDown, ChevronUp, Filter } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -8,12 +6,18 @@ import { cn, generateId } from "../lib/utils";
 import { useStore } from "../store/useStore";
 import { Product, Payment, Transaction, CashRegisterSession } from "../types";
 import { InfoTooltip } from "../components/InfoTooltip";
-import { getOfflineQueueCount, getOfflineConflictCount, waitForOfflineQueueReady } from "../services/offlineQueue";
+import { waitForOfflineQueueReady } from "../services/offlineQueue";
+import { usePOSOfflineStatus } from "../modules/pos/hooks/usePOSOfflineStatus";
 import { POSCatalog } from "../components/POSCatalog";
-import { printThermalReceipt as printThermalReceiptDirect } from "../lib/escpos";
 import { formatMoney } from "../modules/pos/utils/paymentMath";
 import { usePOSPayments } from "../modules/pos/hooks/usePOSPayments";
 import { usePOSScanner } from "../modules/pos/hooks/usePOSScanner";
+import { usePOSPrinter } from "../modules/pos/hooks/usePOSPrinter";
+import { POSConfigProductModal } from "../components/pos/POSConfigProductModal";
+import { POSAddCustomerModal } from "../components/pos/POSAddCustomerModal";
+import { POSCancelShiftModal } from "../components/pos/POSCancelShiftModal";
+import { POSClosurePrintArea } from "../components/pos/POSClosurePrintArea";
+import { getAuthorizedWarehouseIds, getWarehouseId } from "../modules/warehouse/warehouseScope";
 import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
 import { aggregateTransferPayments, buildTransactionTicketId, finalizeCheckoutPayments } from '../modules/pos/utils/checkoutUtils';
 const CheckoutModal = lazy(() => import("../components/pos/CheckoutModal"));
@@ -130,60 +134,15 @@ export default function POS() {
 
 
 
-  const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const [pendingOfflineCount, setPendingOfflineCount] = useState(getOfflineQueueCount());
-  const [offlineConflictCount, setOfflineConflictCount] = useState(getOfflineConflictCount());
-  const [isSyncingOffline, setIsSyncingOffline] = useState(false);
-  const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
+  const {
+    isOnline,
+    pendingOfflineCount,
+    offlineConflictCount,
+    isSyncingOffline,
+    handleManualSync,
+    refreshOfflineCounts,
+  } = usePOSOfflineStatus(addNotification);
 
-  useEffect(() => {
-    const updateCount = () => {
-      setPendingOfflineCount(getOfflineQueueCount());
-      setOfflineConflictCount(getOfflineConflictCount());
-    };
-    const handleOnline = () => {
-      setIsOnline(true);
-      updateCount();
-    };
-    const handleOffline = () => {
-      setIsOnline(false);
-      updateCount();
-    };
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    window.addEventListener('offline_queue_updated', updateCount);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('offline_queue_updated', updateCount);
-    };
-  }, []);
-
-  const handleManualSync = async () => {
-    if (!isOnline) {
-      addNotification('No hay conexión a internet actualmente.', 'warning');
-      return;
-    }
-    setIsSyncingOffline(true);
-    try {
-      const { processOfflineQueue } = await import("../services/offlineSync");
-      const res = await processOfflineQueue();
-      setPendingOfflineCount(res.remaining);
-      setOfflineConflictCount(getOfflineConflictCount());
-      if (res.remaining > 0 || getOfflineConflictCount() > 0) {
-        addNotification(`Sincronización incompleta: ${res.processed} operaciones procesadas y ${res.remaining} siguen pendientes.`, 'warning');
-      } else if (res.processed > 0) {
-        addNotification(`Sincronización manual completada: ${res.processed} operaciones confirmadas.`, 'success');
-      } else if (getOfflineConflictCount() > 0) {
-        addNotification('La cola tiene ' + getOfflineConflictCount() + ' conflicto(s) que requieren revisión.', 'warning');
-      } else {
-        addNotification('Todo está al día y sincronizado con Supabase.', 'info');
-      }
-    } finally {
-      setIsSyncingOffline(false);
-    }
-  };
-  
   // Cash Management State
   const [cashManagementTab, setCashManagementTab] = useState<'movements' | 'close' | 'sales'>('movements');
   const [closingBalances, setClosingBalances] = useState<{ [key: string]: number }>({});
@@ -205,7 +164,7 @@ export default function POS() {
   
   
   const navigate = useNavigate();
-  const fallbackSessionBranchId = currentBranchId || (currentUser?.branchId || branches[0]?.id || '');
+  const fallbackSessionBranchId = currentBranchId || getWarehouseId(currentUser) || branches[0]?.id || '';
   const currentSession = useMemo(() => {
     if (activeSessionId) {
       const active = cashSessions.find(s => s.id === activeSessionId && s.status === 'open' && !s.deletedAt);
@@ -246,18 +205,7 @@ export default function POS() {
   }, [currentUser?.id, fallbackSessionBranchId]);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [showSalarySummary, setShowSalarySummary] = useState(false);
-  const [connectedPrinterName, setConnectedPrinterName] = useState<string | null>(null);
-  const [showPrinterSetupModal, setShowPrinterSetupModal] = useState(false);
-  const [isConnectingPrinter, setIsConnectingPrinter] = useState(false);
-  const [printerStatusMsg, setPrinterStatusMsg] = useState("");
-
-  useEffect(() => {
-    import('../lib/escpos').then(async ({ getConnectedDeviceName }) => {
-      const name = await getConnectedDeviceName();
-      if (name) setConnectedPrinterName(name);
-    }).catch(() => {});
-  }, []);
-  
+  const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
   const [salesFilter, setSalesFilter] = useState<'all' | 'usd' | 'transfer' | 'cash_cup' | 'mixed'>('all');
   const [salesSubTab, setSalesSubTab] = useState<'tickets' | 'products'>('tickets');
 
@@ -324,8 +272,13 @@ export default function POS() {
     return name ? (users || []).find(u => (u.name || '').trim().toLowerCase() === name) || null : null;
   }, [sessionWorkerId, sessionWorkerName, users]);
 
-  const workerAssignedBranchId = detectedWorker?.branchId ||
-    (detectedWorker?.allowedBranches?.length === 1 ? detectedWorker.allowedBranches[0] : null);
+  const workerAssignedWarehouseIds = React.useMemo(
+    () => getAuthorizedWarehouseIds(detectedWorker),
+    [detectedWorker]
+  );
+  const workerAssignedBranchId =
+    getWarehouseId(detectedWorker) ||
+    (workerAssignedWarehouseIds.length === 1 ? workerAssignedWarehouseIds[0] : null);
 
   const currentSessionWorker = currentSession
     ? (users || []).find(u =>
@@ -352,7 +305,7 @@ export default function POS() {
   const allowedBranches = React.useMemo(() => {
     if (currentUser?.role === 'admin') return branches || [];
     const scopeUser = detectedWorker || currentUser;
-    const ids = scopeUser?.allowedBranches || (scopeUser?.branchId ? [scopeUser.branchId] : []);
+    const ids = getAuthorizedWarehouseIds(scopeUser);
     return (branches || []).filter(b => ids.includes(b.id));
   }, [currentUser, detectedWorker, branches]);
 
@@ -877,171 +830,33 @@ export default function POS() {
     setShowCheckoutModal(true);
   };
 
-  const handlePairBluetooth = async () => {
-    setIsConnectingPrinter(true);
-    setPrinterStatusMsg("Buscando impresora Bluetooth...");
-    try {
-      const { connectBluetoothPrinter } = await import("../lib/escpos");
-      const device = await connectBluetoothPrinter();
-      setConnectedPrinterName(device.name || "Impresora Bluetooth 58mm");
-      setPosSuccess(`Impresora "${device.name || 'Bluetooth'}" conectada`);
-      setPrinterStatusMsg(`Conectado a ${device.name || 'Bluetooth'}`);
-      setTimeout(() => setPosSuccess(""), 3000);
-    } catch (err: any) {
-      console.warn("Bluetooth connection error:", err);
-      setPosError(err.message || "No se pudo conectar la impresora Bluetooth");
-      setPrinterStatusMsg(err.message || "Error al conectar");
-      setTimeout(() => setPosError(""), 4000);
-    } finally {
-      setIsConnectingPrinter(false);
-    }
-  };
-
-  const handleConnectUsb = async () => {
-    setIsConnectingPrinter(true);
-    setPrinterStatusMsg("Buscando impresora USB...");
-    try {
-      const { connectPrinter } = await import("../lib/escpos");
-      await connectPrinter();
-      setConnectedPrinterName("Impresora USB (Serie)");
-      setPosSuccess("Impresora USB conectada correctamente");
-      setPrinterStatusMsg("Impresora USB conectada");
-      setTimeout(() => setPosSuccess(""), 3000);
-    } catch (err: any) {
-      console.warn("USB connection error:", err);
-      setPosError(err.message || "No se pudo conectar la impresora USB");
-      setPrinterStatusMsg(err.message || "Error al conectar");
-      setTimeout(() => setPosError(""), 4000);
-    } finally {
-      setIsConnectingPrinter(false);
-    }
-  };
-
-  const getTransactionReceiptLines = (tx: import("../types").Transaction): string[] =>
-    getTransactionReceiptLinesUtil(tx, {
-      receiptConfig: useStore.getState().receiptConfig,
-      currentSessionWorkerName: currentSession?.workerName,
-      users,
-      customers: useStore.getState().customers,
-      products,
-      currencies,
-      baseCurrency,
-      formatMoney,
-    });
-
-
-  const getClosureReceiptLines = (session: CashRegisterSession): string[] =>
-    getClosureReceiptLinesUtil(session, {
-      receiptConfig: useStore.getState().receiptConfig,
-      transactions: useStore.getState().transactions,
-      products,
-      currencies,
-      branches,
-      users,
-      currentUser,
-      salarySettlements,
-      baseCurrency,
-      formatMoney,
-      formatSalaryCUP,
-    });
-
-  const handleThermalPrint = async (tx: import("../types").Transaction, options?: { silent?: boolean }) => {
-    try {
-      const lines = getTransactionReceiptLines(tx);
-      await printThermalReceiptDirect({
-        lines,
-        openDrawer: receiptConfig.openDrawer ?? true,
-        width: (receiptConfig.printerWidth || '58mm') as '58mm' | '80mm',
-        onSuccess: (method) => {
-          if (!options?.silent) {
-            setPosSuccess(`Ticket enviado a impresora (${method === 'bluetooth' ? 'Bluetooth' : 'USB/Serie'})`);
-            setTimeout(() => setPosSuccess(""), 2500);
-          }
-        },
-        onError: (error) => {
-          if (!options?.silent) {
-            setPosError(error?.message || "Sin conexión activa con impresora");
-            setTimeout(() => setPosError(""), 3500);
-          }
-        }
-      });
-    } catch (err: any) {
-      console.warn("Thermal print:", err);
-      if (!options?.silent) {
-        setPosError(err?.message || "No se pudo imprimir el ticket");
-        setTimeout(() => setPosError(""), 3500);
-      }
-    }
-  };
-
-  const handlePrintClosureThermal = async (session: CashRegisterSession | null, options?: { silent?: boolean }) => {
-    if (!session) return;
-    try {
-      const lines = getClosureReceiptLines(session);
-      await printThermalReceiptDirect({
-        lines,
-        openDrawer: false,
-        width: (receiptConfig.printerWidth || '58mm') as '58mm' | '80mm',
-        onSuccess: (method) => {
-          if (!options?.silent) {
-            setPosSuccess(`Cierre impreso (${method === 'bluetooth' ? 'Bluetooth' : 'USB/Serie'})`);
-            setTimeout(() => setPosSuccess(""), 2500);
-          }
-        },
-        onError: (error) => {
-          if (!options?.silent) {
-            setPosError(error?.message || "Sin conexión a impresora");
-            setTimeout(() => setPosError(""), 3500);
-          }
-        }
-      });
-    } catch (err: any) {
-      console.error('Error al imprimir comprobante de cierre:', err);
-      if (!options?.silent) {
-        setPosError(err?.message || "No se pudo imprimir el comprobante de cierre");
-        setTimeout(() => setPosError(""), 3500);
-      }
-    }
-  };
-
-  const handleWhatsAppReceipt = (tx: Transaction) => {
-    let phone = "";
-    const customer = useStore.getState().customers.find(c => c.id === tx.customerId);
-    if (customer?.phone) {
-      phone = String(customer.phone || '').replace(/\D/g,'');
-    } else {
-      const input = window.prompt("Ingrese el número de WhatsApp del cliente:");
-      if (!input) return;
-      phone = String(input || '').replace(/\D/g,'');
-    }
-    
-    if (!phone) {
-      addNotification("Número de teléfono inválido.", 'error');
-      return;
-    }
-    
-    const storeName = useStore.getState().storeConfig.storeName;
-    let itemsText = (tx.items || []).map(i => {
-      const pName = typeof (i.product as any) === 'object' ? ((i.product as any)?.name || 'Producto') : (products.find(p => p.id === (i.product as any))?.name || (i.product as any) || 'Producto');
-      const pPrice = typeof (i.product as any) === 'object' ? ((i.product as any)?.price || 0) : (products.find(p => p.id === (i.product as any))?.price || i.price || 0);
-      return `${i.quantity}x ${pName} - ${formatMoney(pPrice * i.quantity, baseCurrency.symbol)}`;    }).join('%0A');
-    const text = `Hola, gracias por tu compra en *${storeName}*.%0A%0A*Detalle del recibo ${tx.id}:*%0A${itemsText}%0A%0A*Total:* ${formatMoney(tx.total, baseCurrency.symbol)}%0A%0A¡Vuelve pronto!`;
-    const url = `https://wa.me/${phone}?text=${text}`;
-    window.open(url, '_blank');
-  };
-
-  const handleEmailReceipt = (tx: Transaction) => {
-    const customer = useStore.getState().customers.find(c => c.id === tx.customerId);
-    if (!customer?.email) {
-      addNotification("El cliente no tiene un correo registrado.", 'warning');
-      return;
-    }
-    const storeName = useStore.getState().storeConfig.storeName;
-    const subject = `Tu Recibo de Compra - ${storeName}`;
-    const body = `Hola ${customer?.name || 'Cliente'},\n\nGracias por tu compra. Tu recibo es ${tx.id} por un total de ${formatMoney(tx.total, baseCurrency.symbol)}.\n\nSaludos,\n${storeName}`;
-    const url = `mailto:${customer.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.open(url, '_blank');
-  };
+  const {
+    connectedPrinterName,
+    setConnectedPrinterName,
+    showPrinterSetupModal,
+    setShowPrinterSetupModal,
+    isConnectingPrinter,
+    printerStatusMsg,
+    handlePairBluetooth,
+    handleConnectUsb,
+    handleThermalPrint,
+    handlePrintClosureThermal,
+    handleWhatsAppReceipt,
+    handleEmailReceipt,
+  } = usePOSPrinter({
+    currentSession,
+    products,
+    currencies,
+    baseCurrency,
+    branches,
+    users,
+    currentUser,
+    salarySettlements,
+    receiptConfig,
+    addNotification,
+    setPosError,
+    setPosSuccess,
+  });
 
   const handleCheckout = async () => {
     if (isSubmittingCheckout) return;
@@ -1054,7 +869,7 @@ export default function POS() {
     // turno o almacén que pertenezca a otra identidad/sucursal.
     if (currentUser?.role !== 'admin' && currentUser?.id) {
       const assignedBranchId = currentUser.branchId ||
-        (currentUser.allowedBranches?.length === 1 ? currentUser.allowedBranches[0] : null);
+        (getAuthorizedWarehouseIds(currentUser).length === 1 ? getAuthorizedWarehouseIds(currentUser)[0] : null);
       const ownsSession = currentSession.userId === currentUser.id ||
         currentSession.workingEmployeeIds?.includes(currentUser.id);
       const ownsBranch = !assignedBranchId || currentSession.branchId === assignedBranchId;
@@ -1252,9 +1067,7 @@ export default function POS() {
       // y se autentica con la contraseña de ESE trabajador.
       // La sucursal queda limitada a las sucursales asignadas al trabajador seleccionado.
       const workerBranchIds = new Set(
-        workerToAssign.allowedBranches?.length
-          ? workerToAssign.allowedBranches
-          : (workerToAssign.branchId ? [workerToAssign.branchId] : [])
+        getAuthorizedWarehouseIds(workerToAssign)
       );
       const permittedBranchIds = currentUser?.role === 'admin'
         ? new Set((branches || []).map(b => b.id))
@@ -1390,8 +1203,9 @@ export default function POS() {
     }
 
     if (currentUser?.role !== 'admin') {
-      const assignedBranchId = currentUser?.branchId ||
-        (currentUser?.allowedBranches?.length === 1 ? currentUser.allowedBranches[0] : null);
+      const assignedBranchIds = getAuthorizedWarehouseIds(currentUser);
+      const assignedBranchId = getWarehouseId(currentUser) ||
+        (assignedBranchIds.length === 1 ? assignedBranchIds[0] : null);
       const ownIdentity = targetSession.userId === currentUser?.id ||
         targetSession.workingEmployeeIds?.includes(currentUser?.id || '');
       const ownBranch = !assignedBranchId || targetSession.branchId === assignedBranchId;
@@ -1402,9 +1216,7 @@ export default function POS() {
     }
 
     const targetBranchIds = new Set(
-      targetUser.allowedBranches?.length
-        ? targetUser.allowedBranches
-        : (targetUser.branchId ? [targetUser.branchId] : [])
+      getAuthorizedWarehouseIds(targetUser)
     );
 
     if (targetBranchIds.size > 0 && !targetBranchIds.has(targetSession.branchId) && currentUser?.role !== 'admin') {
@@ -1449,7 +1261,7 @@ export default function POS() {
 
 
   return (
-    <div className="h-full flex flex-col min-h-0 relative">
+    <div data-palmi-content="pos" className="h-full flex flex-col min-h-0 relative">
       {/* Global High-Priority Toast Overlay */}
       {(posError || posSuccess) && (
         <div className="fixed top-2 sm:top-6 left-1/2 -translate-x-1/2 z-[200] w-[calc(100vw-1rem)] sm:w-full max-w-md min-w-0 px-0 sm:px-4 animate-in fade-in slide-in-from-top-4 duration-300">
@@ -2913,82 +2725,18 @@ export default function POS() {
         </div>
       )}
 
-      {/* Modal para Configurar Producto */}
-      {showConfigModal && (
-        <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4">
-          <div className="palmyra-mobile-modal bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden animate-in zoom-in-95">
-            <div className="p-3 sm:p-5">
-              <h3 className="text-base sm:text-xl font-bold text-slate-900 mb-1.5 sm:mb-2">Configurar Producto</h3>
-              <p className="text-slate-500 mb-6">Completa los detalles para <span className="font-semibold text-slate-800">{selectedProduct?.name}</span>.</p>
-              
-              <form onSubmit={handleConfigSubmit} className="space-y-4">
-                {selectedProduct?.hasSerial && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Número de Serie (Opcional)</label>
-                    <div className="flex gap-2">
-                      <input 
-                        type="text" 
-                        autoFocus
-                        placeholder="Ej: SN-123456789" 
-                        value={configData.serialNumber || ''}
-                        onChange={(e) => setConfigData({...configData, serialNumber: e.target.value})}
-                        className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-shadow"
-                      />
-                      <button type="button" onClick={generateSerial} className="px-4 py-2.5 bg-indigo-50 text-indigo-700 rounded-xl font-medium hover:bg-indigo-100 transition-colors">
-                        Generar
-                      </button>
-                    </div>
-                  </div>
-                )}
-                
-                {selectedProduct?.availableSizes && selectedProduct.availableSizes.length > 0 && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Talla</label>
-                    <select 
-                      required
-                      value={configData.selectedSize || ''}
-                      onChange={(e) => setConfigData({...configData, selectedSize: e.target.value})}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-shadow"
-                    >
-                      {selectedProduct.availableSizes.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                )}
-
-                {selectedProduct?.availableColors && selectedProduct.availableColors.length > 0 && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">Color</label>
-                    <select 
-                      required
-                      value={configData.selectedColor || ''}
-                      onChange={(e) => setConfigData({...configData, selectedColor: e.target.value})}
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none transition-shadow"
-                    >
-                      {selectedProduct.availableColors.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                  </div>
-                )}
-
-                <div className="flex gap-3 pt-4">
-                  <button 
-                    type="button" 
-                    onClick={() => { setShowConfigModal(false); setConfigData({}); }}
-                    className="flex-1 py-3 bg-white border border-slate-200 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-colors"
-                  >
-                    Cancelar
-                  </button>
-                  <button 
-                    type="submit" 
-                    className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50"
-                  >
-                    Agregar
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
+      <POSConfigProductModal
+        open={showConfigModal}
+        product={selectedProduct}
+        configData={configData}
+        setConfigData={setConfigData}
+        generateSerial={generateSerial}
+        onSubmit={handleConfigSubmit}
+        onClose={() => {
+          setShowConfigModal(false);
+          setConfigData({});
+        }}
+      />
 
       {/* POS Tablet & Desktop Professional Top Bar */}
       <header className="bg-slate-900 text-white px-3 sm:px-4 py-2 flex items-center justify-between gap-2 border-b border-slate-800 shrink-0 z-20">
@@ -3487,61 +3235,13 @@ export default function POS() {
         </div>
       )}
 
-      {showAddCustomerModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="palmyra-mobile-modal bg-white rounded-2xl shadow-2xl w-full max-w-xs overflow-hidden animate-in zoom-in-95 border border-white/20">
-            <div className="p-3 sm:p-5 space-y-2.5 sm:space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-black text-slate-900 uppercase tracking-widest">Nuevo Cliente</h3>
-                <button onClick={() => setShowAddCustomerModal(false)} className="text-slate-400 hover:text-slate-600"><X className="w-4 h-4" /></button>
-              </div>
-              <form onSubmit={handleAddCustomer} className="space-y-3">
-                <div>
-                  <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Nombre Completo</label>
-                  <input 
-                    required 
-                    type="text" 
-                    value={newCustomer.name} 
-                    onChange={e => setNewCustomer({...newCustomer, name: e.target.value})}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:ring-1 focus:ring-indigo-100 outline-none text-xs font-bold" 
-                  />
-                </div>
-                <div>
-                  <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Teléfono</label>
-                  <input 
-                    type="text" 
-                    value={newCustomer.phone} 
-                    onChange={e => setNewCustomer({...newCustomer, phone: e.target.value})}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:ring-1 focus:ring-indigo-100 outline-none text-xs font-bold" 
-                  />
-                </div>
-                <div>
-                  <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Email (Opcional)</label>
-                  <input 
-                    type="email" 
-                    value={newCustomer.email} 
-                    onChange={e => setNewCustomer({...newCustomer, email: e.target.value})}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:ring-1 focus:ring-indigo-100 outline-none text-xs font-bold" 
-                  />
-                </div>
-                <div>
-                  <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">CI o Pasaporte</label>
-                  <input 
-                    type="text" 
-                    value={newCustomer.taxId} 
-                    onChange={e => setNewCustomer({...newCustomer, taxId: e.target.value})}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:ring-1 focus:ring-indigo-100 outline-none text-xs font-bold" 
-                    placeholder="Número de identidad"
-                  />
-                </div>
-                <button type="submit" className="w-full py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-95">
-                  Guardar Cliente
-                </button>
-              </form>
-            </div>
-          </div>
-        </div>
-      )}
+      <POSAddCustomerModal
+        open={showAddCustomerModal}
+        value={newCustomer}
+        setValue={setNewCustomer}
+        onSubmit={handleAddCustomer}
+        onClose={() => setShowAddCustomerModal(false)}
+      />
 
       {/* Mobile Cart & Quick Checkout Bottom Bar: Visible ONLY on small mobile screens (< md) */}
       {Boolean(currentSession) && !showMobileCart && (
@@ -3622,121 +3322,20 @@ export default function POS() {
         )
       )}
 
-      {/* Hidden printable area for shift closure thermal receipt */}
-      {lastClosedSession && (
-        <div id="print-closure-area" className="hidden font-mono text-[11px] leading-tight text-black bg-white p-2">
-          {(() => {
-            const sessionTx = activeTransactions.filter(t => 
-              t.sessionId === lastClosedSession.id && !t.deletedAt
-            );
-
-            const soldMap: { [name: string]: { name: string, qty: number, total: number } } = {};
-            sessionTx.forEach(tx => {
-              (tx.items || []).forEach(item => {
-                const name = typeof item.product === 'string' ? item.product : (item.product?.name || 'Producto');
-                if (!soldMap[name]) soldMap[name] = { name, qty: 0, total: 0 };
-                const price = typeof item.product === 'object' ? (item.product?.price || 0) : 0;
-                soldMap[name].qty += item.quantity;
-                soldMap[name].total += (price * item.quantity);
-              });
-            });
-            const soldList = Object.values(soldMap);
-            const totalSales = sessionTx.reduce((sum, tx) => sum + tx.total, 0);
-
-            const commissions = sessionTx.reduce((sum, tx) => {
-              return sum + (tx.items || []).reduce((s, item) => {
-                const prodId = typeof item.product === 'string' ? item.product : item.product?.id;
-                const prod = products.find(p => p.id === prodId);
-                if (!prod) return s;
-                const commValue = prod.commissionValue || 0;
-                return s + (commValue * item.quantity);
-              }, 0);
-            }, 0);
-
-            const employee = users.find(u => u.id === lastClosedSession.userId || u.name === lastClosedSession.workerName) || users.find(u => u.name?.toLowerCase() === lastClosedSession.workerName?.toLowerCase()) || users.find(u => u.role === 'employee') || currentUser;
-            const baseSalary = employee?.baseSalary || 0;
-            const totalSalary = baseSalary + commissions;
-
-            return (
-              <div className="space-y-1">
-                <div className="text-center font-black text-sm uppercase">{receiptConfig?.businessName || 'PALMYRA POS'}</div>
-                {receiptConfig?.showAddress && receiptConfig?.businessAddress && (
-                  <div className="text-center text-[9px]">{receiptConfig.businessAddress}</div>
-                )}
-                {receiptConfig?.showPhone && receiptConfig?.businessPhone && (
-                  <div className="text-center text-[9px]">{receiptConfig.businessPhone}</div>
-                )}
-                <div className="border-t border-dashed border-black my-2"></div>
-                <div className="text-center font-black uppercase text-xs">CIERRE DE CAJA / LIQUIDACIÓN</div>
-                <div className="flex justify-between text-[10px]">
-                  <span>TURNO:</span>
-                  <span className="font-bold">{lastClosedSession.id}</span>
-                </div>
-                <div className="flex justify-between text-[10px]">
-                  <span>FECHA:</span>
-                  <span>{new Date(lastClosedSession.closingDate || lastClosedSession.closedAt || new Date()).toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between text-[10px]">
-                  <span>EMPLEADO:</span>
-                  <span className="font-bold uppercase">{lastClosedSession.workerName || 'EMPLEADO'}</span>
-                </div>
-                <div className="flex justify-between text-[10px]">
-                  <span>SUCURSAL:</span>
-                  <span>{branches.find(b => b.id === lastClosedSession.branchId)?.name || 'Central'}</span>
-                </div>
-                
-                <div className="border-t border-dashed border-black my-2"></div>
-                <div className="font-bold text-[10px] uppercase">PRODUCTOS VENDIDOS ({soldList.reduce((s, i) => s + i.qty, 0)}):</div>
-                {soldList.length === 0 ? (
-                  <div className="text-[10px] italic">Sin ventas registradas en el turno</div>
-                ) : (
-                  soldList.map((p, i) => (
-                    <div key={i} className="flex justify-between text-[10px]">
-                      <span className="truncate max-w-[170px]">{p.qty}x {p?.name || "Producto"}</span>
-                      <span className="font-bold">{formatMoney(p.total, baseCurrency.symbol)}</span>
-                    </div>
-                  ))
-                )}
-                <div className="border-t border-dashed border-black my-2"></div>
-                <div className="flex justify-between font-black text-xs">
-                  <span>VENTA TOTAL:</span>
-                  <span>{formatMoney(totalSales, baseCurrency.symbol)}</span>
-                </div>
-
-                <div className="border-t border-dashed border-black my-2"></div>
-                <div className="font-bold text-[10px] uppercase">ARQUEO DE FONDOS:</div>
-                <div className="flex justify-between text-[10px]">
-                  <span>Fondo Inicial:</span>
-                  <span>{formatMoney(lastClosedSession.openingBalance, baseCurrency.symbol)}</span>
-                </div>
-
-                <div className="border-t border-dashed border-black my-2"></div>
-                <div className="font-bold text-[10px] uppercase">LIQUIDACIÓN DE SALARIO:</div>
-                <div className="flex justify-between text-[10px]">
-                  <span>Salario Base:</span>
-                  <span>{formatMoney(baseSalary, baseCurrency.symbol)}</span>
-                </div>
-                <div className="flex justify-between text-[10px]">
-                  <span>Comisiones Productos:</span>
-                  <span>+{formatMoney(commissions, baseCurrency.symbol)}</span>
-                </div>
-                <div className="flex justify-between font-black text-xs pt-1 border-t border-dotted border-black">
-                  <span>SALARIO A PAGAR:</span>
-                  <span>{formatSalaryCUP(totalSalary)}</span>
-                </div>
-
-                <div className="border-t border-dashed border-black my-4"></div>
-                <div className="pt-6 text-center text-[9px] border-t border-black">
-                  Firma del Empleado
-                </div>
-                <div className="pt-6 text-center text-[9px] border-t border-black">
-                  Firma Supervisor / Administrador
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-      )}
+      <POSClosurePrintArea
+        session={lastClosedSession}
+        transactions={activeTransactions}
+        products={products}
+        users={users}
+        currentUser={currentUser}
+        branches={branches}
+        receiptConfig={receiptConfig}
+        baseCurrency={baseCurrency}
+        formatMoney={formatMoney}
+        formatSalaryCUP={(value) =>
+          `${Math.round(Number(value) || 0).toLocaleString("es-ES")} CUP`
+        }
+      />
 
       {showPrinterSetupModal && (
         <POSPrinterSetupModal
@@ -3759,59 +3358,18 @@ export default function POS() {
         />
       )}
 
-      {/* Modal para Cancelar Turno */}
-      {showCancelShiftModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 border border-rose-100">
-            <div className="p-8 text-center space-y-6">
-              <div className="w-20 h-20 bg-rose-100 text-rose-600 rounded-3xl flex items-center justify-center mx-auto rotate-12 shadow-lg shadow-rose-100">
-                <Trash2 className="w-10 h-10" />
-              </div>
-              
-              <div className="space-y-2">
-                <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter">¿Cancelar Turno?</h3>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4">
-                  Esta acción anulará las ventas de este turno, revertirá el inventario y conservará el turno como "Cancelado" en el historial. Se requiere contraseña.
-                </p>
-              </div>
+      <POSCancelShiftModal
+        open={showCancelShiftModal}
+        password={cancelShiftPassword}
+        setPassword={setCancelShiftPassword}
+        isCancelling={isCancellingShift}
+        onCancel={handleCancelShift}
+        onClose={() => {
+          setShowCancelShiftModal(false);
+          setCancelShiftPassword("");
+        }}
+      />
 
-              <div className="space-y-4">
-                <div className="relative">
-                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <input 
-                    type="password"
-                    autoFocus
-                    placeholder="Contraseña del Trabajador"
-                    value={cancelShiftPassword}
-                    onChange={(e) => setCancelShiftPassword(e.target.value)}
-                    onKeyDown={(e) => e.key === 'Enter' && handleCancelShift()}
-                    className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-rose-500/10 focus:border-rose-500 transition-all font-black text-center tracking-[0.5em]"
-                  />
-                </div>
-
-                <div className="flex gap-3">
-                  <button 
-                    onClick={() => {
-                      setShowCancelShiftModal(false);
-                      setCancelShiftPassword("");
-                    }}
-                    className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-colors"
-                  >
-                    Volver
-                  </button>
-                  <button 
-                    onClick={handleCancelShift}
-                    disabled={isCancellingShift}
-                    className="flex-[2] py-4 bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-200 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
-                  >
-                    {isCancellingShift ? "Cancelando..." : "Confirmar Anulación"}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

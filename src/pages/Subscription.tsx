@@ -73,7 +73,7 @@ export default function Subscription(){
   const request=data?.request;
     return <div className="space-y-4 sm:space-y-5 w-full min-w-0 max-w-6xl mx-auto pb-10 overflow-x-hidden">
     <header className="bg-secondary border border-base rounded-3xl p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-      <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#6535C5]">Cuenta</p><h1 className="text-2xl font-black text-primary mt-1">Facturación y plan</h1><p className="text-xs text-muted mt-1">En Cuba puedes solicitar el plan mediante efectivo o transferencia bancaria. La activación se realiza después de confirmar el pago.</p></div>
+      <div><p className="text-[10px] font-black uppercase tracking-[0.18em] text-[#6535C5]">Cuenta</p><h1 data-palmi-content="subscription" className="text-2xl font-black text-primary mt-1">Facturación y plan</h1><p className="text-xs text-muted mt-1">En Cuba puedes solicitar el plan mediante efectivo o transferencia bancaria. La activación se realiza después de confirmar el pago.</p></div>
       <button onClick={()=>void refresh()} disabled={busy} className="h-10 px-4 rounded-xl border border-base bg-primary text-primary text-xs font-black flex items-center gap-2"><RefreshCw className={cn("w-4 h-4",loading&&"animate-spin")}/>Actualizar</button>
     </header>
 

@@ -78,7 +78,7 @@ export default function Returns() {
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300 lg:h-full flex flex-col">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h2 className="text-xl font-black text-slate-900 tracking-tight uppercase">Gestión de Post-Venta</h2>
+          <h2 data-palmi-content="returns" className="text-xl font-black text-slate-900 tracking-tight uppercase">Gestión de Post-Venta</h2>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Devoluciones y Control de Garantías</p>
         </div>
         <div className="flex bg-slate-100 p-1 rounded-xl">

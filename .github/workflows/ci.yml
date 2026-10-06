@@ -2,9 +2,16 @@ name: PALMYRA CI
 
 on:
   push:
-    branches: [main, 'refactor/**']
+    branches: [main, 'refactor/**', 'feature/**']
   pull_request:
-    branches: [main]
+    branches: [main, 'refactor/**']
+
+concurrency:
+  group: palmyra-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   quality:
@@ -27,6 +34,12 @@ jobs:
 
       - name: Unit tests
         run: npm run test:unit
+
+      - name: Admin TypeScript
+        run: npx tsc -p admin/tsconfig.json --noEmit
+
+      - name: Admin build
+        run: npm run build:admin
 
       - name: Architecture audit
         run: npm run audit:architecture:strict

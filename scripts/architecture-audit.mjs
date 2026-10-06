@@ -8,7 +8,7 @@ const legacyLargeBaseline = {
   'src/pages/POS.tsx': { lines: 4420, bytes: 235600 },
   'src/pages/Reports.tsx': { lines: 4455, bytes: 248691 },
 };
-const ignoredDirs = new Set(['node_modules', '.git', 'dist', 'coverage', '.cache']);
+const ignoredDirs = new Set(['node_modules', '.git', 'dist', 'dist-admin', 'coverage', '.cache']);
 
 for (const dir of ['fixrender', 'dev-dist']) {
   if (existsSync(join(root, dir))) {
@@ -43,8 +43,8 @@ function walk(dir) {
       })();
       const baseline = legacyLargeBaseline[rel];
 
-      if (lineCount >= 4000) {
-        findings.push({ level: 'high', message: `Archivo fuente >= 4000 líneas: ${rel} (${lineCount}). El límite de mantenimiento es 3999 líneas; extrae lógica a módulos.` });
+      if (lineCount >= 3500) {
+        findings.push({ level: 'high', message: `Archivo fuente >= 3500 líneas: ${rel} (${lineCount}). El límite de mantenimiento es 3499 líneas; extrae lógica a módulos.` });
       } else if (lineCount >= 2500) {
         findings.push({ level: 'medium', message: `Archivo fuente >= 2500 líneas: ${rel} (${lineCount})` });
       }

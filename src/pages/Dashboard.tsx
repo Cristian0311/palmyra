@@ -249,7 +249,7 @@ export default function Dashboard() {
       {/* Header */}
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
-          <h2 className="text-2xl font-black text-primary tracking-tight">Dashboard</h2>
+          <h2 data-palmi-heading="dashboard" className="text-2xl font-black text-primary tracking-tight">Dashboard</h2>
           <div className="flex flex-wrap items-center gap-2 text-muted mt-0.5">
             <div className="flex items-center gap-1">
               <MapPin className="w-3 h-3 text-indigo-500" />
@@ -318,7 +318,7 @@ export default function Dashboard() {
       )}
 
       {/* Metrics Grid (Compact & Clear Currency Indicators) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+      <div data-palmi-content="dashboard" className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <div className="bg-secondary p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl border border-base shadow-xs hover:shadow-md transition-all flex flex-col justify-between min-w-0 overflow-hidden">
           <div className="flex justify-between items-start mb-2 gap-1">
             <div className="p-1.5 sm:p-2 rounded-xl text-white shrink-0 shadow-xs bg-indigo-600">
