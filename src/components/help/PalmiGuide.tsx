@@ -57,7 +57,7 @@ function findContentTarget(step: NumaTourStep) {
       '[data-palmi-page-title]',
       "main h1",
       'main [role="heading"][aria-level="1"]',
-      "main [role="heading"]"
+      'main [role="heading"]'
     ])
   );
 }
