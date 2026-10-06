@@ -24,6 +24,7 @@ import { getAuthorizedWarehouseIds, getWarehouseId } from "../modules/warehouse/
 import { pullOpenCashSessionsFromSupabase } from "../services/supabaseSync";
 import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
 import { aggregateTransferPayments, buildTransactionTicketId, finalizeCheckoutPayments } from '../modules/pos/utils/checkoutUtils';
+import { calculateEmployeeSaleCommission } from '../services/employeeCompensation';
 const CheckoutModal = lazy(() => import("../components/pos/CheckoutModal"));
 
 const POSReceiptModal = lazy(() => import("../components/POSReceiptModal"));
@@ -3330,15 +3331,14 @@ export default function POS() {
                 const employee = users.find(u => u.id === lastClosedSession.userId || u.name === lastClosedSession.workerName) || users.find(u => u.name?.toLowerCase() === lastClosedSession.workerName?.toLowerCase()) || users.find(u => u.role === 'employee') || currentUser;
                 const isIndependent = false;
 
-                const commissions = isIndependent ? 0 : sessionTransactions.reduce((sum, tx) => {
-                  return sum + (tx.items || []).reduce((s, item) => {
-                    const prodId = typeof item.product === 'string' ? item.product : item.product?.id;
-                    const prod = products.find(p => p.id === prodId);
-                    if (!prod) return s;
-                    const commValue = prod.commissionValue || 0;
-                    return s + (commValue * item.quantity);
-                  }, 0);
-                }, 0);
+                const sellers = lastClosedSession.workingEmployeeIds && lastClosedSession.workingEmployeeIds.length > 0
+                  ? lastClosedSession.workingEmployeeIds
+                  : [lastClosedSession.userId];
+                const commissions = isIndependent ? 0 : sessionTransactions.reduce((sum, tx) =>
+                  sum + sellers.reduce((sellerSum, sellerId) =>
+                    sellerSum + calculateEmployeeSaleCommission(users.find(u => u.id === sellerId), tx, products, sellers.length), 0
+                  ), 0
+                );
 
                 const baseSalary = employee?.baseSalary || 0;
                 const settlement = salarySettlements.find(s => s.sessionId === lastClosedSession.id);
