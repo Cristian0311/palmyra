@@ -459,11 +459,9 @@ body {
   /* Keyboard-aware scrolling for every form in the application. The runtime service
    * updates --keyboard-inset from visualViewport, so the field keeps clearance
    * from the software keyboard without changing normal desktop/tablet layout. */
-  .keyboard-safe-scroll,
-  [class*="overflow-y-auto"],
-  [class*="overflow-auto"] {
-    scroll-padding-top: 12vh;
-    scroll-padding-bottom: calc(var(--keyboard-inset, 0px) + 28px);
+  .keyboard-safe-scroll {
+    scroll-padding-top: 8px;
+    scroll-padding-bottom: calc(var(--keyboard-inset, 0px) + 20px);
   }
 
   .keyboard-open input,
