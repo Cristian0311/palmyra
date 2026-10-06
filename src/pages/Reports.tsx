@@ -30,6 +30,9 @@ import { useReportsAnalytics } from "../hooks/useReportsAnalytics";
 import type { ExcelExportData } from "../utils/excelExport";
 import { pullPosBootstrapFromSupabase } from "../services/supabaseSync/pull";
 import { getOfflineQueueCount } from "../services/offlineQueue";
+import { PlanFeatureGate } from "../components/PlanFeatureGate";
+import { canUsePlanFeature } from "../services/planAccess";
+import { loadSaaSContext } from "../services/saas";
 import { printThermalReceipt, format58mmLine } from "../lib/escpos";
 
 export default function Reports() {
@@ -458,6 +461,15 @@ export default function Reports() {
     setPrintSessionId,
   });
 
+  const [planCode, setPlanCode] = useState<string | null>(null);
+  const [showExcelGate, setShowExcelGate] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void loadSaaSContext().then(ctx => { if (active) setPlanCode(ctx?.subscription?.planCode || null); }).catch(() => { if (active) setPlanCode(null); });
+    return () => { active = false; };
+  }, []);
+  const canExcelExport = canUsePlanFeature(planCode, "excel_exports");
+
   // State for Excel Export Menu
   const getExportData = (): ExcelExportData => {
     let dateFilterLabel = 'Todo el historial';
@@ -475,6 +487,12 @@ export default function Reports() {
 
   return (
     <div className="reportes-page space-y-3 sm:space-y-4 animate-in fade-in duration-300 w-full min-w-0 max-w-[1400px] mx-auto pb-12 overflow-x-hidden">
+      {showExcelGate && !canExcelExport && (
+        <div className="mb-2">
+          <PlanFeatureGate feature="excel_exports" title="Descargas de reportes en Excel" description="Descarga reportes completos y por secciones en formato Microsoft Excel para análisis y control externo. Disponible desde Ciudadela." />
+        </div>
+      )}
+
       {/* Header */}
       <header className="flex items-center justify-between gap-3 bg-secondary p-2.5 sm:p-3 rounded-2xl shadow-sm border border-base">
         <div className="px-1 sm:px-2 min-w-0">
@@ -490,7 +508,7 @@ export default function Reports() {
             <div className="flex items-center h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-200 transition-all">
               <button 
                 type="button"
-                onClick={handleExportFullExcel}
+                onClick={() => canExcelExport ? handleExportFullExcel() : setShowExcelGate(true)}
                 className="btn-compact !bg-transparent !shadow-none hover:!bg-emerald-700 active:scale-95 text-white"
                 title="Exportar todo el reporte completo a Excel (.xlsx) con tablas estructuradas"
               >
@@ -499,7 +517,7 @@ export default function Reports() {
               </button>
               <button
                 type="button"
-                onClick={() => setShowExportMenu(!showExportMenu)}
+                onClick={() => canExcelExport ? setShowExportMenu(!showExportMenu) : setShowExcelGate(true)}
                 className="px-1.5 py-1.5 border-l border-emerald-500/60 hover:bg-emerald-800 rounded-r-xl transition-colors"
                 title="Opciones de exportación por sección"
               >
