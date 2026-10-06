@@ -266,14 +266,14 @@ export default function Dashboard() {
           </div>
         </div>
         
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 w-full sm:w-auto">
           <button 
             onClick={handleGenerateAI}
             disabled={isGeneratingAI}
-            className="btn-secondary h-8 min-h-0"
+            className="btn-secondary h-7 min-h-0 px-2 rounded-lg text-[8px] font-black uppercase tracking-tight gap-1.5 shadow-none"
           >
             {isGeneratingAI ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 text-amber-500" />}
-            {aiSummary ? "Actualizar Análisis IA" : "Analizar con IA"}
+            <span>{aiSummary ? "Actualizar IA" : "Analizar con IA"}</span>
           </button>
           <select 
             value={selectedBranchFilter}
@@ -283,7 +283,8 @@ export default function Dashboard() {
                 setCurrentBranch(e.target.value);
               }
             }}
-            className="h-8 min-h-0 bg-secondary border border-base rounded-xl text-[9px] leading-none font-black text-primary px-2.5 py-1 focus:ring-1 focus:ring-indigo-100 outline-none cursor-pointer uppercase tracking-wider transition-colors shadow-2xs"
+            className="h-7 min-h-0 w-[clamp(5.8rem,22vw,9rem)] bg-secondary border border-base rounded-lg text-[8px] leading-none font-black text-primary px-2 py-0 focus:ring-1 focus:ring-indigo-100 outline-none cursor-pointer uppercase tracking-tight transition-colors shadow-none truncate"
+            title="Almacén / sucursal"
           >
             <option value="all">🏢 Todas</option>
             {branches.map(b => (
