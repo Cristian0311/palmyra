@@ -83,11 +83,6 @@ function getPlanCountdown(target: string | null | undefined, nowMs: number) {
   return { months, days, hours, minutes, seconds, expired: false };
 }
 
-const cashierNavItems = [
-  { name: "Centro de atención", href: "/help", icon: Headphones, public: true },
-  { name: "Punto de Venta", href: "/pos", icon: ShoppingCart },
-];
-
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
