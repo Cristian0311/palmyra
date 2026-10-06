@@ -1480,47 +1480,71 @@ export default function POS() {
       )}
       {!currentSession && (
         <div
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-2 sm:p-3 overflow-y-auto space-y-2">
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center px-3 py-5 sm:px-4 sm:py-6 overflow-y-auto overscroll-contain">
           {!joiningSessionId && openSessionsForResume.length > 0 && (
-            <div className="w-full max-w-[min(92vw,20rem)] rounded-2xl border border-emerald-200 bg-white shadow-xl p-2.5 sm:p-3 text-left animate-in fade-in zoom-in-95">
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <div className="min-w-0">
-                  <p className="text-[8px] font-black uppercase tracking-[0.14em] text-emerald-700">Caja abierta</p>
-                  <p className="text-[9px] font-bold text-slate-500 leading-tight">Hay un turno guardado y disponible para reanudar.</p>
-                </div>
-                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
-              </div>
-              <div className="space-y-1.5 max-h-28 overflow-y-auto custom-scrollbar pr-0.5">
-                {openSessionsForResume.map(session => (
-                  <div key={session.id} className="flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-100 px-2 py-1.5">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[8.5px] font-black text-emerald-900 truncate">
-                        Turno {session.turnNumber || "—"} · {session.workerName || "Administrador"}
-                      </p>
-                      <p className="text-[7px] font-bold text-emerald-700/80 truncate">
-                        {branches.find(b => b.id === session.branchId)?.name || "Almacén principal"}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setJoiningSessionId(session.id);
-                        setJoiningSessionPassword("");
-                        setPosError("");
-                      }}
-                      className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1 text-[7px] font-black uppercase tracking-tight text-white shadow-sm hover:bg-emerald-700"
-                    >
-                      Reanudar
-                    </button>
+            <section className="w-full max-w-[min(92vw,31rem)] rounded-2xl border border-emerald-200/80 bg-white shadow-2xl text-left overflow-hidden">
+              <div className="px-3.5 py-3 sm:px-4 border-b border-emerald-100 bg-emerald-50/70 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                    <CheckCircle className="w-3.5 h-3.5" />
                   </div>
-                ))}
+                  <div className="min-w-0">
+                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-emerald-800">Turnos abiertos</p>
+                    <p className="text-[7px] font-bold text-emerald-700/80 leading-tight">Selecciona el turno que deseas reanudar.</p>
+                  </div>
+                </div>
+                <span className="shrink-0 rounded-full bg-white border border-emerald-200 px-2 py-1 text-[7px] font-black uppercase tracking-tight text-emerald-700">
+                  {openSessionsForResume.length} {openSessionsForResume.length === 1 ? "abierto" : "abiertos"}
+                </span>
               </div>
-            </div>
+
+              <div className="p-2.5 sm:p-3 max-h-[min(44vh,19rem)] overflow-y-auto custom-scrollbar">
+                <div className="space-y-1.5">
+                  {openSessionsForResume.map((session) => {
+                    const branchName = branches.find(b => b.id === session.branchId)?.name || session.warehouseName || "Almacén principal";
+                    const openedLabel = session.openedAt
+                      ? new Date(session.openedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                      : "—";
+                    return (
+                      <div
+                        key={session.id}
+                        className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2 rounded-xl border border-slate-100 bg-slate-50/80 px-2.5 py-2 hover:border-emerald-200 hover:bg-emerald-50/60 transition-colors"
+                      >
+                        <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-[8px] font-black text-slate-600 shrink-0">
+                          T{session.turnNumber || "—"}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[8.5px] font-black text-slate-900 truncate">
+                            {session.workerName || "Administrador"}
+                          </p>
+                          <div className="flex items-center gap-1.5 min-w-0 text-[6.5px] font-bold text-slate-500">
+                            <span className="truncate">{branchName}</span>
+                            <span className="text-slate-300 shrink-0">·</span>
+                            <span className="shrink-0">Abierto {openedLabel}</span>
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setJoiningSessionId(session.id);
+                            setJoiningSessionPassword("");
+                            setPosError("");
+                          }}
+                          className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[7px] font-black uppercase tracking-tight text-white shadow-sm hover:bg-emerald-700 active:scale-[0.98]"
+                        >
+                          Reanudar
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </section>
           )}
 
           {joiningSessionId ? (
             /* Modal Formulario de Ingreso a Turno Abierto Existente */
-            <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-2xl shadow-2xl text-center max-w-[20rem] w-full animate-in zoom-in-95 border border-white/20">
+            <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-2xl shadow-2xl text-center max-w-[20rem] w-full border border-white/20">
               <div className="w-9 h-9 bg-amber-50 dark:bg-amber-950/40 rounded-xl flex items-center justify-center mx-auto mb-2">
                 <Lock className="w-4 h-4 text-amber-600" />
               </div>
@@ -1999,46 +2023,6 @@ export default function POS() {
                 </div>
               )}
 
-              {/* Turnos Abiertos en Curso (Evita duplicidad y permite reanudar con contraseña) */}
-              {(() => {
-                // Las cuentas PALMYRA no deben ver ni poder escoger turnos de terceros.
-                if (false) return null;
-                const otherOpenSessions = (activeCashSessions || []).filter(s => s.status === 'open');
-                if (otherOpenSessions.length === 0) return null;
-                return (
-                  <div className="bg-white dark:bg-slate-900 p-2.5 sm:p-3 rounded-2xl shadow-lg border border-slate-100 dark:border-slate-800 text-left max-w-sm w-full mt-1 shrink-0">
-                    <span className="text-[7px] font-black uppercase text-indigo-600 tracking-tight flex items-center gap-1 mb-1.5">
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin-slow text-indigo-500" />
-                      Turnos Abiertos Actualmente
-                    </span>
-                    <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
-                      {otherOpenSessions.map(s => (
-                        <div key={s.id} className="p-2 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                          <div className="min-w-0">
-                            <span className="text-[9px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight block whitespace-normal break-words leading-tight">
-                              {s.workerName || 'Empleado'}
-                            </span>
-                            <span className="text-[6px] font-bold text-slate-400 uppercase tracking-tight block whitespace-normal break-words leading-tight">
-                              {branches.find(b => b.id === s.branchId)?.name || 'Sucursal'} • ID: {s.id.slice(0, 6)}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setJoiningSessionId(s.id);
-                              setJoiningSessionPassword("");
-                              setPosError("");
-                            }}
-                            className="px-2 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-400 font-black text-[7px] uppercase tracking-tight rounded-lg transition-all active:scale-95 cursor-pointer shrink-0"
-                          >
-                            Reanudar
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
             </>
           )}
         </div>
