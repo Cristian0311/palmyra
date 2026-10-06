@@ -12,6 +12,7 @@ import {
   setEmployeeStatus,
   updateEmployee,
   updateEmployeePosSecure,
+  setEmployeeCompensation,
   upsertCompanyRole,
   type TeamEmployee,
   type TeamRole,
@@ -68,7 +69,9 @@ export default function Team() {
     warehouseIds: [] as string[],
     email: "",
     sendInvite: true,
-    posPassword: ""
+    posPassword: "",
+    compensationType: 'fixed_product' as 'fixed_product' | 'sales_percentage',
+    salesPercentage: '0'
   });
 
   const refresh = async () => {
@@ -115,7 +118,9 @@ export default function Team() {
       warehouseIds: snapshot?.warehouses[0] ? [snapshot.warehouses[0].id] : [],
       email: "",
       sendInvite: true,
-      posPassword: ""
+      posPassword: "",
+      compensationType: employee.compensation_type,
+      salesPercentage: String(employee.sales_percentage || 0)
     });
   };
 
@@ -203,7 +208,9 @@ export default function Team() {
       warehouseIds: [...employee.warehouse_ids],
       email: employee.login_email || employee.pending_invitation?.email || "",
       sendInvite: !employee.user_id,
-      posPassword: ""
+      posPassword: "",
+      compensationType: 'fixed_product',
+      salesPercentage: '0'
     });
     setFormStep(1);
     setShowForm(true);
@@ -263,6 +270,13 @@ export default function Team() {
             posPassword: form.posPassword.trim() || undefined
           });
         }
+
+        await setEmployeeCompensation({
+          companyId: snapshot.companyId,
+          employeeId: editing.id,
+          compensationType: form.compensationType,
+          salesPercentage: Number(form.salesPercentage) || 0
+        });
 
         if (form.sendInvite && !editing.user_id) {
           const invite = await resendEmployeeInvitation({
