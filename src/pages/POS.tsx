@@ -36,6 +36,7 @@ export default function POS() {
   const [lastClosedSession, setLastClosedSession] = useState<CashRegisterSession | null>(null);
   const [showOpenShiftModal, setShowOpenShiftModal] = useState(false);
   const [joiningSessionId, setJoiningSessionId] = useState<string | null>(null);
+  const [showOpenSessionsModal, setShowOpenSessionsModal] = useState(false);
 
   // Suscripción única al estado operativo del POS. currentBranchId es el alias
   // interno existente del almacén activo y no reintroduce la capa legacy.
@@ -1481,65 +1482,43 @@ export default function POS() {
       {!currentSession && (
         <div
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center px-3 py-5 sm:px-4 sm:py-6 overflow-y-auto overscroll-contain">
-          {!joiningSessionId && openSessionsForResume.length > 0 && (
-            <section className="w-full max-w-[min(92vw,31rem)] rounded-2xl border border-emerald-200/80 bg-white shadow-2xl text-left overflow-hidden">
-              <div className="px-3.5 py-3 sm:px-4 border-b border-emerald-100 bg-emerald-50/70 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                    <CheckCircle className="w-3.5 h-3.5" />
+          {showOpenSessionsModal && !joiningSessionId && (
+            <div className="fixed inset-0 z-[65] bg-slate-950/55 backdrop-blur-sm flex items-center justify-center p-3">
+              <div className="w-full max-w-[min(94vw,32rem)] rounded-2xl border border-emerald-200/80 bg-white shadow-2xl overflow-hidden">
+                <div className="flex items-center justify-between gap-3 px-3.5 py-3 border-b border-emerald-100 bg-emerald-50/80">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0"><Wallet className="w-3.5 h-3.5" /></div>
+                    <div className="min-w-0">
+                      <p className="text-[9px] font-black uppercase tracking-[0.14em] text-emerald-800">Turnos abiertos</p>
+                      <p className="text-[7px] font-bold text-emerald-700/80">Selecciona una caja en curso para reanudarla.</p>
+                    </div>
                   </div>
-                  <div className="min-w-0">
-                    <p className="text-[9px] font-black uppercase tracking-[0.14em] text-emerald-800">Turnos abiertos</p>
-                    <p className="text-[7px] font-bold text-emerald-700/80 leading-tight">Selecciona el turno que deseas reanudar.</p>
-                  </div>
+                  <button type="button" onClick={() => setShowOpenSessionsModal(false)} className="w-7 h-7 rounded-lg bg-white border border-emerald-200 text-emerald-700 flex items-center justify-center hover:bg-emerald-100" aria-label="Cerrar turnos abiertos">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-                <span className="shrink-0 rounded-full bg-white border border-emerald-200 px-2 py-1 text-[7px] font-black uppercase tracking-tight text-emerald-700">
-                  {openSessionsForResume.length} {openSessionsForResume.length === 1 ? "abierto" : "abiertos"}
-                </span>
-              </div>
-
-              <div className="p-2.5 sm:p-3 max-h-[min(44vh,19rem)] overflow-y-auto custom-scrollbar">
-                <div className="space-y-1.5">
-                  {openSessionsForResume.map((session) => {
-                    const branchName = branches.find(b => b.id === session.branchId)?.name || session.warehouseName || "Almacén principal";
-                    const openedLabel = session.openedAt
-                      ? new Date(session.openedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-                      : "—";
-                    return (
-                      <div
-                        key={session.id}
-                        className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2 rounded-xl border border-slate-100 bg-slate-50/80 px-2.5 py-2 hover:border-emerald-200 hover:bg-emerald-50/60 transition-colors"
-                      >
-                        <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-[8px] font-black text-slate-600 shrink-0">
-                          T{session.turnNumber || "—"}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-[8.5px] font-black text-slate-900 truncate">
-                            {session.workerName || "Administrador"}
-                          </p>
-                          <div className="flex items-center gap-1.5 min-w-0 text-[6.5px] font-bold text-slate-500">
-                            <span className="truncate">{branchName}</span>
-                            <span className="text-slate-300 shrink-0">·</span>
-                            <span className="shrink-0">Abierto {openedLabel}</span>
+                <div className="p-2.5 max-h-[min(62vh,26rem)] overflow-y-auto custom-scrollbar">
+                  <div className="space-y-1.5">
+                    {openSessionsForResume.map((session) => {
+                      const branchName = branches.find(b => b.id === session.branchId)?.name || session.warehouseName || "Almacén principal";
+                      const openedLabel = session.openedAt ? new Date(session.openedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
+                      return (
+                        <div key={session.id} className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 px-2.5 py-2">
+                          <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-[8px] font-black text-slate-700 shrink-0">T{session.turnNumber || "—"}</div>
+                          <div className="min-w-0">
+                            <p className="text-[8.5px] font-black text-slate-900 truncate">{session.workerName || "Administrador"}</p>
+                            <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[6.5px] font-bold text-slate-500">
+                              <span className="break-words">{branchName}</span><span className="shrink-0">·</span><span className="shrink-0">Abierto {openedLabel}</span>
+                            </div>
                           </div>
+                          <button type="button" onClick={() => { setShowOpenSessionsModal(false); setJoiningSessionId(session.id); setJoiningSessionPassword(""); setPosError(""); }} className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[7px] font-black uppercase tracking-tight text-white shadow-sm hover:bg-emerald-700 active:scale-[0.98]">Reanudar</button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setJoiningSessionId(session.id);
-                            setJoiningSessionPassword("");
-                            setPosError("");
-                          }}
-                          className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[7px] font-black uppercase tracking-tight text-white shadow-sm hover:bg-emerald-700 active:scale-[0.98]"
-                        >
-                          Reanudar
-                        </button>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
-            </section>
+            </div>
           )}
 
           {joiningSessionId ? (
@@ -1684,7 +1663,7 @@ export default function POS() {
 
               ) : (
                 /* Modal Formulario de Apertura de Caja */
-                <div className="palmyra-mobile-modal palmyra-open-cash-modal p-1.5 sm:p-2 rounded-2xl shadow-2xl text-center w-full max-w-[min(92vw,20rem)] max-h-[calc(100dvh-0.5rem)] overflow-y-auto animate-in zoom-in-95 my-auto">
+                <div className="palmyra-mobile-modal palmyra-open-cash-modal p-1.5 sm:p-2 rounded-2xl shadow-2xl text-center w-full max-w-[min(92vw,19rem)] max-h-[calc(100dvh-0.75rem)] overflow-y-auto animate-in zoom-in-95 my-auto">
                   <div className="flex items-center justify-center gap-1.5 mb-1">
                     <div className="w-6 h-6 sm:w-7 sm:h-7 bg-violet-50 rounded-lg flex items-center justify-center shrink-0">
                       <DollarSign className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-violet-600" />
@@ -1718,7 +1697,27 @@ export default function POS() {
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                  )}
+                  )}                    {openSessionsForResume.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowOpenSessionsModal(true)}
+                        className="w-full mb-2 flex items-center justify-between gap-2 rounded-xl border border-emerald-200/80 bg-emerald-50/70 px-2.5 py-2 text-left hover:bg-emerald-50 transition-colors"
+                      >
+                        <span className="flex items-center gap-2 min-w-0">
+                          <span className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
+                            <Wallet className="w-3 h-3" />
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block text-[8px] font-black uppercase tracking-wider text-emerald-800 leading-tight">Turnos abiertos</span>
+                            <span className="block text-[6.5px] font-bold text-emerald-700/80 leading-tight">Ver y reanudar una caja en curso</span>
+                          </span>
+                        </span>
+                        <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-white border border-emerald-200 px-2 py-1 text-[7px] font-black text-emerald-700">
+                          {openSessionsForResume.length}
+                          <ArrowRight className="w-2.5 h-2.5" />
+                        </span>
+                      </button>
+                    )}
 
               <form onSubmit={handleOpenSession} className="space-y-2">
                     <div className="text-left space-y-2">
@@ -1918,7 +1917,7 @@ export default function POS() {
                             disabled={isBranchLocked}
                             onChange={(e) => setSessionBranchId(e.target.value)}
                             className={cn(
-                              "w-full px-4 py-3 border rounded-xl text-xs font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none",
+                              "w-full px-2.5 py-2 border rounded-lg text-[9px] font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none",
                               isBranchLocked ? "bg-amber-50/70 border-amber-200 cursor-not-allowed text-amber-900 font-black" : "bg-slate-50 border-slate-100"
                             )}
                           >
@@ -1951,7 +1950,7 @@ export default function POS() {
                               value={openingAmount}
                               onFocus={(e) => e.target.select()}
                               onChange={e => setOpeningAmount(e.target.value)}
-                              className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-black text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                              className="w-full pl-8 pr-2.5 py-1.5 bg-slate-50 border border-slate-100 rounded-lg text-[10px] font-black text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                               placeholder="0.00"
                             />
                           </div>
