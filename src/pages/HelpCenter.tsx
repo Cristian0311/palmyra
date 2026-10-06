@@ -31,10 +31,9 @@ const requestTypes = [
 ];
 
 export default function HelpCenter(){
-  const navigate = useNavigate();
   const [params,setParams] = useSearchParams();
   const currentUser = useStore(s=>s.currentUser);
-  const companyName = useStore(s=>s.storeConfig.storeName || s.currentUser?.companyName || "Mi empresa");
+  const companyName = useStore(s=>s.storeConfig.storeName || "Mi empresa");
   const [support,setSupport] = useState<PlatformSupportSettings>({whatsapp_number:null,support_email:null,privacy_url:null});
   const [loading,setLoading] = useState(true);
   const [sending,setSending] = useState(false);
@@ -53,7 +52,7 @@ export default function HelpCenter(){
     let active=true;
     loadPlatformSupportSettings()
       .then(value=>{if(active)setSupport(value)})
-      .catch(()=>{if(active)setError("No se pudo cargar el canal de atención.")}
+      .catch(()=>{if(active)setError("No se pudo cargar el canal de atención.")})
       .finally(()=>{if(active)setLoading(false)});
     return()=>{active=false};
   },[]);

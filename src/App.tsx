@@ -18,6 +18,8 @@ import { flushLocalStateStorage } from "./services/localStateStorage";
 import { setPalmyraLocalScope, clearPalmyraLocalScope } from "./services/localScope";
 import { registerCurrentDevice } from "./services/device";
 import { touchCurrentDevice } from "./services/security";
+import NumaGuide from "./components/help/NumaGuide";
+import { getCachedSaaSContext, clearCachedSaaSContext } from "./services/offlineAuthContext";
 
 // Code-splitting de rutas para acelerar inicio en tablets y reducir consumo de memoria
 const Dashboard = lazy(() => import("./pages/Dashboard"));
@@ -39,7 +41,7 @@ const Suppliers = lazy(() => import("./pages/Suppliers"));
 const InventoryAudit = lazy(() => import("./pages/InventoryAudit"));
 const Banks = lazy(() => import("./pages/Banks"));
 const PlatformAdmin = lazy(() => import("./pages/PlatformAdmin"));
-const Security = lazy(() => import("./pages/Security"));
+const HelpCenter = lazy(() => import("./pages/HelpCenter"));
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 
 function PageLoading() {
@@ -58,6 +60,8 @@ function PageLoading() {
     "/settings": "Cargando Configuración…",
     "/team": "Cargando equipo…",
     "/invite": "Cargando invitación…",
+    "/help-center": "Cargando Centro de atención…",
+    "/help": "Cargando Centro de atención…",
   };
   const label = labels[location] || "Cargando sección…";
 
@@ -91,7 +95,21 @@ export default function App() {
 
     for (let attempt = 0; attempt < 4; attempt += 1) {
       try {
-        const ctx = await loadSaaSContext(attempt > 0);
+        const supabase = getSupabase();
+        let localSessionUser: { id: string } | null = null;
+        try {
+          const { data: sessionData } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+          localSessionUser = sessionData.session?.user ? { id: sessionData.session.user.id } : null;
+        } catch {}
+
+        // Offline boot uses the last verified tenant context. The cache only
+        // restores the local UI/queue; Supabase remains authoritative for all
+        // online authorization and synchronization.
+        const cachedContext =
+          typeof navigator !== "undefined" && !navigator.onLine && localSessionUser
+            ? getCachedSaaSContext(localSessionUser.id)
+            : null;
+        const ctx = cachedContext || await loadSaaSContext(attempt > 0);
 
         if (!ctx) {
           const supabase = getSupabase();
@@ -178,6 +196,32 @@ export default function App() {
     // Si Auth sigue siendo válida, nunca enviamos al usuario al Landing por un
     // fallo transitorio de contexto. Mostramos recuperación y permitimos reintentar.
     const supabase = getSupabase();
+    let localSessionUser: { id: string } | null = null;
+    try {
+      const { data: sessionData } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+      localSessionUser = sessionData.session?.user ? { id: sessionData.session.user.id } : null;
+    } catch {}
+    if (typeof navigator !== "undefined" && !navigator.onLine && localSessionUser) {
+      const cached = getCachedSaaSContext(localSessionUser.id);
+      if (cached) {
+        try {
+          if (cached.companyId) setPalmyraLocalScope(cached.authUserId, cached.companyId);
+        } catch {}
+        useStore.setState({
+          currentUser: cached.user,
+          currentBranchId: cached.warehouseIds[0] || "",
+        });
+        setAccessState(
+          !cached.companyId
+            ? cached.membershipStatus && cached.membershipStatus !== "active" ? "blocked" : "needs_onboarding"
+            : cached.company?.account_status === "pending_payment" || cached.company?.account_status === "suspended"
+              ? "blocked"
+              : "ready"
+        );
+        return;
+      }
+    }
+
     const { data: userData } = supabase ? await supabase.auth.getUser() : { data: { user: null } };
     if (userData.user) {
       console.error("[PALMYRA] Contexto no disponible después de varios intentos:", lastError);
@@ -217,6 +261,7 @@ export default function App() {
     const { data: authSubscription } = supabase.auth.onAuthStateChange((event) => {
       if (!active) return;
       if (event === "SIGNED_OUT") {
+        clearCachedSaaSContext();
         clearPalmyraLocalScope();
         void import("./services/offlineQueue").then(({ setOfflineQueueScope }) => setOfflineQueueScope()).catch(() => {});
         useStore.setState({ currentUser: null, currentBranchId: "", activeSessionId: null, cart: [] });
@@ -377,10 +422,11 @@ export default function App() {
     <ErrorBoundary>
       <Router>
         <Suspense fallback={<PageLoading />}>
+          <NumaGuide />
           <Routes>
           <Route path="/landing" element={<LandingPage />} />
           <Route path="/platform-admin" element={<PlatformAdmin />} />
-          <Route path="/security" element={<Security />} />
+          <Route path="/security" element={<Navigate to="/help-center?section=security" replace />} />
           <Route path="/invite" element={<SaaSInvite />} />
           <Route path="/auth/confirm" element={<AuthConfirm />} />
           <Route path="/auth" element={accessState === "signed_out" ? <SaaSAuth /> : <Navigate to={accessState === "needs_onboarding" || pendingOnboarding ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/"} replace />} />
@@ -404,6 +450,9 @@ export default function App() {
                     <Route path="/settings" element={can("settings.manage") ? <Settings /> : <Navigate to="/pos" replace />} />
                     <Route path="/team" element={can("employees.manage") ? <Team /> : <Navigate to="/pos" replace />} />
                     <Route path="/subscription" element={can("settings.manage") ? <Subscription /> : <Navigate to="/pos" replace />} />
+                    <Route path="/help-center" element={<HelpCenter />} />
+                    <Route path="/help" element={<Navigate to="/help-center" replace />} />
+                    <Route path="/security" element={<Navigate to="/help-center?section=security" replace />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </Suspense>
