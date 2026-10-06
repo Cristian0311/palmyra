@@ -333,22 +333,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         className={cn(
           "bg-secondary border-r border-base transition-all duration-300 ease-in-out flex flex-col h-full shrink-0 shadow-sm",
           // Mobile: off-canvas drawer with fixed overlay
-          "fixed inset-y-0 left-0 z-50 w-[92vw] max-w-[360px] overflow-hidden",
+          "fixed inset-y-0 left-0 z-50 w-[88vw] max-w-[320px] overflow-hidden",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           // Desktop (lg+): relative in-flow column, NEVER covers or overlaps the right content
           "lg:relative lg:inset-auto lg:z-auto lg:translate-x-0",
-          sidebarCollapsed ? "lg:w-16" : "lg:w-[22rem]"
+          sidebarCollapsed ? "lg:w-16" : "lg:w-[17rem]"
         )}
       >
         {/* Header with Collapse toggle */}
-        <div className={cn("p-3.5 shrink-0 flex items-center justify-between border-b border-subtle", sidebarCollapsed && "lg:p-3 lg:justify-center")}>
-          <div className={cn("flex items-center gap-1.5 min-w-0 pr-1", sidebarCollapsed && "lg:hidden")}>
+        <div className={cn("p-2.5 shrink-0 flex items-center justify-between gap-2 border-b border-subtle", sidebarCollapsed && "lg:p-3 lg:justify-center")}>
+          <div className={cn("flex items-center gap-1 min-w-0 flex-1 pr-1", sidebarCollapsed && "lg:hidden")}>
             <img
               src="/palmyra-logo-exact.svg"
               alt="PALMYRA"
-              className="w-[172px] h-[42px] max-w-full object-contain object-left"
+              className="w-[138px] h-[34px] max-w-[calc(100%-2rem)] object-contain object-left"
             />
-            <span className="shrink-0 rounded-full bg-subtle px-1.5 py-1 text-[7px] font-black text-primary tracking-wider leading-none">{APP_VERSION}</span>
+            <span className="shrink-0 rounded-full bg-subtle px-1.5 py-1 text-[6px] font-black text-primary tracking-tight leading-none">{APP_VERSION}</span>
           </div>
 
           <div className={cn("hidden items-center justify-center", sidebarCollapsed && "lg:flex")}>
@@ -380,7 +380,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </button>
         </div>
 
-        <nav className="flex-1 min-h-0 px-2 py-3 space-y-1 overflow-y-auto custom-scrollbar">
+        <nav className="flex-1 min-h-0 px-2 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
           {visibleNavItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -397,14 +397,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   <div
                     className={cn(
                     "flex items-center rounded-xl transition-all duration-150 group",
-                    sidebarCollapsed ? "justify-center p-2.5 my-1" : "space-x-3 px-3.5 py-2.5",
+                    sidebarCollapsed ? "justify-center p-2.5 my-1" : "space-x-2.5 px-2.5 py-2",
                     isActive
                       ? "bg-rose-600 text-white shadow-md shadow-rose-600/20"
                       : "text-muted hover:bg-subtle hover:text-primary"
                   )}>
                     <Icon className={cn("w-4 h-4 shrink-0 transition-colors", isActive ? "text-white" : "text-muted group-hover:text-rose-600")} />
                     {!sidebarCollapsed && (
-                      <span className="font-black text-[9px] uppercase tracking-wider truncate">{item.name}</span>
+                      <span className="min-w-0 font-black text-[8px] uppercase tracking-tight leading-tight whitespace-normal break-words">{item.name}</span>
                     )}
                   </div>
                 )}
@@ -413,7 +413,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className={cn("shrink-0 min-w-0 overflow-hidden p-3 bg-secondary border-t border-subtle", sidebarCollapsed && "lg:p-2 lg:items-center")}>
+        <div className={cn("shrink-0 min-w-0 overflow-hidden p-2.5 bg-secondary border-t border-subtle", sidebarCollapsed && "lg:p-2 lg:items-center")}>
           <div className={cn("mb-2 space-y-1.5", sidebarCollapsed && "lg:hidden")}>
             <button
               type="button"
@@ -449,16 +449,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </button>
           </div>
 
-          <div className={cn("flex items-center gap-2 mb-2", sidebarCollapsed && "lg:justify-center lg:mb-1")}>
-            <div className="w-7 h-7 rounded-full bg-subtle border border-base flex items-center justify-center text-primary font-black text-[9px] uppercase shrink-0 shadow-sm">
+          <div className={cn("flex items-center gap-1.5 mb-1.5", sidebarCollapsed && "lg:justify-center lg:mb-1")}>
+            <div className="w-6 h-6 rounded-full bg-subtle border border-base flex items-center justify-center text-primary font-black text-[9px] uppercase shrink-0 shadow-sm">
               {currentUser?.name.charAt(0)}
             </div>
             {!sidebarCollapsed && (
               <div className="min-w-0 flex-1">
-                <p className="text-[9px] font-black text-primary uppercase leading-tight truncate">
+                <p className="text-[8px] font-black text-primary uppercase leading-tight whitespace-normal break-words">
                   {currentUser?.name}
                 </p>
-                <p className="text-[7px] text-muted uppercase tracking-wider font-bold truncate">
+                <p className="text-[6px] text-muted uppercase tracking-tight font-bold whitespace-normal break-words">
                   {currentUser?.role}
                 </p>
               </div>
@@ -480,21 +480,21 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               ["Segundos", countdown.seconds],
             ] as const;
             return (
-              <div className="mb-2 w-full max-w-full overflow-hidden rounded-xl border border-violet-200 dark:border-violet-900/40 bg-violet-50/70 dark:bg-violet-950/20 px-2.5 py-2">
-                <div className="flex items-center justify-between gap-2 mb-1.5">
+              <div className="mb-1.5 w-full max-w-full overflow-hidden rounded-xl border border-violet-200 dark:border-violet-900/40 bg-violet-50/70 dark:bg-violet-950/20 px-2 py-1.5">
+                <div className="flex items-center justify-between gap-1 mb-1">
                   <div className="flex items-center gap-1.5 min-w-0">
                     <Clock className="w-3 h-3 text-violet-600 shrink-0" />
-                    <span className="text-[8px] font-black uppercase tracking-wider text-violet-700 dark:text-violet-300 truncate">
+                    <span className="min-w-0 text-[7px] font-black uppercase tracking-tight text-violet-700 dark:text-violet-300 whitespace-normal break-words leading-tight">
                       {saasContext?.subscription?.planName || "Plan"}
                     </span>
                   </div>
-                  <span className="text-[7px] font-black uppercase text-muted shrink-0">Vence en</span>
+                  <span className="text-[6px] font-black uppercase text-muted shrink-0">Vence en</span>
                 </div>
-                <div className="grid grid-cols-5 gap-1 text-center min-w-0">
+                <div className="grid grid-cols-5 gap-0.5 text-center min-w-0">
                   {units.map(([label, value]) => (
-                    <div key={label} className="min-w-0 overflow-hidden rounded-lg bg-primary/70 dark:bg-slate-900/30 px-0.5 py-1">
+                    <div key={label} className="min-w-0 overflow-hidden rounded-md bg-primary/70 dark:bg-slate-900/30 px-0.5 py-1">
                       <p className="text-[11px] font-black text-primary leading-none tabular-nums">{String(value).padStart(2, "0")}</p>
-                      <p className="mt-1 truncate text-[6px] sm:text-[7px] font-black uppercase tracking-tight text-muted">{label}</p>
+                      <p className="mt-0.5 whitespace-normal break-words text-[5px] font-black uppercase tracking-tight leading-none text-muted">{label}</p>
                     </div>
                   ))}
                 </div>
@@ -507,7 +507,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             onClick={logout}
             className={cn(
               "flex items-center text-muted hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-xl transition-all font-black uppercase",
-              sidebarCollapsed ? "justify-center p-2 w-full" : "space-x-2 px-3 py-2 w-full text-[10px] tracking-wider"
+              sidebarCollapsed ? "justify-center p-2 w-full" : "space-x-2 px-2.5 py-1.5 w-full text-[8px] tracking-tight"
             )}
             title="Cerrar sesión"
           >
