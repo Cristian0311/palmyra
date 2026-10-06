@@ -147,7 +147,8 @@ export default function PalmiGuide() {
     let cancelled = false;
     const poll = () => {
       if (cancelled) return;
-      const target = findTarget(step.target);
+      const selectors = isActionStep ? step.target : (step.contentTarget || step.target);
+      const target = findTarget(selectors);
       if (target) {
         target.scrollIntoView({
           behavior: "smooth",
@@ -177,7 +178,7 @@ export default function PalmiGuide() {
     return () => {
       cancelled = true;
     };
-  }, [open, step, isCompact, setSafePanelPosition]);
+  }, [open, step, isCompact, isActionStep, setSafePanelPosition]);
 
   useEffect(() => locate(), [locate, location.pathname, location.search]);
 
@@ -185,7 +186,8 @@ export default function PalmiGuide() {
     if (!open) return;
 
     const refresh = () => {
-      const target = findTarget(step?.target);
+      const selectors = isActionStep ? step?.target : (step?.contentTarget || step?.target);
+      const target = findTarget(selectors);
       const nextRect = target?.getBoundingClientRect() || null;
       setTargetRect(nextRect);
       setSafePanelPosition(nextRect);
@@ -197,7 +199,7 @@ export default function PalmiGuide() {
       window.removeEventListener("resize", refresh);
       window.removeEventListener("scroll", refresh, true);
     };
-  }, [open, step, setSafePanelPosition]);
+  }, [open, step, isActionStep, setSafePanelPosition]);
 
   useEffect(() => {
     if (!currentUser || steps.length < 2 || wasDismissed(currentUser.id)) return;
@@ -258,9 +260,6 @@ export default function PalmiGuide() {
     const next = Math.min(index + 1, steps.length - 1);
     const nextStep = steps[next];
 
-    if (nextStep?.route && location.pathname !== nextStep.route) {
-      navigate(nextStep.route);
-    }
     prepareStep(next);
   };
 
@@ -269,9 +268,6 @@ export default function PalmiGuide() {
     const prev = index - 1;
     const prevStep = steps[prev];
 
-    if (prevStep?.route && location.pathname !== prevStep.route) {
-      navigate(prevStep.route);
-    }
     prepareStep(prev);
   };
 
