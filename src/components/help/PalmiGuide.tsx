@@ -609,10 +609,7 @@ export default function PalmiGuide() {
         </button>
       ) : null}
 
-      <PwaInstallPrompt
-        visible={showInstallPrompt}
-        onClose={() => setShowInstallPrompt(false)}
-      />
+      <PwaInstallPrompt />
     </div>
   );
 }
