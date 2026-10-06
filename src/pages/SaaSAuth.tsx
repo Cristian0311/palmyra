@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { ArrowRight, Check, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Sparkles, Users, Warehouse, MonitorSmartphone } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getSupabase } from "../lib/supabase";
-import { DEFAULT_FACEBOOK_URL, loadPublicSocialLinks, type PlatformSocialLinks } from "../services/platformSupport";
 import {
   loadSaaSContext,
   requestSaaSPasswordReset,
@@ -46,33 +45,6 @@ export default function SaaSAuth() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const signupPlanCode = typeof sessionStorage !== "undefined"
-    ? (sessionStorage.getItem("palmyra_signup_plan") || "starter")
-    : "starter";
-  const requiresSocialUnlock = mode === "signup" && signupPlanCode === "starter";
-  const [socialLinks, setSocialLinks] = useState<PlatformSocialLinks>({ facebook_url: DEFAULT_FACEBOOK_URL, whatsapp_channel_url: null });
-  const [socialLoading, setSocialLoading] = useState(false);
-  const [facebookOpened, setFacebookOpened] = useState(false);
-  const [whatsappOpened, setWhatsappOpened] = useState(false);
-
-  useEffect(() => {
-    if (!requiresSocialUnlock) return;
-    let active = true;
-    setSocialLoading(true);
-    void loadPublicSocialLinks()
-      .then((links) => {
-        if (active) setSocialLinks(links);
-      })
-      .catch((socialError) => {
-        console.warn("[PALMYRA] No se pudieron cargar los canales sociales:", socialError);
-        if (active) setSocialLinks({ facebook_url: DEFAULT_FACEBOOK_URL, whatsapp_channel_url: null });
-      })
-      .finally(() => {
-        if (active) setSocialLoading(false);
-      });
-    return () => { active = false; };
-  }, [requiresSocialUnlock]);
-
   useEffect(() => {
     const supabase = getSupabase();
     if (!supabase) return;
@@ -134,14 +106,6 @@ export default function SaaSAuth() {
       }
 
       if (mode === "signup") {
-        if (requiresSocialUnlock) {
-          if (!socialLinks.facebook_url || !socialLinks.whatsapp_channel_url) {
-            throw new Error("La promoción de 90 días no está disponible hasta que PALMYRA configure sus canales oficiales.");
-          }
-          if (!facebookOpened || !whatsappOpened) {
-            throw new Error("Para crear la cuenta gratuita debes completar los dos pasos sociales indicados.");
-          }
-        }
         if (name.trim().length < 2) throw new Error("Escribe tu nombre completo.");
         if (email.trim().length < 5) throw new Error("Escribe un correo válido.");
         if (password.length < 8) throw new Error("La contraseña debe tener al menos 8 caracteres.");
@@ -200,7 +164,7 @@ export default function SaaSAuth() {
             </div>
           </section>
 
-          <section className="p-4 sm:p-7">
+          <section className="p-4 sm:p-6">
             <div>
               <p className="text-[9px] uppercase tracking-[.18em] font-black text-[#8B63E6]">
                 {mode === "recovery" ? "Recuperación" : mode === "signup" ? "Crear cuenta" : mode === "reset" ? "Recuperar acceso" : "Bienvenido"}
@@ -209,83 +173,16 @@ export default function SaaSAuth() {
                 {mode === "signup" ? "Crea tu cuenta PALMYRA" : mode === "reset" ? "Recupera tu contraseña" : mode === "recovery" ? "Crea una nueva contraseña" : "Entra a tu empresa"}
               </h2>
               <p className="text-xs text-slate-500 mt-2 leading-5">
-                {mode === "signup" ? (requiresSocialUnlock ? "Para Oasis, completa los dos pasos sociales antes de crear la cuenta." : "Después crearás tu empresa y elegirás el plan.") : mode === "recovery" ? "Usa una contraseña nueva de al menos 8 caracteres." : "Tu sesión determina la empresa, rol y permisos que puedes utilizar."}
+                {mode === "signup" ? "Crea tu acceso en menos de un minuto. Después configurarás empresa, almacén y plan en un solo paso." : mode === "recovery" ? "Usa una contraseña nueva de al menos 8 caracteres." : "Tu sesión determina la empresa, rol y permisos que puedes utilizar."}
               </p>
             </div>
-
-            {requiresSocialUnlock && (
-              <section className="mt-5 rounded-2xl border border-violet-100 bg-[#F8F6FC] p-3.5 sm:p-4" aria-label="Requisito para 90 días gratis">
-                <div className="flex items-start gap-2.5">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#EEE7FF] text-[#6535C5]">
-                    <ShieldCheck className="h-4 w-4" aria-hidden="true" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[8px] font-black uppercase tracking-[.16em] text-[#7C4DDE]">90 días gratis</p>
-                    <p className="mt-1 text-[11px] font-black text-[#2A1938]">Sigue los canales oficiales de PALMYRA</p>
-                    <p className="mt-1 text-[9px] leading-4 text-slate-500">Antes de crear tu cuenta, completa los dos pasos sociales. PALMYRA confía en tu confirmación; no guardamos credenciales de Facebook ni de WhatsApp.</p>
-                  </div>
-                </div>
-
-                {socialLoading ? (
-                  <div className="mt-4 rounded-xl bg-white border border-violet-100 px-3 py-3 text-[9px] font-bold text-slate-400">Cargando canales oficiales…</div>
-                ) : (
-                  <>
-                    <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                      {socialLinks.facebook_url ? (
-                        <a
-                          href={socialLinks.facebook_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={() => setFacebookOpened(true)}
-                          className={"rounded-xl border p-3 text-left transition " + (facebookOpened ? "border-emerald-200 bg-emerald-50" : "border-violet-100 bg-white hover:border-violet-200")}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[10px] font-black text-[#3B1B6E]">Facebook oficial</span>
-                            {facebookOpened ? <Check className="h-4 w-4 text-emerald-600" /> : <ArrowRight className="h-4 w-4 text-[#6535C5]" />}
-                          </div>
-                          <span className="mt-1 block text-[8px] text-slate-400">{facebookOpened ? "Paso completado" : "Seguir página"}</span>
-                        </a>
-                      ) : null}
-
-                      {socialLinks.whatsapp_channel_url ? (
-                        <a
-                          href={socialLinks.whatsapp_channel_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={() => setWhatsappOpened(true)}
-                          className={"rounded-xl border p-3 text-left transition " + (whatsappOpened ? "border-emerald-200 bg-emerald-50" : "border-violet-100 bg-white hover:border-violet-200")}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-[10px] font-black text-[#3B1B6E]">Canal de WhatsApp</span>
-                            {whatsappOpened ? <Check className="h-4 w-4 text-emerald-600" /> : <ArrowRight className="h-4 w-4 text-[#6535C5]" />}
-                          </div>
-                          <span className="mt-1 block text-[8px] text-slate-400">{whatsappOpened ? "Paso completado" : "Unirse al canal"}</span>
-                        </a>
-                      ) : null}
-                    </div>
-
-                    {(!socialLinks.facebook_url || !socialLinks.whatsapp_channel_url) ? (
-                      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-[9px] leading-4 font-bold text-amber-800">
-                        {socialLinks.facebook_url
-                          ? "Facebook ya está configurado. Falta configurar el enlace del canal oficial de WhatsApp para completar los 90 días gratis."
-                          : "PALMYRA debe configurar sus canales oficiales para activar la promoción de 90 días gratis."}
-                      </div>
-                    ) : null}
-
-                    <p className="mt-3 text-[8px] leading-4 font-bold text-slate-400">
-                      <span className="text-emerald-600">●</span> {facebookOpened && whatsappOpened ? "Los dos pasos están listos. Ya puedes crear tu cuenta." : "Completa los dos pasos sociales para habilitar Crear cuenta."}
-                    </p>
-                  </>
-                )}
-              </section>
-            )}
 
             {mode !== "recovery" && <div className="grid grid-cols-2 gap-1 p-1 bg-[#F7F5FC] rounded-xl mt-5">
               <button onClick={() => {setMode("signin");setError("");setMessage("");}} className={"h-9 rounded-lg text-[10px] font-black " + (mode==="signin"?"bg-white text-[#3B1B6E] shadow-sm":"text-slate-400")}>Iniciar sesión</button>
               <button onClick={() => {setMode("signup");setError("");setMessage("");}} className={"h-9 rounded-lg text-[10px] font-black " + (mode==="signup"?"bg-white text-[#3B1B6E] shadow-sm":"text-slate-400")}>Crear cuenta</button>
             </div>}
 
-            <form onSubmit={submit} className="space-y-3 mt-5">
+            <form onSubmit={submit} className="space-y-3 mt-4">
               {mode === "signup" ? (
                 <label className="block">
                   <span className="form-label">Nombre completo</span>
