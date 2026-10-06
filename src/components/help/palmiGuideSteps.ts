@@ -36,7 +36,7 @@ const STEPS: NumaTourStep[] = [
     permission: "reports.view",
     route: "/",
     navTarget: true,
-    target: ['[data-palmi-nav="/"]'],
+    target: ['[data-palmi-guide-nav="dashboard"]'],
     contentTarget: [
       '[data-palmi-content="dashboard"]',
       '[data-palmi-heading="dashboard"]'
@@ -54,7 +54,7 @@ const STEPS: NumaTourStep[] = [
     permission: "pos.access",
     route: "/pos",
     navTarget: true,
-    target: ['[data-palmi-nav="/pos"]'],
+    target: ['[data-palmi-guide-nav="pos"]'],
     contentTarget: ['[data-palmi-content="pos"]']
   },
   {
@@ -69,7 +69,7 @@ const STEPS: NumaTourStep[] = [
     permission: "inventory.manage",
     route: "/inventory",
     navTarget: true,
-    target: ['[data-palmi-nav="/inventory"]'],
+    target: ['[data-palmi-guide-nav="inventory"]'],
     contentTarget: ['[data-palmi-content="inventory"]']
   },
   {
@@ -84,7 +84,7 @@ const STEPS: NumaTourStep[] = [
     permission: "inventory.manage",
     route: "/transfers",
     navTarget: true,
-    target: ['[data-palmi-nav="/transfers"]'],
+    target: ['[data-palmi-guide-nav="transfers"]'],
     contentTarget: ['[data-palmi-content="transfers"]']
   },
   {
@@ -99,7 +99,7 @@ const STEPS: NumaTourStep[] = [
     permission: "customers.manage",
     route: "/customers",
     navTarget: true,
-    target: ['[data-palmi-nav="/customers"]'],
+    target: ['[data-palmi-guide-nav="customers"]'],
     contentTarget: ['[data-palmi-content="customers"]']
   },
   {
@@ -114,7 +114,7 @@ const STEPS: NumaTourStep[] = [
     permission: "reports.view",
     route: "/reports",
     navTarget: true,
-    target: ['[data-palmi-nav="/reports"]'],
+    target: ['[data-palmi-guide-nav="reports"]'],
     contentTarget: ['[data-palmi-content="reports"]']
   },
   {
@@ -129,7 +129,7 @@ const STEPS: NumaTourStep[] = [
     permission: "employees.manage",
     route: "/team",
     navTarget: true,
-    target: ['[data-palmi-nav="/team"]'],
+    target: ['[data-palmi-guide-nav="team"]'],
     contentTarget: ['[data-palmi-content="team"]']
   },
   {
@@ -144,7 +144,7 @@ const STEPS: NumaTourStep[] = [
     permission: "settings.manage",
     route: "/settings",
     navTarget: true,
-    target: ['[data-palmi-nav="/settings"]'],
+    target: ['[data-palmi-guide-nav="settings"]'],
     contentTarget: ['[data-palmi-content="settings"]']
   },
   {
@@ -158,7 +158,7 @@ const STEPS: NumaTourStep[] = [
       "Este es el punto de ayuda cuando una función no está clara o necesitas contactar con soporte.",
     route: "/help",
     navTarget: true,
-    target: ['[data-palmi-nav="/help"]', '[data-palmi-nav="/help-center"]'],
+    target: ['[data-palmi-guide-nav="help"]', '[data-palmi-guide-nav="help-center"]'],
     contentTarget: ['[data-palmi-content="help-center"]']
   },
   {
