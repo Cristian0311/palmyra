@@ -21,7 +21,7 @@ test("navigation steps define separate menu and content targets", () => {
   const team = NUMA_TOUR_STEPS.find(step => step.id === "team");
   assert.equal(dashboard?.navTarget, true);
   assert.equal(team?.navTarget, true);
-  assert.ok(dashboard?.target?.includes('[data-palmy-nav="/"]'));
+  assert.ok(dashboard?.target?.includes('[data-palmi-nav="/"]'));
   assert.ok(dashboard?.contentTarget?.includes('[data-palmi-content="dashboard"]'));
 });
 
@@ -43,7 +43,7 @@ test("administrators receive all guide modules", () => {
 test("Numa steps expose real UI anchors", () => {
   const dashboard = NUMA_TOUR_STEPS.find(step => step.id === "dashboard");
   const offline = NUMA_TOUR_STEPS.find(step => step.id === "offline");
-  assert.equal(dashboard?.target?.[0], '[data-palmy-nav="/"]');
+  assert.equal(dashboard?.target?.[0], '[data-palmi-nav="/"]');
   assert.ok(dashboard?.contentTarget?.includes('[data-palmi-content="dashboard"]'));
   assert.ok(offline?.target?.some(selector => selector.includes("offline-status")));
 });
