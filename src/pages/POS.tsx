@@ -37,6 +37,7 @@ export default function POS() {
   const [showOpenShiftModal, setShowOpenShiftModal] = useState(false);
   const [joiningSessionId, setJoiningSessionId] = useState<string | null>(null);
   const [showOpenSessionsModal, setShowOpenSessionsModal] = useState(false);
+  const [isRefreshingOpenSessions, setIsRefreshingOpenSessions] = useState(false);
 
   // Suscripción única al estado operativo del POS. currentBranchId es el alias
   // interno existente del almacén activo y no reintroduce la capa legacy.
@@ -177,6 +178,26 @@ export default function POS() {
   }, []);
 
   const fallbackSessionBranchId = currentBranchId || getWarehouseId(currentUser) || branches[0]?.id || '';
+
+  const refreshOpenSessions = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    setIsRefreshingOpenSessions(true);
+    try {
+      await waitForOfflineQueueReady();
+      const remoteCash = await pullOpenCashSessionsFromSupabase();
+      if (remoteCash.success) {
+        useStore.setState(state => {
+          const existing = new Map((state.cashSessions || []).map(session => [session.id, session]));
+          for (const session of remoteCash.cashSessions) existing.set(session.id, session);
+          return { cashSessions: Array.from(existing.values()) };
+        });
+      }
+    } catch (error) {
+      console.warn('[POS] No se pudieron recuperar los turnos abiertos:', error);
+    } finally {
+      setIsRefreshingOpenSessions(false);
+    }
+  }, []);
   // La reanudación de una caja persistida siempre es explícita. El ID de
   // activeSessionId solo representa la sesión validada en esta pestaña.
   const currentSession = useMemo(() => {
@@ -1697,27 +1718,30 @@ export default function POS() {
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
-                  )}                    {openSessionsForResume.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setShowOpenSessionsModal(true)}
-                        className="w-full mb-2 flex items-center justify-between gap-2 rounded-xl border border-emerald-200/80 bg-emerald-50/70 px-2.5 py-2 text-left hover:bg-emerald-50 transition-colors"
-                      >
-                        <span className="flex items-center gap-2 min-w-0">
-                          <span className="w-6 h-6 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0">
-                            <Wallet className="w-3 h-3" />
-                          </span>
-                          <span className="min-w-0">
-                            <span className="block text-[8px] font-black uppercase tracking-wider text-emerald-800 leading-tight">Turnos abiertos</span>
-                            <span className="block text-[6.5px] font-bold text-emerald-700/80 leading-tight">Ver y reanudar una caja en curso</span>
+                  )}                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowOpenSessionsModal(true);
+                        void refreshOpenSessions();
+                      }}
+                      className="group w-full mb-2 flex items-center gap-2 rounded-xl border border-emerald-200/80 bg-emerald-50/70 px-2.5 py-2 text-left transition-all hover:bg-emerald-50 hover:shadow-sm active:scale-[0.99]"
+                    >
+                      <span className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-sm">
+                        <Wallet className="w-3.5 h-3.5" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-[8px] font-black uppercase tracking-[0.11em] text-emerald-800">Turnos abiertos</span>
+                          <span className="rounded-full bg-white/80 border border-emerald-200 px-1.5 py-0.5 text-[6px] font-black text-emerald-700">
+                            {isRefreshingOpenSessions ? "…" : openSessionsForResume.length}
                           </span>
                         </span>
-                        <span className="shrink-0 inline-flex items-center gap-1 rounded-full bg-white border border-emerald-200 px-2 py-1 text-[7px] font-black text-emerald-700">
-                          {openSessionsForResume.length}
-                          <ArrowRight className="w-2.5 h-2.5" />
+                        <span className="block mt-0.5 text-[6.5px] font-bold text-emerald-700/80 leading-tight">
+                          {openSessionsForResume.length > 0 ? "Ver cajas en curso y reanudar" : "Buscar cajas abiertas en este momento"}
                         </span>
-                      </button>
-                    )}
+                      </span>
+                      {isRefreshingOpenSessions ? <RefreshCw className="w-3 h-3 shrink-0 text-emerald-600 animate-spin" /> : <ArrowRight className="w-3 h-3 shrink-0 text-emerald-600 transition-transform group-hover:translate-x-0.5" />}
+                    </button>
 
               <form onSubmit={handleOpenSession} className="space-y-2">
                     <div className="text-left space-y-2">
