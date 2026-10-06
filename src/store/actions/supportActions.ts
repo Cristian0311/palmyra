@@ -250,6 +250,6 @@ export function createSupportActions(set: StoreSet, get: StoreGet): any {
       return synced;
     }
     return true;
-  },,
+  },
   };
 }
