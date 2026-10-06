@@ -330,11 +330,35 @@ export default function POS() {
     currentBranchId || ((allowedBranches || []).length > 0 ? allowedBranches[0].id : "")
   );
 
-;
+  // La caja abierta debe ser detectable aunque el selector de sucursal todavía
+  // no haya terminado de hidratarse. Para el administrador mostramos sus cajas
+  // abiertas; para un trabajador, solo su propio turno autorizado.
+  const openSessionsForResume = React.useMemo(() => {
+    const allowedIds = new Set((allowedBranches || []).map(b => b.id).filter(Boolean));
+    return (activeCashSessions || [])
+      .filter(s => {
+        if (s.status !== 'open' || s.deletedAt) return false;
+        if (allowedIds.size > 0 && !allowedIds.has(s.branchId)) return false;
+        if (currentUser?.role === 'admin') return true;
+        const uid = currentUser?.id || '';
+        return !!uid && (s.userId === uid || s.workingEmployeeIds?.includes(uid));
+      })
+      .sort((a,b) => new Date(b.openedAt || 0).getTime() - new Date(a.openedAt || 0).getTime());
+  }, [activeCashSessions, allowedBranches, currentUser?.id, currentUser?.role]);
 
-;
+  useEffect(() => {
+    // Si la sucursal actual quedó vacía/stale mientras hidrata el POS,
+    // seleccionar una sucursal válida o directamente la del turno abierto.
+    const branchStillAllowed = !!sessionBranchId && (allowedBranches || []).some(b => b.id === sessionBranchId);
+    if (branchStillAllowed) return;
 
-;
+    const preferred =
+      currentBranchId ||
+      openSessionsForResume[0]?.branchId ||
+      allowedBranches?.[0]?.id ||
+      '';
+    if (preferred && preferred !== sessionBranchId) setSessionBranchId(preferred);
+  }, [allowedBranches, currentBranchId, openSessionsForResume, sessionBranchId]);
 
   const [deductFromSalary, setDeductFromSalary] = useState(false);
 
@@ -1398,6 +1422,43 @@ export default function POS() {
       {!currentSession && (
         <div
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4 overflow-y-auto space-y-4">
+          {!joiningSessionId && openSessionsForResume.length > 0 && (
+            <div className="w-full max-w-[min(94vw,25rem)] rounded-2xl border border-emerald-200 bg-white shadow-xl p-3 sm:p-3.5 text-left animate-in fade-in zoom-in-95">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <div className="min-w-0">
+                  <p className="text-[8px] font-black uppercase tracking-[0.14em] text-emerald-700">Caja abierta</p>
+                  <p className="text-[10px] font-bold text-slate-500 leading-tight">Hay un turno guardado y disponible para reanudar.</p>
+                </div>
+                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
+              </div>
+              <div className="space-y-1.5 max-h-28 overflow-y-auto custom-scrollbar pr-0.5">
+                {openSessionsForResume.map(session => (
+                  <div key={session.id} className="flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-100 px-2.5 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[9px] font-black text-emerald-900 truncate">
+                        Turno {session.turnNumber || "—"} · {session.workerName || "Administrador"}
+                      </p>
+                      <p className="text-[8px] font-bold text-emerald-700/80 truncate">
+                        {branches.find(b => b.id === session.branchId)?.name || "Almacén principal"}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setJoiningSessionId(session.id);
+                        setJoiningSessionPassword("");
+                        setPosError("");
+                      }}
+                      className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-[8px] font-black uppercase tracking-tight text-white shadow-sm hover:bg-emerald-700"
+                    >
+                      Reanudar
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {joiningSessionId ? (
             /* Modal Formulario de Ingreso a Turno Abierto Existente */
             <div className="bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-[2rem] shadow-2xl text-center max-w-sm w-full animate-in zoom-in-95 border border-white/20">
@@ -1421,7 +1482,7 @@ export default function POS() {
               <form onSubmit={handleJoinExistingSession} className="space-y-3.5">
                 <div className="text-left">
                   <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
-                    Contraseña del Empleado del Turno
+                    Contraseña para reanudar el turno
                   </label>
                   <input
                     type="password"
@@ -1576,35 +1637,6 @@ export default function POS() {
                     </div>
                   )}
 
-                  {(() => {
-                const sameBranchOpen = (activeCashSessions || []).find(s =>
-                  s.status === 'open' &&
-                  !s.deletedAt &&
-                  s.branchId === sessionBranchId
-                );
-                if (!sameBranchOpen || currentSession) return null;
-                return (
-                  <div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-2 text-left">
-                    <div className="min-w-0">
-                      <p className="text-[7px] font-black uppercase tracking-tight text-emerald-700">Caja abierta</p>
-                      <p className="text-[8px] font-bold leading-3 text-emerald-800 whitespace-normal break-words">
-                        Turno {sameBranchOpen.turnNumber || "—"} · {sameBranchOpen.workerName || "Administrador"}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setJoiningSessionId(sameBranchOpen.id);
-                        setJoiningSessionPassword("");
-                        setPosError("");
-                      }}
-                      className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[7px] font-black uppercase tracking-tight text-white"
-                    >
-                      Reanudar
-                    </button>
-                  </div>
-                );
-              })()}
               <form onSubmit={handleOpenSession} className="space-y-2">
                     <div className="text-left space-y-2">
                       {!false && (
