@@ -21,7 +21,6 @@ import {
   CloudOff,
   CreditCard,
   FileText,
-  LifeBuoy,
   Clock,
   ChevronLeft,
   ChevronRight,
@@ -58,7 +57,6 @@ const adminNavItems = [
   { name: "Equipo", href: "/team", icon: Users, permission: "employees.manage" },
   { name: "Centro de atención", href: "/help", icon: Headphones, public: true },
   { name: "Plan", href: "/subscription", icon: CreditCard, permission: "settings.manage" },
-  { name: "Centro de atención", href: "/help-center", icon: LifeBuoy },
 ];
 
 const APP_VERSION = "V 1.0.0";
@@ -256,6 +254,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       setIsSyncingOffline(false);
     }
   };
+
+  useEffect(() => {
+    const handleOpenSidebar = () => setSidebarOpen(true);
+    window.addEventListener("palmyra:open-sidebar", handleOpenSidebar);
+    return () => window.removeEventListener("palmyra:open-sidebar", handleOpenSidebar);
+  }, []);
 
   // Auto-collapse sidebar on POS page to maximize tablet space
   useEffect(() => {
