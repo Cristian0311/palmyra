@@ -337,7 +337,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           // Desktop (lg+): relative in-flow column, NEVER covers or overlaps the right content
           "lg:relative lg:inset-auto lg:z-auto lg:translate-x-0",
-          sidebarCollapsed ? "lg:w-16" : "lg:w-80"
+          sidebarCollapsed ? "lg:w-16" : "lg:w-[22rem]"
         )}
       >
         {/* Header with Collapse toggle */}
