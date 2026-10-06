@@ -509,7 +509,7 @@ export default function Dashboard() {
                 <span className="text-[8.5px] font-black uppercase text-indigo-600 dark:text-indigo-400 mr-1">
                   {baseCurrency.code}
                 </span>
-                <span className="text-base font-black text-indigo-600 dark:text-indigo-400">
+                <span className="text-sm font-black text-indigo-600 dark:text-indigo-400">
                   {baseCurrency.symbol}{formatMoney(totalSalesToday)}
                 </span>
               </div>
@@ -851,7 +851,7 @@ export default function Dashboard() {
                 <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">Transacción Completada</span>
               </div>
               <div className="text-right">
-                <span className="text-lg font-black text-slate-900 dark:text-white">
+                <span className="text-sm font-black text-slate-900 dark:text-white">
                   <span className="text-[10px] text-indigo-600 dark:text-indigo-400 mr-1">{baseCurrency.code}</span>
                   {baseCurrency.symbol}{formatMoney(selectedTxForDetail.total)}
                 </span>
@@ -874,7 +874,7 @@ export default function Dashboard() {
           <div className="bg-white dark:bg-slate-900 rounded-[2rem] max-w-2xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 animate-in zoom-in-95 max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
               <div>
-                <h3 className="text-base font-black text-slate-900 dark:text-white uppercase tracking-tight">
+                <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight">
                   Ventas de Hoy ({todayTransactions.length})
                 </h3>
                 <p className="text-[8.5px] font-bold text-slate-500 uppercase">
@@ -965,7 +965,7 @@ function MetricCard({ title, value, subtitle, icon: Icon, trend, positive, color
       </div>
       <div className="min-w-0">
         <p className="text-[8px] font-black text-muted uppercase tracking-widest mb-0.5 truncate">{title}</p>
-        <h4 className="text-sm sm:text-base lg:text-lg font-black text-primary tracking-tight truncate tabular-nums">{value}</h4>
+        <h4 className="text-sm font-black text-primary tracking-tight truncate tabular-nums">{value}</h4>
         {subtitle && (
           <p className="text-[7.5px] font-bold text-muted truncate mt-0.5">{subtitle}</p>
         )}
