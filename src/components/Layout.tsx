@@ -42,22 +42,27 @@ import {
 
 const adminNavItems = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard, permission: "reports.view" },
-  { name: "Punto de Venta", href: "/pos", icon: ShoppingCart, permission: "pos.access" },
+  { name: "POS", href: "/pos", icon: ShoppingCart, permission: "pos.access" },
   { name: "Transferencias", href: "/transfers", icon: ArrowLeftRight, permission: "inventory.manage" },
-  { name: "Clientes (POS)", href: "/customers", icon: UserCircle, permission: "customers.manage" },
+  { name: "Clientes", href: "/customers", icon: UserCircle, permission: "customers.manage" },
   { name: "Inventario", href: "/inventory", icon: Package, permission: "inventory.manage" },
-  { name: "Auditoría Stock", href: "/inventory-audit", icon: ClipboardCheck, permission: "inventory.manage" },
+  { name: "Auditoría", href: "/inventory-audit", icon: ClipboardCheck, permission: "inventory.manage" },
   { name: "Proveedores", href: "/suppliers", icon: Truck, permission: "suppliers.manage" },
-  { name: "Cuentas Bancarias", href: "/banks", icon: CreditCard, permission: "settings.manage" },
+  { name: "Bancos", href: "/banks", icon: CreditCard, permission: "settings.manage" },
   { name: "Devoluciones", href: "/returns", icon: RotateCcw, permission: "pos.access" },
   { name: "Reportes", href: "/reports", icon: BarChart, permission: "reports.view" },
   { name: "Configuración", href: "/settings", icon: Settings, permission: "settings.manage" },
   { name: "Equipo", href: "/team", icon: Users, permission: "employees.manage" },
-  { name: "Centro de atención", href: "/help", icon: Headphones, public: true },
+  { name: "Soporte", href: "/help", icon: Headphones, public: true },
   { name: "Plan", href: "/subscription", icon: CreditCard, permission: "settings.manage" },
 ];
 
 const APP_VERSION = "V 1.0.0";
+
+const cashierNavItems = [
+  { name: "Soporte", href: "/help", icon: Headphones, public: true },
+  { name: "POS", href: "/pos", icon: ShoppingCart },
+];
 
 function getPlanCountdown(target: string | null | undefined, nowMs: number) {
   if (!target) return null;
@@ -320,7 +325,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </div>
       {/* Mobile / tablet top bar */}
       {(
-        <div className="lg:hidden bg-white text-slate-700 p-3.5 flex justify-between items-center shadow-sm border-b border-violet-100 shrink-0">
+        <div className="lg:hidden bg-white text-slate-700 p-2.5 flex justify-between items-center shadow-sm border-b border-violet-100 shrink-0">
           <div className="flex items-center gap-2 min-w-0"><img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="w-[160px] h-[40px] object-contain object-left" /><span className="rounded-full bg-violet-50 px-1.5 py-1 text-[7px] font-black text-violet-700 tracking-wider shrink-0">{APP_VERSION}</span></div><div className={cn("flex items-center gap-1.5 px-2 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-wider", isOnline ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700")} title="Estado de conexión">{isOnline ? <Wifi className="w-3 h-3 shrink-0" /> : <WifiOff className="w-3 h-3 shrink-0" />}<span>{isOnline ? (pendingOfflineCount > 0 ? pendingOfflineCount+" pendientes" : "Online") : "Offline"}</span></div>
           <div className="flex items-center gap-1.5 shrink-0"><button data-palmy-menu-toggle type="button" onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 rounded-xl hover:bg-slate-100 transition" aria-label="Abrir menú principal" title="Abrir menú principal" aria-expanded={sidebarOpen}>
             <Menu className="w-3.5 h-3.5" />
@@ -333,11 +338,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         className={cn(
           "bg-secondary border-r border-base transition-all duration-300 ease-in-out flex flex-col h-full shrink-0 shadow-sm",
           // Mobile: off-canvas drawer with fixed overlay
-          "fixed inset-y-0 left-0 z-50 w-[70vw] max-w-[230px] overflow-hidden",
+          "fixed inset-y-0 left-0 z-50 w-[68vw] max-w-[210px] overflow-hidden",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           // Desktop (lg+): relative in-flow column, NEVER covers or overlaps the right content
           "lg:relative lg:inset-auto lg:z-auto lg:translate-x-0",
-          sidebarCollapsed ? "lg:w-12" : "lg:w-[11.5rem]"
+          sidebarCollapsed ? "lg:w-11" : "lg:w-[10.25rem]"
         )}
       >
         {/* Header with Collapse toggle */}
@@ -346,7 +351,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <img
               src="/palmyra-logo-exact.svg"
               alt="PALMYRA"
-              className="w-[92px] h-[25px] max-w-[calc(100%-2rem)] object-contain object-left"
+              className="w-[84px] h-[23px] max-w-[calc(100%-2rem)] object-contain object-left"
             />
             <span className="shrink-0 rounded-full bg-subtle px-1.5 py-1 text-[6px] font-black text-primary tracking-tight leading-none">{APP_VERSION}</span>
           </div>
