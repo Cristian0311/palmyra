@@ -138,12 +138,15 @@ export function initKeyboardViewport() {
     document.documentElement.style.setProperty('--keyboard-inset', `${metrics.keyboardInset}px`);
     document.documentElement.style.setProperty('--keyboard-viewport-height', `${Math.max(1, Math.round(metrics.height))}px`);
     document.documentElement.style.setProperty('--keyboard-viewport-top', `${Math.max(0, Math.round(metrics.top))}px`);
+    document.documentElement.style.setProperty('--pos-visual-height', `${Math.max(1, Math.round(metrics.height))}px`);
+    document.documentElement.style.setProperty('--pos-viewport-top', `${Math.max(0, Math.round(metrics.top))}px`);
 
     const control = document.activeElement;
     const validControl = isFormControl(control) ? control : null;
 
     if (!validControl) {
       document.body.classList.remove('keyboard-open');
+      document.documentElement.classList.remove('pos-keyboard-open');
       restoreScrollContainers();
       clearModalPlacement(activeModalSurface);
       activeModalSurface?.classList.remove('keyboard-modal-surface');
@@ -152,6 +155,10 @@ export function initKeyboardViewport() {
     }
 
     document.body.classList.toggle('keyboard-open', metrics.keyboardInset > 0);
+    document.documentElement.classList.toggle(
+      'pos-keyboard-open',
+      metrics.keyboardInset > 0 && Boolean(validControl?.closest('.pos-page')),
+    );
 
     if (activeModalSurface) {
       activeModalSurface.classList.remove('keyboard-modal-surface');
@@ -244,9 +251,12 @@ export function initKeyboardViewport() {
     clearModalPlacement(activeModalSurface);
     activeModalSurface?.classList.remove('keyboard-modal-surface');
     document.body.classList.remove('keyboard-open');
+    document.documentElement.classList.remove('pos-keyboard-open');
     document.documentElement.style.removeProperty('--keyboard-inset');
     document.documentElement.style.removeProperty('--keyboard-viewport-height');
     document.documentElement.style.removeProperty('--keyboard-viewport-top');
+    document.documentElement.style.removeProperty('--pos-visual-height');
+    document.documentElement.style.removeProperty('--pos-viewport-top');
     restoreScrollContainers();
   };
 }
