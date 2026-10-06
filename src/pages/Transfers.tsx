@@ -2,6 +2,7 @@ import { getTransferStockHelpers } from '../modules/transfers/utils/transferStoc
 import { getWarehouseId } from "../modules/warehouse/warehouseScope";
 import { useShallow } from 'zustand/react/shallow';
 import React, { useMemo, useState, useEffect } from "react";
+import { loadSaaSContext } from "../services/saas";
 import { 
   ArrowLeftRight, 
   Search, 
@@ -44,7 +45,35 @@ export default function Transfers() {
 
   const getBranchDisplayName = (b: { id: string; name: string }) => {
     const assignedUser = (users || []).find(u => getWarehouseId(u) === b.id);
-    return assignedUser ? `${b.name} (${assignedUser.name})` : b.name;
+    return assignedUser
+
+  useEffect(() => {
+    let mounted = true;
+    void loadSaaSContext().then((ctx) => {
+      if (!mounted) return;
+      setPlanCode(ctx?.subscription?.planCode || null);
+    }).catch(() => {
+      if (mounted) setPlanCode(null);
+    }).finally(() => {
+      if (mounted) setPlanLoading(false);
+    });
+    if (!planLoading && planCode === "starter") {
+    return (
+      <div className="w-full min-h-[50vh] flex items-center justify-center p-4">
+        <div className="w-full max-w-md rounded-3xl border border-violet-100 bg-secondary p-6 text-center shadow-sm">
+          <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-50 text-violet-600">
+            <ArrowLeftRight className="w-5 h-5" />
+          </div>
+          <p className="mt-3 text-[8px] font-black uppercase tracking-[0.16em] text-violet-600">Función del plan Caravana</p>
+          <h1 className="mt-1 text-lg font-black text-primary">Transferencias entre almacenes</h1>
+          <p className="mt-2 text-[10px] leading-5 text-muted">Tu plan Oasis permite 1 almacén. Las transferencias multi-almacén se habilitan desde Caravana.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return () => { mounted = false; };
+  }, []); ? `${b.name} (${assignedUser.name})` : b.name;
   };
 
   const [activeTab, setActiveTab] = useState<'history' | 'new'>('history');
@@ -53,6 +82,8 @@ export default function Transfers() {
   const [bulkTransferTargetId, setBulkTransferTargetId] = useState("");
   const [transferSearch, setTransferSearch] = useState("");
   const [isExecutingTransfer, setIsExecutingTransfer] = useState(false);
+  const [planCode, setPlanCode] = useState<string | null>(null);
+  const [planLoading, setPlanLoading] = useState(true);
   const [expandedBatches, setExpandedBatches] = useState<string[]>([]);
   
   const [showAddModal, setShowAddModal] = useState(false);
