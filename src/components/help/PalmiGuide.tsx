@@ -623,17 +623,6 @@ export default function PalmiGuide() {
         </div>
       ) : null}
 
-      {open && !isActionStep && step?.id === "pos" && posGateOpen ? (
-        <div
-          className="palmi-guide-pos-gate-note"
-          role="status"
-          aria-live="polite"
-        >
-          <strong>POS abierto</strong>
-          <span>Selecciona el empleado y completa la apertura de caja. NUMA no bloqueará ese selector.</span>
-        </div>
-      ) : null}
-
       {open && !isActionStep && !posGateOpen ? (
         <div
           ref={panelRef}
@@ -752,7 +741,7 @@ export default function PalmiGuide() {
         </div>
       ) : null}
 
-      {!open ? (
+      {!open && !posGateOpen ? (
         <button
           type="button"
           className="palmi-guide-mascot-dock"
