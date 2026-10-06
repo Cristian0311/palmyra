@@ -553,23 +553,20 @@ export default function POS() {
             rawItem.product_snapshot?.price ??
             0
           ) || 0;
-          const employeeForCompensation = sellers.length === 1
-            ? userById.get(sellers[0])
-            : undefined;
-          const compensationType = employeeForCompensation?.compensationType || 'fixed_product';
-          const salesPercentage = Number(employeeForCompensation?.salesPercentage || 0);
           const fixedCommission = Number(
             product?.commissionValue ??
             rawItem.product_snapshot?.commissionValue ??
             rawItem.commissionValue ??
             0
           ) || 0;
-          const salaryPerUnit = compensationType === 'sales_percentage'
-            ? (saleUnitPrice * Math.max(0, Math.min(100, salesPercentage)) / 100) / splitFactor
-            : fixedCommission / splitFactor;
 
           sellers.forEach((sellerId: string) => {
             const employee = userById.get(sellerId);
+            const compensationType = employee?.compensationType || 'fixed_product';
+            const salesPercentage = Number(employee?.salesPercentage || 0);
+            const salaryPerUnit = compensationType === 'sales_percentage'
+              ? (saleUnitPrice * Math.max(0, Math.min(100, salesPercentage)) / 100) / splitFactor
+              : fixedCommission / splitFactor;
             const key = sellerId + '::' + productId;
             const existing = rows.get(key);
 
