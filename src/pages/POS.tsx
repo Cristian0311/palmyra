@@ -1461,7 +1461,7 @@ export default function POS() {
                 <span className="text-xs font-black uppercase tracking-wide leading-tight">{posError}</span>
               </div>
               <button onClick={() => setPosError("")} className="p-1 hover:bg-white/10 rounded-lg text-white/80 hover:text-white shrink-0">
-                <X className="w-4 h-4" />
+                <X className="w-3.5 h-3.5" />
               </button>
             </div>
           )}
@@ -1482,22 +1482,22 @@ export default function POS() {
         <div
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-2 sm:p-3 overflow-y-auto space-y-2">
           {!joiningSessionId && openSessionsForResume.length > 0 && (
-            <div className="w-full max-w-[min(94vw,25rem)] rounded-2xl border border-emerald-200 bg-white shadow-xl p-3 sm:p-3.5 text-left animate-in fade-in zoom-in-95">
+            <div className="w-full max-w-[min(92vw,20rem)] rounded-2xl border border-emerald-200 bg-white shadow-xl p-2.5 sm:p-3 text-left animate-in fade-in zoom-in-95">
               <div className="flex items-center justify-between gap-2 mb-2">
                 <div className="min-w-0">
                   <p className="text-[8px] font-black uppercase tracking-[0.14em] text-emerald-700">Caja abierta</p>
-                  <p className="text-[10px] font-bold text-slate-500 leading-tight">Hay un turno guardado y disponible para reanudar.</p>
+                  <p className="text-[9px] font-bold text-slate-500 leading-tight">Hay un turno guardado y disponible para reanudar.</p>
                 </div>
                 <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0" />
               </div>
               <div className="space-y-1.5 max-h-28 overflow-y-auto custom-scrollbar pr-0.5">
                 {openSessionsForResume.map(session => (
-                  <div key={session.id} className="flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-100 px-2.5 py-2">
+                  <div key={session.id} className="flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-100 px-2 py-1.5">
                     <div className="min-w-0 flex-1">
-                      <p className="text-[9px] font-black text-emerald-900 truncate">
+                      <p className="text-[8.5px] font-black text-emerald-900 truncate">
                         Turno {session.turnNumber || "—"} · {session.workerName || "Administrador"}
                       </p>
-                      <p className="text-[8px] font-bold text-emerald-700/80 truncate">
+                      <p className="text-[7px] font-bold text-emerald-700/80 truncate">
                         {branches.find(b => b.id === session.branchId)?.name || "Almacén principal"}
                       </p>
                     </div>
@@ -1508,7 +1508,7 @@ export default function POS() {
                         setJoiningSessionPassword("");
                         setPosError("");
                       }}
-                      className="shrink-0 rounded-lg bg-emerald-600 px-3 py-1.5 text-[8px] font-black uppercase tracking-tight text-white shadow-sm hover:bg-emerald-700"
+                      className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1.25 text-[7px] font-black uppercase tracking-tight text-white shadow-sm hover:bg-emerald-700"
                     >
                       Reanudar
                     </button>
@@ -1701,7 +1701,7 @@ export default function POS() {
                       {!false && (
                       <div>
                         <label className="block text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                          Seleccionar Empleado / Empleado del Turno
+                          Empleado del turno
                         </label>
                         <div className="space-y-1.5">
                           <div className="relative" ref={employeePickerRef}>
@@ -1732,7 +1732,7 @@ export default function POS() {
                                   setEmployeePickerOpen(true);
                                 }}
                                 placeholder="Toca para seleccionar o buscar empleado"
-                                className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                                className="w-full pl-9 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[10px] font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                                 autoComplete="off"
                                 aria-label="Seleccionar empleado"
                               />
@@ -1782,7 +1782,7 @@ export default function POS() {
                                             setEmployeePickerOpen(false);
                                             setSessionPassword('');
                                             if (u.branchId) setSessionBranchId(u.branchId);
-                                            else if (u.branchId) setSessionBranchId(u.branchId);
+                                            
                                             else if ((u.allowedBranches || []).length === 1) setSessionBranchId(u.allowedBranches![0]);
                                             setPosError('');
                                           }}
@@ -1914,11 +1914,11 @@ export default function POS() {
                             <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">
                               Fondo Inicial ({baseCurrency.symbol} CUP)
                             </label>
-                            <span className="text-[8px] font-bold text-slate-400 uppercase">Puede ser 0</span>
+                            <span className="text-[7px] font-bold text-slate-400 uppercase">0 permitido</span>
                           </div>
                           <div className="relative">
-                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                              <span className="text-slate-400 font-bold">{baseCurrency.symbol}</span>
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                              <span className="text-slate-400 font-bold text-[9px]">{baseCurrency.symbol}</span>
                             </div>
                             <input 
                               type="number" 
@@ -1927,17 +1927,17 @@ export default function POS() {
                               value={openingAmount}
                               onFocus={(e) => e.target.select()}
                               onChange={e => setOpeningAmount(e.target.value)}
-                              className="w-full pl-14 pr-4 py-3 bg-slate-50 border border-slate-100 rounded-xl text-lg font-black text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                              className="w-full pl-10 pr-3 py-2 bg-slate-50 border border-slate-100 rounded-lg text-sm font-black text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                               placeholder="0.00"
                             />
                           </div>
                         </div>
 
-                        <div className="space-y-2.5 pt-2">
+                        <div className="space-y-1.5 pt-1">
                           <button 
                             type="submit"
                             disabled={isOpeningSession}
-                            className="w-full py-2.5 sm:py-3 bg-violet-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-violet-700 transition-all shadow-lg shadow-violet-600/20 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                            className="w-full py-2 bg-violet-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-violet-700 transition-all shadow-lg shadow-violet-600/20 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
                           >
                             {isOpeningSession ? "Abriendo Caja..." : "Abrir Caja y Comenzar"}
                           </button>
@@ -1946,7 +1946,7 @@ export default function POS() {
                             <button
                               type="button"
                               onClick={() => setShowOpenShiftModal(false)}
-                              className="w-full py-2.5 bg-slate-100 text-slate-600 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
+                              className="w-full py-2 bg-slate-100 text-slate-600 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
                             >
                               Ver Resumen de Turno Anterior
                             </button>
@@ -2826,7 +2826,7 @@ export default function POS() {
                                 </div>
                               ) : (
                                 <div className="bg-white rounded-xl border border-amber-100 px-3 py-4 text-center">
-                                  <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">No hay productos cobrados en este turno</p>
+                                  <p className="text-[7px] font-black text-slate-400 uppercase tracking-wider">No hay productos cobrados en este turno</p>
                                 </div>
                               )}
                             </div>
