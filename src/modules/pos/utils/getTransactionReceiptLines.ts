@@ -22,7 +22,7 @@ export function getTransactionReceiptLines(tx: Transaction, deps: ReceiptLineDep
     if (receiptConfig.showPhone && receiptConfig.businessPhone) lines.push(`CENTER|${receiptConfig.businessPhone}`);
     
     lines.push("---");
-    lines.push(`Ticket ID: ${tx.id}`);
+    lines.push(`Ticket ID: ${tx.ticketNumber || tx.id}`);
     lines.push(`Fecha: ${new Date(tx.date).toLocaleDateString()} ${new Date(tx.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`);
     const sellerDisplay = tx.cashierName || currentSessionWorkerName || users.find(u => u.id === tx.userId)?.name || 'Empleado';
     lines.push(`Empleado: ${sellerDisplay.toUpperCase()}`);
