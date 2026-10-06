@@ -189,22 +189,37 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
   }
   if (warehouseIds.length === 0) throw new Error('La cuenta no tiene un almacén autorizado para trabajar.');
 
-  const permissionIds: string[] = [];
-  if (roleId) {
-    const { data: rolePermissionRows, error: rolePermissionError } = await supabase.from('role_permissions').select('permission_id').eq('role_id',roleId);
-    if (rolePermissionError) throw new Error(`No se pudieron cargar los permisos del rol: ${rolePermissionError.message}`);
-    permissionIds.push(...(rolePermissionRows || []).map((row:any)=>row.permission_id).filter(Boolean));
-  }
   const permissionKeys: string[] = [];
-  if (permissionIds.length) {
-    const { data: permissionRows, error: permissionsError } = await supabase.from('permissions').select('id,key').in('id',permissionIds);
-    if (permissionsError) throw new Error(`No se pudieron cargar los permisos: ${permissionsError.message}`);
-    permissionKeys.push(...(permissionRows || []).map((row:any)=>row.key).filter(Boolean));
+
+  // El creador/propietario de la empresa es su Administrador maestro:
+  // recibe todas las capacidades actualmente definidas en PALMYRA.
+  if (isOwner && roleKey === 'admin') {
+    const { data: allPermissionRows, error: allPermissionsError } = await supabase
+      .from('permissions')
+      .select('key')
+      .order('key');
+    if (allPermissionsError) throw new Error('No se pudieron cargar los permisos disponibles: ' + allPermissionsError.message);
+    permissionKeys.push(...(allPermissionRows || []).map((row:any)=>row.key).filter(Boolean));
+  } else if (roleId) {
+    const { data: rolePermissionRows, error: rolePermissionError } = await supabase
+      .from('role_permissions')
+      .select('permission_id')
+      .eq('role_id',roleId);
+    if (rolePermissionError) throw new Error('No se pudieron cargar los permisos del rol: ' + rolePermissionError.message);
+    const permissionIds = (rolePermissionRows || []).map((row:any)=>row.permission_id).filter(Boolean);
+    if (permissionIds.length) {
+      const { data: permissionRows, error: permissionsError } = await supabase
+        .from('permissions')
+        .select('id,key')
+        .in('id',permissionIds);
+      if (permissionsError) throw new Error('No se pudieron cargar los permisos: ' + permissionsError.message);
+      permissionKeys.push(...(permissionRows || []).map((row:any)=>row.key).filter(Boolean));
+    }
   }
 
   const granularPermissions = [...new Set(permissionKeys)];
   const permissions = granularPermissions.length > 0 ? granularPermissions : (roleKey === 'admin'
-    ? ['pos.access','reports.view','inventory.manage','products.manage','customers.manage','employees.manage','suppliers.manage','settings.manage','roles.manage']
+    ? ['pos.access','reports.view','inventory.manage','products.manage','customers.manage','employees.manage','suppliers.manage','settings.manage','roles.manage','cash.open','cash.close']
     : ['pos.access']);
   if (roleKey === 'admin') {
     if (!permissions.includes('cash.open')) permissions.push('cash.open');
