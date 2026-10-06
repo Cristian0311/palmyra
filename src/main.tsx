@@ -113,9 +113,9 @@ let swCheckTimer: ReturnType<typeof setInterval> | null = null;
 const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {
-    // autoUpdate already enables skipWaiting/clientsClaim; explicitly applying
-    // the new worker makes the freshly deployed shell/chunks active immediately.
-    updateSW(true);
+    // El usuario decide cuándo aplicar una nueva versión para no interrumpir
+    // una venta, un arqueo o una operación offline.
+    window.dispatchEvent(new CustomEvent('palmyra:update-available'));
   },
   onRegisteredSW(swUrl, registration) {
     if (!registration) return;
