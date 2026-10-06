@@ -29,6 +29,19 @@ const planIcons: Record<PlanCode, typeof Sparkles> = {
   pro: Castle
 };
 
+type OnboardingDraft = {
+  companyName: string;
+  warehouseName: string;
+  planCode: PlanCode;
+  paymentMethod: "manual_cash" | "manual_bank_transfer";
+  facebookOpened: boolean;
+  whatsappOpened: boolean;
+  socialVerified: boolean;
+  socialVerifyingUntil: number | null;
+};
+
+const ONBOARDING_DRAFT_PREFIX = "palmyra_onboarding_draft_v3:";
+
 function getErrorMessage(error: unknown, stage: string) {
   const source = error as any;
   const raw = String(
@@ -128,10 +141,92 @@ export default function SaaSOnboarding() {
   const [facebookOpened, setFacebookOpened] = useState(false);
   const [whatsappOpened, setWhatsappOpened] = useState(false);
   const [socialVerified, setSocialVerified] = useState(false);
+  const [socialVerifyingUntil, setSocialVerifyingUntil] = useState<number | null>(null);
+  const [socialRemaining, setSocialRemaining] = useState(0);
+  const [storageKey, setStorageKey] = useState<string | null>(null);
+  const [draftReady, setDraftReady] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const loadDraft = async () => {
+      let userId = "anonymous";
+      try {
+        const supabase = getSupabase();
+        if (supabase) {
+          const { data } = await supabase.auth.getUser();
+          userId = data.user?.id || "anonymous";
+        }
+      } catch {}
+
+      const key = ONBOARDING_DRAFT_PREFIX + userId;
+      let draft: Partial<OnboardingDraft> | null = null;
+      try {
+        const raw = localStorage.getItem(key);
+        draft = raw ? JSON.parse(raw) : null;
+      } catch {}
+
+      if (!active) return;
+      setStorageKey(key);
+
+      if (draft) {
+        if (typeof draft.companyName === "string") setCompanyName(draft.companyName);
+        if (typeof draft.warehouseName === "string") setWarehouseName(draft.warehouseName);
+        if (draft.planCode === "starter" || draft.planCode === "growth" || draft.planCode === "pro") {
+          setPlanCode(draft.planCode);
+        }
+        if (draft.paymentMethod === "manual_cash" || draft.paymentMethod === "manual_bank_transfer") {
+          setPaymentMethod(draft.paymentMethod);
+        }
+        setFacebookOpened(Boolean(draft.facebookOpened));
+        setWhatsappOpened(Boolean(draft.whatsappOpened));
+
+        const until = typeof draft.socialVerifyingUntil === "number" ? draft.socialVerifyingUntil : null;
+        const stillVerifying = Boolean(until && until > Date.now());
+        setSocialVerifyingUntil(stillVerifying ? until : null);
+        setSocialRemaining(stillVerifying ? Math.max(1, Math.ceil((until! - Date.now()) / 1000)) : 0);
+        setSocialVerified(Boolean(draft.socialVerified) || Boolean(until && until <= Date.now()));
+      }
+
+      setDraftReady(true);
+    };
+
+    void loadDraft();
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!draftReady || !storageKey) return;
+    const draft: OnboardingDraft = {
+      companyName,
+      warehouseName,
+      planCode,
+      paymentMethod,
+      facebookOpened,
+      whatsappOpened,
+      socialVerified,
+      socialVerifyingUntil
+    };
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(draft));
+    } catch {}
+  }, [
+    draftReady,
+    storageKey,
+    companyName,
+    warehouseName,
+    planCode,
+    paymentMethod,
+    facebookOpened,
+    whatsappOpened,
+    socialVerified,
+    socialVerifyingUntil
+  ]);
 
   useEffect(() => {
     if (planCode !== "starter") {
-      setSocialVerified(false);
+      setSocialLoading(false);
+      setSocialVerifyingUntil(null);
+      setSocialRemaining(0);
       return;
     }
     let active = true;
@@ -140,13 +235,11 @@ export default function SaaSOnboarding() {
       .then((links) => {
         if (!active) return;
         setSocialLinks(links);
-        setSocialVerified(false);
       })
       .catch((socialError) => {
         console.warn("[PALMYRA] No se pudieron cargar los canales sociales en onboarding:", socialError);
         if (active) {
           setSocialLinks({ facebook_url: DEFAULT_FACEBOOK_URL, whatsapp_channel_url: null });
-          setSocialVerified(false);
         }
       })
       .finally(() => {
@@ -155,19 +248,41 @@ export default function SaaSOnboarding() {
     return () => { active = false; };
   }, [planCode]);
 
+  useEffect(() => {
+    if (!socialVerifyingUntil) return;
+
+    const tick = () => {
+      const remainingMs = Math.max(0, socialVerifyingUntil - Date.now());
+      setSocialRemaining(Math.max(0, Math.ceil(remainingMs / 1000)));
+      if (remainingMs <= 0) {
+        setSocialVerifyingUntil(null);
+        setSocialRemaining(0);
+        setSocialVerified(true);
+      }
+    };
+
+    tick();
+    const timer = window.setInterval(tick, 100);
+    return () => window.clearInterval(timer);
+  }, [socialVerifyingUntil]);
+
   const verifyStarterPromotion = () => {
     setError("");
     if (!socialLinks.facebook_url || !socialLinks.whatsapp_channel_url) {
       setSocialVerified(false);
-      setError("La promoción de 90 días no puede verificarse porque PALMYRA todavía no tiene configurados ambos canales oficiales.");
+      setError("La promoción de 90 días no puede verificarse todavía porque faltan los dos canales oficiales de PALMYRA.");
       return;
     }
     if (!facebookOpened || !whatsappOpened) {
       setSocialVerified(false);
-      setError("Primero abre Facebook y el canal de WhatsApp oficial. Después pulsa «Verificar promoción».");
+      setError("Haz estas dos cosas primero: sigue Facebook y únete al canal de WhatsApp. Luego vuelve aquí y pulsa Verificar.");
       return;
     }
-    setSocialVerified(true);
+
+    const until = Date.now() + 5000;
+    setSocialVerified(false);
+    setSocialVerifyingUntil(until);
+    setSocialRemaining(5);
   };
 
   const selectedPlan = useMemo(
@@ -242,6 +357,9 @@ export default function SaaSOnboarding() {
       await wait(remaining);
 
       stage = "finalización";
+      if (storageKey) {
+        try { localStorage.removeItem(storageKey); } catch {}
+      }
       if (typeof sessionStorage !== "undefined") {
         sessionStorage.removeItem("palmyra_signup_plan");
         sessionStorage.removeItem("palmyra_pending_onboarding");
@@ -443,26 +561,11 @@ export default function SaaSOnboarding() {
                   />
                 </div>
 
-                <div className="mt-5 rounded-2xl border border-violet-100 bg-[#F8F6FC] p-3.5 sm:p-4">
-                  <div className="flex items-start gap-2.5">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#EEE7FF] text-[#6535C5]">
-                      <LockKeyhole className="h-4 w-4" aria-hidden="true" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-[8px] font-black uppercase tracking-[.16em] text-[#7C4DDE]">
-                        Acceso al Punto de Venta
-                      </p>
-                      <p className="mt-1 text-[10px] font-black text-[#2A1938]">
-                        Usa la misma contraseña con la que registraste tu cuenta
-                      </p>
-                      <p className="mt-1 text-[8px] leading-4 text-slate-500">
-                        No necesitas crear una contraseña POS aparte. Cuando entres al Punto de Venta como Administrador, PALMYRA verificará la contraseña que utilizas para iniciar sesión en tu cuenta.
-                      </p>
-                      <p className="mt-2 text-[8px] font-black leading-4 text-[#6535C5]">
-                        Importante: si cambias la contraseña de tu cuenta PALMYRA, también será esa nueva contraseña la que usarás para entrar al POS como Administrador.
-                      </p>
-                    </div>
-                  </div>
+                <div className="mt-4 flex items-center gap-2 rounded-xl border border-violet-100 bg-[#F8F6FC] px-3 py-2.5">
+                  <LockKeyhole className="h-4 w-4 shrink-0 text-[#6535C5]" aria-hidden="true" />
+                  <p className="text-[8px] leading-4 text-slate-500">
+                    <b className="text-[#3B1B6E]">POS:</b> usa la misma contraseña de tu cuenta PALMYRA para entrar como Administrador.
+                  </p>
                 </div>
 
                 <div className="mt-6 min-w-0">
@@ -490,7 +593,10 @@ export default function SaaSOnboarding() {
                         <button
                           type="button"
                           key={plan.code}
-                          onClick={() => setPlanCode(plan.code)}
+                          onClick={() => {
+                            setPlanCode(plan.code);
+                            if (plan.code !== "starter") setSocialVerifyingUntil(null);
+                          }}
                           disabled={busy}
                           aria-pressed={selected}
                           className={
@@ -560,7 +666,7 @@ export default function SaaSOnboarding() {
                           <div className="min-w-0">
                             <p className="text-[8px] font-black uppercase tracking-[.16em] text-[#7C4DDE]">Promoción Oasis</p>
                             <p className="mt-1 text-[10px] font-black text-[#2A1938]">Verificar primero · 90 días gratis</p>
-                            <p className="mt-1 text-[8px] leading-4 text-slate-500">Abre los dos canales oficiales de PALMYRA y confírmalos aquí antes de crear la empresa. Esta verificación es de confianza; PALMYRA no recibe tus credenciales sociales.</p>
+                            <p className="mt-1 text-[8px] leading-4 text-slate-500">Para recibir los 90 días gratis: <b>1)</b> sigue Facebook, <b>2)</b> únete al canal de WhatsApp y <b>3)</b> vuelve aquí para verificar. PALMYRA confía en tu confirmación y nunca recibe tus credenciales sociales.</p>
                           </div>
                           <span className={"shrink-0 rounded-full px-2 py-1 text-[7px] font-black uppercase tracking-wider " + (socialVerified ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700")}>
                             {socialVerified ? "Verificado" : "Pendiente"}
@@ -576,7 +682,7 @@ export default function SaaSOnboarding() {
                                 href={socialLinks.facebook_url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                onClick={() => { setFacebookOpened(true); setSocialVerified(false); }}
+                                onClick={() => { setFacebookOpened(true); }}
                                 className={"rounded-xl border p-2.5 transition " + (facebookOpened ? "border-emerald-200 bg-emerald-50" : "border-violet-100 bg-white hover:border-violet-200")}
                               >
                                 <div className="flex items-center justify-between gap-2">
@@ -590,7 +696,7 @@ export default function SaaSOnboarding() {
                                 href={socialLinks.whatsapp_channel_url}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                onClick={() => { setWhatsappOpened(true); setSocialVerified(false); }}
+                                onClick={() => { setWhatsappOpened(true); }}
                                 className={"rounded-xl border p-2.5 transition " + (whatsappOpened ? "border-emerald-200 bg-emerald-50" : "border-violet-100 bg-white hover:border-violet-200")}
                               >
                                 <div className="flex items-center justify-between gap-2">
@@ -611,16 +717,20 @@ export default function SaaSOnboarding() {
                         <button
                           type="button"
                           onClick={verifyStarterPromotion}
-                          disabled={socialLoading || socialVerified || !facebookOpened || !whatsappOpened || !socialLinks.facebook_url || !socialLinks.whatsapp_channel_url}
+                          disabled={socialLoading || socialVerified || Boolean(socialVerifyingUntil) || !facebookOpened || !whatsappOpened || !socialLinks.facebook_url || !socialLinks.whatsapp_channel_url}
                           className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-xl bg-[#6535C5] px-3 text-[9px] font-black text-white transition-colors hover:bg-[#4F249D] disabled:cursor-not-allowed disabled:opacity-45"
                         >
                           {socialVerified ? <Check className="h-3.5 w-3.5" /> : <ShieldCheck className="h-3.5 w-3.5" />}
-                          {socialVerified ? "Promoción verificada" : "Verificar promoción para continuar"}
+                          {socialVerified
+                            ? "Promoción verificada"
+                            : socialVerifyingUntil
+                              ? `Verificando… ${socialRemaining}s`
+                              : "Verificar promoción (5 s)"}
                         </button>
 
                         {!socialVerified && (
                           <p className="mt-2 text-center text-[7px] font-bold text-slate-400">
-                            {facebookOpened && whatsappOpened ? "Los dos pasos están abiertos. Pulsa Verificar promoción." : "Completa ambos pasos para habilitar la verificación."}
+                            {socialVerifyingUntil ? `PALMYRA está verificando tu promoción. No cierres esta página; faltan ${socialRemaining} s.` : socialVerified ? "Los dos pasos están listos. Puedes crear tu empresa." : "Completa los dos pasos y después pulsa Verificar promoción (5 s)."}
                           </p>
                         )}
                       </div>
