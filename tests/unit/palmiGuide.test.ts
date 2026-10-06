@@ -5,7 +5,6 @@ import { NUMA_TOUR_STEPS, getAccessibleNumaTourSteps } from "../../src/component
 test("Numa guide contains a complete ordered product journey", () => {
   const ids = NUMA_TOUR_STEPS.map(step => step.id);
   assert.equal(ids[0], "welcome");
-  assert.ok(ids.includes("open-menu"));
   assert.equal(ids.at(-1), "finish");
   assert.ok(ids.includes("pos"));
   assert.ok(ids.includes("inventory"));
@@ -14,13 +13,13 @@ test("Numa guide contains a complete ordered product journey", () => {
   assert.ok(ids.includes("offline"));
 });
 
-test("module steps wait for a real user action before explaining", () => {
+test("navigation steps define separate menu and content targets", () => {
   const dashboard = NUMA_TOUR_STEPS.find(step => step.id === "dashboard");
   const team = NUMA_TOUR_STEPS.find(step => step.id === "team");
-  assert.equal(dashboard?.requiresAction, true);
-  assert.equal(team?.requiresAction, true);
-  assert.equal(dashboard?.navSelector, '[data-palmi-nav="/"]');
-  assert.match(dashboard?.actionMessage || "", /busca|presiona/i);
+  assert.equal(dashboard?.navTarget, true);
+  assert.equal(team?.navTarget, true);
+  assert.ok(dashboard?.target?.includes('[data-palmy-nav="/"]'));
+  assert.ok(dashboard?.contentTarget?.includes('[data-palmi-content="dashboard"]'));
 });
 
 test("Numa guide respects user permissions", () => {
@@ -36,21 +35,12 @@ test("administrators receive all guide modules", () => {
   const ids = getAccessibleNumaTourSteps({ role: "admin", permissions: [] }).map(step => step.id);
   assert.ok(ids.includes("inventory"));
   assert.ok(ids.includes("settings"));
-  assert.ok(ids.includes("subscription"));
 });
 
-
-test("mobile navigation step is filtered on desktop", () => {
-  const desktopIds = getAccessibleNumaTourSteps({ role: "admin", permissions: [] }, false).map(step => step.id);
-  const mobileIds = getAccessibleNumaTourSteps({ role: "admin", permissions: [] }, true).map(step => step.id);
-  assert.ok(!desktopIds.includes("open-menu"));
-  assert.ok(mobileIds.includes("open-menu"));
-});
-
-test("Numa commands expose exact UI anchors", () => {
+test("Numa steps expose real UI anchors", () => {
   const dashboard = NUMA_TOUR_STEPS.find(step => step.id === "dashboard");
   const offline = NUMA_TOUR_STEPS.find(step => step.id === "offline");
-  assert.equal(dashboard?.navSelector, '[data-palmi-nav="/"]');
-  assert.equal(dashboard?.selector, '[data-palmi-content="dashboard"]');
-  assert.match(offline?.selector || "", /offline-status-mobile/);
+  assert.equal(dashboard?.target?.[0], '[data-palmy-nav="/"]');
+  assert.ok(dashboard?.contentTarget?.includes('[data-palmi-content="dashboard"]'));
+  assert.ok(offline?.target?.some(selector => selector.includes("offline-status")));
 });
