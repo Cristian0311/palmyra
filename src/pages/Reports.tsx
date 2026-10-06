@@ -30,7 +30,7 @@ import { useReportsAnalytics } from "../hooks/useReportsAnalytics";
 import type { ExcelExportData } from "../utils/excelExport";
 import { pullPosBootstrapFromSupabase } from "../services/supabaseSync/pull";
 import { getOfflineQueueCount } from "../services/offlineQueue";
-import { PlanFeatureGate } from "../components/PlanFeatureGate";
+import PlanFeatureGate from "../components/PlanFeatureGate";
 import { canUsePlanFeature } from "../services/planAccess";
 import { loadSaaSContext } from "../services/saas";
 import { printThermalReceipt, format58mmLine } from "../lib/escpos";
