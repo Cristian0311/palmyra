@@ -207,7 +207,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
     }
     case 'customer_delete': {
       const { companyId } = await getActiveTenant();
-      const { error } = await supabase.from('customers').update({ active: false }).eq('id', data.id).eq('company_id', companyId);
+      const { error } = await supabase.from('customers').update({ active: false }).eq('id', data.remoteId || data.id).eq('company_id', companyId);
       if (error) throw error;
       return true;
     }
