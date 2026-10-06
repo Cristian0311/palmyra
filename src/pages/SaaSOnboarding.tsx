@@ -11,6 +11,7 @@ import {
   Users,
   Warehouse,
   WalletCards,
+  LockKeyhole,
   Caravan,
   Castle
 } from "lucide-react";
@@ -107,6 +108,8 @@ export default function SaaSOnboarding() {
   const navigate = useNavigate();
   const [companyName, setCompanyName] = useState("");
   const [warehouseName, setWarehouseName] = useState("Almacén principal");
+  const [adminPosPassword, setAdminPosPassword] = useState("");
+  const [adminPosPasswordConfirm, setAdminPosPasswordConfirm] = useState("");
   const [planCode, setPlanCode] = useState<PlanCode>(() => {
     const stored =
       typeof sessionStorage !== "undefined"
@@ -147,6 +150,16 @@ export default function SaaSOnboarding() {
       return;
     }
 
+    if (!/^\d{4,8}$/.test(adminPosPassword.trim())) {
+      setError("Define una contraseña numérica de Punto de Venta de 4 a 8 dígitos.");
+      return;
+    }
+
+    if (adminPosPassword.trim() !== adminPosPasswordConfirm.trim()) {
+      setError("Las dos contraseñas de Punto de Venta no coinciden.");
+      return;
+    }
+
     setBusy(true);
     setCreationStage(1);
     const startedAt = Date.now();
@@ -161,7 +174,8 @@ export default function SaaSOnboarding() {
         name: normalizedCompanyName,
         warehouseName: normalizedWarehouseName,
         planCode,
-        paymentMethod
+        paymentMethod,
+        adminPosPassword: adminPosPassword.trim()
       });
 
       if (!result?.company_id || !result?.warehouse_id) {
@@ -388,6 +402,69 @@ export default function SaaSOnboarding() {
                     placeholder="Almacén principal"
                     disabled={busy}
                   />
+                </div>
+
+                <div
+                  className="mt-5 rounded-2xl border border-violet-100 bg-[#F8F6FC] p-3.5 sm:p-4"
+                  data-palmi-guide="onboarding-pos-password"
+                >
+                  <div className="flex items-start gap-2.5">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#EEE7FF] text-[#6535C5]">
+                      <LockKeyhole className="h-4 w-4" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[8px] font-black uppercase tracking-[.16em] text-[#7C4DDE]">
+                        Acceso al Punto de Venta
+                      </p>
+                      <p className="mt-1 text-[10px] font-black text-[#2A1938]">
+                        Crea la contraseña del administrador
+                      </p>
+                      <p className="mt-1 text-[8px] leading-4 text-slate-400">
+                        La usarás al entrar en Punto de Venta y seleccionar tu perfil Administrador. Solo se guarda de forma segura en Supabase.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid min-w-0 gap-2.5 sm:grid-cols-2">
+                    <label className="min-w-0">
+                      <span className="form-label">Contraseña POS</span>
+                      <div className="relative">
+                        <LockKeyhole className="field-icon" aria-hidden="true" />
+                        <input
+                          type="password"
+                          inputMode="numeric"
+                          pattern="[0-9]{4,8}"
+                          maxLength={8}
+                          minLength={4}
+                          autoComplete="new-password"
+                          value={adminPosPassword}
+                          onChange={(event) => setAdminPosPassword(event.target.value.replace(/\D/g, "").slice(0, 8))}
+                          disabled={busy}
+                          placeholder="4–8 dígitos"
+                          className="field-input pr-3 font-bold"
+                        />
+                      </div>
+                    </label>
+                    <label className="min-w-0">
+                      <span className="form-label">Confirmar contraseña POS</span>
+                      <div className="relative">
+                        <LockKeyhole className="field-icon" aria-hidden="true" />
+                        <input
+                          type="password"
+                          inputMode="numeric"
+                          pattern="[0-9]{4,8}"
+                          maxLength={8}
+                          minLength={4}
+                          autoComplete="new-password"
+                          value={adminPosPasswordConfirm}
+                          onChange={(event) => setAdminPosPasswordConfirm(event.target.value.replace(/\D/g, "").slice(0, 8))}
+                          disabled={busy}
+                          placeholder="Repite los dígitos"
+                          className="field-input pr-3 font-bold"
+                        />
+                      </div>
+                    </label>
+                  </div>
                 </div>
 
                 <div className="mt-6 min-w-0">
