@@ -28,6 +28,7 @@ import {
 import { useStore } from "../store/useStore";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { cn } from "../lib/utils";
+import PlanFeatureGate from "../components/PlanFeatureGate";
 
 export default function Transfers() {
   const { 
@@ -181,6 +182,11 @@ export default function Transfers() {
   };
 
   return (
+    <PlanFeatureGate
+      feature="transfers"
+      title="Transferencias entre almacenes"
+      description="Esta función mueve mercancía entre almacenes. Un plan Oasis tiene un solo almacén, por lo que no necesita transferencias. Puedes explorar la función y actualizar el plan cuando tengas varios puntos." 
+    >
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500 pb-20 p-4 sm:p-6 max-w-full overflow-x-hidden bg-slate-50/50 min-h-screen">
       
       {/* Header */}
@@ -1003,5 +1009,7 @@ export default function Transfers() {
       )}
 
     </div>
+    </div>
+    </PlanFeatureGate>
   );
 }
