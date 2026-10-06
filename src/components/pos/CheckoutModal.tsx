@@ -417,6 +417,12 @@ export default function CheckoutModal({
                   </div>
                 </div>
               )}
+              <div className="flex justify-end gap-2 pt-1">
+                <button type="button" onClick={onAddPaymentLine} className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-[9px] font-black uppercase text-indigo-600 hover:bg-indigo-50">+ Agregar forma de pago</button>
+                {paymentLines.length > 1 && activePaymentLineId && (
+                  <button type="button" onClick={() => onRemovePaymentLine(activePaymentLineId)} className="px-3 py-2 rounded-xl border border-rose-200 bg-white text-[9px] font-black uppercase text-rose-600 hover:bg-rose-50">Quitar</button>
+                )}
+              </div>
             </div>
 
             <div className="p-3 sm:p-4 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 shrink-0">
