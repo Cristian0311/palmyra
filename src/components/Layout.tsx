@@ -60,7 +60,7 @@ const adminNavItems = [
   { name: "Plan", href: "/subscription", icon: CreditCard, permission: "settings.manage" },
 ];
 
-const APP_VERSION = "V 1.0.0";
+const APP_VERSION = "V 1.0.2";
 
 const cashierNavItems = [
   { name: "Soporte", href: "/help", icon: Headphones, public: true },
