@@ -330,51 +330,66 @@ export default function PalmiGuide() {
     if (!open || !isActionStep || !step?.target?.length) return;
 
     let cancelled = false;
-    let boundTarget: HTMLElement | null = null;
     let phaseTimer: number | null = null;
     let fallbackTimer: number | null = null;
+    let retryTimer: number | null = null;
 
     const handleTargetClick = () => {
       if (cancelled) return;
 
-      // Dejamos que NavLink/React Router procese primero el click real.
-      // Cambiar la capa durante pointerup podía bloquear la navegación.
+      // El menú mantiene su navegación nativa. NUMA solo observa el clic.
       phaseTimer = window.setTimeout(() => {
         if (cancelled) return;
         setPhase("explain");
         setTargetRect(null);
-      }, 80);
+      }, 120);
 
       if (step.route) {
         fallbackTimer = window.setTimeout(() => {
           if (!cancelled && !isCurrentRoute(step.route, window.location.pathname)) {
             navigate(step.route);
           }
-        }, 700);
+        }, 900);
       }
+    };
+
+    const matchesTarget = (element: Element | null) => {
+      if (!element || !step.target?.length) return false;
+      return step.target.some((selector) => {
+        try {
+          return Boolean(element.closest(selector));
+        } catch {
+          return false;
+        }
+      });
+    };
+
+    const handleDocumentClick = (event: MouseEvent) => {
+      if (cancelled) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (matchesTarget(target)) handleTargetClick();
     };
 
     const bind = () => {
       if (cancelled) return;
-      const target = findTarget(step.target) as HTMLElement | null;
+      const target = findTarget(step.target);
       if (!target) {
-        window.setTimeout(bind, 80);
+        retryTimer = window.setTimeout(bind, 100);
         return;
       }
-
-      boundTarget = target;
-      target.addEventListener("click", handleTargetClick, true);
+      // Delegación a document: sobrevive a los rerenders del sidebar
+      // cuando React cambia la clase activa o cierra el drawer móvil.
+      document.addEventListener("click", handleDocumentClick, true);
     };
 
     bind();
 
     return () => {
       cancelled = true;
-      if (boundTarget) {
-        boundTarget.removeEventListener("click", handleTargetClick, true);
-      }
+      document.removeEventListener("click", handleDocumentClick, true);
       if (phaseTimer !== null) window.clearTimeout(phaseTimer);
       if (fallbackTimer !== null) window.clearTimeout(fallbackTimer);
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
     };
   }, [open, isActionStep, step?.id, step?.route, step?.target, navigate]);
 

@@ -1,4 +1,5 @@
 import React from "react";
+import numaMascotUrl from "../../assets/numa-mascot.webp";
 import type { NumaMood } from "./numa";
 
 export type { NumaMood };
@@ -17,7 +18,7 @@ export function PalmiMascot({
 }) {
   return (
     <img
-      src="/numa-mascot.webp"
+      src={numaMascotUrl}
       alt="NUMA, mascota guía de PALMYRA"
       className={`numa-mascot numa-mood-${mood} ${className}`}
       draggable={false}
