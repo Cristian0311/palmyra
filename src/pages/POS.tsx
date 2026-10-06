@@ -1505,43 +1505,43 @@ export default function POS() {
           className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center px-3 py-5 sm:px-4 sm:py-6 overflow-y-auto overscroll-contain">
           {showOpenSessionsModal && !joiningSessionId && (
             <div className="fixed inset-0 z-[65] bg-slate-950/55 backdrop-blur-sm flex items-center justify-center p-3">
-              <div className="w-full max-w-[min(94vw,32rem)] rounded-2xl border border-emerald-200/80 bg-white shadow-2xl overflow-hidden">
-                <div className="flex items-center justify-between gap-3 px-3.5 py-3 border-b border-emerald-100 bg-emerald-50/80">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center shrink-0"><Wallet className="w-3.5 h-3.5" /></div>
-                    <div className="min-w-0">
-                      <p className="text-[9px] font-black uppercase tracking-[0.14em] text-emerald-800">Turnos abiertos</p>
-                      <p className="text-[7px] font-bold text-emerald-700/80">Selecciona una caja en curso para reanudarla.</p>
-                    </div>
+              <div className="w-full max-w-[min(94vw,31rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                <div className="flex items-center gap-2.5 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-white px-3 py-2.5">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-sm"><Wallet className="w-4 h-4" /></div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5"><h3 className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-900">Turnos abiertos</h3><span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[6px] font-black text-emerald-700">{openSessionsForResume.length}</span></div>
+                    <p className="mt-0.5 text-[6.5px] font-bold text-slate-400">Selecciona una caja para continuar.</p>
                   </div>
-                  <button type="button" onClick={() => setShowOpenSessionsModal(false)} className="w-7 h-7 rounded-lg bg-white border border-emerald-200 text-emerald-700 flex items-center justify-center hover:bg-emerald-100" aria-label="Cerrar turnos abiertos">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
+                  <button type="button" onClick={() => void refreshOpenSessions()} disabled={isRefreshingOpenSessions} className="h-7 w-7 shrink-0 rounded-lg border border-slate-200 bg-white text-slate-500 flex items-center justify-center hover:border-emerald-300 hover:text-emerald-600 disabled:opacity-50" title="Actualizar"><RefreshCw className={cn("w-3 h-3", isRefreshingOpenSessions && "animate-spin")} /></button>
+                  <button type="button" onClick={() => setShowOpenSessionsModal(false)} className="h-7 w-7 shrink-0 rounded-lg border border-slate-200 bg-white text-slate-500 flex items-center justify-center hover:bg-slate-50" aria-label="Cerrar"><X className="w-3.5 h-3.5" /></button>
                 </div>
-                <div className="p-2.5 max-h-[min(62vh,26rem)] overflow-y-auto custom-scrollbar">
-                  <div className="space-y-1.5">
-                    {openSessionsForResume.map((session) => {
-                      const branchName = branches.find(b => b.id === session.branchId)?.name || session.warehouseName || "Almacén principal";
-                      const openedLabel = session.openedAt ? new Date(session.openedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
-                      return (
-                        <div key={session.id} className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 px-2.5 py-2">
-                          <div className="w-7 h-7 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-[8px] font-black text-slate-700 shrink-0">T{session.turnNumber || "—"}</div>
-                          <div className="min-w-0">
-                            <p className="text-[8.5px] font-black text-slate-900 truncate">{session.workerName || "Administrador"}</p>
-                            <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[6.5px] font-bold text-slate-500">
-                              <span className="break-words">{branchName}</span><span className="shrink-0">·</span><span className="shrink-0">Abierto {openedLabel}</span>
-                            </div>
+                <div className="p-2.5 max-h-[min(62vh,25rem)] overflow-y-auto custom-scrollbar">
+                  {openSessionsForResume.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-7 text-center">
+                      <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-400 shadow-sm"><Wallet className="w-4 h-4" /></div>
+                      <p className="mt-2 text-[8px] font-black uppercase tracking-[0.1em] text-slate-600">No hay turnos visibles</p>
+                      <p className="mt-1 text-[6.5px] font-bold leading-4 text-slate-400">Actualiza para volver a consultar las cajas abiertas.</p>
+                      <button type="button" onClick={() => void refreshOpenSessions()} disabled={isRefreshingOpenSessions} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[7px] font-black uppercase tracking-tight text-white disabled:opacity-50"><RefreshCw className={cn("w-3 h-3", isRefreshingOpenSessions && "animate-spin")} />{isRefreshingOpenSessions ? "Buscando…" : "Actualizar"}</button>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {openSessionsForResume.map((session) => {
+                        const branchName = branches.find(b => b.id === session.branchId)?.name || session.warehouseName || "Almacén principal";
+                        const openedLabel = session.openedAt ? new Date(session.openedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
+                        return (
+                          <div key={session.id} className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2 rounded-xl border border-slate-100 bg-slate-50/80 px-2.5 py-2">
+                            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white border border-slate-200 text-[8px] font-black text-slate-700 shadow-xs">T{session.turnNumber || "—"}</div>
+                            <div className="min-w-0"><p className="text-[8.5px] font-black text-slate-900 truncate">{session.workerName || "Administrador"}</p><div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[6.5px] font-bold text-slate-500"><span>{branchName}</span><span>·</span><span>Abierto {openedLabel}</span></div></div>
+                            <button type="button" onClick={() => { setShowOpenSessionsModal(false); setJoiningSessionId(session.id); setJoiningSessionPassword(""); setPosError(""); }} className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[7px] font-black uppercase tracking-tight text-white shadow-sm hover:bg-emerald-700 active:scale-[0.98]">Reanudar</button>
                           </div>
-                          <button type="button" onClick={() => { setShowOpenSessionsModal(false); setJoiningSessionId(session.id); setJoiningSessionPassword(""); setPosError(""); }} className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[7px] font-black uppercase tracking-tight text-white shadow-sm hover:bg-emerald-700 active:scale-[0.98]">Reanudar</button>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
           )}
-
           {joiningSessionId ? (
             /* Modal Formulario de Ingreso a Turno Abierto Existente */
             <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-2xl shadow-2xl text-center max-w-[20rem] w-full border border-white/20">
@@ -1684,19 +1684,34 @@ export default function POS() {
 
               ) : (
                 /* Modal Formulario de Apertura de Caja */
-                <div className="palmyra-mobile-modal palmyra-open-cash-modal p-1.5 sm:p-2 rounded-2xl shadow-2xl text-center w-full max-w-[min(92vw,19rem)] max-h-[calc(100dvh-0.75rem)] overflow-y-auto animate-in zoom-in-95 my-auto">
-                  <div className="flex items-center justify-center gap-1.5 mb-1">
-                    <div className="w-6 h-6 sm:w-7 sm:h-7 bg-violet-50 rounded-lg flex items-center justify-center shrink-0">
-                      <DollarSign className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-violet-600" />
+                <div className="palmyra-mobile-modal palmyra-open-cash-modal p-2 sm:p-2.5 rounded-2xl shadow-2xl text-center w-full max-w-[min(94vw,21rem)] max-h-[calc(100dvh-1rem)] overflow-y-auto animate-in zoom-in-95 my-auto">
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white shadow-sm">
+                      <DollarSign className="w-3.5 h-3.5" />
                     </div>
-                    <div className="min-w-0 text-left">
-                      <h3 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-tight leading-none">Apertura de Caja</h3>
-                      <p className="text-[6px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Fondo Inicial</p>
+                    <div className="min-w-0 flex-1 text-left">
+                      <div className="flex items-center gap-1.5">
+                        <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-tight leading-none">Apertura de caja</h3>
+                        <span className="rounded-full bg-violet-50 border border-violet-100 px-1.5 py-0.5 text-[5.5px] font-black uppercase tracking-wider text-violet-700">Configurar</span>
+                      </div>
+                      <p className="mt-0.5 text-[6.5px] font-bold leading-tight text-slate-400">Operador · almacén · fondo inicial</p>
                     </div>
                   </div>
 
-                  
-                  {/* Inline Modal Alert */}
+                  <div className="mb-2 grid grid-cols-3 gap-1 rounded-xl border border-slate-100 bg-slate-50/80 p-1">
+                    <div className="rounded-lg bg-white px-1.5 py-1.5 border border-slate-100">
+                      <p className="text-[5.5px] font-black uppercase tracking-wider text-slate-400">01</p>
+                      <p className="mt-0.5 text-[6.5px] font-black text-slate-700">Operador</p>
+                    </div>
+                    <div className="rounded-lg bg-white px-1.5 py-1.5 border border-slate-100">
+                      <p className="text-[5.5px] font-black uppercase tracking-wider text-slate-400">02</p>
+                      <p className="mt-0.5 text-[6.5px] font-black text-slate-700">Almacén</p>
+                    </div>
+                    <div className="rounded-lg bg-white px-1.5 py-1.5 border border-slate-100">
+                      <p className="text-[5.5px] font-black uppercase tracking-wider text-slate-400">03</p>
+                      <p className="mt-0.5 text-[6.5px] font-black text-slate-700">Fondo</p>
+                    </div>
+                  </div>                  {/* Inline Modal Alert */}
                   {posError && (
                     <div className="mb-2.5 p-2 sm:p-2.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-[10px] font-bold flex items-start justify-between gap-1.5 animate-in fade-in zoom-in-95">
                       <div className="flex items-center gap-2 text-left">
@@ -1743,6 +1758,28 @@ export default function POS() {
                       {isRefreshingOpenSessions ? <RefreshCw className="w-3 h-3 shrink-0 text-emerald-600 animate-spin" /> : <ArrowRight className="w-3 h-3 shrink-0 text-emerald-600 transition-transform group-hover:translate-x-0.5" />}
                     </button>
 
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowOpenSessionsModal(true);
+                        void refreshOpenSessions();
+                      }}
+                      className="group w-full mb-2 flex items-center gap-2 rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-white px-2.5 py-2 text-left transition-all hover:border-emerald-300 hover:shadow-sm active:scale-[0.99]"
+                    >
+                      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
+                        <Wallet className="w-3.5 h-3.5" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5">
+                          <span className="text-[8px] font-black uppercase tracking-[0.1em] text-emerald-900">Turnos abiertos</span>
+                          <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[6px] font-black text-emerald-700">{isRefreshingOpenSessions ? "…" : openSessionsForResume.length}</span>
+                        </span>
+                        <span className="mt-0.5 block text-[6.5px] font-bold leading-tight text-emerald-700/75">
+                          {openSessionsForResume.length > 0 ? "Ver cajas en curso y reanudar" : "Buscar cajas en curso"}
+                        </span>
+                      </span>
+                      {isRefreshingOpenSessions ? <RefreshCw className="w-3 h-3 shrink-0 animate-spin text-emerald-600" /> : <ArrowRight className="w-3 h-3 shrink-0 text-emerald-600 transition-transform group-hover:translate-x-0.5" />}
+                    </button>
               <form onSubmit={handleOpenSession} className="space-y-2">
                     <div className="text-left space-y-2">
                       {!false && (
