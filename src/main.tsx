@@ -115,6 +115,7 @@ const updateSW = registerSW({
   onNeedRefresh() {
     // El usuario decide cuándo aplicar una nueva versión para no interrumpir
     // una venta, un arqueo o una operación offline.
+    (window as typeof window & { __palmyraApplyUpdate?: () => void }).__palmyraApplyUpdate = () => updateSW(true);
     window.dispatchEvent(new CustomEvent('palmyra:update-available'));
   },
   onRegisteredSW(swUrl, registration) {
