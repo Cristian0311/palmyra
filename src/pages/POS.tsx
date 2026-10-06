@@ -1177,6 +1177,32 @@ export default function POS() {
         }
       }
 
+      // Una caja abierta bloquea una segunda apertura. En lugar de dejar al
+      // usuario frente a un error, mostramos inmediatamente la caja real para
+      // reanudarla con contraseña.
+      const branchOpenNow = (useStore.getState().cashSessions || []).find(s =>
+        s.status === 'open' && !s.deletedAt && s.branchId === sessionBranchId
+      );
+      if (branchOpenNow) {
+        const canResume =
+          currentUser?.role === 'admin' ||
+          branchOpenNow.userId === currentUser?.id ||
+          branchOpenNow.workingEmployeeIds?.includes(currentUser?.id || '');
+        if (canResume) {
+          setJoiningSessionId(branchOpenNow.id);
+          setJoiningSessionPassword("");
+          setPosError("");
+          setShowOpenShiftModal(false);
+          return;
+        }
+        setPosError(
+          "La caja ya tiene un turno abierto" +
+          (branchOpenNow.workerName ? " (" + branchOpenNow.workerName + ")" : "") +
+          ". Debes usar esa caja o pedir al administrador que cierre el turno."
+        );
+        return;
+      }
+
       // Si ya existe un turno abierto para ese trabajador/sucursal, reutilizarlo.
       const existingSession = useStore.getState().getCurrentSession(sessionBranchId, workerToAssign.id);
       if (existingSession) {
@@ -1240,10 +1266,21 @@ export default function POS() {
             s.branchId === sessionBranchId
           );
           if (branchOpen) {
+            const canResume =
+              currentUser?.role === 'admin' ||
+              branchOpen.userId === currentUser?.id ||
+              branchOpen.workingEmployeeIds?.includes(currentUser?.id || '');
+            if (canResume) {
+              setJoiningSessionId(branchOpen.id);
+              setJoiningSessionPassword("");
+              setPosError("");
+              setShowOpenShiftModal(false);
+              return;
+            }
             setPosError(
               "La caja ya tiene un turno abierto" +
               (branchOpen.workerName ? " (" + branchOpen.workerName + ")" : "") +
-              ". Cierra ese turno o selecciónalo desde Turnos abiertos."
+              ". Debes usar esa caja o pedir al administrador que cierre el turno."
             );
             return;
           }
@@ -1572,7 +1609,7 @@ export default function POS() {
                   </div>
 
                   {/* Botones de impresión y acciones */}
-                  <div className="space-y-2">
+                  <div className="space-y-1.5">
                     <div className="grid grid-cols-2 gap-2">
                       <button                        type="button"
                         onClick={() => handlePrintClosureThermal(lastClosedSession)}
@@ -1615,14 +1652,14 @@ export default function POS() {
 
               ) : (
                 /* Modal Formulario de Apertura de Caja */
-                <div className="palmyra-mobile-modal palmyra-open-cash-modal p-2 sm:p-2.5 rounded-2xl shadow-2xl text-center w-full max-w-[min(94vw,23rem)] max-h-[calc(100dvh-0.75rem)] overflow-y-auto animate-in zoom-in-95 my-auto">
+                <div className="palmyra-mobile-modal palmyra-open-cash-modal p-1.5 sm:p-2 rounded-2xl shadow-2xl text-center w-full max-w-[min(92vw,20rem)] max-h-[calc(100dvh-0.5rem)] overflow-y-auto animate-in zoom-in-95 my-auto">
                   <div className="flex items-center justify-center gap-1.5 mb-1">
-                    <div className="w-7 h-7 sm:w-8 sm:h-8 bg-violet-50 rounded-lg flex items-center justify-center shrink-0">
-                      <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-violet-600" />
+                    <div className="w-6 h-6 sm:w-7 sm:h-7 bg-violet-50 rounded-lg flex items-center justify-center shrink-0">
+                      <DollarSign className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-violet-600" />
                     </div>
                     <div className="min-w-0 text-left">
-                      <h3 className="text-sm sm:text-base font-black text-slate-900 uppercase tracking-tight leading-none">Apertura de Caja</h3>
-                      <p className="text-[7px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Fondo Inicial del Turno</p>
+                      <h3 className="text-xs sm:text-sm font-black text-slate-900 uppercase tracking-tight leading-none">Apertura de Caja</h3>
+                      <p className="text-[6px] font-bold text-slate-400 uppercase tracking-wider mt-0.5">Fondo Inicial</p>
                     </div>
                   </div>
 
