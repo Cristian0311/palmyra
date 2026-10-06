@@ -335,7 +335,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         className={cn(
           "bg-secondary border-r border-base transition-all duration-300 ease-in-out flex flex-col h-full shrink-0 shadow-sm",
           // Mobile: off-canvas drawer with fixed overlay
-          "fixed inset-y-0 left-0 z-50",
+          "fixed inset-y-0 left-0 z-50 w-[55vw] max-w-[360px]",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           // Desktop (lg+): relative in-flow column, NEVER covers or overlaps the right content
           "lg:relative lg:inset-auto lg:z-auto lg:translate-x-0",
