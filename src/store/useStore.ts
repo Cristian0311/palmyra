@@ -15,6 +15,7 @@ import {
 } from '../services/supabaseSync';
 import { getSupabaseCredentials } from '../lib/supabase';
 import { loadSaaSContext, signInSaaSAccount, signOutSaaSAccount } from '../services/saas';
+import { getCachedSaaSContext } from '../services/offlineAuthContext';
 import { getOfflineQueue, enqueueOfflineItem, removeFromOfflineQueue, waitForOfflineQueueReady } from '../services/offlineQueue';
 import { normalizeSemanticText, areSemanticallyEqual } from '../utils/textUtils';
 import { localStateStorage, clearLocalStateStorage, flushLocalStateStorage } from '../services/localStateStorage';
@@ -133,21 +134,37 @@ export const useStore = create<AppState>()(
   activeSessionId: null,
   setActiveSessionId: (id) => set({ activeSessionId: id }),
   addBranch: (branch) => {
+    const current = get();
+    const activeWarehouseCount = (current.branches || []).filter(b => b.isActive !== false).length;
+    const cachedContext = current.currentUser?.id
+      ? getCachedSaaSContext(current.currentUser.id)
+      : null;
+    const cachedLimit = Number(cachedContext?.subscription?.limits?.warehouses);
+
+    // Client-side guard for offline/local UX. The database trigger remains the
+    // final authority, so stale cache can never grant an extra warehouse.
+    if (Number.isFinite(cachedLimit) && activeWarehouseCount >= cachedLimit) {
+      console.warn(
+        `[PALMYRA] Creación local de almacén bloqueada: límite ${cachedLimit} alcanzado para ${cachedContext?.subscription?.planName || 'el plan actual'}.`
+      );
+      return;
+    }
+
     let shouldPush = false;
     set((state) => {
       // Deduplicación estricta insensible a mayúsculas, acentos y espaciado
       const normName = normalizeSemanticText(branch.name);
-      const isDuplicate = state.branches.some(b => 
-        b.id === branch.id || 
+      const isDuplicate = state.branches.some(b =>
+        b.id === branch.id ||
         normalizeSemanticText(b.name) === normName
       );
       if (isDuplicate) {
         console.warn(`[MARÉ] Intento de agregar sucursal duplicada bloqueado: "${branch.name}"`);
         return state;
       }
-      
+
       shouldPush = true;
-      return { 
+      return {
         branches: [...state.branches, branch],
         currentBranchId: state.currentBranchId || branch.id
       };

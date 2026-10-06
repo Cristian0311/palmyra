@@ -10,6 +10,8 @@ type Props = {
   setNewBranchName: (name: string) => void;
   setBranchToDelete: (value: { id: string; name: string } | null) => void;
   onAddBranch: () => void;
+  warehouseLimit?: number | null;
+  warehousePlanName?: string;
 };
 
 export function SettingsWarehousesSection({
@@ -21,8 +23,16 @@ export function SettingsWarehousesSection({
   setNewBranchName,
   setBranchToDelete,
   onAddBranch,
+  warehouseLimit = null,
+  warehousePlanName = "",
 }: Props) {
   if (!active) return null;
+
+  const activeWarehouseCount = branches.filter((branch) => branch.isActive !== false).length;
+  const limitReached =
+    warehouseLimit !== null &&
+    activeWarehouseCount >= warehouseLimit &&
+    !editingBranch;
 
   return (
     <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4">
@@ -91,11 +101,18 @@ export function SettingsWarehousesSection({
             <button
               type="button"
               onClick={onAddBranch}
-              className="p-2 bg-rose-600 text-white rounded-xl hover:bg-rose-700 active:scale-95 transition-all shrink-0 cursor-pointer"
+              disabled={limitReached}
+              title={limitReached ? `Has alcanzado el límite de ${warehouseLimit} almacén${warehouseLimit === 1 ? "" : "es"} del plan.` : undefined}
+              className="p-2 bg-rose-600 text-white rounded-xl hover:bg-rose-700 active:scale-95 transition-all shrink-0 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-rose-600"
             >
               {editingBranch ? <Save size={16} /> : <Plus size={16} />}
             </button>
           </div>
+          {limitReached && (
+            <p className="text-[9px] font-bold text-rose-600 dark:text-rose-400">
+              Has alcanzado el límite de {warehouseLimit} almacén{warehouseLimit === 1 ? "" : "es"} de {warehousePlanName || "tu plan"}.
+            </p>
+          )}
         </div>
       </div>
     </div>

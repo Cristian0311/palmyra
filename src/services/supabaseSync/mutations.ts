@@ -117,7 +117,16 @@ export async function pushBranchToSupabase(branch:Branch){
     let code=existing?.code;
     if(!code){const {count,error:ce}=await supabase.from('warehouses').select('id',{count:'exact',head:true}).eq('company_id',companyId);if(ce)throw ce;code='ALM-'+String((count||0)+1).padStart(2,'0');}
     const {error}=await supabase.from('warehouses').upsert({id:branch.id,company_id:companyId,code,name:branch.name,active:branch.isActive!==false},{onConflict:'id'});if(error)throw error;return true;
-  }catch(e:any){await queue('branch',branch,branch.id);return false;}
+  }catch(e:any){
+    const errorText = `${e?.code || ''} ${e?.message || ''}`.toLowerCase();
+    // A plan limit is an entitlement denial, not an offline/network failure.
+    // Never place a rejected warehouse creation into the offline outbox.
+    if (/plan_warehouse_limit|plan_warehouses_limit|plan_warehouse_limit_reached/.test(errorText)) {
+      return false;
+    }
+    await queue('branch',branch,branch.id);
+    return false;
+  }
 }
 export async function deleteBranchFromSupabase(id:string):Promise<boolean>{try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {error}=await supabase.from('warehouses').update({active:false}).eq('id',id).eq('company_id',companyId);if(error)throw error;return true;}catch{return false;}}
 

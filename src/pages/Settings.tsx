@@ -12,6 +12,7 @@ import { cn } from "../lib/utils";
 import { normalizeSemanticText } from "../utils/textUtils";
 import { connectBluetoothPrinter, connectPrinter, printESCPOS, isInsideIframe } from "../lib/escpos";
 import { getSupabase } from "../lib/supabase";
+import { loadSaaSContext } from "../services/saas";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -21,7 +22,7 @@ export default function Settings() {
     branches, addBranch, updateBranch, deleteBranch,
     categories, addCategory, updateCategory, deleteCategory,
     receiptConfig, updateReceiptConfig,
-    users, updateUser, addUser, deleteUser,
+    users, updateUser, addUser, deleteUser, currentUser,
     getBaseCurrency, clearAllData,
     exportData, importData,
     registerEmployee,
@@ -45,7 +46,8 @@ export default function Settings() {
     receiptConfig: state.receiptConfig, 
     updateReceiptConfig: state.updateReceiptConfig, 
     users: state.users, 
-    updateUser: state.updateUser, 
+    updateUser: state.updateUser,
+    currentUser: state.currentUser, 
     addUser: state.addUser, 
     deleteUser: state.deleteUser, 
     getBaseCurrency: state.getBaseCurrency, 
@@ -121,6 +123,25 @@ export default function Settings() {
 
   const [newBranchName, setNewBranchName] = useState("");
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
+  const [warehousePlanLimit, setWarehousePlanLimit] = useState<number | null>(null);
+  const [warehousePlanName, setWarehousePlanName] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadSaaSContext(true)
+      .then((ctx) => {
+        if (cancelled) return;
+        const rawLimit = Number(ctx?.subscription?.limits?.warehouses);
+        setWarehousePlanLimit(Number.isFinite(rawLimit) ? rawLimit : null);
+        setWarehousePlanName(ctx?.subscription?.planName || "");
+      })
+      .catch(() => {
+        // The cached SaaS context in the store remains the local fallback.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser?.id]);
 
   const [newCategory, setNewCategory] = useState({ name: "", department: "" });
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -278,8 +299,8 @@ export default function Settings() {
     const trimmed = newBranchName.trim();
     if (trimmed) {
       const normInput = normalizeSemanticText(trimmed);
-      const duplicate = branches.find(b => 
-        normalizeSemanticText(b.name) === normInput && 
+      const duplicate = branches.find(b =>
+        normalizeSemanticText(b.name) === normInput &&
         (!editingBranch || b.id !== editingBranch.id)
       );
 
@@ -293,6 +314,14 @@ export default function Settings() {
         setEditingBranch(null);
         showToast("Almacén actualizado.");
       } else {
+        const activeWarehouseCount = branches.filter(b => b.isActive !== false).length;
+        if (warehousePlanLimit !== null && activeWarehouseCount >= warehousePlanLimit) {
+          showToast(
+            `${warehousePlanName || "Tu plan actual"} permite un máximo de ${warehousePlanLimit} almacén${warehousePlanLimit === 1 ? "" : "es"}. Para agregar otro, debes cambiar de plan.`,
+            "error"
+          );
+          return;
+        }
         addBranch({ id: crypto.randomUUID(), name: trimmed });
         showToast("Almacén agregado y guardado en Supabase.");
       }
