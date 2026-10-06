@@ -1611,7 +1611,6 @@ export default function POS() {
       )}
       {!currentSession && (
         <div
-          onFocusCapture={(event) => { const target = event.target as HTMLElement | null; if (!target || !("focus" in target)) return; window.setTimeout(() => { try { target.scrollIntoView({ block: "center", inline: "nearest", behavior: "auto" }); } catch {} }, 40); }}
           className={cn("pos-keyboard-overlay pos-modal-layer fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center px-3 py-5 sm:px-4 sm:py-6", "overflow-y-auto overscroll-contain")}>
           {showOpenSessionsModal && !joiningSessionId && (
             <div className="fixed inset-0 z-[65] bg-slate-950/55 backdrop-blur-sm flex items-center justify-center p-3">
