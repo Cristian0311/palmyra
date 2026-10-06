@@ -337,7 +337,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           // Desktop (lg+): relative in-flow column, NEVER covers or overlaps the right content
           "lg:relative lg:inset-auto lg:z-auto lg:translate-x-0",
-          sidebarCollapsed ? "lg:w-16" : "lg:w-[17rem]"
+          sidebarCollapsed ? "lg:w-16" : "lg:w-[15.5rem]"
         )}
       >
         {/* Header with Collapse toggle */}
@@ -346,7 +346,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <img
               src="/palmyra-logo-exact.svg"
               alt="PALMYRA"
-              className="w-[138px] h-[34px] max-w-[calc(100%-2rem)] object-contain object-left"
+              className="w-[124px] h-[31px] max-w-[calc(100%-2rem)] object-contain object-left"
             />
             <span className="shrink-0 rounded-full bg-subtle px-1.5 py-1 text-[6px] font-black text-primary tracking-tight leading-none">{APP_VERSION}</span>
           </div>
@@ -397,14 +397,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   <div
                     className={cn(
                     "flex items-center rounded-xl transition-all duration-150 group",
-                    sidebarCollapsed ? "justify-center p-2.5 my-1" : "space-x-2.5 px-2.5 py-2",
+                    sidebarCollapsed ? "justify-center p-2.5 my-1" : "space-x-2 px-2 py-1.5",
                     isActive
                       ? "bg-rose-600 text-white shadow-md shadow-rose-600/20"
                       : "text-muted hover:bg-subtle hover:text-primary"
                   )}>
                     <Icon className={cn("w-4 h-4 shrink-0 transition-colors", isActive ? "text-white" : "text-muted group-hover:text-rose-600")} />
                     {!sidebarCollapsed && (
-                      <span className="min-w-0 font-black text-[8px] uppercase tracking-tight leading-tight whitespace-normal break-words">{item.name}</span>
+                      <span className="min-w-0 flex-1 font-black text-[8px] uppercase tracking-tight leading-tight whitespace-normal break-words">{item.name}</span>
                     )}
                   </div>
                 )}
