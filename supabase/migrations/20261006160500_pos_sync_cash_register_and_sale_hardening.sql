@@ -1,3 +1,0 @@
--- PALMYRA POS sync hardening
--- See database-applied migration 20261006160500_pos_sync_cash_register_and_sale_hardening.
--- Kept as a repository migration source-of-truth.
