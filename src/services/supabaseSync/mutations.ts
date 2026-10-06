@@ -23,9 +23,13 @@ const queue=async(type:any,data:any,id:string)=>{await enqueueOfflineItem(type,d
 
 export async function pushProductToSupabase(product:Product){
   try{
-    const supabase=await onlineClient();const {companyId}=await getActiveTenant();
+    const supabase=await onlineClient();const {companyId,defaultCurrencyCode}=await getActiveTenant();
     const row={id:product.id,company_id:companyId,category_id:product.categoryId||null,brand_id:null,sku:product.sku||product.id.slice(0,12),name:product.name,description:null,status:product.status||'active',track_stock:true,base_unit:product.unit||'unidad',cost:Number(product.costPrice)||0,commission_fixed:product.commissionType==='fixed'?Number(product.commissionValue)||0:0,commission_percent:product.commissionType==='percentage'?Number(product.commissionValue)||0:0,image_path:product.image||null,minimum_stock:Number(product.minStockAlert)||0,is_kit:Boolean(product.isKit),track_serial:Boolean(product.hasSerial)};
     const {error}=await supabase.from('products').upsert(row,{onConflict:'id'});if(error)throw error;
+    // Persist the sale price with the same canonical product UUID immediately after the product upsert.
+    // This prevents the product form from reaching set_product_price with a stale/local product id.
+    const {error:priceError}=await supabase.rpc('set_product_price',{p_company_id:companyId,p_product_id:product.id,p_currency_code:defaultCurrencyCode,p_price:Number(product.price)||0});
+    if(priceError)throw priceError;
     if(product.barcode){
       const barcode = String(product.barcode).trim();
       if (barcode) {
