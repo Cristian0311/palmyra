@@ -141,6 +141,7 @@ export function initKeyboardViewport() {
     document.documentElement.style.setProperty('--keyboard-viewport-height', `${Math.max(1, Math.round(metrics.height))}px`);
     document.documentElement.style.setProperty('--keyboard-viewport-top', `${Math.max(0, Math.round(metrics.top))}px`);
     document.documentElement.style.setProperty('--pos-visual-height', `${Math.max(1, Math.round(metrics.height))}px`);
+    document.documentElement.style.setProperty('--pos-viewport-height', `${Math.max(1, Math.round(metrics.height))}px`);
     document.documentElement.style.setProperty('--pos-viewport-top', `${Math.max(0, Math.round(metrics.top))}px`);
 
     const control = document.activeElement;
@@ -272,6 +273,7 @@ export function initKeyboardViewport() {
     document.documentElement.style.removeProperty('--keyboard-viewport-height');
     document.documentElement.style.removeProperty('--keyboard-viewport-top');
     document.documentElement.style.removeProperty('--pos-visual-height');
+    document.documentElement.style.removeProperty('--pos-viewport-height');
     document.documentElement.style.removeProperty('--pos-viewport-top');
     restoreScrollContainers();
   };
