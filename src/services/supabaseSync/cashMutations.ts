@@ -113,50 +113,86 @@ export async function pushCashSessionToSupabase(session: CashRegisterSession): P
 
     if (result.error) throw result.error;
 
-    await supabase
-      .from('cash_movements')
-      .delete()
-      .eq('cash_session_id', session.id)
-      .eq('company_id', companyId);
-
-    if (session.movements?.length) {
-      const rows = session.movements.map((movement: any) => ({
-        id: movement.id,
-        company_id: companyId,
-        cash_session_id: session.id,
-        movement_type: (() => {
-          const raw = String(movement.type || '').toLowerCase();
-          const aliases: Record<string, string> = {
-            expense: 'cash_out',
-            withdrawal: 'cash_out',
-            ingreso: 'cash_in',
-            income: 'cash_in',
-            deposit: 'cash_in',
-            entrada: 'cash_in',
-            salida: 'cash_out',
-            adjustment: 'closing_adjustment',
-          };
-          return aliases[raw] || (['sale', 'refund', 'cash_in', 'cash_out', 'opening', 'closing_adjustment'].includes(raw)
-            ? raw
-            : 'cash_out');
-        })(),
-        amount: Number(movement.amount) || 0,
-        currency_code: movement.currencyCode || defaultCurrency,
-        reference_id: null,
-        note: movement.description || '',
-        created_by: authUserId,
-      }));
-
-      const { error: movementError } = await supabase
-        .from('cash_movements')
-        .insert(rows);
-
-      if (movementError) throw movementError;
-    }
+    // Los movimientos de caja se escriben por una RPC idempotente independiente.
+    // No borramos/reinsertamos toda la sesión: hacerlo provocaba carreras entre
+    // ingresos/egresos y turnos offline consecutivos.
 
     return true;
   } catch (error) {
     await queue('cash_session', session, session.id);
+    return false;
+  }
+}
+
+export async function pushCashMovementToSupabase(params:{
+  id:string; sessionId:string; type:'income'|'expense'; amount:number;
+  currencyCode:string; description?:string;
+}):Promise<boolean>{
+  try{
+    const supabase=await onlineClient();
+    const {companyId}=await getActiveTenant();
+    const {data,error}=await supabase.rpc('palmyra_record_cash_movement',{
+      p_movement_id:params.id,
+      p_company_id:companyId,
+      p_cash_session_id:params.sessionId,
+      p_movement_type:params.type,
+      p_amount:Number(params.amount)||0,
+      p_currency_code:params.currencyCode,
+      p_note:params.description||''
+    });
+    if(error) throw error;
+    if(data?.success===false) throw new Error(data?.message||'No se pudo registrar el movimiento de caja.');
+    return true;
+  }catch(error){
+    await queue('cash_movement',params,params.id);
+    return false;
+  }
+}
+
+export async function deleteCashMovementFromSupabase(params:{id:string;sessionId:string}):Promise<boolean>{
+  try{
+    const supabase=await onlineClient();
+    const {companyId}=await getActiveTenant();
+    const {data,error}=await supabase.rpc('palmyra_delete_cash_movement',{
+      p_movement_id:params.id,
+      p_company_id:companyId,
+      p_cash_session_id:params.sessionId
+    });
+    if(error) throw error;
+    return data?.success!==false;
+  }catch(error){
+    await queue('cash_movement_delete',params,params.id);
+    return false;
+  }
+}
+
+export async function pushCashSessionMetadataToSupabase(session:CashRegisterSession):Promise<boolean>{
+  try{
+    const supabase=await onlineClient();
+    const {companyId}=await getActiveTenant();
+    const metadata={
+      closingBalances:session.closingBalances||[],
+      expectedBalance:Number.isFinite(Number(session.expectedBalance))?Number(session.expectedBalance):null,
+      isForcedClose:Boolean(session.isForcedClose),
+      forcedCloseReason:session.forcedCloseReason||null,
+      discrepancyNote:session.discrepancyNote||null,
+      hasDiscrepancy:Boolean(session.hasDiscrepancy),
+      discrepancyDetails:session.discrepancyDetails||[],
+      discrepancyDeductionApplied:Number(session.discrepancyDeductionApplied)||0,
+      deductedFromSalary:Boolean(session.deductedFromSalary),
+      aiDiagnostic:session.aiDiagnostic||null,
+      matchingProductsAnalysis:session.matchingProductsAnalysis||[],
+      auditStatus:session.auditStatus||'pending_review',
+      auditNotes:session.auditNotes||'',
+      workerName:session.workerName||null,
+      workingEmployeeIds:session.workingEmployeeIds||[],
+    };
+    const {data,error}=await supabase.rpc('palmyra_update_cash_session_metadata',{
+      p_session_id:session.id,p_company_id:companyId,p_metadata:metadata
+    });
+    if(error) throw error;
+    return data?.success!==false;
+  }catch(error){
     return false;
   }
 }
