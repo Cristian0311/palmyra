@@ -895,22 +895,15 @@ export default function POS() {
     setPosError,
   });
 
-  const openCheckout = (method: 'cash' | 'transfer') => {
+  const openCheckout = () => {
     if (!currentSession) {
       setPosError("No hay un turno de caja abierto en esta sucursal. Por favor, abre un turno para comenzar a cobrar.");
       setShowOpenShiftModal(true);
       return;
     }
     const newId = crypto.randomUUID();
-    const transferBank = bankCards.find(c => c.currency === 'CUP') || bankCards[0];
     const defaultBank = bankCards.find(c => c.currency === baseCurrency.code) || bankCards[0];
-    setPaymentLines([{
-      id: newId,
-      code: method === 'transfer' ? 'CUP' : baseCurrency.code,
-      amount: method === 'transfer' ? Math.round(totalBase) : totalBase,
-      method,
-      bankCardId: method === 'transfer' ? transferBank?.id : defaultBank?.id
-    }]);
+    setPaymentLines([{ id: newId, code: baseCurrency.code, amount: totalBase, method: 'cash', bankCardId: defaultBank?.id }]);
     setActivePaymentLineId(newId);
     setShowCheckoutModal(true);
   };
@@ -3249,7 +3242,7 @@ export default function POS() {
             <div className="grid grid-cols-2 gap-1.5">
               <button
                 disabled={cart.length === 0}
-                onClick={() => openCheckout('cash')}
+                onClick={() => openCheckout()}
                 className="py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-[9px] uppercase tracking-wider transition-all shadow-md shadow-indigo-600/20 disabled:opacity-20 active:scale-98 flex items-center justify-center gap-1.5"
               >
                 <Banknote className="w-4 h-4 text-emerald-300" />
@@ -3257,7 +3250,7 @@ export default function POS() {
               </button>
               <button
                 disabled={cart.length === 0}
-                onClick={() => openCheckout('transfer')}
+                onClick={() => openCheckout()}
                 className="py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-[9px] uppercase tracking-wider transition-all shadow-md shadow-blue-600/20 disabled:opacity-20 active:scale-98 flex items-center justify-center gap-1.5"
               >
                 <CreditCard className="w-4 h-4" />
@@ -3544,7 +3537,7 @@ export default function POS() {
               <button
                 type="button"
                 disabled={cart.length === 0}
-                onClick={() => openCheckout('cash')}
+                onClick={() => openCheckout()}
                 className="h-8 px-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all shadow-lg shadow-emerald-950 active:scale-95 flex items-center gap-1 disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none"
               >
                 <Banknote className="w-3.5 h-3.5" />
@@ -3553,7 +3546,7 @@ export default function POS() {
               <button
                 type="button"
                 disabled={cart.length === 0}
-                onClick={() => openCheckout('transfer')}
+                onClick={() => openCheckout()}
                 className="h-8 px-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all shadow-lg shadow-blue-950 active:scale-95 flex items-center gap-1 disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none"
               >
                 <CreditCard className="w-3.5 h-3.5" />
