@@ -3239,24 +3239,14 @@ export default function POS() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                disabled={cart.length === 0}
-                onClick={() => openCheckout()}
-                className="py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-[9px] uppercase tracking-wider transition-all shadow-md shadow-indigo-600/20 disabled:opacity-20 active:scale-98 flex items-center justify-center gap-1.5"
-              >
-                <Banknote className="w-4 h-4 text-emerald-300" />
-                Efectivo
-              </button>
-              <button
-                disabled={cart.length === 0}
-                onClick={() => openCheckout()}
-                className="py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-[9px] uppercase tracking-wider transition-all shadow-md shadow-blue-600/20 disabled:opacity-20 active:scale-98 flex items-center justify-center gap-1.5"
-              >
-                <CreditCard className="w-4 h-4" />
-                Transferencia
-              </button>
-            </div>
+            <button
+              disabled={cart.length === 0}
+              onClick={() => openCheckout()}
+              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-[10px] uppercase tracking-wider transition-all shadow-md shadow-indigo-600/20 disabled:opacity-20 active:scale-98 flex items-center justify-center gap-1.5"
+            >
+              <Receipt className="w-4 h-4" />
+              Cobrar
+            </button>
           </div>
         </aside>
       )}
@@ -3538,19 +3528,10 @@ export default function POS() {
                 type="button"
                 disabled={cart.length === 0}
                 onClick={() => openCheckout()}
-                className="h-8 px-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all shadow-lg shadow-emerald-950 active:scale-95 flex items-center gap-1 disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none"
+                className="h-8 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all shadow-lg shadow-indigo-950 active:scale-95 flex items-center gap-1 disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none"
               >
-                <Banknote className="w-3.5 h-3.5" />
-                <span>Efectivo</span>
-              </button>
-              <button
-                type="button"
-                disabled={cart.length === 0}
-                onClick={() => openCheckout()}
-                className="h-8 px-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all shadow-lg shadow-blue-950 active:scale-95 flex items-center gap-1 disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none"
-              >
-                <CreditCard className="w-3.5 h-3.5" />
-                <span>Transferencia</span>
+                <Receipt className="w-3.5 h-3.5" />
+                <span>Cobrar</span>
               </button>
               <button
                 type="button"
