@@ -237,7 +237,8 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
             'serial_not_available': 'El número de serie seleccionado ya no está disponible.',
             'total_mismatch': 'El total de la venta no coincide con sus artículos.',
             'payment_total_mismatch': 'El total cobrado no coincide con el total de la venta.',
-            'cash_session_required': 'El pago en efectivo necesita un turno de caja abierto.'
+            'cash_session_required': 'El pago en efectivo necesita un turno de caja abierto.',
+            'plan_feature_required': 'El plan actual no tiene habilitada esta función del POS.'
           }[String(res.error || '')] || String(res.error || 'El servidor rechazó la venta.');
           get().addNotification('Venta rechazada', 'error', friendly);
           return false;
