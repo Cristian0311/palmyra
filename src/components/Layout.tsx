@@ -333,20 +333,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         className={cn(
           "bg-secondary border-r border-base transition-all duration-300 ease-in-out flex flex-col h-full shrink-0 shadow-sm",
           // Mobile: off-canvas drawer with fixed overlay
-          "fixed inset-y-0 left-0 z-50 w-[88vw] max-w-[320px] overflow-hidden",
+          "fixed inset-y-0 left-0 z-50 w-[78vw] max-w-[260px] overflow-hidden",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           // Desktop (lg+): relative in-flow column, NEVER covers or overlaps the right content
           "lg:relative lg:inset-auto lg:z-auto lg:translate-x-0",
-          sidebarCollapsed ? "lg:w-16" : "lg:w-[15.5rem]"
+          sidebarCollapsed ? "lg:w-14" : "lg:w-[13rem]"
         )}
       >
         {/* Header with Collapse toggle */}
         <div className={cn("p-2.5 shrink-0 flex items-center justify-between gap-2 border-b border-subtle", sidebarCollapsed && "lg:p-3 lg:justify-center")}>
-          <div className={cn("flex items-center gap-1 min-w-0 flex-1 pr-1", sidebarCollapsed && "lg:hidden")}>
+          <div className={cn("flex items-center gap-1 min-w-0 flex-1 pr-0", sidebarCollapsed && "lg:hidden")}>
             <img
               src="/palmyra-logo-exact.svg"
               alt="PALMYRA"
-              className="w-[124px] h-[31px] max-w-[calc(100%-2rem)] object-contain object-left"
+              className="w-[104px] h-[28px] max-w-[calc(100%-2rem)] object-contain object-left"
             />
             <span className="shrink-0 rounded-full bg-subtle px-1.5 py-1 text-[6px] font-black text-primary tracking-tight leading-none">{APP_VERSION}</span>
           </div>
@@ -397,14 +397,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   <div
                     className={cn(
                     "flex items-center rounded-xl transition-all duration-150 group",
-                    sidebarCollapsed ? "justify-center p-2.5 my-1" : "space-x-2 px-2 py-1.5",
+                    sidebarCollapsed ? "justify-center p-2 my-1" : "space-x-1.5 px-1.5 py-1.5",
                     isActive
                       ? "bg-rose-600 text-white shadow-md shadow-rose-600/20"
                       : "text-muted hover:bg-subtle hover:text-primary"
                   )}>
-                    <Icon className={cn("w-4 h-4 shrink-0 transition-colors", isActive ? "text-white" : "text-muted group-hover:text-rose-600")} />
+                    <Icon className={cn("w-3.5 h-3.5 shrink-0 transition-colors", isActive ? "text-white" : "text-muted group-hover:text-rose-600")} />
                     {!sidebarCollapsed && (
-                      <span className="min-w-0 flex-1 font-black text-[8px] uppercase tracking-tight leading-tight whitespace-normal break-words">{item.name}</span>
+                      <span className="min-w-0 flex-1 font-black text-[8px] uppercase tracking-[-0.01em] leading-[1.15] whitespace-normal break-words">{item.name}</span>
                     )}
                   </div>
                 )}
@@ -413,7 +413,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           })}
         </nav>
 
-        <div className={cn("shrink-0 min-w-0 overflow-hidden p-2.5 bg-secondary border-t border-subtle", sidebarCollapsed && "lg:p-2 lg:items-center")}>
+        <div className={cn("shrink-0 min-w-0 overflow-hidden p-2 bg-secondary border-t border-subtle", sidebarCollapsed && "lg:p-2 lg:items-center")}>
           <div className={cn("mb-2 space-y-1.5", sidebarCollapsed && "lg:hidden")}>
             <button
               type="button"
