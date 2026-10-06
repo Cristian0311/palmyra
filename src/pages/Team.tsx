@@ -57,6 +57,7 @@ export default function Team() {
   });
 
   const canManageRoles = currentUser?.permissions?.includes("roles.manage") || currentUser?.role === "admin";
+  const canUseCustomRoles = context?.subscription?.planCode !== "starter";
   const canManageEmployees = currentUser?.permissions?.includes("employees.manage") || currentUser?.role === "admin";
 
   const [form, setForm] = useState({
@@ -119,6 +120,10 @@ export default function Team() {
   };
 
   const openRoleCreate = () => {
+    if (!canUseCustomRoles) {
+      setError("Los roles personalizados están disponibles desde el plan Caravana.");
+      return;
+    }
     setEditingRole(null);
     setRoleForm({ key: "", name: "", description: "", permissionKeys: [] });
     setError("");
@@ -127,7 +132,7 @@ export default function Team() {
   };
 
   const openRoleEdit = (role: TeamRole) => {
-    if (role.is_system) return;
+    if (role.is_system || !canUseCustomRoles) return;
     setEditingRole(role);
     setRoleForm({
       key: role.key,
@@ -153,6 +158,7 @@ export default function Team() {
     e.preventDefault();
     if (!snapshot?.companyId) return;
     if (!canManageRoles) return setError("No tienes permiso para administrar roles.");
+    if (!canUseCustomRoles) return setError("Los roles personalizados están disponibles desde el plan Caravana.");
     if (roleForm.name.trim().length < 2) return setError("Escribe el nombre del rol.");
     if (roleForm.key.trim().length < 2) return setError("Escribe una clave para el rol.");
     setBusy(true);
@@ -413,8 +419,8 @@ export default function Team() {
               </div>
               <p className="text-[10px] text-muted mt-1">Crea perfiles de trabajo y decide qué módulos puede usar cada uno.</p>
             </div>
-            <button onClick={openRoleCreate} className="w-full sm:w-auto h-10 px-4 rounded-xl bg-slate-950 text-white font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-2">
-              <Plus className="w-4 h-4" /> Crear rol
+            <button onClick={openRoleCreate} disabled={!canUseCustomRoles} className="w-full sm:w-auto h-10 px-4 rounded-xl bg-slate-950 text-white font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-2">
+              <Plus className="w-4 h-4" /> {canUseCustomRoles ? "Crear rol" : "Disponible desde Caravana"}
             </button>
           </div>
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-2 mt-4">
