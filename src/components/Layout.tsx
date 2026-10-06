@@ -25,12 +25,10 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
-  LifeBuoy,
   Headphones
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
 import { cn } from "../lib/utils";
-import PalmiGuide from "./help/PalmiGuide";
 import { loadSaaSContext } from "../services/saas";
 import { useStore } from "../store/useStore";
 import { getOfflineQueueCount } from "../services/offlineQueue";
@@ -339,7 +337,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           // Desktop (lg+): relative in-flow column, NEVER covers or overlaps the right content
           "lg:relative lg:inset-auto lg:z-auto lg:translate-x-0",
-          sidebarCollapsed ? "lg:w-16" : "lg:w-72"
+          sidebarCollapsed ? "lg:w-16" : "lg:w-80"
         )}
       >
         {/* Header with Collapse toggle */}
@@ -348,9 +346,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <img
               src="/palmyra-logo-exact.svg"
               alt="PALMYRA"
-              className="w-[176px] h-[46px] object-contain object-left"
+              className="w-[188px] h-[46px] object-contain object-left"
             />
-            <span className="text-[9px] font-black text-muted tracking-wider shrink-0">{APP_VERSION}</span>
+            <span className="rounded-full bg-subtle px-2 py-1 text-[8px] font-black text-primary tracking-wider shrink-0">{APP_VERSION}</span>
           </div>
 
           <div className={cn("hidden items-center justify-center", sidebarCollapsed && "lg:flex")}>
@@ -397,8 +395,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               >
                 {({ isActive }) => (
                   <div
-                    data-palmi-nav={item.href}
-                    data-palmi-guide-nav={item.href === "/" ? "dashboard" : item.href.replace(/^\//, "")}
                     className={cn(
                     "flex items-center rounded-xl transition-all duration-150 group",
                     sidebarCollapsed ? "justify-center p-2.5 my-1" : "space-x-3 px-3.5 py-2.5",
@@ -431,7 +427,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20 hover:bg-rose-500/20 cursor-pointer"
                   : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
               )}
-              data-tour="offline-status"
               title={pendingOfflineCount > 0 ? "Clic para sincronizar datos pendientes con Supabase" : undefined}
             >
               <div className="flex items-center gap-1.5 truncate">
@@ -509,16 +504,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
           <button
             type="button"
-            onClick={() => window.dispatchEvent(new Event("palmyra:open-guide"))}
-            className={cn(
-              "flex items-center text-muted hover:text-violet-700 hover:bg-violet-50 dark:hover:bg-violet-950/40 rounded-xl transition-all font-black uppercase",
-              sidebarCollapsed ? "justify-center p-2 w-full" : "space-x-2 px-3 py-2 w-full text-[10px] tracking-wider"
-            )}
-            title="Abrir Numa · guía PALMYRA"
-          >
-            <LifeBuoy className="w-3.5 h-3.5 shrink-0" />
-            {!sidebarCollapsed && <span>Numa · Guía</span>}
-          </button>
 
           <button
             onClick={logout}
@@ -560,7 +545,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           {children}
         </div>
         </main>
-      <PalmiGuide />
     </div>
   );
 }
