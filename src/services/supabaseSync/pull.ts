@@ -16,7 +16,7 @@ async function loadCatalog() {
   const tenant = await getActiveTenant();
   const supabase = getSupabase()!;
 
-  const [warehousesRes, categoriesRes, productsRes, employeesRes, accessRes, companyRes, variantsRes, barcodeRes, kitRes, currenciesRes] = await Promise.all([
+  const [warehousesRes, categoriesRes, productsRes, employeesRes, accessRes, companyRes, variantsRes, barcodeRes, kitRes, currenciesRes, pricesRes] = await Promise.all([
     supabase.from('warehouses').select('*').eq('company_id', tenant.companyId).eq('active', true).order('created_at', { ascending: true }),
     supabase.from('categories').select('*').eq('company_id', tenant.companyId).eq('active', true).order('created_at', { ascending: true }),
     supabase.from('products').select('*').eq('company_id', tenant.companyId).neq('status', 'archived').order('created_at', { ascending: true }),
@@ -27,9 +27,10 @@ async function loadCatalog() {
     supabase.from('product_barcodes').select('*').eq('company_id', tenant.companyId).eq('active', true),
     supabase.from('product_kit_components').select('*').eq('company_id', tenant.companyId),
     supabase.from('currencies').select('*').eq('active', true).order('code'),
+    supabase.from('product_prices').select('product_id,currency_code,price,valid_from,valid_to').eq('company_id', tenant.companyId).is('valid_to', null).order('valid_from', { ascending: false }),
   ]);
 
-  const firstError = [warehousesRes,categoriesRes,productsRes,employeesRes,accessRes,companyRes,variantsRes,barcodeRes,kitRes,currenciesRes].find(r => r.error)?.error;
+  const firstError = [warehousesRes,categoriesRes,productsRes,employeesRes,accessRes,companyRes,variantsRes,barcodeRes,kitRes,currenciesRes,pricesRes].find(r => r.error)?.error;
   if (firstError) throw firstError;
 
   const variantsByProduct = new Map<string, any[]>();
@@ -45,9 +46,20 @@ async function loadCatalog() {
     kitsByProduct.set(k.kit_product_id, arr);
   }
   const productById = new Map<string, Product>();
+  const defaultCurrency = companyRes.data?.default_currency_code || 'USD';
+  const priceByProduct = new Map<string, number>();
+  for (const row of pricesRes.data || []) {
+    if (row.currency_code !== defaultCurrency || priceByProduct.has(row.product_id)) continue;
+    priceByProduct.set(row.product_id, Number(row.price) || 0);
+  }
   const products = (productsRes.data || []).map((p:any) => {
     const firstBarcode = (barcodeRes.data || []).find((b:any) => b.product_id === p.id)?.barcode || '';
     const item = mapProduct(p, firstBarcode, kitsByProduct.get(p.id) || []);
+    const canonicalPrice = priceByProduct.get(p.id);
+    if (canonicalPrice !== undefined) {
+      item.price = canonicalPrice;
+      item.margin = canonicalPrice - Number(item.costPrice || 0);
+    }
     productById.set(item.id, item);
     return item;
   });
