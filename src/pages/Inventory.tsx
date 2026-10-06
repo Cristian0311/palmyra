@@ -1287,6 +1287,7 @@ export default function Inventory() {
                             </div>
                           )}
                         </div>
+                      </div>
 
                       <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100 space-y-6">
                         <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
