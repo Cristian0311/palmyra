@@ -1518,7 +1518,7 @@ export default function POS() {
       {!currentSession && (
         <div
           className={cn("pos-keyboard-overlay pos-modal-layer fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center px-3 py-5 sm:px-4 sm:py-6", "overflow-y-auto overscroll-contain")}
-          style={{ paddingBottom: 'calc(var(--keyboard-inset, 0px) + 28px)' }}>
+          style={{ paddingBottom: '28px' }}>
           {showOpenSessionsModal && !joiningSessionId && (
             <div className="fixed inset-0 z-[65] bg-slate-950/55 backdrop-blur-sm flex items-center justify-center p-3">
               <div className="w-full max-w-[min(94vw,31rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
@@ -1560,7 +1560,10 @@ export default function POS() {
           )}
           {joiningSessionId ? (
             /* Modal Formulario de Ingreso a Turno Abierto Existente */
-            <div className="palmyra-mobile-modal keyboard-modal-surface bg-white dark:bg-slate-900 p-3 sm:p-3.5 rounded-2xl shadow-2xl text-center max-w-[19rem] w-full border border-white/20">
+            <div
+              className="palmyra-mobile-modal keyboard-modal-surface bg-white dark:bg-slate-900 p-3 sm:p-3.5 rounded-2xl shadow-2xl text-center max-w-[19rem] w-full border border-white/20"
+              style={{ transform: 'translateY(clamp(0px, calc(var(--keyboard-inset, 0px) * 0.12), 24px))' }}
+            >
               <div className="w-8 h-8 bg-amber-50 dark:bg-amber-950/40 rounded-xl flex items-center justify-center mx-auto mb-1.5">
                 <Lock className="w-3.5 h-3.5 text-amber-600" />
               </div>
