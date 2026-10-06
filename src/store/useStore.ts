@@ -436,7 +436,7 @@ transfers: [],
   partialize: (state) => ({
     users: state.users, currentUser: state.currentUser,
     currencies: state.currencies, storeConfig: state.storeConfig,
-    branches: state.branches, currentBranchId: state.currentBranchId, activeSessionId: state.activeSessionId, categories: state.categories,
+    branches: state.branches, currentBranchId: state.currentBranchId, categories: state.categories,
     products: state.products, inventory: state.inventory, cart: state.cart, currentCustomerId: state.currentCustomerId,
     transactions: state.transactions, returns: state.returns, warranties: state.warranties,
     cashSessions: state.cashSessions, transfers: state.transfers, suppliers: state.suppliers,
