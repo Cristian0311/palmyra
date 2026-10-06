@@ -20,6 +20,7 @@ import { POSAddCustomerModal } from "../components/pos/POSAddCustomerModal";
 import { POSCancelShiftModal } from "../components/pos/POSCancelShiftModal";
 import { POSClosurePrintArea } from "../components/pos/POSClosurePrintArea";
 import { getAuthorizedWarehouseIds, getWarehouseId } from "../modules/warehouse/warehouseScope";
+import { pullOpenCashSessionsFromSupabase } from "../services/supabaseSync";
 import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
 import { aggregateTransferPayments, buildTransactionTicketId, finalizeCheckoutPayments } from '../modules/pos/utils/checkoutUtils';
 const CheckoutModal = lazy(() => import("../components/pos/CheckoutModal"));
@@ -208,6 +209,23 @@ export default function POS() {
         await useStore.getState().refreshBranchOperationalData(
           currentSession?.id ? { sessionId: currentSession.id, transactionLimit: 250, transferLimit: 100 } : { transactionLimit: 250, transferLimit: 100 }
         );
+
+        // Recuperación específica de cajas: no depende del almacén seleccionado.
+        // Se ejecuta solo cuando este terminal todavía no conoce ninguna caja
+        // abierta, evitando una descarga pesada en cada entrada al POS.
+        const localHasOpenCash = useStore.getState().cashSessions.some(
+          s => s.status === 'open' && !s.deletedAt
+        );
+        if (!localHasOpenCash) {
+          const remoteCash = await pullOpenCashSessionsFromSupabase();
+          if (remoteCash.success && remoteCash.cashSessions.length) {
+            useStore.setState(state => {
+              const map = new Map((state.cashSessions || []).map(s => [s.id, s]));
+              for (const session of remoteCash.cashSessions) map.set(session.id, session);
+              return { cashSessions: Array.from(map.values()) };
+            });
+          }
+        }
       } catch (error) {
         console.warn('[POS] No se pudo refrescar el estado operativo al entrar:', error);
       }
