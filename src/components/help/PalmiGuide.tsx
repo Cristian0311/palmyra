@@ -102,6 +102,7 @@ export default function PalmiGuide() {
     left: SAFE,
     width: getPanelWidth()
   });
+  const [posGateOpen, setPosGateOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement | null>(null);
 
   const steps = useMemo(
@@ -122,6 +123,22 @@ export default function PalmiGuide() {
     media.addEventListener?.("change", onChange);
     return () => media.removeEventListener?.("change", onChange);
   }, []);
+
+  useEffect(() => {
+    if (!open || step?.id !== "pos") {
+      setPosGateOpen(false);
+      return;
+    }
+
+    const refresh = () => {
+      setPosGateOpen(Boolean(document.querySelector('[data-palmi-pos-gate="open"]')));
+    };
+
+    refresh();
+    const observer = new MutationObserver(refresh);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => observer.disconnect();
+  }, [open, step?.id]);
 
   const setSafePanelPosition = useCallback(
     (rect: DOMRect | null) => {
@@ -221,6 +238,11 @@ export default function PalmiGuide() {
       return;
     }
 
+    if (!isActionStep && step.id === "pos" && posGateOpen) {
+      setTargetRect(null);
+      return;
+    }
+
     if (isActionStep && isCompact) {
       window.dispatchEvent(new Event("palmyra:open-sidebar"));
     }
@@ -273,7 +295,7 @@ export default function PalmiGuide() {
     return () => {
       cancelled = true;
     };
-  }, [open, step, isCompact, isActionStep, setSafePanelPosition]);
+  }, [open, step, isCompact, isActionStep, posGateOpen, setSafePanelPosition]);
 
   useEffect(() => locate(), [locate, location.pathname, location.search]);
 
@@ -461,34 +483,50 @@ export default function PalmiGuide() {
           : "thinking";
 
   const baseActionWidth = Math.min(
-    isCompact ? 220 : 252,
-    Math.max(isCompact ? 190 : 198, window.innerWidth - SAFE * 2)
+    isCompact ? 152 : 252,
+    Math.max(isCompact ? 118 : 198, window.innerWidth - SAFE * 2)
   );
-  const actionHintHeight = isCompact ? 96 : 104;
+  const actionHintHeight = isCompact ? 124 : 104;
   const sidebarRect = isActionStep ? findSidebarRect() : null;
   const sidebarAvailableWidth = sidebarRect
-    ? window.innerWidth - sidebarRect.right - SAFE - SIDEBAR_GAP
+    ? Math.max(0, window.innerWidth - sidebarRect.right - SAFE - SIDEBAR_GAP)
     : 0;
-  const sideActionWidth =
-    sidebarAvailableWidth >= 160
-      ? Math.min(baseActionWidth, sidebarAvailableWidth)
-      : 0;
+  const sideActionWidth = sidebarRect && sidebarAvailableWidth > 0
+    ? Math.min(baseActionWidth, sidebarAvailableWidth)
+    : 0;
+  const compactSidebarOnly = Boolean(isCompact && sidebarRect);
 
   const actionCandidates = targetRect
     ? [
-        ...(sidebarRect && sideActionWidth >= 160
+        ...(sidebarRect && sideActionWidth >= 108
           ? [{
               width: sideActionWidth,
               left: sidebarRect.right + SIDEBAR_GAP,
-              top: targetRect.top,
+              top: targetRect.top + targetRect.height / 2 - actionHintHeight / 2,
               side: "right" as const
             }]
           : []),
-        { width: baseActionWidth, left: targetRect.left, top: targetRect.bottom + GAP, side: "below" as const },
-        { width: baseActionWidth, left: targetRect.left, top: targetRect.top - actionHintHeight - GAP, side: "above" as const },
-        { width: baseActionWidth, left: window.innerWidth - baseActionWidth - SAFE, top: TOP_SAFE, side: "top" as const }
+        ...(!compactSidebarOnly
+          ? [
+              { width: baseActionWidth, left: targetRect.left, top: targetRect.bottom + GAP, side: "below" as const },
+              { width: baseActionWidth, left: targetRect.left, top: targetRect.top - actionHintHeight - GAP, side: "above" as const }
+            ]
+          : []),
+        {
+          width: compactSidebarOnly && sidebarAvailableWidth > 0 ? Math.min(baseActionWidth, sidebarAvailableWidth) : baseActionWidth,
+          left: compactSidebarOnly && sidebarRect
+            ? sidebarRect.right + SIDEBAR_GAP
+            : window.innerWidth - baseActionWidth - SAFE,
+          top: TOP_SAFE,
+          side: compactSidebarOnly && sidebarRect ? "right" as const : "top" as const
+        }
       ]
-    : [{ width: baseActionWidth, left: SAFE, top: TOP_SAFE, side: "top" as const }];
+    : [{
+        width: baseActionWidth,
+        left: SAFE,
+        top: TOP_SAFE,
+        side: "top" as const
+      }];
 
   const actionPlacement = actionCandidates
     .map(candidate => ({
@@ -576,7 +614,18 @@ export default function PalmiGuide() {
         </div>
       ) : null}
 
-      {open && !isActionStep ? (
+      {open && !isActionStep && step?.id === "pos" && posGateOpen ? (
+        <div
+          className="palmi-guide-pos-gate-note"
+          role="status"
+          aria-live="polite"
+        >
+          <strong>POS abierto</strong>
+          <span>Selecciona el empleado y completa la apertura de caja. NUMA no bloqueará ese selector.</span>
+        </div>
+      ) : null}
+
+      {open && !isActionStep && !posGateOpen ? (
         <div
           ref={panelRef}
           className={`palmi-guide-panel ${darkMode ? "dark " : ""}${isLast ? "is-finish" : ""}`}
