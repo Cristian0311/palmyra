@@ -1,52 +1,111 @@
 import type { User } from "../../types";
 
-export type NumaTourStep = {
+export interface NumaGuideStep {
   id: string;
-  path?: string;
-  navSelector?: string;
-  selector?: string;
   eyebrow: string;
   title: string;
-  actionTitle?: string;
-  actionMessage?: string;
   message: string;
   tip?: string;
   permission?: string;
-  requiresAction?: boolean;
   mobileOnly?: boolean;
-};
-
-const nav = (path: string) => `[data-palmi-nav="${path}"]`;
-
-export const NUMA_TOUR_STEPS: NumaTourStep[] = [
-  { id:"welcome", eyebrow:"Guía interactiva PALMYRA", title:"Soy Numa", actionTitle:"Empezamos juntos", actionMessage:"Yo te indico el camino y tú haces cada paso dentro de PALMYRA. No voy a abrir las secciones por ti: quiero que aprendas dónde está cada cosa.", message:"En cada área te explicaré qué es, qué debes mirar y cómo encaja con el resto del negocio. Tú marcas el ritmo.", tip:"Numa no modifica datos ni ejecuta operaciones por ti." },
-  { id:"open-menu", navSelector:'[data-tour="sidebar-toggle"]', eyebrow:"01 · Navegación", title:"Menú principal", actionTitle:"Abre el menú", actionMessage:"En móvil y tablet, toca el botón ☰ del encabezado para abrir el menú lateral. Cuando lo abras, te señalaré el siguiente paso.", message:"Este menú es el mapa de PALMYRA. Desde aquí tú eliges a qué área quieres ir.", tip:"En PC el menú ya está visible, por eso este paso se salta automáticamente.", requiresAction:true, mobileOnly:true },
-  { id:"dashboard", path:"/", navSelector:nav("/"), selector:'[data-palmi-content="dashboard"]', eyebrow:"02 · Tu punto de partida", title:"Dashboard", actionTitle:"Ahora abre Dashboard", actionMessage:"Busca «Dashboard» en el menú lateral y presiónalo. Esperaré aquí hasta que entres.", message:"Perfecto. Este es tu centro de mando: ventas, tickets, stock y clientes aparecen resumidos para que entiendas el estado del negocio antes de operar.", tip:"Mira tendencias y alertas; no necesitas memorizar todas las cifras.", permission:"reports.view", requiresAction:true },
-  { id:"pos", path:"/pos", navSelector:nav("/pos"), selector:'[data-palmi-content="pos"]', eyebrow:"03 · Operación diaria", title:"Punto de Venta", actionTitle:"Abre Punto de Venta", actionMessage:"Busca «Punto de Venta» y ábrelo. No cobres nada todavía; solo entra para reconocer el espacio.", message:"Aquí ocurre la operación de venta: catálogo, carrito, cobro, vendedor, caja, impresión y continuidad offline. Primero aprende el espacio.", tip:"Antes de vender, confirma el almacén y el turno de caja.", permission:"pos.access", requiresAction:true },
-  { id:"transfers", path:"/transfers", navSelector:nav("/transfers"), selector:'[data-palmi-content="transfers"]', eyebrow:"04 · Logística", title:"Transferencias", actionTitle:"Abre Transferencias", actionMessage:"Busca «Transferencias» en el menú y ábrelo. Vamos a reconocer la sección antes de hacer cualquier traslado.", message:"Aquí organizas el movimiento de mercancía entre almacenes. Revisa origen, destino e historial sin mezclar este proceso con la venta.", tip:"Numa nunca ejecutará un traslado durante el recorrido.", permission:"inventory.manage", requiresAction:true },
-  { id:"customers", path:"/customers", navSelector:nav("/customers"), selector:'[data-palmi-content="customers"]', eyebrow:"05 · Relación con clientes", title:"Clientes", actionTitle:"Abre Clientes", actionMessage:"Busca «Clientes (POS)» y presiónalo. Al entrar, fíjate en el buscador y el directorio.", message:"Aquí mantienes el directorio de clientes y su historial. Esta información complementa la venta y ayuda a reconocer a quién estás atendiendo.", tip:"El buscador está pensado para trabajar rápido desde tablet o teléfono.", permission:"customers.manage", requiresAction:true },
-  { id:"inventory", path:"/inventory", navSelector:nav("/inventory"), selector:'[data-palmi-content="inventory"]', eyebrow:"06 · Control de stock", title:"Inventario", actionTitle:"Abre Inventario", actionMessage:"Busca «Inventario» en el menú y ábrelo. No edites productos todavía; primero reconoce las áreas de control.", message:"Aquí controlas productos, existencias, precios, categorías, etiquetas y movimientos. Es la fuente operativa de lo que tienes disponible.", tip:"Trabaja siempre con el almacén correcto antes de ajustar cantidades.", permission:"inventory.manage", requiresAction:true },
-  { id:"inventory-audit", path:"/inventory-audit", navSelector:nav("/inventory-audit"), selector:'[data-palmi-content="inventory-audit"]', eyebrow:"07 · Verificación", title:"Auditoría de Stock", actionTitle:"Abre Auditoría Stock", actionMessage:"Busca «Auditoría Stock» y ábrela. Aquí aprenderás dónde verificar diferencias físicas.", message:"Esta sección sirve para comparar lo registrado con lo que realmente existe. Es una capa de control para detectar diferencias.", tip:"Una auditoría bien hecha documenta diferencias; no las oculta.", permission:"inventory.manage", requiresAction:true },
-  { id:"suppliers", path:"/suppliers", navSelector:nav("/suppliers"), selector:'[data-palmi-content="suppliers"]', eyebrow:"08 · Abastecimiento", title:"Proveedores", actionTitle:"Abre Proveedores", actionMessage:"Busca «Proveedores» y presiónalo. Fíjate en el directorio y las órdenes de compra.", message:"Aquí organizas proveedores y abastecimiento. Comprar y vender son procesos distintos, pero quedan conectados por la información del negocio.", tip:"Mantén los datos del proveedor claros para conservar un historial útil.", permission:"suppliers.manage", requiresAction:true },
-  { id:"banks", path:"/banks", navSelector:nav("/banks"), selector:'[data-palmi-content="banks"]', eyebrow:"09 · Finanzas", title:"Cuentas Bancarias", actionTitle:"Abre Cuentas Bancarias", actionMessage:"Busca «Cuentas Bancarias» y ábrela. Vamos a ubicar las cuentas y movimientos.", message:"Aquí controlas cuentas, tarjetas y movimientos bancarios. La cuenta bancaria y la caja de efectivo son controles distintos.", tip:"Revisa siempre la cuenta correcta antes de registrar un movimiento.", permission:"settings.manage", requiresAction:true },
-  { id:"returns", path:"/returns", navSelector:nav("/returns"), selector:'[data-palmi-content="returns"]', eyebrow:"10 · Postventa", title:"Devoluciones", actionTitle:"Abre Devoluciones", actionMessage:"Busca «Devoluciones» y entra. Solo vamos a conocer el flujo; no crearemos ninguna devolución.", message:"Aquí gestionas operaciones de postventa y mantienes su trazabilidad vinculada al historial de ventas.", tip:"Una devolución correcta debe poder explicarse después: qué pasó, cuándo y sobre qué venta.", permission:"pos.access", requiresAction:true },
-  { id:"reports", path:"/reports", navSelector:nav("/reports"), selector:'[data-palmi-content="reports"]', eyebrow:"11 · Decisiones", title:"Reportes", actionTitle:"Abre Reportes", actionMessage:"Busca «Reportes» y presiónalo. Cuando cargue, fíjate en los bloques de resultados.", message:"Aquí conviertes la operación diaria en información para decidir: ventas, caja, inventario, trabajadores y resultados.", tip:"Los reportes cuentan lo que pasó; las secciones operativas cambian lo que ocurrirá.", permission:"reports.view", requiresAction:true },
-  { id:"team", path:"/team", navSelector:nav("/team"), selector:'[data-palmi-content="team"]', eyebrow:"12 · Personas", title:"Equipo", actionTitle:"Abre Equipo", actionMessage:"Busca «Equipo» y ábrelo. Esta es la única vista para crear y administrar trabajadores.", message:"Aquí administras trabajador, código, salario, rol, almacenes y acceso web. Todo queda en un único flujo.", tip:"Configuración ya no es el lugar para crear empleados: usa Equipo.", permission:"employees.manage", requiresAction:true },
-  { id:"settings", path:"/settings", navSelector:nav("/settings"), selector:'[data-palmi-content="settings"]', eyebrow:"13 · Sistema", title:"Configuración", actionTitle:"Abre Configuración", actionMessage:"Busca «Configuración» y presiónala. Aquí aprenderás dónde se ajusta la empresa y el funcionamiento general.", message:"Aquí personalizas empresa, almacenes, monedas, impresión, conectividad, apariencia y opciones avanzadas.", tip:"Configuración define el sistema; Equipo define las personas.", permission:"settings.manage", requiresAction:true },
-  { id:"subscription", path:"/subscription", navSelector:nav("/subscription"), selector:'[data-palmi-content="subscription"]', eyebrow:"14 · Plan", title:"Facturación y plan", actionTitle:"Revisa tu plan", actionMessage:"Busca «Plan» y ábrelo. Solo revisaremos el estado y los límites, sin cambiar nada.", message:"Aquí ves plan, límites y estado de suscripción de la empresa.", tip:"Revisa los límites antes de ampliar la operación.", permission:"settings.manage", requiresAction:true },
-  { id:"help", path:"/help", navSelector:nav("/help"), selector:'[data-palmi-content="help-center"]', eyebrow:"15 · Centro de atención", title:"Centro de atención", actionTitle:"Abre Centro de atención", actionMessage:"Busca «Centro de atención» en el menú lateral y presiónalo. Dentro encontrarás tutoriales, atención al cliente, seguridad y política.", message:"Este es el punto de ayuda de PALMYRA. Aquí el trabajador puede aprender, pedir asistencia, revisar su seguridad y consultar información de privacidad sin abandonar la empresa.", tip:"No necesitas buscar ayuda fuera del sistema: este centro reúne los canales oficiales.", requiresAction:true },
-  { id:"security", path:"/help?section=security", navSelector:'[data-help-tab="security"]', selector:'[data-palmi-content="security"]', eyebrow:"16 · Protección", title:"Seguridad", actionTitle:"Entra en Seguridad", actionMessage:"Dentro del Centro de atención, toca «Seguridad». Aquí revisaremos tus dispositivos y sesiones.", message:"Ahora la seguridad forma parte del centro de atención. Puedes revisar tus sesiones activas y revocar un dispositivo cuando sea necesario.", tip:"Nunca compartas las credenciales del propietario con un trabajador.", requiresAction:true },
-  { id:"offline", path:"/", navSelector:nav("/"), selector:'[data-tour="offline-status"], [data-tour="offline-status-mobile"]', eyebrow:"17 · Continuidad", title:"Modo Offline", actionTitle:"Volvamos al Dashboard", actionMessage:"Regresa al Dashboard desde el menú. Luego mira el indicador de conexión en la zona inferior del panel.", message:"Ese indicador te dice si PALMYRA está online u offline y cuántas operaciones esperan sincronización.", tip:"No borres la cola offline para intentar recuperar una operación.", requiresAction:true },
-  { id:"finish", eyebrow:"Recorrido completado", title:"Ahora ya sabes dónde trabajar", message:"Has recorrido la estructura principal de PALMYRA. Numa queda disponible como ayuda contextual y puedes repetir el recorrido cuando quieras.", tip:"Aprende el camino primero; después trabaja cada sección con seguridad." }
-];
-
-export function getAccessibleNumaTourSteps(currentUser: Pick<User, "role" | "permissions"> | null | undefined, isMobile = false) {
-  const isAdmin = currentUser?.role === "admin";
-  return NUMA_TOUR_STEPS.filter(step => (!step.mobileOnly || isMobile) && (!step.permission || isAdmin || currentUser?.permissions?.includes(step.permission)));
 }
 
-// Compatibilidad de nombres durante la transición de identidad de Palmi → Numa.
-// Evita que módulos antiguos queden rotos mientras consumen el nuevo recorrido.
-export type PalmiTourStep = NumaTourStep;
-export const PALMI_TOUR_STEPS = NUMA_TOUR_STEPS;
-export const getAccessiblePalmiTourSteps = getAccessibleNumaTourSteps;
+const STEPS: NumaGuideStep[] = [
+  {
+    id: "welcome",
+    eyebrow: "BIENVENIDA",
+    title: "Conoce PALMYRA",
+    message: "Este recorrido te muestra cómo trabajar con PALMYRA de forma ordenada. Puedes avanzar sin modificar datos.",
+    tip: "Primero aprende el flujo y después empieza a operar."
+  },
+  {
+    id: "dashboard",
+    eyebrow: "CONTROL",
+    title: "Dashboard",
+    message: "Consulta la actividad de tu negocio, los indicadores principales y los accesos rápidos disponibles para tu rol.",
+    tip: "Úsalo para detectar cambios antes de entrar a una operación."
+  },
+  {
+    id: "pos",
+    eyebrow: "VENTAS",
+    title: "Punto de Venta",
+    message: "Aquí realizas las ventas, cobras, eliges vendedor, aplicas pagos y trabajas incluso cuando el dispositivo queda sin conexión.",
+    permission: "pos.access",
+    tip: "En offline, las operaciones deben quedar visibles como pendientes hasta sincronizarse."
+  },
+  {
+    id: "inventory",
+    eyebrow: "INVENTARIO",
+    title: "Inventario",
+    message: "Administra productos, existencias y alertas del almacén autorizado por tu cuenta.",
+    permission: "inventory.manage",
+    tip: "Evita modificar inventario desde lugares no autorizados."
+  },
+  {
+    id: "transfers",
+    eyebrow: "ABASTECIMIENTO",
+    title: "Transferencias",
+    message: "Consulta y gestiona movimientos de mercancía entre almacenes cuando tu rol tenga permiso.",
+    permission: "inventory.manage",
+    tip: "Antes de mover mercancía, confirma origen, destino y cantidades."
+  },
+  {
+    id: "customers",
+    eyebrow: "CLIENTES",
+    title: "Clientes",
+    message: "Registra y consulta clientes para asociar sus operaciones cuando tu rol lo permita.",
+    permission: "customers.manage"
+  },
+  {
+    id: "reports",
+    eyebrow: "ANÁLISIS",
+    title: "Reportes",
+    message: "Revisa ventas, caja y actividad histórica para controlar el negocio.",
+    permission: "reports.view",
+    tip: "Los reportes deben coincidir con las operaciones que aparecen en caja."
+  },
+  {
+    id: "team",
+    eyebrow: "PERSONAL",
+    title: "Equipo",
+    message: "Administra empleados, roles y accesos a almacenes desde la sección correspondiente.",
+    permission: "employees.manage",
+    tip: "Asigna solo los permisos que cada trabajador necesita."
+  },
+  {
+    id: "settings",
+    eyebrow: "CONFIGURACIÓN",
+    title: "Configuración",
+    message: "Personaliza la empresa y las opciones operativas disponibles para administradores.",
+    permission: "settings.manage"
+  },
+  {
+    id: "security",
+    eyebrow: "PROTECCIÓN",
+    title: "Centro de atención y Seguridad",
+    message: "Desde el Centro de atención puedes revisar sesiones, dispositivos y revocar accesos que ya no deban permanecer activos."
+  },
+  {
+    id: "offline",
+    eyebrow: "CONTINUIDAD",
+    title: "Trabajar sin Internet",
+    message: "PALMYRA conserva el estado local y las operaciones pendientes para que puedas continuar trabajando mientras la conexión no está disponible.",
+    tip: "Cuando vuelva Internet, revisa el indicador de sincronización y confirma que no queden operaciones pendientes."
+  },
+  {
+    id: "finish",
+    eyebrow: "LISTO",
+    title: "Ya puedes empezar",
+    message: "Terminaste el recorrido. PALMYRA puede instalarse como aplicación en tu teléfono para abrirla más rápido y continuar trabajando.",
+    tip: "La instalación no cierra tu sesión."
+  }
+];
+
+export function getAccessibleNumaTourSteps(user: User | null | undefined, _isMobile = false): NumaGuideStep[] {
+  return STEPS.filter((step) => {
+    if (step.mobileOnly && !_isMobile) return false;
+    if (!step.permission) return true;
+    if (user?.role === "admin") return true;
+    return Boolean(user?.permissions?.includes(step.permission));
+  });
+}
