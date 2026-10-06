@@ -409,6 +409,44 @@ transfers: [],
       console.error('[Backup Safety] Error recuperando ventas locales:', e);
     }
   },
+  restoreCashSessionsFromBackup: () => {
+    try {
+      const currentSessions = get().cashSessions || [];
+      const queued = getOfflineQueue()
+        .filter(item => item.type === 'cash_session' && item.status !== 'conflict' && item.data?.id)
+        .sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id));
+
+      if (!queued.length) return;
+
+      const latestBySession = new Map<string, any>();
+      for (const item of queued) latestBySession.set(String(item.data.id), item.data);
+
+      const merged = new Map<string, CashRegisterSession>(
+        currentSessions.map(session => [String(session.id), session])
+      );
+
+      for (const [id, raw] of latestBySession) {
+        const current = merged.get(id);
+        merged.set(id, {
+          ...(current || {}),
+          ...raw,
+          id,
+          movements: Array.isArray(raw.movements) ? raw.movements : (current?.movements || [])
+        } as CashRegisterSession);
+      }
+
+      const sessions = Array.from(merged.values());
+      set({
+        cashSessions: sessions,
+        lastTurnNumber: sessions.reduce(
+          (max, session) => Math.max(max, Number(session.turnNumber) || 0),
+          Number(get().lastTurnNumber) || 0
+        )
+      });
+    } catch (error) {
+      console.error('[Store] No se pudieron recuperar los turnos offline:', error);
+    }
+  },
   notifications: [],
   addNotification: (message, type = 'info', details) => {
     const id = crypto.randomUUID();
@@ -445,9 +483,12 @@ transfers: [],
     // reconstruirla después de que la cola termine de hidratarse y antes de
     // que el POS haga refrescos remotos que puedan reemplazar el historial local.
     void waitForOfflineQueueReady()
-      .then(() => useStore.getState().restoreTransactionsFromBackup())
+      .then(() => {
+        useStore.getState().restoreTransactionsFromBackup();
+        useStore.getState().restoreCashSessionsFromBackup();
+      })
       .catch((restoreError) => {
-        console.error('[Store] No se pudieron recuperar las ventas offline:', restoreError);
+        console.error('[Store] No se pudieron recuperar las operaciones offline:', restoreError);
       });
   },
   partialize: (state) => ({
