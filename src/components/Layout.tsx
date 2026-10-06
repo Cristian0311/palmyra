@@ -344,7 +344,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="h-[100dvh] w-full min-h-[100dvh] max-h-[100dvh] overflow-hidden bg-primary text-primary flex flex-col lg:flex-row relative overscroll-none transition-colors duration-200">
 
-      {!isPosPage && showInstallPwa && currentUser && (
+      {showInstallPwa && currentUser && (
         <div className="fixed inset-x-3 bottom-3 sm:inset-auto sm:right-4 sm:bottom-4 z-[10000]">
           <div className="w-full sm:w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-violet-200/80 bg-white/95 dark:bg-slate-900/95 dark:border-violet-900/50 shadow-2xl backdrop-blur-md p-3">
             <div className="flex items-start gap-2.5">
@@ -361,33 +361,34 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <p className="mt-1 text-[7px] font-bold leading-4 text-muted">
                   Instala PALMYRA como aplicación para abrirla directamente y trabajar a pantalla completa, incluso con conexión inestable.
                 </p>
-                <button
-                  type="button"
-                  disabled={pwaInstalling}
-                  onClick={async () => {
-                    const prompt = getDeferredPWAInstallPrompt();
-                    if (!prompt?.prompt) {
-                      setShowInstallPwa(false);
-                      return;
-                    }
-                    setPwaInstalling(true);
-                    try {
-                      await prompt.prompt();
-                      const choice = await prompt.userChoice;
-                      if (choice?.outcome === "accepted") setShowInstallPwa(false);
-                    } finally {
-                      setPwaInstalling(false);
-                    }
-                  }}
-                  className="mt-2 w-full h-8 rounded-xl bg-violet-600 text-white text-[8px] font-black uppercase tracking-[0.08em] flex items-center justify-center gap-1.5 hover:bg-violet-700 disabled:opacity-60"
-                >
-                  <Download className="w-3 h-3" />
-                  {pwaInstalling ? "Instalando…" : pwaInstallAvailable ? "Instalar PALMYRA" : "Cómo instalar"}
-                </button>
-                {!pwaInstallAvailable && (
-                  <p className="mt-1.5 text-[6.5px] font-bold leading-4 text-muted">
-                    En algunos navegadores: abre el menú del navegador y elige <b>Instalar aplicación</b> o <b>Añadir a pantalla de inicio</b>.
-                  </p>
+                {pwaInstallAvailable ? (
+                  <button
+                    type="button"
+                    disabled={pwaInstalling}
+                    onClick={async () => {
+                      const prompt = getDeferredPWAInstallPrompt();
+                      if (!prompt?.prompt) return;
+                      setPwaInstalling(true);
+                      try {
+                        await prompt.prompt();
+                        const choice = await prompt.userChoice;
+                        if (choice?.outcome === "accepted") setShowInstallPwa(false);
+                      } finally {
+                        setPwaInstalling(false);
+                      }
+                    }}
+                    className="mt-2 w-full h-8 rounded-xl bg-violet-600 text-white text-[8px] font-black uppercase tracking-[0.08em] flex items-center justify-center gap-1.5 hover:bg-violet-700 disabled:opacity-60"
+                  >
+                    <Download className="w-3 h-3" />
+                    {pwaInstalling ? "Instalando…" : "Instalar PALMYRA"}
+                  </button>
+                ) : (
+                  <div className="mt-2 rounded-xl bg-violet-50 dark:bg-violet-950/30 border border-violet-100 dark:border-violet-900/40 px-2.5 py-2">
+                    <p className="text-[6.5px] font-black uppercase tracking-wider text-violet-700 dark:text-violet-300">Instalación manual</p>
+                    <p className="mt-0.5 text-[6.5px] font-bold leading-4 text-muted">
+                      Abre el menú del navegador y elige <b>Instalar aplicación</b> o <b>Añadir a pantalla de inicio</b>.
+                    </p>
+                  </div>
                 )}
               </div>
             </div>
