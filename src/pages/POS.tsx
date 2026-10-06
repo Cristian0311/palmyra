@@ -1440,12 +1440,7 @@ export default function POS() {
     } else {
       try {
         const { companyId } = await getActiveTenant();
-        const targetEmployee = (activeCashSessions || []).find(s => s.id === joiningSessionId)?.userId || targetSession.userId;
-        const employeeRow = targetEmployee
-          ? targetEmployee
-          : null;
-        const employeesForValidation = users || [];
-        const matchingUser = employeesForValidation.find(u => u.id === targetSession.userId);
+        const matchingUser = (users || []).find(u => u.id === targetSession.userId);
         const valid = await verifyEmployeePosAccessPassword(companyId, targetSession.userId, enteredPassword);
         if (!valid) {
           setPosError(`Contraseña incorrecta para ${matchingUser?.name || targetUser.name || 'empleado'}. Acceso denegado.`);
