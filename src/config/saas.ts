@@ -26,7 +26,16 @@ export const PALMYRA_PLANS: SaaSPlan[] = [
     reports: 'Reportes básicos',
     support: 'Soporte estándar',
     description: 'Para comenzar a vender y controlar lo esencial sin complicaciones.',
-    features: ['1 almacén', '2 empleados + administrador', '50 tipos de productos/SKUs', 'Punto de venta', 'Inventario y caja', 'Clientes y proveedores', 'Reportes básicos', 'Modo offline']
+    features: [
+      '1 almacén',
+      '2 empleados + administrador',
+      '50 tipos de productos/SKUs',
+      'Punto de venta',
+      'Inventario y caja',
+      'Clientes y proveedores',
+      'Reportes básicos',
+      'Modo offline'
+    ]
   },
   {
     code: 'growth',
@@ -36,10 +45,23 @@ export const PALMYRA_PLANS: SaaSPlan[] = [
     warehouses: 3,
     employees: 4,
     products: 150,
-    reports: 'Reportes más avanzados',
+    reports: 'Reportes avanzados',
     support: 'Soporte estándar',
     description: 'Para negocios que ya mueven mercancía entre varios puntos y necesitan más control.',
-    features: ['3 almacenes', '4 empleados + administrador', '150 tipos de productos/SKUs', 'Compras y recepción', 'Transferencias entre almacenes', 'Reportes avanzados', 'Equipo con roles', 'Operación multi-almacén']
+    features: [
+      '3 almacenes',
+      '4 empleados + administrador',
+      '150 tipos de productos/SKUs',
+      'Punto de venta',
+      'Inventario y caja',
+      'Clientes y proveedores',
+      'Modo offline',
+      'Compras y recepción',
+      'Transferencias entre almacenes',
+      'Reportes avanzados',
+      'Equipo con roles',
+      'Operación multi-almacén'
+    ]
   },
   {
     code: 'pro',
@@ -49,10 +71,25 @@ export const PALMYRA_PLANS: SaaSPlan[] = [
     warehouses: 7,
     employees: 10,
     products: 300,
-    reports: 'Reportes mucho más avanzados',
+    reports: 'Analítica avanzada',
     support: 'Soporte prioritario',
     description: 'Para empresas con mayor estructura, más ubicaciones y análisis profundo.',
-    features: ['7 almacenes', '10 empleados + administrador', '300 tipos de productos/SKUs', 'Analítica avanzada', '7 almacenes operativos', 'Soporte prioritario']
+    features: [
+      '7 almacenes',
+      '10 empleados + administrador',
+      '300 tipos de productos/SKUs',
+      'Punto de venta',
+      'Inventario y caja',
+      'Clientes y proveedores',
+      'Modo offline',
+      'Compras y recepción',
+      'Transferencias entre almacenes',
+      'Reportes avanzados',
+      'Equipo con roles',
+      'Operación multi-almacén',
+      'Analítica avanzada',
+      'Soporte prioritario'
+    ]
   }
 ];
 
