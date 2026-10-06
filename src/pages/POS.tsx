@@ -927,23 +927,22 @@ export default function POS() {
     setPosError,
   });
 
-  const openCheckout = () => {
+  const openCheckout = (method: 'cash' | 'transfer') => {
     if (!currentSession) {
       setPosError("No hay un turno de caja abierto en esta sucursal. Por favor, abre un turno para comenzar a cobrar.");
       setShowOpenShiftModal(true);
       return;
     }
     const newId = crypto.randomUUID();
+    const transferBank = bankCards.find(c => c.currency === 'CUP') || bankCards[0];
     const defaultBank = bankCards.find(c => c.currency === baseCurrency.code) || bankCards[0];
-    setPaymentLines([
-      {
-        id: newId,
-        code: baseCurrency.code,
-        amount: totalBase,
-        method: 'cash',
-        bankCardId: defaultBank?.id
-      }
-    ]);
+    setPaymentLines([{
+      id: newId,
+      code: method === 'transfer' ? 'CUP' : baseCurrency.code,
+      amount: method === 'transfer' ? Math.round(totalBase) : totalBase,
+      method,
+      bankCardId: method === 'transfer' ? transferBank?.id : defaultBank?.id
+    }]);
     setActivePaymentLineId(newId);
     setShowCheckoutModal(true);
   };
@@ -2137,6 +2136,7 @@ export default function POS() {
             onRemovePaymentLine={removePaymentLine}
             onUpdatePaymentLine={updatePaymentLine}
             onSetActivePaymentLine={setActivePaymentLineId}
+            lockedPaymentMethod={paymentLines[0]?.method || 'cash'}
             onAutoFillRemaining={autoFillRemaining}
             onSplitUsdPayment={splitUsdPayment}
             onHandleCheckout={handleCheckout}
@@ -2539,15 +2539,6 @@ export default function POS() {
                               >
                                 💵 Efectivo CUP
                               </button>
-                              <button
-                                onClick={() => setSalesFilter('mixed')}
-                                className={cn(
-                                  "px-2 py-1 rounded-lg text-[8px] font-black uppercase tracking-wider whitespace-nowrap transition-all flex items-center gap-0.5",
-                                  salesFilter === 'mixed' ? "bg-purple-600 text-white" : "bg-purple-50 text-purple-700 hover:bg-purple-100"
-                                )}
-                              >
-                                🔄 Mixto
-                              </button>
                             </div>
                           )}
                         </div>
@@ -2718,11 +2709,6 @@ export default function POS() {
                                     {prod.cashCupQty > 0 && (
                                       <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 px-1.5 py-0.5 rounded">
                                         💵 CUP: {prod.cashCupQty} u. ({formatMoney(prod.cashCupTotal, baseCurrency.symbol)})
-                                      </span>
-                                    )}
-                                    {prod.mixedQty > 0 && (
-                                      <span className="bg-purple-50 text-purple-800 border border-purple-200 px-1.5 py-0.5 rounded">
-                                        🔄 Mixto: {prod.mixedQty} u. ({formatMoney(prod.mixedTotal, baseCurrency.symbol)})
                                       </span>
                                     )}
                                   </div>
@@ -3280,54 +3266,23 @@ export default function POS() {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-1.5">
-              <button 
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
                 disabled={cart.length === 0}
-                onClick={() => {
-                  if (!currentSession) {
-                    setPosError("Debes abrir un turno de caja antes de cobrar.");
-                    setShowOpenShiftModal(true);
-                    return;
-                  }
-                  const lineId = crypto.randomUUID();
-                  setPaymentLines([{ id: lineId, code: baseCurrency.code, amount: totalBase, method: 'cash' }]);
-                  setActivePaymentLineId(lineId);
-                  setShowCheckoutModal(true);
-                }}
-                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-[9px] uppercase tracking-wider transition-all shadow-md shadow-indigo-600/20 disabled:opacity-20 active:scale-98 flex items-center justify-center gap-2"
+                onClick={() => openCheckout('cash')}
+                className="py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-[9px] uppercase tracking-wider transition-all shadow-md shadow-indigo-600/20 disabled:opacity-20 active:scale-98 flex items-center justify-center gap-1.5"
               >
                 <Banknote className="w-4 h-4 text-emerald-300" />
-                Cobrar Efectivo
+                Efectivo
               </button>
-              
-              <div className="grid grid-cols-2 gap-1.5">
-                <button 
-                  disabled={cart.length === 0}
-                  onClick={() => {
-                    if (!currentSession) {
-                      setPosError("Debes abrir un turno de caja antes de cobrar.");
-                      setShowOpenShiftModal(true);
-                      return;
-                    }
-                    const lineId = crypto.randomUUID();
-                    setPaymentLines([{ id: lineId, code: baseCurrency.code, amount: totalBase, method: 'transfer' }]);
-                    setActivePaymentLineId(lineId);
-                    setShowCheckoutModal(true);
-                  }}
-                  className="py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-[9px] uppercase tracking-wider transition-all shadow-xs disabled:opacity-20 active:scale-98 flex items-center justify-center gap-1.5"
-                >
-                  <CreditCard className="w-3.5 h-3.5" />
-                  Transferir
-                </button>
-                <button 
-                  disabled={cart.length === 0}
-                  onClick={() => openCheckout()}
-                  className="py-2 bg-indigo-700 hover:bg-indigo-800 text-white rounded-xl font-black text-[9px] uppercase tracking-wider transition-all shadow-xs disabled:opacity-20 active:scale-98 flex items-center justify-center gap-1.5"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Cobro Mixto
-                </button>
-              </div>
+              <button
+                disabled={cart.length === 0}
+                onClick={() => openCheckout('transfer')}
+                className="py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-black text-[9px] uppercase tracking-wider transition-all shadow-md shadow-blue-600/20 disabled:opacity-20 active:scale-98 flex items-center justify-center gap-1.5"
+              >
+                <CreditCard className="w-4 h-4" />
+                Transferencia
+              </button>
             </div>
           </div>
         </aside>
@@ -3609,11 +3564,20 @@ export default function POS() {
               <button
                 type="button"
                 disabled={cart.length === 0}
-                onClick={openCheckout}
-                className="h-8 px-3 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg shadow-emerald-950 active:scale-95 flex items-center gap-1 disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none"
+                onClick={() => openCheckout('cash')}
+                className="h-8 px-2.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all shadow-lg shadow-emerald-950 active:scale-95 flex items-center gap-1 disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none"
               >
                 <Banknote className="w-3.5 h-3.5" />
-                <span>Cobrar</span>
+                <span>Efectivo</span>
+              </button>
+              <button
+                type="button"
+                disabled={cart.length === 0}
+                onClick={() => openCheckout('transfer')}
+                className="h-8 px-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all shadow-lg shadow-blue-950 active:scale-95 flex items-center gap-1 disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none"
+              >
+                <CreditCard className="w-3.5 h-3.5" />
+                <span>Transferencia</span>
               </button>
               <button
                 type="button"
