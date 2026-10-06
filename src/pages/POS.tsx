@@ -1114,6 +1114,16 @@ export default function POS() {
         }
       }
 
+      // Primero actualizamos los turnos de esta sucursal. Esto evita que un turno
+      // recién creado en otra vista/terminal provoque un segundo intento falso.
+      if (navigator.onLine) {
+        try {
+          await useStore.getState().refreshBranchOperationalData();
+        } catch (refreshError) {
+          console.warn('[POS] No se pudo refrescar caja antes de abrir:', refreshError);
+        }
+      }
+
       // Si ya existe un turno abierto para ese trabajador/sucursal, reutilizarlo.
       const existingSession = useStore.getState().getCurrentSession(sessionBranchId, workerToAssign.id);
       if (existingSession) {
@@ -1148,9 +1158,45 @@ export default function POS() {
       const opened = await openSession(sessionToOpen);
 
       if (!opened) {
-        // openSession ya muestra el motivo del rechazo cuando Supabase lo
-        // devuelve; aquí solo evitamos un falso "turno abierto".
-        setPosError("No se pudo abrir el turno. La sucursal puede tener otro turno abierto o la operación fue rechazada.");
+        // Un timeout/race puede dejar la apertura aceptada en Supabase mientras
+        // el primer intento no recibe la respuesta. Nunca debemos crear un
+        // segundo turno: refrescamos y reutilizamos el turno existente.
+        if (navigator.onLine) {
+          try {
+            await useStore.getState().refreshBranchOperationalData();
+          } catch (refreshError) {
+            console.warn('[POS] No se pudo recuperar el turno tras el rechazo:', refreshError);
+          }
+
+          const recovered = useStore.getState().getCurrentSession(sessionBranchId, workerId);
+          if (recovered) {
+            setActiveSessionId(recovered.id);
+            setCurrentBranch(recovered.branchId);
+            setOpeningAmount("0");
+            setSessionWorkerName(recovered.workerName || workerName);
+            setSessionPassword("");
+            setShowOpenShiftModal(false);
+            setPosSuccess("Turno de " + (recovered.workerName || workerName) + " ya estaba abierto. Continuando con ese turno.");
+            setTimeout(() => setPosSuccess(""), 3000);
+            return;
+          }
+
+          const branchOpen = (useStore.getState().cashSessions || []).find(s =>
+            s.status === 'open' &&
+            !s.deletedAt &&
+            s.branchId === sessionBranchId
+          );
+          if (branchOpen) {
+            setPosError(
+              "La caja ya tiene un turno abierto" +
+              (branchOpen.workerName ? " (" + branchOpen.workerName + ")" : "") +
+              ". Cierra ese turno o selecciónalo desde Turnos abiertos."
+            );
+            return;
+          }
+        }
+
+        setPosError("No se pudo abrir el turno. Verifica la conexión y vuelve a intentarlo. PALMYRA no creará un turno duplicado.");
         return;
       }
 
@@ -1457,24 +1503,24 @@ export default function POS() {
 
               ) : (
                 /* Modal Formulario de Apertura de Caja */
-                <div className="palmyra-mobile-modal palmyra-open-cash-modal p-2.5 sm:p-3 rounded-2xl shadow-2xl text-center w-full max-w-[min(92vw,24rem)] max-h-[calc(100dvh-1rem)] overflow-y-auto animate-in zoom-in-95 my-auto">
-                  <div className="flex items-center justify-center gap-2 mb-1.5">
-                    <div className="w-8 h-8 sm:w-9 sm:h-9 bg-violet-50 rounded-xl flex items-center justify-center shrink-0">
-                      <DollarSign className="w-4 h-4 sm:w-5 sm:h-5 text-violet-600" />
+                <div className="palmyra-mobile-modal palmyra-open-cash-modal p-2 sm:p-2.5 rounded-2xl shadow-2xl text-center w-full max-w-[min(94vw,23rem)] max-h-[calc(100dvh-0.75rem)] overflow-y-auto animate-in zoom-in-95 my-auto">
+                  <div className="flex items-center justify-center gap-1.5 mb-1">
+                    <div className="w-7 h-7 sm:w-8 sm:h-8 bg-violet-50 rounded-lg flex items-center justify-center shrink-0">
+                      <DollarSign className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-violet-600" />
                     </div>
                     <div className="min-w-0 text-left">
-                      <h3 className="text-base sm:text-lg font-black text-slate-900 uppercase tracking-tight leading-none">Apertura de Caja</h3>
-                      <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1">Fondo Inicial del Turno</p>
+                      <h3 className="text-sm sm:text-base font-black text-slate-900 uppercase tracking-tight leading-none">Apertura de Caja</h3>
+                      <p className="text-[7px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Fondo Inicial del Turno</p>
                     </div>
                   </div>
 
                   
                   {/* Inline Modal Alert */}
                   {posError && (
-                    <div className="mb-4 p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs font-bold flex items-center justify-between gap-2 animate-in fade-in zoom-in-95">
+                    <div className="mb-2.5 p-2 sm:p-2.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-[10px] font-bold flex items-start justify-between gap-1.5 animate-in fade-in zoom-in-95">
                       <div className="flex items-center gap-2 text-left">
-                        <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                        <span className="text-[11px] font-bold">{posError}</span>
+                        <AlertCircle className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+                        <span className="text-[10px] font-bold leading-4 break-words">{posError}</span>
                       </div>
                       <button type="button" onClick={() => setPosError("")} className="p-1 hover:bg-rose-100 rounded-lg text-rose-500 shrink-0">
                         <X className="w-3.5 h-3.5" />
@@ -1493,7 +1539,7 @@ export default function POS() {
                     </div>
                   )}
 
-                  <form onSubmit={handleOpenSession} className="space-y-2.5">
+                  <form onSubmit={handleOpenSession} className="space-y-2">
                     <div className="text-left space-y-2">
                       {!false && (
                       <div>
@@ -1504,14 +1550,22 @@ export default function POS() {
                           <div className="relative" ref={employeePickerRef}>
                             <div className="relative">
                               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-                              <input
+                                                            <input
                                 type="text"
                                 value={employeePickerOpen ? employeePickerSearch : sessionWorkerName}
+                                inputMode={employeePickerOpen ? "search" : "none"}
+                                readOnly={!employeePickerOpen}
                                 onFocus={() => {
                                   if (!employeePickerOpen) {
                                     setEmployeePickerSearch("");
+                                    setEmployeePickerOpen(true);
                                   }
-                                  setEmployeePickerOpen(true);
+                                }}
+                                onClick={() => {
+                                  if (!employeePickerOpen) {
+                                    setEmployeePickerSearch("");
+                                    setEmployeePickerOpen(true);
+                                  }
                                 }}
                                 onChange={e => {
                                   setEmployeePickerSearch(e.target.value);
@@ -1520,9 +1574,10 @@ export default function POS() {
                                   setPosError('');
                                   setEmployeePickerOpen(true);
                                 }}
-                                placeholder="Presiona y busca el nombre del empleado..."
+                                placeholder="Toca para seleccionar o buscar empleado"
                                 className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-[11px] font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                                 autoComplete="off"
+                                aria-label="Seleccionar empleado"
                               />
                               {employeePickerOpen ? (
                                 <button
