@@ -3,7 +3,21 @@ import {Check,Clock3,RefreshCw,ShieldAlert,Building2,Ban,XCircle,Headphones,Save
 import {loadPlatformAdminSnapshot,approvePlanRequest,rejectPlanRequest,setPlatformCompanyStatus,setPlatformSupportSettings,type PlatformSupportSettings} from "../services/platformAdmin";
 import {useStore} from "../store/useStore";
 
-const EMPTY_SUPPORT:PlatformSupportSettings={whatsapp_number:null,support_email:null,privacy_url:null};
+const EMPTY_SUPPORT:PlatformSupportSettings={
+  whatsapp_number:null,
+  support_email:null,
+  privacy_url:null,
+  facebook_url:null,
+  whatsapp_channel_url:null
+};
+
+function FacebookMark({className=""}:{className?:string}){
+ return <svg viewBox="0 0 24 24" aria-hidden="true" className={className}><path fill="currentColor" d="M13.7 21v-7h2.4l.4-2.8h-2.8V9.4c0-.8.2-1.4 1.5-1.4h1.6V5.5c-.3 0-1.2-.1-2.2-.1-2.2 0-3.7 1.4-3.7 3.8v2H8.5V14H11v7h2.7Z"/></svg>;
+}
+
+function WhatsAppMark({className=""}:{className?:string}){
+ return <svg viewBox="0 0 24 24" aria-hidden="true" className={className}><path fill="currentColor" d="M12 3.1a8.8 8.8 0 0 0-7.6 13.3L3.1 21l4.8-1.2A8.9 8.9 0 1 0 12 3.1Zm0 1.8a7.1 7.1 0 0 1 6.1 10.8 7 7 0 0 1-8.1 3.1l-.5-.2-2.8.7.8-2.7-.3-.5A7.1 7.1 0 0 1 12 4.9Zm-3.2 2.9c-.2 0-.5.1-.7.4-.2.3-.8.8-.8 2 0 1.2.8 2.3.9 2.5.1.2 1.7 2.8 4.3 3.8 2.1.8 2.5.6 2.9.6.4 0 1.3-.5 1.5-1 .2-.5.2-.9.1-1-.1-.1-.3-.2-.7-.4l-.9-.4c-.4-.1-.6-.2-.8.2-.2.3-.6.8-.7 1-.1.2-.3.2-.6.1-.3-.1-1.1-.4-2-1.2-.7-.6-1.2-1.4-1.3-1.6-.1-.2 0-.3.1-.5l.4-.5c.1-.2.2-.3.3-.5.1-.2 0-.4 0-.5l-.7-1.6c-.2-.4-.5-.5-.8-.5Z"/></svg>;
+}
 
 export default function PlatformAdmin(){
  const {addNotification}=useStore();
@@ -44,12 +58,16 @@ export default function PlatformAdmin(){
    {error&&<div className="rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold p-3">{error}</div>}
 
    <section className="bg-secondary border border-base rounded-3xl p-5">
-    <div className="flex items-center gap-2"><Headphones className="w-5 h-5 text-violet-600"/><div><h2 className="text-sm font-black text-primary">Centro de atención</h2><p className="text-[11px] text-muted mt-0.5">Canal que utilizarán las empresas desde el CRM.</p></div></div>
+    <div className="flex items-center gap-2"><Headphones className="w-5 h-5 text-violet-600"/><div><h2 className="text-sm font-black text-primary">Centro de atención y canales oficiales</h2><p className="text-[11px] text-muted mt-0.5">Configura los canales que utilizarán las empresas desde el CRM y durante el registro gratuito.</p></div></div>
     <form onSubmit={saveSupport} className="mt-5 grid lg:grid-cols-3 gap-4">
      <label className="block"><span className="text-[10px] font-black uppercase tracking-wide text-muted">WhatsApp de atención</span><div className="mt-1 flex items-center gap-2 border border-base rounded-2xl bg-primary px-3 h-12"><MessageCircle className="w-4 h-4 text-violet-500 shrink-0"/><input value={supportForm.whatsapp_number||""} onChange={e=>setSupportForm({...supportForm,whatsapp_number:e.target.value})} placeholder="+53..." className="min-w-0 w-full bg-transparent outline-none text-sm font-bold text-primary"/></div></label>
      <label className="block"><span className="text-[10px] font-black uppercase tracking-wide text-muted">Correo de soporte</span><div className="mt-1 flex items-center gap-2 border border-base rounded-2xl bg-primary px-3 h-12"><MessageCircle className="w-4 h-4 text-violet-500 shrink-0"/><input type="email" value={supportForm.support_email||""} onChange={e=>setSupportForm({...supportForm,support_email:e.target.value})} placeholder="soporte@palmyra..." className="min-w-0 w-full bg-transparent outline-none text-sm font-bold text-primary"/></div></label>
      <label className="block"><span className="text-[10px] font-black uppercase tracking-wide text-muted">Política y privacidad</span><div className="mt-1 flex items-center gap-2 border border-base rounded-2xl bg-primary px-3 h-12"><Link2 className="w-4 h-4 text-violet-500 shrink-0"/><input type="url" value={supportForm.privacy_url||""} onChange={e=>setSupportForm({...supportForm,privacy_url:e.target.value})} placeholder="https://..." className="min-w-0 w-full bg-transparent outline-none text-sm font-bold text-primary"/></div></label>
-     <div className="lg:col-span-3 flex flex-col sm:flex-row sm:items-center gap-3"><button disabled={busy} className="h-11 px-5 rounded-xl bg-violet-600 text-white font-black text-xs flex items-center justify-center gap-2 disabled:opacity-60"><Save className="w-4 h-4"/>Guardar configuración</button><p className="text-[10px] text-muted">El número configurado aquí se utiliza para abrir automáticamente el canal oficial desde el Centro de atención.</p></div>
+     <div className="lg:col-span-3 grid md:grid-cols-2 gap-4">
+      <label className="block"><span className="text-[10px] font-black uppercase tracking-wide text-muted">Facebook oficial</span><div className="mt-1 flex items-center gap-2 border border-base rounded-2xl bg-primary px-3 h-12"><FacebookMark className="w-4 h-4 text-violet-500 shrink-0"/><input type="url" value={supportForm.facebook_url||""} onChange={e=>setSupportForm({...supportForm,facebook_url:e.target.value})} placeholder="https://facebook.com/..." className="min-w-0 w-full bg-transparent outline-none text-sm font-bold text-primary"/></div></label>
+      <label className="block"><span className="text-[10px] font-black uppercase tracking-wide text-muted">Canal oficial de WhatsApp</span><div className="mt-1 flex items-center gap-2 border border-base rounded-2xl bg-primary px-3 h-12"><WhatsAppMark className="w-4 h-4 text-violet-500 shrink-0"/><input type="url" value={supportForm.whatsapp_channel_url||""} onChange={e=>setSupportForm({...supportForm,whatsapp_channel_url:e.target.value})} placeholder="https://whatsapp.com/channel/..." className="min-w-0 w-full bg-transparent outline-none text-sm font-bold text-primary"/></div></label>
+     </div>
+     <div className="lg:col-span-3 flex flex-col sm:flex-row sm:items-center gap-3"><button disabled={busy} className="h-11 px-5 rounded-xl bg-violet-600 text-white font-black text-xs flex items-center justify-center gap-2 disabled:opacity-60"><Save className="w-4 h-4"/>Guardar configuración</button><p className="text-[10px] text-muted">WhatsApp atiende solicitudes; Facebook y el canal de WhatsApp se mostrarán en el registro gratuito y en el Centro de atención.</p></div>
     </form>
    </section>
 
