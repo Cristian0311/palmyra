@@ -1,5 +1,5 @@
 import { useShallow } from 'zustand/react/shallow';
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { 
   TrendingUp, 
   Users, 
@@ -18,6 +18,7 @@ import {
   X, 
   CheckCircle2, 
   ChevronRight,
+  ChevronDown,
   RefreshCw,
   Sparkles
 } from "lucide-react";
@@ -39,6 +40,17 @@ export default function Dashboard() {
   const [showAllSalesModal, setShowAllSalesModal] = useState<boolean>(false);
   const [aiSummary, setAiSummary] = useState<string>("");
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
+  const [branchPickerOpen, setBranchPickerOpen] = useState(false);
+
+  useEffect(() => {
+    if (!branchPickerOpen) return;
+    const close = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (!target?.closest?.('[data-dashboard-branch-picker]')) setBranchPickerOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [branchPickerOpen]);
 
   const isCupCode = (code: string) => code === 'CUP' || code === 'MN' || code === 'CUC' || code === '₱';
 
@@ -267,7 +279,7 @@ export default function Dashboard() {
         </div>
         
         <div className="flex items-center gap-1.5 w-full sm:w-auto">
-          <button 
+          <button
             onClick={handleGenerateAI}
             disabled={isGeneratingAI}
             className="btn-secondary h-7 min-h-0 px-2 rounded-lg text-[8px] font-black uppercase tracking-tight gap-1.5 shadow-none"
@@ -275,24 +287,72 @@ export default function Dashboard() {
             {isGeneratingAI ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 text-amber-500" />}
             <span>{aiSummary ? "Actualizar IA" : "Analizar con IA"}</span>
           </button>
-          <select 
-            value={selectedBranchFilter}
-            onChange={(e) => {
-              setSelectedBranchFilter(e.target.value);
-              if (e.target.value !== 'all') {
-                setCurrentBranch(e.target.value);
-              }
-            }}
-            className="h-7 min-h-0 w-[clamp(5.8rem,22vw,9rem)] bg-secondary border border-base rounded-lg text-[8px] leading-none font-black text-primary px-2 py-0 focus:ring-1 focus:ring-indigo-100 outline-none cursor-pointer uppercase tracking-tight transition-colors shadow-none truncate"
-            title="Almacén / sucursal"
-          >
-            <option value="all">🏢 Todas</option>
-            {branches.map(b => (
-              <option key={b.id} value={b.id} className="bg-secondary">{b.name}</option>
-            ))}
-          </select>
-        </div>
-      </header>
+
+          <div className="relative min-w-0 w-[clamp(9.5rem,28vw,12.5rem)]" data-dashboard-branch-picker>
+            <button
+              type="button"
+              onClick={() => setBranchPickerOpen((open) => !open)}
+              className="w-full min-h-7 rounded-lg bg-secondary border border-base px-2 py-1 flex items-center gap-1.5 text-left hover:border-indigo-300 focus:outline-none focus:ring-1 focus:ring-indigo-100 transition-colors shadow-none"
+              aria-haspopup="listbox"
+              aria-expanded={branchPickerOpen}
+              title="Seleccionar almacén o sucursal"
+            >
+              <MapPin className="w-3 h-3 shrink-0 text-indigo-500" />
+              <span className="min-w-0 flex-1 text-[8px] sm:text-[8.5px] font-black text-primary leading-tight uppercase whitespace-normal break-words">
+                {selectedBranchFilter === "all"
+                  ? "Todas las sucursales"
+                  : (branchById.get(selectedBranchFilter)?.name || "Sucursal")}
+              </span>
+              <ChevronDown className={cn("w-3 h-3 shrink-0 text-muted transition-transform", branchPickerOpen && "rotate-180")} />
+            </button>
+
+            {branchPickerOpen && (
+              <div
+                role="listbox"
+                aria-label="Seleccionar almacén"
+                className="absolute right-0 top-full mt-1.5 z-40 w-[min(18rem,calc(100vw-1.5rem))] rounded-xl border border-base bg-secondary p-1.5 shadow-2xl"
+              >
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={selectedBranchFilter === "all"}
+                  onClick={() => {
+                    setSelectedBranchFilter("all");
+                    setBranchPickerOpen(false);
+                  }}
+                  className={cn(
+                    "w-full rounded-lg px-2.5 py-2 text-left text-[8.5px] font-black uppercase leading-tight",
+                    selectedBranchFilter === "all" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300" : "text-primary hover:bg-subtle"
+                  )}
+                >
+                  🏢 Todas las sucursales
+                </button>
+                {branches.map((branch) => {
+                  const selected = branch.id === selectedBranchFilter;
+                  return (
+                    <button
+                      key={branch.id}
+                      type="button"
+                      role="option"
+                      aria-selected={selected}
+                      onClick={() => {
+                        setSelectedBranchFilter(branch.id);
+                        setCurrentBranch(branch.id);
+                        setBranchPickerOpen(false);
+                      }}
+                      className={cn(
+                        "w-full rounded-lg px-2.5 py-2 text-left text-[8.5px] font-black uppercase leading-tight whitespace-normal break-words",
+                        selected ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300" : "text-primary hover:bg-subtle"
+                      )}
+                    >
+                      {branch.name}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>      </header>
 
       {/* AI Summary Card */}
       {aiSummary && (
