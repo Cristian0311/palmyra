@@ -3,6 +3,7 @@ import { getSupabase } from '../../lib/supabase';
 import { enqueueOfflineItem } from '../offlineQueue';
 import { getActiveTenant, getEmployeeForIdentity } from '../tenant';
 import { callAdjustInventoryRPC } from './rpc';
+export { pushCashMovementToSupabase, deleteCashMovementFromSupabase, pushCashSessionMetadataToSupabase } from './cashMutations';
 export type ResetSection =
   | 'inventory' | 'reports' | 'catalog' | 'customers' | 'suppliers'
   | 'purchases' | 'cash' | 'bank' | 'users' | 'branches' | 'quotes' | 'settings';
