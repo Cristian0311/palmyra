@@ -199,37 +199,6 @@ export default function POS() {
       setIsRefreshingOpenSessions(false);
     }
   }, []);
-  // Android/Chrome puede superponer el teclado sobre el contenido. Medimos
-  // el área ocupada por el teclado y elevamos los modales para que el campo
-  // activo y sus acciones sigan visibles en teléfonos y tablets.
-  useEffect(() => {
-    const keyboard = (navigator as Navigator & {
-      virtualKeyboard?: { overlaysContent: boolean }
-    }).virtualKeyboard;
-    const previous = keyboard?.overlaysContent;
-    if (keyboard) keyboard.overlaysContent = true;
-
-    const viewport = window.visualViewport;
-    if (!viewport) return () => {
-      if (keyboard && previous !== undefined) keyboard.overlaysContent = previous;
-    };
-
-    const updateKeyboardInset = () => {
-      const overlap = Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
-      setKeyboardInset(overlap);
-    };
-
-    updateKeyboardInset();
-    viewport.addEventListener('resize', updateKeyboardInset);
-    viewport.addEventListener('scroll', updateKeyboardInset);
-    return () => {
-      viewport.removeEventListener('resize', updateKeyboardInset);
-      viewport.removeEventListener('scroll', updateKeyboardInset);
-      if (keyboard && previous !== undefined) keyboard.overlaysContent = previous;
-      setKeyboardInset(0);
-    };
-  }, []);
-
   // La reanudación de una caja persistida siempre es explícita.  // La reanudación de una caja persistida siempre es explícita. El ID de
   // activeSessionId solo representa la sesión validada en esta pestaña.
   const currentSession = useMemo(() => {
@@ -354,7 +323,6 @@ export default function POS() {
   const [isClosingSession, setIsClosingSession] = useState(false);
 
   const [joiningSessionPassword, setJoiningSessionPassword] = useState("");
-  const [keyboardInset, setKeyboardInset] = useState(0);
   const [isNewEmployee, setIsNewEmployee] = useState(false);
 
   // Empleados de la empresa activa y almacenes autorizados.
@@ -1556,7 +1524,7 @@ export default function POS() {
       {!currentSession && (
         <div
           className={cn("pos-keyboard-overlay pos-modal-layer fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center px-3 py-5 sm:px-4 sm:py-6", "overflow-y-auto overscroll-contain")}
-          style={{ paddingBottom: keyboardInset > 0 ? `${keyboardInset + 28}px` : undefined }}>
+          style={{ paddingBottom: 'calc(var(--keyboard-inset, 0px) + 28px)' }}>
           {showOpenSessionsModal && !joiningSessionId && (
             <div className="fixed inset-0 z-[65] bg-slate-950/55 backdrop-blur-sm flex items-center justify-center p-3">
               <div className="w-full max-w-[min(94vw,31rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
