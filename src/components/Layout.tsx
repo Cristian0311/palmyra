@@ -396,7 +396,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 title={sidebarCollapsed ? item.name : undefined}
               >
                 {({ isActive }) => (
-                  <div data-palmi-nav={item.href} className={cn(
+                  <div
+                    data-palmi-nav={item.href}
+                    data-palmi-guide-nav={item.href === "/" ? "dashboard" : item.href.replace(/^\//, "")}
+                    className={cn(
                     "flex items-center rounded-xl transition-all duration-150 group",
                     sidebarCollapsed ? "justify-center p-2.5 my-1" : "space-x-3 px-3.5 py-2.5",
                     isActive
