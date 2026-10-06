@@ -39,6 +39,48 @@ type StoreSet = (
 ) => void;
 type StoreGet = () => AppState;
 
+async function flushPendingCashOperationsForSession(sessionId: string): Promise<boolean> {
+  const pending = getOfflineQueue()
+    .filter(item =>
+      (item.type === 'cash_movement' || item.type === 'cash_movement_delete') &&
+      String(item.data?.sessionId || '') === String(sessionId)
+    )
+    .sort((a, b) => {
+      const order = (type: string) => type === 'cash_movement' ? 0 : 1;
+      return order(a.type) - order(b.type) ||
+        a.timestamp.localeCompare(b.timestamp) ||
+        a.id.localeCompare(b.id);
+    });
+
+  if (!pending.length) return true;
+
+  const {
+    pushCashMovementToSupabase,
+    deleteCashMovementFromSupabase
+  } = await import('../../services/supabaseSync');
+
+  for (const item of pending) {
+    const ok = item.type === 'cash_movement'
+      ? await pushCashMovementToSupabase({
+          id: String(item.data?.id || ''),
+          sessionId: String(item.data?.sessionId || ''),
+          type: item.data?.type === 'income' ? 'income' : 'expense',
+          amount: Math.abs(Number(item.data?.amount) || 0),
+          currencyCode: String(item.data?.currencyCode || 'CUP'),
+          description: String(item.data?.description || '')
+        })
+      : await deleteCashMovementFromSupabase({
+          id: String(item.data?.id || ''),
+          sessionId: String(item.data?.sessionId || '')
+        });
+
+    if (!ok) return false;
+    removeFromOfflineQueueByAction(item.type, item.actionId);
+  }
+
+  return true;
+}
+
 export function createCashActions(set: StoreSet, get: StoreGet): any {
   return {
   cashSessions: [],
@@ -175,6 +217,10 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
 
     if (navigator.onLine) {
       try {
+        const cashOperationsFlushed = await flushPendingCashOperationsForSession(sessionId);
+        if (!cashOperationsFlushed) {
+          throw new Error('No se pudieron confirmar todos los ingresos/egresos del turno antes del cierre.');
+        }
         const res = await callCloseSessionRPC(sessionId, closingBalances || [], finalClosingDate, session.notes || '', settlement, expectedCashBase);
         if (!res.success) throw new Error(res.error || 'No se pudo cerrar el turno');
         const metadataOk = await pushCashSessionMetadataToSupabase(updatedSession);
@@ -571,6 +617,10 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
 
     if (navigator.onLine) {
       try {
+        const cashOperationsFlushed = await flushPendingCashOperationsForSession(sessionId);
+        if (!cashOperationsFlushed) {
+          throw new Error('No se pudieron confirmar todos los ingresos/egresos del turno antes del cierre.');
+        }
         const res = await callCloseSessionRPC(sessionId, finalBalances, finalClosingDate, updatedSession.notes || '', settlement, expectedCashBase);
         if (!res.success) throw new Error(res.error || 'No se pudo cerrar el turno');
         const metadataOk = await pushCashSessionMetadataToSupabase(updatedSession);
