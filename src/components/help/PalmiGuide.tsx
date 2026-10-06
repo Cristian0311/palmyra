@@ -256,8 +256,11 @@ export default function PalmiGuide() {
       const target = isActionStep
         ? findTarget(step.target)
         : findContentTarget(step);
+      const sidebarReady = isActionStep && step.navTarget
+        ? Boolean(findSidebarRect())
+        : true;
 
-      if (target) {
+      if (target && sidebarReady) {
         if (!isActionStep) {
           target.scrollIntoView({
             behavior: "smooth",
@@ -308,7 +311,10 @@ export default function PalmiGuide() {
         : step
           ? findContentTarget(step)
           : null;
-      const nextRect = target?.getBoundingClientRect() || null;
+      const sidebarReady = isActionStep && step?.navTarget
+        ? Boolean(findSidebarRect())
+        : true;
+      const nextRect = target && sidebarReady ? target.getBoundingClientRect() : null;
 
       setTargetRect(nextRect);
       if (!isActionStep) setSafePanelPosition(nextRect);
