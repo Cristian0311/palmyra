@@ -407,15 +407,15 @@ export default function Inventory() {
           </button>
           <button 
             onClick={() => setActiveTab('labels')}
-            className={cn("shrink-0 bg-slate-900 dark:bg-slate-800 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-slate-800 dark:hover:bg-slate-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
+            className="shrink-0 bg-slate-900 dark:bg-slate-800 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-slate-800 dark:hover:bg-slate-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
           >
-            Etiquetas
+            {canLabels ? 'Etiquetas' : 'Etiquetas · Ciudadela'}
           </button>
           <button 
             onClick={() => setActiveTab('abc')}
-            className={cn("shrink-0 bg-blue-600 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-blue-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
+            className="shrink-0 bg-blue-600 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-blue-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
           >
-            Análisis ABC
+            {canABC ? 'Análisis ABC' : 'ABC · Ciudadela'}
           </button>
           <button 
             onClick={() => {
@@ -588,8 +588,11 @@ export default function Inventory() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === 'labels' && <PrintLabels />}
-      {activeTab === 'abc' && <ABCAnalysis />}
+      {activeTab === 'excel' && !canExcel && (
+        <PlanFeatureGate feature="excel_exports" title="Descarga de inventario en Excel" description="Exporta tu inventario completo a Microsoft Excel con información de productos, precios y existencias. Disponible desde Ciudadela." />
+      )}
+      {activeTab === 'labels' && (canLabels ? <PrintLabels /> : <PlanFeatureGate feature="labels" title="Etiquetas de inventario" description="Genera e imprime etiquetas de productos desde PALMYRA. Esta herramienta avanzada está disponible desde Ciudadela." />)}
+      {activeTab === 'abc' && (canABC ? <ABCAnalysis /> : <PlanFeatureGate feature="abc_analysis" title="Análisis ABC" description="Clasifica tus productos por importancia y rendimiento para tomar mejores decisiones de inventario. Disponible desde Ciudadela." />)}
       {activeTab === 'restock' && <RestockAlerts />}
 
       {activeTab === 'bulk' && (
