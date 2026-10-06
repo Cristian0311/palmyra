@@ -235,7 +235,8 @@ async function loadCashSessions(branchId?: string) {
   ]);
   if (registersRes.error) throw registersRes.error;
   if (employeesRes.error) throw employeesRes.error;
-  if (profilesRes.error) throw profilesRes.error;
+  // El nombre de perfil es auxiliar. Si RLS no permite consultar perfiles,
+  // la carga de caja debe continuar usando empleado/metadata/opened_by.
   if (companyRes.error) throw companyRes.error;
   const registerMap = new Map<string,any>((registersRes.data || []).map((r:any)=>[r.id,r]));
   const employeeMap = new Map<string,string>((employeesRes.data || []).map((e:any)=>[e.id,e.full_name]));
