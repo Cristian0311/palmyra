@@ -48,6 +48,12 @@ test("Numa steps expose real UI anchors", () => {
   assert.ok(offline?.target?.some(selector => selector.includes("offline-status")));
 });
 
+test("POS tutorial points to the explicit gate and access anchors", () => {
+  const pos = NUMA_TOUR_STEPS.find(step => step.id === "pos");
+  assert.equal(pos?.target?.[0], '[data-palmi-guide-nav="pos"]');
+  assert.ok(pos?.contentTarget?.includes('[data-palmi-content="pos"]'));
+});
+
 test("Numa uses exactly one canonical mascot asset", () => {
   const mascotPath = join(process.cwd(), "src/components/help/PalmiMascot.tsx");
   const canonicalAsset = join(process.cwd(), "src/assets/numa-official.webp");
