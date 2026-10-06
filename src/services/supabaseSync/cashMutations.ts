@@ -144,7 +144,6 @@ export async function pushCashMovementToSupabase(params:{
     if(data?.success===false) throw new Error(data?.message||'No se pudo registrar el movimiento de caja.');
     return true;
   }catch(error){
-    await queue('cash_movement',params,params.id);
     return false;
   }
 }
@@ -161,7 +160,6 @@ export async function deleteCashMovementFromSupabase(params:{id:string;sessionId
     if(error) throw error;
     return data?.success!==false;
   }catch(error){
-    await queue('cash_movement_delete',params,params.id);
     return false;
   }
 }
