@@ -349,6 +349,7 @@ export default function PalmiGuide() {
     ? `Está resaltada en el menú. Pulsa esa opción para que te lleve allí.`
     : step?.message || "";
   const isSpotlightVisible = Boolean(open && targetRect);
+  const mascotMood = !open ? "idle" : isActionStep ? "waiting" : isLast ? "success" : step?.id === "offline" ? "alert" : "thinking";
 
   return (
     <div className="palmi-guide-root">
@@ -404,7 +405,7 @@ export default function PalmiGuide() {
 
           <div className="palmi-guide-hero">
             <div className="palmi-guide-mini-mascot">
-              <PalmiMascot className="palmi-guide-mascot-small" />
+              <PalmiMascot className="palmi-guide-mascot-small" mood={mascotMood} />
             </div>
             <div className="min-w-0">
               <p className="palmi-guide-eyebrow">{step?.eyebrow}</p>
@@ -465,7 +466,7 @@ export default function PalmiGuide() {
         <span className="palmi-spark palmi-spark-1">✦</span>
         <span className="palmi-spark palmi-spark-2">✦</span>
         <span className="palmi-mascot-stage">
-          <PalmiMascot className="palmi-guide-mascot" />
+          <PalmiMascot className="palmi-guide-mascot" mood={mascotMood} />
         </span>
         <span className="palmi-guide-name">NUMA</span>
       </div>
