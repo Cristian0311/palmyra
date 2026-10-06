@@ -114,16 +114,48 @@ let swCheckTimer: ReturnType<typeof setInterval> | null = null;
 const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {
-    // Persistimos el aviso porque el Service Worker puede detectar la nueva
-    // versión antes de que Layout termine de montar, especialmente en PWA.
-    // Así web y PWA muestran la misma burbuja al usuario.
+    // El aviso puede sobrevivir a un cierre/reapertura de la web o de la PWA.
+    // Por eso la acción de aplicar la actualización NO depende de que este
+    // callback vuelva a ejecutarse en la misma sesión.
     try { localStorage.setItem(PALMYRA_UPDATE_AVAILABLE_KEY, '1'); } catch {}
-    (window as typeof window & { __palmyraApplyUpdate?: () => void }).__palmyraApplyUpdate = () => {
-      try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
-      void updateSW(true);
-    };
     window.dispatchEvent(new CustomEvent('palmyra:update-available'));
   },
+
+// La burbuja de actualización puede aparecer por una marca persistente aunque
+// el evento onNeedRefresh haya ocurrido en una sesión anterior. Exponemos una
+// acción estable desde el arranque para que el botón SIEMPRE funcione.
+// Primero intenta aplicar el Service Worker que está esperando y, si no existe,
+// fuerza una comprobación; después recarga una sola vez la aplicación.
+const applyPalmyraUpdate = async () => {
+  try {
+    const registration = await navigator.serviceWorker?.getRegistration();
+
+    if (registration?.waiting) {
+      const waiting = registration.waiting;
+      await new Promise<void>((resolve) => {
+        const timeout = window.setTimeout(resolve, 5000);
+        const onControllerChange = () => {
+          window.clearTimeout(timeout);
+          navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+          resolve();
+        };
+        navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+        waiting.postMessage({ type: 'SKIP_WAITING' });
+      });
+    } else {
+      await updateSW(true);
+      await registration?.update?.();
+    }
+  } catch (error) {
+    console.warn('[PWA] No se pudo aplicar inmediatamente la actualización:', error);
+  } finally {
+    try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
+    window.location.reload();
+  }
+};
+
+(window as typeof window & { __palmyraApplyUpdate?: () => Promise<void> }).__palmyraApplyUpdate = applyPalmyraUpdate;
+
   onRegisteredSW(swUrl, registration) {
     if (!registration) return;
 
