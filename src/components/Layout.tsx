@@ -25,7 +25,9 @@ import {
   ChevronLeft,
   ChevronRight,
   RefreshCw,
-  Headphones
+  Headphones,
+  Download,
+  Smartphone
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
 import { cn } from "../lib/utils";
@@ -90,6 +92,24 @@ function formatPlanExpiry(target: string | null | undefined) {
     year: "numeric"
   });
 }
+function isPALMYRAPWAInstalled() {
+  if (typeof window === "undefined") return false;
+  const standalone = window.matchMedia?.("(display-mode: standalone)").matches;
+  const fullscreen = window.matchMedia?.("(display-mode: fullscreen)").matches;
+  const iosStandalone = Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
+  return Boolean(standalone || fullscreen || iosStandalone);
+}
+
+function getDeferredPWAInstallPrompt() {
+  if (typeof window === "undefined") return null;
+  return (window as typeof window & {
+    __palmyraInstallPrompt?: Event & {
+      prompt?: () => Promise<void>;
+      userChoice?: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
+    };
+  }).__palmyraInstallPrompt || null;
+}
+
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -104,10 +124,43 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [saasContext, setSaaSContext] = useState<Awaited<ReturnType<typeof loadSaaSContext>>>(null);
   const [companySwitching, setCompanySwitching] = useState(false);
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
+  const [showInstallPwa, setShowInstallPwa] = useState(false);
+  const [pwaInstallAvailable, setPwaInstallAvailable] = useState(false);
+  const [pwaInstalling, setPwaInstalling] = useState(false);
   const { currentUser, logout, notifications, removeNotification, storeConfig, syncWithSupabase, addNotification } = useStore(useShallow((state) => ({ currentUser: state.currentUser, logout: state.logout, notifications: state.notifications, removeNotification: state.removeNotification, storeConfig: state.storeConfig, syncWithSupabase: state.syncWithSupabase, addNotification: state.addNotification })));
   const location = useLocation();
   const isPosPage = location.pathname === "/pos";
 
+
+  useEffect(() => {
+    if (!currentUser?.id) {
+      setShowInstallPwa(false);
+      return;
+    }
+
+    const syncPwaState = () => {
+      const installed = isPALMYRAPWAInstalled();
+      const available = Boolean(getDeferredPWAInstallPrompt());
+      setPwaInstallAvailable(available);
+      setShowInstallPwa(!installed);
+    };
+
+    syncPwaState();
+    const onInstallAvailable = () => syncPwaState();
+    const onInstalled = () => {
+      setPwaInstallAvailable(false);
+      setShowInstallPwa(false);
+    };
+    window.addEventListener("palmyra:pwa-install-available", onInstallAvailable);
+    window.addEventListener("palmyra:pwa-installed", onInstalled);
+    const timer = window.setTimeout(syncPwaState, 900);
+
+    return () => {
+      window.removeEventListener("palmyra:pwa-install-available", onInstallAvailable);
+      window.removeEventListener("palmyra:pwa-installed", onInstalled);
+      window.clearTimeout(timer);
+    };
+  }, [currentUser?.id]);
   useEffect(() => {
     const timer = window.setInterval(() => setCountdownNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
@@ -290,6 +343,58 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="h-[100dvh] w-full min-h-[100dvh] max-h-[100dvh] overflow-hidden bg-primary text-primary flex flex-col lg:flex-row relative overscroll-none transition-colors duration-200">
+
+      {!isPosPage && showInstallPwa && currentUser && (
+        <div className="fixed inset-x-3 bottom-3 sm:inset-auto sm:right-4 sm:bottom-4 z-[10000]">
+          <div className="w-full sm:w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-violet-200/80 bg-white/95 dark:bg-slate-900/95 dark:border-violet-900/50 shadow-2xl backdrop-blur-md p-3">
+            <div className="flex items-start gap-2.5">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300">
+                <Smartphone className="w-4 h-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[9px] font-black uppercase tracking-[0.11em] text-primary">Instala PALMYRA</p>
+                  <button type="button" onClick={() => setShowInstallPwa(false)} className="p-1 rounded-lg text-muted hover:bg-subtle" aria-label="Cerrar aviso">
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+                <p className="mt-1 text-[7px] font-bold leading-4 text-muted">
+                  Instala PALMYRA como aplicación para abrirla directamente y trabajar a pantalla completa, incluso con conexión inestable.
+                </p>
+                <button
+                  type="button"
+                  disabled={pwaInstalling}
+                  onClick={async () => {
+                    const prompt = getDeferredPWAInstallPrompt();
+                    if (!prompt?.prompt) {
+                      setShowInstallPwa(false);
+                      return;
+                    }
+                    setPwaInstalling(true);
+                    try {
+                      await prompt.prompt();
+                      const choice = await prompt.userChoice;
+                      if (choice?.outcome === "accepted") setShowInstallPwa(false);
+                    } finally {
+                      setPwaInstalling(false);
+                    }
+                  }}
+                  className="mt-2 w-full h-8 rounded-xl bg-violet-600 text-white text-[8px] font-black uppercase tracking-[0.08em] flex items-center justify-center gap-1.5 hover:bg-violet-700 disabled:opacity-60"
+                >
+                  <Download className="w-3 h-3" />
+                  {pwaInstalling ? "Instalando…" : pwaInstallAvailable ? "Instalar PALMYRA" : "Cómo instalar"}
+                </button>
+                {!pwaInstallAvailable && (
+                  <p className="mt-1.5 text-[6.5px] font-bold leading-4 text-muted">
+                    En algunos navegadores: abre el menú del navegador y elige <b>Instalar aplicación</b> o <b>Añadir a pantalla de inicio</b>.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sistema de Notificaciones Globales */}
       <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
         {notifications.map((n) => (
