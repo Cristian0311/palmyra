@@ -284,13 +284,36 @@ async function loadCashSessions(branchId?: string) {
 
 export async function pullOpenCashSessionsFromSupabase() {
   try {
-    return { success: true as const, cashSessions: await loadCashSessions() };
+    const tenant = await getActiveTenant();
+    const supabase = getSupabase()!;
+    const result = await supabase.rpc('palmyra_list_open_cash_sessions', { p_company_id: tenant.companyId });
+    if (result.error) throw result.error;
+    const rows: any[] = Array.isArray(result.data) ? result.data : [];
+    const cashSessions: CashRegisterSession[] = rows.map((row: any) => ({
+      id: row.id,
+      turnNumber: Number(row.turn_number) || undefined,
+      branchId: row.branch_id || '',
+      openedAt: row.opened_at,
+      closedAt: row.closed_at || undefined,
+      openingBalance: Number(row.opening_amount) || 0,
+      openingAmount: Number(row.opening_amount) || 0,
+      status: row.status || 'open',
+      userId: row.user_id || row.opened_by || '',
+      workerName: row.worker_name || 'Administrador',
+      workingEmployeeIds: Array.isArray(row.working_employee_ids) ? row.working_employee_ids : [row.user_id || row.opened_by].filter(Boolean),
+      closingBalances: [],
+      isForcedClose: false,
+      hasDiscrepancy: false,
+      discrepancyDetails: [],
+      discrepancyDeductionApplied: 0,
+      deductedFromSalary: false,
+      auditStatus: 'pending_review',
+      auditNotes: '',
+      expectedBalance: row.expected_cash == null ? undefined : Number(row.expected_cash),
+    }));
+    return { success: true as const, cashSessions };
   } catch (e: any) {
-    return {
-      success: false as const,
-      cashSessions: [] as CashRegisterSession[],
-      message: e?.message || 'No se pudieron actualizar los turnos de caja'
-    };
+    return { success: false as const, cashSessions: [] as CashRegisterSession[], message: e?.message || 'No se pudieron actualizar los turnos de caja' };
   }
 }
 
