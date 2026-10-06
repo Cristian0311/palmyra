@@ -1,3 +1,4 @@
+import { calculateEmployeeSaleCommission } from '../../services/employeeCompensation';
 import { Branch, Category, Product, InventoryLevel, CartItem, Transaction, ReturnItem, Currency, Customer, CashRegisterSession, User, PendingOrder, SalarySettlement, InventoryTransfer, Warranty, CashMovement, Supplier, SupplierOrder, InventoryAudit, FiscalConfig, DemandForecast, BankCard, BankTransaction } from '../../types';
 import { generateId, generateReadableId } from '../../lib/utils';
 import { 
@@ -184,11 +185,8 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
     );
     const user = get().users.find(u => u.id === session.userId || u.name?.toLowerCase() === (workerName || session.workerName)?.toLowerCase());
     const commissions = sessionTxs.reduce((sum, tx) =>
-      sum + (tx.items || []).reduce((itemSum, item) => {
-        const prodObj = typeof item.product === 'object' ? item.product : get().products.find(p => p.id === (item.product as unknown as string));
-        return itemSum + ((prodObj?.commissionValue || 0) * (item.quantity || 0));
-      }, 0), 0);
-    const baseSalary = user?.baseSalary || 0;
+      sum + calculateEmployeeSaleCommission(user, tx, get().products || [], 1), 0);
+     const baseSalary = user?.baseSalary || 0;
     const deduction = discrepancyDeduction || 0;
     const settlement: SalarySettlement = {
       id: crypto.randomUUID(),
@@ -583,13 +581,8 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
     );
     const user = get().users.find(u => u.id === session.userId || u.name?.toLowerCase() === session.workerName?.toLowerCase());
     const commissions = sessionTxs.reduce((sum, tx) =>
-      sum + (tx.items || []).reduce((itemSum, item) => {
-        const prodObj = typeof item.product === 'object'
-          ? item.product
-          : get().products.find(p => p.id === (item.product as unknown as string));
-        return itemSum + ((prodObj?.commissionValue || 0) * (item.quantity || 0));
-      }, 0), 0);
-    const settlement: SalarySettlement = {
+      sum + calculateEmployeeSaleCommission(user, tx, get().products || [], 1), 0);
+     const settlement: SalarySettlement = {
       id: crypto.randomUUID(),
       userId: session.userId,
       userName: session.workerName || user?.name || 'Vendedor',
