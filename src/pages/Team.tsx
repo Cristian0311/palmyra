@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { useStore } from "../store/useStore";
 import { loadSaaSContext } from "../services/saas";
 import {
-  createEmployee,
   createEmployeePosSecure,
   createEmployeeWithInvitation,
   loadTeamSnapshot,
