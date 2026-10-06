@@ -2591,7 +2591,34 @@ export default function POS() {
                                       ))}
                                     </div>
 
-                                    {/* Payment Method Badges & Breakdown */}
+                                    {/* Ingresos / egresos del turno, visibles junto a las ventas para que el cajero
+                            pueda explicar el efectivo real y no confundirlos con tickets. */}
+                        {(currentSession?.movements || []).length > 0 && (
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 space-y-1.5">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Movimientos del turno</span>
+                              <span className="text-[7px] font-bold text-slate-400">Ingresos / Egresos</span>
+                            </div>
+                            {(currentSession?.movements || []).map(m => (
+                              <div key={m.id} className="flex items-center justify-between gap-2 rounded-lg bg-white border border-slate-200 px-2 py-1.5">
+                                <div className="min-w-0 flex items-center gap-1.5">
+                                  <span className={cn(
+                                    "shrink-0 rounded-full px-1.5 py-0.5 text-[7px] font-black uppercase",
+                                    m.type === 'income' ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+                                  )}>
+                                    {m.type === 'income' ? 'Ingreso' : 'Egreso'}
+                                  </span>
+                                  <span className="truncate text-[8px] font-bold text-slate-700">{m.description || 'Sin motivo'}</span>
+                                </div>
+                                <span className={cn("shrink-0 text-[8px] font-black font-mono", m.type === 'income' ? "text-emerald-600" : "text-rose-600")}>
+                                  {m.type === 'income' ? '+' : '-'}{formatMoney(Math.abs(Number(m.amount || 0)), currencies.find(c => c.code === m.currencyCode)?.symbol || '')}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Payment Method Badges & Breakdown */}
                                     <div className="flex items-center justify-between gap-2 flex-wrap pt-1 border-t border-slate-100 text-[8px] font-black">
                                       <div className="flex items-center gap-1 flex-wrap">
                                         {cat === 'usd' && (
