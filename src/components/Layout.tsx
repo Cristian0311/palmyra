@@ -259,21 +259,26 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("palmyra:open-sidebar", handleOpenSidebar);
   }, []);
 
-  // Auto-collapse sidebar on POS page to maximize tablet space
-  useEffect(() => {
-    if (isPosPage) {
-      setSidebarCollapsed(true);
-    } else {
-      setSidebarCollapsed(false);
-    }
-  }, [isPosPage]);
-
+  // El POS conserva el sidebar compacto pero con nombres visibles.
+  // El usuario puede minimizarlo manualmente cuando necesite más espacio.
   const navItems =
     currentUser?.role === "admin"
       ? adminNavItems
       : adminNavItems.filter(item => Boolean(item.public) || currentUser?.permissions?.includes(item.permission) || item.href === "/pos");
 
   const visibleNavItems = navItems.length > 0 ? navItems : cashierNavItems;
+
+  const navSections = currentUser?.role === "admin"
+    ? [
+        { label: "Operación", hrefs: ["/", "/pos", "/transfers", "/returns"] },
+        { label: "Gestión", hrefs: ["/customers", "/inventory", "/inventory-audit", "/suppliers"] },
+        { label: "Finanzas", hrefs: ["/banks", "/reports"] },
+        { label: "Administración", hrefs: ["/settings", "/team", "/help", "/subscription"] },
+      ].map(section => ({
+        ...section,
+        items: visibleNavItems.filter(item => section.hrefs.includes(item.href)),
+      })).filter(section => section.items.length > 0)
+    : [{ label: "", hrefs: [], items: visibleNavItems }];
 
   return (
     <div className="h-[100dvh] w-full min-h-[100dvh] max-h-[100dvh] overflow-hidden bg-primary text-primary flex flex-col lg:flex-row relative overscroll-none transition-colors duration-200">
@@ -380,89 +385,121 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </button>
         </div>
 
-        <nav className="flex-1 min-h-0 px-2 py-2 space-y-0.5 overflow-y-auto custom-scrollbar">
-          {visibleNavItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.name}
-                to={item.href}
-                onClick={() => {
-                  setSidebarOpen(false);
-                  startNavigationFeedback(item.href);
-                }}
-                title={sidebarCollapsed ? item.name : undefined}
-              >
-                {({ isActive }) => (
-                  <div
-                    className={cn(
-                    "flex items-center rounded-xl transition-all duration-150 group",
-                    sidebarCollapsed ? "justify-center p-2 my-1" : "space-x-1.5 px-1.5 py-1.5",
-                    isActive
-                      ? "bg-rose-600 text-white shadow-md shadow-rose-600/20"
-                      : "text-muted hover:bg-subtle hover:text-primary"
-                  )}>
-                    <Icon className={cn("w-3.5 h-3.5 shrink-0 transition-colors", isActive ? "text-white" : "text-muted group-hover:text-rose-600")} />
-                    {!sidebarCollapsed && (
-                      <span className="min-w-0 flex-1 font-black text-[8px] uppercase tracking-[-0.01em] leading-[1.15] whitespace-normal break-words">{item.name}</span>
-                    )}
-                  </div>
-                )}
-              </NavLink>
-            );
-          })}
+        <nav className="flex-1 min-h-0 px-1.5 py-2 overflow-y-auto custom-scrollbar">
+          {navSections.map((section, sectionIndex) => (
+            <div key={section.label || `section-${sectionIndex}`} className={cn(sectionIndex > 0 && !sidebarCollapsed ? "mt-2.5" : "")}>
+              {!sidebarCollapsed && section.label && (
+                <div className="px-2 pb-1 text-[6px] font-black uppercase tracking-[0.18em] text-muted/70">
+                  {section.label}
+                </div>
+              )}
+              <div className="space-y-0.5">
+                {section.items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <NavLink
+                      key={item.name}
+                      to={item.href}
+                      onClick={() => {
+                        setSidebarOpen(false);
+                        startNavigationFeedback(item.href);
+                      }}
+                      title={sidebarCollapsed ? item.name : undefined}
+                    >
+                      {({ isActive }) => (
+                        <div
+                          className={cn(
+                            "flex items-center rounded-lg transition-colors duration-150 group min-w-0",
+                            sidebarCollapsed ? "justify-center p-2 my-0.5" : "gap-1.5 px-2 py-1.5",
+                            isActive
+                              ? "bg-rose-600 text-white shadow-sm"
+                              : "text-muted hover:bg-subtle hover:text-primary"
+                          )}
+                        >
+                          <Icon className={cn(
+                            "w-3.5 h-3.5 shrink-0 transition-colors",
+                            isActive ? "text-white" : "text-muted group-hover:text-rose-600"
+                          )} />
+                          {!sidebarCollapsed && (
+                            <span className="min-w-0 flex-1 font-black text-[8px] uppercase tracking-[-0.01em] leading-[1.1] whitespace-normal break-words">
+                              {item.name}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </NavLink>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </nav>
 
-        <div className={cn("shrink-0 min-w-0 overflow-hidden p-2 bg-secondary border-t border-subtle", sidebarCollapsed && "lg:p-2 lg:items-center")}>
-          <div className={cn("mb-2 space-y-1.5", sidebarCollapsed && "lg:hidden")}>
+        <div className={cn(
+          "shrink-0 min-w-0 overflow-hidden p-1.5 bg-secondary border-t border-subtle",
+          sidebarCollapsed && "lg:p-1.5"
+        )}>
+          {!sidebarCollapsed && (
             <button
               type="button"
               onClick={handleManualSync}
               disabled={isSyncingOffline || !isOnline}
               className={cn(
-                "w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all border",
+                "w-full h-7 flex items-center justify-between gap-1.5 px-2 rounded-lg text-[7px] font-black uppercase tracking-wider transition-colors border mb-1.5",
                 !isOnline
                   ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
                   : pendingOfflineCount > 0
-                  ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20 hover:bg-rose-500/20 cursor-pointer"
+                  ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20 hover:bg-rose-500/20"
                   : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
               )}
-              title={pendingOfflineCount > 0 ? "Clic para sincronizar datos pendientes con Supabase" : undefined}
+              title={pendingOfflineCount > 0 ? "Sincronizar datos pendientes" : undefined}
             >
-              <div className="flex items-center gap-1.5 truncate">
+              <span className="flex items-center gap-1.5 min-w-0 truncate">
                 {isSyncingOffline ? (
-                  <RefreshCw className="w-3 h-3 animate-spin shrink-0 text-rose-500" />
+                  <RefreshCw className="w-3 h-3 animate-spin shrink-0" />
                 ) : isOnline ? (
                   <Wifi className="w-3 h-3 shrink-0" />
                 ) : (
                   <WifiOff className="w-3 h-3 shrink-0" />
                 )}
                 <span className="truncate">
-                  {!isOnline ? "Modo Offline" : (pendingOfflineCount > 0 ? (isSyncingOffline ? "Subiendo..." : "Sincronizar") : "Online")}
+                  {!isOnline ? "Offline" : (pendingOfflineCount > 0 ? (isSyncingOffline ? "Subiendo…" : "Sincronizar") : "Online")}
                 </span>
-              </div>
+              </span>
               {pendingOfflineCount > 0 && (
-                <span className="ml-1 px-1.5 py-0.5 rounded-full text-[7px] font-black bg-amber-500 text-white shrink-0">
+                <span className="shrink-0 px-1 rounded-full text-[6px] font-black bg-amber-500 text-white">
                   {pendingOfflineCount}
                 </span>
               )}
             </button>
-          </div>
+          )}
 
-          <div className={cn("flex items-center gap-1 mb-1", sidebarCollapsed && "lg:justify-center lg:mb-1")}>
-            <div className="w-5 h-5 rounded-full bg-subtle border border-base flex items-center justify-center text-primary font-black text-[9px] uppercase shrink-0 shadow-sm">
-              {currentUser?.name.charAt(0)}
+          <div className="flex items-center gap-1.5 min-w-0">
+            <div className="w-6 h-6 rounded-full bg-subtle border border-base flex items-center justify-center text-primary font-black text-[9px] uppercase shrink-0">
+              {currentUser?.name?.charAt(0) || "P"}
             </div>
             {!sidebarCollapsed && (
               <div className="min-w-0 flex-1">
-                <p className="text-[8px] font-black text-primary uppercase leading-tight whitespace-normal break-words">
-                  {currentUser?.name}
+                <p className="text-[7.5px] font-black text-primary uppercase leading-tight truncate">
+                  {currentUser?.name || "Usuario"}
                 </p>
-                <p className="text-[6px] text-muted uppercase tracking-tight font-bold whitespace-normal break-words">
-                  {currentUser?.role}
+                <p className="text-[6px] text-muted uppercase tracking-tight font-bold truncate">
+                  {currentUser?.role === "admin" ? "Administrador" : (currentUser?.role || "Empleado")}
                 </p>
               </div>
             )}
+            <button
+              type="button"
+              onClick={logout}
+              className={cn(
+                "shrink-0 rounded-lg transition-colors text-muted hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50",
+                sidebarCollapsed ? "p-1.5" : "p-1"
+              )}
+              title="Cerrar sesión"
+              aria-label="Cerrar sesión"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
           </div>
 
           {!sidebarCollapsed && (() => {
@@ -472,49 +509,25 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             const planEndsAt = planTarget || saasContext?.subscription?.trialEndsAt || saasContext?.subscription?.currentPeriodEnd || null;
             const countdown = getPlanCountdown(planEndsAt, countdownNow);
             if (!countdown) return null;
-            const units = [
-              ["Meses", countdown.months],
-              ["Días", countdown.days],
-              ["Horas", countdown.hours],
-              ["Minutos", countdown.minutes],
-              ["Segundos", countdown.seconds],
-            ] as const;
+            const compactTime = [
+              `${countdown.months}m`,
+              `${countdown.days}d`,
+              `${String(countdown.hours).padStart(2, "0")}h`
+            ].join(" · ");
             return (
-              <div className="mb-1.5 w-full max-w-full overflow-hidden rounded-xl border border-violet-200 dark:border-violet-900/40 bg-violet-50/70 dark:bg-violet-950/20 px-2 py-1.5">
-                <div className="flex items-center justify-between gap-1 mb-1">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <Clock className="w-3 h-3 text-violet-600 shrink-0" />
-                    <span className="min-w-0 text-[7px] font-black uppercase tracking-tight text-violet-700 dark:text-violet-300 whitespace-normal break-words leading-tight">
-                      {saasContext?.subscription?.planName || "Plan"}
-                    </span>
-                  </div>
-                  <span className="text-[6px] font-black uppercase text-muted shrink-0">Vence en</span>
-                </div>
-                <div className="grid grid-cols-5 gap-0.5 text-center min-w-0">
-                  {units.map(([label, value]) => (
-                    <div key={label} className="min-w-0 overflow-hidden rounded-md bg-primary/70 dark:bg-slate-900/30 px-0.5 py-1">
-                      <p className="text-[11px] font-black text-primary leading-none tabular-nums">{String(value).padStart(2, "0")}</p>
-                      <p className="mt-0.5 whitespace-normal break-words text-[5px] font-black uppercase tracking-tight leading-none text-muted">{label}</p>
-                    </div>
-                  ))}
-                </div>
+              <div className="mt-1 flex items-center gap-1.5 min-w-0 px-2 py-1 rounded-lg bg-violet-50/80 dark:bg-violet-950/20 border border-violet-200/70 dark:border-violet-900/30">
+                <Clock className="w-3 h-3 text-violet-600 shrink-0" />
+                <span className="truncate text-[6.5px] font-black uppercase tracking-tight text-violet-700 dark:text-violet-300">
+                  {saasContext?.subscription?.planName || "Plan"}
+                </span>
+                <span className="ml-auto shrink-0 text-[6.5px] font-black text-muted tabular-nums">
+                  {compactTime}
+                </span>
               </div>
             );
           })()}
-
-          <button
-            type="button"
-            onClick={logout}
-            className={cn(
-              "flex items-center text-muted hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 rounded-xl transition-all font-black uppercase",
-              sidebarCollapsed ? "justify-center p-1.5 w-full" : "space-x-1.5 px-2 py-1 w-full text-[7px] tracking-tight"
-            )}
-            title="Cerrar sesión"
-          >
-            <LogOut className="w-3.5 h-3.5 shrink-0" />
-            {!sidebarCollapsed && <span>Salir</span>}
-          </button>
         </div>
+
       </aside>
 
       {/* Main Content */}
