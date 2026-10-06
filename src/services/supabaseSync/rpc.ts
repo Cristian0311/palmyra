@@ -189,12 +189,20 @@ export async function callProcessTransactionRPC(tx:Transaction){
       changeGiven: Number(tx.changeGiven) || 0,
       sellerEmployeeIds: tx.sellerEmployeeIds || []
     };
-    const { error: metadataError } = await supabase
-      .from('sales')
-      .update({ metadata: metadataPayload })
-      .eq('id', remoteSaleId)
-      .eq('company_id', companyId);
-    if (metadataError) throw metadataError;
+
+    // sales tiene RLS activo y no se debe actualizar directamente desde el
+    // navegador. La venta ya quedó confirmada por la RPC anterior; el metadata
+    // se escribe mediante una RPC SECURITY DEFINER con las mismas validaciones
+    // de empresa/permiso. Si el metadata falla, NO convertimos una venta
+    // confirmada en un falso error de cobro.
+    const { error: metadataError } = await supabase.rpc('palmyra_update_sale_metadata', {
+      p_sale_id: remoteSaleId,
+      p_company_id: companyId,
+      p_metadata: metadataPayload
+    });
+    if (metadataError) {
+      console.warn('[POS] Venta confirmada; metadata pendiente:', metadataError);
+    }
 
     return {success:true as const,error:undefined,errorCode:undefined,data:{...data,remote_id:remoteSaleId}};
   } catch(e:any){ return errorResult(e); }
