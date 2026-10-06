@@ -9,6 +9,7 @@ export interface NumaTourStep {
   permission?: string;
   route?: string;
   target?: string[];
+  contentTarget?: string[];
   navTarget?: boolean;
 }
 
@@ -28,7 +29,8 @@ const STEPS: NumaTourStep[] = [
     permission: "reports.view",
     route: "/",
     navTarget: true,
-    target: ['[data-palmy-nav="/"]', '[data-palmi-content="dashboard"]', '[data-palmi-heading="dashboard"]']
+    target: ['[data-palmy-nav="/"]'],
+    contentTarget: ['[data-palmi-content="dashboard"]', '[data-palmi-heading="dashboard"]']
   },
   {
     id: "pos",
@@ -38,7 +40,8 @@ const STEPS: NumaTourStep[] = [
     permission: "pos.access",
     route: "/pos",
     navTarget: true,
-    target: ['[data-palmy-nav="/pos"]', '[data-palmi-content="pos"]']
+    target: ['[data-palmy-nav="/pos"]'],
+    contentTarget: ['[data-palmi-content="pos"]']
   },
   {
     id: "inventory",
@@ -48,7 +51,8 @@ const STEPS: NumaTourStep[] = [
     permission: "inventory.manage",
     route: "/inventory",
     navTarget: true,
-    target: ['[data-palmy-nav="/inventory"]', '[data-palmi-content="inventory"]']
+    target: ['[data-palmy-nav="/inventory"]'],
+    contentTarget: ['[data-palmi-content="inventory"]']
   },
   {
     id: "transfers",
@@ -58,7 +62,8 @@ const STEPS: NumaTourStep[] = [
     permission: "inventory.manage",
     route: "/transfers",
     navTarget: true,
-    target: ['[data-palmy-nav="/transfers"]', '[data-palmi-content="transfers"]']
+    target: ['[data-palmy-nav="/transfers"]'],
+    contentTarget: ['[data-palmi-content="transfers"]']
   },
   {
     id: "customers",
@@ -68,7 +73,8 @@ const STEPS: NumaTourStep[] = [
     permission: "customers.manage",
     route: "/customers",
     navTarget: true,
-    target: ['[data-palmy-nav="/customers"]', '[data-palmi-content="customers"]']
+    target: ['[data-palmy-nav="/customers"]'],
+    contentTarget: ['[data-palmi-content="customers"]']
   },
   {
     id: "reports",
@@ -78,7 +84,8 @@ const STEPS: NumaTourStep[] = [
     permission: "reports.view",
     route: "/reports",
     navTarget: true,
-    target: ['[data-palmy-nav="/reports"]', '[data-palmi-content="reports"]']
+    target: ['[data-palmy-nav="/reports"]'],
+    contentTarget: ['[data-palmi-content="reports"]']
   },
   {
     id: "team",
@@ -88,7 +95,8 @@ const STEPS: NumaTourStep[] = [
     permission: "employees.manage",
     route: "/team",
     navTarget: true,
-    target: ['[data-palmy-nav="/team"]', '[data-palmi-content="team"]']
+    target: ['[data-palmy-nav="/team"]'],
+    contentTarget: ['[data-palmi-content="team"]']
   },
   {
     id: "settings",
@@ -98,7 +106,8 @@ const STEPS: NumaTourStep[] = [
     permission: "settings.manage",
     route: "/settings",
     navTarget: true,
-    target: ['[data-palmy-nav="/settings"]', '[data-palmi-content="settings"]']
+    target: ['[data-palmy-nav="/settings"]'],
+    contentTarget: ['[data-palmi-content="settings"]']
   },
   {
     id: "help",
@@ -107,7 +116,8 @@ const STEPS: NumaTourStep[] = [
     message: "Aquí viven el tutorial, soporte, seguridad y política de privacidad. NUMA también se abre desde este lugar.",
     route: "/help",
     navTarget: true,
-    target: ['[data-palmy-nav="/help"]', '[data-palmy-nav="/help-center"]', '[data-palmi-content="help-center"]']
+    target: ['[data-palmy-nav="/help"]', '[data-palmy-nav="/help-center"]'],
+    contentTarget: ['[data-palmi-content="help-center"]']
   },
   {
     id: "offline",
