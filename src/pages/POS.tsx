@@ -2301,13 +2301,8 @@ export default function POS() {
                       return acc;
                     }, {} as Record<string, number>);
 
-                    if (baseCurrency.code === 'USD') {
-                      cashUsdSum += cashMovementsByCurrency.USD || 0;
-                    } else {
-                      cashCupSum += cashMovementsByCurrency[baseCurrency.code] || 0;
-                      cashCupSum += cashMovementsByCurrency.CUP || 0;
-                    }
-                    cashUsdSum += baseCurrency.code === 'USD' ? 0 : (cashMovementsByCurrency.USD || 0);
+                    cashCupSum += cashMovementsByCurrency.CUP || 0;
+                    cashUsdSum += cashMovementsByCurrency.USD || 0;
 
                     const totalSalesAmount = sessionTx.reduce((sum, tx) => sum + (tx.total || 0), 0);
 
