@@ -204,7 +204,9 @@ async function loadSales(branchId?: string, limit = 500) {
     }));
     const userId = s.employee_id || s.seller_user_id || '';
     return {
-      id: s.id,
+      id: s.metadata?.ticket_id || s.id,
+      remoteId: s.id,
+      ticketNumber: s.metadata?.ticket_number || s.metadata?.ticket_id || undefined,
       branchId: s.warehouse_id,
       userId,
       cashierName: employeeNames.get(s.employee_id) || undefined,
