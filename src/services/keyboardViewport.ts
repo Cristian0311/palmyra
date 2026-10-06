@@ -93,6 +93,8 @@ function scrollControlIntoViewport(control: HTMLElement) {
   const viewportTopSafe = viewportTop + EDGE_MARGIN_PX;
 
   let ancestor = control.parentElement;
+  let moved = false;
+
   while (ancestor) {
     if (isScrollable(ancestor)) {
       const rect = control.getBoundingClientRect();
@@ -106,6 +108,7 @@ function scrollControlIntoViewport(control: HTMLElement) {
           maxScrollTop,
           Math.max(0, ancestor.scrollTop + delta),
         );
+        moved = true;
       }
 
       const nextRect = control.getBoundingClientRect();
@@ -114,7 +117,29 @@ function scrollControlIntoViewport(control: HTMLElement) {
     ancestor = ancestor.parentElement;
   }
 
-  control.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+  const rect = control.getBoundingClientRect();
+  if (rect.bottom > viewportBottom || rect.top < viewportTopSafe || !moved) {
+    control.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
+  }
+}
+
+function keepFocusedControlVisible(control: HTMLElement) {
+  if (!document.contains(control)) return;
+  const metrics = getVisualViewportMetrics();
+  const keyboardOpen = metrics.keyboardInset > 0;
+
+  // During Android/iOS keyboard animation the first viewport measurement can
+  // arrive before the final keyboard height. Re-run after the animation settles.
+  scrollControlIntoViewport(control);
+
+  if (keyboardOpen) {
+    const rect = control.getBoundingClientRect();
+    const bottom = metrics.top + metrics.height - EDGE_MARGIN_PX;
+    const top = metrics.top + EDGE_MARGIN_PX;
+    if (rect.bottom > bottom || rect.top < top) {
+      scrollControlIntoViewport(control);
+    }
+  }
 }
 
 export function initKeyboardViewport() {
@@ -206,8 +231,20 @@ export function initKeyboardViewport() {
       }
     }
 
-    if (focusChanged || keyboardJustOpened) {
-      scrollControlIntoViewport(validControl);
+    if (focusChanged || keyboardJustOpened || keyboardOpen) {
+      keepFocusedControlVisible(validControl);
+      clearDelayedRuns();
+      // Multiple delayed passes are intentional: mobile keyboards animate and
+      // some browsers report the final visualViewport only after 1-2 frames.
+      for (const delay of [80, 180, 350, 600]) {
+        const timer = setTimeout(() => {
+          if (document.activeElement === validControl) {
+            applyViewportState();
+            keepFocusedControlVisible(validControl);
+          }
+        }, delay);
+        delayedRuns.push(timer);
+      }
     }
 
     lastFocusedControl = validControl;

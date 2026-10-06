@@ -92,12 +92,25 @@ function formatPlanExpiry(target: string | null | undefined) {
     year: "numeric"
   });
 }
+const PALMYRA_PWA_INSTALLED_KEY = "palmyra:pwa-installed";
+
 function isPALMYRAPWAInstalled() {
   if (typeof window === "undefined") return false;
   const standalone = window.matchMedia?.("(display-mode: standalone)").matches;
   const fullscreen = window.matchMedia?.("(display-mode: fullscreen)").matches;
+  const minimalUi = window.matchMedia?.("(display-mode: minimal-ui)").matches;
+  const windowControls = window.matchMedia?.("(display-mode: window-controls-overlay)").matches;
   const iosStandalone = Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
-  return Boolean(standalone || fullscreen || iosStandalone);
+  const rememberedInstalled = window.localStorage.getItem(PALMYRA_PWA_INSTALLED_KEY) === "1";
+  const installed = Boolean(standalone || fullscreen || minimalUi || windowControls || iosStandalone || rememberedInstalled);
+
+  // If the app is currently running in an installed display mode, remember it
+  // so a later browser launch cannot show the install banner again.
+  if (installed && !rememberedInstalled) {
+    try { window.localStorage.setItem(PALMYRA_PWA_INSTALLED_KEY, "1"); } catch {}
+  }
+
+  return installed;
 }
 
 function getDeferredPWAInstallPrompt() {
@@ -140,9 +153,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
     const syncPwaState = () => {
       const installed = isPALMYRAPWAInstalled();
-      const available = Boolean(getDeferredPWAInstallPrompt());
+      const available = !installed && Boolean(getDeferredPWAInstallPrompt());
       setPwaInstallAvailable(available);
       setShowInstallPwa(!installed);
+      if (installed) {
+        delete (window as typeof window & { __palmyraInstallPrompt?: unknown }).__palmyraInstallPrompt;
+      }
     };
 
     syncPwaState();
@@ -372,7 +388,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                       try {
                         await prompt.prompt();
                         const choice = await prompt.userChoice;
-                        if (choice?.outcome === "accepted") setShowInstallPwa(false);
+                        if (choice?.outcome === "accepted") {
+                          try { window.localStorage.setItem(PALMYRA_PWA_INSTALLED_KEY, "1"); } catch {}
+                          delete (window as typeof window & { __palmyraInstallPrompt?: unknown }).__palmyraInstallPrompt;
+                          setPwaInstallAvailable(false);
+                          setShowInstallPwa(false);
+                        }
                       } finally {
                         setPwaInstalling(false);
                       }
