@@ -207,6 +207,7 @@ export function createSupportActions(set: StoreSet, get: StoreGet): any {
       currencyCode: movement.currencyCode,
       description: movement.description || ''
     }, actionId);
+    await flushLocalStateStorage();
 
     if (navigator.onLine) {
       const { pushCashMovementToSupabase } = await import('../../services/supabaseSync');
@@ -242,6 +243,7 @@ export function createSupportActions(set: StoreSet, get: StoreGet): any {
       id: movementId,
       sessionId
     }, actionId);
+    await flushLocalStateStorage();
 
     if (navigator.onLine) {
       const { deleteCashMovementFromSupabase } = await import('../../services/supabaseSync');
