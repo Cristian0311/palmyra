@@ -21,6 +21,7 @@ import {
   CloudOff,
   CreditCard,
   FileText,
+  LifeBuoy,
   Clock,
   ChevronLeft,
   ChevronRight,
@@ -57,6 +58,7 @@ const adminNavItems = [
   { name: "Equipo", href: "/team", icon: Users, permission: "employees.manage" },
   { name: "Centro de atención", href: "/help", icon: Headphones, public: true },
   { name: "Plan", href: "/subscription", icon: CreditCard, permission: "settings.manage" },
+  { name: "Centro de atención", href: "/help-center", icon: LifeBuoy },
 ];
 
 const APP_VERSION = "V 1.0.0";
@@ -377,7 +379,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
 
         <nav className="flex-1 px-2 py-3 space-y-1 overflow-y-auto custom-scrollbar">
-          {navItems.map((item) => {
+          {visibleNavItems.map((item) => {
             const Icon = item.icon;
             return (
               <NavLink
