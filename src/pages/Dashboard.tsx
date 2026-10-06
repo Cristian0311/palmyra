@@ -27,6 +27,7 @@ import { cn } from "../lib/utils";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { getBusinessSummaryAI } from "../services/gemini";
 import { loadSaaSContext } from "../services/saas";
+import { PlanFeatureGate } from "../components/PlanFeatureGate";
 import type { Transaction, CartItem, Payment } from "../types";
 
 export default function Dashboard() {
@@ -43,6 +44,7 @@ export default function Dashboard() {
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [planCode, setPlanCode] = useState<string | null>(null);
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
+  const [showAIGate, setShowAIGate] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -121,7 +123,7 @@ export default function Dashboard() {
   }, [todayTransactions, productById, categoryById]);
 
   const handleGenerateAI = async () => {
-    if (planCode !== "pro") return;
+    if (planCode !== "pro") { setShowAIGate(true); return; }
     setIsGeneratingAI(true);
     const summary = await getBusinessSummaryAI({
       salesToday: totalSalesToday,
@@ -294,7 +296,7 @@ export default function Dashboard() {
         <div className="flex items-center gap-1.5 w-full sm:w-auto">
           <button
             onClick={handleGenerateAI}
-            disabled={isGeneratingAI || (planCode !== null && planCode !== "pro")}
+            disabled={isGeneratingAI}
             className="btn-secondary h-7 min-h-0 px-2 rounded-lg text-[8px] font-black uppercase tracking-tight gap-1.5 shadow-none"
           >
             {isGeneratingAI ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 text-amber-500" />}
@@ -366,6 +368,13 @@ export default function Dashboard() {
             )}
           </div>
         </div>      </header>
+
+      {showAIGate && planCode !== "pro" && (
+        <div className="relative">
+          <button type="button" onClick={() => setShowAIGate(false)} className="absolute right-3 top-3 z-10 text-xs font-black text-muted hover:text-primary">Cerrar</button>
+          <PlanFeatureGate feature="ai_dashboard" title="Inteligencia artificial en el Dashboard" description="Obtén una lectura inteligente de ventas, categorías, inventario y señales importantes de tu negocio. Esta función está disponible desde Ciudadela." />
+        </div>
+      )}
 
       {/* AI Summary Card */}
       {aiSummary && (
