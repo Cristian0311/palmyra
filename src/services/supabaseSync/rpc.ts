@@ -20,6 +20,17 @@ async function rpc(name:string,args:any){
   const {data,error}=await supabase.rpc(name,args); if(error)throw error; if(data&&data.success===false) { const e:any=new Error(data.message||data.error||'Operación rechazada'); e.code=data.code||data.error_code; throw e; } return data;
 }
 
+function normalizeUuidOperationId(value:string): string {
+  const raw=String(value||'').trim();
+  const uuidPattern=/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  if(uuidPattern.test(raw)) return raw;
+  // Legacy offline inventory operations were stored as invrec:<uuid>.
+  // Keep the UUID suffix as the durable/idempotent server operation id.
+  const legacyMatch=raw.match(/^[a-z][a-z0-9_-]*:([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i);
+  if(legacyMatch) return legacyMatch[1];
+  throw Object.assign(new Error('El identificador de operación de inventario no es un UUID válido.'), { code:'INVALID_OPERATION_ID' });
+}
+
 export async function callAdjustInventoryRPC(params:{
   operationId:string;
   companyId?:string;
@@ -34,7 +45,7 @@ export async function callAdjustInventoryRPC(params:{
   try{
     const {companyId}=await getActiveTenant();
     const data=await rpc('palmyra_adjust_inventory',{
-      p_operation_id:params.operationId,
+      p_operation_id:normalizeUuidOperationId(params.operationId),
       p_company_id:companyId,
       p_warehouse_id:params.warehouseId,
       p_product_id:params.productId,
