@@ -1,6 +1,7 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
+import PwaInstallPrompt from './components/help/PwaInstallPrompt';
 import { applyDevicePerformanceProfile } from './utils/devicePerformance';
 import { startPerformanceAudit } from './utils/performanceAudit';
 
@@ -119,5 +120,6 @@ const updateSW = registerSW({
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
+    <PwaInstallPrompt />
   </StrictMode>,
 );
