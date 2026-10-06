@@ -59,6 +59,24 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
     }
     case 'cash_session': {
       const session = data as CashRegisterSession & { __operation?: 'open' | 'close' | 'cancel' | 'snapshot'; settlement?: any; closedAt?: string };
+
+      // Compatibilidad con snapshots de versiones anteriores: si todavía existe
+      // una operación cash_session que contiene movimientos, los reescribimos
+      // mediante la API idempotente de movimientos para no perderlos al migrar
+      // de snapshots completos a operaciones independientes.
+      const syncLegacySessionMovements = async () => {
+        for (const movement of session.movements || []) {
+          const ok = await pushCashMovementToSupabase({
+            id: movement.id,
+            sessionId: session.id,
+            type: movement.type,
+            amount: Math.abs(Number(movement.amount) || 0),
+            currencyCode: movement.currencyCode,
+            description: movement.description || ''
+          });
+          if (!ok) throw new Error('No se pudo sincronizar un movimiento de caja del turno.');
+        }
+      };
       if (session.__operation === 'close') {
         const settlement = session.settlement;
         if (!settlement) throw new Error('Cierre offline sin liquidación asociada');
@@ -119,6 +137,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         // descuadres/liquidaciones incluso después de reiniciar el dispositivo.
         const metadataOk = await pushCashSessionMetadataToSupabase(session);
         if (!metadataOk) throw new Error('El cierre fue confirmado, pero el metadata del turno aún no pudo sincronizarse.');
+        await syncLegacySessionMovements();
         return true;
       }
       if (session.__operation === 'cancel') {
@@ -163,6 +182,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       // movimientos/colaboradores y evita reabrir un turno cerrado.
       const synced = await pushCashSessionToSupabase(session);
       if (!synced) throw new Error('El snapshot del turno no fue confirmado en Supabase.');
+      await syncLegacySessionMovements();
       return true;
     }
     case 'audit_start': {
