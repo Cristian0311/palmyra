@@ -5,6 +5,7 @@ import { generateId, cn } from '../lib/utils';
 import { CreditCard, Plus, ArrowUpRight, ArrowDownRight, Activity, Trash2, ShieldCheck, RefreshCw, List, X, CheckCircle2 } from 'lucide-react';
 import { BankCard, BankTransaction } from '../types';
 import { InfoTooltip } from '../components/InfoTooltip';
+import PlanFeatureGate from '../components/PlanFeatureGate';
 import { enqueueOfflineItem, getOfflineQueue, removeFromOfflineQueue } from '../services/offlineQueue';
 import { callBankInternalTransferRPC } from '../services/supabaseSync';
 
@@ -322,6 +323,7 @@ export default function Banks() {
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   return (
+    <PlanFeatureGate feature="banking" title="Cuentas bancarias" description="La gestión bancaria y sus movimientos están disponibles desde el plan Caravana." >
     <div className="space-y-3 animate-in fade-in duration-300">
       {/* Delete Card Confirmation Modal */}
       {cardToDelete && (
@@ -780,5 +782,6 @@ export default function Banks() {
         </div>
       )}
     </div>
+    </PlanFeatureGate>
   );
 }
