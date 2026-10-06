@@ -1009,7 +1009,6 @@ export default function Transfers() {
       )}
 
     </div>
-    </div>
     </PlanFeatureGate>
   );
 }
