@@ -55,6 +55,9 @@ async function loadCatalog() {
   const products = (productsRes.data || []).map((p:any) => {
     const firstBarcode = (barcodeRes.data || []).find((b:any) => b.product_id === p.id)?.barcode || '';
     const item = mapProduct(p, firstBarcode, kitsByProduct.get(p.id) || []);
+    const variants = variantsByProduct.get(p.id) || [];
+    item.availableSizes = variants.filter((v:any) => v.active !== false && v.attributes?.type === 'size').map((v:any) => String(v.name));
+    item.availableColors = variants.filter((v:any) => v.active !== false && v.attributes?.type === 'color').map((v:any) => String(v.name));
     const canonicalPrice = priceByProduct.get(p.id);
     if (canonicalPrice !== undefined) {
       item.price = canonicalPrice;
