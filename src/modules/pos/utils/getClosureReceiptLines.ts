@@ -46,17 +46,20 @@ export function getClosureReceiptLines(session: CashRegisterSession, deps: Closu
 
   const soldList = Object.values(soldMap);
   const totalSales = sessionTx.reduce((sum, tx) => sum + tx.total, 0);
-  const commissions = sessionTx.reduce((sum, tx) => sum + tx.items.reduce((s, item) => {
-    const prodId = typeof item.product === 'string' ? item.product : item.product.id;
-    const prod = products.find(p => p.id === prodId);
-    if (!prod) return s;
-    return s + ((prod.commissionValue || 0) * item.quantity);
-  }, 0), 0);
-
-  const employee = users.find(u => u.id === session.userId || u.name === session.workerName)
+  const employee =
+    users.find(u => u.id === session.userId || u.name === session.workerName)
     || users.find(u => u.name?.toLowerCase() === session.workerName?.toLowerCase())
     || users.find(u => u.role === 'employee')
     || currentUser;
+
+  const totalSales = sessionTx.reduce((sum, tx) => sum + tx.total, 0);
+  const commissions = employee?.compensationType === 'sales_percentage'
+    ? totalSales * Math.max(0, Math.min(100, Number(employee.salesPercentage || 0))) / 100
+    : sessionTx.reduce((sum, tx) => sum + tx.items.reduce((s, item) => {
+        const prodId = typeof item.product === 'string' ? item.product : item.product.id;
+        const prod = products.find(p => p.id === prodId);
+        return s + ((prod?.commissionValue || 0) * item.quantity);
+      }, 0), 0);
 
   // Keep the existing dormant independent-settlement calculation for compatibility.
   const totalShopCost = sessionTx.reduce((sum, tx) => sum + tx.items.reduce((s, item) => {
