@@ -166,35 +166,44 @@ export default function CheckoutModal({
               {activePaymentLineId && (
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 animate-in slide-in-from-bottom-2 duration-300">
                   <div className="flex gap-2 mb-4">
-                  <div className={cn(
-                    "flex-1 grid p-1 bg-white rounded-xl border border-slate-100",
-                    lockedPaymentMethod ? "grid-cols-1" : "grid-cols-2"
-                  )}>
-                    {lockedPaymentMethod ? (
+                    <div className="flex-1 grid p-1 bg-white rounded-xl border border-slate-100 grid-cols-1">
                       <div className={cn(
                         "py-2 rounded-lg text-[9px] font-black uppercase text-center",
-                        lockedPaymentMethod === 'cash' ? "bg-emerald-600 text-white" : "bg-blue-600 text-white"
+                        (lockedPaymentMethod || paymentLines.find(l => l.id === activePaymentLineId)?.method) === 'transfer'
+                          ? "bg-blue-600 text-white"
+                          : "bg-emerald-600 text-white"
                       )}>
-                        {lockedPaymentMethod === 'cash' ? 'Efectivo' : 'Transferencia'}
+                        {(lockedPaymentMethod || paymentLines.find(l => l.id === activePaymentLineId)?.method) === 'transfer'
+                          ? 'Transferencia'
+                          : 'Efectivo'}
                       </div>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => onUpdatePaymentLine(activePaymentLineId, 'method', 'cash')}
-                          className={cn(
-                            "py-2 rounded-lg text-[9px] font-black uppercase transition-all",
-                            paymentLines.find(l => l.id === activePaymentLineId)?.method === 'cash' ? "bg-emerald-600 text-white shadow-sm" : "text-slate-400 hover:bg-slate-50"
-                          )}
-                        >Efectivo</button>
-                        <button
-                          onClick={() => onUpdatePaymentLine(activePaymentLineId, 'method', 'transfer')}
-                          className={cn(
-                            "py-2 rounded-lg text-[9px] font-black uppercase transition-all",
-                            paymentLines.find(l => l.id === activePaymentLineId)?.method === 'transfer' ? "bg-blue-600 text-white shadow-sm" : "text-slate-400 hover:bg-slate-50"
-                          )}
-                        >Transf.</button>
-                      </>
-                    )}
+                    </div>
+
+                    <div className="flex-[1.2] flex gap-1 p-1 bg-white rounded-xl border border-slate-100 overflow-x-auto scrollbar-hide">
+                      {currencies
+                        .filter(c => {
+                          const activeLine = paymentLines.find(l => l.id === activePaymentLineId);
+                          if (activeLine?.method === 'transfer') return c.code === 'CUP' || c.code === 'MN';
+                          return true;
+                        })
+                        .map(c => (
+                          <button
+                            key={c.code}
+                            onClick={() => {
+                              const line = paymentLines.find(l => l.id === activePaymentLineId);
+                              if (line && !(lockedPaymentMethod === 'transfer' && c.code !== 'CUP' && c.code !== 'MN')) {
+                                onUpdatePaymentLine(line.id, 'code', c.code);
+                              }
+                            }}
+                            className={cn(
+                              "flex-1 py-2 px-3 rounded-lg text-[9px] font-black transition-all min-w-[3.5rem]",
+                              paymentLines.find(l => l.id === activePaymentLineId)?.code === c.code
+                                ? "bg-indigo-600 text-white shadow-sm"
+                                : "text-slate-400 hover:bg-slate-50"
+                            )}
+                          >{c.code}</button>
+                        ))}
+                    </div>
                   </div>
 
                   <div className="space-y-4">
