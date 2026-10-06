@@ -6,7 +6,14 @@ export type PlanFeature =
   | 'custom_roles'
   | 'banking'
   | 'multi_warehouse'
-  | 'advanced_analytics';
+  | 'advanced_analytics'
+  | 'customers_suppliers'
+  | 'visual_style'
+  | 'excel_exports'
+  | 'ai_dashboard'
+  | 'warranty_returns'
+  | 'abc_analysis'
+  | 'labels';
 
 const LEVEL: Record<string, number> = {
   trial: 0,
@@ -24,6 +31,13 @@ export const PLAN_FEATURES: Record<PlanFeature, string> = {
   banking: 'growth',
   multi_warehouse: 'growth',
   advanced_analytics: 'pro',
+  customers_suppliers: 'growth',
+  visual_style: 'growth',
+  excel_exports: 'pro',
+  ai_dashboard: 'pro',
+  warranty_returns: 'pro',
+  abc_analysis: 'pro',
+  labels: 'pro',
 };
 
 export function getRequiredPlanCode(feature: PlanFeature): string {
