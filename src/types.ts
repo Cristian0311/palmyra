@@ -111,6 +111,10 @@ export interface StoreConfig {
 
 export interface Transaction {
   id: string;
+  /** Stable UUID used by Supabase sales.id. Local/UI may keep a readable ticket id in id. */
+  remoteId?: string;
+  /** Human-readable ticket identifier shown to operators/customers. */
+  ticketNumber?: string;
   /** Canonical warehouse scope. */
   warehouseId?: string;
   /** @deprecated Use warehouseId. */

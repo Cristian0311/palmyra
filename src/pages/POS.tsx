@@ -199,18 +199,34 @@ export default function POS() {
       setIsRefreshingOpenSessions(false);
     }
   }, []);
-  // Android/Chrome puede redimensionar o reposicionar el viewport al abrir
-  // el teclado virtual. Cuando la API está disponible, hacemos que el
-  // teclado se superponga al contenido para mantener estable el diálogo POS.
+  // Android/Chrome puede superponer el teclado sobre el contenido. Medimos
+  // el área ocupada por el teclado y elevamos los modales para que el campo
+  // activo y sus acciones sigan visibles en teléfonos y tablets.
   useEffect(() => {
     const keyboard = (navigator as Navigator & {
       virtualKeyboard?: { overlaysContent: boolean }
     }).virtualKeyboard;
-    if (!keyboard) return;
-    const previous = keyboard.overlaysContent;
-    keyboard.overlaysContent = true;
+    const previous = keyboard?.overlaysContent;
+    if (keyboard) keyboard.overlaysContent = true;
+
+    const viewport = window.visualViewport;
+    if (!viewport) return () => {
+      if (keyboard && previous !== undefined) keyboard.overlaysContent = previous;
+    };
+
+    const updateKeyboardInset = () => {
+      const overlap = Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop));
+      setKeyboardInset(overlap);
+    };
+
+    updateKeyboardInset();
+    viewport.addEventListener('resize', updateKeyboardInset);
+    viewport.addEventListener('scroll', updateKeyboardInset);
     return () => {
-      keyboard.overlaysContent = previous;
+      viewport.removeEventListener('resize', updateKeyboardInset);
+      viewport.removeEventListener('scroll', updateKeyboardInset);
+      if (keyboard && previous !== undefined) keyboard.overlaysContent = previous;
+      setKeyboardInset(0);
     };
   }, []);
 
@@ -338,6 +354,7 @@ export default function POS() {
   const [isClosingSession, setIsClosingSession] = useState(false);
 
   const [joiningSessionPassword, setJoiningSessionPassword] = useState("");
+  const [keyboardInset, setKeyboardInset] = useState(0);
   const [isNewEmployee, setIsNewEmployee] = useState(false);
 
   // Empleados de la empresa activa y almacenes autorizados.
@@ -1014,10 +1031,13 @@ export default function POS() {
     const activeSellerName = currentSession.workerName || currentUser?.name || 'Empleado';
     const sellerUser = (users || []).find(u => u.id === activeSellerId) || currentUser;
     const effectiveBranchId = currentSession.branchId || sellerUser?.branchId || currentBranchId || (branches[0]?.id || '');
-    const txId = buildTransactionTicketId(currentTransactions);
+    const ticketNumber = buildTransactionTicketId(currentTransactions);
+    const txId = crypto.randomUUID();
 
     const tx: import('../types').Transaction = {
       id: txId,
+      remoteId: txId,
+      ticketNumber,
       branchId: effectiveBranchId,
       userId: activeSellerId,
       sellerEmployeeIds: currentSession.workingEmployeeIds?.length ? currentSession.workingEmployeeIds : [activeSellerId],
@@ -1536,7 +1556,8 @@ export default function POS() {
       )}
       {!currentSession && (
         <div
-          className={cn("pos-keyboard-overlay pos-modal-layer fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center px-3 py-5 sm:px-4 sm:py-6", "overflow-y-auto overscroll-contain")}>
+          className={cn("pos-keyboard-overlay pos-modal-layer fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center px-3 py-5 sm:px-4 sm:py-6", "overflow-y-auto overscroll-contain")}
+          style={{ paddingBottom: keyboardInset > 0 ? `${keyboardInset + 28}px` : undefined }}>
           {showOpenSessionsModal && !joiningSessionId && (
             <div className="fixed inset-0 z-[65] bg-slate-950/55 backdrop-blur-sm flex items-center justify-center p-3">
               <div className="w-full max-w-[min(94vw,31rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">

@@ -222,7 +222,7 @@ export function usePOSPrinter({
       })
       .join("%0A");
 
-    const body = `Hola, gracias por tu compra en *${storeName}*.%0A%0A*Detalle del recibo ${tx.id}:*%0A${itemsText}%0A%0A*Total:* ${formatMoney(tx.total, baseCurrency.symbol)}%0A%0A¡Vuelve pronto!`;
+    const body = `Hola, gracias por tu compra en *${storeName}*.%0A%0A*Detalle del recibo ${tx.ticketNumber || tx.id}:*%0A${itemsText}%0A%0A*Total:* ${formatMoney(tx.total, baseCurrency.symbol)}%0A%0A¡Vuelve pronto!`;
     window.open(`https://wa.me/${phone}?text=${body}`, "_blank");
   };
 
