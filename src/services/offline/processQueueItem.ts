@@ -22,6 +22,7 @@ import {
   pushQuoteToSupabase, pushBankCardToSupabase, pushReturnToSupabase,
   pushSupplierToSupabase, pushSupplierOrderToSupabase, pushInventoryAuditToSupabase,
   pushSalarySettlementToSupabase, pushInventoryToSupabase,
+  pushCashMovementToSupabase, deleteCashMovementFromSupabase, pushCashSessionMetadataToSupabase,
   applyInventoryAdjustmentToSupabase, reconcileInventoryToSupabase
 } from '../supabaseSync';
 import { addSyncLog } from '../../utils/syncLogger';
@@ -35,6 +36,27 @@ class PermanentSyncError extends Error {
 export async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<boolean> {
   const { type, data } = item;
   switch (type) {
+    case 'cash_movement': {
+      const movement = data as {
+        id:string; sessionId:string; type:'income'|'expense'; amount:number; currencyCode:string; description?:string
+      };
+      const ok = await pushCashMovementToSupabase({
+        id: movement.id,
+        sessionId: movement.sessionId,
+        type: movement.type,
+        amount: Math.abs(Number(movement.amount)||0),
+        currencyCode: movement.currencyCode,
+        description: movement.description || ''
+      });
+      if (!ok) throw new Error('No se pudo sincronizar el movimiento de caja.');
+      return true;
+    }
+    case 'cash_movement_delete': {
+      const movement = data as { id:string; sessionId:string };
+      const ok = await deleteCashMovementFromSupabase({ id: movement.id, sessionId: movement.sessionId });
+      if (!ok) throw new Error('No se pudo sincronizar la eliminación del movimiento de caja.');
+      return true;
+    }
     case 'cash_session': {
       const session = data as CashRegisterSession & { __operation?: 'open' | 'close' | 'cancel' | 'snapshot'; settlement?: any; closedAt?: string };
       if (session.__operation === 'close') {
@@ -91,6 +113,12 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
           Number.isFinite(Number(session.expectedBalance)) ? Number(session.expectedBalance) : undefined
         );
         if (!res.success) throw new Error(res.error || 'No se pudo cerrar el turno');
+
+        // El cierre remoto y el metadata del turno son confirmaciones separadas.
+        // Guardamos el metadata después del cierre para que Reportes pueda reconstruir
+        // descuadres/liquidaciones incluso después de reiniciar el dispositivo.
+        const metadataOk = await pushCashSessionMetadataToSupabase(session);
+        if (!metadataOk) throw new Error('El cierre fue confirmado, pero el metadata del turno aún no pudo sincronizarse.');
         return true;
       }
       if (session.__operation === 'cancel') {
