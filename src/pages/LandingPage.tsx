@@ -346,7 +346,7 @@ export default function LandingPage() {
                     <p className="text-[9px] text-slate-500 leading-5 mt-3">{plan.description}</p>
                     <div className="space-y-1.5 mt-4">{plan.features.map(f => <div key={f} className="flex items-center gap-2 text-[9px] text-slate-500"><span className="w-4 h-4 rounded-md bg-[#EFE8FF] text-[#5B2DBA] flex items-center justify-center shrink-0"><Check className="w-2.5 h-2.5"/></span>{f}</div>)}</div>
                     <button onClick={() => { sessionStorage.setItem("palmyra_signup_plan", plan.code); navigate("/auth?mode=signup"); }} className={"w-full h-10 mt-5 rounded-xl text-[10px] font-black " + (plan.featured ? "bg-[#5B2DBA] text-white" : "bg-[#F0EBFA] text-[#5B2DBA]")}>{plan.code === "starter" ? "Comenzar gratis" : "Elegir plan"}</button>
-                    <p className="text-[7px] text-center text-slate-400 mt-2">{plan.code === "starter" ? "90 días gratis · sigue Facebook y WhatsApp" : "Cuba: efectivo o transferencia bancaria"}</p>
+                    <p className="text-[7px] text-center text-slate-400 mt-2">{plan.code === "starter" ? "Oasis: 90 días gratis · sigue Facebook + únete a WhatsApp · verifica al registrarte" : "Cuba: efectivo o transferencia bancaria"}</p>
                   </article>
                 );
               })}
