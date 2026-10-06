@@ -16,35 +16,16 @@ const queue = async (type: OfflineActionType, data: unknown, id: string) => {
 };
 
 async function ensureCashRegister(supabase: any, companyId: string, warehouseId: string) {
-  const { data: existing, error } = await supabase
-    .from('cash_registers')
-    .select('id')
-    .eq('company_id', companyId)
-    .eq('warehouse_id', warehouseId)
-    .eq('active', true)
-    .order('id')
-    .limit(1)
-    .maybeSingle();
-
+  // cash_registers is protected by RLS. Provisioning/retrieval is performed
+  // through a SECURITY DEFINER RPC so POS workers and admins do not depend on
+  // direct table INSERT/SELECT permissions during offline replay.
+  const { data, error } = await supabase.rpc('ensure_cash_register_secure', {
+    p_company_id: companyId,
+    p_warehouse_id: warehouseId,
+  });
   if (error) throw error;
-  if (existing?.id) return existing.id;
-
-  const code = 'CAJA-' + warehouseId.slice(0, 6).toUpperCase();
-  const { data, error: insertError } = await supabase
-    .from('cash_registers')
-    .insert({
-      id: crypto.randomUUID(),
-      company_id: companyId,
-      warehouse_id: warehouseId,
-      code,
-      name: 'Caja principal',
-      active: true,
-    })
-    .select('id')
-    .single();
-
-  if (insertError) throw insertError;
-  return data.id;
+  if (!data) throw new Error('No se pudo obtener la caja del almacén.');
+  return String(data);
 }
 
 export async function pushCashSessionToSupabase(session: CashRegisterSession): Promise<boolean> {

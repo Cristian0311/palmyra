@@ -7,6 +7,9 @@ export type RpcSuccess<T = any> = { success: true; data: T; error?: string; erro
 export type RpcResult<T = any> = RpcSuccess<T> | RpcFailure;
 
 function errorResult(e:any): RpcFailure { return { success:false, error:e?.message || String(e), errorCode:e?.code || e?.status || undefined, data:undefined }; }
+function isUuid(value: unknown): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
 
 export async function logAuditEvent(entry:{userId?:string;action:string;entityType:string;entityId?:string;oldData?:any;newData?:any;meta?:any}){
   try { const supabase=getSupabase(); if(!supabase)return; const {companyId,authUserId}=await getActiveTenant(); await supabase.from('audit_logs').insert({id:crypto.randomUUID(),company_id:companyId,user_id:entry.userId||authUserId,action:entry.action,entity_type:entry.entityType,entity_id:entry.entityId||null,before_data:entry.oldData||null,after_data:entry.newData||null,metadata:entry.meta||null}); } catch(e){ console.warn('[PALMYRA] audit log failed',e); }
@@ -61,8 +64,11 @@ export async function callOpenSessionRPCWithId(session:CashRegisterSession){
 export async function callProcessTransactionRPC(tx:Transaction){
   try { const {companyId,authUserId,defaultCurrencyCode}=await getActiveTenant(); const supabase=getSupabase()!; const items=(tx.items||[]).map(item=>{const prod=typeof item.product==='string'?null:item.product;return {id:item.id,product_id:typeof item.product==='string'?item.product:prod?.id,product_name:prod?.name||null,quantity:Number(item.quantity)||0,price:Number(item.price??prod?.price)||0,total:Number(item.total)||((Number(item.price??prod?.price)||0)*(Number(item.quantity)||0)),variant_label:item.variantLabel||null,variant_id:null,serial_number:item.serialNumber||null,discount:0,tax:0};});
     const payments=(tx.payments||[]).map((p:any)=>({method:p.method==='transfer'?'bank_transfer':p.method||'cash',currency_code:p.currencyCode||null,amount:Number(p.amount)||0,exchange_rate:Number(p.exchangeRate)||1,reference:p.reference||null}));
-    const data=await rpc('palmyra_record_sale',{p_sale_id:tx.remoteId || tx.id,p_company_id:companyId,p_warehouse_id:tx.branchId,p_cash_session_id:tx.sessionId||null,p_user_id:tx.userId||authUserId,p_total:Number(tx.total)||0,p_currency_code:defaultCurrencyCode || 'CUP',p_notes:tx.notes||'',p_customer_id:tx.customerId||null,p_items:items,p_payments:payments});
-    const remoteSaleId = tx.remoteId || tx.id;
+    // Older queued tickets used PALMYRA-TK... as their local id. Supabase
+    // sales.id is UUID, so generate a new remote UUID for those legacy items.
+    // The readable ticket number remains in metadata/UI.
+    const remoteSaleId = isUuid(tx.remoteId) ? tx.remoteId : (isUuid(tx.id) ? tx.id : crypto.randomUUID());
+    const data=await rpc('palmyra_record_sale',{p_sale_id:remoteSaleId,p_company_id:companyId,p_warehouse_id:tx.branchId,p_cash_session_id:tx.sessionId||null,p_user_id:tx.userId||authUserId,p_total:Number(tx.total)||0,p_currency_code:defaultCurrencyCode || 'CUP',p_notes:tx.notes||'',p_customer_id:tx.customerId||null,p_items:items,p_payments:payments});
     const metadataPayload = {
       ticket_id: tx.id,
       ticket_number: tx.ticketNumber || tx.id,
@@ -78,7 +84,7 @@ export async function callProcessTransactionRPC(tx:Transaction){
       .eq('id', remoteSaleId)
       .eq('company_id', companyId);
     if (metadataError) throw metadataError;
-    return {success:true as const,error:undefined,errorCode:undefined,data};
+    return {success:true as const,error:undefined,errorCode:undefined,data:{...data,remote_id:remoteSaleId}};
   } catch(e:any){ return errorResult(e); }
 }
 

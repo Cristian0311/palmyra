@@ -9,7 +9,7 @@ import {
   callTransferInventoryRPC,
   callTransferInventoryBulkRPC,
 } from '../../services/supabaseSync';
-import { enqueueOfflineItem } from '../../services/offlineQueue';
+import { enqueueOfflineItem, getOfflineQueue, removeFromOfflineQueue } from '../../services/offlineQueue';
 import { removeFromOfflineQueueByAction } from '../../services/offlineQueue/outboxUtils';
 import { generateId } from '../../lib/utils';
 import { setCanonicalInventoryQuantity, validateTransferStock } from '../utils/inventoryTransforms';
@@ -80,8 +80,21 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
 
     if (!added) return;
 
-    // Producto y stock inicial se sincronizan como operaciones independientes.
-    pushProductToSupabase(product).catch(() => {});
+    // Primero garantizamos una copia durable del producto en la cola offline.
+    // Esto protege contra cierres del navegador/reinicio/limpieza de datos antes
+    // de que la petición de red termine.
+    void enqueueOfflineItem('product', product, product.id)
+      .then(async () => {
+        const ok = await pushProductToSupabase(product);
+        if (ok) {
+          const queued = getOfflineQueue().filter(item => item.type === 'product' && item.actionId === product.id);
+          for (const item of queued) removeFromOfflineQueue(item.id);
+        }
+      })
+      .catch((error) => {
+        console.warn('[PALMYRA] No se pudo preparar la cola durable del producto:', error);
+      });
+
     for (const inv of newInventoryEntries) {
       const op = { operationId: `invrec:${crypto.randomUUID()}`, productId: inv.productId, branchId: inv.branchId, variantLabel: inv.variantLabel || '', expectedQuantity: 0, newQuantity: inv.quantity, quantity: inv.quantity, minQuantity: inv.minQuantity, userId: get().currentUser?.id || undefined };
       if (typeof navigator !== 'undefined' && !navigator.onLine) enqueueOfflineItem('inventory_reconcile', op, op.operationId);
