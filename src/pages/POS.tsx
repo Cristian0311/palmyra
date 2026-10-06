@@ -1560,7 +1560,7 @@ export default function POS() {
                   ) : (
                     <div className="space-y-1.5">
                       {openSessionsForResume.map((session) => {
-                        const branchName = branches.find(b => b.id === session.branchId)?.name || session.warehouseName || "Almacén principal";
+                        const branchName = branches.find(b => b.id === session.branchId)?.name || "Almacén principal";
                         const openedLabel = session.openedAt ? new Date(session.openedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—";
                         return (
                           <div key={session.id} className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2 rounded-xl border border-slate-100 bg-slate-50/80 px-2.5 py-2">
