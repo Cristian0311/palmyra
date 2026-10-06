@@ -573,6 +573,8 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       try {
         const res = await callCloseSessionRPC(sessionId, finalBalances, finalClosingDate, updatedSession.notes || '', settlement, expectedCashBase);
         if (!res.success) throw new Error(res.error || 'No se pudo cerrar el turno');
+        const metadataOk = await pushCashSessionMetadataToSupabase(updatedSession);
+        if (!metadataOk) throw new Error('El cierre fue confirmado, pero los datos del turno aún no pudieron sincronizarse.');
         set(state => ({
           cashSessions: state.cashSessions.map(s => s.id === sessionId ? updatedSession : s),
           salarySettlements: [...(state.salarySettlements || []).filter(st => st.sessionId !== sessionId), { ...settlement, id: res.data?.settlement_id || settlement.id }]
