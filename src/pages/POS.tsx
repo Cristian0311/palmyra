@@ -1508,7 +1508,7 @@ export default function POS() {
                         setJoiningSessionPassword("");
                         setPosError("");
                       }}
-                      className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1.25 text-[7px] font-black uppercase tracking-tight text-white shadow-sm hover:bg-emerald-700"
+                      className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1 text-[7px] font-black uppercase tracking-tight text-white shadow-sm hover:bg-emerald-700"
                     >
                       Reanudar
                     </button>
