@@ -98,7 +98,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
   const { currentUser, logout, notifications, removeNotification, storeConfig, syncWithSupabase, addNotification } = useStore(useShallow((state) => ({ currentUser: state.currentUser, logout: state.logout, notifications: state.notifications, removeNotification: state.removeNotification, storeConfig: state.storeConfig, syncWithSupabase: state.syncWithSupabase, addNotification: state.addNotification })));
   const location = useLocation();
-  const isPosPage = location.pathname === "/pos";
 
   useEffect(() => {
     const timer = window.setInterval(() => setCountdownNow(Date.now()), 1000);
