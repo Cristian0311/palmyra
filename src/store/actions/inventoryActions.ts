@@ -42,47 +42,27 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
   return {
   products: INITIAL_PRODUCTS,
   inventory: INITIAL_INVENTORY,
-  addProduct: (product, initialQuantity, branchId, variantLabel, initialVariantQuantities) => {
-    const state = get();
-    const targetBranch = branchId || state.currentBranchId;
-    const warehouseAvailable = Boolean(targetBranch) && (state.branches || []).some(b => b.id === targetBranch && (b.isActive !== false));
-    if (!warehouseAvailable) {
-      get().addNotification("No se puede crear el producto sin un almacén activo.", "error", "Primero crea o selecciona un almacén y luego registra el producto.");
-      return;
-    }
-    let newInventoryEntries: InventoryLevel[] = [];
-    
-    if (initialVariantQuantities && Object.keys(initialVariantQuantities).length > 0) {
-      Object.entries(initialVariantQuantities).forEach(([vLabel, qty]) => {
-        if (Number(qty) > 0) {
-          newInventoryEntries.push({ id: crypto.randomUUID(), productId: product.id, branchId: targetBranch, quantity: Number(qty), minQuantity: 5, variantLabel: vLabel });
-        }
-      });
-    } else if (initialQuantity && initialQuantity > 0) {
-      newInventoryEntries.push({ id: crypto.randomUUID(), productId: product.id, branchId: targetBranch, quantity: initialQuantity, minQuantity: 5, variantLabel });
-    }
-
+  addProduct: (product) => {
+    // Crear producto y registrar existencias son operaciones distintas.
+    // El stock inicial ya no se genera desde este formulario; se gestiona
+    // exclusivamente desde la acción "Gestionar Stock" del inventario.
     let added = false;
     set((state) => {
-      // Deduplicación por ID, SKU o Nombre (ignoring case)
-      const isDuplicate = state.products.some(p => 
-        p.id === product.id || 
-        (p.sku && product.sku && p.sku.toLowerCase().trim() === product.sku.toLowerCase().trim()) ||
-        (p.name.toLowerCase().trim() === product.name.toLowerCase().trim())
+      const normalizedSku = String(product.sku || '').trim().toLowerCase();
+      const normalizedName = String(product.name || '').trim().toLowerCase();
+      const isDuplicate = state.products.some(p =>
+        p.id === product.id ||
+        (normalizedSku && String(p.sku || '').trim().toLowerCase() === normalizedSku) ||
+        String(p.name || '').trim().toLowerCase() === normalizedName
       );
       if (isDuplicate) return state;
       added = true;
-      return {
-        products: [product, ...state.products],
-        inventory: [...state.inventory, ...newInventoryEntries]
-      };
+      return { products: [product, ...state.products] };
     });
 
     if (!added) return;
 
-    // Primero garantizamos una copia durable del producto en la cola offline.
-    // Esto protege contra cierres del navegador/reinicio/limpieza de datos antes
-    // de que la petición de red termine.
+    // Producto durable; no se crea ninguna fila de stock aquí.
     void enqueueOfflineItem('product', product, product.id)
       .then(async () => {
         const ok = await pushProductToSupabase(product);
@@ -94,13 +74,8 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
       .catch((error) => {
         console.warn('[PALMYRA] No se pudo preparar la cola durable del producto:', error);
       });
-
-    for (const inv of newInventoryEntries) {
-      const op = { operationId: `invrec:${crypto.randomUUID()}`, productId: inv.productId, branchId: inv.branchId, variantLabel: inv.variantLabel || '', expectedQuantity: 0, newQuantity: inv.quantity, quantity: inv.quantity, minQuantity: inv.minQuantity, userId: get().currentUser?.id || undefined };
-      if (typeof navigator !== 'undefined' && !navigator.onLine) enqueueOfflineItem('inventory_reconcile', op, op.operationId);
-      else reconcileInventoryToSupabase(op).then(res => { if (!res.success || res.conflict) enqueueOfflineItem('inventory_reconcile', op, op.operationId); }).catch(() => enqueueOfflineItem('inventory_reconcile', op, op.operationId));
-    }
   },
+
   updateProduct: (id, product) => {
     set((state) => ({
       products: state.products.map(p => p.id === id ? { ...p, ...product } : p)
