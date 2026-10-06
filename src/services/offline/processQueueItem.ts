@@ -236,6 +236,11 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       if (!ok) throw new Error('No se pudo sincronizar la desactivación del proveedor.');
       return true;
     }
+    case 'bank_internal_transfer': {
+      const res = await callBankInternalTransferRPC(data as any);
+      if (!res.success) throw new Error(res.error || 'No se pudo sincronizar la transferencia bancaria interna.');
+      return true;
+    }
     case 'bank_internal_transfer_delete': {
       const res = await callDeleteBankInternalTransferRPC(String(data?.operationId || ''));
       if (!res.success) throw new Error(res.error || 'No se pudo eliminar la transferencia bancaria interna.');
@@ -415,6 +420,11 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
     case 'quote': {
       const ok = await pushQuoteToSupabase(data as any);
       if (!ok) throw new Error('No se pudo sincronizar la cotización pendiente.');
+      return true;
+    }
+    case 'bank_card_delete': {
+      const ok = await deleteBankCardFromSupabase(String(data?.id || ''));
+      if (!ok) throw new Error('No se pudo sincronizar la eliminación de la cuenta bancaria.');
       return true;
     }
     case 'bank_card': {
