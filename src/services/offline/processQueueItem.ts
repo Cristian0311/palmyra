@@ -384,12 +384,11 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       // Confirmamos que la fila existe realmente en Supabase antes de retirar la
       // operación de IndexedDB. Así una respuesta incompleta o una caída durante
       // la confirmación nunca puede dejar una venta perdida y una cola vacía.
-      const remoteIdFromResult = res.data?.remote_id;
-      const remoteSaleId = remoteIdFromResult && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(remoteIdFromResult))
-        ? String(remoteIdFromResult)
-        : (transaction.remoteId && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(transaction.remoteId)
-          ? transaction.remoteId
-          : (transaction.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(transaction.id) ? transaction.id : null)));
+      const isUuid = (value: unknown) =>
+        typeof value === 'string' &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+      const remoteSaleId =
+        [res.data?.remote_id, transaction.remoteId, transaction.id].find((candidate) => isUuid(candidate)) || null;
 
       const persistedQuery = remoteSaleId
         ? supabase.from('sales').select('id,status,total,warehouse_id').eq('id',remoteSaleId).maybeSingle()
