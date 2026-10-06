@@ -40,6 +40,56 @@ export default function POS() {
   const [showOpenSessionsModal, setShowOpenSessionsModal] = useState(false);
   const [isRefreshingOpenSessions, setIsRefreshingOpenSessions] = useState(false);
 
+  // Mantiene el POS anclado al viewport visible cuando Android abre el teclado.
+  // Evita que los diálogos salten/parpadeen por cambios repetidos del layout.
+  useEffect(() => {
+    const root = document.documentElement;
+    const body = document.body;
+    const original = {
+      overflow: body.style.overflow,
+      overscrollBehavior: body.style.overscrollBehavior,
+      touchAction: body.style.touchAction,
+    };
+
+    const syncViewport = () => {
+      const vv = window.visualViewport;
+      const height = Math.max(320, Math.round(vv?.height || window.innerHeight));
+      const top = Math.max(0, Math.round(vv?.offsetTop || 0));
+      root.style.setProperty("--pos-viewport-height", `${height}px`);
+      root.style.setProperty("--pos-viewport-top", `${top}px`);
+      const keyboardOpen = Boolean(vv && window.innerHeight - vv.height > 120);
+      root.classList.toggle("pos-keyboard-open", keyboardOpen);
+
+      if (keyboardOpen) {
+        body.style.overflow = "hidden";
+        body.style.overscrollBehavior = "none";
+        body.style.touchAction = "none";
+      } else {
+        body.style.overflow = original.overflow;
+        body.style.overscrollBehavior = original.overscrollBehavior;
+        body.style.touchAction = original.touchAction;
+      }
+    };
+
+    const schedule = () => window.requestAnimationFrame(syncViewport);
+    syncViewport();
+    window.visualViewport?.addEventListener("resize", schedule);
+    window.visualViewport?.addEventListener("scroll", schedule);
+    window.addEventListener("resize", schedule);
+
+    return () => {
+      window.visualViewport?.removeEventListener("resize", schedule);
+      window.visualViewport?.removeEventListener("scroll", schedule);
+      window.removeEventListener("resize", schedule);
+      root.classList.remove("pos-keyboard-open");
+      root.style.removeProperty("--pos-viewport-height");
+      root.style.removeProperty("--pos-viewport-top");
+      body.style.overflow = original.overflow;
+      body.style.overscrollBehavior = original.overscrollBehavior;
+      body.style.touchAction = original.touchAction;
+    };
+  }, []);
+
   // Suscripción única al estado operativo del POS. currentBranchId es el alias
   // interno existente del almacén activo y no reintroduce la capa legacy.
   const {
@@ -1524,7 +1574,7 @@ export default function POS() {
       )}
       {!currentSession && (
         <div
-          className={cn("fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center px-3 py-5 sm:px-4 sm:py-6", joiningSessionId ? "overflow-hidden" : "overflow-y-auto overscroll-contain")}>
+          className={cn("pos-modal-layer fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center px-3 py-5 sm:px-4 sm:py-6", joiningSessionId ? "overflow-hidden" : "overflow-y-auto overscroll-contain")}>
           {showOpenSessionsModal && !joiningSessionId && (
             <div className="fixed inset-0 z-[65] bg-slate-950/55 backdrop-blur-sm flex items-center justify-center p-3">
               <div className="w-full max-w-[min(94vw,31rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
