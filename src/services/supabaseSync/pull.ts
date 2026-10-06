@@ -227,17 +227,20 @@ async function loadSales(branchId?: string, limit = 500) {
 async function loadCashSessions(branchId?: string) {
   const tenant = await getActiveTenant();
   const supabase = getSupabase()!;
-  const [registersRes, employeesRes, companyRes] = await Promise.all([
+  const [registersRes, employeesRes, profilesRes, companyRes] = await Promise.all([
     supabase.from('cash_registers').select('*').eq('company_id',tenant.companyId).eq('active',true),
     supabase.from('employees').select('id,full_name,user_id').eq('company_id',tenant.companyId),
+    supabase.from('profiles').select('id,full_name').limit(5000),
     supabase.from('companies').select('default_currency_code').eq('id',tenant.companyId).single()
   ]);
   if (registersRes.error) throw registersRes.error;
   if (employeesRes.error) throw employeesRes.error;
+  if (profilesRes.error) throw profilesRes.error;
   if (companyRes.error) throw companyRes.error;
   const registerMap = new Map<string,any>((registersRes.data || []).map((r:any)=>[r.id,r]));
   const employeeMap = new Map<string,string>((employeesRes.data || []).map((e:any)=>[e.id,e.full_name]));
   const employeeUserMap = new Map<string,string>((employeesRes.data || []).filter((e:any)=>e.user_id).map((e:any)=>[e.id,e.user_id]));
+  const profileMap = new Map<string,string>((profilesRes.data || []).filter((p:any)=>p.id && p.full_name).map((p:any)=>[p.id,p.full_name]));
   const defaultCurrencyCode = companyRes.data?.default_currency_code || 'CUP';
 
   let q=supabase.from('cash_sessions').select('*').eq('company_id',tenant.companyId).order('opened_at',{ascending:false}).limit(50);
@@ -256,7 +259,7 @@ async function loadCashSessions(branchId?: string) {
     openingAmount:Number(s.opening_amount)||0,
     status:s.status || 'open',
     userId:employeeUserMap.get(s.employee_id) || s.opened_by || s.employee_id || '',
-    workerName:(s.metadata?.workerName || employeeMap.get(s.employee_id)) || undefined,
+    workerName:(s.metadata?.workerName || employeeMap.get(s.employee_id) || profileMap.get(s.opened_by)) || undefined,
     workingEmployeeIds:Array.isArray(s.metadata?.workingEmployeeIds) && s.metadata.workingEmployeeIds.length
       ? s.metadata.workingEmployeeIds
       : (s.employee_id ? [employeeUserMap.get(s.employee_id) || s.employee_id] : (s.opened_by ? [s.opened_by] : [])),
