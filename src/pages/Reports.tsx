@@ -468,6 +468,24 @@ export default function Reports() {
     void loadSaaSContext().then(ctx => { if (active) setPlanCode(ctx?.subscription?.planCode || null); }).catch(() => { if (active) setPlanCode(null); });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    const hydrateReports = async () => {
+      try {
+        const { waitForOfflineQueueReady } = await import('../services/offlineQueue');
+        await waitForOfflineQueueReady();
+        if (!active || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
+        // Reports is an authoritative view. Refresh after the outbox is hydrated
+        // so remote pulls never erase a locally durable offline sale/session.
+        await store.syncWithSupabase();
+      } catch (error) {
+        if (active) console.warn('[Reports] No se pudo actualizar el informe desde Supabase:', error);
+      }
+    };
+    void hydrateReports();
+    return () => { active = false; };
+  }, [store.syncWithSupabase]);
   const canExcelExport = canUsePlanFeature(planCode, "excel_exports");
 
   // State for Excel Export Menu
