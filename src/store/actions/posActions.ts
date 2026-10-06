@@ -302,7 +302,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
       return true;
     }
 
-    await enqueueOfflineItem('void_transaction', { id, userId, reason: finalReason }, 'void:' + id);
+    await enqueueOfflineItem('void_transaction', { id, remoteId: tx.remoteId || id, userId, reason: finalReason }, 'void:' + id);
     try {
       const res = await callVoidTransactionRPC(tx.remoteId || id, userId, finalReason);
       if (!res.success) throw new Error(res.error || 'No se pudo anular la venta');
