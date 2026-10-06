@@ -1,109 +1,132 @@
 import type { User } from "../../types";
 
-export interface NumaGuideStep {
+export interface NumaTourStep {
   id: string;
   eyebrow: string;
   title: string;
   message: string;
   tip?: string;
   permission?: string;
-  mobileOnly?: boolean;
+  route?: string;
+  target?: string[];
+  navTarget?: boolean;
 }
 
-const STEPS: NumaGuideStep[] = [
+const STEPS: NumaTourStep[] = [
   {
     id: "welcome",
     eyebrow: "BIENVENIDA",
-    title: "Conoce PALMYRA",
-    message: "Este recorrido te muestra cómo trabajar con PALMYRA de forma ordenada. Puedes avanzar sin modificar datos.",
-    tip: "Primero aprende el flujo y después empieza a operar."
+    title: "Soy NUMA",
+    message: "Soy la guía de PALMYRA. Te acompaño por el sistema sin bloquear la pantalla y te llevo hasta el lugar exacto que necesitas.",
+    tip: "Puedes cerrar NUMA en cualquier momento y volver a abrirla desde el menú."
   },
   {
     id: "dashboard",
     eyebrow: "CONTROL",
     title: "Dashboard",
-    message: "Consulta la actividad de tu negocio, los indicadores principales y los accesos rápidos disponibles para tu rol.",
-    tip: "Úsalo para detectar cambios antes de entrar a una operación."
+    message: "Aquí ves la actividad principal del negocio, sus indicadores y accesos rápidos.",
+    permission: "reports.view",
+    route: "/",
+    navTarget: true,
+    target: ['[data-palmy-nav="/"]', '[data-palmi-content="dashboard"]', '[data-palmi-heading="dashboard"]']
   },
   {
     id: "pos",
     eyebrow: "VENTAS",
     title: "Punto de Venta",
-    message: "Aquí realizas las ventas, cobras, eliges vendedor, aplicas pagos y trabajas incluso cuando el dispositivo queda sin conexión.",
+    message: "Este es el centro de ventas. Desde aquí puedes cobrar, gestionar el carrito y continuar trabajando con el modo offline.",
     permission: "pos.access",
-    tip: "En offline, las operaciones deben quedar visibles como pendientes hasta sincronizarse."
+    route: "/pos",
+    navTarget: true,
+    target: ['[data-palmy-nav="/pos"]', '[data-palmi-content="pos"]']
   },
   {
     id: "inventory",
     eyebrow: "INVENTARIO",
     title: "Inventario",
-    message: "Administra productos, existencias y alertas del almacén autorizado por tu cuenta.",
+    message: "Consulta existencias, productos y alertas del almacén autorizado.",
     permission: "inventory.manage",
-    tip: "Evita modificar inventario desde lugares no autorizados."
+    route: "/inventory",
+    navTarget: true,
+    target: ['[data-palmy-nav="/inventory"]', '[data-palmi-content="inventory"]']
   },
   {
     id: "transfers",
     eyebrow: "ABASTECIMIENTO",
     title: "Transferencias",
-    message: "Consulta y gestiona movimientos de mercancía entre almacenes cuando tu rol tenga permiso.",
+    message: "Gestiona movimientos de mercancía entre los almacenes a los que tienes acceso.",
     permission: "inventory.manage",
-    tip: "Antes de mover mercancía, confirma origen, destino y cantidades."
+    route: "/transfers",
+    navTarget: true,
+    target: ['[data-palmy-nav="/transfers"]', '[data-palmi-content="transfers"]']
   },
   {
     id: "customers",
     eyebrow: "CLIENTES",
     title: "Clientes",
-    message: "Registra y consulta clientes para asociar sus operaciones cuando tu rol lo permita.",
-    permission: "customers.manage"
+    message: "Registra y consulta clientes para asociarlos a las operaciones que correspondan.",
+    permission: "customers.manage",
+    route: "/customers",
+    navTarget: true,
+    target: ['[data-palmy-nav="/customers"]', '[data-palmi-content="customers"]']
   },
   {
     id: "reports",
     eyebrow: "ANÁLISIS",
     title: "Reportes",
-    message: "Revisa ventas, caja y actividad histórica para controlar el negocio.",
+    message: "Aquí revisas ventas, caja e historial para controlar lo que ocurre en el negocio.",
     permission: "reports.view",
-    tip: "Los reportes deben coincidir con las operaciones que aparecen en caja."
+    route: "/reports",
+    navTarget: true,
+    target: ['[data-palmy-nav="/reports"]', '[data-palmi-content="reports"]']
   },
   {
     id: "team",
     eyebrow: "PERSONAL",
     title: "Equipo",
-    message: "Administra empleados, roles y accesos a almacenes desde la sección correspondiente.",
+    message: "Administra empleados, roles y los accesos que necesita cada trabajador.",
     permission: "employees.manage",
-    tip: "Asigna solo los permisos que cada trabajador necesita."
+    route: "/team",
+    navTarget: true,
+    target: ['[data-palmy-nav="/team"]', '[data-palmi-content="team"]']
   },
   {
     id: "settings",
     eyebrow: "CONFIGURACIÓN",
     title: "Configuración",
-    message: "Personaliza la empresa y las opciones operativas disponibles para administradores.",
-    permission: "settings.manage"
+    message: "Configura la empresa y las opciones operativas de tu cuenta.",
+    permission: "settings.manage",
+    route: "/settings",
+    navTarget: true,
+    target: ['[data-palmy-nav="/settings"]', '[data-palmi-content="settings"]']
   },
   {
-    id: "security",
-    eyebrow: "PROTECCIÓN",
-    title: "Centro de atención y Seguridad",
-    message: "Desde el Centro de atención puedes revisar sesiones, dispositivos y revocar accesos que ya no deban permanecer activos."
+    id: "help",
+    eyebrow: "AYUDA",
+    title: "Centro de atención",
+    message: "Aquí viven el tutorial, soporte, seguridad y política de privacidad. NUMA también se abre desde este lugar.",
+    route: "/help",
+    navTarget: true,
+    target: ['[data-palmy-nav="/help"]', '[data-palmy-nav="/help-center"]', '[data-palmi-content="help-center"]']
   },
   {
     id: "offline",
     eyebrow: "CONTINUIDAD",
-    title: "Trabajar sin Internet",
-    message: "PALMYRA conserva el estado local y las operaciones pendientes para que puedas continuar trabajando mientras la conexión no está disponible.",
-    tip: "Cuando vuelva Internet, revisa el indicador de sincronización y confirma que no queden operaciones pendientes."
+    title: "Estado offline",
+    message: "El indicador de conexión te muestra si estás online y cuántas operaciones permanecen pendientes de sincronización.",
+    target: ['[data-tour="offline-status"]', '[data-tour="offline-status-mobile"]']
   },
   {
     id: "finish",
     eyebrow: "LISTO",
-    title: "Ya puedes empezar",
-    message: "Terminaste el recorrido. PALMYRA puede instalarse como aplicación en tu teléfono para abrirla más rápido y continuar trabajando.",
-    tip: "La instalación no cierra tu sesión."
+    title: "NUMA está contigo",
+    message: "Terminaste el recorrido. A partir de ahora NUMA puede ayudarte desde cualquier sección sin esconder la información que necesitas.",
+    tip: "La guía recuerda tu progreso y respeta el tamaño de la pantalla."
   }
 ];
 
-export function getAccessibleNumaTourSteps(user: User | null | undefined, _isMobile = false): NumaGuideStep[] {
+export function getAccessibleNumaTourSteps(user: User | null | undefined): NumaTourStep[] {
   return STEPS.filter((step) => {
-    if (step.mobileOnly && !_isMobile) return false;
     if (!step.permission) return true;
     if (user?.role === "admin") return true;
     return Boolean(user?.permissions?.includes(step.permission));
