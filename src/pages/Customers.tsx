@@ -1,3 +1,4 @@
+import { PlanFeatureGate } from "../components/PlanFeatureGate";
 import { useShallow } from 'zustand/react/shallow';
 import React, { useMemo, useState } from "react";
 import { Users, Search, Plus, Star, Phone, Mail, Edit, Trash2, History, X, Package, Clock, DollarSign, ShoppingBag, HelpCircle } from "lucide-react";
@@ -6,7 +7,7 @@ import { Customer, Transaction } from "../types";
 import { cn } from "../lib/utils";
 import { InfoTooltip } from "../components/InfoTooltip";
 
-export default function Customers() {
+function CustomersContent() {
   const { customers, addCustomer, updateCustomer, deleteCustomer, transactions, getBaseCurrency } = useStore(useShallow((state) => ({ customers: state.customers, addCustomer: state.addCustomer, updateCustomer: state.updateCustomer, deleteCustomer: state.deleteCustomer, transactions: state.transactions, getBaseCurrency: state.getBaseCurrency })));
   const baseCurrency = getBaseCurrency();
   const [searchQuery, setSearchQuery] = useState("");
@@ -311,5 +312,14 @@ export default function Customers() {
         </div>
       )}
     </div>
+  );
+}
+
+
+export default function Customers() {
+  return (
+    <PlanFeatureGate feature="customers_suppliers" title="Clientes" description="Esta función está incluida en Caravana para negocios que necesitan ampliar el control de su operación.">
+      <CustomersContent />
+    </PlanFeatureGate>
   );
 }
