@@ -30,7 +30,7 @@ export default function SupportCenter(){
   const [form,setForm]=useState({requestType:"Error detectado",subject:"",message:"",contactPhone:""});
   const section=((params.get("section") as CenterSection)||"overview");
 
-  const tutorialSteps=useMemo(()=>getAccessibleNumaTourSteps(currentUser,typeof window!=="undefined"&&window.matchMedia("(max-width:720px)").matches)
+  const tutorialSteps=useMemo(()=>getAccessibleNumaTourSteps(currentUser)
     .filter(step=>!["welcome","finish"].includes(step.id)),[currentUser]);
 
   useEffect(()=>{
