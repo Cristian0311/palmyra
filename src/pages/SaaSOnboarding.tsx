@@ -736,7 +736,7 @@ export default function SaaSOnboarding() {
                       type="button"
                       onClick={verifyStarterPromotion}
                       disabled={socialLoading || socialVerified || Boolean(socialVerifyingUntil) || !facebookOpened || !whatsappOpened || !socialLinks.facebook_url || !socialLinks.whatsapp_channel_url}
-                      className="mt-2 flex h-8.5 w-full items-center justify-center gap-2 rounded-xl bg-[#6535C5] px-3 text-[8px] font-black text-white transition-colors hover:bg-[#4F249D] disabled:cursor-not-allowed disabled:opacity-45"
+                      className="mt-2 flex h-9 w-full items-center justify-center gap-2 rounded-xl bg-[#6535C5] px-3 text-[8px] font-black text-white transition-colors hover:bg-[#4F249D] disabled:cursor-not-allowed disabled:opacity-45"
                     >
                       {socialVerified ? <Check className="h-3.5 w-3.5" /> : <ShieldCheck className="h-3.5 w-3.5" />}
                       {socialVerified
