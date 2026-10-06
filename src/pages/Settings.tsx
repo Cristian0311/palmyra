@@ -13,6 +13,8 @@ import { normalizeSemanticText } from "../utils/textUtils";
 import { connectBluetoothPrinter, connectPrinter, printESCPOS, isInsideIframe } from "../lib/escpos";
 import { getSupabase } from "../lib/supabase";
 import { loadSaaSContext } from "../services/saas";
+import { canUsePlanFeature } from "../services/planAccess";
+import { PlanFeatureGate } from "../components/PlanFeatureGate";
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -173,7 +175,16 @@ export default function Settings() {
   const settingsContentRef = useRef<HTMLDivElement | null>(null);
 
   const [activeTab, setActiveTab] = useState<'connectivity' | 'company' | 'currency' | 'branches' | 'categories' | 'employees' | 'visual' | 'advanced'>('connectivity');
+  const [planCode, setPlanCode] = useState<string | null>(null);
   const [fontScale, setFontScale] = useState(() => { try { const saved = Number(localStorage.getItem('palmyra-font-scale') || '1'); return [0.9,1,1.1,1.2].includes(saved) ? saved : 1; } catch { return 1; } });
+  useEffect(() => {
+    let active = true;
+    void loadSaaSContext().then(ctx => {
+      if (active) setPlanCode(ctx?.subscription?.planCode || null);
+    }).catch(() => { if (active) setPlanCode(null); });
+    return () => { active = false; };
+  }, [currentUser?.id]);
+  const visualStyleLocked = planCode !== null && !canUsePlanFeature(planCode, "visual_style");
   useEffect(() => { document.documentElement.style.setProperty('--palmyra-font-scale', String(fontScale)); try { localStorage.setItem('palmyra-font-scale', String(fontScale)); } catch {} }, [fontScale]);
   useEffect(() => {
     settingsContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -648,7 +659,11 @@ export default function Settings() {
         )}
 
         {/* Estilo visual */}
-        {activeTab === 'visual' && (
+        {activeTab === 'visual' && visualStyleLocked && (
+          <PlanFeatureGate feature="visual_style" title="Estilo visual del software" description="Personaliza la experiencia visual de PALMYRA y adapta la lectura de la interfaz a tu equipo. Disponible desde Caravana." />
+        )}
+
+        {activeTab === 'visual' && !visualStyleLocked && (
           <div className="space-y-4">
             <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-5">
               <div className="flex items-center gap-3 border-b border-base pb-3">
@@ -931,7 +946,7 @@ export default function Settings() {
         />
 
         {/* Apariencia y Visibilidad (Mejorado para Miopía) */}
-        <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4 lg:col-span-3" style={{ display: activeTab === 'visual' ? undefined : 'none' }}>
+        <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4 lg:col-span-3" style={{ display: activeTab === 'visual' && !visualStyleLocked ? undefined : 'none' }}>
           <div className="flex items-center gap-3 border-b border-base pb-3">
             <div className="bg-rose-600 p-2 rounded-lg text-white">
               <Sparkles size={16} />
