@@ -34,7 +34,13 @@ export default function HelpCenter(){
   const currentUser = useStore(s=>s.currentUser);
   const fallbackCompanyName = useStore(s=>s.storeConfig.storeName || "Mi empresa");
   const [companyName,setCompanyName] = useState(fallbackCompanyName);
-  const [support,setSupport] = useState<PlatformSupportSettings>({whatsapp_number:null,support_email:null,privacy_url:null});
+  const [support,setSupport] = useState<PlatformSupportSettings>({
+    whatsapp_number:null,
+    support_email:null,
+    privacy_url:null,
+    facebook_url:null,
+    whatsapp_channel_url:null
+  });
   const [loading,setLoading] = useState(true);
   const [sending,setSending] = useState(false);
   const [sent,setSent] = useState(false);
@@ -157,6 +163,19 @@ export default function HelpCenter(){
           <section className="help-center-tip">
             <div className="help-center-tip-icon"><Sparkles/></div><div><strong>PALMYRA</strong><p>Tu Centro de atención conserva la empresa registrada en tu cuenta y mantiene la trazabilidad de cada solicitud.</p></div>
           </section>
+          {(support.facebook_url || support.whatsapp_channel_url) && (
+            <section className="help-social-card" aria-label="Canales oficiales de PALMYRA">
+              <div>
+                <span className="help-section-kicker">CANALES OFICIALES</span>
+                <h3>Únete a la comunidad PALMYRA</h3>
+                <p>Sigue nuestra página de Facebook y únete al canal oficial de WhatsApp para recibir novedades, avisos y recursos.</p>
+              </div>
+              <div className="help-social-links">
+                {support.facebook_url && <a href={support.facebook_url} target="_blank" rel="noopener noreferrer" className="help-social-link"><FacebookMark/><span><strong>Facebook</strong><small>Seguir página</small></span><ArrowRight/></a>}
+                {support.whatsapp_channel_url && <a href={support.whatsapp_channel_url} target="_blank" rel="noopener noreferrer" className="help-social-link"><WhatsAppMark/><span><strong>WhatsApp</strong><small>Unirse al canal</small></span><ArrowRight/></a>}
+              </div>
+            </section>
+          )}
         </section>
       )}
 
@@ -164,6 +183,7 @@ export default function HelpCenter(){
         <section className="help-center-support">
           <div className="help-support-copy"><span className="help-section-kicker">ATENCIÓN AL CLIENTE</span><h2>Cuéntanos qué necesitas</h2><p>La solicitud queda registrada con tu empresa y se prepara un mensaje con el contexto necesario para que el equipo de PALMYRA pueda ayudarte más rápido.</p>
             <div className="help-contact-card"><MessageCircle/><div><strong>Canal oficial</strong><span>{support.whatsapp_number ? "WhatsApp configurado en PALMYRA Admin" : "Pendiente de configuración administrativa"}</span>{support.support_email&&<small>{support.support_email}</small>}</div></div>
+            {(support.facebook_url || support.whatsapp_channel_url) && <div className="help-social-links help-social-links--compact">{support.facebook_url && <a href={support.facebook_url} target="_blank" rel="noopener noreferrer" className="help-social-link"><FacebookMark/><span><strong>Facebook</strong><small>Seguir página</small></span></a>}{support.whatsapp_channel_url && <a href={support.whatsapp_channel_url} target="_blank" rel="noopener noreferrer" className="help-social-link"><WhatsAppMark/><span><strong>WhatsApp</strong><small>Unirse al canal</small></span></a>}</div>
           </div>
           <form className="help-support-form" onSubmit={submitSupport}>
             <label><span>Nombre de la empresa</span><div className="help-readonly"><BuildingIcon/><input value={companyName} readOnly aria-describedby="registered-company-help"/></div><small id="registered-company-help" className="help-form-hint">Nombre real registrado en tu cuenta PALMYRA.</small></label>
@@ -192,3 +212,11 @@ export default function HelpCenter(){
 }
 
 function BuildingIcon(){return <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M4 20h16v2H4zM6 18V5.5a1 1 0 0 1 .6-.9l4.8-2.1a1 1 0 0 1 .8 0L17 4.6a1 1 0 0 1 .6.9V18h-2V6.2l-4-1.7-3.6 1.6V18H6Zm3-8h2v2H9v-2Zm4 0h2v2h-2v-2Zm-4 4h2v2H9v-2Zm4 0h2v2h-2v-2Z"/></svg>}
+
+function FacebookMark({className=""}:{className?:string}){
+  return <svg viewBox="0 0 24 24" aria-hidden="true" className={className}><path fill="currentColor" d="M13.7 21v-7h2.4l.4-2.8h-2.8V9.4c0-.8.2-1.4 1.5-1.4h1.6V5.5c-.3 0-1.2-.1-2.2-.1-2.2 0-3.7 1.4-3.7 3.8v2H8.5V14H11v7h2.7Z"/></svg>;
+}
+
+function WhatsAppMark({className=""}:{className?:string}){
+  return <svg viewBox="0 0 24 24" aria-hidden="true" className={className}><path fill="currentColor" d="M12 3.1a8.8 8.8 0 0 0-7.6 13.3L3.1 21l4.8-1.2A8.9 8.9 0 1 0 12 3.1Zm0 1.8a7.1 7.1 0 0 1 6.1 10.8 7 7 0 0 1-8.1 3.1l-.5-.2-2.8.7.8-2.7-.3-.5A7.1 7.1 0 0 1 12 4.9Zm-3.2 2.9c-.2 0-.5.1-.7.4-.2.3-.8.8-.8 2 0 1.2.8 2.3.9 2.5.1.2 1.7 2.8 4.3 3.8 2.1.8 2.5.6 2.9.6.4 0 1.3-.5 1.5-1 .2-.5.2-.9.1-1-.1-.1-.3-.2-.7-.4l-.9-.4c-.4-.1-.6-.2-.8.2-.2.3-.6.8-.7 1-.1.2-.3.2-.6.1-.3-.1-1.1-.4-2-1.2-.7-.6-1.2-1.4-1.3-1.6-.1-.2 0-.3.1-.5l.4-.5c.1-.2.2-.3.3-.5.1-.2 0-.4 0-.5l-.7-1.6c-.2-.4-.5-.5-.8-.5Z"/></svg>;
+}
