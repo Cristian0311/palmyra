@@ -174,7 +174,7 @@ export default function Settings() {
   const [selectedUserForConfig, setSelectedUserForConfig] = useState<User | null>(null);
   const settingsContentRef = useRef<HTMLDivElement | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'connectivity' | 'company' | 'currency' | 'branches' | 'categories' | 'employees' | 'visual' | 'advanced'>('connectivity');
+  const [activeTab, setActiveTab] = useState<'connectivity' | 'company' | 'currency' | 'branches' | 'categories' | 'visual' | 'advanced'>('connectivity');
   const [planCode, setPlanCode] = useState<string | null>(null);
   const [fontScale, setFontScale] = useState(() => { try { const saved = Number(localStorage.getItem('palmyra-font-scale') || '1'); return [0.9,1,1.1,1.2].includes(saved) ? saved : 1; } catch { return 1; } });
   useEffect(() => {
@@ -470,15 +470,6 @@ export default function Settings() {
             );
           })}
         </div>
-      </div>
-
-      <div className="bg-violet-50/70 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-900/40 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-[9px] font-black uppercase tracking-[0.16em] text-violet-600 dark:text-violet-300">Gestión de trabajadores</p>
-          <h3 className="mt-1 text-sm font-black text-primary">Todo el equipo se administra desde una sola vista</h3>
-          <p className="mt-1 text-[10px] leading-4 text-secondary">Crear empleados, enviar invitaciones, asignar roles, permisos, salarios y almacenes ahora vive en <strong>Equipo</strong>.</p>
-        </div>
-        <button type="button" onClick={() => navigate("/team")} className="shrink-0 w-full sm:w-auto h-10 px-4 rounded-xl bg-violet-600 text-white text-[10px] font-black uppercase tracking-wider shadow-sm hover:bg-violet-700 transition-colors">Abrir Equipo</button>
       </div>
 
       <div className="bg-violet-50/70 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-900/40 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -1386,64 +1377,6 @@ export default function Settings() {
             </button>
           </div>
         </div>
-
-      <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4 lg:col-span-3" style={{ display: activeTab === 'employees' ? undefined : 'none' }}>
-        <div className="flex items-center justify-between gap-3 border-b border-base pb-3">
-          <div className="flex items-center gap-3">
-            <div className="bg-rose-50 dark:bg-rose-950/30 p-2 rounded-lg text-rose-600"><Users size={16} /></div>
-            <div>
-              <h3 className="text-xs font-black text-primary uppercase tracking-wider">Gestión de Personal</h3>
-              <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Empleados y permisos por almacén</p>
-            </div>
-          </div>
-          <span className="text-[8px] font-black uppercase tracking-widest bg-rose-50 text-rose-600 px-2.5 py-1 rounded-full">Admin no cuenta en el límite</span>
-        </div>
-
-        <div className="bg-subtle p-4 rounded-xl border border-base border-dashed">
-          <h4 className="text-[10px] font-black text-primary uppercase mb-3 flex items-center gap-2"><Plus size={14} className="text-rose-600" /> Registrar empleado</h4>
-          <form onSubmit={handleRegisterEmployeeManual} className="grid gap-3 sm:grid-cols-3">
-            <input type="text" placeholder="Nombre completo" required value={newEmployee.name} onChange={e => setNewEmployee({ ...newEmployee, name: e.target.value })}
-              className="px-3 py-2 bg-primary border border-base rounded-lg text-xs font-bold outline-none focus:ring-1 focus:ring-rose-500" />
-            <input type="password" placeholder="Contraseña inicial" required value={newEmployee.password} onChange={e => setNewEmployee({ ...newEmployee, password: e.target.value })}
-              className="px-3 py-2 bg-primary border border-base rounded-lg text-xs font-bold outline-none focus:ring-1 focus:ring-rose-500" />
-            <button type="submit" className="bg-rose-600 text-white rounded-lg text-[10px] font-black uppercase tracking-widest shadow-md flex items-center justify-center gap-2">
-              <Plus size={14} /> Registrar
-            </button>
-          </form>
-        </div>
-
-        {users.length === 0 ? (
-          <div className="p-8 bg-subtle rounded-xl text-center text-sm font-bold text-muted">No hay empleados registrados en este espacio.</div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {users.map(u => (
-              <div key={u.id} className="p-4 rounded-2xl border border-base bg-secondary shadow-sm flex flex-col gap-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="text-xs font-black text-primary uppercase truncate">{u.name}</p>
-                    <span className="text-[7px] font-black uppercase bg-rose-50 text-rose-600 px-2 py-0.5 rounded-full inline-flex mt-1">
-                      {u.role === 'admin' ? 'Administrador' : 'Empleado'}
-                    </span>
-                  </div>
-                  <button type="button" onClick={() => setUserToDelete({ id: u.id, name: u.name })} className="p-1.5 text-muted hover:text-rose-600 hover:bg-rose-50 rounded-lg" title="Desactivar empleado"><Trash2 size={14}/></button>
-                </div>
-                <div className="bg-subtle p-2.5 rounded-xl border border-base text-[9px] space-y-1.5">
-                  <div className="flex justify-between font-bold text-muted"><span>Almacenes</span><span className="text-primary font-black">{(u.allowedBranches || branches.map(b => b.id)).length === branches.length ? 'Todos' : `${(u.allowedBranches || []).length} autorizados`}</span></div>
-                  <div className="flex justify-between font-bold text-muted"><span>Salario base</span><span className="text-primary font-black">{baseCurrency.symbol}{(employeeSalaries[u.id] ?? u.baseSalary ?? 0).toLocaleString()}</span></div>
-                </div>
-                <button type="button" onClick={() => setSelectedUserForConfig(u)} className="w-full py-2 px-3 rounded-xl bg-rose-600 text-white font-black text-[9px] uppercase tracking-wider flex items-center justify-center gap-1.5">
-                  <SettingsIcon size={14}/> Configuración
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-
-        <div className="bg-rose-50 dark:bg-rose-950/20 border border-rose-100 dark:border-rose-900/50 p-3 rounded-xl flex gap-3">
-          <InfoTooltip text="Configura salarios y acceso por almacén. El administrador de la empresa no se cuenta dentro del límite de empleados del plan." />
-          <p className="text-[9px] text-rose-700 dark:text-rose-300 font-medium leading-relaxed">Los límites de empleados se validan en el servidor antes de aceptar nuevos registros.</p>
-        </div>
-      </div>
 
       {/* Zona Peligrosa */}
       <div className="bg-secondary rounded-2xl shadow-sm border border-red-200 dark:border-red-900/30 p-5 space-y-4 lg:col-span-3" style={{ display: activeTab === 'advanced' ? undefined : 'none' }}>
