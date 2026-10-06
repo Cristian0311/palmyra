@@ -307,7 +307,7 @@ export default function PalmiGuide() {
     }, 900);
 
     return () => window.clearTimeout(timer);
-  }, [currentUser?.id, steps.length, location.pathname]);
+  }, [currentUser?.id, steps.length]);
 
   useEffect(() => {
     const onOpen = () => {

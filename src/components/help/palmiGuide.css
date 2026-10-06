@@ -2,7 +2,7 @@
 .palmi-guide-root *{box-sizing:border-box}
 .palmi-guide-spotlight{position:fixed;z-index:1201;border:2px solid rgba(109,59,210,.96);border-radius:14px;background:rgba(109,59,210,.035);box-shadow:0 0 0 9999px rgba(17,10,30,.30),0 0 0 5px rgba(142,104,231,.10),0 12px 32px rgba(109,59,210,.24);pointer-events:none;transition:top .2s ease,left .2s ease,width .2s ease,height .2s ease}
 .palmi-guide-spotlight.is-command{border-color:#b09af8;box-shadow:0 0 0 9999px rgba(17,10,30,.38),0 0 0 6px rgba(142,104,231,.10),0 14px 34px rgba(109,59,210,.28)}
-.palmi-guide-panel{position:fixed;z-index:1305;pointer-events:auto;max-height:min(500px,calc(100dvh - 90px));overflow:hidden;border:1px solid rgba(112,88,157,.18);border-radius:24px;background:rgba(255,255,255,.985);color:#241538;box-shadow:0 24px 70px rgba(39,20,65,.28);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);transform-origin:center;animation:palmi-panel-in .2s ease-out}
+.palmi-guide-panel{position:fixed;z-index:1305;pointer-events:auto;display:flex;flex-direction:column;max-height:min(500px,calc(100dvh - 90px));overflow:hidden;border:1px solid rgba(112,88,157,.18);border-radius:24px;background:rgba(255,255,255,.985);color:#241538;box-shadow:0 24px 70px rgba(39,20,65,.28);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);transform-origin:center;animation:palmi-panel-in .2s ease-out}
 .palmi-guide-panel.dark{background:rgba(35,25,49,.985);color:#f9f5ff;border-color:rgba(180,154,221,.18)}
 @keyframes palmi-panel-in{from{opacity:0;transform:translateY(6px) scale(.985)}to{opacity:1;transform:none}}
 .palmi-guide-brandbar{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 12px;border-bottom:1px solid rgba(112,88,157,.1)}
@@ -26,7 +26,7 @@
 .palmi-guide-arrival svg{flex:0 0 auto;margin-top:1px;color:#6d3bd2}
 .palmi-guide-arrival strong{display:block;font-size:9px;font-weight:950;text-transform:uppercase;letter-spacing:.08em}
 .palmi-guide-arrival span{display:block;margin-top:2px;font-size:8px;line-height:1.45;color:#7e6a9b}
-.palmi-guide-body{padding:0 13px 12px;overflow:auto;max-height:260px}
+.palmi-guide-body{padding:0 13px 12px;overflow:auto;max-height:260px;flex:1 1 auto;min-height:0}
 .palmi-welcome-line{margin-bottom:8px;padding:8px 10px;border-radius:12px;background:#fbf8ff;border:1px solid #eae1f9;color:#684b81;font-size:8px;font-weight:900;line-height:1.45}
 .palmi-guide-message{font-size:11px;line-height:1.64;color:#51415f}
 .palmi-guide-panel.dark .palmi-guide-message{color:#ddd4e8}
