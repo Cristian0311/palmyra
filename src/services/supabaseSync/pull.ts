@@ -282,6 +282,18 @@ async function loadCashSessions(branchId?: string) {
   }));
 }
 
+export async function pullOpenCashSessionsFromSupabase() {
+  try {
+    return { success: true as const, cashSessions: await loadCashSessions() };
+  } catch (e: any) {
+    return {
+      success: false as const,
+      cashSessions: [] as CashRegisterSession[],
+      message: e?.message || 'No se pudieron actualizar los turnos de caja'
+    };
+  }
+}
+
 async function loadTransfers(branchId?: string) {
   const tenant=await getActiveTenant();
   const supabase=getSupabase()!;
