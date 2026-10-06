@@ -9,7 +9,7 @@ export type RpcResult<T = any> = RpcSuccess<T> | RpcFailure;
 function errorResult(e:any): RpcFailure { return { success:false, error:e?.message || String(e), errorCode:e?.code || e?.status || undefined, data:undefined }; }
 
 export async function logAuditEvent(entry:{userId?:string;action:string;entityType:string;entityId?:string;oldData?:any;newData?:any;meta?:any}){
-  try { const supabase=getSupabase(); if(!supabase)return; const {companyId,authUserId}=await getActiveTenant(); await supabase.from('audit_logs').insert({id:crypto.randomUUID(),company_id:companyId,user_id:entry.userId||authUserId,action:entry.action,entity_type:entry.entityType,entity_id:entry.entityId||null,before_data:entry.oldData||null,after_data:entry.newData||null,metadata:entry.meta||null}); } catch(e){ console.warn('[PALMYRA] audit log failed',e); }
+  try { const supabase=getSupabase(); if(!supabase)return; const {companyId,authUserId,defaultCurrencyCode}=await getActiveTenant(); await supabase.from('audit_logs').insert({id:crypto.randomUUID(),company_id:companyId,user_id:entry.userId||authUserId,action:entry.action,entity_type:entry.entityType,entity_id:entry.entityId||null,before_data:entry.oldData||null,after_data:entry.newData||null,metadata:entry.meta||null}); } catch(e){ console.warn('[PALMYRA] audit log failed',e); }
 }
 
 async function rpc(name:string,args:any){
@@ -61,7 +61,7 @@ export async function callOpenSessionRPCWithId(session:CashRegisterSession){
 export async function callProcessTransactionRPC(tx:Transaction){
   try { const {companyId,authUserId}=await getActiveTenant(); const supabase=getSupabase()!; const items=(tx.items||[]).map(item=>{const prod=typeof item.product==='string'?null:item.product;return {id:item.id,product_id:typeof item.product==='string'?item.product:prod?.id,product_name:prod?.name||null,quantity:Number(item.quantity)||0,price:Number(item.price??prod?.price)||0,total:Number(item.total)||((Number(item.price??prod?.price)||0)*(Number(item.quantity)||0)),variant_label:item.variantLabel||null,variant_id:null,serial_number:item.serialNumber||null,discount:0,tax:0};});
     const payments=(tx.payments||[]).map((p:any)=>({method:p.method==='transfer'?'bank_transfer':p.method||'cash',currency_code:p.currencyCode||null,amount:Number(p.amount)||0,exchange_rate:Number(p.exchangeRate)||1,reference:p.reference||null}));
-    const data=await rpc('palmyra_record_sale',{p_sale_id:tx.id,p_company_id:companyId,p_warehouse_id:tx.branchId,p_cash_session_id:tx.sessionId||null,p_user_id:tx.userId||authUserId,p_total:Number(tx.total)||0,p_currency_code:null,p_notes:tx.notes||'',p_customer_id:tx.customerId||null,p_items:items,p_payments:payments});
+    const data=await rpc('palmyra_record_sale',{p_sale_id:tx.id,p_company_id:companyId,p_warehouse_id:tx.branchId,p_cash_session_id:tx.sessionId||null,p_user_id:tx.userId||authUserId,p_total:Number(tx.total)||0,p_currency_code:defaultCurrencyCode || 'CUP',p_notes:tx.notes||'',p_customer_id:tx.customerId||null,p_items:items,p_payments:payments});
     if(tx.ncf||tx.ncfType){ const {error:metadataError}=await supabase.from('sales').update({metadata:{ncf:tx.ncf||null,ncfType:tx.ncfType||null,subtotal:Number(tx.subtotal)||0,changeGiven:Number(tx.changeGiven)||0,sellerEmployeeIds:tx.sellerEmployeeIds||[]}}).eq('id',tx.id).eq('company_id',companyId); if(metadataError) throw metadataError; }
     return {success:true as const,error:undefined,errorCode:undefined,data};
   } catch(e:any){ return errorResult(e); }
