@@ -82,6 +82,42 @@ export async function pushProductToSupabase(product:Product){
         if (deactivateError) throw deactivateError;
       }
     }
+    // Las variantes del formulario son parte del catálogo, no del stock.
+    // Persistirlas aquí es crítico: el gestor de stock las resuelve por nombre
+    // para escribir en variant_stock_balances.
+    await supabase.from('product_variants')
+      .delete()
+      .eq('company_id', companyId)
+      .eq('product_id', product.id);
+
+    const variantRows = [
+      ...(Array.isArray(product.availableSizes) ? product.availableSizes.map((name, index) => ({
+        id: crypto.randomUUID(),
+        company_id: companyId,
+        product_id: product.id,
+        name: String(name).trim(),
+        sku: `${product.sku || product.id}-SIZE-${index + 1}`,
+        attributes: { type: 'size' }
+      })) : []),
+      ...(Array.isArray(product.availableColors) ? product.availableColors.map((name, index) => ({
+        id: crypto.randomUUID(),
+        company_id: companyId,
+        product_id: product.id,
+        name: String(name).trim(),
+        sku: `${product.sku || product.id}-COLOR-${index + 1}`,
+        attributes: { type: 'color' }
+      })) : [])
+    ].filter(row => row.name);
+
+    // Evita duplicados de nombre cuando el mismo valor se escribió como talla y color.
+    const uniqueVariantRows = Array.from(
+      new Map(variantRows.map(row => [row.name.toLowerCase(), row])).values()
+    );
+    if (uniqueVariantRows.length) {
+      const { error: variantError } = await supabase.from('product_variants').insert(uniqueVariantRows);
+      if (variantError) throw variantError;
+    }
+
     await supabase.from('product_kit_components').delete().eq('company_id',companyId).eq('kit_product_id',product.id);
     if(product.isKit&&Array.isArray(product.kitComponents)&&product.kitComponents.length){
       const rows=product.kitComponents.map(c=>({id:crypto.randomUUID(),company_id:companyId,kit_product_id:product.id,component_product_id:c.productId,quantity:Number(c.quantity)||0}));
