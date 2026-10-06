@@ -46,3 +46,6 @@ begin
   ),'[]'::jsonb);
 end;
 $function$;
+
+revoke all on function public.palmyra_list_open_cash_sessions(uuid) from public, anon;
+grant execute on function public.palmyra_list_open_cash_sessions(uuid) to authenticated;
