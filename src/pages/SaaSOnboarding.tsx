@@ -49,6 +49,8 @@ function getErrorMessage(error: unknown, stage: string) {
     invalid_warehouse_name: "Escribe un nombre de almacén válido.",
     invalid_company_currency: "La moneda configurada para Cuba no está disponible.",
     invalid_plan: "El plan seleccionado no es válido.",
+    invalid_pos_password: "La contraseña de Punto de Venta debe tener entre 4 y 8 dígitos.",
+
     plan_not_available: "El plan seleccionado no está disponible en este momento.",
     authentication_required: "La sesión expiró. Vuelve a iniciar sesión y continúa la configuración.",
     employee_role_not_found: "No se pudo preparar el acceso inicial. Inténtalo nuevamente."
