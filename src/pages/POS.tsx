@@ -1275,10 +1275,12 @@ export default function POS() {
       return;
     }
 
-    const targetUser = (users || []).find(u =>
-      u.id === targetSession.userId ||
-      (u.name || '').trim().toLowerCase() === (targetSession.workerName || '').trim().toLowerCase()
-    );
+    const targetUser =
+      (users || []).find(u =>
+        u.id === targetSession.userId ||
+        (u.name || '').trim().toLowerCase() === (targetSession.workerName || '').trim().toLowerCase()
+      ) ||
+      (currentUser?.id === targetSession.userId ? currentUser : null);
     if (!targetUser) {
       setPosError("No se pudo identificar al trabajador dueño del turno.");
       return;
