@@ -910,12 +910,26 @@ html.pos-keyboard-open .pos-page .animate-in,html.pos-keyboard-open .pos-page [c
   }
   .pos-keyboard-open .pos-page .palmyra-mobile-modal {
     max-height: calc(var(--pos-visual-height) - 12px) !important;
-    transform: none !important;
+    overflow-y: auto !important;
+    overflow-anchor: none;
   }
   .pos-keyboard-open .pos-page input:focus,
   .pos-keyboard-open .pos-page textarea:focus,
   .pos-keyboard-open .pos-page select:focus {
     scroll-margin-top: 10px;
     scroll-margin-bottom: 10px;
+  }
+}
+
+/* POS dialogs: keep the focused control visible above the mobile keyboard. */
+@media (max-width: 767px) {
+  .pos-page .palmyra-open-cash-modal,
+  .pos-page .pos-keyboard-surface,
+  .pos-page .palmyra-mobile-modal {
+    scroll-behavior: auto !important;
+    overscroll-behavior: contain !important;
+  }
+  .pos-page .pos-keyboard-surface {
+    max-height: calc(var(--pos-visual-height, 100dvh) - 20px) !important;
   }
 }
