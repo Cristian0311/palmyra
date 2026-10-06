@@ -5,7 +5,7 @@ import { useStore } from "../../store/useStore";
 import { getAccessibleNumaTourSteps, type NumaTourStep } from "./palmiGuideSteps";
 import { PalmiMascot } from "./PalmiMascot";
 import "./palmiGuide.css";
-import PWAInstallPrompt from "./PWAInstallPrompt";
+import PwaInstallPrompt from "./PwaInstallPrompt";
 
 type Phase = "action" | "explain";
 type Position = { top: number; left: number; width: number };
@@ -611,7 +611,7 @@ export default function PalmiGuide() {
         </button>
       ) : null}
 
-      <PWAInstallPrompt
+      <PwaInstallPrompt
         visible={showInstallPrompt}
         onClose={() => setShowInstallPrompt(false)}
       />
