@@ -199,7 +199,22 @@ export default function POS() {
       setIsRefreshingOpenSessions(false);
     }
   }, []);
-  // La reanudación de una caja persistida siempre es explícita. El ID de
+  // Android/Chrome puede redimensionar o reposicionar el viewport al abrir
+  // el teclado virtual. Cuando la API está disponible, hacemos que el
+  // teclado se superponga al contenido para mantener estable el diálogo POS.
+  useEffect(() => {
+    const keyboard = (navigator as Navigator & {
+      virtualKeyboard?: { overlaysContent: boolean }
+    }).virtualKeyboard;
+    if (!keyboard) return;
+    const previous = keyboard.overlaysContent;
+    keyboard.overlaysContent = true;
+    return () => {
+      keyboard.overlaysContent = previous;
+    };
+  }, []);
+
+  // La reanudación de una caja persistida siempre es explícita.  // La reanudación de una caja persistida siempre es explícita. El ID de
   // activeSessionId solo representa la sesión validada en esta pestaña.
   const currentSession = useMemo(() => {
     if (!activeSessionId) return null;
