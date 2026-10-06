@@ -1509,7 +1509,7 @@ export default function POS() {
       )}
       {!currentSession && (
         <div
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center px-3 py-5 sm:px-4 sm:py-6 overflow-y-auto overscroll-contain">
+          className={cn("fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center px-3 py-5 sm:px-4 sm:py-6", joiningSessionId ? "overflow-hidden" : "overflow-y-auto overscroll-contain")}>
           {showOpenSessionsModal && !joiningSessionId && (
             <div className="fixed inset-0 z-[65] bg-slate-950/55 backdrop-blur-sm flex items-center justify-center p-3">
               <div className="w-full max-w-[min(94vw,31rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
