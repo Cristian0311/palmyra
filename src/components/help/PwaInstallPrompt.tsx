@@ -45,11 +45,7 @@ export default function PwaInstallPrompt() {
       const alreadyInstalled = localStorage.getItem(installedKey()) === "1";
       setInstalled(standalone || alreadyInstalled);
       setIos(iosDevice);
-      if (!standalone && !alreadyInstalled && mobile) {
-        setVisible(Boolean(deferredInstallPrompt) || iosDevice);
-      } else {
-        setVisible(false);
-      }
+      if (standalone || alreadyInstalled || !mobile) setVisible(false);
     };
 
     const onBeforeInstall = (event: Event) => {
