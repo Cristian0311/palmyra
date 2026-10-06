@@ -73,13 +73,113 @@ export async function callOpenSessionRPCWithId(session:CashRegisterSession){
 }
 
 export async function callProcessTransactionRPC(tx:Transaction){
-  try { const {companyId,authUserId,defaultCurrencyCode}=await getActiveTenant(); const supabase=getSupabase()!; const items=(tx.items||[]).map(item=>{const prod=typeof item.product==='string'?null:item.product;return {id:item.id,product_id:typeof item.product==='string'?item.product:prod?.id,product_name:prod?.name||null,quantity:Number(item.quantity)||0,price:Number(item.price??prod?.price)||0,total:Number(item.total)||((Number(item.price??prod?.price)||0)*(Number(item.quantity)||0)),variant_label:item.variantLabel||null,variant_id:null,serial_number:item.serialNumber||null,discount:0,tax:0};});
-    const payments=(tx.payments||[]).map((p:any)=>({method:p.method==='transfer'?'bank_transfer':p.method||'cash',currency_code:p.currencyCode||null,amount:Number(p.amount)||0,exchange_rate:Number(p.exchangeRate)||1,reference:p.reference||null}));
-    // Older queued tickets used PALMYRA-TK... as their local id. Supabase
-    // sales.id is UUID, so generate a new remote UUID for those legacy items.
-    // The readable ticket number remains in metadata/UI.
+  try {
+    const {companyId,authUserId,defaultCurrencyCode}=await getActiveTenant();
+    const supabase=getSupabase()!;
+
+    // Reconciliación canónica antes de cobrar:
+    // el POS puede conservar temporalmente un producto local después de una
+    // limpieza/recreación de datos o una sincronización interrumpida. En ese
+    // caso el UUID del carrito puede no ser el UUID vigente en Supabase.
+    // Buscamos primero por UUID y luego por código de barras/SKU dentro de la
+    // empresa. Así evitamos que una venta válida termine en P0001 invalid_product.
+    const resolveCanonicalProductId = async (item:any): Promise<string> => {
+      const rawProduct = typeof item.product === 'string' ? null : item.product;
+      const localId = typeof item.product === 'string' ? item.product : rawProduct?.id;
+      if (!localId) throw Object.assign(new Error('El artículo de la venta no tiene producto.'), { code: 'invalid_product' });
+
+      const { data:byId, error:idError } = await supabase
+        .from('products')
+        .select('id')
+        .eq('id', localId)
+        .eq('company_id', companyId)
+        .maybeSingle();
+      if (idError) throw idError;
+      if (byId?.id) return byId.id;
+
+      const barcode=String(rawProduct?.barcode || '').trim();
+      if (barcode) {
+        const { data:barcodeRow, error:barcodeError } = await supabase
+          .from('product_barcodes')
+          .select('product_id')
+          .eq('company_id', companyId)
+          .eq('barcode', barcode)
+          .eq('active', true)
+          .maybeSingle();
+        if (barcodeError) throw barcodeError;
+        if (barcodeRow?.product_id) {
+          const { data:barcodeProduct, error:barcodeProductError } = await supabase
+            .from('products')
+            .select('id')
+            .eq('id', barcodeRow.product_id)
+            .eq('company_id', companyId)
+            .maybeSingle();
+          if (barcodeProductError) throw barcodeProductError;
+          if (barcodeProduct?.id) return barcodeProduct.id;
+        }
+      }
+
+      const sku=String(rawProduct?.sku || '').trim();
+      if (sku) {
+        const { data:skuProduct, error:skuError } = await supabase
+          .from('products')
+          .select('id')
+          .eq('company_id', companyId)
+          .eq('sku', sku)
+          .maybeSingle();
+        if (skuError) throw skuError;
+        if (skuProduct?.id) return skuProduct.id;
+      }
+
+      // No existe una correspondencia canónica. Dejamos que el RPC emita
+      // invalid_product; el llamador lo tratará como rechazo definitivo.
+      return String(localId);
+    };
+
+    const items=await Promise.all((tx.items||[]).map(async item=>{
+      const prod=typeof item.product==='string'?null:item.product;
+      const productId=await resolveCanonicalProductId(item);
+      return {
+        id:item.id,
+        product_id:productId,
+        product_name:prod?.name||null,
+        product_sku:prod?.sku||null,
+        product_barcode:prod?.barcode||null,
+        quantity:Number(item.quantity)||0,
+        price:Number(item.price??prod?.price)||0,
+        total:Number(item.total)||((Number(item.price??prod?.price)||0)*(Number(item.quantity)||0)),
+        variant_label:item.variantLabel||null,
+        variant_id:null,
+        serial_number:item.serialNumber||null,
+        discount:0,
+        tax:0
+      };
+    }));
+
+    const payments=(tx.payments||[]).map((p:any)=>({
+      method:p.method==='transfer'?'bank_transfer':p.method||'cash',
+      currency_code:p.currencyCode||null,
+      amount:Number(p.amount)||0,
+      exchange_rate:Number(p.exchangeRate)||1,
+      reference:p.reference||null
+    }));
+
+    // Older queued tickets used PALMYRA-TK... as their local id.
     const remoteSaleId = isUuid(tx.remoteId) ? tx.remoteId : (isUuid(tx.id) ? tx.id : crypto.randomUUID());
-    const data=await rpc('palmyra_record_sale',{p_sale_id:remoteSaleId,p_company_id:companyId,p_warehouse_id:tx.branchId,p_cash_session_id:tx.sessionId||null,p_user_id:tx.userId||authUserId,p_total:Number(tx.total)||0,p_currency_code:defaultCurrencyCode || 'CUP',p_notes:tx.notes||'',p_customer_id:tx.customerId||null,p_items:items,p_payments:payments});
+    const data=await rpc('palmyra_record_sale',{
+      p_sale_id:remoteSaleId,
+      p_company_id:companyId,
+      p_warehouse_id:tx.branchId,
+      p_cash_session_id:tx.sessionId||null,
+      p_user_id:tx.userId||authUserId,
+      p_total:Number(tx.total)||0,
+      p_currency_code:defaultCurrencyCode || 'CUP',
+      p_notes:tx.notes||'',
+      p_customer_id:tx.customerId||null,
+      p_items:items,
+      p_payments:payments
+    });
+
     const metadataPayload = {
       ticket_id: tx.id,
       ticket_number: tx.ticketNumber || tx.id,
@@ -95,6 +195,7 @@ export async function callProcessTransactionRPC(tx:Transaction){
       .eq('id', remoteSaleId)
       .eq('company_id', companyId);
     if (metadataError) throw metadataError;
+
     return {success:true as const,error:undefined,errorCode:undefined,data:{...data,remote_id:remoteSaleId}};
   } catch(e:any){ return errorResult(e); }
 }
