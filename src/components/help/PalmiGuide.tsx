@@ -460,28 +460,33 @@ export default function PalmiGuide() {
           ? "alert"
           : "thinking";
 
-  const actionHintWidth = Math.min(252, Math.max(198, window.innerWidth - SAFE * 2));
+  const baseActionWidth = Math.min(252, Math.max(198, window.innerWidth - SAFE * 2));
   const actionHintHeight = 104;
   const sidebarRect = isActionStep ? findSidebarRect() : null;
+  const sideActionWidth = sidebarRect
+    ? Math.max(148, Math.min(baseActionWidth, window.innerWidth - sidebarRect.right - SAFE - 8))
+    : baseActionWidth;
+
   const actionCandidates = targetRect
     ? [
-        ...(sidebarRect && !isCompact
+        ...(sidebarRect
           ? [{
+              width: sideActionWidth,
               left: sidebarRect.right + SIDEBAR_GAP,
               top: targetRect.top,
               side: "right" as const
             }]
           : []),
-        { left: targetRect.left, top: targetRect.bottom + GAP, side: "below" as const },
-        { left: targetRect.left, top: targetRect.top - actionHintHeight - GAP, side: "above" as const },
-        { left: window.innerWidth - actionHintWidth - SAFE, top: TOP_SAFE, side: "top" as const }
+        { width: baseActionWidth, left: targetRect.left, top: targetRect.bottom + GAP, side: "below" as const },
+        { width: baseActionWidth, left: targetRect.left, top: targetRect.top - actionHintHeight - GAP, side: "above" as const },
+        { width: baseActionWidth, left: window.innerWidth - baseActionWidth - SAFE, top: TOP_SAFE, side: "top" as const }
       ]
-    : [{ left: SAFE, top: TOP_SAFE, side: "top" as const }];
+    : [{ width: baseActionWidth, left: SAFE, top: TOP_SAFE, side: "top" as const }];
 
   const actionPlacement = actionCandidates
     .map(candidate => ({
       ...candidate,
-      left: clamp(candidate.left, SAFE, Math.max(SAFE, window.innerWidth - actionHintWidth - SAFE)),
+      left: clamp(candidate.left, SAFE, Math.max(SAFE, window.innerWidth - candidate.width - SAFE)),
       top: clamp(
         candidate.top,
         TOP_SAFE,
@@ -495,7 +500,7 @@ export default function PalmiGuide() {
         const overlap = (rect: DOMRect) => {
           const overlapX = Math.max(
             0,
-            Math.min(candidate.left + actionHintWidth, rect.right) -
+            Math.min(candidate.left + candidate.width, rect.right) -
               Math.max(candidate.left, rect.left)
           );
           const overlapY = Math.max(
@@ -506,7 +511,7 @@ export default function PalmiGuide() {
           return overlapX * overlapY;
         };
 
-        return overlap(targetRect) + (sidebarRect ? overlap(sidebarRect) * 3 : 0);
+        return overlap(targetRect) + (sidebarRect ? overlap(sidebarRect) * 6 : 0);
       };
 
       return overlapScore(a) - overlapScore(b);
@@ -514,6 +519,7 @@ export default function PalmiGuide() {
 
   const actionHintLeft = actionPlacement.left;
   const actionHintTop = actionPlacement.top;
+  const actionHintWidth = actionPlacement.width;
   const actionHintArrow =
     actionPlacement.side === "right"
       ? "←"
