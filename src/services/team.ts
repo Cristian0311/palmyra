@@ -87,7 +87,10 @@ function throwRpcError(error: any): never {
     role_not_found_or_system: "Ese rol no existe o es un rol del sistema.",
     role_key_taken: "La clave del rol ya existe.",
     role_name_taken: "El nombre del rol ya existe.",
-    role_already_exists: "Ya existe un rol con esos datos."
+    role_already_exists: "Ya existe un rol con esos datos.",
+    pos_password_required: "Define una contraseña de al menos 6 caracteres para usar este empleado en el POS.",
+    invalid_employee_name: "El nombre del trabajador no es válido.",
+    invalid_employee_code: "El código del trabajador no es válido."
   };
   const match = Object.entries(known).find(([key]) => message.includes(key));
   throw new Error(match ? match[1] : message);
@@ -192,6 +195,32 @@ export async function loadTeamSnapshot(): Promise<TeamSnapshot> {
   };
 }
 
+export async function createEmployeePosSecure(input: {
+  companyId: string;
+  employeeId?: string;
+  employeeCode: string;
+  fullName: string;
+  baseSalary: number;
+  roleId: string;
+  warehouseIds: string[];
+  posPassword?: string;
+}) {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error("Supabase no está configurado.");
+  const { data, error } = await supabase.rpc("create_employee_pos_secure", {
+    p_company_id: input.companyId,
+    p_employee_id: input.employeeId || null,
+    p_employee_code: input.employeeCode,
+    p_full_name: input.fullName,
+    p_base_salary: input.baseSalary,
+    p_role_id: input.roleId,
+    p_warehouse_ids: input.warehouseIds,
+    p_pos_password: input.posPassword?.trim() || null
+  });
+  if (error) throwRpcError(error);
+  return data as { id: string };
+}
+
 export async function createEmployee(input: {
   companyId: string;
   employeeCode: string;
@@ -287,6 +316,18 @@ export async function createEmployeeWithInvitation(input: {
     token: invite.token
   });
   return { ...invite, email_sent: delivery.sent, email_reason: delivery.reason || null };
+}
+
+export async function verifyEmployeePosAccessPassword(companyId: string, employeeId: string, password: string) {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error("Supabase no está configurado.");
+  const { data, error } = await supabase.rpc("verify_employee_pos_password", {
+    p_company_id: companyId,
+    p_employee_id: employeeId,
+    p_password: password
+  });
+  if (error) throw error;
+  return data === true;
 }
 
 export async function resendEmployeeInvitation(input: {
