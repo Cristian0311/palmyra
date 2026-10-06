@@ -167,6 +167,14 @@ export default function POS() {
   
   
   const navigate = useNavigate();
+
+  // Cada entrada al módulo POS debe volver a autenticar la caja. Esto evita
+  // que un activeSessionId antiguo restaurado desde un snapshot previo permita
+  // saltarse la contraseña de reanudación.
+  useEffect(() => {
+    setActiveSessionId(null);
+  }, []);
+
   const fallbackSessionBranchId = currentBranchId || getWarehouseId(currentUser) || branches[0]?.id || '';
   // La reanudación de una caja persistida siempre es explícita. El ID de
   // activeSessionId solo representa la sesión validada en esta pestaña.
@@ -1472,7 +1480,7 @@ export default function POS() {
       )}
       {!currentSession && (
         <div
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-4 overflow-y-auto space-y-4">
+          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center p-2 sm:p-3 overflow-y-auto space-y-2">
           {!joiningSessionId && openSessionsForResume.length > 0 && (
             <div className="w-full max-w-[min(94vw,25rem)] rounded-2xl border border-emerald-200 bg-white shadow-xl p-3 sm:p-3.5 text-left animate-in fade-in zoom-in-95">
               <div className="flex items-center justify-between gap-2 mb-2">
@@ -1512,14 +1520,14 @@ export default function POS() {
 
           {joiningSessionId ? (
             /* Modal Formulario de Ingreso a Turno Abierto Existente */
-            <div className="bg-white dark:bg-slate-900 p-5 sm:p-6 rounded-[2rem] shadow-2xl text-center max-w-sm w-full animate-in zoom-in-95 border border-white/20">
-              <div className="w-12 h-12 bg-amber-50 dark:bg-amber-950/40 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Lock className="w-6 h-6 text-amber-600" />
+            <div className="bg-white dark:bg-slate-900 p-3 sm:p-4 rounded-2xl shadow-2xl text-center max-w-[20rem] w-full animate-in zoom-in-95 border border-white/20">
+              <div className="w-9 h-9 bg-amber-50 dark:bg-amber-950/40 rounded-xl flex items-center justify-center mx-auto mb-2">
+                <Lock className="w-4 h-4 text-amber-600" />
               </div>
-              <h3 className="text-lg font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight leading-none mb-1">
+              <h3 className="text-sm font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight leading-none mb-1">
                 Reanudar Turno Abierto
               </h3>
-              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-4">
+              <p className="text-[7px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">
                 Turno de {(activeCashSessions || []).find(s => s.id === joiningSessionId)?.workerName || 'Empleado'}
               </p>
 
@@ -1530,9 +1538,9 @@ export default function POS() {
                 </div>
               )}
 
-              <form onSubmit={handleJoinExistingSession} className="space-y-3.5">
+              <form onSubmit={handleJoinExistingSession} className="space-y-2">
                 <div className="text-left">
-                  <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                  <label className="block text-[7px] font-black text-slate-400 uppercase tracking-wider mb-1">
                     Contraseña para reanudar el turno
                   </label>
                   <input
@@ -1544,7 +1552,7 @@ export default function POS() {
                       setPosError("");
                     }}
                     placeholder="Ingresa la contraseña"
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-100 dark:bg-slate-800 dark:border-slate-700 rounded-xl text-sm font-bold text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-rose-500"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-100 dark:bg-slate-800 dark:border-slate-700 rounded-lg text-[10px] font-bold text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-rose-500"
                   />
                 </div>
 
@@ -1556,13 +1564,13 @@ export default function POS() {
                       setJoiningSessionPassword("");
                       setPosError("");
                     }}
-                    className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-[10px] uppercase tracking-wider transition-all"
+                    className="py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-[10px] uppercase tracking-wider transition-all"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="py-2.5 bg-rose-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-[10px] uppercase tracking-wider transition-all shadow-sm"
+                    className="py-2 bg-rose-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-[8px] uppercase tracking-tight transition-all shadow-sm"
                   >
                     Entrar al Turno
                   </button>
