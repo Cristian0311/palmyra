@@ -181,10 +181,10 @@ export const POSCatalog = React.memo(function POSCatalog({
     )}>
 
 {/* Header Sub-bar: Search & Categories */}
-<div className="p-3 sm:p-4 border-b border-slate-200/80 bg-white sticky top-0 z-30 shadow-sm">
-  <div className="flex flex-col sm:flex-row items-center gap-3">
+<div className="p-2 sm:p-2.5 border-b border-slate-200/80 bg-white sticky top-0 z-30 shadow-sm">
+  <div className="flex flex-col sm:flex-row items-center gap-2">
     {/* Category Selector First */}
-    <div className="w-full sm:w-64 relative group">
+    <div className="w-full sm:w-56 relative group">
       <div className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 group-focus-within:text-indigo-500 transition-colors">
         <Filter className="w-3.5 h-3.5" />
       </div>
@@ -203,13 +203,13 @@ export const POSCatalog = React.memo(function POSCatalog({
     
     {/* Search Bar - Main Focus */}
     <div className="relative flex-1 w-full">
-      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
+      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 w-3.5 h-3.5" />
       <input 
         type="text" 
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         placeholder="Busca productos por nombre, SKU o código de barras..." 
-        className="w-full pl-11 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-colors text-[9px] font-bold text-slate-900 placeholder:text-slate-400 shadow-sm"
+        className="w-full pl-10 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-colors text-[9px] font-bold text-slate-900 placeholder:text-slate-400 shadow-sm"
       />
       {searchQuery && (
         <button
@@ -218,7 +218,7 @@ export const POSCatalog = React.memo(function POSCatalog({
           className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 transition-all"
           title="Limpiar búsqueda"
         >
-          <X className="w-4 h-4" />
+          <X className="w-3.5 h-3.5" />
         </button>
       )}
     </div>
@@ -226,7 +226,7 @@ export const POSCatalog = React.memo(function POSCatalog({
 </div>
 
     <div className="px-3 pb-2 flex items-center justify-end gap-2">
-      <span className="text-[10px] font-bold text-slate-400">Di: “agrega 15 tenis”</span>
+      <span className="text-[8px] font-bold text-slate-400">Di: “agrega 15 tenis”</span>
       <VoiceCommandButton onCommand={handleVoiceCommand} />
     </div>
 
