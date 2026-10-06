@@ -221,7 +221,30 @@ export default function Inventory() {
     const quantity = draft.quantity === '' ? 0 : Math.max(0, parseInt(draft.quantity, 10) || 0);
     const minQuantity = draft.minQuantity === '' ? 0 : Math.max(0, parseInt(draft.minQuantity, 10) || 0);
     if (quantity !== fallbackQuantity || minQuantity !== fallbackMin) setInventoryQuantity(productId, branchId, quantity, variant, minQuantity);
-    setStockDrafts(prev => { const next = { ...prev }; delete next[stockDraftKey(productId, branchId, variant)]; return next; });
+  };
+
+  const commitAllStockDrafts = () => {
+    const productId = managingStockProduct?.id;
+    if (!productId) return;
+    Object.entries(stockDrafts).forEach(([key, draft]) => {
+      const [draftProductId, branchId, ...variantParts] = key.split('::');
+      if (draftProductId !== productId || !branchId) return;
+      const variant = variantParts.join('::') || undefined;
+      const current = inventory.find(i =>
+        i.productId === productId && i.branchId === branchId &&
+        (i.variantLabel || '') === (variant || '')
+      );
+      const quantity = draft.quantity === '' ? 0 : Math.max(0, parseInt(draft.quantity, 10) || 0);
+      const minQuantity = draft.minQuantity === '' ? 0 : Math.max(0, parseInt(draft.minQuantity, 10) || 0);
+      if (quantity !== Number(current?.quantity || 0) || minQuantity !== Number(current?.minQuantity || 0)) {
+        setInventoryQuantity(productId, branchId, quantity, variant, minQuantity);
+      }
+    });
+    setStockDrafts(prev => {
+      const next = { ...prev };
+      Object.keys(next).forEach(key => { if (key.startsWith(productId + '::')) delete next[key]; });
+      return next;
+    });
   };
 
   const [showKitPicker, setShowKitPicker] = useState(false);
@@ -1363,7 +1386,7 @@ export default function Inventory() {
                 </div>
               </div>
               <button 
-                onClick={() => setManagingStockProduct(null)} 
+                onClick={() => { commitAllStockDrafts(); setManagingStockProduct(null); }} 
                 className="text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
               >
                 <X className="w-4 h-4" />
@@ -1373,8 +1396,11 @@ export default function Inventory() {
             <div className="p-4 overflow-y-auto custom-scrollbar flex-1 bg-white dark:bg-slate-900">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {branches.map(branch => {
+                  const hasVariants =
+                    (managingStockProduct.availableSizes || []).length > 0 ||
+                    (managingStockProduct.availableColors || []).length > 0;
                   const productVariants = Array.from(new Set([
-                    undefined,
+                    ...(hasVariants ? [] : [undefined]),
                     ...(managingStockProduct.availableSizes || []),
                     ...(managingStockProduct.availableColors || [])
                   ]));
@@ -1424,7 +1450,7 @@ export default function Inventory() {
                                     placeholder="0"
                                     onFocus={(e) => e.target.select()}
                                     onChange={(e) => updateStockDraft(managingStockProduct.id, branch.id, variant, 'minQuantity', e.target.value)}
-                                     onBlur={() => commitStockDraft(managingStockProduct.id, branch.id, variant, level.quantity, level.minQuantity)}
+                                     onBlur={() => undefined}
                                     className="w-10 px-1 py-0.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded text-[9px] text-slate-900 dark:text-slate-100 outline-none focus:ring-1 focus:ring-indigo-500 text-center font-bold"
                                   />
                                 </div>
@@ -1438,7 +1464,7 @@ export default function Inventory() {
                                     placeholder="0"
                                     onFocus={(e) => e.target.select()}
                                     onChange={(e) => updateStockDraft(managingStockProduct.id, branch.id, variant, 'quantity', e.target.value)}
-                                     onBlur={() => commitStockDraft(managingStockProduct.id, branch.id, variant, level.quantity, level.minQuantity)}
+                                     onBlur={() => undefined}
                                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); } }}
                                     className="w-16 px-2 py-1 bg-white dark:bg-slate-900 border border-indigo-400 dark:border-indigo-600 rounded-lg font-black text-indigo-600 dark:text-indigo-400 text-right outline-none text-xs focus:ring-2 focus:ring-indigo-500 shadow-2xs"
                                 />
@@ -1458,7 +1484,7 @@ export default function Inventory() {
                 Almacenes: <strong className="text-slate-900 dark:text-slate-100 font-bold">{branches.length}</strong>
               </span>
               <button 
-                onClick={() => setManagingStockProduct(null)} 
+                onClick={() => { commitAllStockDrafts(); setManagingStockProduct(null); }} 
                 className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors shadow-sm active:scale-95"
               >
                 Cerrar y Guardar
