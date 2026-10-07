@@ -203,7 +203,7 @@ export function usePOSPrinter({
     } else {
       const input = window.prompt("Ingrese el número de WhatsApp del cliente:");
       if (!input) return;
-      phone = String(input || "").replace(/D/g, "");
+      phone = String(input || "").replace(/\D/g, "");
     }
 
     if (!phone) {
