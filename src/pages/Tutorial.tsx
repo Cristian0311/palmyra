@@ -3,7 +3,7 @@ import {
   ArrowLeftRight, ArrowRight, BarChart3, BookOpen, Boxes, Building2, CheckCircle2,
   ChevronDown, CircleDollarSign, ClipboardCheck, CreditCard, Database, FileBarChart2,
   Headphones, HelpCircle, Home, Package, Printer, Receipt, RotateCcw, Search,
-  Settings, ShoppingCart, Smartphone, Store, Tags, Truck, Users, Wifi, WifiOff
+  Settings, ShoppingCart, ShieldCheck, Smartphone, Store, Tags, Truck, Users, WifiOff
 } from "lucide-react";
 
 type TutorialSection = {
