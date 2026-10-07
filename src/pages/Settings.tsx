@@ -451,11 +451,6 @@ export default function Settings() {
                     </div>
                   </label>
 
-                  <label className="flex items-start gap-3 p-3.5 rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/60 dark:bg-indigo-950/20 cursor-pointer">
-                 <input type="checkbox" checked={autoConnectPrinter} onChange={e => { setAutoConnectPrinter(e.target.checked); setThermalPrinterAutoConnect(e.target.checked); }} className="mt-0.5 h-4 w-4 accent-indigo-600" />
-                 <span className="min-w-0"><span className="block text-[10px] font-black uppercase tracking-wider text-indigo-800 dark:text-indigo-200">Siempre conectar la impresora térmica</span><span className="block mt-0.5 text-[9px] leading-4 font-semibold text-indigo-700/80 dark:text-indigo-300/80">PALMYRA intentará reconectar automáticamente la última impresora autorizada al abrir la web o la PWA.</span></span>
-               </label>
-
                <div className="bg-amber-50/50 dark:bg-amber-950/10 p-3.5 rounded-2xl border border-amber-100 dark:border-amber-900/30 flex items-start gap-3">
                     <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
                     <p className="text-[9px] text-amber-700 dark:text-amber-400 font-medium leading-relaxed">
@@ -506,7 +501,11 @@ export default function Settings() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="rounded-xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/60 dark:bg-indigo-950/20 p-3 flex items-start gap-3">
+              <input type="checkbox" checked={autoConnectPrinter} onChange={e => { setAutoConnectPrinter(e.target.checked); setThermalPrinterAutoConnect(e.target.checked); }} className="mt-0.5 h-4 w-4 accent-indigo-600 shrink-0" />
+              <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wider text-indigo-800 dark:text-indigo-200">Conectar automáticamente la impresora térmica</p><p className="mt-0.5 text-[9px] leading-4 font-semibold text-indigo-700/80 dark:text-indigo-300/80">PALMYRA intentará reconectar la última impresora autorizada al abrir la web o la PWA.</p></div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <label className="space-y-1.5 min-w-0">
                   <span className="text-[10px] font-black text-muted uppercase px-1">Nombre del Negocio</span>
                   <input type="text" value={config.storeName}
