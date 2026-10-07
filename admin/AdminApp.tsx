@@ -244,7 +244,10 @@ function Overview({ snapshot, onRefresh }: { snapshot: PlatformSnapshot; onRefre
     const products = companies.reduce((sum, c) => sum + Number(c.products || 0), 0);
     const users = companies.reduce((sum, c) => sum + Number(c.employees || 0), 0);
     const warehouses = companies.reduce((sum, c) => sum + Number(c.warehouses || 0), 0);
-    return { total: companies.length, active, suspended, today, requests: snapshot.requests.length, openSupport, products, users, warehouses };
+    const records = companies.reduce((sum, c) => sum + Number(c.data_records || 0), 0);
+    const sales = companies.reduce((sum, c) => sum + Number(c.sales || 0), 0);
+    const topDataCompany = [...companies].sort((a,b) => Number(b.data_records||0)-Number(a.data_records||0))[0] || null;
+    return { total: companies.length, active, suspended, today, requests: snapshot.requests.length, openSupport, products, users, warehouses, records, sales, topDataCompany };
   }, [snapshot]);
 
   return (
@@ -264,6 +267,22 @@ function Overview({ snapshot, onRefresh }: { snapshot: PlatformSnapshot; onRefre
         <StatCard label="Suspendidas" value={metrics.suspended} detail="Requieren revisión" icon={AlertCircle} tone="amber" />
         <StatCard label="Solicitudes" value={metrics.requests} detail="Pendientes de activar" icon={CreditCard} tone="slate" />
         <StatCard label="Soporte abierto" value={metrics.openSupport} detail="Abiertas o en atención" icon={Headphones} tone="amber" />
+        <StatCard label="Registros operativos" value={metrics.records} detail="Huella de datos visible del SaaS" icon={Database} tone="slate" />
+        <StatCard label="Ventas registradas" value={metrics.sales} detail="Actividad comercial acumulada" icon={ShoppingCart} tone="green" />
+      </section>
+
+      <section className="admin-panel admin-company-consumption">
+        <div className="admin-panel__head"><div><p className="admin-kicker">CONSUMO POR EMPRESA</p><h2>Quién está generando más datos</h2><p>Indicador operativo calculado a partir de productos, variantes, ventas, partidas, movimientos, caja, empleados y almacenes.</p></div><Database size={17}/></div>
+        <div className="admin-company-consumption-list">
+          {[...snapshot.companies].sort((a,b)=>Number(b.data_records||0)-Number(a.data_records||0)).slice(0,8).map((company,index)=>(
+            <div key={company.id} className="admin-company-consumption-row">
+              <span className="admin-company-rank">{String(index+1).padStart(2,"0")}</span>
+              <div className="min-w-0 flex-1"><strong>{company.name}</strong><small>{company.plan_name || company.plan_code || "Sin plan"} · {Number(company.sales||0).toLocaleString("es-CU")} ventas</small></div>
+              <div className="admin-company-consumption-value"><strong>{Number(company.data_records||0).toLocaleString("es-CU")}</strong><small>registros</small></div>
+            </div>
+          ))}
+          {!snapshot.companies.length ? <EmptyPanel title="Sin empresas" description="No hay datos de consumo empresarial todavía." /> : null}
+        </div>
       </section>
 
       <section className="admin-grid-3">
@@ -330,7 +349,8 @@ function CompanyCard({
       <div className="admin-company-card__metrics">
         <div><strong>{company.products ?? "—"}</strong><span>Productos</span></div>
         <div><strong>{company.employees ?? "—"}</strong><span>Usuarios</span></div>
-        <div><strong>{company.warehouses ?? "—"}</strong><span>Almacenes</span></div>
+        <div><strong>{company.sales ?? "—"}</strong><span>Ventas</span></div>
+        <div><strong>{company.data_records ?? "—"}</strong><span>Registros</span></div>
       </div>
       <div className="admin-company-card__foot">
         <span>Creada {formatDate(company.created_at)}</span>
