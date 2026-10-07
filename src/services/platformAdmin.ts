@@ -72,3 +72,19 @@ export async function setPlatformCompanyStatus(companyId:string,status:"active"|
   const {data,error}=await supabase.rpc("set_platform_company_status",{p_company_id:companyId,p_status:status});
   if(error) throw error; return data;
 }
+
+
+export async function loadPlatformUsage() {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error("Supabase no está configurado.");
+  const { data: sessionData } = await supabase.auth.getSession();
+  const token = sessionData.session?.access_token;
+  if (!token) throw new Error("La sesión administrativa no está disponible.");
+  const response = await fetch("/api/platform-usage", {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store"
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload?.error || "No se pudo consultar el consumo de infraestructura.");
+  return payload;
+}
