@@ -280,43 +280,34 @@ export default function Dashboard() {
   return (
     <div className="space-y-2.5 text-[9px] animate-in fade-in slide-in-from-bottom-2 duration-500 pb-5">
 
-      <section className="relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100/80 dark:border-violet-900/40 bg-slate-900 shadow-lg shadow-violet-100/50 dark:shadow-none min-h-[280px] sm:min-h-[290px] lg:min-h-[310px]">
+      <section className="relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100/80 bg-white shadow-lg shadow-violet-100/40 min-h-[280px] sm:min-h-[290px] lg:min-h-[310px]">
         <img
           src="/palmyra-dashboard-hero.svg"
           alt=""
-          className="absolute inset-0 h-full w-full object-cover object-[72%_center] origin-center sm:object-[78%_center] lg:object-[72%_center]"
+          className="absolute inset-0 h-full w-full object-cover object-center origin-center scale-x-[-1]"
           aria-hidden="true"
         />
-        <div
-          className="absolute inset-0 bg-gradient-to-r from-slate-950/58 via-slate-950/24 to-transparent sm:from-slate-950/48 sm:via-slate-950/12 sm:to-transparent"
-          aria-hidden="true"
-        />
-        <div
-          className="absolute inset-y-0 left-0 w-[78%] sm:w-[60%] bg-gradient-to-r from-slate-950/22 via-slate-950/6 to-transparent"
-          aria-hidden="true"
-        />
-
         <div className="relative z-10 flex min-h-[280px] sm:min-h-[290px] lg:min-h-[310px] items-center px-4 py-6 sm:px-8 lg:px-10">
           <div className="w-full max-w-[445px] sm:max-w-[560px]">
-            <div className="flex items-center gap-1.5 text-[7.5px] sm:text-[9px] font-black uppercase tracking-[0.14em] text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.55)] -translate-y-2 sm:-translate-y-1">
+            <div className="flex items-center gap-1.5 text-[7.5px] sm:text-[9px] font-black uppercase tracking-[0.14em] text-[#4C1D95] drop-shadow-[0_1px_3px_rgba(255,255,255,0.85)] -translate-y-2 sm:-translate-y-1">
               <Sparkles className="h-3.5 w-3.5 shrink-0 text-violet-100" />
               <span>PALMYRA · Gestión empresarial</span>
             </div>
 
-            <h1 className="mt-1.5 text-[2.35rem] sm:text-4xl lg:text-5xl font-black tracking-[-0.045em] leading-[.9] text-white drop-shadow-[0_2px_9px_rgba(0,0,0,0.58)]">
+            <h1 className="mt-1.5 text-[2.35rem] sm:text-4xl lg:text-5xl font-black tracking-[-0.045em] leading-[.9] text-[#2F176B] drop-shadow-[0_2px_8px_rgba(255,255,255,0.9)]">
               Hola{dashboardUserName ? ", " + dashboardUserName.split(" ")[0] : ""} <span className="text-[0.7em] align-[-0.04em]" aria-hidden="true">👋</span>
             </h1>
 
-            <p className="mt-2 text-[1.08rem] sm:text-xl lg:text-2xl font-black leading-[1.02] tracking-[-0.02em] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.58)]">
+            <p className="mt-2 text-[1.08rem] sm:text-xl lg:text-2xl font-black leading-[1.02] tracking-[-0.02em] text-[#3B1B6E] drop-shadow-[0_2px_7px_rgba(255,255,255,0.9)]">
               Bienvenido a <span className="text-violet-100">{businessName}</span>
             </p>
 
-            <p className="mt-2.5 max-w-[410px] text-[9.5px] sm:text-xs lg:text-sm font-semibold leading-[1.4] text-white/95 drop-shadow-[0_1px_6px_rgba(0,0,0,0.62)]">
+            <p className="mt-2.5 max-w-[410px] text-[9.5px] sm:text-xs lg:text-sm font-semibold leading-[1.4] text-[#4C3D74] drop-shadow-[0_1px_4px_rgba(255,255,255,0.9)]">
               Todo tu negocio en un solo lugar: ventas, inventario, clientes y actividad para tomar decisiones con claridad.
             </p>
 
             <div className="mt-5 flex flex-wrap items-center gap-1.5 sm:gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-slate-950/28 px-2.5 py-1.5 text-[7.5px] sm:text-[9px] font-black text-white shadow-sm backdrop-blur-[2px]">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/70 bg-white/72 px-2.5 py-1.5 text-[7.5px] sm:text-[9px] font-black text-[#3B1B6E] shadow-sm backdrop-blur-[3px]">
                 <TrendingUp className="h-3.5 w-3.5 text-emerald-300" /> Datos en tiempo real
               </span>
               <span className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-slate-950/28 px-2.5 py-1.5 text-[7.5px] sm:text-[9px] font-black text-white shadow-sm backdrop-blur-[2px]">
