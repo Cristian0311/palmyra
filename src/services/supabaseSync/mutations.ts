@@ -334,7 +334,30 @@ export async function pushSupplierToSupabase(supplier:Supplier){
 export async function deleteSupplierFromSupabase(id:string):Promise<boolean>{try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {error}=await supabase.from('suppliers').update({active:false}).eq('id',id).eq('company_id',companyId);if(error)throw error;return true;}catch{return false;}}
 
 export async function pushSupplierOrderToSupabase(order:SupplierOrder){
-  try{const supabase=await onlineClient();const {companyId,authUserId}=await getActiveTenant();const {error}=await supabase.from('purchase_orders').upsert({id:order.id,company_id:companyId,supplier_id:order.supplierId,warehouse_id:order.branchId,status:order.status,order_number:order.id,currency_code:'USD',subtotal:Number(order.total)||0,total:Number(order.total)||0,created_by:authUserId,expected_delivery_date:order.expectedDeliveryDate||null,transport_cost:Number(order.transportCost)||0,transport_details:order.transportDetails||null},{onConflict:'id'});if(error)throw error;await supabase.from('purchase_items').delete().eq('purchase_order_id',order.id);if(order.items?.length){const {error:ie}=await supabase.from('purchase_items').insert(order.items.map(i=>({id:crypto.randomUUID(),purchase_order_id:order.id,product_id:i.productId,quantity:Number(i.quantity)||0,unit_cost:Number(i.cost)||0,line_total:(Number(i.quantity)||0)*(Number(i.cost)||0)})));if(ie)throw ie;}return true;}catch(e:any){await queue('supplier_order',order,order.id);return false;}
+  try{const supabase=await onlineClient();const {companyId,authUserId}=await getActiveTenant();
+    // La UI usa "pending" para "Pendiente", pero Postgres purchase_status usa
+    // "ordered". Nunca enviamos el valor de presentación directamente a la BD.
+    const dbStatus = order.status === 'pending' ? 'ordered' : order.status;
+    const status = dbStatus === 'draft' || dbStatus === 'ordered' || dbStatus === 'received' || dbStatus === 'cancelled'
+      ? dbStatus
+      : 'ordered';
+    const {error}=await supabase.from('purchase_orders').upsert({
+      id:order.id,company_id:companyId,supplier_id:order.supplierId,warehouse_id:order.branchId,status,
+      order_number:order.id,currency_code:'USD',subtotal:Number(order.total)||0,total:Number(order.total)||0,
+      created_by:authUserId,expected_delivery_date:order.expectedDeliveryDate||null,transport_cost:Number(order.transportCost)||0,
+      transport_details:order.transportDetails||null
+    },{onConflict:'id'});
+    if(error)throw error;
+    await supabase.from('purchase_items').delete().eq('purchase_order_id',order.id);
+    if(order.items?.length){
+      const {error:ie}=await supabase.from('purchase_items').insert(order.items.map(i=>({
+        id:crypto.randomUUID(),purchase_order_id:order.id,product_id:i.productId,quantity:Number(i.quantity)||0,
+        unit_cost:Number(i.cost)||0,line_total:(Number(i.quantity)||0)*(Number(i.cost)||0)
+      })));
+      if(ie)throw ie;
+    }
+    return true;
+  }catch(e:any){await queue('supplier_order',order,order.id);return false;}
 }
 
 export async function pushInventoryAuditToSupabase(audit:InventoryAudit){
