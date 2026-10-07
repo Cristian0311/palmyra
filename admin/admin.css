@@ -359,3 +359,14 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .admin-infra-updated{margin:0;color:var(--admin-muted);font-size:8px;text-align:right}
 @media(max-width:760px){.admin-infra-usage-grid{grid-template-columns:1fr}.admin-capacity-summary{padding:15px}.admin-infra-resource-grid{grid-template-columns:1fr 1fr}}
 @media(max-width:480px){.admin-infra-resource-grid{grid-template-columns:1fr}.admin-capacity-summary strong{font-size:22px}}
+
+.admin-company-consumption{margin-top:0}
+.admin-company-consumption .admin-panel__head>div p:last-child{margin-top:5px;color:var(--admin-muted);font-size:8px;line-height:1.4;max-width:650px}
+.admin-company-consumption-list{display:flex;flex-direction:column;gap:6px;margin-top:12px}
+.admin-company-consumption-row{display:flex;align-items:center;gap:10px;min-width:0;padding:10px 11px;border:1px solid #eee8f5;border-radius:12px;background:#fcfbfe}
+.admin-company-rank{width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:8px;background:#f0eafa;color:#6d3bd2;font-size:7px;font-weight:950;flex:0 0 26px}
+.admin-company-consumption-row strong{display:block;color:var(--admin-deep);font-size:9px}
+.admin-company-consumption-row small{display:block;margin-top:2px;color:var(--admin-muted);font-size:7px}
+.admin-company-consumption-value{text-align:right;flex:0 0 auto}.admin-company-consumption-value strong{font-size:13px}.admin-company-consumption-value small{font-size:6.5px}
+.admin-company-card__metrics{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important}
+@media(max-width:520px){.admin-company-card__metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important}.admin-company-consumption-row{padding:9px}.admin-company-consumption-value strong{font-size:11px}}
