@@ -37,6 +37,31 @@ class PermanentSyncError extends Error {
 export async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<boolean> {
   const { type, data } = item;
   switch (type) {
+    case 'employee_create': {
+      const d = data || {};
+      if (!d.companyId || !d.fullName || !d.employeeCode || !d.roleId || !Array.isArray(d.warehouseIds) || !d.warehouseIds.length) throw new PermanentSyncError('Trabajador offline incompleto.');
+      if (d.sendInvite) {
+        const { data: invite, error } = await supabase.rpc('create_employee_with_invitation', {
+          p_company_id: d.companyId, p_employee_code: d.employeeCode, p_full_name: d.fullName, p_base_salary: Number(d.baseSalary) || 0,
+          p_role_id: d.roleId, p_warehouse_ids: d.warehouseIds, p_email: String(d.email || '').trim().toLowerCase()
+        });
+        if (error) throw error;
+        const invitation = invite as any;
+        if (invitation?.token && d.email) {
+          const { error: mailError } = await supabase.functions.invoke('send-company-invitation', { body: {
+            companyId: d.companyId, employeeId: invitation.employee_id, email: invitation.email || String(d.email).trim().toLowerCase(), name: d.fullName, token: invitation.token
+          }});
+          if (mailError) console.warn('[offlineSync] Trabajador creado pero la invitación no pudo enviarse:', mailError);
+        }
+      } else {
+        const { error } = await supabase.rpc('create_employee_pos_secure', {
+          p_company_id: d.companyId, p_employee_code: d.employeeCode, p_full_name: d.fullName, p_base_salary: Number(d.baseSalary) || 0,
+          p_role_id: d.roleId, p_warehouse_ids: d.warehouseIds, p_pos_password: String(d.posPassword || '').trim() || null
+        });
+        if (error) throw error;
+      }
+      return true;
+    }
     case 'cash_movement': {
       const movement = data as {
         id:string; sessionId:string; type:'income'|'expense'; amount:number; currencyCode:string; description?:string

@@ -429,9 +429,9 @@ export default function Banks() {
       </div>
 
       {/* Bank Cards Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
         {bankCards.map(card => (
-          <div key={card.id} onClick={() => setSelectedCardId(card.id)} className={`relative overflow-hidden rounded-xl p-2 sm:p-2.5 cursor-pointer transition-all duration-300 ${selectedCardId === card.id ? 'ring-2 ring-indigo-500 shadow-md scale-[1.01]' : 'hover:shadow-xs hover:-translate-y-0.5'} bg-gradient-to-br from-slate-800 to-slate-900 text-white min-h-[85px] flex flex-col justify-between`}>
+          <div key={card.id} onClick={() => setSelectedCardId(card.id)} className={`relative overflow-hidden rounded-xl p-2 sm:p-2.5 cursor-pointer transition-all duration-300 ${selectedCardId === card.id ? 'ring-2 ring-indigo-500 shadow-md scale-[1.01]' : 'hover:shadow-xs hover:-translate-y-0.5'} bg-gradient-to-br from-slate-800 to-slate-900 text-white min-h-[98px] flex flex-col justify-between`}>
              {/* Background Pattern */}
              <div className="absolute top-0 right-0 -mr-4 -mt-4 w-12 h-12 rounded-full bg-white opacity-5"></div>
              
@@ -439,8 +439,8 @@ export default function Banks() {
                <div>
                  <h3 className="text-[7.5px] font-black uppercase tracking-wider opacity-80">{card.bank}</h3>
                </div>
-               <div className="flex gap-1 items-center">
-                 <button onClick={(e) => { e.stopPropagation(); setEditingCard(card); setFormData(card); setShowAddModal(true); }} className="text-white opacity-70 hover:opacity-100 transition-opacity text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 inline-flex items-center cursor-pointer">Editar</button>
+               <div className="flex flex-wrap justify-end gap-1 items-center">
+                 <button onClick={(e) => { e.stopPropagation(); setEditingCard(card); setFormData(card); setShowAddModal(true); }} className="text-white opacity-70 hover:opacity-100 transition-opacity text-[7.5px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/10 whitespace-nowrap hover:bg-white/20 inline-flex items-center cursor-pointer">Editar</button>
                  <button onClick={(e) => { e.stopPropagation(); setTransferData({...transferData, fromCardId: card.id}); setShowTransferModal(true); }} className="text-emerald-300 hover:text-emerald-200 transition-colors text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 inline-flex items-center cursor-pointer">Transferir</button>
                  <button onClick={(e) => { e.stopPropagation(); setCardToDelete(card.id); }} className="text-rose-300 hover:text-rose-200 transition-colors text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-white/10 hover:bg-white/20 inline-flex items-center cursor-pointer">Eliminar</button>
                </div>

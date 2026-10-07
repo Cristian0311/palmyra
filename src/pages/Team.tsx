@@ -22,8 +22,20 @@ import {
   type TeamRole,
   type TeamSnapshot
 } from "../services/team";
-import { cn } from "../lib/utils";
+import { cn, generateId } from "../lib/utils";
+import { enqueueOfflineItem } from "../services/offlineQueue";
 import "./team.css";
+
+const TEAM_CACHE_PREFIX = "palmyra-team-cache-v1:";
+function teamCacheKey(companyId: string) { return TEAM_CACHE_PREFIX + companyId; }
+function readTeamCache(companyId?: string | null): TeamSnapshot | null {
+  if (!companyId || typeof localStorage === "undefined") return null;
+  try { const raw = localStorage.getItem(teamCacheKey(companyId)); return raw ? JSON.parse(raw) as TeamSnapshot : null; } catch { return null; }
+}
+function writeTeamCache(snapshot: TeamSnapshot | null) {
+  if (!snapshot || typeof localStorage === "undefined") return;
+  try { localStorage.setItem(teamCacheKey(snapshot.companyId), JSON.stringify(snapshot)); } catch {}
+}
 
 function copyText(value: string) {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
@@ -82,11 +94,15 @@ export default function Team() {
   const refresh = async () => {
     setLoading(true);
     setError("");
+    const offline = typeof navigator !== "undefined" && !navigator.onLine;
+    const cached = readTeamCache(snapshot?.companyId || context?.companyId);
+    if (offline && cached) { setSnapshot(cached); setLoading(false); return; }
     try {
       const [nextContext, nextSnapshot] = await Promise.all([loadSaaSContext(), loadTeamSnapshot()]);
       if (!nextSnapshot) throw new Error("No se recibió el estado del equipo.");
       setContext(nextContext);
       setSnapshot(nextSnapshot);
+      writeTeamCache(nextSnapshot);
       try { setCompensationSettings(await loadCompensationSettings(nextSnapshot.companyId)); } catch (e) { console.warn("[PALMYRA] No se pudo cargar compensación global", e); }
       if (!form.roleId) {
         const employeeRole = (nextSnapshot.roles || []).find(role => role.key === "employee") || (nextSnapshot.roles || []).find(role => role.key !== "admin");
@@ -96,13 +112,30 @@ export default function Team() {
         setForm(prev => ({ ...prev, warehouseIds: [nextSnapshot.warehouses[0].id] }));
       }
     } catch (e: any) {
-      setError(e?.message || "No se pudo cargar el equipo.");
+      const fallback = readTeamCache(snapshot?.companyId || context?.companyId);
+      if (fallback) {
+        setSnapshot(fallback);
+        setError(typeof navigator !== "undefined" && !navigator.onLine ? "Mostrando el último estado guardado. Los cambios nuevos se sincronizarán al recuperar conexión." : "No se pudo actualizar desde la nube; se conserva el último estado local.");
+      } else setError(e?.message || "No se pudo cargar el equipo.");
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => { void refresh(); }, []);
+
+  useEffect(() => {
+    const onQueueChange = () => {
+      if (typeof navigator !== "undefined" && navigator.onLine) void refresh();
+      else { const cached = readTeamCache(snapshot?.companyId || context?.companyId); if (cached) setSnapshot(cached); }
+    };
+    window.addEventListener("online", onQueueChange);
+    window.addEventListener("offline_queue_updated", onQueueChange as EventListener);
+    return () => {
+      window.removeEventListener("online", onQueueChange);
+      window.removeEventListener("offline_queue_updated", onQueueChange as EventListener);
+    };
+  }, [snapshot?.companyId, context?.companyId]);
 
   const employeeLimit = Number((context?.subscription?.limits as any)?.employees || 0);
   const activeEmployees = snapshot?.employees.filter(employee => employee.active).length || 0;
@@ -254,6 +287,32 @@ export default function Team() {
     }
     if (!form.sendInvite && editing && form.posPassword.trim().length > 0 && form.posPassword.trim().length < 6) {
       return setError("La nueva contraseña del POS debe tener al menos 6 caracteres.");
+    }
+
+    const offline = typeof navigator !== "undefined" && !navigator.onLine;
+    if (!editing && offline) {
+      const localId = generateId("EMP-OFF");
+      const now = new Date().toISOString();
+      const role = snapshot.roles.find(role => role.id === form.roleId);
+      const localEmployee: TeamEmployee = {
+        id: localId, user_id: null, employee_code: form.employeeCode.trim(), full_name: form.fullName.trim(),
+        login_email: form.sendInvite ? form.email.trim().toLowerCase() : null, base_salary: Number(form.baseSalary) || 0,
+        compensation_type: "fixed_product", sales_percentage: 0, active: true, role_id: form.roleId,
+        role_name: role?.name || "Empleado", role_key: role?.key || "employee", warehouse_ids: [...form.warehouseIds],
+        default_warehouse_id: form.warehouseIds[0] || null,
+        pending_invitation: form.sendInvite ? { id: localId + "-invite", email: form.email.trim().toLowerCase(), status: "pending_offline", expires_at: new Date(Date.now()+7*86400000).toISOString(), created_at: now } : null
+      };
+      const nextSnapshot: TeamSnapshot = { ...snapshot, employees: [localEmployee, ...snapshot.employees] };
+      setSnapshot(nextSnapshot); writeTeamCache(nextSnapshot);
+      await enqueueOfflineItem("employee_create", {
+        localEmployeeId: localId, companyId: snapshot.companyId, employeeCode: form.employeeCode.trim(), fullName: form.fullName.trim(),
+        baseSalary: Number(form.baseSalary) || 0, roleId: form.roleId, warehouseIds: [...form.warehouseIds],
+        email: form.email.trim().toLowerCase(), sendInvite: form.sendInvite, posPassword: form.sendInvite ? undefined : form.posPassword.trim()
+      }, "employee-create:" + localId);
+      setMessage("Trabajador guardado en este dispositivo. Se creará en la nube automáticamente al recuperar Internet.");
+      setShowForm(false); setFormStep(1);
+      addNotification("Trabajador guardado offline y puesto en cola para sincronización.", "success");
+      return;
     }
 
     setBusy(true);

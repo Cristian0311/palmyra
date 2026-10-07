@@ -286,7 +286,7 @@ export default function Dashboard() {
           className="absolute inset-0 overflow-hidden"
         >
           <div
-            className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+            className="dashboard-hero-image absolute inset-0 bg-cover bg-right-center bg-no-repeat"
             style={{
               backgroundImage:
                 "url('/palmyra-dashboard-hero-fixed.webp')",
@@ -294,7 +294,7 @@ export default function Dashboard() {
           />
         </div>
         <div
-          className="absolute inset-y-0 left-0 z-[1] w-[52%] bg-gradient-to-r from-white/46 via-white/18 to-transparent pointer-events-none"
+          className="absolute inset-y-0 left-0 z-[1] w-[42%] bg-gradient-to-r from-white/24 via-white/8 to-transparent pointer-events-none"
           aria-hidden="true"
         />
         <div className="relative z-10 flex min-h-[360px] sm:min-h-[340px] lg:min-h-[360px] items-center px-4 py-6 sm:px-8 lg:px-10">

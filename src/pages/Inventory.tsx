@@ -1111,7 +1111,7 @@ export default function Inventory() {
         <div className="fixed inset-x-0 z-50 flex justify-center p-2"
           style={{ top: 0, height: '100dvh', maxHeight: '100dvh', paddingTop: 'max(0.5rem, env(safe-area-inset-top))', paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
           <div className="absolute inset-0 bg-slate-900/75 backdrop-blur-[2px]" aria-hidden="true" />
-          <div className="team-employee-modal inventory-product-modal relative z-10 w-full max-w-3xl bg-secondary border border-base rounded-[28px] shadow-2xl overflow-hidden flex flex-col min-h-0"
+          <div className="team-employee-modal inventory-product-modal relative z-10 w-full max-w-xl bg-secondary border border-base rounded-[28px] shadow-2xl overflow-hidden flex flex-col min-h-0"
             style={{
               maxHeight: 'calc(var(--palmyra-vv-height, 100dvh) - 1rem)',
               transform: 'translateY(var(--palmyra-vv-top, 0px))'

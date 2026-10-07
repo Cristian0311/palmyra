@@ -3351,6 +3351,8 @@ export default function POS() {
         configData={configData}
         setConfigData={setConfigData}
         generateSerial={generateSerial}
+        inventory={inventory}
+        branchId={currentSession?.branchId || currentBranchId}
         onSubmit={handleConfigSubmit}
         onClose={() => {
           setShowConfigModal(false);

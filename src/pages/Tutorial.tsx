@@ -233,7 +233,7 @@ function TutorialCard({ section, open, onToggle }: { section: TutorialSection; o
 }
 
 export default function Tutorial() {
-  const [openId, setOpenId] = useState("inicio");
+  const [openId, setOpenId] = useState<string>("");
 
   return (
     <div className="tutorial-page min-h-full w-full bg-primary p-3 sm:p-5">

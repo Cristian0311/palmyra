@@ -199,9 +199,21 @@ const handleProductClick = useCallback((product: Product) => {
   setPosError("");
   setSelectedProduct(product);
   const autoSN = product.hasSerial ? `SN-${Math.floor(Math.random() * 100000000).toString().padStart(8, "0")}` : "";
+  const stockForVariant = (label?: string) => {
+    if (!label) return 0;
+    const stockBranchId = currentSessionBranchId || currentBranchId;
+    return (inventory || []).reduce((total, item) =>
+      item.branchId === stockBranchId && item.productId === product.id && (item.variantLabel || '') === label
+        ? total + Number(item.quantity || 0)
+        : total,
+      0
+    );
+  };
+  const firstAvailableSize = product.availableSizes?.find(size => stockForVariant(size) > 0) || product.availableSizes?.[0];
+  const firstAvailableColor = product.availableColors?.find(color => stockForVariant(color) > 0) || product.availableColors?.[0];
   setConfigData({
-    selectedSize: product.availableSizes?.[0],
-    selectedColor: product.availableColors?.[0],
+    selectedSize: firstAvailableSize,
+    selectedColor: firstAvailableColor,
     serialNumber: autoSN
   });
   setShowConfigModal(true);
