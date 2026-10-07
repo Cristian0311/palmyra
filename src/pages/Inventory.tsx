@@ -557,7 +557,7 @@ export default function Inventory() {
               <select 
                 value={selectedBranch}
                 onChange={(e) => setSelectedBranch(e.target.value)}
-                className="w-full pl-6 pr-5 h-8 bg-subtle border border-base text-primary rounded-xl text-[10px] font-bold outline-none hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
+                className="w-full pl-6 pr-5 h-8 bg-subtle border border-base text-primary rounded-xl text-[8px] sm:text-[10px] font-bold outline-none hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
                 title="Filtrar por sucursal"
               >
                 <option value="all">📍 Sucursal</option>
@@ -590,7 +590,7 @@ export default function Inventory() {
               <select 
                 value={stockFilter}
                 onChange={(e) => setStockFilter(e.target.value as any)}
-                className="w-full px-2 h-8 bg-subtle border border-base text-primary rounded-xl text-[10px] font-bold outline-none hover:bg-secondary transition-colors cursor-pointer appearance-none text-center truncate"
+                className="w-full px-1 sm:px-2 h-8 bg-subtle border border-base text-primary rounded-xl text-[8px] sm:text-[10px] font-bold outline-none hover:bg-secondary transition-colors cursor-pointer appearance-none text-center truncate"
                 title="Filtrar por stock"
               >
                 <option value="all">📊 Stock</option>
@@ -853,6 +853,9 @@ export default function Inventory() {
                         <div className="flex flex-col min-w-0">
                           <div className="text-xs font-black text-primary uppercase tracking-tighter truncate flex items-center gap-1.5">
                             {item.name}
+                            {((item.availableSizes || []).length > 0 || (item.availableColors || []).length > 0) && (
+                              <span title="Este producto tiene variantes" className="inline-flex items-center rounded-md bg-violet-50 px-1 py-0.5 text-[6px] font-black uppercase text-violet-700 border border-violet-100 shrink-0">Variantes</span>
+                            )}
                             {item.isLowStock && (
                               <span title="Bajo Stock" className="inline-flex items-center">
                                 <AlertCircle className="w-3 h-3 text-rose-500 shrink-0" />
