@@ -198,7 +198,17 @@ export async function pushUserToSupabase(user:User){
     const {error}=await supabase.rpc('create_employee_secure',{p_company_id:companyId,p_employee_id:user.id,p_employee_code:(user as any).employeeCode||('EMP-'+user.id.slice(0,6).toUpperCase()),p_full_name:user.name,p_base_salary:Number(user.baseSalary)||0,p_role_id:role.id,p_warehouse_ids:targetWarehouses});if(error)throw error;return true;
   }catch(e:any){await queue('user',user,user.id);return false;}
 }
-export async function deleteUserFromSupabase(id:string){try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {error}=await supabase.from('employees').update({active:false}).eq('id',id).eq('company_id',companyId);if(error)throw error;}catch{}}
+export async function deleteUserFromSupabase(id:string):Promise<boolean>{
+  try{
+    const supabase=await onlineClient();
+    const {companyId}=await getActiveTenant();
+    const {error}=await supabase.from('employees').update({active:false}).eq('id',id).eq('company_id',companyId);
+    if(error)throw error;
+    return true;
+  }catch{
+    return false;
+  }
+}
 
 export async function pushCustomerToSupabase(customer:Customer):Promise<{success:boolean;pending:boolean;error?:string}>{
   try{
