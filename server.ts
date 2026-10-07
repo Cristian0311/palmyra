@@ -48,6 +48,18 @@ async function startServer() {
   // Platform infrastructure usage. Secrets stay server-side; the browser only
   // receives sanitized metrics after the existing platform-admin RPC authorizes
   // the caller.
+  app.options('/api/platform-usage', (req, res) => {
+    const allowedOrigin = 'https://palmyra-admin.onrender.com';
+    const origin = String(req.headers.origin || '');
+    if (origin === allowedOrigin) {
+      res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+      res.setHeader('Vary', 'Origin');
+      res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    }
+    return res.status(204).end();
+  });
+
   app.get('/api/platform-usage', async (req, res) => {
     try {
       const allowedOrigin = 'https://palmyra-admin.onrender.com';
