@@ -948,6 +948,7 @@ export default function Reports() {
               />
             </div>
           </div>
+        </div>
         <div className="flex items-center gap-1 shrink-0">
           <span className="flex items-center gap-1.5 text-[8px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 rounded-full border border-emerald-100 dark:border-emerald-900/30">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
