@@ -33,6 +33,26 @@ export async function loadPlatformPlans(): Promise<PlatformPlan[]> {
   return Array.isArray(data) ? data as PlatformPlan[] : [];
 }
 
+export async function updatePlatformPlan(input: {
+  id: string;
+  monthlyPrice: number;
+  trialDays: number;
+  limits: Record<string, unknown>;
+  features: Record<string, unknown>;
+  active: boolean;
+}) {
+  const { data, error } = await getAdminSupabase().rpc("update_platform_plan", {
+    p_plan_id: input.id,
+    p_monthly_price: input.monthlyPrice,
+    p_trial_days: input.trialDays,
+    p_limits: input.limits,
+    p_features: input.features,
+    p_active: input.active,
+  });
+  if (error) throw error;
+  return data;
+}
+
 export type PlanRequest = {
   id: string;
   company_name?: string | null;
