@@ -501,3 +501,4 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .admin-enterprise-card strong{font-size:18px;color:#241538}.admin-enterprise-card span{display:block;font-size:7px;color:#8b8196;margin-top:3px}
 .admin-table-list-row{min-width:0}.admin-table-list-row>div{min-width:0}.admin-table-list-row small{overflow:hidden;text-overflow:ellipsis}
 @media(max-width:760px){.admin-enterprise-grid{grid-template-columns:1fr}.admin-plan-grid{grid-template-columns:1fr!important}}
+.admin-company-plan--alert{background:#fff1f2!important;color:#be123c!important;border-color:#fecdd3!important}
