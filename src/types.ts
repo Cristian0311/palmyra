@@ -253,6 +253,8 @@ export interface User {
   baseSalary: number; // Salario base o CUP fijo por día
   salesGoal?: number;
   commissionRate?: number;
+  /** Porcentaje de comisión sobre ventas cuando compensationType es sales_percentage. */
+  salesPercentage?: number;
   compensationType?: 'fixed_product' | 'sales_percentage';
   phone?: string;
   branchId?: string; // Sucursal asignada
