@@ -292,7 +292,27 @@ export async function pushInventoryTransferToSupabase(transfer:InventoryTransfer
 export async function pushWarrantyToSupabase(warranty:Warranty){
   try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {data:saleItems,error:se}=await supabase.from('sale_items').select('id').eq('sale_id',warranty.transactionId).eq('product_id',warranty.productId).limit(1);if(se)throw se;const {error}=await supabase.from('warranties').upsert({id:warranty.id,company_id:companyId,sale_item_id:saleItems?.[0]?.id||null,code:warranty.id,starts_at:warranty.purchaseDate,expires_at:warranty.expiryDate,status:warranty.status,notes:warranty.productName},{onConflict:'id'});if(error)throw error;return true;}catch(e:any){await queue('warranty',warranty,warranty.id);return false;}
 }
-export async function pushCurrencyToSupabase(_currency:Currency){return true;}
+export async function pushCurrencyToSupabase(currency:Currency){
+  try {
+    const supabase = await onlineClient();
+    const { companyId, authUserId } = await getActiveTenant();
+    const { data: company, error: companyError } = await supabase.from('companies').select('default_currency_code').eq('id', companyId).single();
+    if (companyError) throw companyError;
+    const baseCode = company?.default_currency_code || 'CUP';
+    if (currency.code === baseCode) return true;
+    const rate = Number(currency.rateToBase);
+    if (!Number.isFinite(rate) || rate <= 0) throw new Error('La tasa de cambio debe ser mayor que 0.');
+    const { error } = await supabase.from('exchange_rates').insert({
+      id: crypto.randomUUID(), company_id: companyId, base_currency: baseCode,
+      quote_currency: currency.code, rate, effective_at: new Date().toISOString(), created_by: authUserId || null
+    });
+    if (error) throw error;
+    return true;
+  } catch (e:any) {
+    await queue('currency_rate', currency, 'currency-rate:' + currency.code);
+    return false;
+  }
+}
 
 export async function pushReturnToSupabase(item:ReturnItem):Promise<boolean>{
   try{
