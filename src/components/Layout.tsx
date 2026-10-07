@@ -412,7 +412,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         { label: "Operación", hrefs: ["/", "/pos", "/transfers", "/returns"] },
         { label: "Gestión", hrefs: ["/customers", "/inventory", "/inventory-audit", "/suppliers"] },
         { label: "Finanzas", hrefs: ["/banks", "/reports"] },
-        { label: "Administración", hrefs: ["/settings", "/team", "/help", "/subscription"] },
+        { label: "Administración", hrefs: ["/settings", "/team", "/help", "/subscription", "#online-catalog"] },
       ].map(section => ({
         ...section,
         items: visibleNavItems.filter(item => section.hrefs.includes(item.href)),
@@ -597,7 +597,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     <NavLink
                       key={item.name}
                       to={item.href}
-                      onClick={() => {
+                      onClick={(event) => {
+                        if ((item as any).comingSoon) {
+                          event.preventDefault();
+                          setShowOnlineCatalogInfo(true);
+                          setSidebarOpen(false);
+                          return;
+                        }
                         setSidebarOpen(false);
                         startNavigationFeedback(item.href);
                       }}
@@ -624,7 +630,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                           )}
                           {!sidebarCollapsed && isPlanLocked(item) && (
                             <span className="shrink-0 rounded-full bg-amber-50 px-1 py-0.5 text-[5px] font-black uppercase tracking-tight text-amber-700 border border-amber-200">
-                              Caravana
+                              {getRequiredPlanLabel(item.requiredFeature)}
+                            </span>
+                          )}
+                          {!sidebarCollapsed && (item as any).comingSoon && (
+                            <span className="shrink-0 rounded-full bg-violet-50 px-1 py-0.5 text-[5px] font-black uppercase tracking-tight text-violet-700 border border-violet-200">
+                              Próximamente
                             </span>
                           )}
                         </div>
@@ -815,7 +826,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         )}
-        {/* Overlay for mobile sidebar */}
+        {showOnlineCatalogInfo && (
+        <div className="fixed inset-0 z-[310] flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-sm" onClick={() => setShowOnlineCatalogInfo(false)}>
+          <div className="w-full max-w-md rounded-3xl border border-violet-200 bg-white shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+            <div className="w-12 h-12 rounded-2xl bg-violet-100 text-violet-700 flex items-center justify-center"><Store className="w-6 h-6"/></div>
+            <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-violet-600">Catálogo Online · Próximamente</p>
+            <h3 className="mt-1 text-xl font-black text-slate-900">Una nueva forma de vender en línea</h3>
+            <p className="mt-3 text-sm leading-6 text-slate-600">Esta página será desarrollada en un futuro para que puedas publicar productos, mostrar precios, recibir solicitudes y presentar tu catálogo empresarial desde PALMYRA.</p>
+            <div className="mt-4 rounded-2xl bg-violet-50 border border-violet-100 p-3 text-xs font-bold text-violet-800">Cuando el Catálogo Online esté disponible, el acceso requerirá el plan <b>Ciudadela</b>.</div>
+            <button type="button" onClick={() => setShowOnlineCatalogInfo(false)} className="mt-5 w-full h-11 rounded-xl bg-violet-600 text-white text-xs font-black uppercase">Entendido</button>
+          </div>
+        </div>
+      )}
+
+      {/* Overlay for mobile sidebar */}
         {sidebarOpen && (
           <div
             className="fixed inset-0 bg-black/60 z-40 lg:hidden"
