@@ -614,14 +614,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                           className={cn(
                             "flex items-center rounded-lg transition-colors duration-150 group min-w-0",
                             sidebarCollapsed ? "justify-center p-2 my-0.5" : "gap-1.5 px-2 py-1.5",
-                            isActive
+                            isActive && !(item as any).comingSoon
                               ? "bg-rose-600 text-white shadow-sm"
                               : "text-muted hover:bg-subtle hover:text-primary"
                           )}
                         >
                           <Icon className={cn(
                             "w-3.5 h-3.5 shrink-0 transition-colors",
-                            isActive ? "text-white" : "text-muted group-hover:text-rose-600"
+                            isActive && !(item as any).comingSoon ? "text-white" : "text-muted group-hover:text-rose-600"
                           )} />
                           {!sidebarCollapsed && (
                             <span className="min-w-0 flex-1 font-black text-[8px] uppercase tracking-[-0.01em] leading-[1.1] whitespace-normal break-words">
@@ -634,7 +634,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                             </span>
                           )}
                           {!sidebarCollapsed && (item as any).comingSoon && (
-                            <span className="shrink-0 rounded-full bg-violet-50 px-1 py-0.5 text-[5px] font-black uppercase tracking-tight text-violet-700 border border-violet-200">
+                            <span className="shrink-0 rounded-full bg-subtle px-1 py-0.5 text-[5px] font-black uppercase tracking-tight text-muted border border-subtle">
                               Próximamente
                             </span>
                           )}
