@@ -782,6 +782,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   <p className="mt-1.5 text-sm leading-5 text-slate-600 dark:text-slate-300">
                     Hay mejoras y correcciones listas para ti. Puedes aplicarlas ahora o continuar trabajando y actualizarlas después.
                   </p>
+                  <div className="mt-3 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 p-3">
+                    <p className="text-[9px] font-black uppercase tracking-[0.12em] text-indigo-600 dark:text-indigo-300">En esta actualización</p>
+                    <ul className="mt-1.5 space-y-1">
+                      {APP_UPDATE_NOTES.map(note => <li key={note} className="text-[10px] leading-4 text-slate-600 dark:text-slate-300">• {note}</li>)}
+                    </ul>
+                  </div>
                 </div>
               </div>
             </div>
