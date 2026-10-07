@@ -506,3 +506,41 @@ PALMYRA ya tiene una base real de arquitectura offline-first, no es una simple a
 Sin embargo, el estado actual del código NO permite certificar “100% online + 100% offline” porque existen fallos comprobables en compilación y en replay de operaciones, además de funciones deliberadamente online-only y algunas operaciones de borrado sin paridad offline.
 
 La aprobación final debe darse solamente después de corregir P0/P1 y pasar la matriz E2E completa.
+
+## 14. Correcciones ejecutadas después de la auditoría
+
+Se repararon y subieron a `main` los bloqueadores P0/P1 identificados:
+
+- `User.salesPercentage` incorporado y cargado desde el contexto SaaS.
+- Actualización de empleados corregida para persistir tipo de compensación y porcentaje.
+- Cálculo de comisiones restaurado en Caja.
+- Pestaña Stock de Inventario corregida para no navegar a un estado inexistente.
+- Replay offline corregido para transferencias, recepciones de proveedores, tasas de cambio, retiros de empleados y eliminaciones de almacenes/categorías/proveedores.
+- Las eliminaciones locales ahora permanecen protegidas por outbox hasta confirmación remota.
+- El alcance offline de empresa/usuario ahora se toma del scope activo, evitando mezclar cachés de múltiples empresas.
+- Acceso al POS sin conexión habilitado para credenciales previamente validadas en ese dispositivo mediante verificador local salado; no se guarda la contraseña en claro ni en el estado de Zustand.
+- Cierres y cancelaciones de caja ante cortes transitorios ahora quedan conservados localmente y en cola durable.
+- La numeración histórica de turnos se conserva entre reinicios y no se renumera al eliminar históricos.
+- Chunks de Excel/gráficos de Reportes incluidos en precache PWA.
+- Imagen remota de la landing sustituida por recurso local.
+- Branding heredado MARÉ/Mi Tienda POS eliminado de defaults y prueba de impresora.
+- Sincronización de nómina hecha idempotente para evitar duplicados en replay.
+
+## 15. Validación posterior
+
+Último commit auditado: `06643d80960b356d69484d3e8040e76bae562eb5`.
+
+GitHub Actions `PALMYRA CI`: **SUCCESS** en el run correspondiente. TypeScript, pruebas unitarias, Admin TypeScript/build, arquitectura y producción terminaron correctamente.
+
+Render producción:
+- Servicio: `palmyracrm`
+- Deploy: `dep-db35898m7kps73d34akg`
+- Estado: **LIVE**
+- Commit desplegado: `06643d80960b356d69484d3e8040e76bae562eb5`
+
+## 16. Estado de certificación
+
+El núcleo offline-first quedó corregido y validado a nivel de compilación/tests/arquitectura y despliegue. La certificación funcional absoluta todavía requiere pruebas de dispositivo/navegador reales para escenarios de apagado/reinicio, Bluetooth/USB, pérdida de red durante RPC y concurrencia entre dos terminales, porque esas pruebas dependen del entorno físico.
+
+Las funciones que requieren terceros/red (alta de cuenta, correo, recuperación de contraseña, pagos/cambios de plan, IA remota y canales externos) continúan correctamente clasificadas como online-only.
+
