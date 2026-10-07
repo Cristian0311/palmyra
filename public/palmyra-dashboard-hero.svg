@@ -54,7 +54,7 @@
   </g>
 </g>
 
-<!-- signature PALMYRA wave, like an enterprise software banner -->
+<!-- signature software wave -->
 <path d="M0 302 C170 258 285 328 450 290 C620 250 725 335 895 294 C1065 253 1195 294 1400 230 L1400 430 L0 430Z" fill="url(#wave)"/>
 <path d="M0 346 C185 294 300 367 472 327 C645 286 742 371 925 330 C1100 291 1230 326 1400 272 L1400 430 L0 430Z" fill="url(#wave2)" opacity=".46"/>
 <path d="M0 300 C170 257 285 327 450 289 C620 249 725 334 895 293 C1065 252 1195 293 1400 229" fill="none" stroke="#c4b5fd" stroke-opacity=".42" stroke-width="3"/>
@@ -76,7 +76,7 @@
   <rect x="1117" y="106" width="31" height="6" rx="3" fill="#ece8f5"/>
 </g>
 
-<!-- professional PALMYRA advisor -->
+<!-- professional advisor -->
 <g transform="translate(635 36)" filter="url(#shadow)">
   <ellipse cx="170" cy="382" rx="155" ry="20" fill="#24104e" opacity=".24"/>
   <path d="M72 383 C77 292 93 236 122 208 C150 181 198 182 227 209 C257 239 277 301 286 383Z" fill="url(#suit)"/>
