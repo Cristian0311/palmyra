@@ -23,23 +23,29 @@ export async function getActiveTenant(forceRefresh = false): Promise<ActiveTenan
   let offlineContext: ReturnType<typeof getCachedSaaSContext> = null;
   try {
     const { data: authData, error: authError } = await supabase.auth.getUser();
-    if (!authError && authData.user) authUserId = authDataUserId;
+    if (!authError && authData.user) authUserId = authData.user.id;
   } catch {}
 
   if (!authUserId && typeof navigator !== 'undefined' && !navigator.onLine) {
     // Offline: the authenticated tenant is already persisted by the SaaS auth
     // context. Do not turn a valid local session into a false "must sign in" error.
     try {
-      const storedUser = localStorage.getItem('palmyra:offline-auth-user');
-      const candidateId = storedUser ? JSON.parse(storedUser)?.id : null;
-      if (candidateId) offlineContext = getCachedSaaSContext(candidateId);
+      const candidates = Object.keys(localStorage)
+        .filter((key) => key.startsWith('palmyra_offline_auth_context_v1__'))
+        .map((key) => {
+          try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; }
+        })
+        .filter(Boolean)
+        .sort((a, b) => String(b?.cachedAt || '').localeCompare(String(a?.cachedAt || '')));
+      const candidate = candidates[0];
+      if (candidate?.authUserId) offlineContext = getCachedSaaSContext(candidate.authUserId);
     } catch {}
     if (!offlineContext) throw new Error('No existe una sesión local válida para trabajar sin conexión.');
     if (offlineContext.companyId && offlineContext.authUserId) {
       cached = {
         companyId: offlineContext.companyId,
         authUserId: offlineContext.authUserId,
-        defaultCurrencyCode: offlineContext.subscription?.planCode ? 'USD' : 'USD'
+        defaultCurrencyCode: offlineContext.company?.default_currency_code || 'USD'
       };
       return cached;
     }
