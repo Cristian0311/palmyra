@@ -9,7 +9,6 @@ import { InfoTooltip } from "../components/InfoTooltip";
 import { cn } from "../lib/utils";
 import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
 import { calculateEmployeeSaleCommission } from "../services/employeeCompensation";
-import { calculateEmployeeSaleCommission } from "../services/employeeCompensation";
 
 export default function CashRegister() {
   const { branches, currentBranchId, setCurrentBranch, getCurrentSession, openSession, closeSession, getBaseCurrency, currencies, currentUser, transactions, users, products, salarySettlements, updateSalarySettlement, cashSessions } = useStore(useShallow((state) => ({ branches: state.branches, currentBranchId: state.currentBranchId, setCurrentBranch: state.setCurrentBranch, getCurrentSession: state.getCurrentSession, openSession: state.openSession, closeSession: state.closeSession, getBaseCurrency: state.getBaseCurrency, currencies: state.currencies, currentUser: state.currentUser, transactions: state.transactions, users: state.users, products: state.products, salarySettlements: state.salarySettlements, updateSalarySettlement: state.updateSalarySettlement, cashSessions: state.cashSessions })));
