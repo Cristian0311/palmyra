@@ -629,14 +629,6 @@ export default function Inventory() {
               <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted pointer-events-none" />
             </div>
 
-            {/* Botón Gestión Categorías */}
-            <button 
-              onClick={() => setShowCategoryModal(true)}
-              className="inventory-add-category-button"
-              title="Agregar categorías" aria-label="Agregar categorías"
-            >
-              Agregar categorías
-            </button>
           </div>
         </div>
 
@@ -666,8 +658,19 @@ export default function Inventory() {
         </div>
       </div>
 
+      <section className="inventory-category-action" aria-label="Gestión de categorías">
+        <div className="inventory-category-action__icon"><Tag className="w-4 h-4" /></div>
+        <div className="min-w-0 flex-1">
+          <strong>Agregar categorías</strong>
+          <span>Crea y organiza las categorías de tu inventario sin mezclar esta acción con los filtros.</span>
+        </div>
+        <button type="button" onClick={() => setShowCategoryModal(true)} className="inventory-category-action__button">
+          <Tag className="w-3.5 h-3.5" /> Gestionar
+        </button>
+      </section>
+
       {/* Tabs - High contrast and modern segmented design */}
-      <div className="flex items-center gap-1.5 bg-secondary p-1 rounded-xl border border-base shrink-0 w-full overflow-x-auto custom-scrollbar shadow-xs scroll-smooth">
+      <div className="inventory-section-tabs flex items-center gap-1.5 bg-secondary p-1 rounded-xl border border-base shrink-0 w-full shadow-xs">
         <div className="flex items-center gap-1.5 min-w-max">
           {(['products', 'restock', 'bulk'] as const)
             .map(tab => {
@@ -683,7 +686,7 @@ export default function Inventory() {
                     : "text-secondary hover:text-primary hover:bg-subtle"
                 )}
               >
-                {tab === 'products' ? 'Existencias' : tab === 'restock' ? 'Alertas' : 'Edición Masiva'}
+                <>{tab === 'products' ? <Package className="w-3.5 h-3.5" /> : tab === 'restock' ? <AlertCircle className="w-3.5 h-3.5" /> : <Settings2 className="w-3.5 h-3.5" />}<span>{tab === 'products' ? 'Existencias' : tab === 'restock' ? 'Alertas' : 'Edición Masiva'}</span></>
               </button>
             );
         })}
