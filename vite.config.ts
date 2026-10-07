@@ -47,8 +47,10 @@ export default defineConfig(() => {
           // Remove caches from previous generated service workers so an old
           // application shell cannot survive a Render deployment.
           cleanupOutdatedCaches: true,
-          clientsClaim: true,
-          skipWaiting: true,
+          // Keep the new worker waiting so registerType:'prompt' can
+          // notify Layout through onNeedRefresh and show the update bubble.
+          clientsClaim: false,
+          skipWaiting: false,
           // Supabase is the source of truth. Never let Workbox cache REST
           // responses or make a reconnect replay a stale API response.
           // Los chunks de las rutas deben quedar precacheados. Excluirlos
