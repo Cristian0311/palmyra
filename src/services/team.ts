@@ -281,6 +281,8 @@ export async function updateEmployee(input: {
   baseSalary: number;
   roleId: string;
   warehouseIds: string[];
+  compensationType?: 'fixed_product' | 'sales_percentage';
+  salesPercentage?: number;
 }) {
   const supabase = getSupabase();
   if (!supabase) throw new Error("Supabase no está configurado.");
@@ -292,7 +294,9 @@ export async function updateEmployee(input: {
     p_base_salary: input.baseSalary,
     p_role_id: input.roleId,
     p_warehouse_ids: input.warehouseIds,
-    p_pos_password: null
+    p_pos_password: null,
+    p_compensation_type: input.compensationType || 'fixed_product',
+    p_sales_percentage: Number(input.salesPercentage) || 0
   });
   if (error) throwRpcError(error);
   return data as { id: string };
