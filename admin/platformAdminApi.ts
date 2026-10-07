@@ -82,21 +82,21 @@ export async function loadPlatformControlCenter(): Promise<PlatformControlCenter
 export async function loadPlatformSnapshot(): Promise<PlatformSnapshot> {
   const supabase = await assertPlatformAdmin();
 
-  const [{ data: companies, error: companiesError }, { data: requests, error: requestsError }, { data: supportRequests, error: supportError }] =
-    await Promise.all([
-      supabase.rpc("get_platform_companies"),
-      supabase.rpc("get_pending_plan_requests"),
-      supabase.rpc("get_platform_support_requests", { p_status: null, p_limit: 100 }),
-    ]);
+  // El arranque del Control Center no debe depender de módulos secundarios.
+  // Si soporte o solicitudes fallan temporalmente, Empresas sigue siendo utilizable
+  // y la vista muestra el módulo afectado vacío en lugar de dejar el panel en blanco.
+  const [companiesResult, requestsResult, supportResult] = await Promise.all([
+    supabase.rpc("get_platform_companies"),
+    supabase.rpc("get_pending_plan_requests"),
+    supabase.rpc("get_platform_support_requests", { p_status: null, p_limit: 100 }),
+  ]);
 
-  if (companiesError) throw new Error(companiesError.message);
-  if (requestsError) throw new Error(requestsError.message);
-  if (supportError) throw new Error(supportError.message);
+  if (companiesResult.error) throw new Error(companiesResult.error.message);
 
   return {
-    companies: (companies || []) as PlatformCompany[],
-    requests: (requests || []) as PlanRequest[],
-    supportRequests: (supportRequests || []) as PlatformSupportRequest[],
+    companies: (companiesResult.data || []) as PlatformCompany[],
+    requests: requestsResult.error ? [] : ((requestsResult.data || []) as PlanRequest[]),
+    supportRequests: supportResult.error ? [] : ((supportResult.data || []) as PlatformSupportRequest[]),
   };
 }
 
