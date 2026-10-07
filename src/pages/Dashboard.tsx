@@ -45,11 +45,17 @@ export default function Dashboard() {
   const [planCode, setPlanCode] = useState<string | null>(null);
   const [branchPickerOpen, setBranchPickerOpen] = useState(false);
   const [showAIGate, setShowAIGate] = useState(false);
+  const [businessName, setBusinessName] = useState("tu negocio");
+  const [dashboardUserName, setDashboardUserName] = useState("");
 
   useEffect(() => {
     let mounted = true;
     void loadSaaSContext().then((ctx) => {
-      if (mounted) setPlanCode(ctx?.subscription?.planCode || null);
+      if (mounted) {
+        setPlanCode(ctx?.subscription?.planCode || null);
+        setBusinessName(ctx?.company?.name || "tu negocio");
+        setDashboardUserName(ctx?.user?.name || "");
+      }
     }).catch(() => {
       if (mounted) setPlanCode(null);
     });
@@ -273,6 +279,38 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-2.5 text-[9px] animate-in fade-in slide-in-from-bottom-2 duration-500 pb-5">
+
+      <section className="relative overflow-hidden rounded-[1.35rem] border border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-br from-indigo-700 via-violet-700 to-slate-900 text-white px-4 py-4 sm:px-5 sm:py-5 shadow-lg shadow-indigo-200/40 dark:shadow-none">
+        <div className="absolute -right-10 -top-14 h-36 w-36 rounded-full bg-white/10 blur-2xl" aria-hidden="true" />
+        <div className="absolute right-8 bottom-0 h-20 w-20 rounded-full bg-violet-300/10 blur-xl" aria-hidden="true" />
+        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="min-w-0">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[7px] font-black uppercase tracking-[0.16em] text-indigo-100">
+              <Sparkles className="h-3 w-3" /> PALMYRA · Panel de negocio
+            </div>
+            <h1 className="mt-2 text-xl sm:text-2xl font-black tracking-tight leading-tight">
+              Hola{dashboardUserName ? ", " + dashboardUserName.split(" ")[0] : ""} 👋
+            </h1>
+            <p className="mt-1 text-sm sm:text-base font-bold text-white/95 leading-tight">
+              Bienvenido a <span className="text-indigo-100">{businessName}</span>
+            </p>
+            <p className="mt-1.5 max-w-2xl text-[9px] sm:text-[10px] font-medium leading-relaxed text-indigo-100/85">
+              Aquí tienes una vista rápida de lo que está pasando en tu negocio. Consulta ventas, inventario y actividad para tomar decisiones con más claridad.
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-1.5 sm:min-w-[230px]">
+            <div className="rounded-xl border border-white/10 bg-white/10 px-2.5 py-2.5 backdrop-blur-sm">
+              <span className="block text-[7px] font-black uppercase tracking-widest text-indigo-100/75">Ventas hoy</span>
+              <strong className="mt-1 block text-sm font-black tabular-nums">{baseCurrency.code} {formatMoney(totalSalesToday)}</strong>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-white/10 px-2.5 py-2.5 backdrop-blur-sm">
+              <span className="block text-[7px] font-black uppercase tracking-widest text-indigo-100/75">Tickets</span>
+              <strong className="mt-1 block text-sm font-black tabular-nums">{todayTransactions.length}</strong>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Header */}
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
