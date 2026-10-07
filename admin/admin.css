@@ -482,3 +482,22 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .admin-coming-soon__note{max-width:760px;margin:14px auto 0;display:flex;justify-content:center;gap:7px;align-items:flex-start;padding:9px 11px;border-radius:10px;background:#f5f1fa;color:#6f6380;font-size:7px;line-height:1.45;text-align:left}
 @media(max-width:900px){.admin-plan-card{grid-template-columns:1fr 1fr!important}.admin-plan-card__head,.admin-plan-features{grid-column:1/-1}.admin-plan-facts{grid-column:1/-1}}
 @media(max-width:560px){.admin-plan-card{grid-template-columns:1fr!important}.admin-plan-facts{grid-template-columns:repeat(2,1fr)!important}.admin-plan-price{align-items:flex-start}.admin-page-head__actions{width:100%;justify-content:space-between}.admin-coming-soon{padding:22px 12px!important}.admin-exchange-preview__columns,.admin-exchange-preview__row{grid-template-columns:1.7fr repeat(3,.8fr);padding:7px 8px;font-size:6px}}
+
+/* Enterprise Control Center */
+.admin-nav button{min-height:36px!important;font-size:8px!important}
+.admin-company-consumption-list{max-height:420px;overflow:auto}
+.admin-request-row .admin-status{white-space:nowrap}
+.admin-plan-grid{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))!important;gap:10px!important}
+.admin-plan-card{padding:12px!important;border-radius:15px!important}
+.admin-plan-card__head h2{font-size:16px!important;margin-top:2px}
+.admin-plan-price{margin:8px 0!important}.admin-plan-price strong{font-size:22px!important}
+.admin-plan-facts{gap:5px!important}.admin-plan-facts>div{padding:7px 5px!important;border-radius:9px!important}
+.admin-plan-facts strong{font-size:13px!important}.admin-plan-facts span{font-size:6px!important}
+.admin-plan-features{gap:4px!important;margin-top:8px!important}.admin-plan-features span{font-size:6.5px!important;padding:4px 5px!important}
+.admin-plan-description{font-size:7.5px!important;line-height:1.45!important;margin:7px 0!important}
+.admin-plan-trial{font-size:7px!important;padding:5px 7px!important}
+.admin-enterprise-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.admin-enterprise-card{border:1px solid #ebe5f2;border-radius:14px;padding:12px;background:#fff}
+.admin-enterprise-card strong{font-size:18px;color:#241538}.admin-enterprise-card span{display:block;font-size:7px;color:#8b8196;margin-top:3px}
+.admin-table-list-row{min-width:0}.admin-table-list-row>div{min-width:0}.admin-table-list-row small{overflow:hidden;text-overflow:ellipsis}
+@media(max-width:760px){.admin-enterprise-grid{grid-template-columns:1fr}.admin-plan-grid{grid-template-columns:1fr!important}}
