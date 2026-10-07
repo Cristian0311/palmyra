@@ -268,7 +268,7 @@ export default function POS() {
   const [showSalarySummary, setShowSalarySummary] = useState(false);
   const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
   const [salesFilter, setSalesFilter] = useState<'all' | 'usd' | 'transfer' | 'cash_cup' | 'mixed'>('all');
-  const [salesSubTab, setSalesSubTab] = useState<'tickets' | 'products'>('tickets');
+  const [salesSubTab, setSalesSubTab] = useState<'tickets' | 'products' | 'movements'>('tickets');
 
   const [posError, setPosError] = useState("");
   const [posSuccess, setPosSuccess] = useState("");
@@ -2486,6 +2486,16 @@ export default function POS() {
                               <Package className="w-3 h-3" />
                               Productos ({consolidatedList.reduce((s, p) => s + p.quantity, 0)} u.)
                             </button>
+                            <button
+                              onClick={() => setSalesSubTab('movements')}
+                              className={cn(
+                                "px-3 py-1.5 rounded-lg transition-all flex items-center gap-1",
+                                salesSubTab === 'movements' ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
+                              )}
+                            >
+                              <Wallet className="w-3 h-3" />
+                              Egreso y gasto ({(currentSession?.movements || []).length})
+                            </button>
                           </div>
 
                           {/* Filter by Payment Method */}
@@ -2531,8 +2541,59 @@ export default function POS() {
                           )}
                         </div>
 
-                        {/* Content: Tickets view vs Products view */}
-                        {salesSubTab === 'tickets' ? (
+                        {/* Content: each business record has its own visual section.
+                            Cash movements are deliberately kept out of sale tickets. */}
+                        {salesSubTab === 'movements' ? (
+                          <div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar pr-1">
+                            {(currentSession?.movements || []).length > 0 ? (
+                              [...(currentSession?.movements || [])]
+                                .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                .map((movement) => (
+                                  <div key={movement.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 space-y-2">
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className="font-mono text-[9px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
+                                            MOV-{String(movement.id).slice(0,8).toUpperCase()}
+                                          </span>
+                                          <span className={cn(
+                                            "text-[8px] font-black uppercase rounded-full px-1.5 py-0.5",
+                                            movement.type === 'income' ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
+                                          )}>
+                                            {movement.type === 'income' ? 'Ingreso' : 'Egreso / gasto'}
+                                          </span>
+                                        </div>
+                                        <p className="mt-1 text-[9px] font-bold text-slate-500">
+                                          {new Date(movement.date).toLocaleString('es-CU')}
+                                        </p>
+                                      </div>
+                                      <span className={cn(
+                                        "shrink-0 font-mono text-xs font-black",
+                                        movement.type === 'income' ? "text-emerald-600" : "text-rose-600"
+                                      )}>
+                                        {movement.type === 'income' ? '+' : '-'}{formatMoney(Math.abs(Number(movement.amount || 0)), currencies.find(c => c.code === movement.currencyCode)?.symbol || movement.currencyCode)}
+                                      </span>
+                                    </div>
+                                    <div className="rounded-lg bg-slate-50 border border-slate-100 px-2.5 py-2">
+                                      <p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Concepto</p>
+                                      <p className="text-[10px] font-bold text-slate-700 break-words">{movement.description || 'Sin concepto registrado'}</p>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-2 text-[8px] font-bold text-slate-400">
+                                      <span>{movement.workerName || currentSession?.workerName || 'Empleado'}</span>
+                                      <span>Comprobante de movimiento</span>
+                                    </div>
+                                  </div>
+                                ))
+                            ) : (
+                              <div className="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                                <Wallet className="w-6 h-6 text-slate-300 mx-auto mb-1.5" />
+                                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+                                  No hay egresos, gastos o ingresos registrados
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        ) : salesSubTab === 'tickets' ? (
                           <div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar pr-1">
                             {filteredTx.length > 0 ? (
                               filteredTx.map((tx) => {
@@ -2605,32 +2666,7 @@ export default function POS() {
                                       ))}
                                     </div>
 
-                                    {/* Ingresos / egresos del turno, visibles junto a las ventas para que el cajero
-                            pueda explicar el efectivo real y no confundirlos con tickets. */}
-                        {(currentSession?.movements || []).length > 0 && (
-                          <div className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 space-y-1.5">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[8px] font-black uppercase tracking-wider text-slate-500">Movimientos del turno</span>
-                              <span className="text-[7px] font-bold text-slate-400">Ingresos / Egresos</span>
-                            </div>
-                            {(currentSession?.movements || []).map(m => (
-                              <div key={m.id} className="flex items-center justify-between gap-2 rounded-lg bg-white border border-slate-200 px-2 py-1.5">
-                                <div className="min-w-0 flex items-center gap-1.5">
-                                  <span className={cn(
-                                    "shrink-0 rounded-full px-1.5 py-0.5 text-[7px] font-black uppercase",
-                                    m.type === 'income' ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
-                                  )}>
-                                    {m.type === 'income' ? 'Ingreso' : 'Egreso'}
-                                  </span>
-                                  <span className="truncate text-[8px] font-bold text-slate-700">{m.description || 'Sin motivo'}</span>
-                                </div>
-                                <span className={cn("shrink-0 text-[8px] font-black font-mono", m.type === 'income' ? "text-emerald-600" : "text-rose-600")}>
-                                  {m.type === 'income' ? '+' : '-'}{formatMoney(Math.abs(Number(m.amount || 0)), currencies.find(c => c.code === m.currencyCode)?.symbol || '')}
-                                </span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+
 
                         {/* Payment Method Badges & Breakdown */}
                                     <div className="flex items-center justify-between gap-2 flex-wrap pt-1 border-t border-slate-100 text-[8px] font-black">
