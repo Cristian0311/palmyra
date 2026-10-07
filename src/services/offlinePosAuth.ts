@@ -57,3 +57,70 @@ export async function verifyOfflinePosCredential(
 export function forgetOfflinePosCredential(companyId: string, userId: string): void {
   try { localStorage.removeItem(key(String(companyId || ''), String(userId || ''))); } catch {}
 }
+
+
+const OFFLINE_RESUME_GRANT_PREFIX = 'palmyra:offline-pos-resume-grant:v1:';
+
+function resumeGrantKey(companyId: string, userId: string, sessionId: string): string {
+  return OFFLINE_RESUME_GRANT_PREFIX +
+    encodeURIComponent(String(companyId || '').trim()) + ':' +
+    encodeURIComponent(String(userId || '').trim()) + ':' +
+    encodeURIComponent(String(sessionId || '').trim());
+}
+
+/**
+ * Marca localmente que una cuenta ya autorizada vio/recibió un turno abierto
+ * mientras tenía conexión. No guarda contraseñas ni secretos: solo permite
+ * reanudar ese turno concreto en el mismo dispositivo hasta que expire el
+ * permiso local.
+ */
+export function rememberOfflinePosResumeGrant(
+  companyId: string,
+  userId: string,
+  sessionId: string,
+  ttlMs = 7 * 24 * 60 * 60 * 1000
+): void {
+  const cleanCompanyId = String(companyId || '').trim();
+  const cleanUserId = String(userId || '').trim();
+  const cleanSessionId = String(sessionId || '').trim();
+  if (!cleanCompanyId || !cleanUserId || !cleanSessionId) return;
+  try {
+    localStorage.setItem(
+      resumeGrantKey(cleanCompanyId, cleanUserId, cleanSessionId),
+      JSON.stringify({ createdAt: Date.now(), expiresAt: Date.now() + Math.max(1, ttlMs) })
+    );
+  } catch {}
+}
+
+export function verifyOfflinePosResumeGrant(
+  companyId: string,
+  userId: string,
+  sessionId: string
+): boolean {
+  const cleanCompanyId = String(companyId || '').trim();
+  const cleanUserId = String(userId || '').trim();
+  const cleanSessionId = String(sessionId || '').trim();
+  if (!cleanCompanyId || !cleanUserId || !cleanSessionId) return false;
+  try {
+    const raw = localStorage.getItem(resumeGrantKey(cleanCompanyId, cleanUserId, cleanSessionId));
+    if (!raw) return false;
+    const parsed = JSON.parse(raw);
+    if (!Number.isFinite(Number(parsed?.expiresAt)) || Number(parsed.expiresAt) <= Date.now()) {
+      localStorage.removeItem(resumeGrantKey(cleanCompanyId, cleanUserId, cleanSessionId));
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function forgetOfflinePosResumeGrant(
+  companyId: string,
+  userId: string,
+  sessionId: string
+): void {
+  try {
+    localStorage.removeItem(resumeGrantKey(String(companyId || ''), String(userId || ''), String(sessionId || '')));
+  } catch {}
+}
