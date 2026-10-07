@@ -631,7 +631,10 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
           throw new Error('No se pudieron confirmar todos los ingresos/egresos del turno antes del cierre.');
         }
         const res = await callCloseSessionRPC(sessionId, finalBalances, finalClosingDate, updatedSession.notes || '', settlement, expectedCashBase);
-        if (!res.success) throw new Error(res.error || 'No se pudo cerrar el turno');
+        if (!res.success) {
+          if (res.errorCode) return { success: false, error: res.error || 'No se pudo cerrar el turno' };
+          throw new Error(res.error || 'No se pudo cerrar el turno');
+        }
         const metadataOk = await pushCashSessionMetadataToSupabase(updatedSession);
         if (!metadataOk) throw new Error('El cierre fue confirmado, pero los datos del turno aún no pudieron sincronizarse.');
         set(state => ({
@@ -641,8 +644,13 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
         removeFromOfflineQueueByAction('cash_session', 'cash-close:' + sessionId);
         return { success: true };
       } catch (err) {
-        get().addNotification('El cierre no fue confirmado por la nube; quedó protegido para reintento.', 'warning');
-        return { success: false };
+        set(state => ({
+          cashSessions: state.cashSessions.map(s => s.id === sessionId ? updatedSession : s),
+          salarySettlements: [...(state.salarySettlements || []).filter(st => st.sessionId !== sessionId), settlement]
+        }));
+        await flushLocalStateStorage();
+        get().addNotification('Cierre realizado localmente. Quedó protegido para sincronización.', 'info');
+        return { success: true, pending: true };
       }
     }
 
