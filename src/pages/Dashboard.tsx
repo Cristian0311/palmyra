@@ -29,6 +29,7 @@ import { getBusinessSummaryAI } from "../services/gemini";
 import { loadSaaSContext } from "../services/saas";
 import PlanFeatureGate from "../components/PlanFeatureGate";
 import type { Transaction, CartItem, Payment } from "../types";
+import { PALMYRA_DASHBOARD_HERO_DATA_URL } from "../assets/dashboardHeroData";
 
 export default function Dashboard() {
   const { branches, currentBranchId, setCurrentBranch, transactions, getBaseCurrency, currencies, inventory, products, customers, users, categories } = useStore(useShallow((state) => ({ branches: state.branches, currentBranchId: state.currentBranchId, setCurrentBranch: state.setCurrentBranch, transactions: state.transactions, getBaseCurrency: state.getBaseCurrency, currencies: state.currencies, inventory: state.inventory, products: state.products, customers: state.customers, users: state.users, categories: state.categories })));
@@ -280,9 +281,9 @@ export default function Dashboard() {
   return (
     <div className="space-y-2.5 text-[9px] animate-in fade-in slide-in-from-bottom-2 duration-500 pb-5">
 
-      <section className="relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100/80 bg-white shadow-lg shadow-violet-100/40 min-h-[280px] sm:min-h-[290px] lg:min-h-[310px]">
+      <section className="relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100/80 bg-white shadow-lg shadow-violet-100/40 min-h-[360px] sm:min-h-[340px] lg:min-h-[360px]">
         <img
-          src="/palmyra-dashboard-hero.webp?v=20261007-2"
+          src={PALMYRA_DASHBOARD_HERO_DATA_URL}
           alt=""
           className="absolute inset-0 h-full w-full object-cover object-[50%_center] sm:object-center origin-center scale-x-[-1]"
           aria-hidden="true"
@@ -291,7 +292,7 @@ export default function Dashboard() {
           className="absolute inset-y-0 left-0 z-[1] w-[52%] bg-gradient-to-r from-white/46 via-white/18 to-transparent pointer-events-none"
           aria-hidden="true"
         />
-        <div className="relative z-10 flex min-h-[280px] sm:min-h-[290px] lg:min-h-[310px] items-center px-4 py-6 sm:px-8 lg:px-10">
+        <div className="relative z-10 flex min-h-[360px] sm:min-h-[340px] lg:min-h-[360px] items-center px-4 py-6 sm:px-8 lg:px-10">
           <div className="w-full max-w-[445px] sm:max-w-[560px]">
             <div className="flex items-center gap-1.5 text-[7.5px] sm:text-[9px] font-black uppercase tracking-[0.14em] text-[#4C1D95] drop-shadow-[0_1px_3px_rgba(255,255,255,0.85)] -translate-y-2 sm:-translate-y-1">
               <Sparkles className="h-3.5 w-3.5 shrink-0 text-violet-100" />
