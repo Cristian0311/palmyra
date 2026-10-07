@@ -183,8 +183,19 @@ export async function pushCategoryToSupabase(category:Category){
 export async function deleteCategoryFromSupabase(id:string):Promise<boolean>{try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {error}=await supabase.from('categories').update({active:false}).eq('id',id).eq('company_id',companyId);if(error)throw error;return true;}catch{return false;}}
 
 export async function deleteProductFromSupabase(id:string):Promise<boolean>{
-  try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {data,error}=await supabase.from('products').update({status:'archived'}).eq('id',id).eq('company_id',companyId).select('id');if(error)throw error;return Boolean(data?.length);}
-  catch{return false;}
+  try{
+    const supabase=await onlineClient();
+    const {companyId}=await getActiveTenant();
+    const {data,error}=await supabase.rpc('palmyra_archive_product',{
+      p_company_id:companyId,
+      p_product_id:id
+    });
+    if(error)throw error;
+    return data?.success === true;
+  }catch(error:any){
+    console.warn('[PALMYRA] No se pudo archivar el producto en Supabase:', error);
+    return false;
+  }
 }
 
 export async function pushUserToSupabase(user:User){
