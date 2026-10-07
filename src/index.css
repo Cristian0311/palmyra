@@ -934,3 +934,38 @@ html.pos-keyboard-open .pos-page .animate-in,html.pos-keyboard-open .pos-page [c
     transform: translateY(24px);
   }
 }
+
+
+/* Enterprise tutorial layout: no page-level horizontal drift, readable flow at every viewport. */
+.tutorial-page{overflow-x:hidden;min-width:0}
+.tutorial-shell,.tutorial-shell *{box-sizing:border-box;min-width:0}
+.tutorial-flow{display:flex;align-items:center;flex-wrap:wrap;gap:7px;width:100%;min-width:0}
+.tutorial-flow-node{display:flex;align-items:center;gap:6px;min-width:0}
+.tutorial-flow-step{width:25px;height:25px;display:grid;place-items:center;flex:none;border-radius:8px;background:#f1ebff;color:#6d3bd2;border:1px solid #e3d7fb;font-size:8px;font-weight:900}
+.tutorial-flow-node>span{display:block;max-width:145px;overflow-wrap:anywhere;font-size:8px;line-height:1.25;font-weight:900;text-transform:uppercase;letter-spacing:.045em;color:#6246a2}
+.tutorial-flow-arrow{width:12px;height:12px;flex:none;color:#b7a4dc}
+.tutorial-card-body{min-width:0}
+.tutorial-steps{display:grid;gap:10px}
+.tutorial-step-card{min-width:0}
+.tutorial-step-card p{overflow-wrap:anywhere}
+@media(max-width:767px){
+  .tutorial-page{padding:10px!important}
+  .tutorial-shell{width:100%;max-width:100%;gap:10px}
+  .tutorial-shell header{border-radius:20px!important;padding:16px!important}
+  .tutorial-shell header h1{font-size:20px!important;line-height:1.15!important}
+  .tutorial-shell header p{font-size:10px!important;line-height:1.55!important}
+  .tutorial-shell header .grid{min-width:0!important}
+  .tutorial-flow{display:grid;grid-template-columns:1fr;gap:5px}
+  .tutorial-flow-node{position:relative;width:100%;min-height:30px;padding:3px 7px;border:1px solid #eee7f8;border-radius:10px;background:#fff}
+  .tutorial-flow-node>span{max-width:none;font-size:8px}
+  .tutorial-flow-arrow{position:absolute;right:9px;transform:rotate(90deg);width:10px;height:10px}
+  .tutorial-flow-node:last-child .tutorial-flow-arrow{display:none}
+  .tutorial-shell .grid.lg\\:grid-cols-2{grid-template-columns:1fr!important}
+  .tutorial-card-body{padding:11px!important}
+  .tutorial-step-card{padding:10px!important;gap:9px!important}
+  .tutorial-step-card .text\\-[9px]{font-size:10px!important;line-height:1.45!important}
+}
+@media(min-width:768px) and (max-width:1023px){
+  .tutorial-page{padding:14px!important}
+  .tutorial-flow-node>span{max-width:125px}
+}
