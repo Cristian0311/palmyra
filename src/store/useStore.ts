@@ -492,7 +492,10 @@ transfers: [],
       });
   },
   partialize: (state) => ({
-    users: state.users, currentUser: state.currentUser,
+    // Passwords are credentials, never durable application state. POS rehydration
+    // must restore the employee identity, not a saved password.
+    users: (state.users || []).map(({ password: _password, ...user }) => user),
+    currentUser: state.currentUser ? (({ password: _password, ...user }) => user)(state.currentUser) : null,
     currencies: state.currencies, storeConfig: state.storeConfig,
     branches: state.branches, currentBranchId: state.currentBranchId, categories: state.categories,
     products: state.products, inventory: state.inventory, cart: state.cart, currentCustomerId: state.currentCustomerId,
