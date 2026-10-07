@@ -720,10 +720,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
           {!sidebarCollapsed && (() => {
             const subscription = saasContext?.subscription;
-            const planTarget = subscription?.status === "trialing"
+            const baseTarget = subscription?.status === "trialing"
               ? subscription?.trialEndsAt
               : subscription?.currentPeriodEnd;
-            const planEndsAt = planTarget || subscription?.trialEndsAt || subscription?.currentPeriodEnd || null;
+            const baseTargetMs = baseTarget ? new Date(baseTarget).getTime() : NaN;
+            const graceTarget = subscription?.graceEndsAt || null;
+            const effectiveTarget = Number.isFinite(baseTargetMs) && baseTargetMs <= countdownNow && graceTarget
+              ? graceTarget
+              : baseTarget;
+            const planEndsAt = effectiveTarget || subscription?.trialEndsAt || subscription?.currentPeriodEnd || null;
             const countdown = getPlanCountdown(planEndsAt, countdownNow);
             const expiryLabel = formatPlanExpiry(planEndsAt);
             if (!subscription || (!countdown && !expiryLabel)) return null;
@@ -764,7 +769,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       </aside>
 
-      {((saasContext?.company?.account_status === 'pending_payment') || saasContext?.subscription?.status === 'expired') && location.pathname !== '/subscription' && location.pathname !== '/help' && (
+      {(saasContext?.company?.account_status === 'pending_payment' && !!saasContext?.subscription?.graceEndsAt && new Date(saasContext.subscription.graceEndsAt).getTime() <= countdownNow) && location.pathname !== '/subscription' && location.pathname !== '/help' && (
         <div className="fixed inset-0 z-[290] flex items-center justify-center p-4 bg-slate-950/55 backdrop-blur-[3px]">
           <div className="w-full max-w-md rounded-3xl border border-amber-200 bg-white shadow-2xl p-6 text-center">
             <div className="mx-auto w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center"><CreditCard className="w-6 h-6"/></div>
@@ -775,6 +780,28 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       )}
+
+      {(() => {
+        const subscription = saasContext?.subscription;
+        const baseTarget = subscription?.status === 'trialing' ? subscription?.trialEndsAt : subscription?.currentPeriodEnd;
+        const baseExpired = !!baseTarget && new Date(baseTarget).getTime() <= countdownNow;
+        const graceEnds = subscription?.graceEndsAt ? new Date(subscription.graceEndsAt).getTime() : NaN;
+        const inGrace = baseExpired && Number.isFinite(graceEnds) && graceEnds > countdownNow;
+        if (!inGrace || location.pathname === '/subscription' || location.pathname === '/help') return null;
+        return (
+          <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[275] w-[min(92vw,34rem)] rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3 shadow-xl">
+            <div className="flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-wider text-amber-800">Período de gracia activo</p>
+                <p className="mt-0.5 text-[10px] font-bold leading-4 text-amber-700">
+                  Tu plan terminó, pero PALMYRA mantiene el acceso durante el período de gracia de 2 días. Renueva antes de que finalice para continuar operando.
+                </p>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Main Content */}
       {updateAvailable && (
