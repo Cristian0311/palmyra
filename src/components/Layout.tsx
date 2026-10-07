@@ -64,11 +64,10 @@ const adminNavItems = [
 
 const APP_VERSION = "V 1.0.2";
 const APP_UPDATE_NOTES = [
-  "Inventario: variantes de tallas y colores con gestión de stock separada.",
-  "Equipo: pago por CUP fijo por producto o porcentaje sobre la venta.",
-  "POS: cobro unificado con efectivo, transferencia y pagos combinados.",
-  "POS móvil: controles de transferencia y reanudación de turno más seguros.",
-  "Configuración: Equipo centralizado en una sola vista."
+  "Se han incorporado mejoras y correcciones para hacer PALMYRA más estable, rápido y fácil de usar.",
+  "Esta versión forma parte de la fase beta de PALMYRA.",
+  "Durante esta etapa será normal recibir actualizaciones y, en ocasiones, tener que recargar la página para aplicar los cambios.",
+  "Estamos enviando mejoras de forma continua para perfeccionar el software y resolver errores antes de la versión definitiva."
 ];
 
 const cashierNavItems = [
@@ -794,12 +793,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 </div>
                 <div className="min-w-0 pt-0.5">
                   <p className="text-[10px] font-black uppercase tracking-[0.16em] text-indigo-600 dark:text-indigo-300">Novedad de PALMYRA</p>
-                  <h3 id="palmyra-update-title" className="mt-1 text-lg font-black tracking-tight text-slate-900 dark:text-white">PALMYRA acaba de actualizarse</h3>
+                  <h3 id="palmyra-update-title" className="mt-1 text-lg font-black tracking-tight text-slate-900 dark:text-white">Nueva actualización disponible</h3>
                   <p className="mt-1.5 text-sm leading-5 text-slate-600 dark:text-slate-300">
-                    Hay mejoras y correcciones listas para ti. Puedes aplicarlas ahora o continuar trabajando y actualizarlas después.
+                    PALMYRA está en fase beta. Estamos enviando mejoras y correcciones de forma continua. Durante esta etapa será normal que aparezca este aviso y que, de vez en cuando, tengas que recargar la página para aplicar una actualización.
                   </p>
                   <div className="mt-3 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 p-3">
-                    <p className="text-[9px] font-black uppercase tracking-[0.12em] text-indigo-600 dark:text-indigo-300">En esta actualización</p>
+                    <p className="text-[9px] font-black uppercase tracking-[0.12em] text-indigo-600 dark:text-indigo-300">Información importante</p>
                     <ul className="mt-1.5 space-y-1">
                       {APP_UPDATE_NOTES.map(note => <li key={note} className="text-[10px] leading-4 text-slate-600 dark:text-slate-300">• {note}</li>)}
                     </ul>
