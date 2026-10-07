@@ -834,10 +834,10 @@ export default function Reports() {
       </div>
 
       {/* Global Filter Toolbar: Sucursales, Vendedor, Estado, Periodo, Fecha */}
-      <div className="bg-secondary p-3 rounded-2xl shadow-sm border border-base flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
+      <div className="bg-secondary p-2 rounded-2xl shadow-sm border border-base overflow-x-auto custom-scrollbar">
+        <div className="flex flex-nowrap items-center gap-1.5 min-w-max">
           {/* Filtro Sucursal */}
-          <div className="flex items-center gap-1 bg-subtle border border-base rounded-lg px-1.5 py-1 min-w-0 max-w-full">
+          <div className="flex items-center gap-1 bg-subtle border border-base rounded-lg px-1.5 py-1 shrink-0 whitespace-nowrap">
             <span className="text-[8px] font-black text-muted uppercase tracking-widest">Almacén:</span>
             <select
               value={selectedBranchFilter}
@@ -851,12 +851,12 @@ export default function Reports() {
           </div>
 
           {/* Filtro Vendedor / Trabajador */}
-          <div className="flex items-center gap-1.5 bg-subtle border border-base rounded-xl px-2.5 py-1.5">
+          <div className="flex items-center gap-1 bg-subtle border border-base rounded-lg px-2 py-1 shrink-0 whitespace-nowrap">
             <span className="text-[8px] font-black text-muted uppercase tracking-widest">Vendedor:</span>
             <select
               value={selectedWorkerFilter}
               onChange={(e) => setSelectedWorkerFilter(e.target.value)}
-              className="bg-transparent text-[10px] font-black text-primary uppercase outline-none cursor-pointer"
+              className="bg-transparent text-[9px] font-black text-primary uppercase outline-none cursor-pointer max-w-[8rem] truncate"
             >
               <option value="all" className="bg-secondary">Todos</option>
               {(users || []).map(u => (
@@ -866,7 +866,7 @@ export default function Reports() {
           </div>
 
           {/* Filtro Estado del Turno */}
-          <div className="flex items-center gap-1 bg-subtle border border-base rounded-xl p-1">
+          <div className="flex items-center gap-1 bg-subtle border border-base rounded-lg p-0.5 shrink-0 whitespace-nowrap">
             <button
               onClick={() => setStatusFilter('all')}
               className={cn(
@@ -906,7 +906,7 @@ export default function Reports() {
           </div>
 
           {/* Filtro Fecha */}
-          <div className="flex items-center gap-1 bg-subtle border border-base rounded-xl p-1">
+          <div className="flex items-center gap-1 bg-subtle border border-base rounded-lg p-0.5 shrink-0 whitespace-nowrap">
             <button
               onClick={() => { setSessionFilter('all'); setSelectedFilterDate(''); }}
               className={cn(
@@ -947,9 +947,7 @@ export default function Reports() {
               />
             </div>
           </div>
-        </div>
-
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 shrink-0">
           <span className="flex items-center gap-1.5 text-[8px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest bg-emerald-50 dark:bg-emerald-950/30 px-2.5 py-1 rounded-full border border-emerald-100 dark:border-emerald-900/30">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
             Sistema Local Protegido
