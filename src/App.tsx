@@ -40,6 +40,7 @@ const InventoryAudit = lazy(() => import("./pages/InventoryAudit"));
 const Banks = lazy(() => import("./pages/Banks"));
 const PlatformAdmin = lazy(() => import("./pages/PlatformAdmin"));
 const HelpCenter = lazy(() => import("./pages/HelpCenter"));
+const Tutorial = lazy(() => import("./pages/Tutorial"));
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 
 function PageLoading() {
@@ -434,6 +435,7 @@ export default function App() {
                     <Route path="/subscription" element={can("settings.manage") ? <Subscription /> : <Navigate to="/pos" replace />} />
                     <Route path="/help" element={<Navigate to="/help-center" replace />} />
                     <Route path="/help-center" element={<HelpCenter />} />
+                    <Route path="/tutorial" element={<Tutorial />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </Suspense>
