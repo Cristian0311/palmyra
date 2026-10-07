@@ -280,39 +280,39 @@ export default function Dashboard() {
   return (
     <div className="space-y-2.5 text-[9px] animate-in fade-in slide-in-from-bottom-2 duration-500 pb-5">
 
-      <section className="relative isolate overflow-hidden rounded-[1.75rem] border border-indigo-100/80 dark:border-indigo-900/40 bg-gradient-to-br from-[#111c3b] via-[#273b82] to-[#4b3b8f] text-white shadow-xl shadow-indigo-200/40 dark:shadow-none min-h-[280px] sm:min-h-[300px] lg:min-h-[315px]">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(255,255,255,.16),transparent_30%),linear-gradient(90deg,rgba(10,20,48,.98)_0%,rgba(24,39,84,.94)_42%,rgba(53,65,133,.52)_72%,rgba(53,65,133,.15)_100%)]" aria-hidden="true" />
-        <div className="absolute inset-y-0 right-0 w-full sm:w-[68%] lg:w-[64%] opacity-95 pointer-events-none" aria-hidden="true">
-          <img src="/palmyra-dashboard-hero.svg" alt="" className="h-full w-full object-cover object-center sm:object-right" />
-          <div className="absolute inset-0 bg-gradient-to-r from-[#111c3b] via-[#111c3b]/45 to-transparent sm:from-[#111c3b] sm:via-[#111c3b]/20 sm:to-transparent" />
-        </div>
-        <div className="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-violet-300/15 blur-3xl" aria-hidden="true" />
-        <div className="absolute left-1/3 -bottom-24 h-52 w-52 rounded-full bg-cyan-300/10 blur-3xl" aria-hidden="true" />
+      <section className="relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100 dark:border-violet-900/40 bg-white dark:bg-slate-900 shadow-lg shadow-violet-100/50 dark:shadow-none min-h-[250px] sm:min-h-[275px] lg:min-h-[295px]">
+        <img
+          src="/palmyra-dashboard-hero.svg"
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover object-center"
+          aria-hidden="true"
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-white via-white/92 to-white/15 dark:from-slate-950 dark:via-slate-950/90 dark:to-slate-950/15" aria-hidden="true" />
 
-        <div className="relative z-10 flex min-h-[280px] sm:min-h-[300px] lg:min-h-[315px] items-end px-5 py-6 sm:px-7 sm:py-7 lg:px-9 lg:py-8">
-          <div className="max-w-[620px] pr-0 sm:pr-20 lg:pr-24">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-indigo-100 backdrop-blur-md shadow-sm">
-              <Sparkles className="h-3.5 w-3.5" /> PALMYRA · Panel de negocio
+        <div className="relative z-10 flex min-h-[250px] sm:min-h-[275px] lg:min-h-[295px] items-center px-5 py-6 sm:px-8 lg:px-10">
+          <div className="max-w-[560px]">
+            <div className="inline-flex items-center gap-2 rounded-full border border-violet-100 bg-white/90 px-3 py-1.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-violet-800 shadow-sm backdrop-blur-sm dark:border-violet-800/50 dark:bg-slate-900/85 dark:text-violet-200">
+              <Sparkles className="h-3.5 w-3.5" /> PALMYRA · Gestión empresarial
             </div>
 
-            <h1 className="mt-3 text-3xl sm:text-4xl lg:text-5xl font-black tracking-[-0.035em] leading-[.98] text-white">
+            <h1 className="mt-3 text-3xl sm:text-4xl lg:text-5xl font-black tracking-[-0.04em] leading-[.98] text-slate-950 dark:text-white">
               Hola{dashboardUserName ? ", " + dashboardUserName.split(" ")[0] : ""} <span aria-hidden="true">👋</span>
             </h1>
 
-            <p className="mt-3 text-lg sm:text-xl lg:text-2xl font-black leading-tight text-white">
-              Bienvenido a <span className="text-indigo-100">{businessName}</span>
+            <p className="mt-3 text-lg sm:text-xl lg:text-2xl font-black leading-tight text-slate-900 dark:text-white">
+              Bienvenido a <span className="text-violet-700 dark:text-violet-300">{businessName}</span>
             </p>
 
-            <p className="mt-3 max-w-[570px] text-[11px] sm:text-xs lg:text-sm font-medium leading-relaxed text-indigo-50/90">
-              Tu negocio, tus números y tus decisiones en un solo lugar. Consulta ventas, inventario, clientes y actividad para saber qué está pasando y actuar con claridad.
+            <p className="mt-3 max-w-[520px] text-[11px] sm:text-xs lg:text-sm font-medium leading-relaxed text-slate-600 dark:text-slate-300">
+              Todo tu negocio en un solo lugar: ventas, inventario, clientes y actividad para tomar decisiones con claridad.
             </p>
 
-            <div className="mt-5 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-white/90 backdrop-blur-sm">
-                <TrendingUp className="h-3.5 w-3.5 text-emerald-300" /> Datos de tu negocio en tiempo real
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-100 bg-white/90 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-violet-900 shadow-sm backdrop-blur-sm dark:border-violet-800/50 dark:bg-slate-900/80 dark:text-violet-200">
+                <TrendingUp className="h-3.5 w-3.5 text-emerald-500" /> Datos en tiempo real
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-white/90 backdrop-blur-sm">
-                <MapPin className="h-3.5 w-3.5 text-cyan-200" /> {selectedBranchFilter === "all" ? "Todas las sucursales" : (branchById.get(selectedBranchFilter)?.name || "Sucursal")}
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-slate-700 shadow-sm backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200">
+                <MapPin className="h-3.5 w-3.5 text-violet-600" /> {selectedBranchFilter === "all" ? "Todas las sucursales" : (branchById.get(selectedBranchFilter)?.name || "Sucursal")}
               </span>
             </div>
           </div>
