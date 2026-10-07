@@ -208,6 +208,8 @@ export async function createEmployeePosSecure(input: {
   roleId: string;
   warehouseIds: string[];
   posPassword?: string;
+  compensationType?: 'fixed_product' | 'sales_percentage';
+  salesPercentage?: number;
 }) {
   const supabase = getSupabase();
   if (!supabase) throw new Error("Supabase no está configurado.");
@@ -236,6 +238,8 @@ export async function updateEmployeePosSecure(input: {
   roleId: string;
   warehouseIds: string[];
   posPassword?: string;
+  compensationType?: 'fixed_product' | 'sales_percentage';
+  salesPercentage?: number;
 }) {
   return createEmployeePosSecure(input);
 }
@@ -312,6 +316,8 @@ export async function createEmployeeWithInvitation(input: {
   roleId: string;
   warehouseIds: string[];
   email: string;
+  compensationType?: 'fixed_product' | 'sales_percentage';
+  salesPercentage?: number;
 }) {
   const supabase = getSupabase();
   if (!supabase) throw new Error("Supabase no está configurado.");
@@ -328,6 +334,13 @@ export async function createEmployeeWithInvitation(input: {
   const invite = data as {
     employee_id: string; invitation_id: string; token: string; expires_at: string; email: string;
   };
+  await setEmployeeCompensation({
+    companyId: input.companyId,
+    employeeId: invite.employee_id,
+    compensationType: input.compensationType || 'fixed_product',
+    salesPercentage: Number(input.salesPercentage) || 0
+  });
+
   const delivery = await sendInvitationEmail({
     companyId: input.companyId,
     employeeId: invite.employee_id,
