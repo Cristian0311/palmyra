@@ -168,7 +168,7 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     supabase.from('user_roles').select('role_id').eq('user_id',authUser.id).eq('company_id',companyId).maybeSingle(),
     supabase.from('user_locations').select('warehouse_id,is_default').eq('user_id',authUser.id).eq('company_id',companyId).order('is_default',{ascending:false}),
     supabase.from('employees').select('id,full_name,base_salary,active').eq('user_id',authUser.id).eq('company_id',companyId).maybeSingle(),
-    supabase.from('subscriptions').select('id,status,plan_id,current_period_end,trial_ends_at').eq('company_id',companyId).order('updated_at',{ascending:false}).maybeSingle(),
+    supabase.from('subscriptions').select('id,status,plan_id,current_period_end,trial_ends_at,grace_ends_at').eq('company_id',companyId).order('updated_at',{ascending:false}).maybeSingle(),
     supabase.rpc('has_pending_plan_request', { p_company_id: companyId })
   ]);
 
@@ -276,11 +276,16 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
 
   const trialEndsAt = subscription?.trial_ends_at || null;
   const currentPeriodEnd = subscription?.current_period_end || null;
+  const graceEndsAt = subscription?.grace_ends_at || null;
   const nowMs = Date.now();
   const trialExpired = subscription?.status === 'trialing' && !!trialEndsAt && new Date(trialEndsAt).getTime() <= nowMs;
   const paidPeriodExpired = subscription?.status === 'active' && !!currentPeriodEnd && new Date(currentPeriodEnd).getTime() <= nowMs;
+  const effectiveGraceEndsAt = graceEndsAt || ((trialExpired || paidPeriodExpired)
+    ? new Date((trialEndsAt || currentPeriodEnd || nowMs) + 2 * 24 * 60 * 60 * 1000).toISOString()
+    : null);
+  const graceExpired = subscription?.status === 'past_due' && !!effectiveGraceEndsAt && new Date(effectiveGraceEndsAt).getTime() <= nowMs;
   const hasPendingPlanRequest = pendingPlanRequest === true;
-  const expiredWithoutPendingRequest = (trialExpired || paidPeriodExpired) && !hasPendingPlanRequest;
+  const expiredWithoutPendingRequest = graceExpired && !hasPendingPlanRequest;
   const effectiveCompany = company
     ? {
         ...company,
@@ -311,7 +316,8 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
       planName: plan.name,
       limits: plan.limits || {},
       currentPeriodEnd,
-      trialEndsAt
+      trialEndsAt,
+      graceEndsAt: effectiveGraceEndsAt
     } : null
   };
 
