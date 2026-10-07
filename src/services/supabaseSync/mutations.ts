@@ -321,7 +321,53 @@ export async function pushInventoryAuditToSupabase(audit:InventoryAudit){
 }
 
 export async function pushSalarySettlementToSupabase(settlement:SalarySettlement){
-  try{const supabase=await onlineClient();const {companyId,authUserId}=await getActiveTenant();const employee=await getEmployeeForIdentity(settlement.userId);if(!employee)throw new Error('Empleado no encontrado');const runId=crypto.randomUUID();const day=settlement.date.slice(0,10);const {error:re}=await supabase.from('payroll_runs').insert({id:runId,company_id:companyId,period_start:day,period_end:day,status:settlement.status==='paid'?'paid':'draft',created_by:authUserId});if(re)throw re;const {error:ie}=await supabase.from('payroll_items').insert({id:settlement.id,company_id:companyId,payroll_run_id:runId,employee_id:employee.id,currency_code:'USD',base_salary:Number(settlement.baseSalary)||0,commission_amount:Number(settlement.commissions)||0,adjustments:0,total_amount:Number(settlement.total)||0,details:{session_id:settlement.sessionId||null}});if(ie)throw ie;return true;}catch(e:any){await queue('salary_settlement',settlement,settlement.id);return false;}
+  try{
+    const supabase=await onlineClient();
+    const {companyId,authUserId}=await getActiveTenant();
+    const employee=await getEmployeeForIdentity(settlement.userId);
+    if(!employee)throw new Error('Empleado no encontrado');
+
+    // El ID del acuerdo local es estable y se usa como llave de idempotencia
+    // para que un reintento después de un corte de red nunca cree otra nómina.
+    const runId = settlement.id;
+    const { data: existingItem, error: existingItemError } = await supabase
+      .from('payroll_items')
+      .select('id')
+      .eq('id', settlement.id)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (existingItemError) throw existingItemError;
+    if (existingItem?.id) return true;
+
+    const day=settlement.date.slice(0,10);
+    const {error:re}=await supabase.from('payroll_runs').upsert({
+      id:runId,
+      company_id:companyId,
+      period_start:day,
+      period_end:day,
+      status:settlement.status==='paid'?'paid':'draft',
+      created_by:authUserId
+    },{onConflict:'id'});
+    if(re)throw re;
+
+    const {error:ie}=await supabase.from('payroll_items').upsert({
+      id:settlement.id,
+      company_id:companyId,
+      payroll_run_id:runId,
+      employee_id:employee.id,
+      currency_code:'USD',
+      base_salary:Number(settlement.baseSalary)||0,
+      commission_amount:Number(settlement.commissions)||0,
+      adjustments:0,
+      total_amount:Number(settlement.total)||0,
+      details:{session_id:settlement.sessionId||null}
+    },{onConflict:'id'});
+    if(ie)throw ie;
+    return true;
+  }catch(e:any){
+    await queue('salary_settlement',settlement,settlement.id);
+    return false;
+  }
 }
 
 async function updateCompanySettings(patch:Record<string,any>){
