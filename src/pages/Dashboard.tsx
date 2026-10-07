@@ -280,18 +280,19 @@ export default function Dashboard() {
   return (
     <div className="space-y-2.5 text-[9px] animate-in fade-in slide-in-from-bottom-2 duration-500 pb-5">
 
-      <section className="relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100 dark:border-violet-900/40 bg-white dark:bg-slate-900 shadow-lg shadow-violet-100/50 dark:shadow-none min-h-[250px] sm:min-h-[275px] lg:min-h-[295px]">
+      <section className="relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100 dark:border-violet-900/40 bg-white dark:bg-slate-900 shadow-lg shadow-violet-100/50 dark:shadow-none min-h-[250px] sm:min-h-[275px] lg:min-h-[300px]">
         <img
-          src="/palmyra-dashboard-hero.svg"
+          src="https://d2ol7oe51mr4n9.cloudfront.net/user_3KG5QIrHdwLjDQrkaTsZRm5ddIT/c1f1a8ae-fb77-44d7-b826-2bff743932d1.png"
           alt=""
           className="absolute inset-0 h-full w-full object-cover object-center"
           aria-hidden="true"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-white via-white/92 to-white/15 dark:from-slate-950 dark:via-slate-950/90 dark:to-slate-950/15" aria-hidden="true" />
+        <div className="absolute inset-0 bg-gradient-to-r from-white via-white/88 to-white/8 dark:from-slate-950 dark:via-slate-950/86 dark:to-slate-950/10" aria-hidden="true" />
+        <div className="absolute inset-y-0 left-0 w-full sm:w-[65%] bg-gradient-to-r from-white/96 via-white/78 to-transparent dark:from-slate-950/96 dark:via-slate-950/82 dark:to-transparent" aria-hidden="true" />
 
-        <div className="relative z-10 flex min-h-[250px] sm:min-h-[275px] lg:min-h-[295px] items-center px-5 py-6 sm:px-8 lg:px-10">
-          <div className="max-w-[560px]">
-            <div className="inline-flex items-center gap-2 rounded-full border border-violet-100 bg-white/90 px-3 py-1.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-violet-800 shadow-sm backdrop-blur-sm dark:border-violet-800/50 dark:bg-slate-900/85 dark:text-violet-200">
+        <div className="relative z-10 flex min-h-[250px] sm:min-h-[275px] lg:min-h-[300px] items-center px-5 py-6 sm:px-8 lg:px-10">
+          <div className="max-w-[560px] rounded-2xl sm:rounded-[1.5rem] bg-white/86 dark:bg-slate-950/78 px-4 py-4 sm:px-5 sm:py-5 shadow-sm backdrop-blur-[2px] border border-white/60 dark:border-slate-700/60">
+            <div className="inline-flex items-center gap-2 rounded-full border border-violet-100 bg-white/92 px-3 py-1.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-violet-800 shadow-sm dark:border-violet-800/50 dark:bg-slate-900/90 dark:text-violet-200">
               <Sparkles className="h-3.5 w-3.5" /> PALMYRA · Gestión empresarial
             </div>
 
@@ -308,10 +309,10 @@ export default function Dashboard() {
             </p>
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-100 bg-white/90 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-violet-900 shadow-sm backdrop-blur-sm dark:border-violet-800/50 dark:bg-slate-900/80 dark:text-violet-200">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-100 bg-white/92 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-violet-900 shadow-sm dark:border-violet-800/50 dark:bg-slate-900/88 dark:text-violet-200">
                 <TrendingUp className="h-3.5 w-3.5 text-emerald-500" /> Datos en tiempo real
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/90 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-slate-700 shadow-sm backdrop-blur-sm dark:border-slate-700 dark:bg-slate-900/80 dark:text-slate-200">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/92 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900/88 dark:text-slate-200">
                 <MapPin className="h-3.5 w-3.5 text-violet-600" /> {selectedBranchFilter === "all" ? "Todas las sucursales" : (branchById.get(selectedBranchFilter)?.name || "Sucursal")}
               </span>
             </div>
