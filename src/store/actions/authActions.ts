@@ -4,8 +4,9 @@ import {
   clearSupabaseData,
   clearSelectedDataFromSupabase,
   pushUserToSupabase,
+  deleteUserFromSupabase,
 } from '../../services/supabaseSync';
-import { getOfflineQueue } from '../../services/offlineQueue';
+import { getOfflineQueue, enqueueOfflineItem } from '../../services/offlineQueue';
 import { flushLocalStateStorage, clearLocalStateStorage } from '../../services/localStateStorage';
 import { signInSaaSAccount, signOutSaaSAccount, loadSaaSContext } from '../../services/saas';
 import { INITIAL_USERS, INITIAL_CURRENCIES, INITIAL_FISCAL_CONFIGS } from '../storeInitialData';
@@ -365,8 +366,16 @@ export function createAuthActions(set: StoreSet, get: StoreGet): any {
     set((state) => ({
       users: state.users.map(u => u.id === id ? { ...u, isActive: false } : u)
     }));
-    const updated = get().users.find(u => u.id === id);
-    if (updated) pushUserToSupabase(updated);
+    const actionId = 'user-delete:' + id;
+    const queueDeletion = () => enqueueOfflineItem('user_delete', { id }, actionId)
+      .catch((error) => console.warn('[PALMYRA] No se pudo guardar el retiro del empleado en la cola:', error));
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      deleteUserFromSupabase(id).then((ok) => {
+        if (!ok) queueDeletion();
+      }).catch(() => queueDeletion());
+    } else {
+      queueDeletion();
+    }
   },
   };
 }
