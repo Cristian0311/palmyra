@@ -13,10 +13,24 @@ async function sha256Hex(value: string) {
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS"
+};
+
+function json(data: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" }
+  });
+}
+
 Deno.serve(async (req: Request) => {
-  if (req.method !== "POST") return Response.json({ error: "method_not_allowed" }, { status: 405 });
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
   const authHeader = req.headers.get("Authorization") || "";
-  if (!authHeader.startsWith("Bearer ")) return Response.json({ error: "authentication_required" }, { status: 401 });
+  if (!authHeader.startsWith("Bearer ")) return json({ error: "authentication_required" }, { status: 401 });
 
   const body = await req.json().catch(() => ({}));
   const companyId = String(body?.companyId || "");
@@ -24,12 +38,12 @@ Deno.serve(async (req: Request) => {
   const email = String(body?.email || "").trim().toLowerCase();
   const name = String(body?.name || "").trim();
   const token = String(body?.token || "");
-  if (!companyId || !employeeId || !email || !token) return Response.json({ error: "invalid_request" }, { status: 400 });
+  if (!companyId || !employeeId || !email || !token) return json({ error: "invalid_request" }, { status: 400 });
 
   const url = Deno.env.get("SUPABASE_URL") || "";
   const publishable = Deno.env.get("SUPABASE_ANON_KEY") || "";
   const secret = getSecretKey();
-  if (!url || !secret) return Response.json({ error: "server_not_configured" }, { status: 500 });
+  if (!url || !secret) return json({ error: "server_not_configured" }, { status: 500 });
 
   const userClient = createClient(url, publishable || secret, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -37,11 +51,11 @@ Deno.serve(async (req: Request) => {
   });
   const { data: callerData, error: callerError } = await userClient.auth.getUser();
   const caller = callerData?.user;
-  if (callerError || !caller) return Response.json({ error: "authentication_required" }, { status: 401 });
+  if (callerError || !caller) return json({ error: "authentication_required" }, { status: 401 });
 
   const admin = createClient(url, secret, { auth: { autoRefreshToken: false, persistSession: false } });
   const { data: membership } = await admin.from("company_memberships").select("is_owner,status").eq("company_id", companyId).eq("user_id", caller.id).maybeSingle();
-  if (!membership || membership.status !== "active") return Response.json({ error: "permission_denied" }, { status: 403 });
+  if (!membership || membership.status !== "active") return json({ error: "permission_denied" }, { status: 403 });
 
   let allowed = Boolean(membership.is_owner);
   if (!allowed) {
@@ -52,7 +66,7 @@ Deno.serve(async (req: Request) => {
       allowed = Boolean((rp || []).some((r: any) => r.permissions?.key === "employees.manage"));
     }
   }
-  if (!allowed) return Response.json({ error: "permission_denied" }, { status: 403 });
+  if (!allowed) return json({ error: "permission_denied" }, { status: 403 });
 
   const tokenHash = await sha256Hex(token.trim());
   const { data: invitation } = await admin.from("company_invitations")
@@ -61,18 +75,18 @@ Deno.serve(async (req: Request) => {
     .eq("email", email).eq("token_hash", tokenHash).eq("status", "pending")
     .maybeSingle();
   if (!invitation || new Date(invitation.expires_at).getTime() <= Date.now()) {
-    return Response.json({ error: "invitation_invalid_or_expired" }, { status: 400 });
+    return json({ error: "invitation_invalid_or_expired" }, { status: 400 });
   }
 
   const { data: employee } = await admin.from("employees")
     .select("id,company_id,full_name,active,user_id")
     .eq("id", employeeId).eq("company_id", companyId).maybeSingle();
   if (!employee || employee.active === false || employee.user_id) {
-    return Response.json({ error: "employee_invalid" }, { status: 400 });
+    return json({ error: "employee_invalid" }, { status: 400 });
   }
 
   const appUrl = Deno.env.get("PALMYRA_APP_URL") || req.headers.get("origin") || "";
-  if (!appUrl) return Response.json({ error: "app_url_not_configured" }, { status: 500 });
+  if (!appUrl) return json({ error: "app_url_not_configured" }, { status: 500 });
   const redirectTo = appUrl.replace(/\/$/, "") + "/invite?token=" + encodeURIComponent(token);
 
   const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
@@ -81,8 +95,8 @@ Deno.serve(async (req: Request) => {
   });
   if (error) {
     const msg = String(error.message || "");
-    if (/already.*user|already exists|confirmed/i.test(msg)) return Response.json({ sent: false, reason: "existing_account" });
-    return Response.json({ sent: false, reason: "provider_error" }, { status: 502 });
+    if (/already.*user|already exists|confirmed/i.test(msg)) return json({ sent: false, reason: "existing_account" });
+    return json({ sent: false, reason: "provider_error" }, { status: 502 });
   }
-  return Response.json({ sent: true, user_id: data.user?.id || null });
+  return json({ sent: true, user_id: data.user?.id || null });
 });
