@@ -359,6 +359,7 @@ function CompanyCard({
   company: PlatformCompany;
   busy: boolean;
   onToggle: (company: PlatformCompany) => void;
+  onDetails?: (company: PlatformCompany) => void;
 }) {
   const suspended = company.account_status === "suspended";
   return (
@@ -370,6 +371,7 @@ function CompanyCard({
           <p>{company.slug || company.id}</p>
         </div>
         <StatusBadge status={company.account_status} />
+        {onDetails ? <Button variant="ghost" className="admin-company-details-btn" onClick={() => onDetails(company)}><ArrowUpRight size={12}/>360°</Button> : null}
       </div>
       <div className="admin-company-plan">
         <span>{company.plan_name || company.plan_code || "Sin plan"}</span>
@@ -414,7 +416,10 @@ function CompaniesView({
     });
   }, [companies, query, filter]);
 
+  const [selected, setSelected] = useState<PlatformCompany | null>(null);
+
   return (
+    <>
     <div className="admin-content-stack">
       <section className="admin-page-head">
         <div><p className="admin-eyebrow">EMPRESAS</p><h1>Todos tus clientes, sin perder el contexto.</h1><p>Busca una cuenta, revisa su operación y cambia estados administrativos sin tocar su lógica interna.</p></div>
@@ -434,10 +439,49 @@ function CompaniesView({
         </div>
       </section>
       <section className="admin-company-grid">
-        {filtered.map((company) => <CompanyCard key={company.id} company={company} busy={busy} onToggle={onToggle} />)}
+        {filtered.map((company) => <CompanyCard key={company.id} company={company} busy={busy} onToggle={onToggle} onDetails={setSelected} />)}
         {filtered.length === 0 ? <EmptyPanel title="No encontramos esa empresa" description="Prueba con otro nombre, slug o estado." /> : null}
       </section>
     </div>
+    {selected ? (
+      <div className="admin-detail-backdrop" onMouseDown={(event) => { if (event.currentTarget === event.target) setSelected(null); }}>
+        <aside className="admin-company-detail">
+          <div className="admin-company-detail__head">
+            <div><p className="admin-eyebrow">EMPRESA · 360°</p><h2>{selected.name}</h2><span>{selected.slug || selected.id}</span></div>
+            <button type="button" className="admin-square-button" onClick={() => setSelected(null)} aria-label="Cerrar"><X size={15}/></button>
+          </div>
+          <div className="admin-company-detail__status"><StatusBadge status={selected.account_status}/><span>{selected.plan_name || selected.plan_code || "Sin plan"}</span></div>
+          <div className="admin-company-detail__grid">
+            {[
+              ["Productos", selected.products],
+              ["Empleados", selected.employees],
+              ["Almacenes", selected.warehouses],
+              ["Ventas", selected.sales],
+              ["Movimientos", selected.stock_movements],
+              ["Sesiones de caja", selected.cash_sessions],
+              ["Registros", selected.data_records],
+            ].map(([label,value]) => <div key={String(label)}><strong>{Number(value||0).toLocaleString("es-CU")}</strong><span>{label}</span></div>)}
+          </div>
+          <div className="admin-company-detail__section">
+            <span>Última venta</span><strong>{formatDate(selected.last_sale_at)}</strong>
+          </div>
+          <div className="admin-company-detail__section">
+            <span>Límites del plan</span>
+            <div className="admin-company-limit-list">
+              <b>Productos <em>{selected.products ?? 0} / {selected.plan_limits?.products ?? "∞"}</em></b>
+              <b>Empleados <em>{selected.employees ?? 0} / {selected.plan_limits?.employees ?? "∞"}</em></b>
+              <b>Almacenes <em>{selected.warehouses ?? 0} / {selected.plan_limits?.warehouses ?? "∞"}</em></b>
+            </div>
+          </div>
+          <div className="admin-company-detail__footer">
+            <Button variant={selected.account_status === "suspended" ? "primary" : "danger"} onClick={() => { onToggle(selected); setSelected(null); }}>
+              {selected.account_status === "suspended" ? "Reactivar empresa" : "Suspender empresa"}
+            </Button>
+          </div>
+        </aside>
+      </div>
+    ) : null}
+  </>
   );
 }
 
