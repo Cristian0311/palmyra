@@ -168,7 +168,7 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     supabase.from('companies').select('id,name,slug,account_status,default_currency_code').eq('id',companyId).maybeSingle(),
     supabase.from('user_roles').select('role_id').eq('user_id',authUser.id).eq('company_id',companyId).maybeSingle(),
     supabase.from('user_locations').select('warehouse_id,is_default').eq('user_id',authUser.id).eq('company_id',companyId).order('is_default',{ascending:false}),
-    supabase.from('employees').select('id,full_name,base_salary,active').eq('user_id',authUser.id).eq('company_id',companyId).maybeSingle(),
+    supabase.from('employees').select('id,full_name,base_salary,compensation_type,sales_percentage,active').eq('user_id',authUser.id).eq('company_id',companyId).maybeSingle(),
     supabase.from('subscriptions').select('id,status,plan_id,current_period_end,trial_ends_at,grace_ends_at').eq('company_id',companyId).order('updated_at',{ascending:false}).maybeSingle(),
     supabase.rpc('has_pending_plan_request', { p_company_id: companyId })
   ]);
@@ -259,6 +259,8 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     email: authUser.email || '',
     role: mapRole(roleKey),
     baseSalary: Number(employee?.base_salary) || 0,
+    compensationType: employee?.compensation_type === 'sales_percentage' ? 'sales_percentage' : 'fixed_product',
+    salesPercentage: Number(employee?.sales_percentage) || 0,
     permissions,
     isActive: employee?.active !== false,
     warehouseId: warehouseIds[0],
