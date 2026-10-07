@@ -48,6 +48,16 @@ export interface TeamEmployee {
   } | null;
 }
 
+export type CompanyCompensationMode = 'fixed_product' | 'sales_percent';
+
+export interface CompanyCompensationSettings {
+  mode: CompanyCompensationMode;
+  percentRate: number;
+  fixedAmount: number;
+  workerCount: number;
+  active: boolean;
+}
+
 export interface TeamSnapshot {
   companyId: string;
   employees: TeamEmployee[];
@@ -215,11 +225,10 @@ export async function createEmployeePosSecure(input: {
   roleId: string;
   warehouseIds: string[];
   posPassword?: string;
-  compensationType?: 'fixed_product' | 'sales_percentage';
-  salesPercentage?: number;
 }) {
   const supabase = getSupabase();
   if (!supabase) throw new Error("Supabase no está configurado.");
+  // La compensación se define una sola vez por empresa, nunca por trabajador.
   const { data, error } = await supabase.rpc("create_employee_pos_secure", {
     p_company_id: input.companyId,
     p_employee_id: input.employeeId || null,
@@ -228,9 +237,7 @@ export async function createEmployeePosSecure(input: {
     p_base_salary: input.baseSalary,
     p_role_id: input.roleId,
     p_warehouse_ids: input.warehouseIds,
-    p_pos_password: input.posPassword?.trim() || null,
-    p_compensation_type: (input as any).compensationType || 'fixed_product',
-    p_sales_percentage: Number((input as any).salesPercentage) || 0
+    p_pos_password: input.posPassword?.trim() || null
   });
   if (error) throwRpcError(error);
   return data as { id: string };
@@ -281,25 +288,17 @@ export async function updateEmployee(input: {
   baseSalary: number;
   roleId: string;
   warehouseIds: string[];
-  compensationType?: 'fixed_product' | 'sales_percentage';
-  salesPercentage?: number;
 }) {
-  const supabase = getSupabase();
-  if (!supabase) throw new Error("Supabase no está configurado.");
-  const { data, error } = await supabase.rpc("create_employee_pos_secure", {
-    p_company_id: input.companyId,
-    p_employee_id: input.employeeId,
-    p_employee_code: input.employeeCode,
-    p_full_name: input.fullName,
-    p_base_salary: input.baseSalary,
-    p_role_id: input.roleId,
-    p_warehouse_ids: input.warehouseIds,
-    p_pos_password: null,
-    p_compensation_type: input.compensationType || 'fixed_product',
-    p_sales_percentage: Number(input.salesPercentage) || 0
+  return createEmployeePosSecure({
+    companyId: input.companyId,
+    employeeId: input.employeeId,
+    employeeCode: input.employeeCode,
+    fullName: input.fullName,
+    baseSalary: input.baseSalary,
+    roleId: input.roleId,
+    warehouseIds: input.warehouseIds,
+    posPassword: undefined
   });
-  if (error) throwRpcError(error);
-  return data as { id: string };
 }
 
 async function sendInvitationEmail(payload: {
@@ -327,8 +326,6 @@ export async function createEmployeeWithInvitation(input: {
   roleId: string;
   warehouseIds: string[];
   email: string;
-  compensationType?: 'fixed_product' | 'sales_percentage';
-  salesPercentage?: number;
 }) {
   const supabase = getSupabase();
   if (!supabase) throw new Error("Supabase no está configurado.");
@@ -345,13 +342,6 @@ export async function createEmployeeWithInvitation(input: {
   const invite = data as {
     employee_id: string; invitation_id: string; token: string; expires_at: string; email: string;
   };
-  await setEmployeeCompensation({
-    companyId: input.companyId,
-    employeeId: invite.employee_id,
-    compensationType: input.compensationType || 'fixed_product',
-    salesPercentage: Number(input.salesPercentage) || 0
-  });
-
   const delivery = await sendInvitationEmail({
     companyId: input.companyId,
     employeeId: invite.employee_id,
@@ -485,6 +475,50 @@ export async function sendEmployeeInvitationEmail(input: {
   });
   if (error) throw error;
   return data as { sent: boolean; reason?: string; user_id?: string | null };
+}
+
+
+export async function loadCompensationSettings(companyId: string): Promise<CompanyCompensationSettings> {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error("Supabase no está configurado.");
+  const { data, error } = await supabase.rpc("get_compensation_settings", {
+    p_company_id: companyId
+  });
+  if (error) throwRpcError(error);
+  const raw = data && typeof data === "object" ? data as any : null;
+  return {
+    mode: raw?.mode === 'sales_percent' ? 'sales_percent' : 'fixed_product',
+    percentRate: Math.max(0, Math.min(100, Number(raw?.percent_rate) || 0)),
+    fixedAmount: Math.max(0, Number(raw?.fixed_amount) || 0),
+    workerCount: Math.max(1, Number(raw?.worker_count) || 1),
+    active: raw?.active !== false
+  };
+}
+
+export async function saveCompensationSettings(input: {
+  companyId: string;
+  mode: CompanyCompensationMode;
+  percentRate: number;
+}) {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error("Supabase no está configurado.");
+  const percentRate = Math.max(0, Math.min(100, Number(input.percentRate) || 0));
+  const { data, error } = await supabase.rpc("upsert_compensation_settings", {
+    p_company_id: input.companyId,
+    p_mode: input.mode,
+    p_percent_rate: input.mode === 'sales_percent' ? percentRate : 0,
+    p_fixed_amount: 0,
+    p_worker_count: 1,
+    p_active: true
+  });
+  if (error) throwRpcError(error);
+  return data as {
+    ok: boolean;
+    company_id: string;
+    mode: CompanyCompensationMode;
+    percent_rate: number;
+    worker_count: number;
+  };
 }
 
 export async function setEmployeeCompensation(input: {
