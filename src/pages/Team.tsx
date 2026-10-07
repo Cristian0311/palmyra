@@ -532,22 +532,22 @@ export default function Team() {
             {snapshot.employees.map(employee => {
               const warehouseNames = employee.warehouse_ids.map(id => snapshot?.warehouses.find(w => w.id === id)?.name).filter(Boolean);
               return (
-                <div key={employee.id} className="team-employee-row flex flex-col md:flex-row md:items-center gap-2.5 border border-base bg-secondary">
-                  <div className={cn("team-employee-avatar w-11 h-11 rounded-2xl flex items-center justify-center shrink-0", employee.active ? "bg-rose-100 text-rose-600" : "bg-slate-100 text-slate-400")}>
-                    {employee.user_id ? <UserRound className="w-5 h-5" /> : <UserX className="w-5 h-5" />}
+                <div key={employee.id} className="team-employee-row">
+                  <div className={cn("team-employee-avatar", employee.active ? "is-active" : "is-inactive")}>
+                    {employee.user_id ? <UserRound className="w-4 h-4" /> : <UserX className="w-4 h-4" />}
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-sm font-black text-primary uppercase">{employee.full_name}</h3>
-                      <span className="text-[9px] font-black uppercase tracking-wider rounded-full px-2 py-1 bg-subtle border border-base">{employee.role_name}</span>
-                      {!employee.active && <span className="text-[9px] font-black uppercase rounded-full px-2 py-1 bg-slate-100 text-slate-500">Inactivo</span>}
-                      {employee.pending_invitation && employee.active && <span className="text-[9px] font-black uppercase rounded-full px-2 py-1 bg-amber-100 text-amber-700">Invitación pendiente</span>}
-                    </div>
-                    <div className="team-employee-list-meta grid sm:grid-cols-3 gap-2 mt-1.5 text-[10px] text-muted">
-                      <span className="font-bold">Código: {employee.employee_code}</span>
-                      <span className="inline-flex items-center gap-1"><Mail className="w-3 h-3" />{employee.login_email || employee.pending_invitation?.email || "Sin acceso web"}</span>
-                      <span className="inline-flex items-center gap-1"><MapPin className="w-3 h-3" />{warehouseNames.length ? warehouseNames.join(", ") : "Sin almacén"}</span>
-                    </div>
+                  <div className="team-employee-main">
+                    <strong>{employee.full_name}</strong>
+                    <small>Código {employee.employee_code}</small>
+                  </div>
+                  <div className="team-employee-role">
+                    <span>{employee.role_name}</span>
+                    {!employee.active && <em>Inactivo</em>}
+                    {employee.pending_invitation && employee.active && <em className="pending">Invitación pendiente</em>}
+                  </div>
+                  <div className="team-employee-contact">
+                    <span><Mail className="w-3 h-3" />{employee.login_email || employee.pending_invitation?.email || "Sin acceso web"}</span>
+                    <span><MapPin className="w-3 h-3" />{warehouseNames.length ? warehouseNames.join(", ") : "Sin almacén"}</span>
                   </div>
                   <div className="relative shrink-0">
                     <button onClick={(e) => { e.stopPropagation(); setMenuId(menuId === employee.id ? null : employee.id); }}
