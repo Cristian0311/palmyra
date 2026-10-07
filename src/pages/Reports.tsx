@@ -13,6 +13,7 @@ import { Transaction, Product, CashRegisterSession, CashMovement } from "../type
 
 const AddItemToShiftModal = lazy(() => import("../components/reports/AddItemToShiftModal"));
 import { ReportsSalesTab } from "../components/reports/ReportsSalesTab";
+import { CashMovementTicket } from "../components/cash/CashMovementTicket";
 import { ReportsTransactionDetailModal } from "../components/reports/ReportsTransactionDetailModal";
 const ReportsCharts = lazy(() => import("../components/reports/ReportsCharts"));
 import { buildCashMovementReceiptLines, buildDiscrepancyReceiptLines, buildShiftReceiptLines, buildTransferReceiptLines } from '../modules/reports/utils/reportReceiptLines';
@@ -2265,34 +2266,13 @@ export default function Reports() {
                           {[...(session.movements || [])]
                             .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                             .map((movement) => (
-                              <div key={movement.id} className="rounded-xl border border-base bg-subtle/60 p-2.5">
-                                <div className="flex items-center justify-between gap-2">
-                                  <div className="min-w-0">
-                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                      <span className="font-mono text-[8px] font-black text-primary">MOV-{String(movement.id).slice(0,8).toUpperCase()}</span>
-                                      <span className={cn(
-                                        "text-[7px] font-black uppercase rounded-full px-1.5 py-0.5",
-                                        movement.type === 'income'
-                                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
-                                          : "bg-rose-100 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300"
-                                      )}>
-                                        {movement.type === 'income' ? 'Ingreso' : 'Egreso / gasto'}
-                                      </span>
-                                    </div>
-                                    <p className="text-[8px] font-bold text-muted mt-1 truncate">{movement.description || 'Sin concepto registrado'}</p>
-                                  </div>
-                                  <span className={cn(
-                                    "font-mono text-[9px] font-black shrink-0",
-                                    movement.type === 'income' ? "text-emerald-600" : "text-rose-600"
-                                  )}>
-                                    {movement.type === 'income' ? '+' : '-'}{formatMoney(Math.abs(Number(movement.amount || 0)), movement.currencyCode)}
-                                  </span>
-                                </div>
-                                <div className="mt-1 flex justify-between text-[7px] font-bold text-muted">
-                                  <span>{movement.workerName || session.workerName || 'Empleado'}</span>
-                                  <span>{new Date(movement.date).toLocaleString('es-CU')}</span>
-                                </div>
-                              </div>
+                              <CashMovementTicket
+                                key={movement.id}
+                                movement={movement}
+                                workerName={session.workerName}
+                                formatMoney={formatMoney}
+                                compact
+                              />
                             ))}
                         </div>
                       ) : (
