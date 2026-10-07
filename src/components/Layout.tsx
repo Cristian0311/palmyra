@@ -62,13 +62,7 @@ const adminNavItems = [
 ];
 
 const APP_VERSION = "V 1.0.2";
-const APP_UPDATE_NOTES = [
-  "POS: egresos, gastos e ingresos ahora tienen una sección y comprobante independiente de los tickets y productos vendidos.",
-  "Reportes: el detalle del turno incorpora los movimientos de caja y los filtros fueron compactados para trabajar mejor en pantallas pequeñas.",
-  "Offline: se reforzó la recuperación del contexto de empresa y se evitó persistir contraseñas en el almacenamiento local.",
-  "Inventario y Centro de atención: mejoras de uso, tutorial actualizado y flujo de producto más compacto y responsive.",
-  "Infraestructura: se incorporó el panel administrativo de consumo de Render y Supabase para anticipar necesidades de escalado."
-];
+const APP_UPDATE_NOTES: string[] = [];
 
 const cashierNavItems = [
   { name: "Soporte", href: "/help", icon: Headphones, public: true },
@@ -805,36 +799,39 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Main Content */}
       {updateAvailable && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center px-4 py-6 pointer-events-none bg-slate-950/20 dark:bg-slate-950/45 backdrop-blur-[2px]">
+        <div className="fixed inset-0 z-[300] flex items-center justify-center px-4 py-6 pointer-events-none bg-slate-950/20 dark:bg-slate-950/50 backdrop-blur-[3px]">
           <div
-            className="pointer-events-auto w-full max-w-sm overflow-hidden rounded-[28px] border border-indigo-100/80 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)] dark:border-slate-700 dark:bg-slate-900 dark:shadow-[0_24px_80px_rgba(0,0,0,0.45)]"
+            className="pointer-events-auto w-full max-w-sm overflow-hidden rounded-[30px] border border-violet-200/70 bg-white shadow-[0_28px_90px_rgba(76,29,149,0.24)] dark:border-violet-900/60 dark:bg-slate-900 dark:shadow-[0_28px_90px_rgba(0,0,0,0.5)]"
             role="dialog"
             aria-modal="true"
             aria-labelledby="palmyra-update-title"
           >
-            <div className="px-5 pt-5 pb-4 sm:px-6 sm:pt-6">
-              <div className="flex items-start gap-3.5">
-                <div className="relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600 dark:bg-indigo-950/50 dark:text-indigo-300">
+            <div className="relative overflow-hidden bg-gradient-to-br from-violet-700 via-indigo-600 to-violet-500 px-5 pb-5 pt-5 text-white sm:px-6">
+              <div className="absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/15 blur-2xl" />
+              <div className="absolute -bottom-16 left-12 h-28 w-28 rounded-full bg-fuchsia-300/20 blur-2xl" />
+              <div className="relative flex items-center gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/15 shadow-lg backdrop-blur-sm">
                   <RefreshCw className={cn("h-6 w-6", isApplyingUpdate && "animate-spin")} />
-                  {!isApplyingUpdate && <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-emerald-500 ring-4 ring-white dark:ring-slate-900" />}
                 </div>
-                <div className="min-w-0 pt-0.5">
-                  <p className="text-[10px] font-black uppercase tracking-[0.16em] text-indigo-600 dark:text-indigo-300">Novedad de PALMYRA</p>
-                  <h3 id="palmyra-update-title" className="mt-1 text-lg font-black tracking-tight text-slate-900 dark:text-white">Nueva actualización disponible</h3>
-                  <p className="mt-1.5 text-sm leading-5 text-slate-600 dark:text-slate-300">
-                    PALMYRA está en fase beta. Estamos enviando mejoras y correcciones de forma continua. Durante esta etapa será normal que aparezca este aviso y que, de vez en cuando, tengas que recargar la página para aplicar una actualización.
-                  </p>
-                  <div className="mt-3 rounded-2xl bg-indigo-50/80 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 p-3">
-                    <p className="text-[9px] font-black uppercase tracking-[0.12em] text-indigo-600 dark:text-indigo-300">Información importante</p>
-                    <ul className="mt-1.5 space-y-1">
-                      {APP_UPDATE_NOTES.map(note => <li key={note} className="text-[10px] leading-4 text-slate-600 dark:text-slate-300">• {note}</li>)}
-                    </ul>
-                  </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-black uppercase tracking-[0.18em] text-violet-100">PALMYRA · Sistema</p>
+                  <h3 id="palmyra-update-title" className="mt-1 text-xl font-black tracking-tight">Hay una nueva actualización</h3>
                 </div>
               </div>
+              <div className="relative mt-4 rounded-2xl border border-white/15 bg-black/10 px-3.5 py-3">
+                <p className="text-[10px] font-semibold leading-5 text-violet-50">
+                  Una nueva versión del sistema está lista. Actualiza ahora para continuar con la experiencia más reciente de PALMYRA.
+                </p>
+              </div>
             </div>
-            <div className="border-t border-slate-100 bg-slate-50/80 px-5 py-4 dark:border-slate-800 dark:bg-slate-950/40 sm:px-6">
-              <div className="flex flex-col-reverse gap-2.5 sm:flex-row">
+            <div className="border-t border-slate-100 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
+              <div className="flex items-center justify-between gap-2.5">
+                <span className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-400">Actualización del sistema</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[8px] font-black uppercase tracking-wider text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Lista
+                </span>
+              </div>
+              <div className="mt-3 flex flex-col-reverse gap-2.5 sm:flex-row">
                 <button
                   type="button"
                   disabled={isApplyingUpdate}
@@ -842,17 +839,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
                     setUpdateAvailable(false);
                   }}
-                  className="h-11 flex-1 rounded-xl border border-slate-200 bg-white px-4 text-[10px] font-black uppercase tracking-[0.08em] text-slate-600 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                  className="h-11 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 text-[9px] font-black uppercase tracking-[0.08em] text-slate-600 transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                 >
-                  Continuar sin actualizar
+                  Ahora no
                 </button>
                 <button
                   type="button"
                   disabled={isApplyingUpdate}
                   onClick={handleApplyUpdate}
-                  className="h-11 flex-1 rounded-xl bg-indigo-600 px-4 text-[10px] font-black uppercase tracking-[0.08em] text-white shadow-lg shadow-indigo-600/20 transition hover:bg-indigo-700 disabled:cursor-wait disabled:opacity-70"
+                  className="h-11 flex-1 rounded-xl bg-violet-600 px-4 text-[9px] font-black uppercase tracking-[0.08em] text-white shadow-lg shadow-violet-600/20 transition hover:bg-violet-700 disabled:cursor-wait disabled:opacity-70"
                 >
-                  {isApplyingUpdate ? "Aplicando actualización…" : "Actualizar ahora"}
+                  {isApplyingUpdate ? "Actualizando…" : "Actualizar ahora"}
                 </button>
               </div>
             </div>
