@@ -28,7 +28,8 @@ import {
   Headphones,
   Download,
   Smartphone,
-  BookOpen
+  BookOpen,
+  ArrowDownUp
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
 import { cn } from "../lib/utils";
@@ -59,6 +60,7 @@ const adminNavItems = [
   { name: "Equipo", href: "/team", icon: Users, permission: "employees.manage" },
   { name: "Soporte", href: "/help", icon: Headphones, public: true },
   { name: "Plan", href: "/subscription", icon: CreditCard, permission: "settings.manage" },
+  { name: "Tasa de cambio", href: "/exchange-rate", icon: ArrowDownUp, public: true },
   { name: "Tutorial", href: "/tutorial", icon: BookOpen, public: true },
   { name: "Catálogo Online", href: "#online-catalog", icon: Store, public: true, comingSoon: true },
 ];
@@ -407,7 +409,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         { label: "Operación", hrefs: ["/", "/pos", "/transfers", "/returns"] },
         { label: "Gestión", hrefs: ["/customers", "/inventory", "/inventory-audit", "/suppliers", "#online-catalog"] },
         { label: "Finanzas", hrefs: ["/banks", "/reports"] },
-        { label: "Administración", hrefs: ["/settings", "/team", "/help", "/subscription", "/tutorial"] },
+        { label: "Administración", hrefs: ["/settings", "/team", "/help", "/subscription", "/tutorial", "/exchange-rate"] },
       ].map(section => ({
         ...section,
         items: visibleNavItems.filter(item => section.hrefs.includes(item.href)),
