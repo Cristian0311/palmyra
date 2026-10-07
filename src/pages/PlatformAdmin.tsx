@@ -23,7 +23,8 @@ function WhatsAppMark({className=""}:{className?:string}){
 export default function PlatformAdmin(){
  const {addNotification}=useStore();
  const [data,setData]=useState<any>(null),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState("");
- const [supportForm,setSupportForm]=useState<PlatformSupportSettings>(EMPTY_SUPPORT);\n const [usage,setUsage]=useState<any>(null);
+ const [supportForm,setSupportForm]=useState<PlatformSupportSettings>(EMPTY_SUPPORT);
+ const [usage,setUsage]=useState<any>(null);
  const refresh=async()=>{
   setLoading(true);setError("");
   try{
