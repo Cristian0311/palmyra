@@ -88,7 +88,7 @@ export default function Inventory() {
   }, []);
   const [showBatchPriceModal, setShowBatchPriceModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
-  const [activeFormTab, setActiveFormTab] = useState<'general' | 'extra'>('general');
+  const [activeFormTab, setActiveFormTab] = useState<'general' | 'variants' | 'extra'>('general');
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [categoryFormData, setCategoryFormData] = useState({ name: "", department: "" });
   const [batchPriceAdjust, setBatchPriceAdjust] = useState({ type: 'percentage' as 'percentage' | 'fixed', value: 0, direction: 'increase' as 'increase' | 'decrease' });
@@ -474,25 +474,6 @@ export default function Inventory() {
         </div>
         <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide w-full sm:w-auto py-1">
           <button 
-            onClick={() => canExcel ? exportToExcel() : setActiveTab('excel')}
-            className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 bg-secondary border border-base text-muted rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-subtle transition-all shadow-sm active:scale-95"
-          >
-            <Download className="w-3 h-3" />
-            <span>{canExcel ? 'Excel' : 'Excel · Ciudadela'}</span>
-          </button>
-          <button 
-            onClick={() => setActiveTab('labels')}
-            className="shrink-0 bg-slate-900 dark:bg-slate-800 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-slate-800 dark:hover:bg-slate-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
-          >
-            {canLabels ? 'Etiquetas' : 'Etiquetas · Ciudadela'}
-          </button>
-          <button 
-            onClick={() => setActiveTab('abc')}
-            className="shrink-0 bg-blue-600 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-blue-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
-          >
-            {canABC ? 'Análisis ABC' : 'ABC · Ciudadela'}
-          </button>
-          <button 
             onClick={() => {
               setEditingProduct(null);
               setNewSize("");
@@ -502,13 +483,36 @@ export default function Inventory() {
                 color: "bg-slate-100 text-slate-700", commissionType: 'fixed', commissionValue: 0,
                 availableSizes: [], availableColors: []
               });
+              setActiveFormTab('general');
               setShowAddModal(true);
             }}
-            className="shrink-0 bg-indigo-600 text-white px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-95 whitespace-nowrap"
+            className="shrink-0 bg-indigo-600 text-white px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-95 whitespace-nowrap"
           >
             <Plus className="w-3.5 h-3.5 shrink-0" />
-            Nuevo
+            Agregar producto
           </button>
+          <button 
+            onClick={() => canExcel ? exportToExcel() : setActiveTab('excel')}
+            className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 bg-secondary border border-base text-muted rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-subtle transition-all shadow-sm active:scale-95 whitespace-nowrap"
+          >
+            <Download className="w-3 h-3" />
+            <span>{canExcel ? 'Excel' : 'Excel · Ciudadela'}</span>
+          </button>
+          <button 
+            onClick={() => setActiveTab('labels')}
+            className="shrink-0 bg-slate-900 dark:bg-slate-800 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-slate-800 dark:hover:bg-slate-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
+          >
+            {canLabels ? 'Etiquetas' : 'Etiquetas · Ciudadela'}
+          </button>
+          <button 
+            onClick={() => setActiveTab('abc')}
+            className="shrink-0 bg-blue-600 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-blue-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
+          >
+            {canABC ? 'Análisis ABC' : 'ABC · Ciudadela'}
+          </button>
+          <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-indigo-100 bg-indigo-50 px-2 py-1 text-[7px] font-black uppercase tracking-wider text-indigo-600 sm:hidden">
+            <ArrowRightLeft className="h-2.5 w-2.5" /> Desliza para más
+          </span>
         </div>
       </header>
 
@@ -552,17 +556,17 @@ export default function Inventory() {
           </div>
           
           {/* Filters: Sucursal, Categoría, Stock y Gestión */}
-          <div className="grid grid-cols-[1fr_1fr_1fr_auto] sm:flex sm:items-center gap-1.5">
+          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(70px,.72fr)_auto] sm:flex sm:items-center gap-1">
             {/* Sucursal */}
             <div className="relative group min-w-0 sm:min-w-[110px] sm:max-w-[140px]">
               <Building2 className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted pointer-events-none" />
               <select 
                 value={selectedBranch}
                 onChange={(e) => setSelectedBranch(e.target.value)}
-                className="w-full pl-6 pr-5 h-8 bg-subtle border border-base text-primary rounded-xl text-[8px] sm:text-[10px] font-bold outline-none hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
+                className="w-full pl-6 pr-5 h-7 bg-subtle border border-base text-primary rounded-lg text-[8px] sm:text-[9px] font-bold outline-none hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
                 title="Filtrar por sucursal"
               >
-                <option value="all">📍 Sucursal</option>
+                <option value="all">Sucursal</option>
                 {branches.map(b => (
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
@@ -576,10 +580,10 @@ export default function Inventory() {
               <select 
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="w-full pl-6 pr-5 h-8 bg-subtle border border-base text-primary rounded-xl text-[10px] font-bold outline-none hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
+                className="w-full pl-6 pr-5 h-7 bg-subtle border border-base text-primary rounded-lg text-[8px] sm:text-[9px] font-bold outline-none hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
                 title="Filtrar por categoría"
               >
-                <option value="all">📁 Categoría</option>
+                <option value="all">Categoría</option>
                 {categories.map(cat => (
                   <option key={cat.id} value={cat.id}>{cat.name}</option>
                 ))}
@@ -592,10 +596,10 @@ export default function Inventory() {
               <select 
                 value={stockFilter}
                 onChange={(e) => setStockFilter(e.target.value as any)}
-                className="w-full px-1 sm:px-2 h-8 bg-subtle border border-base text-primary rounded-xl text-[8px] sm:text-[10px] font-bold outline-none hover:bg-secondary transition-colors cursor-pointer appearance-none text-center truncate"
+                className="w-full px-1 sm:px-2 h-7 bg-subtle border border-base text-primary rounded-lg text-[8px] sm:text-[9px] font-bold outline-none hover:bg-secondary transition-colors cursor-pointer appearance-none text-center truncate"
                 title="Filtrar por stock"
               >
-                <option value="all">📊 Stock</option>
+                <option value="all">Stock</option>
                 <option value="in_stock">Vivos</option>
                 <option value="low">Bajos</option>
                 <option value="out">Ceros</option>
@@ -1065,8 +1069,9 @@ export default function Inventory() {
 
             <nav className="px-3 sm:px-4 bg-slate-50/50 flex gap-2 sm:gap-4 border-b border-slate-100 overflow-x-auto">
               {[
-                { id: 'general', label: 'Datos Generales', icon: Tag },
-                { id: 'extra', label: 'Precios y Extras', icon: DollarSign },
+                { id: 'general', label: 'Datos del producto', icon: Tag },
+                { id: 'variants', label: 'Variantes', icon: Package },
+                { id: 'extra', label: 'Precios y extras', icon: DollarSign },
               ].map(tab => (
                 <button
                   key={tab.id}
@@ -1086,7 +1091,7 @@ export default function Inventory() {
             </nav>
 
             <form onSubmit={handleAddSubmit} className="flex-1 overflow-hidden flex flex-col">
-              <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto p-2.5 sm:p-3 custom-scrollbar">
                 {activeFormTab === 'general' && (
                   <div className="space-y-3 sm:space-y-4">
                     <div className="grid grid-cols-[76px_1fr] sm:grid-cols-[100px_1fr] md:grid-cols-[120px_1fr] gap-2.5 sm:gap-3">
@@ -1184,8 +1189,8 @@ export default function Inventory() {
                   </div>
                 )}
 
-                {activeFormTab === 'general' && (
-                  <div className="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3 sm:p-4">
+                {activeFormTab === 'variants' && (
+                  <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3 sm:p-4">
                     <div className="flex items-start justify-between gap-3 mb-3">
                       <div>
                         <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-800">Variantes del producto</h3>
@@ -1215,7 +1220,7 @@ export default function Inventory() {
                                 setNewSize('');
                               }
                             }}
-                            className="min-w-0 flex-1 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+                            className="min-w-0 flex-1 h-8 px-2.5 rounded-lg border border-slate-200 text-[10px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
                             placeholder="Ej. M, 40, 42"
                           />
                           <button type="button" onClick={() => {
@@ -1223,12 +1228,12 @@ export default function Inventory() {
                             if (!value) return;
                             setFormData(prev => ({ ...prev, availableSizes: Array.from(new Set([...(prev.availableSizes || []), value])) }));
                             setNewSize('');
-                          }} className="px-3 rounded-xl bg-indigo-600 text-white text-[9px] font-black uppercase">Agregar</button>
+                          }} className="shrink-0 h-8 px-2.5 rounded-lg bg-indigo-600 text-white text-[8px] font-black uppercase">Agregar</button>
                         </div>
                         <div className="flex flex-wrap gap-1.5 mt-2">
                           {(formData.availableSizes || []).map(size => (
                             <button type="button" key={size} onClick={() => setFormData(prev => ({ ...prev, availableSizes: (prev.availableSizes || []).filter(x => x !== size) }))}
-                              className="px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100 text-[9px] font-black">{size} ×</button>
+                              className="px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100 text-[8px] font-black">{size} ×</button>
                           ))}
                         </div>
                       </div>
@@ -1251,7 +1256,7 @@ export default function Inventory() {
                                 setNewColor('');
                               }
                             }}
-                            className="min-w-0 flex-1 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+                            className="min-w-0 flex-1 h-8 px-2.5 rounded-lg border border-slate-200 text-[10px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
                             placeholder="Ej. Negro, Rojo"
                           />
                           <button type="button" onClick={() => {
@@ -1259,12 +1264,12 @@ export default function Inventory() {
                             if (!value) return;
                             setFormData(prev => ({ ...prev, availableColors: Array.from(new Set([...(prev.availableColors || []), value])) }));
                             setNewColor('');
-                          }} className="px-3 rounded-xl bg-indigo-600 text-white text-[9px] font-black uppercase">Agregar</button>
+                          }} className="shrink-0 h-8 px-2.5 rounded-lg bg-indigo-600 text-white text-[8px] font-black uppercase">Agregar</button>
                         </div>
                         <div className="flex flex-wrap gap-1.5 mt-2">
                           {(formData.availableColors || []).map(color => (
                             <button type="button" key={color} onClick={() => setFormData(prev => ({ ...prev, availableColors: (prev.availableColors || []).filter(x => x !== color) }))}
-                              className="px-2 py-1 rounded-lg bg-violet-50 text-violet-700 border border-violet-100 text-[9px] font-black">{color} ×</button>
+                              className="px-2 py-1 rounded-lg bg-violet-50 text-violet-700 border border-violet-100 text-[8px] font-black">{color} ×</button>
                           ))}
                         </div>
                       </div>
@@ -1280,10 +1285,10 @@ export default function Inventory() {
 
                 {activeFormTab === 'extra' && (
                   <div className="space-y-8">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100 space-y-6">
-                        <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
-                          <DollarSign className="w-5 h-5 text-indigo-500" />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-3">
+                        <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center gap-1.5">
+                          <DollarSign className="w-3.5 h-3.5 text-indigo-500" />
                           Configuración Económica
                         </h3>
                         
@@ -1297,7 +1302,7 @@ export default function Inventory() {
                               placeholder="0.00"
                               onFocus={(e) => e.target.select()}
                               onChange={e => handleCostPriceChange(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0), formData.price || 0)} 
-                              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-black outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                              className="w-full h-9 px-3 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black outline-none focus:ring-2 focus:ring-indigo-500/20" 
                             />
                           </div>
                           <div className="space-y-1">
@@ -1309,17 +1314,17 @@ export default function Inventory() {
                               placeholder="0.00"
                               onFocus={(e) => e.target.select()}
                               onChange={e => handleCostPriceChange(formData.costPrice || 0, e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))} 
-                              className="w-full px-4 py-3 bg-indigo-50 border border-indigo-200 rounded-2xl text-sm font-black text-indigo-700 outline-none focus:ring-2 focus:ring-indigo-500/20" 
+                              className="w-full h-9 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl text-[10px] font-black text-indigo-700 outline-none focus:ring-2 focus:ring-indigo-500/20" 
                             />
                           </div>
                         </div>
 
-                        <div className="bg-emerald-50 p-4 rounded-2xl flex items-center justify-between">
+                        <div className="bg-emerald-50 p-2.5 rounded-xl flex items-center justify-between">
                           <div>
                             <p className="text-[9px] font-black text-emerald-600 uppercase">Margen de Utilidad</p>
-                            <p className="text-xl font-black text-emerald-700">CUP {formData.margin?.toLocaleString()}</p>
+                            <p className="text-sm font-black text-emerald-700">CUP {formData.margin?.toLocaleString()}</p>
                           </div>
-                          <TrendingUp className="w-8 h-8 text-emerald-200" />
+                          <TrendingUp className="w-5 h-5 text-emerald-200" />
                         </div>
 
                         <div className="space-y-1">
@@ -1329,7 +1334,7 @@ export default function Inventory() {
                                 <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Comisión Vendedor (CUP Fijo)</label>
                                 <InfoTooltip text="Monto fijo en CUP que recibe el vendedor por cada unidad vendida de este producto." />
                               </div>
-                              <input type="number" min="0" value={formData.commissionValue === 0 ? '' : (formData.commissionValue ?? '')} placeholder="0.00" onFocus={(e) => e.target.select()} onChange={e => setFormData({...formData, commissionValue: e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0)})} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-black outline-none focus:ring-2 focus:ring-indigo-500/20" />
+                              <input type="number" min="0" value={formData.commissionValue === 0 ? '' : (formData.commissionValue ?? '')} placeholder="0.00" onFocus={(e) => e.target.select()} onChange={e => setFormData({...formData, commissionValue: e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0)})} className="w-full h-9 px-3 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black outline-none focus:ring-2 focus:ring-indigo-500/20" />
                             </div>
                           )}
                           {!hasFixedProductEmployees && (
@@ -1340,9 +1345,9 @@ export default function Inventory() {
                         </div>
                       </div>
 
-                      <div className="bg-slate-50 p-8 rounded-[2.5rem] border border-slate-100 space-y-6">
-                        <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest flex items-center gap-2">
-                          <ShieldCheck className="w-5 h-5 text-indigo-500" />
+                      <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-3">
+                        <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center gap-1.5">
+                          <ShieldCheck className="w-3.5 h-3.5 text-indigo-500" />
                           Garantía y Alertas
                         </h3>
                         <div className="space-y-4">
@@ -1355,7 +1360,7 @@ export default function Inventory() {
                               placeholder="0 = Sin garantía"
                               onFocus={(e) => e.target.select()}
                               onChange={e => setFormData({...formData, warrantyDays: e.target.value === '' ? 0 : (parseInt(e.target.value) || 0)})} 
-                              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-black outline-none" 
+                              className="w-full h-9 px-3 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black outline-none" 
                             />
                           </div>
                           <div className="space-y-1">
@@ -1367,7 +1372,7 @@ export default function Inventory() {
                               placeholder="5"
                               onFocus={(e) => e.target.select()}
                               onChange={e => setFormData({...formData, minStockAlert: e.target.value === '' ? 0 : (parseInt(e.target.value) || 0)})} 
-                              className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-black outline-none" 
+                              className="w-full h-9 px-3 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black outline-none" 
                             />
                           </div>
                         </div>
