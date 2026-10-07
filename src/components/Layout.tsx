@@ -608,14 +608,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                         <div
                           className={cn(
                             "flex items-center rounded-lg transition-colors duration-150 group min-w-0",
-                            sidebarCollapsed ? "justify-center p-2 my-0.5" : "gap-1.5 px-2 py-1.75",
+                            sidebarCollapsed ? "justify-center p-2 my-0.5" : "gap-1.5 px-2 py-2",
                             isActive && !(item as any).comingSoon
                               ? "bg-rose-600 text-white shadow-sm"
                               : "text-muted hover:bg-subtle hover:text-primary"
                           )}
                         >
                           <Icon className={cn(
-                            "w-3.75 h-3.75 shrink-0 transition-colors",
+                            "w-4 h-4 shrink-0 transition-colors",
                             isActive && !(item as any).comingSoon ? "text-white" : "text-muted group-hover:text-rose-600"
                           )} />
                           {!sidebarCollapsed && (
