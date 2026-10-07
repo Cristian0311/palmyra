@@ -34,7 +34,7 @@ export async function loadSubscriptionOverview() {
 
   const {data:subscription,error:subscriptionError}=await supabase
     .from("subscriptions")
-    .select("id,status,starts_at,trial_ends_at,current_period_start,current_period_end,cancelled_at,plans!inner(id,code,name,monthly_price,billing_currency_code,limits,features)")
+    .select("id,status,starts_at,trial_ends_at,current_period_start,current_period_end,grace_ends_at,cancelled_at,plans!inner(id,code,name,monthly_price,billing_currency_code,limits,features)")
     .eq("company_id",ctx.companyId)
     .order("updated_at",{ascending:false})
     .limit(1)
