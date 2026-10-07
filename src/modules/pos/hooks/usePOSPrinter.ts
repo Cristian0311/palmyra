@@ -48,8 +48,8 @@ export function usePOSPrinter({
 
   useEffect(() => {
     import("../../../lib/escpos")
-      .then(async ({ getConnectedDeviceName }) => {
-        const name = await getConnectedDeviceName();
+      .then(async ({ autoConnectRememberedThermalPrinter, getConnectedDeviceName }) => {
+        const name = await autoConnectRememberedThermalPrinter() || await getConnectedDeviceName();
         if (name) setConnectedPrinterName(name);
       })
       .catch(() => {});
