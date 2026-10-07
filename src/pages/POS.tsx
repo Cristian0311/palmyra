@@ -26,6 +26,7 @@ import { pullOpenCashSessionsFromSupabase } from "../services/supabaseSync";
 import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
 import { aggregateTransferPayments, buildTransactionTicketId, finalizeCheckoutPayments } from '../modules/pos/utils/checkoutUtils';
 import { calculateEmployeeSaleCommission } from '../services/employeeCompensation';
+import { rememberOfflinePosCredential, verifyOfflinePosCredential } from "../services/offlinePosAuth";
 const CheckoutModal = lazy(() => import("../components/pos/CheckoutModal"));
 
 const POSReceiptModal = lazy(() => import("../components/POSReceiptModal"));
@@ -1195,28 +1196,51 @@ export default function POS() {
         return;
       }
 
-      // El administrador/propietario usa la misma contraseña de su cuenta PALMYRA.
-      // La validación ocurre en servidor contra Supabase Auth y la contraseña nunca
-      // se guarda en el estado persistido del POS.
-      if (currentUser?.role === 'admin' && workerToAssign.id === currentUser.id) {
-        const { companyId } = await getActiveTenant();
-        const valid = await verifySaaSPosAccessPassword(companyId, workerToAssign.id, enteredPassword);
-        if (!valid) {
-          setPosError("Contraseña de la cuenta incorrecta. La contraseña del Administrador en POS es la misma que usas para entrar en PALMYRA.");
+      // Online: Supabase es la autoridad. Después de una validación correcta
+      // guardamos únicamente un verificador SHA-256 salado para poder volver a
+      // abrir caja sin red. Nunca almacenamos la contraseña en el estado durable.
+      // Offline: el acceso solo puede funcionar en un dispositivo que ya haya
+      // validado esa credencial al menos una vez mientras tenía conexión.
+      const { companyId } = await getActiveTenant();
+      if (!navigator.onLine) {
+        const validLocal = await verifyOfflinePosCredential(companyId, workerToAssign.id, enteredPassword);
+        if (!validLocal) {
+          setPosError(
+            `No se pudo validar offline la contraseña de ${workerToAssign.name || 'empleado'}. Conéctate una vez desde este dispositivo para habilitar el acceso offline.`
+          );
           return;
+        }
+      } else if (currentUser?.role === 'admin' && workerToAssign.id === currentUser.id) {
+        try {
+          const valid = await verifySaaSPosAccessPassword(companyId, workerToAssign.id, enteredPassword);
+          if (!valid) {
+            setPosError("Contraseña de la cuenta incorrecta. La contraseña del Administrador en POS es la misma que usas para entrar en PALMYRA.");
+            return;
+          }
+          await rememberOfflinePosCredential(companyId, workerToAssign.id, enteredPassword);
+        } catch (error) {
+          const validLocal = await verifyOfflinePosCredential(companyId, workerToAssign.id, enteredPassword);
+          if (!validLocal) {
+            console.error("[POS] No se pudo validar la contraseña del administrador:", error);
+            setPosError("No se pudo validar la contraseña. Verifica la conexión y vuelve a intentarlo.");
+            return;
+          }
         }
       } else {
         try {
-          const { companyId } = await getActiveTenant();
           const valid = await verifyEmployeePosAccessPassword(companyId, workerToAssign.id, enteredPassword);
           if (!valid) {
             setPosError(`Contraseña incorrecta para ${workerToAssign.name || 'empleado'}. Acceso denegado.`);
             return;
           }
+          await rememberOfflinePosCredential(companyId, workerToAssign.id, enteredPassword);
         } catch (error) {
-          console.error("[POS] No se pudo validar la contraseña del empleado:", error);
-          setPosError("No se pudo validar la contraseña del empleado. Verifica la conexión y vuelve a intentarlo.");
-          return;
+          const validLocal = await verifyOfflinePosCredential(companyId, workerToAssign.id, enteredPassword);
+          if (!validLocal) {
+            console.error("[POS] No se pudo validar la contraseña del empleado:", error);
+            setPosError("No se pudo validar la contraseña del empleado. Conecta este dispositivo una vez para habilitar el acceso offline.");
+            return;
+          }
         }
       }
 
