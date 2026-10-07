@@ -370,3 +370,6 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .admin-company-consumption-value{text-align:right;flex:0 0 auto}.admin-company-consumption-value strong{font-size:13px}.admin-company-consumption-value small{font-size:6.5px}
 .admin-company-card__metrics{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr))!important}
 @media(max-width:520px){.admin-company-card__metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important}.admin-company-consumption-row{padding:9px}.admin-company-consumption-value strong{font-size:11px}}
+
+.admin-company-plan{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 9px}
+.admin-company-plan span{padding:4px 6px;border-radius:7px;background:#f4effb;color:#6d3bd2;font-size:6.5px;font-weight:900}
