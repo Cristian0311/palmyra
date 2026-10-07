@@ -2562,6 +2562,27 @@ export default function POS() {
                       return acc;
                     }, {} as Record<string, number>);
 
+                    const movementTotals = (currentSession?.movements || []).reduce(
+                      (acc, movement) => {
+                        const amount = Math.abs(Number(movement.amount) || 0);
+                        const rate = movement.currencyCode === baseCurrency.code
+                          ? 1
+                          : (currencies.find(c => c.code === movement.currencyCode)?.rateToBase || 1);
+                        const amountInBase = amount * rate;
+
+                        if (movement.type === 'income') {
+                          acc.incomeBase += amountInBase;
+                          acc.incomeCount += 1;
+                        } else {
+                          acc.expenseBase += amountInBase;
+                          acc.expenseCount += 1;
+                        }
+
+                        return acc;
+                      },
+                      { incomeBase: 0, expenseBase: 0, incomeCount: 0, expenseCount: 0 }
+                    );
+
                     cashCupSum += cashMovementsByCurrency.CUP || 0;
                     cashUsdSum += cashMovementsByCurrency.USD || 0;
 
@@ -2663,53 +2684,83 @@ export default function POS() {
                     return (
                       <div className="space-y-4">
                         {/* Financial Cards Grid */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                          <div className="bg-emerald-50/80 border border-emerald-100 rounded-xl p-2.5 flex flex-col justify-between shadow-sm">
-                            <div className="flex items-center justify-between text-emerald-700 mb-1">
-                              <span className="text-[8px] font-black uppercase tracking-wider">Efectivo CUP</span>
-                              <Banknote className="w-3.5 h-3.5" />
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2">
+                          <div className="min-w-0 bg-emerald-50/80 border border-emerald-100 rounded-xl p-2 sm:p-2.5 flex min-h-[68px] flex-col justify-between shadow-sm">
+                            <div className="flex items-center justify-between text-emerald-700 mb-0.5">
+                              <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-wider">Efectivo CUP</span>
+                              <Banknote className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
                             </div>
-                            <span className="text-xs font-black text-emerald-900 truncate">
-                              {formatMoney(cashCupSum, baseCurrency.symbol)}
+                            <span className="text-[11px] sm:text-xs font-black text-emerald-900 truncate">
+                              \${formatMoney(cashCupSum, baseCurrency.symbol)}
                             </span>
                           </div>
 
-                          <div className="bg-amber-50/80 border border-amber-100 rounded-xl p-2.5 flex flex-col justify-between shadow-sm">
-                            <div className="flex items-center justify-between text-amber-700 mb-1">
-                              <span className="text-[8px] font-black uppercase tracking-wider">Efectivo USD</span>
-                              <DollarSign className="w-3.5 h-3.5" />
+                          <div className="min-w-0 bg-amber-50/80 border border-amber-100 rounded-xl p-2 sm:p-2.5 flex min-h-[68px] flex-col justify-between shadow-sm">
+                            <div className="flex items-center justify-between text-amber-700 mb-0.5">
+                              <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-wider">Efectivo USD</span>
+                              <DollarSign className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
                             </div>
-                            <div>
-                              <span className="text-xs font-black text-amber-900 block truncate">
-                                ${cashUsdSum.toFixed(2)} USD
+                            <div className="min-w-0">
+                              <span className="text-[11px] sm:text-xs font-black text-amber-900 block truncate">
+                                \$\{cashUsdSum.toFixed(2)} USD
                               </span>
-                              <span className="text-[8px] font-bold text-amber-600 block">
-                                {formatMoney(cashUsdSum * (currencies.find(c => c.code === 'USD')?.rateToBase || 1), baseCurrency.symbol)} eq.
+                              <span className="text-[7px] sm:text-[8px] font-bold text-amber-600 block truncate">
+                                \${formatMoney(cashUsdSum * (currencies.find(c => c.code === 'USD')?.rateToBase || 1), baseCurrency.symbol)} eq.
                               </span>
                             </div>
                           </div>
 
-                          <div className="bg-blue-50/80 border border-blue-100 rounded-xl p-2.5 flex flex-col justify-between shadow-sm">
-                            <div className="flex items-center justify-between text-blue-700 mb-1">
-                              <span className="text-[8px] font-black uppercase tracking-wider">Transferencia</span>
-                              <CreditCard className="w-3.5 h-3.5" />
+                          <div className="min-w-0 bg-blue-50/80 border border-blue-100 rounded-xl p-2 sm:p-2.5 flex min-h-[68px] flex-col justify-between shadow-sm">
+                            <div className="flex items-center justify-between text-blue-700 mb-0.5">
+                              <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-wider">Transferencia</span>
+                              <CreditCard className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
                             </div>
-                            <span className="text-xs font-black text-blue-900 truncate">
-                              {formatMoney(transferCupSum, baseCurrency.symbol)}
+                            <span className="text-[11px] sm:text-xs font-black text-blue-900 truncate">
+                              \${formatMoney(transferCupSum, baseCurrency.symbol)}
                             </span>
                           </div>
 
-                          <div className="bg-indigo-50/80 border border-indigo-100 rounded-xl p-2.5 flex flex-col justify-between shadow-sm">
-                            <div className="flex items-center justify-between text-indigo-700 mb-1">
-                              <span className="text-[8px] font-black uppercase tracking-wider">Total Ventas</span>
-                              <Package className="w-3.5 h-3.5" />
+                          <div className="min-w-0 bg-indigo-50/80 border border-indigo-100 rounded-xl p-2 sm:p-2.5 flex min-h-[68px] flex-col justify-between shadow-sm">
+                            <div className="flex items-center justify-between text-indigo-700 mb-0.5">
+                              <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-wider">Total Ventas</span>
+                              <Package className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
                             </div>
-                            <div>
-                              <span className="text-xs font-black text-indigo-900 block truncate">
-                                {formatMoney(totalSalesAmount, baseCurrency.symbol)}
+                            <div className="min-w-0">
+                              <span className="text-[11px] sm:text-xs font-black text-indigo-900 block truncate">
+                                \${formatMoney(totalSalesAmount, baseCurrency.symbol)}
                               </span>
-                              <span className="text-[8px] font-bold text-indigo-600 block">
-                                {sessionTx.length} {sessionTx.length === 1 ? 'ticket' : 'tickets'}
+                              <span className="text-[7px] sm:text-[8px] font-bold text-indigo-600 block truncate">
+                                \${sessionTx.length} \${sessionTx.length === 1 ? 'ticket' : 'tickets'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="min-w-0 bg-rose-50/80 border border-rose-100 rounded-xl p-2 sm:p-2.5 flex min-h-[68px] flex-col justify-between shadow-sm">
+                            <div className="flex items-center justify-between text-rose-700 mb-0.5">
+                              <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-wider">Egreso</span>
+                              <AlertCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-[11px] sm:text-xs font-black text-rose-900 block truncate">
+                                -\${formatMoney(movementTotals.expenseBase, baseCurrency.symbol)}
+                              </span>
+                              <span className="text-[6.5px] sm:text-[7px] font-bold text-rose-600 block truncate">
+                                \${movementTotals.expenseBase > 0 ? 'Ya descontado del efectivo' : 'Sin egresos registrados'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="min-w-0 bg-violet-50/80 border border-violet-100 rounded-xl p-2 sm:p-2.5 flex min-h-[68px] flex-col justify-between shadow-sm">
+                            <div className="flex items-center justify-between text-violet-700 mb-0.5">
+                              <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-wider">Ingreso</span>
+                              <TrendingUp className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                            </div>
+                            <div className="min-w-0">
+                              <span className="text-[11px] sm:text-xs font-black text-violet-900 block truncate">
+                                +\${formatMoney(movementTotals.incomeBase, baseCurrency.symbol)}
+                              </span>
+                              <span className="text-[6.5px] sm:text-[7px] font-bold text-violet-600 block truncate">
+                                \${movementTotals.incomeBase > 0 ? 'Ya agregado al efectivo' : 'Sin ingresos registrados'}
                               </span>
                             </div>
                           </div>
