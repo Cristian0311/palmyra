@@ -45,6 +45,118 @@ async function startServer() {
 
 
 
+  // Platform infrastructure usage. Secrets stay server-side; the browser only
+  // receives sanitized metrics after the existing platform-admin RPC authorizes
+  // the caller.
+  app.get('/api/platform-usage', async (req, res) => {
+    try {
+      const authHeader = String(req.headers.authorization || '');
+      const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+      const supabaseUrl = process.env.SUPABASE_URL || 'https://hmcvujyqloyjdvngpdxz.supabase.co';
+      const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+      if (!accessToken || !supabaseAnonKey) return res.status(401).json({ error: 'Sesión administrativa no disponible.' });
+
+      const userResponse = await fetch(`${supabaseUrl}/auth/v1/user`, {
+        headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${accessToken}` }
+      });
+      if (!userResponse.ok) return res.status(401).json({ error: 'Sesión administrativa inválida.' });
+
+      const adminResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/get_platform_companies`, {
+        method: 'POST',
+        headers: {
+          apikey: supabaseAnonKey,
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: '{}'
+      });
+      if (!adminResponse.ok) return res.status(403).json({ error: 'Solo el administrador de plataforma puede consultar consumo.' });
+
+      const now = new Date();
+      const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+      const commonParams = new URLSearchParams({
+        resource: process.env.RENDER_SERVICE_ID || 'srv-db089k49v7es73ab7750',
+        startTime: monthStart,
+        endTime: now.toISOString()
+      });
+      const renderHeaders = process.env.RENDER_API_KEY
+        ? { Accept: 'application/json', Authorization: `Bearer ${process.env.RENDER_API_KEY}` }
+        : null;
+
+      let render = { configured: false, bandwidthGb: null as number | null, requests: null as number | null, error: null as string | null };
+      if (renderHeaders) {
+        render.configured = true;
+        const [bandwidthResponse, requestsResponse] = await Promise.all([
+          fetch(`https://api.render.com/v1/metrics/bandwidth?${commonParams.toString()}`, { headers: renderHeaders }),
+          fetch(`https://api.render.com/v1/metrics/http-requests?${new URLSearchParams({ ...Object.fromEntries(commonParams), resolutionSeconds: '3600' }).toString()}`, { headers: renderHeaders })
+        ]);
+        if (bandwidthResponse.ok) {
+          const series = await bandwidthResponse.json();
+          render.bandwidthGb = (Array.isArray(series) ? series : []).reduce((total: number, item: any) =>
+            total + (item?.values || []).reduce((sum: number, point: any) => sum + Number(point?.value || 0), 0), 0);
+        } else render.error = `Render bandwidth HTTP ${bandwidthResponse.status}`;
+        if (requestsResponse.ok) {
+          const series = await requestsResponse.json();
+          render.requests = (Array.isArray(series) ? series : []).reduce((total: number, item: any) =>
+            total + (item?.values || []).reduce((sum: number, point: any) => sum + Number(point?.value || 0), 0), 0);
+        } else render.error = render.error || `Render requests HTTP ${requestsResponse.status}`;
+      }
+
+      let supabase = { configured: false, apiRequests: null as number | null, databaseMb: null as number | null, error: null as string | null };
+      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+      if (serviceRoleKey) {
+        supabase.configured = true;
+        const dbResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/platform_database_size_bytes`, {
+          method: 'POST',
+          headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey`, 'Content-Type': 'application/json' },
+          body: '{}'
+        });
+        if (dbResponse.ok) {
+          const bytes = Number(await dbResponse.json());
+          supabase.databaseMb = Number.isFinite(bytes) ? bytes / 1024 / 1024 : null;
+        } else supabase.error = `Supabase database size HTTP ${dbResponse.status}`;
+      }
+
+      const managementToken = process.env.SUPABASE_MANAGEMENT_TOKEN || '';
+      if (managementToken) {
+        supabase.configured = true;
+        const projectRef = process.env.SUPABASE_PROJECT_REF || 'hmcvujyqloyjdvngpdxz';
+        const usageResponse = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/analytics/endpoints/usage.api-counts?interval=1d`, {
+          headers: { Accept: 'application/json', Authorization: `Bearer ${managementToken}` }
+        });
+        if (usageResponse.ok) {
+          const payload = await usageResponse.json();
+          supabase.apiRequests = (payload?.result || []).reduce((total: number, row: any) =>
+            total + Number(row?.total_auth_requests || 0) +
+            Number(row?.total_realtime_requests || 0) +
+            Number(row?.total_rest_requests || 0) +
+            Number(row?.total_storage_requests || 0), 0);
+        } else supabase.error = supabase.error || `Supabase usage HTTP ${usageResponse.status}`;
+      }
+
+      return res.json({
+        capturedAt: now.toISOString(),
+        monthStart,
+        render,
+        supabase,
+        limits: {
+          renderFreeBandwidthGb: 5,
+          renderFreeInstanceHours: 750,
+          supabaseFreeDatabaseMb: 500,
+          supabaseFreeEgressGb: 5
+        },
+        notes: [
+          'Los límites mostrados corresponden a las referencias configuradas para los planes gratuitos actuales.',
+          'Render contabiliza además horas de instancia y minutos de build; esas métricas no se infieren a partir de solicitudes HTTP.',
+          'Supabase mantiene API requests ilimitadas en el plan Free; el riesgo principal del Free actual es tamaño de base y egress.'
+        ]
+      });
+    } catch (error: any) {
+      console.error('[PALMYRA] platform usage:', error);
+      return res.status(500).json({ error: error?.message || 'No se pudo consultar el consumo.' });
+    }
+  });
+
   // AI Financial & Operational Report Analyzer
   app.post('/api/ai-analyze-report', async (req, res) => {
     try {
