@@ -1517,96 +1517,35 @@ export default function Inventory() {
       )}
       {/* Modal Categorías */}
       {showCategoryModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex justify-center items-center p-4">
-          <div className="bg-white rounded-[2rem] w-full max-w-xl max-h-[85vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100 bg-slate-50/50">
-              <div>
-                <h2 className="text-lg font-black text-slate-900 tracking-tight uppercase">Gestionar Categorías</h2>
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Organización del catálogo</p>
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex justify-center items-center p-3 sm:p-4">
+          <div className="inventory-category-modal">
+            <div className="inventory-category-header">
+              <div className="inventory-category-title">
+                <div className="inventory-category-icon"><Tag className="w-4 h-4" /></div>
+                <div><h2>Agregar categorías</h2><p>Organiza tu catálogo de forma clara y rápida.</p></div>
               </div>
-              <button onClick={() => setShowCategoryModal(false)} className="p-1.5 hover:bg-slate-200 rounded-full transition-colors">
-                <X className="w-5 h-5 text-slate-400" />
-              </button>
+              <button type="button" onClick={()=>setShowCategoryModal(false)} className="inventory-category-close" aria-label="Cerrar"><X className="w-4 h-4" /></button>
             </div>
-            
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              <form onSubmit={handleCategorySubmit} className="bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[8px] font-black text-slate-400 uppercase mb-1 ml-1">Nombre</label>
-                    <input 
-                      required
-                      type="text" 
-                      value={categoryFormData.name}
-                      onChange={e => setCategoryFormData({...categoryFormData, name: e.target.value})}
-                      className="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs font-bold outline-none focus:ring-1 focus:ring-indigo-100"
-                      placeholder="Ej: Smartphones"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-[8px] font-black text-slate-400 uppercase mb-1 ml-1">Departamento</label>
-                    <input 
-                      required
-                      type="text" 
-                      value={categoryFormData.department}
-                      onChange={e => setCategoryFormData({...categoryFormData, department: e.target.value})}
-                      className="w-full px-3 py-2 bg-white border border-slate-100 rounded-xl text-xs font-bold outline-none focus:ring-1 focus:ring-indigo-100"
-                      placeholder="Ej: Electrónica"
-                    />
-                  </div>
+            <div className="inventory-category-body">
+              <form onSubmit={handleCategorySubmit} className="inventory-category-form">
+                <div className="inventory-category-form-grid">
+                  <div className="inventory-product-field"><label className="inventory-product-label">Nombre</label><input required type="text" value={categoryFormData.name} onChange={e=>setCategoryFormData({...categoryFormData,name:e.target.value})} className="inventory-product-input" placeholder="Ej. Smartphones" /></div>
+                  <div className="inventory-product-field"><label className="inventory-product-label">Departamento</label><input required type="text" value={categoryFormData.department} onChange={e=>setCategoryFormData({...categoryFormData,department:e.target.value})} className="inventory-product-input" placeholder="Ej. Electrónica" /></div>
                 </div>
-                <div className="flex justify-end gap-2">
-                  {editingCategory && (
-                    <button 
-                      type="button"
-                      onClick={() => {
-                        setEditingCategory(null);
-                        setCategoryFormData({ name: "", department: "" });
-                      }}
-                      className="px-4 py-2 text-[10px] font-black uppercase text-slate-400"
-                    >
-                      Cancelar
-                    </button>
-                  )}
-                  <button 
-                    type="submit"
-                    className="px-4 py-2 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest shadow-lg shadow-indigo-100"
-                  >
-                    {editingCategory ? 'Actualizar' : 'Agregar'}
-                  </button>
+                <div className="inventory-category-actions">
+                  {editingCategory && <button type="button" onClick={()=>{setEditingCategory(null);setCategoryFormData({name:"",department:""});}} className="inventory-category-cancel">Cancelar</button>}
+                  <button type="submit" className="inventory-category-submit">{editingCategory?'Actualizar':'Agregar categoría'}</button>
                 </div>
               </form>
-
-              <div className="space-y-2">
-                <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest px-1">Existentes</h3>
-                <div className="grid grid-cols-1 gap-2">
-                  {categories.map(cat => (
-                    <div key={cat.id} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-2xl group hover:border-indigo-100 transition-all">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
-                          <Tag className="w-4 h-4" />
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="text-[11px] font-black text-slate-900 uppercase tracking-tight break-words">{cat.name}</p>
-                          <p className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">{cat.department}</p>
-                        </div>
-                      </div>
-                      <div className="flex gap-1 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-                        <button 
-                          onClick={() => {
-                            setEditingCategory(cat);
-                            setCategoryFormData({ name: cat.name, department: cat.department });
-                          }}
-                          className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                        >
-                          <Edit className="w-3.5 h-3.5" />
-                        </button>
-                        <button 
-                          onClick={() => window.confirm("¿Eliminar categoría?") && deleteCategory(cat.id)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+              <div className="inventory-category-list">
+                <div className="inventory-category-list-head"><span>Categorías existentes</span><span>{categories.length}</span></div>
+                <div className="inventory-category-items">
+                  {categories.map(cat=>(
+                    <div key={cat.id} className="inventory-category-item">
+                      <div className="inventory-category-item-info"><div className="inventory-category-item-icon"><Tag className="w-3.5 h-3.5" /></div><div className="min-w-0"><p>{cat.name}</p><span>{cat.department}</span></div></div>
+                      <div className="inventory-category-item-actions">
+                        <button type="button" onClick={()=>{setEditingCategory(cat);setCategoryFormData({name:cat.name,department:cat.department});}} title="Editar"><Edit className="w-3.5 h-3.5" /></button>
+                        <button type="button" onClick={()=>window.confirm("¿Eliminar categoría?")&&deleteCategory(cat.id)} title="Eliminar"><Trash2 className="w-3.5 h-3.5" /></button>
                       </div>
                     </div>
                   ))}
@@ -1615,6 +1554,7 @@ export default function Inventory() {
             </div>
           </div>
         </div>
+      )}
       )}
     </div>
   );
