@@ -479,3 +479,49 @@
     padding:0 6px;
   }
 }
+
+
+/* Inventory add-product: shared compact language for variants and pricing */
+.inventory-product-step{width:100%;min-width:0}
+.inventory-step-heading{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:9px;min-width:0}
+.inventory-step-heading h3{margin:0;font-size:10px;line-height:1.15;font-weight:950;letter-spacing:.08em;text-transform:uppercase;color:var(--text-primary)}
+.inventory-step-heading p{margin:2px 0 0;font-size:8px;line-height:1.25;font-weight:650;color:var(--text-muted);max-width:560px}
+.inventory-variants-grid,.inventory-price-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;min-width:0}
+.inventory-variant-group,.inventory-price-group{min-width:0;padding:9px;border:1px solid var(--border-base);border-radius:10px;background:var(--bg-subtle)}
+.inventory-variant-head{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px}
+.inventory-variant-head>span{font-size:7px;font-weight:900;color:var(--text-muted);min-width:16px;text-align:center}
+.inventory-product-small-button{height:31px;min-width:54px;flex:0 0 auto;padding:0 8px;border:1px solid rgba(109,59,210,.18);border-radius:8px;background:#6d3bd2;color:white;font-size:7px;font-weight:950;letter-spacing:.05em;text-transform:uppercase;white-space:nowrap}
+.inventory-variant-tags{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;min-height:0}
+.inventory-variant-tag{display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:4px 6px;border-radius:7px;font-size:7px;font-weight:900;line-height:1;overflow-wrap:anywhere}
+.inventory-variant-tag span{font-size:10px;line-height:1}
+.inventory-variant-tag-indigo{color:#5b35b6;background:rgba(109,59,210,.07);border:1px solid rgba(109,59,210,.14)}
+.inventory-variant-tag-violet{color:#7b3fc6;background:rgba(124,58,237,.07);border:1px solid rgba(124,58,237,.14)}
+.inventory-step-note{margin-top:7px;padding:7px 9px;border:1px solid rgba(109,59,210,.12);border-radius:8px;background:rgba(109,59,210,.035);font-size:8px;line-height:1.35;font-weight:650;color:var(--text-muted);overflow-wrap:anywhere}
+.inventory-price-heading{display:flex;align-items:center;gap:5px;margin-bottom:8px;font-size:8px;font-weight:950;letter-spacing:.07em;text-transform:uppercase;color:var(--text-primary)}
+.inventory-price-heading svg{color:#6d3bd2}
+.inventory-margin-row{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:7px;padding:7px 9px;border:1px solid rgba(16,185,129,.12);border-radius:8px;background:rgba(16,185,129,.055);color:#16805e}
+.inventory-margin-row div{display:flex;align-items:baseline;gap:7px;min-width:0}
+.inventory-margin-row span{font-size:7px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}
+.inventory-margin-row strong{font-size:11px;font-weight:950;white-space:nowrap}
+.inventory-label-with-info{display:flex;align-items:center;justify-content:space-between;gap:5px}
+.inventory-label-with-info .inventory-product-label{min-width:0}
+.inventory-price-group .inventory-product-field{margin-top:7px}
+.inventory-product-price-input{background:rgba(109,59,210,.055);border-color:rgba(109,59,210,.2);color:#5b35b6}
+.inventory-add-category-button{height:31px;width:auto;min-width:150px;display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:0 11px;border:1px solid var(--border-base);border-radius:9px;background:var(--bg-subtle);color:var(--text-muted);font-size:7px;font-weight:950;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;transition:.15s ease;cursor:pointer;flex:0 0 auto}
+.inventory-add-category-button:before{content:'+';font-size:12px;line-height:1;font-weight:500}
+.inventory-add-category-button:hover{color:#6d3bd2;border-color:rgba(109,59,210,.25);background:rgba(109,59,210,.055)}
+@media(max-width:560px){
+  .inventory-variants-grid,.inventory-price-grid{grid-template-columns:minmax(0,1fr);gap:6px}
+  .inventory-variant-group,.inventory-price-group{padding:8px}
+  .inventory-step-heading{margin-bottom:7px}
+  .inventory-step-heading h3{font-size:9px}
+  .inventory-step-heading p{font-size:7px}
+  .inventory-add-category-button{width:100%;min-width:0;height:30px}
+}
+@media(max-width:390px){
+  .inventory-product-small-button{min-width:49px;padding:0 6px;font-size:6.5px}
+  .inventory-step-note{font-size:7.5px}
+  .inventory-margin-row div{gap:4px}
+  .inventory-margin-row span{font-size:6.5px}
+  .inventory-margin-row strong{font-size:10px}
+}
