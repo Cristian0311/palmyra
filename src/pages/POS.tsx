@@ -2567,7 +2567,7 @@ export default function POS() {
                               </div>
                             )}
                           </div>
-                        )                        ) : salesSubTab === 'tickets' ? (
+                        ) : salesSubTab === 'tickets' ? (
                           <div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar pr-1">
                             {filteredTx.length > 0 ? (
                               filteredTx.map((tx) => {
