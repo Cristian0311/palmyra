@@ -69,7 +69,11 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
         return {
           branches: replaceRemoteRecords(d.branches || [], state.branches || [], pendingBranchIds).filter(x => !pendingBranchDeleteIds.has(x.id)),
           categories: replaceRemoteRecords(d.categories || [], state.categories || [], pendingCategoryIds).filter(x => !pendingCategoryDeleteIds.has(x.id)),
-          products: replaceRemoteRecords(d.products || [], state.products || [], pendingProductIds).filter(x => !pendingProductDeleteIds.has(x.id)),
+          products: replaceRemoteRecords(d.products || [], state.products || [], pendingProductIds)
+            .filter(x => !pendingProductDeleteIds.has(x.id) && (
+              (Array.isArray(d.products) && d.products.some((p: any) => p.id === x.id)) ||
+              pendingProductIds.has(x.id)
+            )),
           users: replaceRemoteRecords(d.users || [], state.users || [], pendingUserIds).filter((u: any) => !pendingUserDeleteIds.has(u.id)),
           currencies: Array.isArray(d.currencies) && d.currencies.length
             ? (() => {
@@ -198,7 +202,11 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
       return {
         branches: replaceRemoteRecords(d.branches || [], state.branches || [], pendingBranchIds).filter((b: any) => !pendingBranchDeleteIds.has(b.id)),
         categories: replaceRemoteRecords(d.categories || [], state.categories || [], pendingCategoryIds).filter((c: any) => !pendingCategoryDeleteIds.has(c.id)),
-        products: replaceRemoteRecords(d.products || [], state.products || [], pendingProductIds).filter((p: any) => !pendingProductDeleteIds.has(p.id)),
+        products: replaceRemoteRecords(d.products || [], state.products || [], pendingProductIds)
+          .filter((p: any) => !pendingProductDeleteIds.has(p.id) && (
+            (Array.isArray(d.products) && d.products.some((sp: any) => sp.id === p.id)) ||
+            pendingProductIds.has(p.id)
+          )),
         inventory: Array.from(invMap.values()),
         users: replaceRemoteRecords(d.users || [], state.users || [], pendingUserIds),
         customers: replaceRemoteRecords(d.customers || [], state.customers || [], pendingCustomerIds),
