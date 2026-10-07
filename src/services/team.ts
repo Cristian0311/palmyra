@@ -401,6 +401,16 @@ export async function revokeEmployeeInvitation(invitationId: string) {
   if (error) throwRpcError(error);
 }
 
+export async function deleteCompanyEmployee(employeeId: string) {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error("Supabase no está configurado.");
+  const { data, error } = await supabase.rpc("delete_company_employee", {
+    p_employee_id: employeeId
+  });
+  if (error) throwRpcError(error);
+  return data as { employee_id: string; company_id: string; access_removed: boolean };
+}
+
 export async function setEmployeeStatus(employeeId: string, active: boolean) {
   const supabase = getSupabase();
   if (!supabase) throw new Error("Supabase no está configurado.");
