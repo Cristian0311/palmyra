@@ -108,7 +108,7 @@ async function startServer() {
         supabase.configured = true;
         const dbResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/platform_database_size_bytes`, {
           method: 'POST',
-          headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey`, 'Content-Type': 'application/json' },
+          headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, 'Content-Type': 'application/json' },
           body: '{}'
         });
         if (dbResponse.ok) {
