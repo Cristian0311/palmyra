@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { HelpCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -15,27 +15,43 @@ export function InfoTooltip({
   position = 'top' 
 }: InfoTooltipProps) {
   const [isVisible, setIsVisible] = useState(false);
+  const triggerRef = useRef<HTMLDivElement | null>(null);
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
 
-  const positions = {
-    top: '-top-2 left-1/2 -translate-x-1/2 -translate-y-full mb-2',
-    bottom: '-bottom-2 left-1/2 -translate-x-1/2 translate-y-full mt-2',
-    left: 'top-1/2 -left-2 -translate-x-full -translate-y-1/2 mr-2',
-    right: 'top-1/2 -right-2 translate-x-full -translate-y-1/2 ml-2',
-  };
-
-  const arrows = {
-    top: 'bottom-[-4px] left-1/2 -translate-x-1/2 border-t-slate-800 border-l-transparent border-r-transparent border-b-transparent',
-    bottom: 'top-[-4px] left-1/2 -translate-x-1/2 border-b-slate-800 border-l-transparent border-r-transparent border-t-transparent',
-    left: 'right-[-4px] top-1/2 -translate-y-1/2 border-l-slate-800 border-t-transparent border-b-transparent border-r-transparent',
-    right: 'left-[-4px] top-1/2 -translate-y-1/2 border-r-slate-800 border-t-transparent border-b-transparent border-l-transparent',
-  };
+  useEffect(() => {
+    if (!isVisible || !triggerRef.current) return;
+    const updatePosition = () => {
+      const rect = triggerRef.current!.getBoundingClientRect();
+      const width = Math.min(320, Math.max(192, window.innerWidth - 24));
+      const gap = 8;
+      let left = rect.left + rect.width / 2 - width / 2;
+      left = Math.max(12, Math.min(left, window.innerWidth - width - 12));
+      let top = rect.top - gap;
+      if (top < 12) top = rect.bottom + gap;
+      setCoords({ top, left });
+    };
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [isVisible]);
 
   return (
     <div className={cn("relative inline-flex items-center", className)}>
-      <div 
+      <div
+        ref={triggerRef}
         onMouseEnter={() => setIsVisible(true)}
         onMouseLeave={() => setIsVisible(false)}
+        onClick={() => setIsVisible(prev => !prev)}
+        onFocus={() => setIsVisible(true)}
+        onBlur={() => setIsVisible(false)}
         className="cursor-help text-slate-400 hover:text-indigo-500 transition-colors p-0.5"
+        aria-label="Ver información"
+        role="button"
+        tabIndex={0}
       >
         <HelpCircle className="w-4 h-4" />
       </div>
@@ -47,13 +63,17 @@ export function InfoTooltip({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.1 }}
-            className={cn(
-              "absolute z-[9999] w-48 p-2 bg-slate-800 text-white text-[10px] leading-tight rounded-lg shadow-xl pointer-events-none text-center",
-              positions[position]
-            )}
+            className="fixed z-[100000] p-2.5 bg-slate-800 text-white text-[10px] leading-4 rounded-xl shadow-2xl pointer-events-none text-center whitespace-normal break-words"
+            style={{
+              top: coords?.top ?? -9999,
+              left: coords?.left ?? -9999,
+              width: 'min(20rem, calc(100vw - 24px))',
+              maxHeight: 'min(50vh, 14rem)',
+              overflowY: 'auto',
+            }}
           >
             {text}
-            <div className={cn("absolute border-4", arrows[position])} />
+            <div className="hidden" />
           </motion.div>
         )}
       </AnimatePresence>
