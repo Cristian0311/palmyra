@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import {
   ArrowRight, CheckCircle2, ChevronRight, FileText, Headphones,
   LockKeyhole, MessageCircle, Send, ShieldCheck, Smartphone, Sparkles,
-  TicketCheck, TriangleAlert, X
+  TicketCheck, TriangleAlert, X, BookOpen
 } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { useStore } from "../store/useStore";
@@ -11,10 +11,11 @@ import { buildWhatsAppUrl, createSupportRequest, loadPlatformSupportSettings, ty
 import Security from "./Security";
 import "./helpCenter.css";
 
-type CenterSection = "overview" | "support" | "security" | "privacy";
+type CenterSection = "overview" | "tutorial" | "support" | "security" | "privacy";
 
 const sections: Array<{id: CenterSection; label: string; icon: typeof Headphones; hint: string}> = [
   { id:"overview", label:"Inicio", icon:Headphones, hint:"Ayuda y recursos para trabajar con PALMYRA" },
+  { id:"tutorial", label:"Tutorial", icon:BookOpen, hint:"Guías simples para las funciones nuevas" },
   { id:"support", label:"Atención al cliente", icon:MessageCircle, hint:"Envía una solicitud al equipo PALMYRA" },
   { id:"security", label:"Seguridad", icon:ShieldCheck, hint:"Dispositivos y sesiones de tu cuenta" },
   { id:"privacy", label:"Política y privacidad", icon:LockKeyhole, hint:"Cómo protegemos y usamos la información" }
@@ -154,6 +155,9 @@ export default function HelpCenter(){
           <button type="button" className="help-feature-card help-feature-card--primary" onClick={()=>changeSection("support")}>
             <span className="help-feature-icon"><TicketCheck/></span><span className="help-feature-kicker">ATENCIÓN</span><strong>Habla con atención al cliente</strong><p>Describe el problema o la solicitud y PALMYRA la registra antes de abrir el canal oficial.</p><span className="help-feature-cta">Crear solicitud <ArrowRight/></span>
           </button>
+          <button type="button" className="help-feature-card" onClick={()=>changeSection("tutorial")}>
+            <span className="help-feature-icon"><BookOpen/></span><span className="help-feature-kicker">TUTORIAL</span><strong>Aprende PALMYRA paso a paso</strong><p>POS, inventario, equipo, trabajo offline, caja, reportes e impresoras explicados sin lenguaje técnico.</p><span className="help-feature-cta">Abrir tutorial <ArrowRight/></span>
+          </button>
           <button type="button" className="help-feature-card" onClick={()=>changeSection("security")}>
             <span className="help-feature-icon"><ShieldCheck/></span><span className="help-feature-kicker">PROTECCIÓN</span><strong>Controla tus dispositivos</strong><p>Revisa las sesiones de tu cuenta y revoca dispositivos que ya no deban tener acceso.</p><span className="help-feature-cta">Ver seguridad <ArrowRight/></span>
           </button>
@@ -176,6 +180,28 @@ export default function HelpCenter(){
               </div>
             </section>
           )}
+        </section>
+      )}
+
+      {!loading && section==="tutorial" && (
+        <section className="help-center-grid">
+          {[
+            ["POS y caja","Abre el turno, selecciona vendedor, cobra en efectivo o transferencia y utiliza Venta de turno para revisar Tickets, Productos y Egreso y gasto."],
+            ["Egresos, gastos e ingresos","Registra cada movimiento desde Cerrar caja. Cada movimiento conserva su comprobante independiente y no se mezcla con los productos vendidos."],
+            ["Inventario y variantes","Crea productos, define tallas/colores y consulta el stock. PALMYRA identifica los productos que tienen variantes."],
+            ["Equipo e invitaciones","Crea empleados, asigna permisos e invita por correo. El enlace de Gmail lleva al usuario a la empresa invitada, no a una empresa nueva."],
+            ["Trabajo sin conexión","PALMYRA conserva el contexto de empresa, operaciones y cola local para continuar trabajando sin Internet y sincronizar cuando vuelva la conexión."],
+            ["Impresora térmica","Vincula Bluetooth o cable USB/Serie y activa Siempre conectar. PALMYRA intentará reconectar una impresora autorizada cuando el navegador lo permita."],
+            ["Reportes","Consulta ventas por turno, productos, movimientos de caja, descuadres y comprobantes desde las secciones correspondientes."],
+            ["Planes","Las funciones premium muestran el plan necesario. Al vencer un período existe un período de gracia de 2 días; después PALMYRA pasa a modo lectura."]
+          ].map(([title,description])=>(
+            <article key={title} className="help-feature-card">
+              <span className="help-feature-icon"><BookOpen/></span>
+              <span className="help-feature-kicker">GUÍA PALMYRA</span>
+              <strong>{title}</strong>
+              <p>{description}</p>
+            </article>
+          ))}
         </section>
       )}
 
