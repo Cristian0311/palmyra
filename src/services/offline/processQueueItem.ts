@@ -436,6 +436,11 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         throw error;
       }
     }
+    case 'user_delete': {
+      const ok = await deleteUserFromSupabase(String(data?.id || ''));
+      if (!ok) throw new Error('No se pudo sincronizar el retiro del empleado pendiente.');
+      return true;
+    }
     case 'user': {
       const ok = await pushUserToSupabase(data as any);
       if (!ok) throw new Error('No se pudo sincronizar el empleado pendiente.');
