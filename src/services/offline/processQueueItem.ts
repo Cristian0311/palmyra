@@ -397,9 +397,17 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       return true;
     }
     case 'product': {
-      const ok = await pushProductToSupabase(data as any);
-      if (!ok) throw new Error('No se pudo sincronizar el producto pendiente.');
-      return true;
+      try {
+        const ok = await pushProductToSupabase(data as any);
+        if (!ok) throw new Error('No se pudo sincronizar el producto pendiente: la conexión todavía no está disponible.');
+        return true;
+      } catch (error: any) {
+        const detail = String(error?.message || 'No se pudo sincronizar el producto pendiente.');
+        if (error?.permanent) {
+          throw new PermanentSyncError(detail);
+        }
+        throw error;
+      }
     }
     case 'user': {
       const ok = await pushUserToSupabase(data as any);
