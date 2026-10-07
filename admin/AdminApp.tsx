@@ -47,6 +47,8 @@ import {
   saveSupportSettings,
   type PlatformSupportRequest,
   type PlatformSupportSettings,
+  type PlatformPlan,
+  loadPlatformPlans,
 } from "./platformAdminApi";
 import { adminSignIn, adminSignOut, adminUser, getAdminSupabase } from "./supabase";
 import "./admin.css";
@@ -418,58 +420,34 @@ function CompaniesView({
 }
 
 function BillingView({
-  requests,
-  busy,
-  onApprove,
-  onReject,
-}: {
-  requests: PlanRequest[];
-  busy: boolean;
-  onApprove: (request: PlanRequest) => void;
-  onReject: (request: PlanRequest) => void;
-}) {
+  requests, busy, onApprove, onReject,
+}: { requests: PlanRequest[]; busy: boolean; onApprove: (request: PlanRequest) => void; onReject: (request: PlanRequest) => void; }) {
+  const [plans, setPlans] = useState<PlatformPlan[]>([]);
+  const [loadingPlans, setLoadingPlans] = useState(true);
+  const [planError, setPlanError] = useState("");
+  const refreshPlans = async () => { setLoadingPlans(true); setPlanError(""); try { setPlans(await loadPlatformPlans()); } catch (err) { setPlanError(err instanceof Error ? err.message : "No se pudieron cargar los planes."); } finally { setLoadingPlans(false); } };
+  useEffect(() => { void refreshPlans(); }, []);
   return (
     <div className="admin-content-stack">
-      <section className="admin-page-head">
-        <div><p className="admin-eyebrow">PLANES Y PAGOS</p><h1>Monetización con revisión humana.</h1><p>Esta primera consola reutiliza las solicitudes de plan ya protegidas. Las tablas de facturación ampliadas se añadirán sobre este núcleo, no duplicando datos.</p></div>
-        <div className="admin-page-count"><strong>{requests.length}</strong><span>pendientes</span></div>
-      </section>
-
-      <section className="admin-panel">
-        <div className="admin-panel__head"><div><p className="admin-kicker">SOLICITUDES</p><h2>Activaciones pendientes</h2></div><Clock3 size={17} /></div>
-        {requests.length ? (
-          <div className="admin-request-list">
-            {requests.map((request) => (
-              <article key={request.id} className="admin-request-row">
-                <div className="admin-request-main">
-                  <div className="admin-company-avatar admin-company-avatar--small">{String(request.company_name || "?").slice(0, 1).toUpperCase()}</div>
-                  <div><strong>{request.company_name || "Empresa sin nombre"}</strong><span>{request.plan_name || "Plan"} · {formatDate(request.requested_at)}</span></div>
-                </div>
-                <div className="admin-request-price">
-                  <strong>{request.monthly_price != null ? `$ ${Number(request.monthly_price).toFixed(2)}` : "—"}</strong>
-                  <span>{request.payment_method || "Pago manual"}</span>
-                </div>
-                <div className="admin-request-actions">
-                  <Button disabled={busy} variant="primary" onClick={() => onApprove(request)}><Check size={14} />Aprobar</Button>
-                  <Button disabled={busy} variant="secondary" onClick={() => onReject(request)}><X size={14} />Rechazar</Button>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <EmptyPanel title="No hay solicitudes pendientes" description="Cuando llegue una nueva solicitud aparecerá aquí con su empresa, plan y método de pago." />
-        )}
-      </section>
-
-      <section className="admin-grid-3">
-        {[
-          [CircleDollarSign, "Pagos manuales", "Listo para efectivo y transferencia. El registro definitivo seguirá viviendo en Supabase.", "En núcleo"],
-          [CreditCard, "Planes", "Los planes se mantienen centralizados para que CRM y Admin no terminen con precios distintos.", "Preparado"],
-          [Activity, "Historial", "Las aprobaciones y rechazos deben auditarse para conservar trazabilidad.", "Preparado"],
-        ].map(([Icon, title, text, badge]) => {
-          const I = Icon as typeof CircleDollarSign;
-          return <div className="admin-mini-panel" key={String(title)}><span className="admin-icon-box"><I size={15} /></span><h3>{title as string}</h3><p>{text as string}</p><span className="admin-mini-badge">{badge as string}</span></div>;
+      <section className="admin-page-head"><div><p className="admin-eyebrow">PLANES Y PAGOS</p><h1>Planes claros, compactos y administrables.</h1><p>Catálogo real leído desde Supabase: precio, límites, funciones, periodo de prueba y empresas actualmente asociadas.</p></div><div className="admin-page-count"><strong>{plans.length}</strong><span>planes</span></div></section>
+      {planError ? <div className="admin-alert admin-alert--error"><AlertCircle size={16}/>{planError}</div> : null}
+      <section className="admin-plan-grid">
+        {plans.map(plan => {
+          const featureData = Array.isArray(plan.features) ? plan.features : (plan.features?.features || []);
+          const description = Array.isArray(plan.features) ? "" : String(plan.features?.description || "");
+          return <article key={plan.id} className={`admin-plan-card ${plan.active ? "" : "is-inactive"}`}>
+            <div className="admin-plan-card__head"><div><span className="admin-plan-code">{plan.code}</span><h2>{plan.name}</h2></div><span className={`admin-plan-status ${plan.active ? "is-active" : "is-inactive"}`}>{plan.active ? "Activo" : "Inactivo"}</span></div>
+            <div className="admin-plan-price"><strong>${Number(plan.monthly_price || 0).toFixed(2)}</strong><span>/ mes · {plan.billing_currency_code || "USD"}</span></div>
+            <div className="admin-plan-facts"><div><strong>{plan.limits?.products ?? "—"}</strong><span>Productos</span></div><div><strong>{plan.limits?.employees ?? "—"}</strong><span>Empleados</span></div><div><strong>{plan.limits?.warehouses ?? "—"}</strong><span>Almacenes</span></div><div><strong>{plan.companies ?? 0}</strong><span>Empresas</span></div></div>
+            {plan.trial_days > 0 ? <div className="admin-plan-trial"><Clock3 size={12}/> {plan.trial_days} días de prueba</div> : null}
+            {description ? <p className="admin-plan-description">{description}</p> : null}
+            <div className="admin-plan-features">{featureData.map((feature:string) => <span key={feature}><Check size={10}/>{feature}</span>)}</div>
+          </article>;
         })}
+        {!plans.length && !loadingPlans ? <EmptyPanel title="No hay planes disponibles" description="Supabase no devolvió planes para este administrador."/> : null}
+      </section>
+      <section className="admin-panel"><div className="admin-panel__head"><div><p className="admin-kicker">SOLICITUDES</p><h2>{requests.length} activaciones pendientes</h2><p className="admin-panel-subtitle">Cada solicitud se aprueba o rechaza sobre el registro real de Supabase.</p></div><Clock3 size={17}/></div>
+      {requests.length ? <div className="admin-request-list">{requests.map(request => <article key={request.id} className="admin-request-row"><div className="admin-request-main"><div className="admin-company-avatar admin-company-avatar--small">{String(request.company_name || "?").slice(0,1).toUpperCase()}</div><div><strong>{request.company_name || "Empresa sin nombre"}</strong><span>{request.plan_name || "Plan"} · {formatDate(request.requested_at)}</span></div></div><div className="admin-request-price"><strong>{request.monthly_price != null ? `$ ${Number(request.monthly_price).toFixed(2)}` : "—"}</strong><span>{request.payment_method || "Pago manual"}</span></div><div className="admin-request-actions"><Button disabled={busy} variant="primary" onClick={() => onApprove(request)}><Check size={14}/>Aprobar</Button><Button disabled={busy} variant="secondary" onClick={() => onReject(request)}><X size={14}/>Rechazar</Button></div></article>)}</div> : <EmptyPanel title="No hay solicitudes pendientes" description="Cuando llegue una nueva solicitud aparecerá aquí con su empresa, plan y método de pago."/>}
       </section>
     </div>
   );
