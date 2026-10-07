@@ -190,13 +190,12 @@ const sections: TutorialSection[] = [
 
 function Flow({ labels }: { labels: string[] }) {
   return (
-    <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+    <div className="tutorial-flow" aria-label="Flujo de trabajo">
       {labels.map((label, index) => (
-        <div key={label} className="flex shrink-0 items-center gap-1.5">
-          <div className="rounded-xl border border-violet-100 bg-white px-2.5 py-2 text-[8px] font-black uppercase tracking-wide text-violet-700 shadow-sm">
-            {label}
-          </div>
-          {index < labels.length - 1 ? <ArrowRight className="h-3.5 w-3.5 shrink-0 text-violet-300" /> : null}
+        <div key={label} className="tutorial-flow-node">
+          <div className="tutorial-flow-step">{String(index + 1).padStart(2, "0")}</div>
+          <span>{label}</span>
+          {index < labels.length - 1 ? <ArrowRight className="tutorial-flow-arrow" aria-hidden="true" /> : null}
         </div>
       ))}
     </div>
@@ -216,12 +215,12 @@ function TutorialCard({ section, open, onToggle }: { section: TutorialSection; o
         <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open ? (
-        <div className="border-t border-violet-50 bg-violet-50/20 p-4">
+        <div className="tutorial-card-body border-t border-violet-50 bg-violet-50/20 p-4">
           <div className="space-y-2.5">
             {section.flow ? <Flow labels={section.flow} /> : null}
             {section.outcome ? <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-emerald-100 bg-emerald-50 p-3"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /><div><p className="text-[8px] font-black uppercase tracking-wider text-emerald-800">Resultado esperado</p><p className="mt-0.5 text-[9px] leading-4 text-emerald-700">{section.outcome}</p></div></div> : null}
             <div className="mt-3 space-y-2.5">{section.steps.map((step,index) => (
-              <div key={step.title} className="flex gap-3 rounded-xl border border-violet-100 bg-white p-3 shadow-sm">
+              <div key={step.title} className="tutorial-step-card flex gap-3 rounded-xl border border-violet-100 bg-white p-3 shadow-sm">
                 <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-[8px] font-black text-violet-700">{String(index + 1).padStart(2, "0")}</span>
                 <div className="min-w-0"><div className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" /><p className="text-[9px] font-black text-slate-800">{step.title.replace(/^\d+\.\s*/, "")}</p></div><p className="mt-1 text-[9px] leading-4 text-slate-500">{step.detail}</p>{step.tip ? <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-[8px] font-bold leading-4 text-amber-800">Consejo: {step.tip}</p> : null}</div>
               </div>
@@ -243,8 +242,8 @@ export default function Tutorial() {
   }, [query]);
 
   return (
-    <div className="min-h-full w-full bg-primary p-3 sm:p-5">
-      <div className="mx-auto w-full max-w-6xl space-y-4">
+    <div className="tutorial-page min-h-full w-full bg-primary p-3 sm:p-5">
+      <div className="tutorial-shell mx-auto w-full max-w-7xl space-y-4">
         <header className="overflow-hidden rounded-3xl border border-violet-200 bg-gradient-to-br from-violet-700 via-indigo-600 to-violet-500 p-5 text-white shadow-xl sm:p-7">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
             <div className="max-w-3xl">
@@ -282,7 +281,7 @@ export default function Tutorial() {
           </div>
         </section>
 
-        <section className="grid gap-3 lg:grid-cols-2">
+        <section className="tutorial-section-grid grid gap-3 lg:grid-cols-2">
           {filtered.map((section) => (
             <TutorialCard key={section.id} section={section} open={openId === section.id} onToggle={() => setOpenId(openId === section.id ? "" : section.id)} />
           ))}
