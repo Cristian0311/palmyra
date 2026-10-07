@@ -6,8 +6,9 @@ import { cn, generateId } from "../lib/utils";
 import { useStore } from "../store/useStore";
 import { Product, Payment, Transaction, CashRegisterSession } from "../types";
 import { InfoTooltip } from "../components/InfoTooltip";
-import { waitForOfflineQueueReady } from "../services/offlineQueue";
+import { getOfflineQueue, waitForOfflineQueueReady } from "../services/offlineQueue";
 import { getActiveTenant } from "../services/tenant";
+import { flushLocalStateStorage } from "../services/localStateStorage";
 import { usePOSOfflineStatus } from "../modules/pos/hooks/usePOSOfflineStatus";
 import { POSCatalog } from "../components/POSCatalog";
 import { formatMoney } from "../modules/pos/utils/paymentMath";
@@ -184,20 +185,90 @@ export default function POS() {
   const fallbackSessionBranchId = currentBranchId || getWarehouseId(currentUser) || branches[0]?.id || '';
 
   const refreshOpenSessions = useCallback(async () => {
-    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return false;
     setIsRefreshingOpenSessions(true);
     try {
       await waitForOfflineQueueReady();
       const remoteCash = await pullOpenCashSessionsFromSupabase();
-      if (remoteCash.success) {
-        useStore.setState(state => {
-          const existing = new Map((state.cashSessions || []).map(session => [session.id, session]));
-          for (const session of remoteCash.cashSessions) existing.set(session.id, session);
-          return { cashSessions: Array.from(existing.values()) };
-        });
-      }
+      if (!remoteCash.success) return false;
+
+      // Una vez que el terminal recibe conexión, no descargamos únicamente el
+      // encabezado del turno: cacheamos también sus movimientos, ventas e
+      // inventario de la sucursal. Así, si la conexión vuelve a caer, el mismo
+      // turno puede reanudarse y continuar desde el último estado conocido.
+      const queue = getOfflineQueue();
+      const pendingSessionIds = new Set(
+        queue
+          .filter(item => item.type === 'cash_session')
+          .map(item => String(item.data?.id || item.actionId))
+      );
+      const pendingTransactionIds = new Set(
+        queue
+          .filter(item => item.type === 'transaction' || item.type === 'void_transaction')
+          .map(item => String(item.data?.id || item.actionId))
+      );
+
+      useStore.setState(state => {
+        const sessionMap = new Map<string, CashRegisterSession>(
+          (state.cashSessions || []).map(session => [String(session.id), session])
+        );
+        for (const session of remoteCash.cashSessions || []) {
+          const id = String(session.id);
+          // No pisar una mutación de caja que todavía está pendiente localmente.
+          if (pendingSessionIds.has(id)) continue;
+          sessionMap.set(id, session);
+        }
+
+        const transactionMap = new Map<string, Transaction>(
+          (state.transactions || []).map(transaction => [String(transaction.id), transaction])
+        );
+        for (const transaction of remoteCash.transactions || []) {
+          const id = String(transaction.id);
+          const local = transactionMap.get(id);
+          // Las ventas pendientes son la autoridad local hasta que el outbox
+          // confirme/reconcilie la operación. Evitamos que un pull intermedio
+          // la haga desaparecer o retroceda de estado.
+          if (pendingTransactionIds.has(id) || local?.offlinePending === true) continue;
+          transactionMap.set(id, transaction);
+        }
+
+        const inventoryMap = new Map<string, any>();
+        for (const item of state.inventory || []) {
+          inventoryMap.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
+        }
+
+        // Si existen ventas/cambios de caja pendientes para una sucursal, no
+        // pisamos su stock local con un snapshot remoto potencialmente anterior.
+        const pendingBranchIds = new Set<string>();
+        for (const item of queue) {
+          const data: any = item.data || {};
+          [data.branchId, data.warehouseId, data.fromBranchId, data.toBranchId]
+            .filter(Boolean)
+            .forEach((id: string) => pendingBranchIds.add(String(id)));
+        }
+        for (const item of remoteCash.inventory || []) {
+          const branchId = String(item.branchId || '');
+          if (!branchId || pendingBranchIds.has(branchId)) continue;
+          inventoryMap.set(
+            `${item.productId}:${item.branchId}:${item.variantLabel || ''}`,
+            item
+          );
+        }
+
+        return {
+          cashSessions: Array.from(sessionMap.values()),
+          transactions: Array.from(transactionMap.values()),
+          inventory: Array.from(inventoryMap.values())
+        };
+      });
+
+      // Persistencia explícita: el snapshot debe estar físicamente duradero
+      // antes de permitir que el operador vuelva a quedar sin red.
+      await flushLocalStateStorage();
+      return true;
     } catch (error) {
-      console.warn('[POS] No se pudieron recuperar los turnos abiertos:', error);
+      console.warn('[POS] No se pudo descargar el snapshot offline de los turnos abiertos:', error);
+      return false;
     } finally {
       setIsRefreshingOpenSessions(false);
     }
@@ -244,28 +315,36 @@ export default function POS() {
           currentSession?.id ? { sessionId: currentSession.id, transactionLimit: 250, transferLimit: 100 } : { transactionLimit: 250, transferLimit: 100 }
         );
 
-        // Recuperación específica de cajas: no depende del almacén seleccionado.
-        // Se ejecuta solo cuando este terminal todavía no conoce ninguna caja
-        // abierta, evitando una descarga pesada en cada entrada al POS.
-        const localHasOpenCash = useStore.getState().cashSessions.some(
-          s => s.status === 'open' && !s.deletedAt
-        );
-        if (!localHasOpenCash) {
-          const remoteCash = await pullOpenCashSessionsFromSupabase();
-          if (remoteCash.success && remoteCash.cashSessions.length) {
-            useStore.setState(state => {
-              const map = new Map((state.cashSessions || []).map(s => [s.id, s]));
-              for (const session of remoteCash.cashSessions) map.set(session.id, session);
-              return { cashSessions: Array.from(map.values()) };
-            });
-          }
-        }
+        // Recuperación específica de cajas: al recuperar conexión se
+        // descarga siempre el snapshot completo de todos los turnos abiertos que
+        // el servidor exponga a este terminal. Así quedan preparados para una
+        // nueva caída de red sin depender de que el turno sea el seleccionado.
+        await refreshOpenSessions();
       } catch (error) {
         console.warn('[POS] No se pudo refrescar el estado operativo al entrar:', error);
       }
     };
     void run();
-  }, [currentUser?.id, fallbackSessionBranchId]);
+  }, [currentUser?.id, fallbackSessionBranchId, refreshOpenSessions]);
+
+  // Cuando la red vuelve, descargar inmediatamente el snapshot de los turnos
+  // abiertos. También al volver al foco para cubrir móviles que recuperan red
+  // mientras la aplicación estaba en segundo plano.
+  useEffect(() => {
+    if (!currentUser) return;
+    const refresh = () => {
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        void refreshOpenSessions();
+      }
+    };
+    window.addEventListener('online', refresh);
+    window.addEventListener('focus', refresh);
+    return () => {
+      window.removeEventListener('online', refresh);
+      window.removeEventListener('focus', refresh);
+    };
+  }, [currentUser?.id, refreshOpenSessions]);
+
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [showSalarySummary, setShowSalarySummary] = useState(false);
   const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
@@ -435,14 +514,14 @@ export default function POS() {
           } catch {
             authorized = await verifyOfflinePosCredential(companyId, targetUser.id, cancelShiftPassword);
           }
-          if (authorized) await rememberOfflinePosCredential(companyId, targetUser.id, cancelShiftPassword);
+          if (authorized) await rememberOfflinePosCredential(companyId, targetUser.id, cancelShiftPassword).catch(() => {});
         } else {
           try {
             authorized = await verifyEmployeePosAccessPassword(companyId, targetUser.id, cancelShiftPassword);
           } catch {
             authorized = await verifyOfflinePosCredential(companyId, targetUser.id, cancelShiftPassword);
           }
-          if (authorized) await rememberOfflinePosCredential(companyId, targetUser.id, cancelShiftPassword);
+          if (authorized) await rememberOfflinePosCredential(companyId, targetUser.id, cancelShiftPassword).catch(() => {});
         }
       } catch {
         authorized = false;
@@ -1233,7 +1312,7 @@ export default function POS() {
             setPosError("Contraseña de la cuenta incorrecta. La contraseña del Administrador en POS es la misma que usas para entrar en PALMYRA.");
             return;
           }
-          await rememberOfflinePosCredential(companyId, workerToAssign.id, enteredPassword);
+          await rememberOfflinePosCredential(companyId, workerToAssign.id, enteredPassword).catch(() => {});
         } catch (error) {
           const validLocal = await verifyOfflinePosCredential(companyId, workerToAssign.id, enteredPassword);
           if (!validLocal) {
@@ -1249,7 +1328,7 @@ export default function POS() {
             setPosError(`Contraseña incorrecta para ${workerToAssign.name || 'empleado'}. Acceso denegado.`);
             return;
           }
-          await rememberOfflinePosCredential(companyId, workerToAssign.id, enteredPassword);
+          await rememberOfflinePosCredential(companyId, workerToAssign.id, enteredPassword).catch(() => {});
         } catch (error) {
           const validLocal = await verifyOfflinePosCredential(companyId, workerToAssign.id, enteredPassword);
           if (!validLocal) {
@@ -1482,34 +1561,99 @@ export default function POS() {
       return;
     }
 
-    // El Administrador entra al POS con la misma contraseña de su cuenta PALMYRA.
-    // Los empleados mantienen su contraseña operativa.
-    if (currentUser?.role === 'admin' && targetSession.userId === currentUser.id) {
+    const { companyId } = await getActiveTenant();
+
+    // La credencial que debe desbloquear el turno depende de quién está
+    // reanudando:
+    // - el administrador, si está retomando su propia caja, usa su contraseña PALMYRA;
+    // - un trabajador que forma parte del turno usa su propia contraseña;
+    // - el administrador que recupera una caja de un empleado sigue necesitando
+    //   la credencial del empleado propietario del turno para no cambiar la
+    //   atribución de las ventas.
+    const isAdminOwnSession =
+      currentUser?.role === 'admin' && targetSession.userId === currentUser.id;
+    const isWorkerSharingSession =
+      currentUser?.role !== 'admin' &&
+      currentUser?.id &&
+      targetSession.workingEmployeeIds?.includes(currentUser.id);
+    const credentialUserId = isWorkerSharingSession
+      ? currentUser!.id
+      : targetSession.userId;
+    const credentialUser = (users || []).find(u => u.id === credentialUserId) || targetUser;
+
+    let authorized = false;
+
+    if (!navigator.onLine) {
+      authorized = await verifyOfflinePosCredential(
+        companyId,
+        credentialUserId,
+        enteredPassword
+      );
+      if (!authorized) {
+        setPosError(
+          "No se pudo validar offline la contraseña de " +
+          (credentialUser?.name || targetSession.workerName || 'empleado') +
+          ". Conéctate una vez desde este dispositivo con esa credencial para habilitar el acceso offline."
+        );
+        return;
+      }
+    } else if (isAdminOwnSession) {
       try {
-        const { companyId } = await getActiveTenant();
-        const valid = await verifySaaSPosAccessPassword(companyId, currentUser.id, enteredPassword);
+        const valid = await verifySaaSPosAccessPassword(
+          companyId,
+          credentialUserId,
+          enteredPassword
+        );
         if (!valid) {
           setPosError("Contraseña de PALMYRA incorrecta. No se puede reanudar el turno.");
           return;
         }
+        await rememberOfflinePosCredential(companyId, credentialUserId, enteredPassword).catch(() => {});
       } catch (error) {
-        console.error("[POS] No se pudo validar la contraseña del administrador al reanudar:", error);
-        setPosError("No se pudo validar tu contraseña. Verifica la conexión y vuelve a intentarlo.");
-        return;
+        // navigator.onLine puede seguir en true durante una caída real de
+        // conectividad. El verificador local permite reanudar sin red.
+        console.warn("[POS] Validación remota del administrador no disponible al reanudar:", error);
+        const localValid = await verifyOfflinePosCredential(
+          companyId,
+          credentialUserId,
+          enteredPassword
+        );
+        if (!localValid) {
+          setPosError("No se pudo validar tu contraseña. Conecta este dispositivo una vez con la contraseña correcta para habilitar la reanudación offline.");
+          return;
+        }
       }
     } else {
       try {
-        const { companyId } = await getActiveTenant();
-        const matchingUser = (users || []).find(u => u.id === targetSession.userId);
-        const valid = await verifyEmployeePosAccessPassword(companyId, targetSession.userId, enteredPassword);
+        const valid = await verifyEmployeePosAccessPassword(
+          companyId,
+          credentialUserId,
+          enteredPassword
+        );
         if (!valid) {
-          setPosError(`Contraseña incorrecta para ${matchingUser?.name || targetUser.name || 'empleado'}. Acceso denegado.`);
+          setPosError(
+            "Contraseña incorrecta para " +
+            (credentialUser?.name || targetUser.name || 'empleado') +
+            ". Acceso denegado."
+          );
           return;
         }
+        await rememberOfflinePosCredential(companyId, credentialUserId, enteredPassword).catch(() => {});
       } catch (error) {
-        console.error("[POS] No se pudo validar la contraseña del empleado al reanudar:", error);
-        setPosError("No se pudo validar la contraseña del empleado. Verifica la conexión y vuelve a intentarlo.");
-        return;
+        console.warn("[POS] Validación remota del empleado no disponible al reanudar:", error);
+        const localValid = await verifyOfflinePosCredential(
+          companyId,
+          credentialUserId,
+          enteredPassword
+        );
+        if (!localValid) {
+          setPosError(
+            "No se pudo validar offline la contraseña de " +
+            (credentialUser?.name || targetSession.workerName || 'empleado') +
+            ". Conecta este dispositivo una vez para habilitar el acceso offline."
+          );
+          return;
+        }
       }
     }
 
