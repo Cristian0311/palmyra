@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import {
   ArrowLeftRight, ArrowRight, BarChart3, BookOpen, Boxes, Building2, CheckCircle2,
   ChevronDown, CircleDollarSign, ClipboardCheck, CreditCard, Database, FileBarChart2,
-  Headphones, HelpCircle, Home, Package, Printer, Receipt, RotateCcw, Search,
+  Headphones, HelpCircle, Home, Package, Printer, Receipt, RotateCcw,
   Settings, ShoppingCart, ShieldCheck, Smartphone, Store, Tags, Truck, Users, WifiOff
 } from "lucide-react";
 
@@ -233,13 +233,7 @@ function TutorialCard({ section, open, onToggle }: { section: TutorialSection; o
 }
 
 export default function Tutorial() {
-  const [query, setQuery] = useState("");
   const [openId, setOpenId] = useState("inicio");
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return sections;
-    return sections.filter((section) => [section.title, section.summary, ...section.steps.map((step) => step.title + " " + step.detail)].join(" ").toLowerCase().includes(q));
-  }, [query]);
 
   return (
     <div className="tutorial-page min-h-full w-full bg-primary p-3 sm:p-5">
@@ -263,13 +257,6 @@ export default function Tutorial() {
           </div>
         </header>
 
-        <section className="rounded-2xl border border-violet-100 bg-white p-3 shadow-sm sm:p-4">
-          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
-            <Search className="h-4 w-4 shrink-0 text-slate-400" />
-            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar cómo hacer algo en PALMYRA..." className="w-full bg-transparent text-[10px] font-bold text-slate-800 outline-none placeholder:text-slate-400" />
-          </div>
-        </section>
-
         <section className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
           <div className="flex items-start gap-3">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white text-emerald-600 shadow-sm"><Smartphone className="h-4 w-4" /></span>
@@ -282,18 +269,10 @@ export default function Tutorial() {
         </section>
 
         <section className="tutorial-section-grid grid gap-3 lg:grid-cols-2">
-          {filtered.map((section) => (
+          {sections.map((section) => (
             <TutorialCard key={section.id} section={section} open={openId === section.id} onToggle={() => setOpenId(openId === section.id ? "" : section.id)} />
           ))}
         </section>
-
-        {filtered.length === 0 ? (
-          <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
-            <HelpCircle className="mx-auto h-7 w-7 text-violet-500" />
-            <h3 className="mt-2 text-[11px] font-black text-slate-800">No encontramos esa guía</h3>
-            <p className="mt-1 text-[9px] text-slate-500">Prueba con POS, inventario, ventas, caja, productos, equipo o reportes.</p>
-          </div>
-        ) : null}
 
         <section className="grid gap-3 md:grid-cols-3">
           {[
