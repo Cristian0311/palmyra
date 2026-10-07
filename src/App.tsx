@@ -41,6 +41,7 @@ const Banks = lazy(() => import("./pages/Banks"));
 const PlatformAdmin = lazy(() => import("./pages/PlatformAdmin"));
 const HelpCenter = lazy(() => import("./pages/HelpCenter"));
 const Tutorial = lazy(() => import("./pages/Tutorial"));
+const ExchangeRate = lazy(() => import("./pages/ExchangeRate"));
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 
 function PageLoading() {
@@ -59,6 +60,7 @@ function PageLoading() {
     "/settings": "Cargando Configuración…",
     "/team": "Cargando equipo…",
     "/help": "Cargando Centro de atención…",
+    "/exchange-rate": "Cargando tasa de cambio…",
     "/help-center": "Cargando Centro de atención…",
     "/invite": "Cargando invitación…",
   };
@@ -436,6 +438,7 @@ export default function App() {
                     <Route path="/help" element={<Navigate to="/help-center" replace />} />
                     <Route path="/help-center" element={<HelpCenter />} />
                     <Route path="/tutorial" element={<Tutorial />} />
+                    <Route path="/exchange-rate" element={<ExchangeRate />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </Suspense>
