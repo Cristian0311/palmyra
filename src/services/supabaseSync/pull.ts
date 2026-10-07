@@ -16,7 +16,7 @@ async function loadCatalog() {
   const tenant = await getActiveTenant();
   const supabase = getSupabase()!;
 
-  const [warehousesRes, categoriesRes, productsRes, employeesRes, accessRes, companyRes, variantsRes, barcodeRes, kitRes, currenciesRes, pricesRes] = await Promise.all([
+  const [warehousesRes, categoriesRes, productsRes, employeesRes, accessRes, companyRes, variantsRes, barcodeRes, kitRes, currenciesRes, exchangeRatesRes, pricesRes] = await Promise.all([
     supabase.from('warehouses').select('*').eq('company_id', tenant.companyId).eq('active', true).order('created_at', { ascending: true }),
     supabase.from('categories').select('*').eq('company_id', tenant.companyId).eq('active', true).order('created_at', { ascending: true }),
     supabase.from('products').select('*').eq('company_id', tenant.companyId).neq('status', 'archived').order('created_at', { ascending: true }),
@@ -31,7 +31,7 @@ async function loadCatalog() {
     supabase.from('product_prices').select('product_id,currency_code,price,valid_from,valid_to').eq('company_id', tenant.companyId).is('valid_to', null).order('valid_from', { ascending: false }),
   ]);
 
-  const firstError = [warehousesRes,categoriesRes,productsRes,employeesRes,accessRes,companyRes,variantsRes,barcodeRes,kitRes,currenciesRes,pricesRes].find(r => r.error)?.error;
+  const firstError = [warehousesRes,categoriesRes,productsRes,employeesRes,accessRes,companyRes,variantsRes,barcodeRes,kitRes,currenciesRes,exchangeRatesRes,pricesRes].find(r => r.error)?.error;
   if (firstError) throw firstError;
 
   const variantsByProduct = new Map<string, any[]>();
