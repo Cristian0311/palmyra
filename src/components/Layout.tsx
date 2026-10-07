@@ -536,7 +536,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           // Desktop (lg+): relative in-flow column, NEVER covers or overlaps the right content
           "lg:relative lg:inset-auto lg:z-auto lg:translate-x-0",
-          sidebarCollapsed ? "lg:w-11" : "lg:w-[10.25rem]"
+          sidebarCollapsed ? "lg:w-11" : "lg:w-[11.5rem]"
         )}
       >
         {/* Header with Collapse toggle */}
@@ -581,7 +581,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         <nav className="flex-1 min-h-0 px-1.5 py-2 overflow-y-auto custom-scrollbar">
           {navSections.map((section, sectionIndex) => (
-            <div key={section.label || `section-${sectionIndex}`} className={cn(sectionIndex > 0 && !sidebarCollapsed ? "mt-2.5" : "")}>
+            <div key={section.label || `section-${sectionIndex}`} className={cn(sectionIndex > 0 && !sidebarCollapsed ? "mt-3" : "")}>
               {!sidebarCollapsed && section.label && (
                 <div className="px-2 pb-1 text-[7px] font-black uppercase tracking-[0.18em] text-muted/70">
                   {section.label}
@@ -610,7 +610,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                         <div
                           className={cn(
                             "flex items-center rounded-lg transition-colors duration-150 group min-w-0",
-                            sidebarCollapsed ? "justify-center p-2 my-0.5" : "gap-1.5 px-2 py-2",
+                            sidebarCollapsed ? "justify-center p-2 my-0.5" : "gap-2 px-2.5 py-2.5",
                             isActive && !(item as any).comingSoon
                               ? "bg-rose-600 text-white shadow-sm"
                               : "text-muted hover:bg-subtle hover:text-primary"
@@ -621,7 +621,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                             isActive && !(item as any).comingSoon ? "text-white" : "text-muted group-hover:text-rose-600"
                           )} />
                           {!sidebarCollapsed && (
-                            <span className="min-w-0 flex-1 font-black text-[9px] uppercase tracking-[-0.005em] leading-[1.15] whitespace-normal break-words">
+                            <span className="min-w-0 flex-1 font-black text-[10px] uppercase tracking-[-0.005em] leading-[1.2] whitespace-normal break-words">
                               {item.name}
                             </span>
                           )}
