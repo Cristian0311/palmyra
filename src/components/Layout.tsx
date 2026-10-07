@@ -61,12 +61,13 @@ const adminNavItems = [
   { name: "Catálogo Online", href: "#online-catalog", icon: Store, public: true, comingSoon: true },
 ];
 
-const APP_VERSION = "V 1.0.2";
+const APP_VERSION = "V 1.0.3";
 const APP_UPDATE_NOTES = [
-  "Se han incorporado mejoras y correcciones para hacer PALMYRA más estable, rápido y fácil de usar.",
-  "Esta versión forma parte de la fase beta de PALMYRA.",
-  "Durante esta etapa será normal recibir actualizaciones y, en ocasiones, tener que recargar la página para aplicar los cambios.",
-  "Estamos enviando mejoras de forma continua para perfeccionar el software y resolver errores antes de la versión definitiva."
+  "POS: egresos, gastos e ingresos ahora tienen una sección y comprobante independiente de los tickets y productos vendidos.",
+  "Reportes: el detalle del turno incorpora los movimientos de caja y los filtros fueron compactados para trabajar mejor en pantallas pequeñas.",
+  "Offline: se reforzó la recuperación del contexto de empresa y se evitó persistir contraseñas en el almacenamiento local.",
+  "Inventario y Centro de atención: mejoras de uso, tutorial actualizado y flujo de producto más compacto y responsive.",
+  "Infraestructura: se incorporó el panel administrativo de consumo de Render y Supabase para anticipar necesidades de escalado."
 ];
 
 const cashierNavItems = [
