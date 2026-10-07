@@ -427,3 +427,27 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .admin-plan-description{font-size:7px!important;line-height:1.4!important;margin:6px 0!important}
 .admin-plan-trial{font-size:7px!important;padding:5px 7px!important}
 @media(max-width:560px){.admin-plan-grid{grid-template-columns:1fr}.admin-plan-card{padding:10px!important}}
+
+/* Planes: lectura compacta y comparativa */
+.admin-plan-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(255px,1fr));gap:10px;align-items:stretch}
+.admin-plan-card{padding:13px 14px!important;border-radius:16px!important;min-width:0;display:flex;flex-direction:column;gap:8px}
+.admin-plan-card__head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.admin-plan-code{font-size:7px!important;letter-spacing:.1em;font-weight:950}
+.admin-plan-card h2{font-size:16px!important;margin:2px 0 0!important;line-height:1.05}
+.admin-plan-price{display:flex;align-items:baseline;gap:5px!important;margin:0!important}
+.admin-plan-price strong{font-size:20px!important}
+.admin-plan-price span{font-size:7px!important}
+.admin-plan-facts{display:grid!important;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px!important;margin:0!important}
+.admin-plan-facts>div{padding:6px!important;border-radius:9px!important}
+.admin-plan-facts strong{font-size:11px!important}.admin-plan-facts span{font-size:6px!important}
+.admin-plan-trial{padding:6px 8px!important;font-size:7px!important;margin:0!important}
+.admin-plan-description{font-size:7px!important;line-height:1.4!important;margin:0!important}
+.admin-plan-features{display:grid!important;grid-template-columns:1fr 1fr;gap:4px!important;margin-top:0!important}
+.admin-plan-features span{font-size:6.5px!important;padding:5px 6px!important;border-radius:7px!important;line-height:1.2}
+.admin-rate-grid{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(155px,1fr));gap:8px!important}
+.admin-rate-card{padding:12px!important;border-radius:13px!important}
+.admin-rate-card>span{font-size:8px!important;font-weight:950}.admin-rate-card strong{font-size:20px!important}.admin-rate-card small{font-size:7px!important}
+.admin-province-grid{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:6px!important}
+.admin-province-card{padding:9px 10px!important;border-radius:11px!important}
+.admin-province-card span{font-size:7px!important}.admin-province-card strong{font-size:8px!important}.admin-province-card small{font-size:6px!important}
+@media(max-width:600px){.admin-plan-grid{grid-template-columns:1fr}.admin-plan-features{grid-template-columns:1fr}.admin-plan-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
