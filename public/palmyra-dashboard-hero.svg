@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" role="img" aria-label="Asistente PALMYRA 3D saludando frente al Morro de La Habana">
+<defs>
+<linearGradient id="sky" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5ca8e8"/><stop offset=".58" stop-color="#a9d8f7"/><stop offset="1" stop-color="#f5c98d"/></linearGradient>
+<linearGradient id="sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2d86a9"/><stop offset="1" stop-color="#0f4d70"/></linearGradient>
+<linearGradient id="suit" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1d2948"/><stop offset=".5" stop-color="#0b1632"/><stop offset="1" stop-color="#344b78"/></linearGradient>
+<radialGradient id="skin" cx="35%" cy="25%"><stop offset="0" stop-color="#ffd9b3"/><stop offset=".7" stop-color="#efad7c"/><stop offset="1" stop-color="#c77955"/></radialGradient>
+<filter id="shadow" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="12" stdDeviation="12" flood-opacity=".25"/></filter>
+<filter id="soft"><feGaussianBlur stdDeviation="18"/></filter>
+</defs>
+<rect width="1200" height="420" fill="url(#sky)"/>
+<g opacity=".45" filter="url(#soft)" fill="#fff"><ellipse cx="190" cy="82" rx="120" ry="26"/><ellipse cx="470" cy="112" rx="150" ry="30"/><ellipse cx="1010" cy="92" rx="150" ry="28"/></g>
+<path d="M0 286 C130 263 225 282 350 270 C520 253 660 281 820 264 C970 249 1090 266 1200 252 L1200 420 L0 420Z" fill="url(#sea)"/>
+<g transform="translate(650 92)" filter="url(#shadow)">
+<path d="M0 205 L25 135 L65 108 L108 118 L146 93 L190 109 L242 85 L322 102 L365 144 L410 202 Z" fill="#a88963"/>
+<path d="M25 135 L68 108 L108 118 L146 93 L190 109 L242 85 L322 102 L365 144 L350 162 L42 158Z" fill="#d1b184"/>
+<path d="M135 100 L155 30 L178 12 L198 30 L205 103Z" fill="#c8b18c"/>
+<path d="M155 30 L178 12 L198 30 L191 40 L163 40Z" fill="#e6d5b3"/>
+<path d="M167 10 L178 0 L189 10Z" fill="#8b7353"/>
+<path d="M145 102 L202 102" stroke="#8b6e4e" stroke-width="5"/>
+<g fill="#82684d"><rect x="42" y="151" width="12" height="12"/><rect x="86" y="145" width="12" height="12"/><rect x="234" y="133" width="12" height="12"/><rect x="285" y="145" width="12" height="12"/><rect x="335" y="154" width="12" height="12"/></g>
+<path d="M178 0 L178 -28" stroke="#6b5037" stroke-width="3"/><path d="M178 -27 L178 -2 L207 -14Z" fill="#fff"/><path d="M178 -27 L178 -2 L207 -14Z" fill="#e53935" opacity=".9"/>
+</g>
+<path d="M0 350 C80 318 122 338 175 313 C225 289 250 323 312 305 C372 287 401 323 450 304 L450 420 L0 420Z" fill="#1c714c"/>
+<g transform="translate(105 250)" opacity=".95"><path d="M30 170 C20 108 31 48 65 0" stroke="#4d4a28" stroke-width="12" fill="none"/><path d="M66 15 C8 2 -5 25 65 34 C10 52 18 73 73 51 C52 88 71 92 88 54 C88 91 112 88 96 39 C133 55 141 35 96 18 C135 12 125 -7 82 4 C103 -28 77 -34 66 15Z" fill="#28734d"/></g>
+<g transform="translate(355 10)" filter="url(#shadow)">
+<ellipse cx="170" cy="394" rx="135" ry="18" fill="#09263d" opacity=".35"/>
+<path d="M72 394 C76 307 88 252 122 218 C151 190 197 190 228 219 C260 250 280 310 286 394Z" fill="url(#suit)"/>
+<path d="M135 219 L170 287 L205 219 L188 205 L170 224 L152 205Z" fill="#fff"/><path d="M152 218 L170 247 L188 218" fill="#f2f5fb"/>
+<path d="M157 270 L170 286 L183 270 L181 322 L170 335 L159 322Z" fill="#1a2440"/>
+<circle cx="170" cy="139" r="78" fill="url(#skin)"/>
+<path d="M96 145 C79 83 119 47 167 45 C222 43 258 79 244 146 C227 117 210 103 183 97 C153 90 125 105 96 145Z" fill="#4b2c25"/>
+<path d="M105 101 C126 54 198 40 235 77 C221 39 159 24 119 52 C95 69 87 91 105 101Z" fill="#38221f"/>
+<circle cx="143" cy="138" r="7" fill="#2c1e1b"/><circle cx="197" cy="138" r="7" fill="#2c1e1b"/><circle cx="141" cy="136" r="2.2" fill="#fff"/><circle cx="195" cy="136" r="2.2" fill="#fff"/>
+<path d="M153 169 Q170 182 187 169" fill="none" stroke="#a94f43" stroke-width="5" stroke-linecap="round"/>
+<path d="M133 116 Q144 107 156 113" fill="none" stroke="#4b2c25" stroke-width="7" stroke-linecap="round"/><path d="M184 113 Q197 106 208 115" fill="none" stroke="#4b2c25" stroke-width="7" stroke-linecap="round"/>
+<circle cx="100" cy="165" r="9" fill="#e6a67b"/><circle cx="240" cy="165" r="9" fill="#e6a67b"/>
+<path d="M88 260 C52 236 42 202 49 159 C54 128 63 104 72 91" fill="none" stroke="#efad7c" stroke-width="31" stroke-linecap="round"/>
+<path d="M73 96 C55 76 50 58 56 43 C61 31 72 34 74 48 L78 65 L82 33 C84 18 96 19 97 34 L94 67 L103 35 C107 22 118 27 116 41 L108 72 L122 49 C129 38 139 45 133 57 L113 91 C105 106 90 112 73 96Z" fill="url(#skin)"/>
+<path d="M81 94 C91 87 100 82 108 74" stroke="#d99068" stroke-width="3" opacity=".5"/>
+<path d="M250 270 C281 291 296 318 304 354" fill="none" stroke="#1b2848" stroke-width="28" stroke-linecap="round"/><path d="M304 350 C320 357 331 368 332 382" fill="none" stroke="#efad7c" stroke-width="23" stroke-linecap="round"/>
+<path d="M119 227 L154 277 L142 306 L105 250Z" fill="#334a76" opacity=".9"/><path d="M221 227 L187 277 L199 306 L237 250Z" fill="#334a76" opacity=".9"/>
+<g transform="translate(202 275) scale(.65)" fill="#fff"><path d="M0 35 C-4 14 -1 0 7 -13" stroke="#fff" stroke-width="5" fill="none"/><path d="M7 2 C-15 -1 -19 6 6 10 C-13 18 -8 24 9 14 C2 28 9 30 14 15 C14 29 22 28 17 9 C31 16 35 9 18 3 C31 1 28 -6 13 -2 C20 -15 10 -19 7 2Z"/></g>
+<text x="184" y="325" font-family="Arial,sans-serif" font-size="14" font-weight="700" fill="#fff">PALMYRA</text>
+</g>
+</svg>
