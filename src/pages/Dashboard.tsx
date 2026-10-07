@@ -280,40 +280,42 @@ export default function Dashboard() {
   return (
     <div className="space-y-2.5 text-[9px] animate-in fade-in slide-in-from-bottom-2 duration-500 pb-5">
 
-      <section className="relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100 dark:border-violet-900/40 bg-white dark:bg-slate-900 shadow-lg shadow-violet-100/50 dark:shadow-none min-h-[250px] sm:min-h-[275px] lg:min-h-[300px]">
+      <section className="relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100/80 dark:border-violet-900/40 bg-slate-900 shadow-lg shadow-violet-100/50 dark:shadow-none min-h-[280px] sm:min-h-[290px] lg:min-h-[310px]">
         <img
           src="https://d2ol7oe51mr4n9.cloudfront.net/user_3KG5QIrHdwLjDQrkaTsZRm5ddIT/c1f1a8ae-fb77-44d7-b826-2bff743932d1.png"
           alt=""
-          className="absolute inset-0 h-full w-full object-cover object-center"
+          className="absolute inset-0 h-full w-full object-cover object-[68%_center] sm:object-center"
           aria-hidden="true"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-slate-950/55 via-slate-950/18 to-transparent dark:from-slate-950/62 dark:via-slate-950/24 dark:to-transparent" aria-hidden="true" />
-        <div className="absolute inset-y-0 left-0 w-full sm:w-[58%] bg-gradient-to-r from-slate-950/38 via-slate-950/12 to-transparent dark:from-slate-950/42 dark:via-slate-950/16 dark:to-transparent" aria-hidden="true" />
+        <div
+          className="absolute inset-0 bg-gradient-to-r from-slate-950/72 via-slate-950/38 to-transparent sm:from-slate-950/58 sm:via-slate-950/18 sm:to-transparent"
+          aria-hidden="true"
+        />
 
-        <div className="relative z-10 flex min-h-[250px] sm:min-h-[275px] lg:min-h-[300px] items-center px-5 py-6 sm:px-8 lg:px-10">
-          <div className="max-w-[560px] rounded-2xl sm:rounded-[1.5rem] bg-white/20 dark:bg-slate-950/25 px-4 py-4 sm:px-5 sm:py-5 shadow-sm backdrop-blur-[1px] border border-white/25 dark:border-slate-700/30">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/35 bg-slate-950/28 px-3 py-1.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-white shadow-sm dark:border-violet-800/50 dark:bg-slate-900/40 dark:text-violet-100">
-              <Sparkles className="h-3.5 w-3.5" /> PALMYRA · Gestión empresarial
+        <div className="relative z-10 flex min-h-[280px] sm:min-h-[290px] lg:min-h-[310px] items-center px-5 py-7 sm:px-8 lg:px-10">
+          <div className="w-full max-w-[600px]">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/35 bg-slate-950/35 px-3 py-1.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-white shadow-sm backdrop-blur-[2px]">
+              <Sparkles className="h-3.5 w-3.5 text-violet-200" /> PALMYRA · Gestión empresarial
             </div>
 
-            <h1 className="mt-3 text-3xl sm:text-4xl lg:text-5xl font-black tracking-[-0.04em] leading-[.98] text-slate-950 dark:text-white">
+            <h1 className="mt-4 text-4xl sm:text-4xl lg:text-5xl font-black tracking-[-0.045em] leading-[.95] text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.45)]">
               Hola{dashboardUserName ? ", " + dashboardUserName.split(" ")[0] : ""} <span aria-hidden="true">👋</span>
             </h1>
 
-            <p className="mt-3 text-lg sm:text-xl lg:text-2xl font-black leading-tight text-slate-900 dark:text-white">
-              Bienvenido a <span className="text-violet-700 dark:text-violet-300">{businessName}</span>
+            <p className="mt-3 text-xl sm:text-xl lg:text-2xl font-black leading-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)]">
+              Bienvenido a <span className="text-violet-200">{businessName}</span>
             </p>
 
-            <p className="mt-3 max-w-[520px] text-[11px] sm:text-xs lg:text-sm font-medium leading-relaxed text-slate-600 dark:text-slate-300">
+            <p className="mt-3 max-w-[540px] text-[11px] sm:text-xs lg:text-sm font-semibold leading-relaxed text-white/90 drop-shadow-[0_1px_6px_rgba(0,0,0,0.5)]">
               Todo tu negocio en un solo lugar: ventas, inventario, clientes y actividad para tomar decisiones con claridad.
             </p>
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-slate-950/25 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-white shadow-sm dark:border-violet-800/50 dark:bg-slate-900/40 dark:text-violet-100">
-                <TrendingUp className="h-3.5 w-3.5 text-emerald-500" /> Datos en tiempo real
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/35 bg-slate-950/35 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-white shadow-sm backdrop-blur-[2px]">
+                <TrendingUp className="h-3.5 w-3.5 text-emerald-300" /> Datos en tiempo real
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-slate-950/25 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-white shadow-sm dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-100">
-                <MapPin className="h-3.5 w-3.5 text-violet-600" /> {selectedBranchFilter === "all" ? "Todas las sucursales" : (branchById.get(selectedBranchFilter)?.name || "Sucursal")}
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/35 bg-slate-950/35 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-white shadow-sm backdrop-blur-[2px]">
+                <MapPin className="h-3.5 w-3.5 text-violet-200" /> {selectedBranchFilter === "all" ? "Todas las sucursales" : (branchById.get(selectedBranchFilter)?.name || "Sucursal")}
               </span>
             </div>
           </div>
