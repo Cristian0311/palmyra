@@ -282,13 +282,13 @@ export default function Dashboard() {
 
       <section className="relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100/80 dark:border-violet-900/40 bg-slate-900 shadow-lg shadow-violet-100/50 dark:shadow-none min-h-[280px] sm:min-h-[290px] lg:min-h-[310px]">
         <img
-          src="/palmyra-dashboard-hero.svg"
+          src="/palmyra-dashboard-hero.webp"
           alt=""
-          className="absolute inset-0 h-full w-full object-cover object-[75%_center] scale-[1.08] origin-center sm:object-[78%_center] sm:scale-100 lg:object-center"
+          className="absolute inset-0 h-full w-full object-cover object-[72%_center] origin-center sm:object-[78%_center] lg:object-[72%_center]"
           aria-hidden="true"
         />
         <div
-          className="absolute inset-0 bg-gradient-to-r from-slate-950/68 via-slate-950/30 to-transparent sm:from-slate-950/56 sm:via-slate-950/14 sm:to-transparent"
+          className="absolute inset-0 bg-gradient-to-r from-slate-950/58 via-slate-950/24 to-transparent sm:from-slate-950/48 sm:via-slate-950/12 sm:to-transparent"
           aria-hidden="true"
         />
         <div
