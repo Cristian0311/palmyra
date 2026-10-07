@@ -145,43 +145,35 @@ export async function saveSupportSettings(settings: PlatformSupportSettings): Pr
 export type InfrastructureUsage = {
   capturedAt: string;
   monthStart: string;
+  providerSources: { render: string; supabase: string; supabaseManagement: string };
   render: {
     configured: boolean;
-    workspacePlan: string;
+    workspaceId: string;
     bandwidthGb: number | null;
     bandwidthLimitGb: number | null;
     bandwidthAvailableGb: number | null;
     bandwidthPercent: number | null;
     services: Array<{
-      id: string;
-      name: string;
-      type: string;
-      url: string;
-      configured: boolean;
-      bandwidthGb: number | null;
-      bandwidthLimitGb: number | null;
-      bandwidthAvailableGb: number | null;
-      bandwidthPercent: number | null;
-      cpuCurrent: number | null;
-      cpuLimit: number | null;
-      cpuPercent: number | null;
-      memoryCurrentMb: number | null;
-      memoryLimitMb: number | null;
-      memoryPercent: number | null;
-      error: string | null;
+      id:string; name:string; type:string; repo:string|null; branch:string|null; region:string|null;
+      plan:string|null; url:string|null; suspended:string|null; autoDeploy:string|null;
+      bandwidthGb:number|null; cpuCurrent:number|null; cpuLimit:number|null; cpuPercent:number|null;
+      memoryCurrentMb:number|null; memoryLimitMb:number|null; memoryPercent:number|null;
+      requestCount6h:number|null;
+      metricsAvailable:{bandwidth:boolean;cpu:boolean;memory:boolean;requests:boolean};
+      error:string|null;
     }>;
+    error:string|null;
   };
   supabase: {
-    configured: boolean;
-    plan: string;
-    databaseMb: number | null;
-    databaseLimitMb: number | null;
-    databaseAvailableMb: number | null;
-    databasePercent: number | null;
-    apiRequests: number | null;
-    apiRequestsLimit: number | null;
-    error: string | null;
+    configured:boolean; plan:string;
+    databaseMb:number|null; databaseLimitMb:number|null; databaseAvailableMb:number|null; databasePercent:number|null;
+    activeConnections:number; storageBytes:number; storageObjects:number;
+    tables:Array<{schema:string;table:string;bytes:number;rows:number}>;
+    syncQueue:{pending:number;failed:number;conflicts:number;applied_operations:number};
+    companyMetrics:Array<{id:string;name:string;products:number;sales:number;employees:number;warehouses:number;stock_movements:number;data_records:number}>;
+    apiRequests:number|null; apiRequestsLimit:number|null; apiRequestsSource:string; error:string|null;
   };
+  limits:{renderMonthlyBandwidthGb:number|null;supabaseFreeDatabaseMb:number};
 };
 
 export async function loadInfrastructureUsage(): Promise<InfrastructureUsage> {
