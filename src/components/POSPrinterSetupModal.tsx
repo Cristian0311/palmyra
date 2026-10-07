@@ -1,7 +1,7 @@
 import React from 'react';
 import { Bluetooth, Printer, Usb, X } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { printThermalReceipt, disconnectPrinter, disconnectBluetoothPrinter } from '../lib/escpos';
+import { printThermalReceipt, disconnectPrinter, disconnectBluetoothPrinter, isThermalPrinterAutoConnectEnabled, setThermalPrinterAutoConnect } from '../lib/escpos';
 
 interface POSPrinterSetupModalProps {
   connectedPrinterName: string | null;
@@ -28,6 +28,9 @@ export default function POSPrinterSetupModal({
   onError,
   printerWidth = '58mm'
 }: POSPrinterSetupModalProps) {
+  const [autoConnect, setAutoConnect] = React.useState(() => isThermalPrinterAutoConnectEnabled());
+
+
   return (
   <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
     <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 border border-slate-100">
@@ -81,6 +84,23 @@ export default function POSPrinterSetupModal({
         {printerStatusMsg && (
           <p className="text-[10px] font-bold text-indigo-600 text-center animate-pulse">{printerStatusMsg}</p>
         )}
+
+        <label className="flex items-start gap-3 rounded-2xl border border-indigo-100 bg-indigo-50/60 p-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={autoConnect}
+            onChange={e => {
+              const enabled = e.target.checked;
+              setAutoConnect(enabled);
+              setThermalPrinterAutoConnect(enabled);
+            }}
+            className="mt-0.5 h-4 w-4 accent-indigo-600"
+          />
+          <span className="min-w-0">
+            <span className="block text-[10px] font-black uppercase tracking-wider text-indigo-800">Siempre conectar</span>
+            <span className="block mt-0.5 text-[9px] font-semibold leading-4 text-indigo-700/80">Al abrir PALMYRA, intentará reconectar automáticamente esta impresora si Bluetooth o el puerto autorizado están disponibles.</span>
+          </span>
+        </label>
 
         {/* Connection Actions */}
         <div className="space-y-2">
