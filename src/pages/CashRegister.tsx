@@ -33,22 +33,41 @@ export default function CashRegister() {
     return configured;
   }, [currencies]);
 
-  // Historial visible: numeración consecutiva global entre todos los turnos no eliminados.
+  // El número de turno es histórico y nunca se renumera por eliminar turnos
+  // anteriores. Usamos primero el turnNumber persistido por Supabase; para
+  // sesiones antiguas sin número, usamos una numeración visual estable por fecha.
   const visibleCashSessions = useMemo(() => {
     const ordered = [...(cashSessions || [])]
       .filter(s => !s.deletedAt)
       .sort((a, b) => {
+        const turnA = Number(a.turnNumber);
+        const turnB = Number(b.turnNumber);
+        if (Number.isFinite(turnA) && Number.isFinite(turnB) && turnA !== turnB) return turnB - turnA;
+        if (Number.isFinite(turnA) !== Number.isFinite(turnB)) return Number.isFinite(turnA) ? -1 : 1;
         const timeA = new Date(a.openedAt || a.closedAt || '').getTime();
         const timeB = new Date(b.openedAt || b.closedAt || '').getTime();
         if (timeA !== timeB) return timeB - timeA;
         return String(b.id).localeCompare(String(a.id));
       });
-    const numberById = new Map<string, number>();
-    [...ordered].reverse().forEach((s, index) => numberById.set(s.id, index + 1));
+
+    const fallbackNumberById = new Map<string, number>();
+    let fallback = ordered.filter(s => !Number.isFinite(Number(s.turnNumber))).length;
+    [...ordered].reverse().forEach(s => {
+      if (!Number.isFinite(Number(s.turnNumber))) {
+        fallbackNumberById.set(s.id, fallback);
+        fallback -= 1;
+      }
+    });
+
     return ordered
       .filter(s => s.branchId === currentBranchId)
       .slice(0, 10)
-      .map(s => ({ session: s, displayTurnNumber: numberById.get(s.id) || 0 }));
+      .map(s => ({
+        session: s,
+        displayTurnNumber: Number.isFinite(Number(s.turnNumber))
+          ? Math.trunc(Number(s.turnNumber))
+          : (fallbackNumberById.get(s.id) || 0)
+      }));
   }, [cashSessions, currentBranchId]);
 
   const pendingSettlement = useMemo(() => 
