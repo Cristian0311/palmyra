@@ -8,6 +8,13 @@ export type PlatformCompany = {
   products?: number | null;
   employees?: number | null;
   warehouses?: number | null;
+  sales?: number | null;
+  stock_movements?: number | null;
+  cash_sessions?: number | null;
+  data_records?: number | null;
+  last_sale_at?: string | null;
+  plan_code?: string | null;
+  plan_name?: string | null;
   created_at?: string | null;
 };
 
