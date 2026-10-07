@@ -140,7 +140,39 @@ export async function pushProductToSupabase(product:Product){
       const {error:ke}=await supabase.from('product_kit_components').insert(rows);if(ke)throw ke;
     }
     return true;
-  }catch(e:any){await queue('product',product,product.id);console.warn('[PALMYRA] product sync failed',e);return false;}
+  }catch(e:any){
+    const code=String(e?.code||'').toUpperCase();
+    const message=String(e?.message||e||'Error desconocido al sincronizar producto');
+    const hint=String(e?.hint||'');
+    const transient =
+      !navigator.onLine ||
+      code === 'OFFLINE' ||
+      code.startsWith('08') ||
+      code.startsWith('53') ||
+      code === 'PGRST000' ||
+      code === 'PGRST001' ||
+      code === 'PGRST002' ||
+      code === 'PGRST003' ||
+      /failed to fetch|network|timeout|timed out|connection/i.test(message);
+    const diagnostic = new Error(
+      `No se pudo guardar el producto en Supabase.${code ? ` [${code}]` : ''} ${message}${hint ? ` · ${hint}` : ''}`
+    );
+    (diagnostic as any).code = code;
+    (diagnostic as any).hint = hint;
+    (diagnostic as any).permanent = !transient;
+
+    console.warn('[PALMYRA] product sync failed', { code, message, hint, productId: product.id, transient });
+
+    if (transient) {
+      await queue('product',product,product.id);
+      return false;
+    }
+
+    // Database/RLS/constraint errors are not transient. Do not put the same
+    // invalid operation back into IndexedDB forever; the queue processor will
+    // mark it as a conflict and surface the real database reason.
+    throw diagnostic;
+  }
 }
 
 async function resolveVariantId(supabase:any,companyId:string,productId:string,variantLabel?:string){
