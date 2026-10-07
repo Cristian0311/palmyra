@@ -33,6 +33,7 @@ const THERMAL_PRINTER_SERVICE_UUIDS = [
 ];
 
 const BLUETOOTH_PRINTER_STORAGE_KEY = 'omnisync-pos-thermal-printer';
+const AUTO_CONNECT_PRINTER_KEY = 'palmyra:auto-connect-thermal-printer';
 
 function normalizeText(text: string): string {
   return (text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -42,6 +43,17 @@ function enqueueThermalPrint<T>(job: () => Promise<T>): Promise<T> {
   const run = thermalPrintChain.then(job, job);
   thermalPrintChain = run.then(() => undefined, () => undefined);
   return run;
+}
+
+export function isThermalPrinterAutoConnectEnabled(): boolean {
+  try { return window.localStorage.getItem(AUTO_CONNECT_PRINTER_KEY) === '1'; } catch { return false; }
+}
+
+export function setThermalPrinterAutoConnect(enabled: boolean): void {
+  try {
+    if (enabled) window.localStorage.setItem(AUTO_CONNECT_PRINTER_KEY, '1');
+    else window.localStorage.removeItem(AUTO_CONNECT_PRINTER_KEY);
+  } catch {}
 }
 
 export function isInsideIframe(): boolean {
@@ -308,6 +320,15 @@ export async function getConnectedDeviceName(): Promise<string | null> {
   if (await checkBluetoothConnection()) {
     return cachedBluetoothDevice?.name || 'Impresora Bluetooth';
   }
+  if (await checkPrinterConnection()) return 'Impresora USB/Serie';
+  return null;
+}
+
+export async function autoConnectRememberedThermalPrinter(): Promise<string | null> {
+  if (!isThermalPrinterAutoConnectEnabled()) return null;
+  if (await checkBluetoothConnection()) return cachedBluetoothDevice?.name || 'Impresora Bluetooth';
+  const restored = await restoreRememberedBluetoothPrinter();
+  if (restored) return restored.name || 'Impresora Bluetooth';
   if (await checkPrinterConnection()) return 'Impresora USB/Serie';
   return null;
 }
