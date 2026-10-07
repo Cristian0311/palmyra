@@ -370,7 +370,13 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
     if (navigator.onLine) {
       try {
         const res = await callCancelSessionRPC(sessionId, userId, reason);
-        if (!res.success) throw new Error(res.error || 'No se pudo cancelar el turno');
+        if (!res.success) {
+          if (res.errorCode) {
+            get().addNotification(res.error || 'No se pudo cancelar el turno.', 'error');
+            return false;
+          }
+          throw new Error(res.error || 'No se pudo cancelar el turno');
+        }
 
         const sessionTxs = (get().transactions || []).filter(t => t.sessionId === sessionId && !t.deletedAt);
         sessionTxs.forEach(tx => set(current => buildLocalVoidTransactionPatch(current, tx)));
@@ -397,8 +403,23 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
         removeFromOfflineQueueByAction('cash_session', 'cash-cancel:' + sessionId);
         return true;
       } catch (err) {
-        console.warn('[cancelSession] Cancelación no confirmada; queda durable para reintento:', err);
-        return false;
+        console.warn('[cancelSession] La cancelación no pudo completarse en línea; se conserva localmente y queda durable:', err);
+        const sessionTxs = (get().transactions || []).filter(t => t.sessionId === sessionId && !t.deletedAt);
+        sessionTxs.forEach(tx => set(current => buildLocalVoidTransactionPatch(current, tx)));
+        set(current => ({
+          cashSessions: (current.cashSessions || []).map(s => s.id === sessionId ? {
+            ...s, status: 'cancelled', closedAt: cancelledAt, closingDate: cancelledAt, deleteReason: reason
+          } : s),
+          transactions: (current.transactions || []).map(t =>
+            t.sessionId === sessionId && !t.deletedAt
+              ? { ...t, deletedAt: cancelledAt, deletedBy: userId, deleteReason: reason, status: 'refunded' as const }
+              : t
+          ),
+          cart: []
+        }));
+        await flushLocalStateStorage();
+        get().addNotification('Turno cancelado localmente. La cancelación quedó pendiente de sincronización.', 'info');
+        return true;
       }
     }
 
