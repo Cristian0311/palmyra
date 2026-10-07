@@ -422,18 +422,34 @@ export default function POS() {
       (u.name && currentSession.workerName && u.name.toLowerCase() === currentSession.workerName.toLowerCase())
     );
 
-    const isAdminAuthorized =
-      currentUser?.role === 'admin' &&
-      !!currentUser.password &&
-      cancelShiftPassword === currentUser.password;
+    let authorized = false;
+    const targetUser = currentUser?.role === 'admin' ? currentUser : worker;
+    if (targetUser?.isActive !== false && targetUser?.id) {
+      try {
+        const { companyId } = await getActiveTenant();
+        if (!navigator.onLine) {
+          authorized = await verifyOfflinePosCredential(companyId, targetUser.id, cancelShiftPassword);
+        } else if (currentUser?.role === 'admin' && targetUser.id === currentUser.id) {
+          try {
+            authorized = await verifySaaSPosAccessPassword(companyId, targetUser.id, cancelShiftPassword);
+          } catch {
+            authorized = await verifyOfflinePosCredential(companyId, targetUser.id, cancelShiftPassword);
+          }
+          if (authorized) await rememberOfflinePosCredential(companyId, targetUser.id, cancelShiftPassword);
+        } else {
+          try {
+            authorized = await verifyEmployeePosAccessPassword(companyId, targetUser.id, cancelShiftPassword);
+          } catch {
+            authorized = await verifyOfflinePosCredential(companyId, targetUser.id, cancelShiftPassword);
+          }
+          if (authorized) await rememberOfflinePosCredential(companyId, targetUser.id, cancelShiftPassword);
+        }
+      } catch {
+        authorized = false;
+      }
+    }
 
-    const isWorkerAuthorized =
-      currentUser?.role !== 'admin' &&
-      !!worker?.password &&
-      cancelShiftPassword === worker.password &&
-      worker.isActive !== false;
-
-    if (!isAdminAuthorized && !isWorkerAuthorized) {
+    if (!authorized) {
       setPosError(
         currentUser?.role === 'admin'
           ? "Contraseña de administrador incorrecta."
