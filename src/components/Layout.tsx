@@ -625,8 +625,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                               {item.name}
                             </span>
                           )}
-                          {!sidebarCollapsed && isPlanLocked(item) && (() => {
-                            const requiredCode = getRequiredPlanCode(item.requiredFeature);
+                          {!sidebarCollapsed && isPlanLocked(item as { requiredFeature?: PlanFeature }) && (() => {
+                            const requiredCode = getRequiredPlanCode((item as { requiredFeature?: PlanFeature }).requiredFeature);
                             const visual = getPlanVisual(requiredCode);
                             return (
                               <span className={cn("shrink-0 rounded-full px-1 py-0.5 text-[5px] font-black uppercase tracking-tight border", visual.badge)}>
