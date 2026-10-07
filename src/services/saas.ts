@@ -281,7 +281,7 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
   const trialExpired = subscription?.status === 'trialing' && !!trialEndsAt && new Date(trialEndsAt).getTime() <= nowMs;
   const paidPeriodExpired = subscription?.status === 'active' && !!currentPeriodEnd && new Date(currentPeriodEnd).getTime() <= nowMs;
   const effectiveGraceEndsAt = graceEndsAt || ((trialExpired || paidPeriodExpired)
-    ? new Date((trialEndsAt || currentPeriodEnd || nowMs) + 2 * 24 * 60 * 60 * 1000).toISOString()
+    ? new Date(new Date(trialEndsAt || currentPeriodEnd || nowMs).getTime() + 2 * 24 * 60 * 60 * 1000).toISOString()
     : null);
   const graceExpired = subscription?.status === 'past_due' && !!effectiveGraceEndsAt && new Date(effectiveGraceEndsAt).getTime() <= nowMs;
   const hasPendingPlanRequest = pendingPlanRequest === true;
