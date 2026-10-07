@@ -3,6 +3,34 @@ import { CheckCircle2, Loader2, AlertCircle } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
 import { getSupabase } from "../lib/supabase";
 
+function getInvitationRedirect(searchParams: URLSearchParams): string | null {
+  const candidates = [
+    searchParams.get("redirect_to"),
+    searchParams.get("redirectTo"),
+    searchParams.get("next"),
+  ].filter(Boolean) as string[];
+
+  for (const candidate of candidates) {
+    try {
+      const url = new URL(candidate, window.location.origin);
+      if (url.pathname === "/invite") {
+        const token = url.searchParams.get("token");
+        if (token) return `/invite?token=${encodeURIComponent(token)}`;
+      }
+    } catch {}
+  }
+
+  const directToken = searchParams.get("invitation_token") || searchParams.get("token");
+  if (directToken) return `/invite?token=${encodeURIComponent(directToken)}`;
+
+  try {
+    const pendingToken = sessionStorage.getItem("palmyra_pending_invitation");
+    if (pendingToken) return `/invite?token=${encodeURIComponent(pendingToken)}`;
+  } catch {}
+
+  return null;
+}
+
 export default function AuthConfirm() {
   const [params] = useSearchParams();
   const [error, setError] = useState("");
@@ -20,6 +48,8 @@ export default function AuthConfirm() {
         if (active) setError("El enlace de confirmación no es válido o está incompleto.");
         return;
       }
+
+      const invitationRedirect = type !== "recovery" ? getInvitationRedirect(params) : null;
 
       const { error: verifyError } = await supabase.auth.verifyOtp({
         token_hash: tokenHash,
@@ -48,6 +78,23 @@ export default function AuthConfirm() {
 
       if (!sessionData.session) {
         setError("El correo fue confirmado, pero no pudimos recuperar la sesión automáticamente. Vuelve a iniciar sesión para continuar.");
+        return;
+      }
+
+      if (invitationRedirect) {
+        try {
+          const invitationUrl = new URL(invitationRedirect, window.location.origin);
+          const invitationToken = invitationUrl.searchParams.get("token");
+          if (invitationToken) {
+            sessionStorage.setItem("palmyra_pending_invitation", invitationToken);
+            sessionStorage.setItem(
+              "palmyra_pending_invitation_email",
+              sessionData.session.user.email?.trim().toLowerCase() || ""
+            );
+          }
+        } catch {}
+        setStatus("Correo confirmado. Activando tu acceso a la empresa…");
+        window.setTimeout(() => window.location.replace(invitationRedirect), 150);
         return;
       }
 
