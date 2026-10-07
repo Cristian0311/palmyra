@@ -10,6 +10,8 @@ import {
   CircleDollarSign,
   Clock3,
   CreditCard,
+  Database,
+  Package,
   LogOut,
   Menu,
   RefreshCw,
