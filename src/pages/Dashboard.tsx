@@ -289,7 +289,7 @@ export default function Dashboard() {
             className="absolute inset-0 bg-cover bg-center bg-no-repeat scale-x-[-1]"
             style={{
               backgroundImage:
-                "url(https://raw.githubusercontent.com/Cristian0311/PALMYRA/main/public/palmyra-dashboard-hero.webp?v=20261007)",
+                "url('/palmyra-dashboard-hero.webp?v=20261007-local')",
             }}
           />
         </div>
