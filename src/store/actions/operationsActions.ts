@@ -61,7 +61,16 @@ export function createOperationsActions(set: StoreSet, get: StoreGet): any {
   },
   deleteSupplier: (id) => {
     set(state => ({ suppliers: state.suppliers.filter(x => x.id !== id) }));
-    deleteSupplierFromSupabase(id).catch(() => {});
+    const actionId = 'supplier-delete:' + id;
+    const queueDeletion = () => enqueueOfflineItem('supplier_delete', { id }, actionId)
+      .catch((error) => console.warn('[PALMYRA] No se pudo guardar la eliminación de proveedor en la cola:', error));
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      deleteSupplierFromSupabase(id).then((ok) => {
+        if (!ok) queueDeletion();
+      }).catch(() => queueDeletion());
+    } else {
+      queueDeletion();
+    }
   },
 
   supplierOrders: [],
