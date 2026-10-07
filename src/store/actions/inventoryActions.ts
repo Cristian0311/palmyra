@@ -187,7 +187,7 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
       }
     }
 
-    if (!canonicalRefreshed && !serverConfirmed) {
+    if (!canonicalRefreshed) {
       const newInventory = [...get().inventory];
       for (const v of activeVariants) {
         const sourceIdx = newInventory.findIndex(i =>
