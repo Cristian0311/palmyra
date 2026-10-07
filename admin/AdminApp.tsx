@@ -376,7 +376,8 @@ function CompanyCard({
       <div className="admin-company-plan">
         <span>{company.plan_name || company.plan_code || "Sin plan"}</span>
         <span>{company.plan_limits?.products ? `${company.products ?? 0}/${company.plan_limits.products} productos` : "Límite no disponible"}</span>
-        <span>{company.plan_limits?.employees ? `${company.employees ?? 0}/${company.plan_limits.employees} empleados` : ""}</span>\n        {"sync_failed" in company && Number((company as any).sync_failed || 0) > 0 ? <span className="admin-company-plan--alert">{Number((company as any).sync_failed)} sync fallidas</span> : null}
+        <span>{company.plan_limits?.employees ? `${company.employees ?? 0}/${company.plan_limits.employees} empleados` : ""}</span>
+        {"sync_failed" in company && Number((company as any).sync_failed || 0) > 0 ? <span className="admin-company-plan--alert">{Number((company as any).sync_failed)} sync fallidas</span> : null}
       </div>
       <div className="admin-company-card__metrics">
         <div><strong>{company.products ?? "—"}</strong><span>Productos</span></div>
