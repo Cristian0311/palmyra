@@ -1,5 +1,6 @@
 import { getSupabase } from '../lib/supabase';
 import { getCachedSaaSContext } from './offlineAuthContext';
+import { getPalmyraLocalScope } from './localScope';
 
 export interface ActiveTenant {
   companyId: string;
@@ -27,28 +28,21 @@ export async function getActiveTenant(forceRefresh = false): Promise<ActiveTenan
   } catch {}
 
   if (!authUserId && typeof navigator !== 'undefined' && !navigator.onLine) {
-    // Offline: the authenticated tenant is already persisted by the SaaS auth
-    // context. Do not turn a valid local session into a false "must sign in" error.
+    // Offline: usar exclusivamente la empresa/usuario que figura como alcance
+    // activo. Nunca elegir "la caché más reciente" entre varias empresas.
     try {
-      const candidates = Object.keys(localStorage)
-        .filter((key) => key.startsWith('palmyra_offline_auth_context_v1__'))
-        .map((key) => {
-          try { return JSON.parse(localStorage.getItem(key) || 'null'); } catch { return null; }
-        })
-        .filter(Boolean)
-        .sort((a, b) => String(b?.cachedAt || '').localeCompare(String(a?.cachedAt || '')));
-      const candidate = candidates[0];
-      if (candidate?.authUserId) offlineContext = getCachedSaaSContext(candidate.authUserId);
+      const scope = getPalmyraLocalScope();
+      if (scope?.userId) offlineContext = getCachedSaaSContext(scope.userId);
     } catch {}
-    if (!offlineContext) throw new Error('No existe una sesión local válida para trabajar sin conexión.');
-    if (offlineContext.companyId && offlineContext.authUserId) {
-      cached = {
-        companyId: offlineContext.companyId,
-        authUserId: offlineContext.authUserId,
-        defaultCurrencyCode: offlineContext.company?.default_currency_code || 'USD'
-      };
-      return cached;
+    if (!offlineContext || !offlineContext.companyId || !offlineContext.authUserId) {
+      throw new Error('No existe una sesión local válida para trabajar sin conexión.');
     }
+    cached = {
+      companyId: offlineContext.companyId,
+      authUserId: offlineContext.authUserId,
+      defaultCurrencyCode: offlineContext.company?.default_currency_code || 'USD'
+    };
+    return cached;
   }
 
   if (!authUserId) throw new Error('Debes iniciar sesión para acceder a la empresa.');
