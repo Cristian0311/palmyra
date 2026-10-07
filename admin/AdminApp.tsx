@@ -346,6 +346,11 @@ function CompanyCard({
         </div>
         <StatusBadge status={company.account_status} />
       </div>
+      <div className="admin-company-plan">
+        <span>{company.plan_name || company.plan_code || "Sin plan"}</span>
+        <span>{company.plan_limits?.products ? `${company.products ?? 0}/${company.plan_limits.products} productos` : "Límite no disponible"}</span>
+        <span>{company.plan_limits?.employees ? `${company.employees ?? 0}/${company.plan_limits.employees} empleados` : ""}</span>
+      </div>
       <div className="admin-company-card__metrics">
         <div><strong>{company.products ?? "—"}</strong><span>Productos</span></div>
         <div><strong>{company.employees ?? "—"}</strong><span>Usuarios</span></div>
