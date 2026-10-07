@@ -62,7 +62,7 @@ const adminNavItems = [
   { name: "Catálogo Online", href: "#online-catalog", icon: Store, public: true, comingSoon: true },
 ];
 
-const APP_VERSION = "V 1.0.3";
+const APP_VERSION = "V 1.0.2";
 const APP_UPDATE_NOTES = [
   "Inventario: variantes de tallas y colores con gestión de stock separada.",
   "Equipo: pago por CUP fijo por producto o porcentaje sobre la venta.",
@@ -410,9 +410,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const navSections = currentUser?.role === "admin"
     ? [
         { label: "Operación", hrefs: ["/", "/pos", "/transfers", "/returns"] },
-        { label: "Gestión", hrefs: ["/customers", "/inventory", "/inventory-audit", "/suppliers"] },
+        { label: "Gestión", hrefs: ["/customers", "/inventory", "/inventory-audit", "/suppliers", "#online-catalog"] },
         { label: "Finanzas", hrefs: ["/banks", "/reports"] },
-        { label: "Administración", hrefs: ["/settings", "/team", "/help", "/subscription", "#online-catalog"] },
+        { label: "Administración", hrefs: ["/settings", "/team", "/help", "/subscription"] },
       ].map(section => ({
         ...section,
         items: visibleNavItems.filter(item => section.hrefs.includes(item.href)),
