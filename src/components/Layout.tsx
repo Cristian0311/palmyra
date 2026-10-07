@@ -27,7 +27,8 @@ import {
   RefreshCw,
   Headphones,
   Download,
-  Smartphone
+  Smartphone,
+  Store
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
 import { cn } from "../lib/utils";
@@ -58,9 +59,17 @@ const adminNavItems = [
   { name: "Equipo", href: "/team", icon: Users, permission: "employees.manage" },
   { name: "Soporte", href: "/help", icon: Headphones, public: true },
   { name: "Plan", href: "/subscription", icon: CreditCard, permission: "settings.manage" },
+  { name: "Catálogo Online", href: "#online-catalog", icon: Store, public: true, comingSoon: true },
 ];
 
-const APP_VERSION = "V 1.0.2";
+const APP_VERSION = "V 1.0.3";
+const APP_UPDATE_NOTES = [
+  "Inventario: variantes de tallas y colores con gestión de stock separada.",
+  "Equipo: pago por CUP fijo por producto o porcentaje sobre la venta.",
+  "POS: cobro unificado con efectivo, transferencia y pagos combinados.",
+  "POS móvil: controles de transferencia y reanudación de turno más seguros.",
+  "Configuración: Equipo centralizado en una sola vista."
+];
 
 const cashierNavItems = [
   { name: "Soporte", href: "/help", icon: Headphones, public: true },
@@ -144,6 +153,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [showInstallPwa, setShowInstallPwa] = useState(false);
   const [pwaInstallAvailable, setPwaInstallAvailable] = useState(false);
   const [pwaInstalling, setPwaInstalling] = useState(false);
+  const [showOnlineCatalogInfo, setShowOnlineCatalogInfo] = useState(false);
   const { currentUser, logout, notifications, removeNotification, storeConfig, syncWithSupabase, addNotification } = useStore(useShallow((state) => ({ currentUser: state.currentUser, logout: state.logout, notifications: state.notifications, removeNotification: state.removeNotification, storeConfig: state.storeConfig, syncWithSupabase: state.syncWithSupabase, addNotification: state.addNotification })));
   const location = useLocation();
   const isPosPage = location.pathname === "/pos";
@@ -395,6 +405,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const visibleNavItems = navItems.length > 0 ? navItems : cashierNavItems;
   const currentPlanCode = saasContext?.subscription?.planCode || "";
   const isPlanLocked = (item: { requiredFeature?: PlanFeature }) => Boolean(item.requiredFeature && !canUsePlanFeature(currentPlanCode, item.requiredFeature));
+  const getRequiredPlanLabel = (feature?: PlanFeature) => feature === 'advanced_analytics' || feature === 'excel_exports' || feature === 'ai_dashboard' || feature === 'warranty_returns' || feature === 'abc_analysis' || feature === 'labels' ? 'Ciudadela' : feature ? 'Caravana' : '';
 
   const navSections = currentUser?.role === "admin"
     ? [
