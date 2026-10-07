@@ -221,7 +221,13 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
           throw new Error('No se pudieron confirmar todos los ingresos/egresos del turno antes del cierre.');
         }
         const res = await callCloseSessionRPC(sessionId, closingBalances || [], finalClosingDate, session.notes || '', settlement, expectedCashBase);
-        if (!res.success) throw new Error(res.error || 'No se pudo cerrar el turno');
+        if (!res.success) {
+          // Los rechazos de negocio deben permanecer como rechazo; los errores
+          // de transporte se manejan en el catch para dejar el cierre localmente
+          // protegido y pendiente de sincronización.
+          if (res.errorCode) return false;
+          throw new Error(res.error || 'No se pudo cerrar el turno');
+        }
         const metadataOk = await pushCashSessionMetadataToSupabase(updatedSession);
         if (!metadataOk) throw new Error('El cierre fue confirmado, pero los datos del turno aún no pudieron sincronizarse.');
         set((state) => ({
@@ -232,8 +238,18 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
         removeFromOfflineQueueByAction('cash_session', actionId);
         return true;
       } catch (err) {
-        console.warn("[closeSession] El cierre no fue confirmado; queda durable para reintento:", err);
-        return false;
+        console.warn("[closeSession] El cierre no pudo completarse en línea; se conserva localmente y queda durable para reintento:", err);
+        set((state) => ({
+          cashSessions: (state.cashSessions || []).map(s => s.id === sessionId ? updatedSession : s),
+          salarySettlements: [...(state.salarySettlements || []).filter(st => st.sessionId !== sessionId), settlement],
+          cart: []
+        }));
+        await flushLocalStateStorage();
+        get().addNotification(
+          'Caja cerrada localmente. El cierre quedó pendiente de sincronización.',
+          'info'
+        );
+        return true;
       }
     }
 
