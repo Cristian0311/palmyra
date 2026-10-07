@@ -24,121 +24,35 @@ const queue=async(type:any,data:any,id:string)=>{await enqueueOfflineItem(type,d
 
 export async function pushProductToSupabase(product:Product, options?: { queueOnTransientFailure?: boolean }){
   try{
-    const supabase=await onlineClient();const {companyId,defaultCurrencyCode}=await getActiveTenant();
-    const row={id:product.id,company_id:companyId,category_id:product.categoryId||null,brand_id:null,sku:product.sku||product.id.slice(0,12),name:product.name,description:null,status:product.status||'active',track_stock:true,base_unit:product.unit||'unidad',cost:Number(product.costPrice)||0,commission_fixed:product.commissionType==='fixed'?Number(product.commissionValue)||0:0,commission_percent:product.commissionType==='percentage'?Number(product.commissionValue)||0:0,image_path:product.image||null,minimum_stock:Number(product.minStockAlert)||0,is_kit:Boolean(product.isKit),track_serial:Boolean(product.hasSerial)};
-    const {error}=await supabase.from('products').upsert(row,{onConflict:'id'});if(error)throw error;
-    // Persist the sale price with the same canonical product UUID immediately after the product upsert.
-    // This prevents the product form from reaching set_product_price with a stale/local product id.
-    const {error:priceError}=await supabase.rpc('set_product_price',{p_company_id:companyId,p_product_id:product.id,p_currency_code:defaultCurrencyCode,p_price:Number(product.price)||0});
-    if(priceError)throw priceError;
-    if(product.barcode){
-      const barcode = String(product.barcode).trim();
-      if (barcode) {
-        // The database intentionally enforces one barcode per company. Resolve the
-        // existing row first so editing the same product does not create a duplicate.
-        const { data:existingBarcode, error:barcodeLookupError } = await supabase
-          .from('product_barcodes')
-          .select('id, product_id, active')
-          .eq('company_id', companyId)
-          .eq('barcode', barcode)
-          .maybeSingle();
-        if (barcodeLookupError) throw barcodeLookupError;
-
-        if (existingBarcode && existingBarcode.product_id !== product.id) {
-          const duplicateError = new Error('El código de barras ya está asignado a otro producto.');
-          (duplicateError as any).code = 'BARCODE_ALREADY_ASSIGNED';
-          throw duplicateError;
-        }
-
-        if (existingBarcode) {
-          const { error:barcodeUpdateError } = await supabase
-            .from('product_barcodes')
-            .update({ product_id: product.id, active: true })
-            .eq('id', existingBarcode.id)
-            .eq('company_id', companyId);
-          if (barcodeUpdateError) throw barcodeUpdateError;
-        } else {
-          const { error:barcodeInsertError} = await supabase
-            .from('product_barcodes')
-            .insert({
-              id: crypto.randomUUID(),
-              company_id: companyId,
-              product_id: product.id,
-              barcode,
-              active: true
-            });
-          if (barcodeInsertError) throw barcodeInsertError;
-        }
-
-        // Desactiva otros códigos activos que pertenecían a este producto,
-        // pero conserva el historial para no romper referencias existentes.
-        const { error:deactivateError } = await supabase
-          .from('product_barcodes')
-          .update({ active: false })
-          .eq('company_id', companyId)
-          .eq('product_id', product.id)
-          .eq('active', true)
-          .neq('barcode', barcode);
-        if (deactivateError) throw deactivateError;
-      }
-    }
-    // Las variantes del formulario son catálogo estable. Nunca eliminamos
-    // físicamente una variante porque puede tener stock/historial asociado.
-    const { data: existingVariants, error: existingVariantError } = await supabase
-      .from('product_variants')
-      .select('id,name,sku,attributes,active')
-      .eq('company_id', companyId)
-      .eq('product_id', product.id);
-    if (existingVariantError) throw existingVariantError;
-
-    const desiredVariantRows = [
-      ...(Array.isArray(product.availableSizes) ? product.availableSizes.map((name, index) => ({
-        name: String(name).trim(), type: 'size', order: index + 1
-      })) : []),
-      ...(Array.isArray(product.availableColors) ? product.availableColors.map((name, index) => ({
-        name: String(name).trim(), type: 'color', order: index + 1
-      })) : [])
-    ].filter(row => row.name);
-
-    const uniqueDesired = Array.from(
-      new Map(desiredVariantRows.map(row => [row.name.toLowerCase(), row])).values()
-    );
-    const existingByName = new Map((existingVariants || []).map((row: any) => [String(row.name).trim().toLowerCase(), row]));
-    const desiredIds: string[] = [];
-
-    for (const [index, row] of uniqueDesired.entries()) {
-      const existing = existingByName.get(row.name.toLowerCase());
-      const id = existing?.id || crypto.randomUUID();
-      desiredIds.push(id);
-      const { error: upsertVariantError } = await supabase.from('product_variants').upsert({
-        id,
-        company_id: companyId,
-        product_id: product.id,
-        name: row.name,
-        sku: existing?.sku || `${product.sku || product.id}-VAR-${index + 1}`,
-        attributes: { type: row.type },
-        active: true
-      }, { onConflict: 'id' });
-      if (upsertVariantError) throw upsertVariantError;
-    }
-
-    // Las variantes quitadas del producto quedan inactivas para conservar su
-    // inventario e historial, pero ya no aparecen como opciones nuevas.
-    const removedIds = (existingVariants || []).map((row: any) => row.id).filter((id: string) => !desiredIds.includes(id));
-    if (removedIds.length) {
-      const { error: deactivateVariantError } = await supabase
-        .from('product_variants')
-        .update({ active: false })
-        .in('id', removedIds)
-        .eq('company_id', companyId);
-      if (deactivateVariantError) throw deactivateVariantError;
-    }
-
-    await supabase.from('product_kit_components').delete().eq('company_id',companyId).eq('kit_product_id',product.id);
-    if(product.isKit&&Array.isArray(product.kitComponents)&&product.kitComponents.length){
-      const rows=product.kitComponents.map(c=>({id:crypto.randomUUID(),company_id:companyId,kit_product_id:product.id,component_product_id:c.productId,quantity:Number(c.quantity)||0}));
-      const {error:ke}=await supabase.from('product_kit_components').insert(rows);if(ke)throw ke;
-    }
+    const supabase=await onlineClient();
+    const {companyId,defaultCurrencyCode}=await getActiveTenant();
+    const sizes=(Array.isArray(product.availableSizes)?product.availableSizes:[]).map(name=>({name:String(name).trim(),type:'size'})).filter(v=>v.name);
+    const colors=(Array.isArray(product.availableColors)?product.availableColors:[]).map(name=>({name:String(name).trim(),type:'color'})).filter(v=>v.name);
+    const result=await supabase.rpc('sync_product_secure',{
+      p_company_id:companyId,
+      p_product_id:product.id,
+      p_category_id:product.categoryId||null,
+      p_brand_id:null,
+      p_sku:product.sku||product.id.slice(0,12),
+      p_name:product.name,
+      p_description:null,
+      p_base_unit:product.unit||'unidad',
+      p_cost:Number(product.costPrice)||0,
+      p_price:Number(product.price)||0,
+      p_commission_fixed:product.commissionType==='fixed'?Number(product.commissionValue)||0:0,
+      p_commission_percent:product.commissionType==='percentage'?Number(product.commissionValue)||0:0,
+      p_track_stock:true,
+      p_minimum_stock:Number(product.minStockAlert)||0,
+      p_barcode:product.barcode?String(product.barcode).trim():null,
+      p_track_serial:Boolean(product.hasSerial),
+      p_is_kit:Boolean(product.isKit),
+      p_available_sizes:sizes,
+      p_available_colors:colors,
+      p_kit_components:Array.isArray(product.kitComponents)?product.kitComponents.map(c=>({productId:c.productId,quantity:Number(c.quantity)||0})):[],
+      p_image_path:product.image||null
+    });
+    if(result.error) throw result.error;
+    if(result.data?.success===false) throw new Error(result.data?.message||'La sincronización del producto fue rechazada.');
     return true;
   }catch(e:any){
     const code=String(e?.code||'').toUpperCase();
@@ -160,20 +74,14 @@ export async function pushProductToSupabase(product:Product, options?: { queueOn
     (diagnostic as any).code = code;
     (diagnostic as any).hint = hint;
     (diagnostic as any).permanent = !transient;
-
     console.warn('[PALMYRA] product sync failed', { code, message, hint, productId: product.id, transient });
-
-    if (transient) {
-      if (options?.queueOnTransientFailure !== false) {
+    if(transient){
+      if(options?.queueOnTransientFailure !== false){
         await queue('product',product,product.id);
         return false;
       }
       throw diagnostic;
     }
-
-    // Database/RLS/constraint errors are not transient. Do not put the same
-    // invalid operation back into IndexedDB forever; the queue processor will
-    // mark it as a conflict and surface the real database reason.
     throw diagnostic;
   }
 }
