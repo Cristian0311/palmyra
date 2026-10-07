@@ -2554,7 +2554,7 @@ export default function POS() {
                                     key={movement.id}
                                     movement={movement}
                                     workerName={currentSession?.workerName}
-                                    formatMoney={formatMoney}
+                                    formatMoney={(amount, code) => formatMoney(amount, currencies.find(c => c.code === code)?.symbol || code || '')}
                                     compact
                                   />
                                 ))
