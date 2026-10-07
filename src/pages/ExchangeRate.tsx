@@ -1,50 +1,40 @@
-import { useMemo, useState } from "react";
-import { ArrowDownUp, Calculator, Info, MapPin, RefreshCw, ShieldCheck } from "lucide-react";
-
-const provinces = ["La Habana","Artemisa","Mayabeque","Pinar del Río","Matanzas","Villa Clara","Cienfuegos","Sancti Spíritus","Ciego de Ávila","Camagüey","Las Tunas","Holguín","Granma","Santiago de Cuba","Guantánamo","Isla de la Juventud"];
+import { ArrowDownUp, Clock3, MapPin, ShieldCheck } from "lucide-react";
 
 export default function ExchangeRate() {
-  const [province,setProvince]=useState(provinces[0]);
-  const [amount,setAmount]=useState("1");
-  const [usdRate,setUsdRate]=useState("");
-  const [eurRate,setEurRate]=useState("");
-
-  const result=useMemo(()=>{
-    const n=Number(amount)||0, usd=Number(usdRate)||0, eur=Number(eurRate)||0;
-    return { usd:n*usd, eur:n*eur };
-  },[amount,usdRate,eurRate]);
-
-  return <div className="w-full h-full overflow-y-auto bg-primary p-3 sm:p-5">
-    <div className="max-w-5xl mx-auto space-y-4">
-      <header className="rounded-2xl border border-violet-100 bg-white p-4 sm:p-5 shadow-sm">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-violet-100 text-violet-700 flex items-center justify-center shrink-0"><ArrowDownUp className="w-5 h-5"/></div>
-            <div><p className="text-[8px] font-black uppercase tracking-[.16em] text-violet-600">PALMYRA · INFORMACIÓN</p><h1 className="text-xl font-black text-primary">Tasa de cambio PALMYRA</h1><p className="text-[9px] font-semibold text-muted mt-1">Referencia informativa por provincia. No modifica automáticamente precios, costos ni ventas del CRM.</p></div>
+  return (
+    <div className="w-full min-h-full overflow-y-auto bg-primary px-3 py-4 sm:px-5 sm:py-6">
+      <div className="mx-auto flex min-h-[calc(100vh-8rem)] max-w-5xl items-center justify-center">
+        <section className="w-full overflow-hidden rounded-[28px] border border-violet-100 bg-white shadow-xl shadow-violet-950/5">
+          <div className="relative overflow-hidden bg-gradient-to-br from-violet-950 via-indigo-900 to-violet-700 px-5 py-7 text-white sm:px-8 sm:py-9">
+            <div className="absolute -right-20 -top-24 h-56 w-56 rounded-full bg-white/10 blur-2xl" />
+            <div className="absolute -bottom-28 -left-10 h-52 w-52 rounded-full bg-violet-400/20 blur-3xl" />
+            <div className="relative flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex min-w-0 gap-3.5">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10 backdrop-blur"><ArrowDownUp className="h-6 w-6" /></div>
+                <div className="min-w-0">
+                  <p className="text-[8px] font-black uppercase tracking-[0.2em] text-violet-200">PALMYRA · INFORMACIÓN</p>
+                  <h1 className="mt-1 text-2xl font-black tracking-tight sm:text-3xl">Tasa de cambio</h1>
+                  <p className="mt-2 max-w-2xl text-[10px] font-semibold leading-5 text-violet-100 sm:text-xs">Próximamente podrás consultar las tasas informativas de referencia por provincia directamente desde PALMYRA.</p>
+                </div>
+              </div>
+              <span className="inline-flex w-fit shrink-0 items-center gap-1.5 rounded-full border border-amber-200/20 bg-amber-300/15 px-3 py-1.5 text-[8px] font-black uppercase tracking-wider text-amber-100"><Clock3 className="h-3.5 w-3.5" /> Próximamente</span>
+            </div>
           </div>
-          <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 border border-emerald-100 px-2.5 py-1.5 text-[7px] font-black text-emerald-700"><ShieldCheck className="w-3 h-3"/>Solo informativa</span>
-        </div>
-      </header>
-
-      <div className="grid lg:grid-cols-[1.15fr_.85fr] gap-4">
-        <section className="rounded-2xl border border-base bg-secondary p-4">
-          <div className="flex items-center gap-2 mb-3"><MapPin className="w-4 h-4 text-violet-600"/><div><h2 className="text-sm font-black text-primary">Referencia por provincia</h2><p className="text-[8px] font-semibold text-muted">Selecciona la zona para consultar la tasa configurada por PALMYRA.</p></div></div>
-          <select value={province} onChange={e=>setProvince(e.target.value)} className="w-full h-10 rounded-xl border border-base bg-primary px-3 text-[10px] font-bold text-primary">{provinces.map(p=><option key={p}>{p}</option>)}</select>
-          <div className="grid sm:grid-cols-2 gap-2 mt-3">
-            {[["USD","usdRate"],["EUR","eurRate"]].map(([currency,key])=><div key={currency} className="rounded-xl border border-base bg-primary p-3"><div className="flex items-center justify-between"><span className="text-[8px] font-black text-primary">{currency}</span><span className="text-[7px] text-muted">CUP por 1</span></div><input inputMode="decimal" value={key==="usdRate"?usdRate:eurRate} onChange={e=>key==="usdRate"?setUsdRate(e.target.value):setEurRate(e.target.value)} placeholder="Configurar tasa" className="mt-2 w-full h-8 rounded-lg border border-base bg-secondary px-2 text-[9px] font-bold text-primary"/></div>)}
-          </div>
-          <div className="mt-3 rounded-xl bg-violet-50 border border-violet-100 p-3 flex gap-2"><Info className="w-3.5 h-3.5 text-violet-600 shrink-0 mt-0.5"/><p className="text-[8px] leading-4 font-semibold text-violet-800">Esta pantalla no altera el precio de los productos. La tasa se utiliza únicamente como referencia para consulta y cálculo informativo.</p></div>
-        </section>
-
-        <section className="rounded-2xl border border-base bg-secondary p-4">
-          <div className="flex items-center gap-2 mb-3"><Calculator className="w-4 h-4 text-violet-600"/><div><h2 className="text-sm font-black text-primary">Conversor informativo</h2><p className="text-[8px] font-semibold text-muted">Calcula usando la tasa configurada arriba.</p></div></div>
-          <label className="block text-[8px] font-black text-primary">Cantidad en moneda extranjera<input inputMode="decimal" value={amount} onChange={e=>setAmount(e.target.value)} className="mt-1.5 w-full h-10 rounded-xl border border-base bg-primary px-3 text-[10px] font-bold text-primary"/></label>
-          <div className="mt-3 space-y-2">
-            <div className="flex justify-between rounded-xl bg-primary border border-base p-3"><span className="text-[8px] font-bold text-muted">USD → CUP</span><strong className="text-sm text-primary">{result.usd.toLocaleString("es-CU",{maximumFractionDigits:2})} CUP</strong></div>
-            <div className="flex justify-between rounded-xl bg-primary border border-base p-3"><span className="text-[8px] font-bold text-muted">EUR → CUP</span><strong className="text-sm text-primary">{result.eur.toLocaleString("es-CU",{maximumFractionDigits:2})} CUP</strong></div>
+          <div className="grid gap-4 p-4 sm:p-6 lg:grid-cols-[1fr_1.15fr]">
+            <div className="rounded-2xl border border-violet-100 bg-violet-50/60 p-4 sm:p-5">
+              <div className="flex items-center gap-2"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-violet-700 shadow-sm"><MapPin className="h-4 w-4" /></div><div><h2 className="text-xs font-black text-violet-950">Cotización por provincia</h2><p className="mt-0.5 text-[8px] font-semibold text-violet-700/70">16 provincias de Cuba</p></div></div>
+              <div className="mt-4 grid grid-cols-2 gap-2"><div className="rounded-xl border border-violet-100 bg-white px-2.5 py-2 text-[8px] font-bold text-violet-900">La Habana</div><div className="rounded-xl border border-violet-100 bg-white px-2.5 py-2 text-[8px] font-bold text-violet-900">Artemisa</div><div className="rounded-xl border border-violet-100 bg-white px-2.5 py-2 text-[8px] font-bold text-violet-900">Mayabeque</div><div className="rounded-xl border border-violet-100 bg-white px-2.5 py-2 text-[8px] font-bold text-violet-900">Pinar del Río</div><div className="rounded-xl border border-violet-100 bg-white px-2.5 py-2 text-[8px] font-bold text-violet-900">Matanzas</div><div className="rounded-xl border border-violet-100 bg-white px-2.5 py-2 text-[8px] font-bold text-violet-900">Villa Clara</div><div className="rounded-xl border border-violet-100 bg-white px-2.5 py-2 text-[8px] font-bold text-violet-900">Cienfuegos</div><div className="rounded-xl border border-violet-100 bg-white px-2.5 py-2 text-[8px] font-bold text-violet-900">Sancti Spíritus</div><div className="rounded-xl border border-violet-100 bg-white px-2.5 py-2 text-[8px] font-bold text-violet-900">Ciego de Ávila</div><div className="rounded-xl border border-violet-100 bg-white px-2.5 py-2 text-[8px] font-bold text-violet-900">Camagüey</div><div className="rounded-xl border border-violet-100 bg-white px-2.5 py-2 text-[8px] font-bold text-violet-900">Las Tunas</div><div className="rounded-xl border border-violet-100 bg-white px-2.5 py-2 text-[8px] font-bold text-violet-900">Holguín</div><div className="rounded-xl border border-violet-100 bg-white px-2.5 py-2 text-[8px] font-bold text-violet-900">Granma</div><div className="rounded-xl border border-violet-100 bg-white px-2.5 py-2 text-[8px] font-bold text-violet-900">Santiago de Cuba</div><div className="rounded-xl border border-violet-100 bg-white px-2.5 py-2 text-[8px] font-bold text-violet-900">Guantánamo</div><div className="rounded-xl border border-violet-100 bg-white px-2.5 py-2 text-[8px] font-bold text-violet-900">Isla de la Juventud</div></div>
+            </div>
+            <div className="flex flex-col justify-between rounded-2xl border border-base bg-secondary p-4 sm:p-5">
+              <div>
+                <div className="flex items-center gap-2"><div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><ShieldCheck className="h-4 w-4" /></div><div><h2 className="text-xs font-black text-primary">Información oficial cuando esté disponible</h2><p className="mt-0.5 text-[8px] font-semibold text-muted">Fuente externa pendiente de habilitación</p></div></div>
+                <p className="mt-4 text-[9px] font-semibold leading-5 text-muted">La integración con la fuente externa está en proceso de aprobación. Hasta que el acceso oficial esté habilitado, PALMYRA no mostrará cifras simuladas ni permitirá configurar manualmente una tasa desde esta sección.</p>
+              </div>
+              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-[8px] font-bold leading-4 text-amber-800">Esta sección será exclusivamente informativa. No cambiará automáticamente precios, costos, inventario ni operaciones del CRM.</div>
+            </div>
           </div>
         </section>
       </div>
     </div>
-  </div>;
+  );
 }
