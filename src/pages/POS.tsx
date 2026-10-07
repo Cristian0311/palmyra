@@ -17,6 +17,7 @@ import { usePOSPayments } from "../modules/pos/hooks/usePOSPayments";
 import { usePOSScanner } from "../modules/pos/hooks/usePOSScanner";
 import { usePOSPrinter } from "../modules/pos/hooks/usePOSPrinter";
 import { POSConfigProductModal } from "../components/pos/POSConfigProductModal";
+import { CashMovementTicket } from "../components/cash/CashMovementTicket";
 import { POSAddCustomerModal } from "../components/pos/POSAddCustomerModal";
 import { POSCancelShiftModal } from "../components/pos/POSCancelShiftModal";
 import { POSClosurePrintArea } from "../components/pos/POSClosurePrintArea";
@@ -2549,40 +2550,13 @@ export default function POS() {
                               [...(currentSession?.movements || [])]
                                 .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                                 .map((movement) => (
-                                  <div key={movement.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-3 space-y-2">
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="min-w-0">
-                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                          <span className="font-mono text-[9px] font-black text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">
-                                            MOV-{String(movement.id).slice(0,8).toUpperCase()}
-                                          </span>
-                                          <span className={cn(
-                                            "text-[8px] font-black uppercase rounded-full px-1.5 py-0.5",
-                                            movement.type === 'income' ? "bg-emerald-100 text-emerald-700" : "bg-rose-100 text-rose-700"
-                                          )}>
-                                            {movement.type === 'income' ? 'Ingreso' : 'Egreso / gasto'}
-                                          </span>
-                                        </div>
-                                        <p className="mt-1 text-[9px] font-bold text-slate-500">
-                                          {new Date(movement.date).toLocaleString('es-CU')}
-                                        </p>
-                                      </div>
-                                      <span className={cn(
-                                        "shrink-0 font-mono text-xs font-black",
-                                        movement.type === 'income' ? "text-emerald-600" : "text-rose-600"
-                                      )}>
-                                        {movement.type === 'income' ? '+' : '-'}{formatMoney(Math.abs(Number(movement.amount || 0)), currencies.find(c => c.code === movement.currencyCode)?.symbol || movement.currencyCode)}
-                                      </span>
-                                    </div>
-                                    <div className="rounded-lg bg-slate-50 border border-slate-100 px-2.5 py-2">
-                                      <p className="text-[8px] font-black uppercase tracking-wider text-slate-400">Concepto</p>
-                                      <p className="text-[10px] font-bold text-slate-700 break-words">{movement.description || 'Sin concepto registrado'}</p>
-                                    </div>
-                                    <div className="flex items-center justify-between gap-2 text-[8px] font-bold text-slate-400">
-                                      <span>{movement.workerName || currentSession?.workerName || 'Empleado'}</span>
-                                      <span>Comprobante de movimiento</span>
-                                    </div>
-                                  </div>
+                                  <CashMovementTicket
+                                    key={movement.id}
+                                    movement={movement}
+                                    workerName={currentSession?.workerName}
+                                    formatMoney={formatMoney}
+                                    compact
+                                  />
                                 ))
                             ) : (
                               <div className="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-200">
@@ -2593,7 +2567,7 @@ export default function POS() {
                               </div>
                             )}
                           </div>
-                        ) : salesSubTab === 'tickets' ? (
+                        )                        ) : salesSubTab === 'tickets' ? (
                           <div className="space-y-2 max-h-72 overflow-y-auto custom-scrollbar pr-1">
                             {filteredTx.length > 0 ? (
                               filteredTx.map((tx) => {
