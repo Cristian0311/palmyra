@@ -561,3 +561,23 @@ Render:
 - Commit desplegado: `a333cda5079b575417c2449b015ce6c58fdbfc6c`.
 
 Este cambio mejora el comportamiento offline real del POS, pero la certificación absoluta de “100%” todavía requiere ejecutar en un dispositivo/navegador físico la secuencia: conexión -> descargar turno abierto -> cortar red -> reanudar -> vender -> cerrar -> reiniciar navegador/dispositivo -> reconectar -> confirmar sincronización, además de la prueba real de impresora Bluetooth/USB y concurrencia entre terminales.
+
+
+## 18. Corrección final: reanudación offline después de descargar un turno
+
+Se detectó que el verificador de contraseña local podía no existir en un dispositivo que acababa de descargar un turno abierto. En ese caso, la reanudación fallaba offline aunque la misma contraseña funcionara al volver la conexión.
+
+Corrección aplicada:
+- Cada turno abierto que el servidor entrega a un usuario autorizado genera un permiso local de reanudación ligado a empresa + cuenta + turno.
+- El permiso no contiene ni almacena la contraseña.
+- El permiso permite el flujo solicitado: conectado -> aparece/descarga el turno -> se pierde la conexión -> se reanuda ese turno concreto sin depender de Supabase.
+- Administradores reciben permisos locales para los turnos abiertos que pueden visualizar; los trabajadores solo para turnos que pueden reanudar según su identidad operativa.
+- La contraseña sigue disponible como mecanismo alternativo cuando existe un verificador local.
+- Los permisos locales caducan para evitar conservar indefinidamente autorizaciones antiguas.
+- El formulario de reanudación no obliga a contraseña cuando el dispositivo está sin conexión y ya tiene el permiso local del turno descargado.
+
+Último código:
+- Commit: `e0252eda3e5968f692cab995f3311c96b83b20d4`
+- GitHub Actions: SUCCESS, run `37638620251`
+- Render deploy: `dep-db35k6hsrm7s73e6i8j0`
+- Render: LIVE
