@@ -4,7 +4,7 @@ import { buildInventoryCsv } from '../modules/inventory/utils/buildInventoryCsv'
 import { resizeProductImage } from '../modules/inventory/utils/resizeProductImage';
 import { useShallow } from 'zustand/react/shallow';
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowLeftRight, PackagePlus, AlertCircle, Search, ShieldCheck, X, DollarSign, Trash2, Edit, History, Package, TrendingUp, Filter, Download, Plus, ArrowRightLeft, LayoutGrid, List, Settings2, Tag, Building2, Save, RefreshCw, Minus, ChevronDown } from "lucide-react";
+import { ArrowLeftRight, PackagePlus, AlertCircle, Search, ShieldCheck, X, DollarSign, Trash2, Edit, History, Package, PackageCheck, TrendingUp, Filter, Download, Plus, ArrowRightLeft, LayoutGrid, List, Settings2, Tag, Building2, Save, RefreshCw, Minus, ChevronDown, ChevronRight, Check } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { cn, generateId } from "../lib/utils";
 import { Product, Category } from "../types";
@@ -504,6 +504,12 @@ export default function Inventory() {
         </div>
         <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide w-full sm:w-auto py-1">
           <button 
+            onClick={() => setActiveTab('stock')}
+            className="shrink-0 bg-emerald-600 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-emerald-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
+          >
+            <PackageCheck className="w-3.5 h-3.5" /> Stock
+          </button>
+          <button 
             onClick={() => {
               setEditingProduct(null);
               setNewSize("");
@@ -540,9 +546,7 @@ export default function Inventory() {
           >
             {canABC ? 'Análisis ABC' : 'ABC · Ciudadela'}
           </button>
-          <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-indigo-100 bg-indigo-50 px-2 py-1 text-[7px] font-black uppercase tracking-wider text-indigo-600 sm:hidden">
-            <ArrowRightLeft className="h-2.5 w-2.5" /> Desliza para más
-          </span>
+
         </div>
       </header>
 
@@ -585,7 +589,7 @@ export default function Inventory() {
             />
           </div>
           
-          {/* Filters: Sucursal, Categoría, Stock y Gestión */}
+          {/* Filtros: sucursal y stock. Categorías se gestionan de forma independiente. */}
           <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 w-full sm:w-auto">
             {/* Sucursal */}
             <div className="relative group w-full sm:min-w-[140px] sm:max-w-[180px]">
