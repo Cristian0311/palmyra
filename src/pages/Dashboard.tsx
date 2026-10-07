@@ -284,29 +284,34 @@ export default function Dashboard() {
         <img
           src="https://d2ol7oe51mr4n9.cloudfront.net/user_3KG5QIrHdwLjDQrkaTsZRm5ddIT/c1f1a8ae-fb77-44d7-b826-2bff743932d1.png"
           alt=""
-          className="absolute inset-0 h-full w-full object-cover object-[68%_center] sm:object-center"
+          className="absolute inset-0 h-full w-full object-cover object-[88%_center] sm:object-[78%_center] lg:object-center"
           aria-hidden="true"
         />
         <div
-          className="absolute inset-0 bg-gradient-to-r from-slate-950/72 via-slate-950/38 to-transparent sm:from-slate-950/58 sm:via-slate-950/18 sm:to-transparent"
+          className="absolute inset-0 bg-gradient-to-r from-slate-950/82 via-slate-950/46 to-transparent sm:from-slate-950/64 sm:via-slate-950/20 sm:to-transparent"
+          aria-hidden="true"
+        />
+        <div
+          className="absolute inset-y-0 left-0 w-[88%] sm:w-[68%] bg-gradient-to-r from-slate-950/34 via-slate-950/10 to-transparent"
           aria-hidden="true"
         />
 
         <div className="relative z-10 flex min-h-[280px] sm:min-h-[290px] lg:min-h-[310px] items-center px-5 py-7 sm:px-8 lg:px-10">
-          <div className="w-full max-w-[600px]">
-            <div className="inline-flex items-center gap-2 rounded-full border border-white/35 bg-slate-950/35 px-3 py-1.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-white shadow-sm backdrop-blur-[2px]">
-              <Sparkles className="h-3.5 w-3.5 text-violet-200" /> PALMYRA · Gestión empresarial
+          <div className="w-full max-w-[610px]">
+            <div className="flex items-center gap-2 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-white drop-shadow-[0_2px_7px_rgba(0,0,0,0.55)]">
+              <Sparkles className="h-4 w-4 shrink-0 text-violet-200" />
+              <span>PALMYRA · Gestión empresarial</span>
             </div>
 
-            <h1 className="mt-4 text-4xl sm:text-4xl lg:text-5xl font-black tracking-[-0.045em] leading-[.95] text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.45)]">
+            <h1 className="mt-3 text-4xl sm:text-4xl lg:text-5xl font-black tracking-[-0.045em] leading-[.95] text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)]">
               Hola{dashboardUserName ? ", " + dashboardUserName.split(" ")[0] : ""} <span aria-hidden="true">👋</span>
             </h1>
 
-            <p className="mt-3 text-xl sm:text-xl lg:text-2xl font-black leading-tight text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.45)]">
+            <p className="mt-3 text-xl sm:text-xl lg:text-2xl font-black leading-tight text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
               Bienvenido a <span className="text-violet-200">{businessName}</span>
             </p>
 
-            <p className="mt-3 max-w-[540px] text-[11px] sm:text-xs lg:text-sm font-semibold leading-relaxed text-white/90 drop-shadow-[0_1px_6px_rgba(0,0,0,0.5)]">
+            <p className="mt-3 max-w-[540px] text-[11px] sm:text-xs lg:text-sm font-semibold leading-relaxed text-white/92 drop-shadow-[0_1px_7px_rgba(0,0,0,0.6)]">
               Todo tu negocio en un solo lugar: ventas, inventario, clientes y actividad para tomar decisiones con claridad.
             </p>
 
