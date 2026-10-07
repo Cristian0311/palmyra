@@ -636,3 +636,16 @@
  .inventory-section-tabs{grid-template-columns:repeat(3,minmax(0,1fr));gap:4px!important}
  .inventory-section-tabs button{min-height:35px;padding:0 5px!important;font-size:8px!important}
 }
+
+/* Equipo Enterprise: fila lineal compacta */
+.team-employee-row{display:grid;grid-template-columns:34px minmax(145px,1.25fr) minmax(120px,.8fr) minmax(220px,1.6fr) 38px;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid var(--border-base);background:var(--bg-secondary);min-width:0}
+.team-employee-row:hover{background:var(--bg-subtle)}
+.team-employee-avatar{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;flex:0 0 32px}
+.team-employee-avatar.is-active{background:#fce7f3;color:#e11d48}.team-employee-avatar.is-inactive{background:#f1f5f9;color:#94a3b8}
+.team-employee-main{min-width:0;display:flex;flex-direction:column;gap:2px}.team-employee-main strong{font-size:11px;line-height:1.15;color:var(--text-primary);font-weight:950;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.team-employee-main small{font-size:7px;color:var(--text-muted);font-weight:800}
+.team-employee-role{min-width:0;display:flex;align-items:center;gap:5px;flex-wrap:wrap}.team-employee-role>span{font-size:8px;font-weight:900;color:#6d3bd2;background:#f3edfb;border:1px solid #e5daf6;border-radius:7px;padding:4px 6px;white-space:nowrap}.team-employee-role em{font-style:normal;font-size:6px;font-weight:900;text-transform:uppercase;color:#64748b;background:#f1f5f9;border-radius:999px;padding:3px 5px}.team-employee-role em.pending{color:#a16207;background:#fef3c7}
+.team-employee-contact{min-width:0;display:grid;grid-template-columns:minmax(0,1fr);gap:3px}.team-employee-contact span{display:flex;align-items:center;gap:5px;min-width:0;font-size:7px;color:var(--text-muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.team-employee-contact svg{flex:0 0 auto;color:#8b5cf6}
+.team-employee-row>.relative{display:flex;justify-content:flex-end}.team-employee-row>.relative>button{width:32px!important;height:32px!important;border-radius:9px!important}
+.team-role-flow{max-height:calc(100dvh - 2rem)}.team-role-flow-head{padding:14px 16px!important}.team-role-flow-head h2{font-size:16px!important}.team-role-flow-steps{padding:9px 16px!important}.team-role-flow-body{padding:12px 16px!important}.team-role-flow-footer{padding:10px 16px!important}
+@media(max-width:900px){.team-employee-row{grid-template-columns:32px minmax(130px,1fr) minmax(105px,.8fr) 36px}.team-employee-contact{grid-column:2/4;grid-row:2}.team-employee-row>.relative{grid-column:4;grid-row:1/3}.team-employee-role{grid-column:3;grid-row:1}}
+@media(max-width:640px){.team-employee-row{grid-template-columns:30px minmax(0,1fr) 34px;gap:8px;padding:9px}.team-employee-main{grid-column:2;grid-row:1}.team-employee-role{grid-column:2;grid-row:2}.team-employee-contact{grid-column:2;grid-row:3}.team-employee-row>.relative{grid-column:3;grid-row:1/4}.team-employee-avatar{width:30px;height:30px}.team-employee-main strong{font-size:10px}.team-employee-contact span{font-size:6.5px}}
