@@ -521,7 +521,10 @@ async function loadSuppliersOrders() {
     suppliers:(s.data||[]).map((x:any):Supplier=>({id:x.id,name:x.name||'',phone:x.phone||'',address:x.address||'',email:x.email||'',rating:Number(x.rating)||0,typeOfMerchandise:x.merchandise_type||''})),
     supplierOrders:(o.data||[]).map((x:any):SupplierOrder=>({
       id:x.id,supplierId:x.supplier_id,date:x.created_at,expectedDeliveryDate:x.expected_delivery_date||undefined,
-      branchId:x.warehouse_id,total:Number(x.total)||0,status:x.status||'pending',transportDetails:x.transport_details||undefined,transportCost:Number(x.transport_cost)||0,
+      branchId:x.warehouse_id,total:Number(x.total)||0,
+      // Postgres usa "ordered"; la UI mantiene "pending" para mostrar "Pendiente".
+      status:x.status==='received'?'received':x.status==='cancelled'?'cancelled':'pending',
+      transportDetails:x.transport_details||undefined,transportCost:Number(x.transport_cost)||0,
       items:(i.data||[]).filter((it:any)=>it.purchase_order_id===x.id).map((it:any)=>({productId:it.product_id,productName:pMap.get(it.product_id)||'Producto',quantity:Number(it.quantity)||0,cost:Number(it.unit_cost)||0}))
     }))
   };
