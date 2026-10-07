@@ -581,7 +581,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           {navSections.map((section, sectionIndex) => (
             <div key={section.label || `section-${sectionIndex}`} className={cn(sectionIndex > 0 && !sidebarCollapsed ? "mt-2.5" : "")}>
               {!sidebarCollapsed && section.label && (
-                <div className="px-2 pb-1 text-[6px] font-black uppercase tracking-[0.18em] text-muted/70">
+                <div className="px-2 pb-1 text-[7px] font-black uppercase tracking-[0.18em] text-muted/70">
                   {section.label}
                 </div>
               )}
@@ -608,18 +608,18 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                         <div
                           className={cn(
                             "flex items-center rounded-lg transition-colors duration-150 group min-w-0",
-                            sidebarCollapsed ? "justify-center p-2 my-0.5" : "gap-1.5 px-2 py-1.5",
+                            sidebarCollapsed ? "justify-center p-2 my-0.5" : "gap-1.5 px-2 py-1.75",
                             isActive && !(item as any).comingSoon
                               ? "bg-rose-600 text-white shadow-sm"
                               : "text-muted hover:bg-subtle hover:text-primary"
                           )}
                         >
                           <Icon className={cn(
-                            "w-3.5 h-3.5 shrink-0 transition-colors",
+                            "w-3.75 h-3.75 shrink-0 transition-colors",
                             isActive && !(item as any).comingSoon ? "text-white" : "text-muted group-hover:text-rose-600"
                           )} />
                           {!sidebarCollapsed && (
-                            <span className="min-w-0 flex-1 font-black text-[8px] uppercase tracking-[-0.01em] leading-[1.1] whitespace-normal break-words">
+                            <span className="min-w-0 flex-1 font-black text-[9px] uppercase tracking-[-0.005em] leading-[1.15] whitespace-normal break-words">
                               {item.name}
                             </span>
                           )}
