@@ -18,7 +18,7 @@ import {
   setBankCardBalanceToSupabase, pullBranchInventoryFromSupabase,
   pushCashSessionToSupabase, deleteProductFromSupabase,
   pushBranchToSupabase, deleteBranchFromSupabase, pushCategoryToSupabase, deleteCategoryFromSupabase, deleteSupplierFromSupabase,
-  pushProductToSupabase, pushUserToSupabase, pushWarrantyToSupabase, pushTimeShiftToSupabase,
+  pushProductToSupabase, pushUserToSupabase, pushWarrantyToSupabase, pushTimeShiftToSupabase, deleteBankCardFromSupabase,
   pushQuoteToSupabase, pushBankCardToSupabase, pushReturnToSupabase,
   pushSupplierToSupabase, pushSupplierOrderToSupabase, pushInventoryAuditToSupabase,
   pushSalarySettlementToSupabase, pushInventoryToSupabase,
