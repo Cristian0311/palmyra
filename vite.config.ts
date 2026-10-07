@@ -56,10 +56,9 @@ export default defineConfig(() => {
           // Los chunks de las rutas deben quedar precacheados. Excluirlos
           // provoca "Failed to fetch dynamically imported module" cuando el
           // dispositivo pierde conexión antes de abrir una sección.
-          globIgnores: [
-            '**/vendor-xlsx-*.js',
-            '**/vendor-charts-*.js'
-          ],
+          // Los chunks de reportes/exportación también forman parte del modo
+          // offline. Se precachean junto al resto del shell para que Reportes
+          // funcione tras un arranque en frío sin conexión.
           runtimeCaching: [
             {
               urlPattern: /^https:\/\/hmcvujyqloyjdvngpdxz\.supabase\.co\/(rest|auth|storage|functions)\/.*$/i,
