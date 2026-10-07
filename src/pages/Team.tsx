@@ -10,6 +10,7 @@ import {
   resendEmployeeInvitation,
   revokeEmployeeInvitation,
   setEmployeeStatus,
+  deleteCompanyEmployee,
   updateEmployee,
   updateEmployeePosSecure,
   setEmployeeCompensation,
@@ -351,6 +352,27 @@ export default function Team() {
     }
   };
 
+  const deleteEmployee = async (employee: TeamEmployee) => {
+    setMenuId(null);
+    const confirmed = window.confirm(
+      `Eliminar a ${employee.full_name}? Esta acción eliminará su acceso a la empresa, invitaciones, credenciales POS y configuraciones personales. Las ventas y sesiones históricas conservarán el empleado como referencia cuando la base de datos lo permita.`
+    );
+    if (!confirmed) return;
+    setBusy(true);
+    setError("");
+    try {
+      await deleteCompanyEmployee(employee.id);
+      await refresh();
+      addNotification(`Empleado ${employee.full_name} eliminado correctamente.`, "success");
+    } catch (e: any) {
+      const message = e?.message || "No se pudo eliminar el empleado.";
+      addNotification(message, "error");
+      setError(message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const revokeInvite = async (employee: TeamEmployee) => {
     setMenuId(null);
     if (!employee.pending_invitation) return;
@@ -511,7 +533,7 @@ export default function Team() {
                       {!employee.active && <span className="text-[9px] font-black uppercase rounded-full px-2 py-1 bg-slate-100 text-slate-500">Inactivo</span>}
                       {employee.pending_invitation && employee.active && <span className="text-[9px] font-black uppercase rounded-full px-2 py-1 bg-amber-100 text-amber-700">Invitación pendiente</span>}
                     </div>
-                    <div className="grid sm:grid-cols-3 gap-2 mt-1.5 text-[10px] text-muted">
+                    <div className="team-employee-list-meta grid sm:grid-cols-3 gap-2 mt-1.5 text-[10px] text-muted">
                       <span className="font-bold">Código: {employee.employee_code}</span>
                       <span className="inline-flex items-center gap-1"><Mail className="w-3 h-3" />{employee.login_email || employee.pending_invitation?.email || "Sin acceso web"}</span>
                       <span className="inline-flex items-center gap-1"><MapPin className="w-3 h-3" />{warehouseNames.length ? warehouseNames.join(", ") : "Sin almacén"}</span>
@@ -539,6 +561,9 @@ export default function Team() {
                         )}
                         <button onClick={() => changeStatus(employee)} className="w-full px-3 py-2 text-left text-xs font-bold hover:bg-subtle rounded-xl flex items-center gap-2">
                           <RefreshCw className="w-4 h-4" /> {employee.active ? "Desactivar acceso" : "Reactivar acceso"}
+                        </button>
+                        <button onClick={() => deleteEmployee(employee)} disabled={busy} className="w-full px-3 py-2 text-left text-xs font-bold text-rose-700 hover:bg-rose-50 rounded-xl flex items-center gap-2">
+                          <UserX className="w-4 h-4" /> Eliminar empleado
                         </button>
                       </div>
                     )}
