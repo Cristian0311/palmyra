@@ -669,6 +669,25 @@ export default function Settings() {
           </div>
         )}
 
+        {activeTab === 'advanced' && (
+          <div className="bg-secondary rounded-2xl shadow-sm border border-base p-3 sm:p-5 space-y-4">
+            <div className="flex items-center gap-3 border-b border-base pb-3"><div className="bg-amber-50 dark:bg-amber-950/30 p-2 rounded-lg text-amber-600"><AlertTriangle size={16}/></div><div><h3 className="text-xs font-black text-primary uppercase tracking-wider">Herramientas avanzadas</h3><p className="text-[8px] font-bold text-muted uppercase tracking-tight">Respaldo, sincronización y restablecimiento selectivo</p></div></div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button type="button" onClick={() => { const data = exportData(); const blob = new Blob([data], {type:'application/json'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='palmyra-respaldo.json'; a.click(); URL.revokeObjectURL(url); showToast('Respaldo exportado correctamente.'); }} className="h-11 rounded-xl border border-base bg-primary text-primary text-[10px] font-black uppercase flex items-center justify-center gap-2"><CloudDownload size={15}/> Exportar respaldo</button>
+              <button type="button" onClick={() => setShowConfirmReset(true)} className="h-11 rounded-xl bg-rose-600 text-white text-[10px] font-black uppercase flex items-center justify-center gap-2"><Trash2 size={15}/> Restablecer datos</button>
+            </div>
+            <div className="rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/70 dark:bg-amber-950/20 p-3 text-[9px] font-semibold text-amber-800 dark:text-amber-300">El restablecimiento es selectivo. No modifica la cuenta SaaS, el plan ni la autenticación.</div>
+            {showConfirmReset && (
+              <div className="rounded-2xl border border-rose-200 dark:border-rose-900/40 bg-rose-50/60 dark:bg-rose-950/20 p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2"><p className="text-[10px] font-black uppercase text-rose-700 dark:text-rose-300">Selecciona qué restablecer</p><button type="button" onClick={toggleAllResetSections} className="text-[8px] font-black uppercase text-rose-600">{resetSections.length === RESET_OPTIONS.length ? 'Quitar todo' : 'Seleccionar todo'}</button></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{RESET_OPTIONS.map(option => { const Icon=option.icon; const checked=resetSections.includes(option.id); return <label key={option.id} className={cn('flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer',checked?'border-rose-400 bg-white dark:bg-slate-900':'border-base bg-primary')}><input type="checkbox" checked={checked} onChange={()=>toggleResetSection(option.id)} className="mt-0.5 accent-rose-600"/><Icon size={13} className="text-rose-600 mt-0.5 shrink-0"/><span><span className="block text-[9px] font-black text-primary uppercase">{option.label}</span><span className="block text-[8px] text-muted mt-0.5">{option.desc}</span></span></label>; })}</div>
+                <input value={resetInput} onChange={e=>setResetInput(e.target.value)} placeholder="Escribe ELIMINAR para confirmar" className="w-full px-3 py-2.5 bg-primary border border-base rounded-xl text-xs font-bold text-primary"/>
+                <div className="flex gap-2"><button type="button" onClick={()=>{setShowConfirmReset(false);setResetInput('');setResetSections([])}} className="flex-1 h-10 rounded-xl border border-base text-[9px] font-black uppercase">Cancelar</button><button type="button" disabled={resetInput.trim().toUpperCase()!=='ELIMINAR'||resetSections.length===0||isLoading} onClick={handleClearData} className="flex-1 h-10 rounded-xl bg-rose-600 text-white text-[9px] font-black uppercase disabled:opacity-40">{isLoading?'Procesando…':'Confirmar'}</button></div>
+              </div>
+            )}
+          </div>
+        )}
+
         {(branchToDelete || categoryToDelete) && (
           <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
             <div className="w-full max-w-sm rounded-3xl bg-white dark:bg-slate-900 border border-base shadow-2xl p-5">
