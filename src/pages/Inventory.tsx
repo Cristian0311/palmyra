@@ -611,8 +611,8 @@ export default function Inventory() {
             {/* Botón Gestión Categorías */}
             <button 
               onClick={() => setShowCategoryModal(true)}
-              className="w-full sm:w-8 h-8 flex items-center justify-center bg-subtle border border-base rounded-xl text-muted hover:text-indigo-600 hover:bg-secondary transition-all cursor-pointer shrink-0"
-              title="Gestionar Categorías"
+              className="inventory-add-category-button"
+              title="Agregar categorías" aria-label="Agregar categorías"
             >
               <Settings2 className="w-3.5 h-3.5" />
             </button>
@@ -1217,191 +1217,48 @@ export default function Inventory() {
                 )}
 
                 {activeFormTab === 'variants' && (
-                  <div className="team-form-section rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3 sm:p-4">
-                    <div className="flex items-start justify-between gap-3 mb-3">
-                      <div>
-                        <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-800">Variantes del producto</h3>
-                        <p className="text-[9px] font-semibold text-slate-500 mt-0.5">
-                          Agrega tallas, colores u otras presentaciones. El stock se asigna después desde <b>Gestionar stock</b>.
-                        </p>
+                  <div className="inventory-product-general inventory-product-step">
+                    <div className="inventory-step-heading"><div><h3>Variantes</h3><p>Tallas, colores u otras presentaciones del producto.</p></div><InfoTooltip text="Cada variante tendrá su propia cantidad y mínimo de alerta cuando gestiones el stock." /></div>
+                    <div className="inventory-variants-grid">
+                      <div className="inventory-variant-group">
+                        <div className="inventory-variant-head"><label className="inventory-product-label">Tallas</label><span>{(formData.availableSizes || []).length}</span></div>
+                        <div className="inventory-product-action-row">
+                          <input value={newSize} onChange={e=>setNewSize(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();const value=newSize.trim();if(!value)return;setFormData(prev=>({...prev,availableSizes:Array.from(new Set([...(prev.availableSizes||[]),value]))}));setNewSize('');}}} className="inventory-product-input" placeholder="Ej. M, 40, 42" />
+                          <button type="button" onClick={()=>{const value=newSize.trim();if(!value)return;setFormData(prev=>({...prev,availableSizes:Array.from(new Set([...(prev.availableSizes||[]),value]))}));setNewSize('');}} className="inventory-product-small-button">Agregar</button>
+                        </div>
+                        <div className="inventory-variant-tags">{(formData.availableSizes||[]).map(size=><button type="button" key={size} onClick={()=>setFormData(prev=>({...prev,availableSizes:(prev.availableSizes||[]).filter(x=>x!==size)}))} className="inventory-variant-tag inventory-variant-tag-indigo">{size}<span>×</span></button>)}</div>
                       </div>
-                      <InfoTooltip text="Cuando un producto tiene variantes, PALMYRA no crea stock base. Cada variante tendrá su propia cantidad y mínimo de alerta." />
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="bg-white rounded-xl border border-slate-200 p-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <label className="text-[9px] font-black uppercase tracking-widest text-slate-500">Tallas</label>
-                          <span className="text-[8px] font-bold text-slate-400">{(formData.availableSizes || []).length}</span>
+                      <div className="inventory-variant-group">
+                        <div className="inventory-variant-head"><label className="inventory-product-label">Colores</label><span>{(formData.availableColors || []).length}</span></div>
+                        <div className="inventory-product-action-row">
+                          <input value={newColor} onChange={e=>setNewColor(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();const value=newColor.trim();if(!value)return;setFormData(prev=>({...prev,availableColors:Array.from(new Set([...(prev.availableColors||[]),value]))}));setNewColor('');}}} className="inventory-product-input" placeholder="Ej. Negro, Rojo" />
+                          <button type="button" onClick={()=>{const value=newColor.trim();if(!value)return;setFormData(prev=>({...prev,availableColors:Array.from(new Set([...(prev.availableColors||[]),value]))}));setNewColor('');}} className="inventory-product-small-button">Agregar</button>
                         </div>
-                        <div className="flex gap-2">
-                          <input
-                            value={newSize}
-                            onChange={e => setNewSize(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                const value = newSize.trim();
-                                if (!value) return;
-                                setFormData(prev => ({ ...prev, availableSizes: Array.from(new Set([...(prev.availableSizes || []), value])) }));
-                                setNewSize('');
-                              }
-                            }}
-                            className="min-w-0 flex-1 h-8 px-2.5 rounded-lg border border-slate-200 text-[10px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
-                            placeholder="Ej. M, 40, 42"
-                          />
-                          <button type="button" onClick={() => {
-                            const value = newSize.trim();
-                            if (!value) return;
-                            setFormData(prev => ({ ...prev, availableSizes: Array.from(new Set([...(prev.availableSizes || []), value])) }));
-                            setNewSize('');
-                          }} className="shrink-0 h-8 px-2.5 rounded-lg bg-indigo-600 text-white text-[8px] font-black uppercase">Agregar</button>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 mt-2">
-                          {(formData.availableSizes || []).map(size => (
-                            <button type="button" key={size} onClick={() => setFormData(prev => ({ ...prev, availableSizes: (prev.availableSizes || []).filter(x => x !== size) }))}
-                              className="px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100 text-[8px] font-black">{size} ×</button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="bg-white rounded-xl border border-slate-200 p-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <label className="text-[9px] font-black uppercase tracking-widest text-slate-500">Colores</label>
-                          <span className="text-[8px] font-bold text-slate-400">{(formData.availableColors || []).length}</span>
-                        </div>
-                        <div className="flex gap-2">
-                          <input
-                            value={newColor}
-                            onChange={e => setNewColor(e.target.value)}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter') {
-                                e.preventDefault();
-                                const value = newColor.trim();
-                                if (!value) return;
-                                setFormData(prev => ({ ...prev, availableColors: Array.from(new Set([...(prev.availableColors || []), value])) }));
-                                setNewColor('');
-                              }
-                            }}
-                            className="min-w-0 flex-1 h-8 px-2.5 rounded-lg border border-slate-200 text-[10px] font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
-                            placeholder="Ej. Negro, Rojo"
-                          />
-                          <button type="button" onClick={() => {
-                            const value = newColor.trim();
-                            if (!value) return;
-                            setFormData(prev => ({ ...prev, availableColors: Array.from(new Set([...(prev.availableColors || []), value])) }));
-                            setNewColor('');
-                          }} className="shrink-0 h-8 px-2.5 rounded-lg bg-indigo-600 text-white text-[8px] font-black uppercase">Agregar</button>
-                        </div>
-                        <div className="flex flex-wrap gap-1.5 mt-2">
-                          {(formData.availableColors || []).map(color => (
-                            <button type="button" key={color} onClick={() => setFormData(prev => ({ ...prev, availableColors: (prev.availableColors || []).filter(x => x !== color) }))}
-                              className="px-2 py-1 rounded-lg bg-violet-50 text-violet-700 border border-violet-100 text-[8px] font-black">{color} ×</button>
-                          ))}
-                        </div>
+                        <div className="inventory-variant-tags">{(formData.availableColors||[]).map(color=><button type="button" key={color} onClick={()=>setFormData(prev=>({...prev,availableColors:(prev.availableColors||[]).filter(x=>x!==color)}))} className="inventory-variant-tag inventory-variant-tag-violet">{color}<span>×</span></button>)}</div>
                       </div>
                     </div>
-
-                    {(formData.availableSizes?.length || formData.availableColors?.length) ? (
-                      <div className="mt-3 rounded-xl bg-white/80 border border-indigo-100 px-3 py-2 text-[9px] font-bold text-slate-500">
-                        <b>Producto con variantes:</b> no habrá stock base. Después de guardar, asigna la cantidad de cada variante desde el botón de inventario.
-                      </div>
-                    ) : null}
+                    {(formData.availableSizes?.length||formData.availableColors?.length)?<div className="inventory-step-note"><b>Producto con variantes:</b> no habrá stock base. Después de guardar, asigna la cantidad de cada variante desde Gestionar stock.</div>:null}
                   </div>
                 )}
 
                 {activeFormTab === 'extra' && (
-                  <div className="team-form-section space-y-8">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-3">
-                        <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center gap-1.5">
-                          <DollarSign className="w-3.5 h-3.5 text-indigo-500" />
-                          Configuración Económica
-                        </h3>
-                        
-                        <div className="grid grid-cols-2 gap-2.5">
-                          <div className="space-y-1">
-                            <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Costo de Compra (CUP)</label>
-                            <input 
-                              type="number" 
-                              required 
-                              value={formData.costPrice === 0 ? '' : (formData.costPrice ?? '')} 
-                              placeholder="0.00"
-                              onFocus={(e) => e.target.select()}
-                              onChange={e => handleCostPriceChange(e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0), formData.price || 0)} 
-                              className="w-full h-9 px-3 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black outline-none focus:ring-2 focus:ring-indigo-500/20" 
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Precio de Venta (CUP)</label>
-                            <input 
-                              type="number" 
-                              required 
-                              value={formData.price === 0 ? '' : (formData.price ?? '')} 
-                              placeholder="0.00"
-                              onFocus={(e) => e.target.select()}
-                              onChange={e => handleCostPriceChange(formData.costPrice || 0, e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0))} 
-                              className="w-full h-9 px-3 py-2 bg-indigo-50 border border-indigo-200 rounded-xl text-[10px] font-black text-indigo-700 outline-none focus:ring-2 focus:ring-indigo-500/20" 
-                            />
-                          </div>
+                  <div className="inventory-product-general inventory-product-step">
+                    <div className="inventory-step-heading"><div><h3>Precios y extras</h3><p>Configura costos, venta, comisión, garantía y alertas.</p></div><InfoTooltip text="El precio de venta y el costo se utilizan para calcular automáticamente el margen." /></div>
+                    <div className="inventory-price-grid">
+                      <div className="inventory-price-group">
+                        <div className="inventory-price-heading"><DollarSign className="w-3.5 h-3.5" /><span>Precios</span></div>
+                        <div className="inventory-product-row inventory-product-row-two">
+                          <div className="inventory-product-field"><label className="inventory-product-label">Costo compra · CUP</label><input type="number" required value={formData.costPrice===0?'':(formData.costPrice??'')} placeholder="0.00" onFocus={e=>e.target.select()} onChange={e=>handleCostPriceChange(e.target.value===''?0:(parseFloat(e.target.value)||0),formData.price||0)} className="inventory-product-input" /></div>
+                          <div className="inventory-product-field"><label className="inventory-product-label">Precio venta · CUP</label><input type="number" required value={formData.price===0?'':(formData.price??'')} placeholder="0.00" onFocus={e=>e.target.select()} onChange={e=>handleCostPriceChange(formData.costPrice||0,e.target.value===''?0:(parseFloat(e.target.value)||0))} className="inventory-product-input inventory-product-price-input" /></div>
                         </div>
-
-                        <div className="bg-emerald-50 p-2.5 rounded-xl flex items-center justify-between">
-                          <div>
-                            <p className="text-[9px] font-black text-emerald-600 uppercase">Margen de Utilidad</p>
-                            <p className="text-sm font-black text-emerald-700">CUP {formData.margin?.toLocaleString()}</p>
-                          </div>
-                          <TrendingUp className="w-5 h-5 text-emerald-200" />
-                        </div>
-
-                        <div className="space-y-1">
-                          {hasFixedProductEmployees && (
-                            <div className="space-y-1">
-                              <div className="flex items-center justify-between">
-                                <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Comisión Vendedor (CUP Fijo)</label>
-                                <InfoTooltip text="Monto fijo en CUP que recibe el vendedor por cada unidad vendida de este producto." />
-                              </div>
-                              <input type="number" min="0" value={formData.commissionValue === 0 ? '' : (formData.commissionValue ?? '')} placeholder="0.00" onFocus={(e) => e.target.select()} onChange={e => setFormData({...formData, commissionValue: e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0)})} className="w-full h-9 px-3 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black outline-none focus:ring-2 focus:ring-indigo-500/20" />
-                            </div>
-                          )}
-                          {!hasFixedProductEmployees && (
-                            <div className="p-3 rounded-2xl bg-slate-100 border border-slate-200 text-[9px] font-bold text-slate-500">
-                              Los empleados están configurados para <b>% sobre el total de venta</b>. La comisión fija por producto queda desactivada.
-                            </div>
-                          )}
-                        </div>
+                        <div className="inventory-margin-row"><div><span>Margen de utilidad</span><strong>CUP {formData.margin?.toLocaleString()}</strong></div><TrendingUp className="w-4 h-4" /></div>
+                        {hasFixedProductEmployees?<div className="inventory-product-field"><div className="inventory-label-with-info"><label className="inventory-product-label">Comisión vendedor · CUP fijo</label><InfoTooltip text="Monto fijo en CUP que recibe el vendedor por cada unidad vendida de este producto." /></div><input type="number" min="0" value={formData.commissionValue===0?'':(formData.commissionValue??'')} placeholder="0.00" onFocus={e=>e.target.select()} onChange={e=>setFormData({...formData,commissionValue:e.target.value===''?0:(parseFloat(e.target.value)||0)})} className="inventory-product-input" /></div>:<div className="inventory-step-note">Los empleados están configurados para <b>% sobre el total de venta</b>. La comisión fija por producto queda desactivada.</div>}
                       </div>
-
-                      <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-3">
-                        <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center gap-1.5">
-                          <ShieldCheck className="w-3.5 h-3.5 text-indigo-500" />
-                          Garantía y Alertas
-                        </h3>
-                        <div className="space-y-4">
-                          <div className="space-y-1">
-                            <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Días de Garantía</label>
-                            <input 
-                              type="number" 
-                              min="0" 
-                              value={formData.warrantyDays === 0 ? '' : (formData.warrantyDays ?? '')} 
-                              placeholder="0 = Sin garantía"
-                              onFocus={(e) => e.target.select()}
-                              onChange={e => setFormData({...formData, warrantyDays: e.target.value === '' ? 0 : (parseInt(e.target.value) || 0)})} 
-                              className="w-full h-9 px-3 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black outline-none" 
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Stock Mínimo para Alertas</label>
-                            <input 
-                              type="number" 
-                              min="0" 
-                              value={formData.minStockAlert === 0 ? '' : (formData.minStockAlert ?? '')} 
-                              placeholder="5"
-                              onFocus={(e) => e.target.select()}
-                              onChange={e => setFormData({...formData, minStockAlert: e.target.value === '' ? 0 : (parseInt(e.target.value) || 0)})} 
-                              className="w-full h-9 px-3 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black outline-none" 
-                            />
-                          </div>
+                      <div className="inventory-price-group">
+                        <div className="inventory-price-heading"><ShieldCheck className="w-3.5 h-3.5" /><span>Garantía y alertas</span></div>
+                        <div className="inventory-product-row inventory-product-row-two">
+                          <div className="inventory-product-field"><label className="inventory-product-label">Días de garantía</label><input type="number" min="0" value={formData.warrantyDays===0?'':(formData.warrantyDays??'')} placeholder="0 = Sin garantía" onFocus={e=>e.target.select()} onChange={e=>setFormData({...formData,warrantyDays:e.target.value===''?0:(parseInt(e.target.value)||0)})} className="inventory-product-input" /></div>
+                          <div className="inventory-product-field"><label className="inventory-product-label">Stock mínimo · alerta</label><input type="number" min="0" value={formData.minStockAlert===0?'':(formData.minStockAlert??'')} placeholder="5" onFocus={e=>e.target.select()} onChange={e=>setFormData({...formData,minStockAlert:e.target.value===''?0:(parseInt(e.target.value)||0)})} className="inventory-product-input" /></div>
                         </div>
                       </div>
                     </div>
