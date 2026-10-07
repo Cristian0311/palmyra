@@ -373,3 +373,15 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 
 .admin-company-plan{display:flex;flex-wrap:wrap;gap:5px;margin:8px 0 9px}
 .admin-company-plan span{padding:4px 6px;border-radius:7px;background:#f4effb;color:#6d3bd2;font-size:6.5px;font-weight:900}
+
+.admin-panel-subtitle{margin-top:4px;color:var(--admin-muted);font-size:8px;line-height:1.4}
+.admin-service-meta-line{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:7px 0;color:var(--admin-muted);font-size:7px}
+.admin-service-meta-line b{color:var(--admin-deep);font-weight:900}
+.admin-infra-real-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+.admin-table-list{display:flex;flex-direction:column;gap:5px;margin-top:10px;max-height:430px;overflow:auto}
+.admin-table-list-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:8px 9px;border:1px solid #eee8f5;border-radius:10px;background:#fcfbfe}
+.admin-table-list-row strong{display:block;font-size:8px;color:var(--admin-deep)}
+.admin-table-list-row small{display:block;margin-top:2px;font-size:6.5px;color:var(--admin-muted)}
+.admin-table-list-row>b{font-size:8px;color:#6d3bd2;white-space:nowrap}
+@media(max-width:720px){.admin-infra-real-grid{grid-template-columns:1fr 1fr!important}.admin-service-meta-line{font-size:6.5px}}
+@media(max-width:480px){.admin-infra-real-grid{grid-template-columns:1fr!important}}
