@@ -29,6 +29,7 @@ import { addSyncLog } from '../../utils/syncLogger';
 import { getActiveTenant } from '../tenant';
 import { reconcileBankCanonical } from './reconcileBank';
 import { replaceWarehouseInventory, replaceWarehousesInventory } from './reconcileInventory';
+import { reconcileSupplierReceiveCanonical } from './reconcileSupplierReceive';
 class PermanentSyncError extends Error {
   permanent = true;
 }
