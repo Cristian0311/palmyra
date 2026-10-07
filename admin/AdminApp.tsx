@@ -42,6 +42,8 @@ import {
   type PlatformSnapshot,
   type InfrastructureUsage,
   loadInfrastructureUsage,
+  loadExchangeRates,
+  type ExchangeRatePayload,
   loadSupportRequests,
   loadSupportSettings,
   saveSupportSettings,
@@ -53,7 +55,7 @@ import {
 import { adminSignIn, adminSignOut, adminUser, getAdminSupabase } from "./supabase";
 import "./admin.css";
 
-type View = "overview" | "companies" | "billing" | "support" | "audit" | "infrastructure" | "settings";
+type View = "overview" | "companies" | "billing" | "support" | "audit" | "infrastructure" | "exchange" | "settings";
 
 const navItems: Array<{ id: View; label: string; icon: typeof BarChart3; hint: string }> = [
   { id: "overview", label: "Dashboard", icon: BarChart3, hint: "Estado global de PALMYRA" },
@@ -62,6 +64,7 @@ const navItems: Array<{ id: View; label: string; icon: typeof BarChart3; hint: s
   { id: "support", label: "Soporte", icon: TicketCheck, hint: "Atención operativa" },
   { id: "audit", label: "Auditoría", icon: Activity, hint: "Acciones administrativas" },
   { id: "infrastructure", label: "Infraestructura", icon: Database, hint: "Salud y recursos del SaaS" },
+  { id: "exchange", label: "Tasa de cambio", icon: CircleDollarSign, hint: "Referencia informativa de mercado" },
   { id: "settings", label: "Configuración", icon: Settings2, hint: "Seguridad de la plataforma" },
 ];
 
@@ -463,6 +466,46 @@ function BillingView({
   );
 }
 
+function ExchangeRateView() {
+  const [payload, setPayload] = useState<ExchangeRatePayload | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const refresh = async () => {
+    setLoading(true); setError("");
+    try { setPayload(await loadExchangeRates()); }
+    catch (err) { setError(err instanceof Error ? err.message : "No se pudo consultar la tasa."); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { void refresh(); }, []);
+
+  const raw: any = payload?.data || {};
+  const tasas: Record<string, number> = raw?.tasas && typeof raw.tasas === "object" ? raw.tasas : {};
+  const currencyLabels: Record<string,string> = { USD:"Dólar estadounidense", ECU:"Euro", EUR:"Euro", MLC:"MLC" };
+  const rates = Object.entries(tasas).filter(([,v]) => Number.isFinite(Number(v))).map(([code,value]) => ({
+    code, label: currencyLabels[code] || code, value: Number(value)
+  }));
+
+  return <div className="admin-content-stack">
+    <section className="admin-page-head">
+      <div><p className="admin-eyebrow">TASA DE CAMBIO PALMYRA</p><h1>Referencia informativa del mercado cubano.</h1><p>Datos consultados desde la API oficial de elTOQUE. Esta sección es exclusivamente informativa: no modifica precios, monedas ni operaciones del CRM.</p></div>
+      <Button onClick={() => void refresh()} disabled={loading}><RefreshCw size={14} className={loading ? "spin" : ""}/>{loading ? "Actualizando…" : "Actualizar"}</Button>
+    </section>
+    {error ? <div className="admin-alert admin-alert--error"><AlertCircle size={16}/>{error}</div> : null}
+    {!payload?.configured && !loading ? <section className="admin-panel"><div className="admin-panel__head"><div><p className="admin-kicker">CONEXIÓN PENDIENTE</p><h2>API de elTOQUE no configurada</h2><p>La clave debe permanecer como secreto del servidor. No se puede colocar en el navegador.</p></div><ShieldCheck size={17}/></div></section> : null}
+    {payload?.configured && rates.length ? <section className="admin-panel">
+      <div className="admin-panel__head"><div><p className="admin-kicker">MERCADO INFORMAL · TRMI</p><h2>Cotización actual</h2><p>1 unidad de cada divisa expresada en CUP. Fuente: elTOQUE.</p></div><CircleDollarSign size={18}/></div>
+      <div className="admin-rate-grid">{rates.map(rate => <article className="admin-rate-card" key={rate.code}><span>{rate.code}</span><strong>{rate.value.toLocaleString("es-CU")}</strong><small>{rate.label} · CUP</small></article>)}</div>
+      <div className="admin-rate-foot">Última lectura: {formatDate(payload.capturedAt)} · Solo informativa · Sin actualización automática del CRM.</div>
+    </section> : null}
+    <section className="admin-panel">
+      <div className="admin-panel__head"><div><p className="admin-kicker">PROVINCIAS</p><h2>Separación territorial</h2><p>La API oficial actualmente documentada expone <strong>/v1/trmi</strong> con la TRMI general. La publicación provincial de elTOQUE es actualmente un servicio separado y, por su información oficial, la tasa territorial publicada es USD y no todas las provincias tienen dato cada día.</p></div><Building2 size={18}/></div>
+      <div className="admin-province-notice"><AlertCircle size={15}/><div><strong>No voy a inventar tasas provinciales.</strong><span>Cuando elTOQUE habilite un endpoint/API territorial oficial, PALMYRA podrá conectarlo aquí sin cambiar el diseño. Por ahora mostramos únicamente lo que la API oficial permite obtener.</span></div></div>
+      <div className="admin-province-grid">{["Pinar del Río","Artemisa","La Habana","Mayabeque","Matanzas","Villa Clara","Cienfuegos","Sancti Spíritus","Ciego de Ávila","Camagüey","Las Tunas","Holguín","Granma","Santiago de Cuba","Guantánamo","Isla de la Juventud"].map(name => <div className="admin-province-card" key={name}><span>{name}</span><strong>Sin dato API</strong><small>Esperando fuente territorial oficial</small></div>)}</div>
+    </section>
+  </div>;
+}
+
 function SupportView() {
   const [requests, setRequests] = useState<PlatformSupportRequest[]>([]);
   const [loading, setLoading] = useState(true);
@@ -806,6 +849,7 @@ function AdminShell({
                 view === "billing" ? <BillingView requests={snapshot.requests} busy={busy} onApprove={(r) => void approve(r)} onReject={(r) => void reject(r)} /> :
                 view === "support" ? <SupportView /> :
                 view === "infrastructure" ? <InfrastructureView /> :
+                view === "exchange" ? <ExchangeRateView /> :
                 view === "settings" ? <SettingsView /> :
                 <div className="admin-placeholder"><div className="admin-placeholder__icon"><Shield size={24}/></div><p className="admin-eyebrow">PRÓXIMAMENTE</p><h1>{current.label}</h1><p>Área preparada para ampliar el control de plataforma sobre el mismo núcleo seguro.</p></div>}
             </motion.div>
