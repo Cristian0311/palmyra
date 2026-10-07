@@ -495,6 +495,8 @@ export default function Inventory() {
           <button 
             onClick={() => {
               setEditingProduct(null);
+              setNewSize("");
+              setNewColor("");
               setFormData({ 
                 name: "", sku: "", barcode: "", costPrice: 0, price: 0, margin: 0, categoryId: "", 
                 color: "bg-slate-100 text-slate-700", commissionType: 'fixed', commissionValue: 0,
