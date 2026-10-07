@@ -35,7 +35,7 @@ import { cn } from "../lib/utils";
 import { loadSaaSContext } from "../services/saas";
 import { useStore } from "../store/useStore";
 import { getOfflineQueueCount } from "../services/offlineQueue";
-import { canUsePlanFeature, type PlanFeature } from "../services/planAccess";
+import { canUsePlanFeature, getPlanVisual, type PlanFeature } from "../services/planAccess";
 import { 
   CheckCircle2, 
   AlertTriangle, 
@@ -405,7 +405,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const visibleNavItems = navItems.length > 0 ? navItems : cashierNavItems;
   const currentPlanCode = saasContext?.subscription?.planCode || "";
   const isPlanLocked = (item: { requiredFeature?: PlanFeature }) => Boolean(item.requiredFeature && !canUsePlanFeature(currentPlanCode, item.requiredFeature));
-  const getRequiredPlanLabel = (feature?: PlanFeature) => feature === 'advanced_analytics' || feature === 'excel_exports' || feature === 'ai_dashboard' || feature === 'warranty_returns' || feature === 'abc_analysis' || feature === 'labels' ? 'Ciudadela' : feature ? 'Caravana' : '';
+  const getRequiredPlanCode = (feature?: PlanFeature) => feature === 'advanced_analytics' || feature === 'excel_exports' || feature === 'ai_dashboard' || feature === 'warranty_returns' || feature === 'abc_analysis' || feature === 'labels' ? 'pro' : feature ? 'growth' : '';
 
   const navSections = currentUser?.role === "admin"
     ? [
@@ -628,13 +628,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                               {item.name}
                             </span>
                           )}
-                          {!sidebarCollapsed && isPlanLocked(item) && (
-                            <span className="shrink-0 rounded-full bg-amber-50 px-1 py-0.5 text-[5px] font-black uppercase tracking-tight text-amber-700 border border-amber-200">
-                              {getRequiredPlanLabel(item.requiredFeature)}
-                            </span>
-                          )}
+                          {!sidebarCollapsed && isPlanLocked(item) && (() => {
+                            const requiredCode = getRequiredPlanCode(item.requiredFeature);
+                            const visual = getPlanVisual(requiredCode);
+                            return (
+                              <span className={cn("shrink-0 rounded-full px-1 py-0.5 text-[5px] font-black uppercase tracking-tight border", visual.badge)}>
+                                {requiredCode === "pro" ? "Ciudadela" : "Caravana"}
+                              </span>
+                            );
+                          })()}
                           {!sidebarCollapsed && (item as any).comingSoon && (
-                            <span className="shrink-0 rounded-full bg-subtle px-1 py-0.5 text-[5px] font-black uppercase tracking-tight text-muted border border-subtle">
+                            <span className="shrink-0 rounded-full bg-rose-50 px-1 py-0.5 text-[5px] font-black uppercase tracking-tight text-rose-700 border border-rose-200">
                               Próximamente
                             </span>
                           )}
@@ -739,19 +743,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 : "Sin contador";
 
             return (
-              <div className="mt-1.5 min-w-0 rounded-xl border border-violet-200/70 dark:border-violet-900/30 bg-gradient-to-br from-violet-50 to-white dark:from-violet-950/30 dark:to-slate-900 px-2.5 py-2">
+              <div className={cn("mt-1.5 min-w-0 rounded-xl border px-2.5 py-2", getPlanVisual(subscription?.planCode).border, getPlanVisual(subscription?.planCode).soft)}>
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <div className="w-6 h-6 rounded-lg bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center shrink-0">
-                    <CreditCard className="w-3 h-3 text-violet-600 dark:text-violet-300" />
+                  <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center shrink-0", getPlanVisual(subscription?.planCode).soft)}>
+                    <CreditCard className={cn("w-3 h-3", getPlanVisual(subscription?.planCode).text)} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 min-w-0">
-                      <p className="min-w-0 flex-1 truncate text-[7px] font-black uppercase tracking-[0.11em] text-violet-600 dark:text-violet-400">{subscription.planName || "Plan PALMYRA"}</p>
+                      <p className={cn("min-w-0 flex-1 truncate text-[7px] font-black uppercase tracking-[0.11em]", getPlanVisual(subscription?.planCode).text)}>{subscription.planName || "Plan PALMYRA"}</p>
                       <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[5.5px] font-black uppercase tracking-wider", countdown?.expired ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700")}>{statusLabel}</span>
                     </div>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[6.5px] font-bold leading-tight">
                       <span className="text-primary">Vence {expiryLabel || "—"}</span>
-                      <span className={cn("tabular-nums", countdown?.expired ? "text-rose-600 font-black" : "text-violet-700 dark:text-violet-300")}>{timeLabel}</span>
+                      <span className={cn("tabular-nums", countdown?.expired ? "text-rose-600 font-black" : getPlanVisual(subscription?.planCode).text)}>{timeLabel}</span>
                     </div>
                   </div>
                 </div>
