@@ -374,7 +374,7 @@ function CompanyCard({
       <div className="admin-company-plan">
         <span>{company.plan_name || company.plan_code || "Sin plan"}</span>
         <span>{company.plan_limits?.products ? `${company.products ?? 0}/${company.plan_limits.products} productos` : "Límite no disponible"}</span>
-        <span>{company.plan_limits?.employees ? `${company.employees ?? 0}/${company.plan_limits.employees} empleados` : ""}</span>
+        <span>{company.plan_limits?.employees ? `${company.employees ?? 0}/${company.plan_limits.employees} empleados` : ""}</span>\n        {"sync_failed" in company && Number((company as any).sync_failed || 0) > 0 ? <span className="admin-company-plan--alert">{Number((company as any).sync_failed)} sync fallidas</span> : null}
       </div>
       <div className="admin-company-card__metrics">
         <div><strong>{company.products ?? "—"}</strong><span>Productos</span></div>
@@ -884,7 +884,7 @@ function AdminShell({
           <AnimatePresence mode="wait">
             <motion.div key={view} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.18 }}>
               {view === "overview" ? <Overview snapshot={snapshot} onRefresh={async () => onSnapshotChange(await loadPlatformSnapshot())} /> :
-                view === "companies" ? <CompaniesView companies={snapshot.companies} busy={busy} onToggle={(company) => void toggleCompany(company)} /> :
+                view === "companies" ? <CompaniesView companies={control?.companies?.length ? control.companies : snapshot.companies} busy={busy} onToggle={(company) => void toggleCompany(company)} /> :
                 view === "billing" ? <BillingView requests={snapshot.requests} busy={busy} onApprove={(r) => void approve(r)} onReject={(r) => void reject(r)} /> :
                 view === "exchange" ? <ExchangeRateView /> :
                 view === "support" ? <SupportView /> :
