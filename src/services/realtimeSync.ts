@@ -35,7 +35,30 @@ async function refresh(force=false){
   if(isSyncInProgress)return;
   if(getOfflineQueueCount()>0){
     isSyncInProgress=true;
-    try{const {processOfflineQueue}=await import('./offlineSync');await processOfflineQueue();}catch(e){console.warn('[PALMYRA] offline replay failed',e);}finally{isSyncInProgress=false;}
+    let replayRemaining = getOfflineQueueCount();
+    try{
+      const {processOfflineQueue}=await import('./offlineSync');
+      const result = await processOfflineQueue();
+      replayRemaining = result.remaining;
+    }catch(e){
+      console.warn('[PALMYRA] offline replay failed',e);
+    }finally{
+      isSyncInProgress=false;
+    }
+
+    // Una eliminación (u otra mutación global) puede ser confirmada justo
+    // durante el replay. No dejamos al dispositivo con el catálogo anterior:
+    // cuando la cola queda vacía, hacemos una lectura canónica inmediata para
+    // que el cambio se refleje también en otras pestañas/dispositivos aunque
+    // Realtime no haya entregado el evento a tiempo.
+    if(replayRemaining===0){
+      try{
+        const state=await getTenantState();
+        await state.refreshGlobalCatalogData();
+      }catch(e){
+        console.warn('[PALMYRA] No se pudo refrescar el catálogo tras vaciar la cola offline:',e);
+      }
+    }
     return;
   }
   const state=await getTenantState();
