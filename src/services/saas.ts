@@ -93,6 +93,15 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
   const supabase = getSupabase();
   if (!supabase) return null;
 
+  // Arranque offline: usar inmediatamente el contexto cacheado y evitar
+  // esperas de red antes de montar el CRM. El alcance activo determina empresa
+  // y usuario para impedir mezclar sesiones multiempresa.
+  if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    const localScope = getPalmyraLocalScope();
+    const cached = localScope?.userId ? getCachedSaaSContext(localScope.userId) : null;
+    if (cached) return cached;
+  }
+
   if (forceRefresh) {
     const { error: refreshError } = await supabase.auth.getSession();
     if (refreshError) throw refreshError;
