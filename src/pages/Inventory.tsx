@@ -1045,25 +1045,25 @@ export default function Inventory() {
       )}
 
       {showAddModal && (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-xs z-50 flex justify-center items-center p-2 sm:p-4 overflow-y-auto">
-          <div className="bg-white rounded-2xl sm:rounded-[2.5rem] w-full max-w-4xl max-h-[94vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden border border-white/20 my-auto">
-            <header className="p-4 sm:p-6 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center relative overflow-hidden">
+        <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-[2px] z-50 flex justify-center items-center p-2 overflow-y-auto">
+          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden border border-white/20 my-auto">
+            <header className="p-3 sm:p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center relative overflow-hidden shrink-0">
               <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
               <div className="relative z-10">
-                <h2 className="text-lg sm:text-xl font-black text-slate-900 tracking-tight uppercase">
+                <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight uppercase">
                   {editingProduct ? 'Editar Producto' : 'Nuevo Producto'}
                 </h2>
                 <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Ficha Técnica y Almacén</p>
               </div>
               <button 
                 onClick={() => { setShowAddModal(false); setEditingProduct(null); setActiveFormTab('general'); }}
-                className="p-2 hover:bg-slate-200 rounded-full transition-all active:scale-90 relative z-10"
+                className="p-1.5 hover:bg-slate-200 rounded-lg transition-all active:scale-90 relative z-10"
               >
-                <X className="w-5 h-5 text-slate-400" />
+                <X className="w-4 h-4 text-slate-400" />
               </button>
             </header>
 
-            <nav className="px-4 sm:px-6 pt-1 bg-slate-50/50 flex gap-3 sm:gap-6 border-b border-slate-100 overflow-x-auto">
+            <nav className="px-3 sm:px-4 bg-slate-50/50 flex gap-2 sm:gap-4 border-b border-slate-100 overflow-x-auto">
               {[
                 { id: 'general', label: 'Datos Generales', icon: Tag },
                 { id: 'extra', label: 'Precios y Extras', icon: DollarSign },
@@ -1072,7 +1072,7 @@ export default function Inventory() {
                   key={tab.id}
                   onClick={() => setActiveFormTab(tab.id as any)}
                   className={cn(
-                    "flex items-center gap-1.5 py-3 px-1 text-[9px] sm:text-[10px] font-black uppercase tracking-wider transition-all relative whitespace-nowrap",
+                    "flex items-center gap-1.5 py-2.5 px-1 text-[8px] sm:text-[9px] font-black uppercase tracking-wider transition-all relative whitespace-nowrap",
                     activeFormTab === tab.id ? "text-indigo-600" : "text-slate-400 hover:text-slate-600"
                   )}
                 >
@@ -1086,18 +1086,18 @@ export default function Inventory() {
             </nav>
 
             <form onSubmit={handleAddSubmit} className="flex-1 overflow-hidden flex flex-col">
-              <div className="flex-1 overflow-y-auto p-3 sm:p-5 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 custom-scrollbar">
                 {activeFormTab === 'general' && (
-                  <div className="space-y-5 sm:space-y-6">
-                    <div className="grid grid-cols-1 sm:grid-cols-[140px_1fr] md:grid-cols-[170px_1fr] gap-4 sm:gap-5">
-                      <div className="space-y-3">
-                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 text-center">Imagen de Producto</label>
-                        <div className="relative group w-full aspect-square bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200 flex items-center justify-center overflow-hidden hover:border-indigo-300 transition-all">
+                  <div className="space-y-3 sm:space-y-4">
+                    <div className="grid grid-cols-[76px_1fr] sm:grid-cols-[100px_1fr] md:grid-cols-[120px_1fr] gap-2.5 sm:gap-3">
+                      <div className="space-y-1">
+                        <label className="block text-[7px] sm:text-[8px] font-black text-slate-400 uppercase tracking-wider ml-1 text-center">Imagen de Producto</label>
+                        <div className="relative group w-full aspect-square bg-slate-50 rounded-xl border border-dashed border-slate-200 flex items-center justify-center overflow-hidden hover:border-indigo-300 transition-all">
                           {formData.image ? (
                             <img src={formData.image} alt="Product" className="w-full h-full object-cover"  loading="lazy" decoding="async" />
                           ) : (
                             <div className="flex flex-col items-center gap-2">
-                              <Plus className="w-8 h-8 text-slate-300" />
+                              <Plus className="w-5 h-5 text-slate-300" />
                               <span className="text-[8px] font-black text-slate-400 uppercase">Subir Foto</span>
                             </div>
                           )}
@@ -1105,23 +1105,23 @@ export default function Inventory() {
                         </div>
                       </div>
 
-                      <div className="space-y-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-1.5">
-                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Nombre Comercial</label>
+                      <div className="space-y-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                          <div className="space-y-1">
+                            <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Nombre Comercial</label>
                             <input 
                               type="text" required value={formData.name || ''} 
                               onChange={e => setFormData({...formData, name: e.target.value})} 
-                              className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-bold transition-all" 
+                              className="w-full h-9 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-bold transition-all" 
                               placeholder="Ej: iPhone 15 Pro Max" 
                             />
                           </div>
-                          <div className="space-y-1.5">
-                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Categoría</label>
+                          <div className="space-y-1">
+                            <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Categoría</label>
                             <select 
                               required value={formData.categoryId || ''} 
                               onChange={e => setFormData({...formData, categoryId: e.target.value})} 
-                              className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-bold uppercase transition-all"
+                              className="w-full h-9 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-bold uppercase transition-all"
                             >
                               <option value="">Seleccione...</option>
                               {(categories || []).map(c => <option key={c.id} value={c.id}>{c.department} - {c.name}</option>)}
@@ -1129,50 +1129,50 @@ export default function Inventory() {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-1.5">
-                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">SKU (Código Interno)</label>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                          <div className="space-y-1">
+                            <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">SKU (Código Interno)</label>
                             <div className="flex gap-2">
                               <input 
                                 type="text" required value={formData.sku || ''} 
                                 onChange={e => setFormData({...formData, sku: e.target.value})} 
-                                className="flex-1 px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-mono font-bold uppercase transition-all" 
+                                className="flex-1 h-9 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-mono font-bold uppercase transition-all" 
                                 placeholder="AUTOGENERAR ->"
                               />
-                              <button type="button" onClick={() => setFormData({...formData, sku: `SKU-${Math.floor(Math.random() * 100000).toString().padStart(5, '0')}`})} className="px-4 py-3 bg-slate-200 text-slate-600 rounded-2xl hover:bg-slate-300 transition-colors">
+                              <button type="button" onClick={() => setFormData({...formData, sku: `SKU-${Math.floor(Math.random() * 100000).toString().padStart(5, '0')}`})} className="px-2.5 h-9 bg-slate-200 text-slate-600 rounded-xl hover:bg-slate-300 transition-colors">
                                 <Settings2 className="w-5 h-5" />
                               </button>
                             </div>
                           </div>
-                          <div className="space-y-1.5">
-                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Código de Barras</label>
+                          <div className="space-y-1">
+                            <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Código de Barras</label>
                             <div className="flex gap-2">
                               <input 
                                 type="text" value={formData.barcode || ''} 
                                 onChange={e => setFormData({...formData, barcode: e.target.value})} 
-                                className="flex-1 px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-mono font-bold transition-all" 
+                                className="flex-1 h-9 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-mono font-bold transition-all" 
                                 placeholder="EAN-13 / UPC" 
                               />
-                              <button type="button" onClick={() => setFormData({...formData, barcode: `750${Math.floor(Math.random() * 100000000).toString().padStart(8, '0')}`})} className="px-4 py-3 bg-slate-200 text-slate-600 rounded-2xl hover:bg-slate-300 transition-colors">
+                              <button type="button" onClick={() => setFormData({...formData, barcode: `750${Math.floor(Math.random() * 100000000).toString().padStart(8, '0')}`})} className="px-2.5 h-9 bg-slate-200 text-slate-600 rounded-xl hover:bg-slate-300 transition-colors">
                                 <List className="w-5 h-5" />
                               </button>
                             </div>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1.5">
-                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Unidad</label>
-                            <select value={formData.unit || 'unidad'} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold uppercase outline-none focus:ring-2 focus:ring-indigo-500/20">
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <div className="space-y-1">
+                            <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Unidad</label>
+                            <select value={formData.unit || 'unidad'} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full h-9 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold uppercase outline-none focus:ring-2 focus:ring-indigo-500/20">
                               <option value="unidad">Unidad</option>
                               <option value="kg">Kilo</option>
                               <option value="m">Metro</option>
                               <option value="par">Par</option>
                             </select>
                           </div>
-                          <div className="space-y-1.5">
-                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Estado</label>
-                            <select value={formData.status || 'active'} onChange={e => setFormData({...formData, status: e.target.value as any})} className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm font-bold uppercase outline-none focus:ring-2 focus:ring-indigo-500/20">
+                          <div className="space-y-1">
+                            <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Estado</label>
+                            <select value={formData.status || 'active'} onChange={e => setFormData({...formData, status: e.target.value as any})} className="w-full h-9 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold uppercase outline-none focus:ring-2 focus:ring-indigo-500/20">
                               <option value="active">Activo</option>
                               <option value="draft">Borrador</option>
                               <option value="discontinued">Descontinuado</option>
@@ -1287,9 +1287,9 @@ export default function Inventory() {
                           Configuración Económica
                         </h3>
                         
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="space-y-1.5">
-                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Costo de Compra (CUP)</label>
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <div className="space-y-1">
+                            <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Costo de Compra (CUP)</label>
                             <input 
                               type="number" 
                               required 
@@ -1300,8 +1300,8 @@ export default function Inventory() {
                               className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-black outline-none focus:ring-2 focus:ring-indigo-500/20" 
                             />
                           </div>
-                          <div className="space-y-1.5">
-                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Precio de Venta (CUP)</label>
+                          <div className="space-y-1">
+                            <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Precio de Venta (CUP)</label>
                             <input 
                               type="number" 
                               required 
@@ -1322,11 +1322,11 @@ export default function Inventory() {
                           <TrendingUp className="w-8 h-8 text-emerald-200" />
                         </div>
 
-                        <div className="space-y-1.5">
+                        <div className="space-y-1">
                           {hasFixedProductEmployees && (
-                            <div className="space-y-1.5">
+                            <div className="space-y-1">
                               <div className="flex items-center justify-between">
-                                <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Comisión Vendedor (CUP Fijo)</label>
+                                <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Comisión Vendedor (CUP Fijo)</label>
                                 <InfoTooltip text="Monto fijo en CUP que recibe el vendedor por cada unidad vendida de este producto." />
                               </div>
                               <input type="number" min="0" value={formData.commissionValue === 0 ? '' : (formData.commissionValue ?? '')} placeholder="0.00" onFocus={(e) => e.target.select()} onChange={e => setFormData({...formData, commissionValue: e.target.value === '' ? 0 : (parseFloat(e.target.value) || 0)})} className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-black outline-none focus:ring-2 focus:ring-indigo-500/20" />
@@ -1346,8 +1346,8 @@ export default function Inventory() {
                           Garantía y Alertas
                         </h3>
                         <div className="space-y-4">
-                          <div className="space-y-1.5">
-                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Días de Garantía</label>
+                          <div className="space-y-1">
+                            <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Días de Garantía</label>
                             <input 
                               type="number" 
                               min="0" 
@@ -1358,8 +1358,8 @@ export default function Inventory() {
                               className="w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-black outline-none" 
                             />
                           </div>
-                          <div className="space-y-1.5">
-                            <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest ml-1">Stock Mínimo para Alertas</label>
+                          <div className="space-y-1">
+                            <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Stock Mínimo para Alertas</label>
                             <input 
                               type="number" 
                               min="0" 
@@ -1377,7 +1377,7 @@ export default function Inventory() {
                 )}
               </div>
 
-              <footer className="p-4 sm:p-6 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-3">
+              <footer className="p-2.5 sm:p-3 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-2 shrink-0">
                 <button 
                   type="button" 
                   onClick={() => { setShowAddModal(false); setEditingProduct(null); setActiveFormTab('general'); }} 
@@ -1387,7 +1387,7 @@ export default function Inventory() {
                 </button>
                 <button 
                   type="submit" 
-                  className="px-6 py-3 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-wider shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all"
+                  className="px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-wider shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all"
                 >
                   {editingProduct ? 'Guardar Cambios' : 'Registrar Producto'}
                 </button>
