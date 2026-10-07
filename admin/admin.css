@@ -400,3 +400,18 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .admin-plan-description{margin:8px 0 0;font-size:7px;line-height:1.45;color:var(--admin-muted)}
 .admin-plan-features{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}.admin-plan-features span{display:inline-flex;align-items:center;gap:3px;padding:4px 6px;border:1px solid #eee8f5;border-radius:7px;background:#fcfbfe;color:#4c3c5d;font-size:6.2px;font-weight:800}
 @media(max-width:720px){.admin-plan-grid{grid-template-columns:1fr}.admin-plan-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+.admin-rate-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:12px}
+.admin-rate-card{padding:12px;border:1px solid #ece6f4;border-radius:13px;background:#fcfbfe}
+.admin-rate-card>span{font-size:7px;font-weight:950;color:#6d3bd2;letter-spacing:.12em}
+.admin-rate-card>strong{display:block;margin-top:6px;font-size:19px;line-height:1;color:var(--admin-deep)}
+.admin-rate-card>small{display:block;margin-top:5px;font-size:7px;color:var(--admin-muted)}
+.admin-rate-foot{margin-top:10px;font-size:7px;color:var(--admin-muted)}
+.admin-province-notice{display:flex;gap:9px;align-items:flex-start;padding:10px 11px;margin-top:12px;border:1px solid #e8ddfa;background:#f8f4ff;border-radius:12px;color:#6541a6}
+.admin-province-notice strong,.admin-province-notice span{display:block}.admin-province-notice strong{font-size:8px}.admin-province-notice span{margin-top:3px;font-size:7px;line-height:1.4}
+.admin-province-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:10px}
+.admin-province-card{padding:8px 9px;border:1px solid #eee9f4;border-radius:10px;background:#fff}
+.admin-province-card span{display:block;font-size:7px;font-weight:900;color:var(--admin-deep)}
+.admin-province-card strong{display:block;margin-top:5px;font-size:8px;color:#9b91a8}.admin-province-card small{display:block;margin-top:2px;font-size:6px;color:var(--admin-muted)}
+@media(max-width:900px){.admin-rate-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.admin-province-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:560px){.admin-rate-grid,.admin-province-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
