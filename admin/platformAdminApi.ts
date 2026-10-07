@@ -190,6 +190,26 @@ export type InfrastructureUsage = {
   limits:{renderMonthlyBandwidthGb:number|null;supabaseFreeDatabaseMb:number};
 };
 
+export type ExchangeRatePayload = {
+  configured: boolean;
+  source: string;
+  capturedAt?: string;
+  informationalOnly?: boolean;
+  data?: unknown;
+  error?: string;
+};
+
+export async function loadExchangeRates(): Promise<ExchangeRatePayload> {
+  const session = (await getAdminSupabase().auth.getSession()).data.session;
+  if (!session?.access_token) throw new Error("Sesión administrativa no disponible.");
+  const response = await fetch("https://palmyracrm.onrender.com/api/exchange-rates", {
+    headers: { Authorization: `Bearer ${session.access_token}` }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload?.error || "No se pudo consultar elTOQUE.");
+  return payload;
+}
+
 export async function loadInfrastructureUsage(): Promise<InfrastructureUsage> {
   const supabase = await assertPlatformAdmin();
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
