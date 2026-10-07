@@ -374,7 +374,7 @@ export default function Settings() {
             { id: 'currency', label: 'Monedas', icon: DollarSign },
             { id: 'branches', label: 'Almacenes', icon: Building2 },
             { id: 'categories', label: 'Categorías', icon: LayoutGrid },
-            { id: 'ticket', label: 'Ticket e impresión', icon: Printer },
+            { id: 'ticket', label: 'Impresora térmica', icon: Printer },
             { id: 'visual', label: 'Estilo visual', icon: Palette },
             { id: 'advanced', label: 'Avanzado', icon: AlertTriangle },
           ].map(tab => {
@@ -652,7 +652,7 @@ export default function Settings() {
           <div className="bg-secondary rounded-2xl shadow-sm border border-base p-3 sm:p-5 space-y-4 min-w-0">
             <div className="flex items-center gap-3 border-b border-base pb-3">
               <div className="bg-indigo-50 dark:bg-indigo-950/30 p-2 rounded-lg text-indigo-600 dark:text-indigo-400"><Printer size={16} /></div>
-              <div><h3 className="text-xs font-black text-primary uppercase tracking-wider">Ticket e impresión</h3><p className="text-[8px] font-bold text-muted uppercase tracking-tight">Configuración que queda guardada por empresa</p></div>
+              <div><h3 className="text-xs font-black text-primary uppercase tracking-wider">Impresora térmica</h3><p className="text-[8px] font-bold text-muted uppercase tracking-tight">Configuración que queda guardada por empresa</p></div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {[['showLogo','Mostrar logo'],['showAddress','Mostrar dirección'],['showPhone','Mostrar teléfono'],['showFooter','Mostrar pie del ticket'],['autoPrint','Imprimir automáticamente']].map(([key,label]) => (
