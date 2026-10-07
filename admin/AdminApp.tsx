@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { Component, useEffect, useMemo, useState, type ErrorInfo, type FormEvent, type ReactNode } from "react";
 import {
   Activity,
   AlertCircle,
@@ -152,6 +152,16 @@ function StatusBadge({ status }: { status?: string | null }) {
     normalized === "pending_payment" ? "amber" :
     "slate";
   return <span className={`admin-status admin-status--${tone}`}><span />{statusLabel(status)}</span>;
+}
+
+class AdminErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error, info: ErrorInfo) { console.error("[PALMYRA ADMIN] Render error", error, info); }
+  render() {
+    if (this.state.error) return <main className="admin-auth admin-error-screen"><section className="admin-auth-card"><div className="admin-brand-mark"><span>!</span></div><p className="admin-eyebrow">PALMYRA · CONTROL CENTER</p><h1>Se produjo un error en el panel</h1><p className="admin-auth-copy">{this.state.error.message || "Error inesperado de interfaz."}</p><div className="admin-error-actions"><Button variant="primary" onClick={() => window.location.reload()}><RefreshCw size={14}/>Recargar panel</Button><Button variant="secondary" onClick={() => this.setState({error:null})}>Intentar continuar</Button></div></section></main>;
+    return this.props.children;
+  }
 }
 
 function LoginScreen({ onAuthenticated }: { onAuthenticated: (snapshot: PlatformSnapshot) => void }) {
@@ -860,5 +870,5 @@ export default function AdminApp() {
     return <LoginScreen onAuthenticated={setSnapshot} />;
   }
 
-  return <AdminShell snapshot={snapshot} onSnapshotChange={setSnapshot} />;
+  return <AdminErrorBoundary><AdminShell snapshot={snapshot} onSnapshotChange={setSnapshot} /></AdminErrorBoundary>;
 }
