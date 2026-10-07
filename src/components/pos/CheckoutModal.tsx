@@ -171,7 +171,7 @@ export default function CheckoutModal({
                         <button key={method} type="button"
                           onClick={() => activePaymentLineId && onUpdatePaymentLine(activePaymentLineId, 'method', method)}
                           className={cn(
-                            "py-2 rounded-lg text-[9px] font-black uppercase text-center transition-all",
+                            "min-w-0 py-2 px-1 rounded-lg text-[8px] sm:text-[9px] leading-none font-black uppercase text-center transition-all whitespace-nowrap overflow-hidden",
                             paymentLines.find(l => l.id === activePaymentLineId)?.method === method
                               ? method === 'transfer' ? "bg-blue-600 text-white" : "bg-emerald-600 text-white"
                               : "text-slate-400 hover:bg-slate-50"
