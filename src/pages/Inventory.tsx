@@ -1094,8 +1094,8 @@ export default function Inventory() {
             <form onSubmit={handleAddSubmit} className="flex-1 overflow-hidden flex flex-col">
               <div className="team-employee-modal-body flex-1 min-h-0 custom-scrollbar">
                 {activeFormTab === 'general' && (
-                  <div className="team-form-section space-y-3 sm:space-y-4">
-                    <div className="grid grid-cols-[76px_1fr] sm:grid-cols-[100px_1fr] md:grid-cols-[120px_1fr] gap-2.5 sm:gap-3">
+                  <div className="team-form-section inventory-product-general space-y-2 sm:space-y-3">
+                    <div className="grid grid-cols-[64px_minmax(0,1fr)] sm:grid-cols-[82px_minmax(0,1fr)] md:grid-cols-[96px_minmax(0,1fr)] gap-2 sm:gap-2.5">
                       <div className="space-y-1">
                         <label className="block text-[7px] sm:text-[8px] font-black text-slate-400 uppercase tracking-wider ml-1 text-center">Imagen de Producto</label>
                         <div className="relative group w-full aspect-square bg-slate-50 rounded-xl border border-dashed border-slate-200 flex items-center justify-center overflow-hidden hover:border-indigo-300 transition-all">
@@ -1111,14 +1111,14 @@ export default function Inventory() {
                         </div>
                       </div>
 
-                      <div className="space-y-3">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                      <div className="space-y-2">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                           <div className="space-y-1">
                             <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Nombre Comercial</label>
                             <input 
                               type="text" required value={formData.name || ''} 
                               onChange={e => setFormData({...formData, name: e.target.value})} 
-                              className="w-full h-9 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-bold transition-all" 
+                              className="w-full h-8 px-2.5 py-1.5 bg-slate-50 border border-slate-100 rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none text-[11px] font-bold transition-all" 
                               placeholder="Ej: iPhone 15 Pro Max" 
                             />
                           </div>
@@ -1127,7 +1127,7 @@ export default function Inventory() {
                             <select 
                               required value={formData.categoryId || ''} 
                               onChange={e => setFormData({...formData, categoryId: e.target.value})} 
-                              className="w-full h-9 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-bold uppercase transition-all"
+                              className="w-full h-8 px-2.5 py-1.5 bg-slate-50 border border-slate-100 rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none text-[11px] font-bold uppercase transition-all"
                             >
                               <option value="">Seleccione...</option>
                               {(categories || []).map(c => <option key={c.id} value={c.id}>{c.department} - {c.name}</option>)}
@@ -1135,23 +1135,23 @@ export default function Inventory() {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2"
                           <div className="space-y-1">
-                            <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">SKU (Código Interno)</label>
-                            <div className="flex gap-2">
+                            <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">SKU</label>
+                            <div className="flex gap-1.5 min-w-0">
                               <input 
                                 type="text" required value={formData.sku || ''} 
                                 onChange={e => setFormData({...formData, sku: e.target.value})} 
-                                className="flex-1 h-9 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-mono font-bold uppercase transition-all" 
+                                className="flex-1 min-w-0 h-8 px-2.5 py-1.5 bg-slate-50 border border-slate-100 rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none text-[10px] font-mono font-bold uppercase transition-all" 
                                 placeholder="AUTOGENERAR ->"
                               />
-                              <button type="button" onClick={() => setFormData({...formData, sku: `SKU-${Math.floor(Math.random() * 100000).toString().padStart(5, '0')}`})} className="px-2.5 h-9 bg-slate-200 text-slate-600 rounded-xl hover:bg-slate-300 transition-colors">
-                                <Settings2 className="w-5 h-5" />
+                              <button type="button" onClick={() => setFormData({...formData, sku: `SKU-${Math.floor(Math.random() * 100000).toString().padStart(5, '0')}`})} className="w-8 h-8 shrink-0 flex items-center justify-center bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 transition-colors" title="Autogenerar SKU" aria-label="Autogenerar SKU">
+                                <Settings2 className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           </div>
                           <div className="space-y-1">
-                            <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Código de Barras</label>
+                            <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Código barras</label>
                             <div className="flex gap-2">
                               <input 
                                 type="text" value={formData.barcode || ''} 
@@ -1159,17 +1159,17 @@ export default function Inventory() {
                                 className="flex-1 h-9 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-mono font-bold transition-all" 
                                 placeholder="EAN-13 / UPC" 
                               />
-                              <button type="button" onClick={() => setFormData({...formData, barcode: `750${Math.floor(Math.random() * 100000000).toString().padStart(8, '0')}`})} className="px-2.5 h-9 bg-slate-200 text-slate-600 rounded-xl hover:bg-slate-300 transition-colors">
-                                <List className="w-5 h-5" />
+                              <button type="button" onClick={() => setFormData({...formData, barcode: `750${Math.floor(Math.random() * 100000000).toString().padStart(8, '0')}`})} className="w-8 h-8 shrink-0 flex items-center justify-center bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 transition-colors" title="Autogenerar código de barras" aria-label="Autogenerar código de barras">
+                                <List className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2.5">
+                        <div className="grid grid-cols-2 gap-1.5">
                           <div className="space-y-1">
                             <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Unidad</label>
-                            <select value={formData.unit || 'unidad'} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full h-9 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl text-sm font-bold uppercase outline-none focus:ring-2 focus:ring-indigo-500/20">
+                            <select value={formData.unit || 'unidad'} onChange={e => setFormData({...formData, unit: e.target.value})} className="w-full h-8 min-w-0 px-2 py-1 bg-slate-50 border border-slate-100 rounded-lg text-[10px] sm:text-[11px] font-bold uppercase outline-none focus:ring-2 focus:ring-indigo-500/20">
                               <option value="unidad">Unidad</option>
                               <option value="kg">Kilo</option>
                               <option value="m">Metro</option>
