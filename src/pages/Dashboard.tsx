@@ -284,7 +284,7 @@ export default function Dashboard() {
         <img
           src="/palmyra-dashboard-hero.webp?v=20261007-2"
           alt=""
-          className="absolute inset-0 h-full w-full object-cover object-center origin-center scale-x-[-1]"
+          className="absolute inset-0 h-full w-full object-cover object-[50%_center] sm:object-center origin-center scale-x-[-1]"
           aria-hidden="true"
         />
         <div
@@ -303,7 +303,7 @@ export default function Dashboard() {
             </h1>
 
             <p className="mt-2 text-[1.08rem] sm:text-xl lg:text-2xl font-black leading-[1.02] tracking-[-0.02em] text-[#3B1B6E] drop-shadow-[0_2px_7px_rgba(255,255,255,0.9)]">
-              Bienvenido a <span className="text-violet-100">{businessName}</span>
+              Bienvenido a <span className="text-[#4C1D95]">{businessName}</span>
             </p>
 
             <p className="mt-2.5 max-w-[410px] text-[9.5px] sm:text-xs lg:text-sm font-semibold leading-[1.4] text-[#4C3D74] drop-shadow-[0_1px_4px_rgba(255,255,255,0.9)]">
