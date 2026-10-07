@@ -11,6 +11,8 @@ type TutorialSection = {
   title: string;
   icon: typeof Home;
   summary: string;
+  outcome?: string;
+  flow?: string[];
   steps: Array<{ title: string; detail: string; tip?: string }>;
 };
 
@@ -18,6 +20,8 @@ const sections: TutorialSection[] = [
   {
     id: "inicio", title: "Cómo empezar", icon: Home,
     summary: "Configura tu empresa una sola vez y después trabaja desde el Dashboard.",
+    outcome: "Empresa lista para operar, vender y controlar inventario.",
+    flow: ["Empresa", "Almacén", "Categorías", "Productos", "Equipo", "POS"],
     steps: [
       { title: "1. Empresa y almacén", detail: "Registra el nombre de la empresa, crea el almacén o sucursal inicial y verifica que el contexto de trabajo sea el correcto.", tip: "La empresa y el almacén determinan dónde se guardan y consultan tus operaciones." },
       { title: "2. Configuración inicial", detail: "Revisa categorías, unidades, métodos de pago, impresora térmica, bancos y demás preferencias desde Configuración." },
@@ -37,6 +41,8 @@ const sections: TutorialSection[] = [
   {
     id: "pos", title: "Punto de Venta (POS)", icon: ShoppingCart,
     summary: "Registra ventas, cobra, imprime comprobantes y controla la caja.",
+    outcome: "Venta registrada, pago conciliado y ticket disponible.",
+    flow: ["Abrir turno", "Carrito", "Vendedor", "Cobrar", "Ticket", "Cerrar turno"],
     steps: [
       { title: "1. Abrir turno", detail: "Abre el turno de caja antes de vender. El turno queda asociado al operador y conserva su numeración histórica." },
       { title: "2. Agregar productos", detail: "Busca o escanea el producto, revisa cantidad, variante, precio y vendedor antes de cobrar." },
@@ -49,6 +55,8 @@ const sections: TutorialSection[] = [
   {
     id: "offline", title: "Modo Offline", icon: WifiOff,
     summary: "Permite continuar operaciones cuando la conexión se pierde.",
+    outcome: "Operaciones locales protegidas hasta recuperar la conexión.",
+    flow: ["Detectar offline", "Guardar local", "Cola", "Reconectar", "Sincronizar", "Verificar"],
     steps: [
       { title: "Trabajar sin internet", detail: "Las operaciones compatibles se guardan localmente en una cola durable para evitar que una venta desaparezca al recargar." },
       { title: "Continuidad", detail: "El estado local permite recuperar operaciones pendientes después de cerrar o volver a abrir la aplicación." },
@@ -59,6 +67,8 @@ const sections: TutorialSection[] = [
   {
     id: "inventario", title: "Inventario", icon: Package,
     summary: "Administra productos, existencias, categorías y variantes.",
+    outcome: "Catálogo consistente y existencias trazables por almacén.",
+    flow: ["Filtrar", "Producto", "Variantes", "Precios", "Stock", "Revisar"],
     steps: [
       { title: "1. Filtrar", detail: "Usa Sucursal, Categoría y Stock para encontrar rápidamente los productos que necesitas revisar." },
       { title: "2. Agregar producto", detail: "Organiza el alta en Datos del producto, Variantes y Precios y extras. Mantén SKU y código de barras consistentes." },
@@ -106,6 +116,8 @@ const sections: TutorialSection[] = [
   {
     id: "reportes", title: "Reportes", icon: FileBarChart2,
     summary: "Convierte las operaciones en información para tomar decisiones.",
+    outcome: "Indicadores y detalles listos para análisis y decisiones.",
+    flow: ["Periodo", "Filtro", "Indicador", "Detalle", "Comparar", "Decidir"],
     steps: [
       { title: "Ventas", detail: "Consulta las ventas y sus detalles, incluyendo productos, pagos y contexto del turno." },
       { title: "Caja", detail: "Revisa turnos, movimientos, ingresos, egresos y diferencias para detectar descuadres." },
@@ -146,6 +158,8 @@ const sections: TutorialSection[] = [
   {
     id: "equipo", title: "Equipo y permisos", icon: Users,
     summary: "Cada trabajador debe tener solamente el acceso que necesita.",
+    outcome: "Cada miembro entra con el acceso mínimo necesario.",
+    flow: ["Invitar", "Registrar", "Confirmar", "Rol", "Permisos", "Revisar"],
     steps: [
       { title: "Invitar", detail: "Envía una invitación al correo del trabajador. La persona debe completar el flujo de invitación para entrar al espacio correcto." },
       { title: "Rol", detail: "Asigna el rol adecuado según la responsabilidad del trabajador." },
@@ -204,16 +218,14 @@ function TutorialCard({ section, open, onToggle }: { section: TutorialSection; o
       {open ? (
         <div className="border-t border-violet-50 bg-violet-50/20 p-4">
           <div className="space-y-2.5">
-            {section.steps.map((step) => (
-              <div key={step.title} className="flex gap-3 rounded-xl border border-white bg-white/90 p-3">
-                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
-                <div className="min-w-0">
-                  <p className="text-[9px] font-black text-slate-800">{step.title}</p>
-                  <p className="mt-1 text-[9px] leading-4 text-slate-500">{step.detail}</p>
-                  {step.tip ? <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-[8px] font-bold leading-4 text-amber-800">Consejo: {step.tip}</p> : null}
-                </div>
+            {section.flow ? <Flow labels={section.flow} /> : null}
+            {section.outcome ? <div className="mt-3 flex items-start gap-2.5 rounded-xl border border-emerald-100 bg-emerald-50 p-3"><CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" /><div><p className="text-[8px] font-black uppercase tracking-wider text-emerald-800">Resultado esperado</p><p className="mt-0.5 text-[9px] leading-4 text-emerald-700">{section.outcome}</p></div></div> : null}
+            <div className="mt-3 space-y-2.5">{section.steps.map((step,index) => (
+              <div key={step.title} className="flex gap-3 rounded-xl border border-violet-100 bg-white p-3 shadow-sm">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-[8px] font-black text-violet-700">{String(index + 1).padStart(2, "0")}</span>
+                <div className="min-w-0"><div className="flex items-center gap-2"><CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" /><p className="text-[9px] font-black text-slate-800">{step.title.replace(/^\d+\.\s*/, "")}</p></div><p className="mt-1 text-[9px] leading-4 text-slate-500">{step.detail}</p>{step.tip ? <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-2 text-[8px] font-bold leading-4 text-amber-800">Consejo: {step.tip}</p> : null}</div>
               </div>
-            ))}
+            ))}</div>
           </div>
         </div>
       ) : null}
@@ -283,6 +295,14 @@ export default function Tutorial() {
             <p className="mt-1 text-[9px] text-slate-500">Prueba con POS, inventario, ventas, caja, productos, equipo o reportes.</p>
           </div>
         ) : null}
+
+        <section className="grid gap-3 md:grid-cols-3">
+          {[
+            ["Administrador","Configura empresa, equipo, permisos, planes y controles.",ShieldCheck],
+            ["Vendedor / POS","Abre turno, vende, cobra, imprime y cierra caja.",ShoppingCart],
+            ["Inventario","Administra productos, existencias, auditorías y transferencias.",Package]
+          ].map(([title,detail,Icon]) => { const I=Icon as typeof ShieldCheck; return <article key={String(title)} className="rounded-2xl border border-violet-100 bg-white p-4 shadow-sm"><span className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-700"><I className="h-4 w-4"/></span><h3 className="mt-3 text-[10px] font-black text-slate-900">{String(title)}</h3><p className="mt-1 text-[8px] leading-4 text-slate-500">{String(detail)}</p></article>; })}
+        </section>
 
         <footer className="rounded-2xl border border-violet-100 bg-white p-4 text-center">
           <p className="text-[8px] font-black uppercase tracking-[.16em] text-violet-600">¿Necesitas ayuda adicional?</p>
