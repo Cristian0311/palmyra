@@ -27,7 +27,8 @@ import {
   RefreshCw,
   Headphones,
   Download,
-  Smartphone
+  Smartphone,
+  BookOpen
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
 import { cn } from "../lib/utils";
