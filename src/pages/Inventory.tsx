@@ -316,6 +316,14 @@ export default function Inventory() {
 
   const handleAddSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!editingProduct && activeFormTab !== 'extra') {
+      if (activeFormTab === 'general' && (!String(formData.name || '').trim() || !String(formData.categoryId || '').trim() || !String(formData.sku || '').trim())) {
+        addNotification("Completa nombre, categoría y SKU antes de continuar.", 'error');
+        return;
+      }
+      setActiveFormTab(activeFormTab === 'general' ? 'variants' : 'extra');
+      return;
+    }
     if (editingProduct) {
       updateProduct(editingProduct.id, {
         ...formData,
@@ -1292,7 +1300,7 @@ export default function Inventory() {
 
               <footer className="team-employee-modal-footer">
                 <div className="team-footer-icon" aria-hidden="true"><Package className="w-4 h-4" /></div>
-                <p>Los datos se guardan al registrar el producto. Las existencias se gestionan después desde <strong>Gestionar stock</strong>.</p>
+                <p><strong>Paso {activeFormTab === 'general' ? '1' : activeFormTab === 'variants' ? '2' : '3'} de 3.</strong> {activeFormTab === 'general' ? 'Datos básicos.' : activeFormTab === 'variants' ? 'Configura variantes antes de continuar.' : 'Revisa precios, extras y alertas.'} Los datos se guardan al registrar el producto. Las existencias se gestionan después desde <strong>Gestionar stock</strong>.</p>
                 <div className="team-footer-actions">
                 <button 
                   type="button" 
@@ -1301,11 +1309,15 @@ export default function Inventory() {
                 >
                   Descartar
                 </button>
-                <button 
-                  type="submit" 
+                <button
+                  type="submit"
                   className="team-footer-primary"
                 >
-                  {editingProduct ? 'Guardar Cambios' : 'Registrar Producto'}
+                  {!editingProduct && activeFormTab !== 'extra' ? (
+                    <>Siguiente <ChevronRight className="w-4 h-4" /></>
+                  ) : (
+                    <>{editingProduct ? 'Guardar Cambios' : 'Registrar Producto'} <Check className="w-4 h-4" /></>
+                  )}
                 </button>
                 </div>
               </footer>
