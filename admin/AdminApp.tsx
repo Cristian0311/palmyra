@@ -38,6 +38,8 @@ import {
   loadPlatformSnapshot,
   rejectRequest,
   type PlanRequest,
+  type PlatformPlan,
+  type ExchangeRatePayload,
   type PlatformCompany,
   type PlatformSnapshot,
   type InfrastructureUsage,
@@ -60,7 +62,8 @@ type View = "overview" | "companies" | "billing" | "support" | "audit" | "infras
 const navItems: Array<{ id: View; label: string; icon: typeof BarChart3; hint: string }> = [
   { id: "overview", label: "Dashboard", icon: BarChart3, hint: "Estado global de PALMYRA" },
   { id: "companies", label: "Empresas", icon: Building2, hint: "Clientes y cuentas" },
-  { id: "billing", label: "Planes y pagos", icon: CreditCard, hint: "Solicitudes y activaciones" },
+  { id: "billing", label: "Planes y pagos", icon: CreditCard, hint: "Catálogo, límites y activaciones" },
+  { id: "exchange", label: "Tasa de cambio", icon: CircleDollarSign, hint: "Referencia informativa de elTOQUE" },
   { id: "support", label: "Soporte", icon: TicketCheck, hint: "Atención operativa" },
   { id: "audit", label: "Auditoría", icon: Activity, hint: "Acciones administrativas" },
   { id: "infrastructure", label: "Infraestructura", icon: Database, hint: "Salud y recursos del SaaS" },
@@ -847,6 +850,7 @@ function AdminShell({
               {view === "overview" ? <Overview snapshot={snapshot} onRefresh={async () => onSnapshotChange(await loadPlatformSnapshot())} /> :
                 view === "companies" ? <CompaniesView companies={snapshot.companies} busy={busy} onToggle={(company) => void toggleCompany(company)} /> :
                 view === "billing" ? <BillingView requests={snapshot.requests} busy={busy} onApprove={(r) => void approve(r)} onReject={(r) => void reject(r)} /> :
+                view === "exchange" ? <ExchangeRateView /> :
                 view === "support" ? <SupportView /> :
                 view === "infrastructure" ? <InfrastructureView /> :
                 view === "exchange" ? <ExchangeRateView /> :
