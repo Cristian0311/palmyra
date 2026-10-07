@@ -270,3 +270,12 @@
     border-radius:18px;
   }
 }
+
+.inventory-product-general{min-width:0}
+.inventory-product-general input,
+.inventory-product-general select{min-width:0}
+@media(max-width:480px){
+  .inventory-product-general{padding:0!important}
+  .inventory-product-general label{font-size:6.5px!important;letter-spacing:.04em}
+  .inventory-product-general .inventory-product-actions{gap:4px}
+}
