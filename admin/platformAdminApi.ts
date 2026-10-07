@@ -245,6 +245,12 @@ export async function loadInfrastructureUsage(): Promise<InfrastructureUsage> {
   return payload as InfrastructureUsage;
 }
 
+export async function retryPlatformSyncItem(id: string) {
+  const { data, error } = await getAdminSupabase().rpc("retry_platform_sync_item", { p_sync_id: id });
+  if (error) throw error;
+  return data;
+}
+
 export async function loadSupportRequests(status?: string): Promise<PlatformSupportRequest[]> {
   const supabase = await assertPlatformAdmin();
   const { data, error } = await supabase.rpc("get_platform_support_requests", {
