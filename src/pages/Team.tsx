@@ -57,6 +57,7 @@ export default function Team() {
     description: "",
     permissionKeys: [] as string[]
   });
+  const [roleFormStep, setRoleFormStep] = useState<1 | 2>(1);
 
   const canManageRoles = currentUser?.permissions?.includes("roles.manage") || currentUser?.role === "admin";
   const canUseCustomRoles = context?.subscription?.planCode !== "starter";
@@ -132,6 +133,7 @@ export default function Team() {
     }
     setEditingRole(null);
     setRoleForm({ key: "", name: "", description: "", permissionKeys: [] });
+    setRoleFormStep(1);
     setError("");
     setMessage("");
     setShowRoleForm(true);
@@ -146,6 +148,7 @@ export default function Team() {
       description: role.description || "",
       permissionKeys: [...(role.permission_keys || [])]
     });
+    setRoleFormStep(1);
     setError("");
     setMessage("");
     setShowRoleForm(true);
@@ -162,6 +165,13 @@ export default function Team() {
 
   const submitRole = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (roleFormStep === 1) {
+      if (roleForm.name.trim().length < 2) return setError("Escribe el nombre del rol.");
+      if (roleForm.key.trim().length < 2) return setError("Escribe una clave para el rol.");
+      setError("");
+      setRoleFormStep(2);
+      return;
+    }
     if (!snapshot?.companyId) return;
     if (!canManageRoles) return setError("No tienes permiso para administrar roles.");
     if (!canUseCustomRoles) return setError("Los roles personalizados están disponibles desde el plan Caravana.");
@@ -693,57 +703,59 @@ export default function Team() {
       )}
       {showRoleForm && (
         <div className="fixed inset-0 z-[210] bg-slate-950/60 backdrop-blur-sm p-3 sm:p-5 flex items-center justify-center" onClick={() => setShowRoleForm(false)}>
-          <form onSubmit={submitRole} onClick={e => e.stopPropagation()} className="palmyra-mobile-modal w-full max-w-xl bg-secondary border border-base rounded-2xl sm:rounded-3xl shadow-2xl p-3 sm:p-5 max-h-[calc(100dvh-1.5rem)] overflow-y-auto overscroll-contain">
-            <div className="flex items-start justify-between gap-3 mb-5">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-rose-500">{editingRole ? "Editar rol" : "Nuevo rol"}</p>
-                <h2 className="text-lg sm:text-xl font-black text-primary break-words">{editingRole ? editingRole.name : "Perfil personalizado"}</h2>
-                <p className="text-[10px] sm:text-xs text-muted mt-1 leading-4">El rol define los módulos y acciones disponibles para el trabajador.</p>
+          <form onSubmit={submitRole} onClick={e => e.stopPropagation()} className="team-role-flow w-full max-w-xl bg-secondary border border-base rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden">
+            <div className="team-role-flow-head">
+              <div className="team-employee-hero-icon"><ShieldCheck className="w-5 h-5" /></div>
+              <div className="min-w-0 flex-1">
+                <p className="team-employee-kicker">{editingRole ? "Editar rol" : "Crear rol"}</p>
+                <h2>{editingRole ? editingRole.name : "Nuevo perfil de trabajo"}</h2>
+                <p>Define primero la identidad del rol y después sus permisos.</p>
               </div>
-              <button type="button" onClick={() => setShowRoleForm(false)} className="w-9 h-9 rounded-xl bg-subtle text-muted flex items-center justify-center"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setShowRoleForm(false)} className="team-role-flow-close"><X className="w-4 h-4" /></button>
             </div>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <label className="block">
-                <span className="label">Nombre del rol</span>
-                <input className="field" value={roleForm.name} onChange={e => setRoleForm({...roleForm,name:e.target.value})} disabled={busy || Boolean(editingRole?.is_system)} />
-              </label>
-              <label className="block">
-                <span className="label">Clave interna</span>
-                <input className="field" value={roleForm.key} onChange={e => setRoleForm({...roleForm,key:e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g,"-")})} disabled={busy || Boolean(editingRole?.is_system)} />
-              </label>
-            </div>
-            <label className="block mt-4">
-              <span className="label">Descripción</span>
-              <input className="field" value={roleForm.description} onChange={e => setRoleForm({...roleForm,description:e.target.value})} disabled={busy || Boolean(editingRole?.is_system)} />
-            </label>
-            <div className="mt-4">
-              <span className="label">Permisos</span>
-              <div className="grid sm:grid-cols-2 gap-2 mt-2">
-                {(snapshot?.permissions || []).map(permission => {
-                  const selected = roleForm.permissionKeys.includes(permission.key);
-                  return (
-                    <label key={permission.id} className={cn("flex items-start gap-3 p-3 rounded-xl border cursor-pointer", selected ? "border-rose-300 bg-rose-50/50 dark:bg-rose-950/20" : "border-base bg-primary")}>
-                      <input type="checkbox" checked={selected} onChange={() => toggleRolePermission(permission.key)} disabled={busy || Boolean(editingRole?.is_system)} className="mt-0.5" />
-                      <span>
-                        <span className="block text-xs font-bold text-primary">{permission.name}</span>
-                        <span className="block text-[9px] text-muted mt-0.5">{permission.description || permission.key}</span>
-                      </span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-            <div className="flex flex-col sm:flex-row gap-2 mt-6">
-              <button type="button" onClick={() => setShowRoleForm(false)} className="h-11 px-4 rounded-xl bg-subtle text-primary font-black text-xs uppercase tracking-wider">Cancelar</button>
-              <button type="submit" disabled={busy || Boolean(editingRole?.is_system)} className="h-11 px-4 rounded-xl bg-rose-600 text-white font-black text-xs uppercase tracking-wider flex-1 flex items-center justify-center gap-2">
-                {busy ? "Guardando..." : <><Save className="w-4 h-4" /> Guardar rol</>}
+            <div className="team-role-flow-steps">
+              <button type="button" className={cn("team-role-step",roleFormStep===1&&"is-active",roleFormStep===2&&"is-done")} onClick={()=>setRoleFormStep(1)}>
+                <span>1</span><div><strong>Perfil</strong><small>Nombre y descripción</small></div>
               </button>
+              <i />
+              <button type="button" className={cn("team-role-step",roleFormStep===2&&"is-active")} disabled={roleFormStep===1}>
+                <span>2</span><div><strong>Permisos</strong><small>Módulos y acciones</small></div>
+              </button>
+            </div>
+            <div className="team-role-flow-body">
+              {roleFormStep===1 ? (
+                <div className="team-form-section">
+                  <div className="team-form-section-head"><div className="team-form-section-icon"><BriefcaseBusiness className="w-4 h-4"/></div><div><h3>Identidad del rol</h3><p>Información que verá el administrador al asignar trabajadores.</p></div></div>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <label className="team-field-wrap"><span className="team-field-label">Nombre del rol <b>*</b></span><div className="team-field"><span className="team-field-icon"><ShieldCheck className="w-4 h-4"/></span><input className="team-field-input" value={roleForm.name} onChange={e=>setRoleForm({...roleForm,name:e.target.value})} disabled={busy||Boolean(editingRole?.is_system)} placeholder="Ej. Supervisor"/></div></label>
+                    <label className="team-field-wrap"><span className="team-field-label">Clave interna <b>*</b></span><div className="team-field"><span className="team-field-icon"><Hash className="w-4 h-4"/></span><input className="team-field-input" value={roleForm.key} onChange={e=>setRoleForm({...roleForm,key:e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g,"-")})} disabled={busy||Boolean(editingRole?.is_system)} placeholder="supervisor"/></div></label>
+                  </div>
+                  <label className="team-field-wrap mt-3"><span className="team-field-label">Descripción</span><div className="team-field"><span className="team-field-icon"><Info className="w-4 h-4"/></span><input className="team-field-input" value={roleForm.description} onChange={e=>setRoleForm({...roleForm,description:e.target.value})} disabled={busy||Boolean(editingRole?.is_system)} placeholder="Qué puede hacer este perfil"/></div></label>
+                </div>
+              ) : (
+                <div className="team-form-section">
+                  <div className="team-form-section-head"><div className="team-form-section-icon"><LockKeyhole className="w-4 h-4"/></div><div><h3>Permisos del rol</h3><p>Selecciona exactamente las acciones que tendrá este perfil.</p></div></div>
+                  <div className="grid sm:grid-cols-2 gap-2">
+                    {(snapshot?.permissions || []).map(permission => {
+                      const selected = roleForm.permissionKeys.includes(permission.key);
+                      return <label key={permission.id} className={cn("team-role-permission",selected&&"is-selected")}>
+                        <input type="checkbox" checked={selected} onChange={()=>toggleRolePermission(permission.key)} disabled={busy||Boolean(editingRole?.is_system)} />
+                        <span><strong>{permission.name}</strong><small>{permission.description||permission.key}</small></span>
+                      </label>;
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="team-role-flow-footer">
+              <button type="button" onClick={()=>roleFormStep===1?setShowRoleForm(false):setRoleFormStep(1)} className="team-footer-secondary">{roleFormStep===1?"Cancelar":"Atrás"}</button>
+              <button type="submit" disabled={busy||Boolean(editingRole?.is_system)} className="team-footer-primary">{busy?"Guardando…":roleFormStep===1?"Continuar":"Guardar rol"}<ChevronRight className="w-4 h-4"/></button>
             </div>
           </form>
         </div>
       )}
 
-      <p className="text-[10px] text-muted text-center">El acceso web del trabajador es independiente del selector de empleado/PIN del POS. Ambos pueden coexistir.</p>
+<p className="text-[10px] text-muted text-center">El acceso web del trabajador es independiente del selector de empleado/PIN del POS. Ambos pueden coexistir.</p>
     </div>
   );
 }
