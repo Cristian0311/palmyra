@@ -761,6 +761,18 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       </aside>
 
+      {((saasContext?.company?.account_status === 'pending_payment') || saasContext?.subscription?.status === 'expired') && location.pathname !== '/subscription' && location.pathname !== '/help' && (
+        <div className="fixed inset-0 z-[290] flex items-center justify-center p-4 bg-slate-950/55 backdrop-blur-[3px]">
+          <div className="w-full max-w-md rounded-3xl border border-amber-200 bg-white shadow-2xl p-6 text-center">
+            <div className="mx-auto w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center"><CreditCard className="w-6 h-6"/></div>
+            <p className="mt-4 text-[10px] font-black uppercase tracking-[0.16em] text-amber-700">Periodo de servicio finalizado</p>
+            <h3 className="mt-1 text-xl font-black text-slate-900">PALMYRA está en modo lectura</h3>
+            <p className="mt-2 text-sm leading-5 text-slate-600">Tus datos, ventas e historial se conservan. Para volver a operar y sincronizar nuevas modificaciones, activa nuevamente tu plan.</p>
+            <button type="button" onClick={() => window.location.assign('/subscription')} className="mt-5 w-full h-11 rounded-xl bg-indigo-600 text-white text-xs font-black uppercase tracking-wider">Ver planes y activar</button>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       {updateAvailable && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center px-4 py-6 pointer-events-none bg-slate-950/20 dark:bg-slate-950/45 backdrop-blur-[2px]">
