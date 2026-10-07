@@ -46,7 +46,7 @@ import {
 import { adminSignIn, adminSignOut, adminUser, getAdminSupabase } from "./supabase";
 import "./admin.css";
 
-type View = "overview" | "companies" | "billing" | "support" | "audit" | "settings";
+type View = "overview" | "companies" | "billing" | "support" | "audit" | "infrastructure" | "settings";
 
 const navItems: Array<{ id: View; label: string; icon: typeof BarChart3; hint: string }> = [
   { id: "overview", label: "Dashboard", icon: BarChart3, hint: "Estado global de PALMYRA" },
@@ -54,6 +54,7 @@ const navItems: Array<{ id: View; label: string; icon: typeof BarChart3; hint: s
   { id: "billing", label: "Planes y pagos", icon: CreditCard, hint: "Solicitudes y activaciones" },
   { id: "support", label: "Soporte", icon: TicketCheck, hint: "Atención operativa" },
   { id: "audit", label: "Auditoría", icon: Activity, hint: "Acciones administrativas" },
+  { id: "infrastructure", label: "Infraestructura", icon: Database, hint: "Salud y recursos del SaaS" },
   { id: "settings", label: "Configuración", icon: Settings2, hint: "Seguridad de la plataforma" },
 ];
 
@@ -235,7 +236,11 @@ function Overview({ snapshot, onRefresh }: { snapshot: PlatformSnapshot; onRefre
     const active = companies.filter((c) => c.account_status === "active").length;
     const suspended = companies.filter((c) => c.account_status === "suspended").length;
     const today = companies.filter((c) => isToday(c.created_at)).length;
-    return { total: companies.length, active, suspended, today, requests: snapshot.requests.length };
+    const openSupport = snapshot.supportRequests.filter((r) => ["open", "in_progress"].includes(String(r.status))).length;
+    const products = companies.reduce((sum, c) => sum + Number(c.products || 0), 0);
+    const users = companies.reduce((sum, c) => sum + Number(c.employees || 0), 0);
+    const warehouses = companies.reduce((sum, c) => sum + Number(c.warehouses || 0), 0);
+    return { total: companies.length, active, suspended, today, requests: snapshot.requests.length, openSupport, products, users, warehouses };
   }, [snapshot]);
 
   return (
@@ -254,6 +259,18 @@ function Overview({ snapshot, onRefresh }: { snapshot: PlatformSnapshot; onRefre
         <StatCard label="Activas" value={metrics.active} detail="Operando normalmente" icon={ShieldCheck} tone="green" />
         <StatCard label="Suspendidas" value={metrics.suspended} detail="Requieren revisión" icon={AlertCircle} tone="amber" />
         <StatCard label="Solicitudes" value={metrics.requests} detail="Pendientes de activar" icon={CreditCard} tone="slate" />
+        <StatCard label="Soporte abierto" value={metrics.openSupport} detail="Abiertas o en atención" icon={Headphones} tone="amber" />
+      </section>
+
+      <section className="admin-grid-3">
+        {[
+          [Package, "Productos registrados", metrics.products, "Suma visible de todas las empresas"],
+          [Users, "Usuarios del SaaS", metrics.users, "Usuarios/trabajadores visibles"],
+          [Building2, "Almacenes", metrics.warehouses, "Almacenes registrados"],
+        ].map(([Icon, title, value, detail]) => {
+          const I = Icon as typeof Package;
+          return <div className="admin-mini-panel" key={String(title)}><span className="admin-icon-box"><I size={15} /></span><h3>{title as string}</h3><strong className="admin-overview-number">{String(value)}</strong><p>{detail as string}</p></div>;
+        })}
       </section>
 
       <section className="admin-grid-2">
@@ -485,6 +502,56 @@ function SupportView() {
   );
 }
 
+function InfrastructureView() {
+  return (
+    <div className="admin-content-stack">
+      <section className="admin-page-head">
+        <div>
+          <p className="admin-eyebrow">INFRAESTRUCTURA</p>
+          <h1>Control del entorno de PALMYRA.</h1>
+          <p>Este panel vive separado del CRM y se despliega como <strong>palmyra-admin</strong>. Aquí puedes comprobar rápidamente qué entorno estás operando y qué recursos están conectados.</p>
+        </div>
+        <span className="admin-status admin-status--green"><span/>Operativo</span>
+      </section>
+
+      <section className="admin-grid-2">
+        <div className="admin-panel">
+          <div className="admin-panel__head"><div><p className="admin-kicker">SERVICIOS</p><h2>Entornos Render</h2></div><Database size={17}/></div>
+          <div className="admin-infra-list">
+            <div><span><strong>PALMYRA CRM</strong><small>Aplicación principal de clientes</small></span><a href="https://palmyracrm.onrender.com" target="_blank" rel="noreferrer"><ExternalLink size={13}/></a></div>
+            <div><span><strong>PALMYRA ADMIN</strong><small>Control Center independiente</small></span><a href="https://palmyra-admin.onrender.com" target="_blank" rel="noreferrer"><ExternalLink size={13}/></a></div>
+            <div><span><strong>SUPABASE</strong><small>Datos, autenticación y funciones seguras</small></span><span className="admin-status admin-status--green"><span/>Conectado</span></div>
+          </div>
+        </div>
+
+        <div className="admin-panel admin-panel--dark">
+          <div className="admin-panel__head"><div><p className="admin-kicker">OPERACIÓN</p><h2>Qué controlar aquí</h2></div><ShieldCheck size={17}/></div>
+          <div className="admin-rules">
+            {[
+              "Empresas y estados de cuenta.",
+              "Solicitudes de planes y activaciones.",
+              "Soporte recibido desde los clientes.",
+              "Configuración de canales oficiales.",
+              "Auditoría y trazabilidad de acciones.",
+            ].map((item) => <div key={item}><Check size={14}/><span>{item}</span></div>)}
+          </div>
+        </div>
+      </section>
+
+      <section className="admin-panel">
+        <div className="admin-panel__head"><div><p className="admin-kicker">DIAGNÓSTICO</p><h2>Checklist operativo</h2></div><ShieldCheck size={17}/></div>
+        <div className="admin-grid-3">
+          {[
+            ["Acceso administrativo", "La entrada se valida mediante Supabase y autorización segura.", "OK"],
+            ["Separación CRM/Admin", "El Control Center se publica en un servicio Render independiente.", "OK"],
+            ["Datos centralizados", "Las consultas administrativas usan RPC protegidas en Supabase.", "OK"],
+          ].map(([title, text, badge]) => <div className="admin-mini-panel" key={title}><h3>{title}</h3><p>{text}</p><span className="admin-mini-badge">{badge}</span></div>)}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function SettingsView() {
   const [settings,setSettings] = useState<PlatformSupportSettings>({whatsapp_number:null,support_email:null,privacy_url:null});
   const [form,setForm] = useState({whatsapp_number:"",support_email:"",privacy_url:""});
@@ -628,6 +695,7 @@ function AdminShell({
                 view === "companies" ? <CompaniesView companies={snapshot.companies} busy={busy} onToggle={(company) => void toggleCompany(company)} /> :
                 view === "billing" ? <BillingView requests={snapshot.requests} busy={busy} onApprove={(r) => void approve(r)} onReject={(r) => void reject(r)} /> :
                 view === "support" ? <SupportView /> :
+                view === "infrastructure" ? <InfrastructureView /> :
                 view === "settings" ? <SettingsView /> :
                 <div className="admin-placeholder"><div className="admin-placeholder__icon"><Shield size={24}/></div><p className="admin-eyebrow">PRÓXIMAMENTE</p><h1>{current.label}</h1><p>Área preparada para ampliar el control de plataforma sobre el mismo núcleo seguro.</p></div>}
             </motion.div>
