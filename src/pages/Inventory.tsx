@@ -627,6 +627,7 @@ export default function Inventory() {
 
             {/* Stock */}
             <div className="relative group w-full sm:min-w-[110px] sm:max-w-[150px]">
+              <PackageCheck className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-indigo-500 pointer-events-none" aria-hidden="true" />
               <select 
                 value={stockFilter}
                 onChange={(e) => setStockFilter(e.target.value as any)}
@@ -634,7 +635,7 @@ export default function Inventory() {
                 title="Filtrar por stock"
               >
                 <option value="all">Stock</option>
-                <option value="in_stock">Vivos</option>
+                <option value="in_stock">Con stock</option>
                 <option value="low">Bajos</option>
                 <option value="out">Ceros</option>
               </select>
