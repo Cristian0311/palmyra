@@ -91,6 +91,27 @@ export default function Inventory() {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [categoryViewport, setCategoryViewport] = useState({ height: 0, top: 0 });
 
+
+  useEffect(() => {
+    if (!showAddModal || typeof window === 'undefined') return;
+    const viewport = window.visualViewport;
+    const syncVisualViewport = () => {
+      document.documentElement.style.setProperty('--palmyra-vv-height', `${viewport?.height || window.innerHeight}px`);
+      document.documentElement.style.setProperty('--palmyra-vv-top', `${viewport?.offsetTop || 0}px`);
+    };
+    syncVisualViewport();
+    viewport?.addEventListener('resize', syncVisualViewport);
+    viewport?.addEventListener('scroll', syncVisualViewport);
+    window.addEventListener('resize', syncVisualViewport);
+    return () => {
+      viewport?.removeEventListener('resize', syncVisualViewport);
+      viewport?.removeEventListener('scroll', syncVisualViewport);
+      window.removeEventListener('resize', syncVisualViewport);
+      document.documentElement.style.removeProperty('--palmyra-vv-height');
+      document.documentElement.style.removeProperty('--palmyra-vv-top');
+    };
+  }, [showAddModal]);
+
   useEffect(() => {
     if (!showCategoryModal || typeof window === 'undefined') return;
     const viewport = window.visualViewport;
@@ -1091,7 +1112,10 @@ export default function Inventory() {
           style={{ top: 0, height: '100dvh', maxHeight: '100dvh', paddingTop: 'max(0.5rem, env(safe-area-inset-top))', paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
           <div className="absolute inset-0 bg-slate-900/75 backdrop-blur-[2px]" aria-hidden="true" />
           <div className="team-employee-modal inventory-product-modal relative z-10 w-full max-w-3xl bg-secondary border border-base rounded-[28px] shadow-2xl overflow-hidden flex flex-col min-h-0"
-            style={{ maxHeight: 'calc(100dvh - 1rem)' }}>
+            style={{
+              maxHeight: 'calc(var(--palmyra-vv-height, 100dvh) - 1rem)',
+              transform: 'translateY(var(--palmyra-vv-top, 0px))'
+            }}>
             <header className="team-employee-modal-head relative overflow-hidden shrink-0">
               
               <div className="flex items-start gap-3 min-w-0">
