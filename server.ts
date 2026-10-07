@@ -315,7 +315,14 @@ async function startServer() {
           error: 'ELTOQUE_API_TOKEN no está configurado en el servidor.'
         });
       }
-      const response = await fetch('https://tasas.eltoque.com/v1/trmi', {
+      const end = new Date();
+      const start = new Date(end.getTime() - 48 * 60 * 60 * 1000);
+      const formatElToqueDate = (value: Date) => value.toISOString().slice(0, 19).replace('T', ' ');
+      const params = new URLSearchParams({
+        date_from: formatElToqueDate(start),
+        date_to: formatElToqueDate(end)
+      });
+      const response = await fetch(`https://tasas.eltoque.com/v1/trmi?${params.toString()}`, {
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }
       });
       const payload = await response.json().catch(() => ({}));
