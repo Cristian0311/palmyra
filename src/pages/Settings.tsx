@@ -288,6 +288,26 @@ export default function Settings() {
     showToast("Configuración de ticket guardada.");
   };
 
+  const handleClearAppCache = async () => {
+    if (isLoading) return;
+    setIsLoading(true);
+    try {
+      if ('caches' in window) {
+        const cacheNames = await caches.keys();
+        await Promise.all(cacheNames.map(name => caches.delete(name)));
+      }
+      const registration = await navigator.serviceWorker?.getRegistration();
+      await registration?.update?.();
+      showToast("Caché de la aplicación limpiada. Los datos offline no fueron borrados.");
+      window.setTimeout(() => window.location.reload(), 450);
+    } catch (error) {
+      console.error("[PALMYRA] No se pudo limpiar el caché de aplicación:", error);
+      showToast("No se pudo limpiar el caché de la aplicación.", "error");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleManualSync = async () => {
     if (isSyncing) return;
     setIsSyncing(true);
@@ -501,9 +521,12 @@ export default function Settings() {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/60 dark:bg-indigo-950/20 p-3 flex items-start gap-3">
+              <div className="rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/60 dark:bg-indigo-950/20 p-3 flex items-start gap-3">
               <input type="checkbox" checked={autoConnectPrinter} onChange={e => { setAutoConnectPrinter(e.target.checked); setThermalPrinterAutoConnect(e.target.checked); }} className="mt-0.5 h-4 w-4 accent-indigo-600 shrink-0" />
-              <div className="min-w-0"><p className="text-[10px] font-black uppercase tracking-wider text-indigo-800 dark:text-indigo-200">Conectar automáticamente la impresora térmica</p><p className="mt-0.5 text-[9px] leading-4 font-semibold text-indigo-700/80 dark:text-indigo-300/80">PALMYRA intentará reconectar la última impresora autorizada al abrir la web o la PWA.</p></div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-wider text-indigo-800 dark:text-indigo-200">Conectar automáticamente la impresora</p>
+                <p className="mt-0.5 text-[9px] leading-4 font-semibold text-indigo-700/80 dark:text-indigo-300/80">PALMYRA intentará reconectar la última impresora autorizada al abrir la web o la PWA.</p>
+              </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <label className="space-y-1.5 min-w-0">
@@ -670,9 +693,10 @@ export default function Settings() {
 
         {activeTab === 'advanced' && (
           <div className="bg-secondary rounded-2xl shadow-sm border border-base p-3 sm:p-5 space-y-4">
-            <div className="flex items-center gap-3 border-b border-base pb-3"><div className="bg-amber-50 dark:bg-amber-950/30 p-2 rounded-lg text-amber-600"><AlertTriangle size={16}/></div><div><h3 className="text-xs font-black text-primary uppercase tracking-wider">Herramientas avanzadas</h3><p className="text-[8px] font-bold text-muted uppercase tracking-tight">Respaldo, sincronización y restablecimiento selectivo</p></div></div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex items-center gap-3 border-b border-base pb-3"><div className="bg-amber-50 dark:bg-amber-950/30 p-2 rounded-lg text-amber-600"><AlertTriangle size={16}/></div><div><h3 className="text-xs font-black text-primary uppercase tracking-wider">Herramientas avanzadas</h3><p className="text-[8px] font-bold text-muted uppercase tracking-tight">Respaldo, caché, sincronización y restablecimiento selectivo</p></div></div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button type="button" onClick={() => { const data = exportData(); const blob = new Blob([data], {type:'application/json'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='palmyra-respaldo.json'; a.click(); URL.revokeObjectURL(url); showToast('Respaldo exportado correctamente.'); }} className="h-11 rounded-xl border border-base bg-primary text-primary text-[10px] font-black uppercase flex items-center justify-center gap-2"><CloudDownload size={15}/> Exportar respaldo</button>
+              <button type="button" onClick={handleClearAppCache} disabled={isLoading} className="h-11 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300 dark:border-amber-900/40 text-[10px] font-black uppercase flex items-center justify-center gap-2 disabled:opacity-50"><RefreshCw size={15}/> Borrar caché</button>
               <button type="button" onClick={() => setShowConfirmReset(true)} className="h-11 rounded-xl bg-rose-600 text-white text-[10px] font-black uppercase flex items-center justify-center gap-2"><Trash2 size={15}/> Restablecer datos</button>
             </div>
             <div className="rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/70 dark:bg-amber-950/20 p-3 text-[9px] font-semibold text-amber-800 dark:text-amber-300">El restablecimiento es selectivo. No modifica la cuenta SaaS, el plan ni la autenticación.</div>
