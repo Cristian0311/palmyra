@@ -23,6 +23,7 @@ export interface SaaSContext {
     limits: { warehouses?: number; employees?: number; products?: number; reports?: string; support?: string };
     currentPeriodEnd?: string | null;
     trialEndsAt?: string | null;
+    graceEndsAt?: string | null;
   } | null;
 }
 
