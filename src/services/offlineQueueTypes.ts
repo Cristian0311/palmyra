@@ -10,7 +10,7 @@ export type OfflineActionType =
   | 'bank_card' | 'bank_card_balance' | 'currency_rate' | 'supplier' | 'supplier_order'
   | 'inventory_audit' | 'audit_start' | 'audit_recount' | 'audit_approve'
   | 'cash_movement' | 'cash_movement_delete'
-  | 'branch_delete' | 'category_delete' | 'supplier_delete';
+  | 'branch_delete' | 'category_delete' | 'supplier_delete' | 'user_delete';
 
 export interface OfflineQueueItem {
   id: string;
