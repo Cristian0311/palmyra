@@ -256,7 +256,9 @@ export default function Team() {
             fullName: form.fullName,
             baseSalary: Number(form.baseSalary) || 0,
             roleId: form.roleId,
-            warehouseIds: form.warehouseIds
+            warehouseIds: form.warehouseIds,
+            compensationType: form.compensationType,
+            salesPercentage: Number(form.salesPercentage) || 0
           });
         } else {
           await updateEmployeePosSecure({
@@ -267,7 +269,9 @@ export default function Team() {
             baseSalary: Number(form.baseSalary) || 0,
             roleId: form.roleId,
             warehouseIds: form.warehouseIds,
-            posPassword: form.posPassword.trim() || undefined
+            posPassword: form.posPassword.trim() || undefined,
+            compensationType: form.compensationType,
+            salesPercentage: Number(form.salesPercentage) || 0
           });
         }
 
@@ -301,7 +305,9 @@ export default function Team() {
             baseSalary: Number(form.baseSalary) || 0,
             roleId: form.roleId,
             warehouseIds: form.warehouseIds,
-            email: form.email
+            email: form.email,
+            compensationType: form.compensationType,
+            salesPercentage: Number(form.salesPercentage) || 0
           });
           const link = `${window.location.origin}/invite?token=${encodeURIComponent(invite.token)}`;
           setInviteLink(link);
@@ -314,7 +320,9 @@ export default function Team() {
             baseSalary: Number(form.baseSalary) || 0,
             roleId: form.roleId,
             warehouseIds: form.warehouseIds,
-            posPassword: form.posPassword.trim()
+            posPassword: form.posPassword.trim(),
+            compensationType: form.compensationType,
+            salesPercentage: Number(form.salesPercentage) || 0
           });
           setMessage("Empleado creado sin acceso web y con contraseña para POS.");
         }
