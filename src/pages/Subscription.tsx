@@ -5,6 +5,7 @@ import {useStore} from "../store/useStore";
 import {cn} from "../lib/utils";
 import {getSupabase} from "../lib/supabase";
 import {goToWhatsAppPayment} from "../utils/whatsapp";
+import {getPlanVisual} from "../services/planAccess";
 
 function money(v:number){return v.toLocaleString("es-CU",{minimumFractionDigits:2,maximumFractionDigits:2});}
 
@@ -137,8 +138,9 @@ export default function Subscription(){
     <section className="grid md:grid-cols-3 gap-4">
       {data?.plans?.map((plan:SubscriptionPlan)=>{
         const current=plan.code===currentCode;
-        return <article key={plan.id} className={cn("bg-secondary border rounded-3xl p-5 flex flex-col",current?"border-[#8B63E6] ring-1 ring-[#DCCBFF]":"border-base")}>
-          <div className="flex items-center justify-between gap-2"><div><p className="text-lg font-black text-primary">{plan.name}</p><p className="text-[10px] uppercase text-muted font-black">{plan.code}</p></div>{current&&<span className="text-[9px] px-2 py-1 rounded-full bg-[#EFE8FF] text-[#6535C5] font-black">Actual</span>}</div>
+        const visual=getPlanVisual(plan.code);
+        return <article key={plan.id} className={cn("bg-secondary border rounded-3xl p-5 flex flex-col",current?cn(visual.border,"ring-1",visual.border):"border-base")}>
+          <div className="flex items-center justify-between gap-2"><div><p className={cn("text-lg font-black",visual.text)}>{plan.name}</p><p className={cn("text-[10px] uppercase font-black",visual.text)}>{plan.code}</p></div>{current&&<span className={cn("text-[9px] px-2 py-1 rounded-full border font-black",visual.badge)}>Actual</span>}</div>
           <p className="text-2xl font-black text-primary mt-5">{money(Number(plan.monthly_price)||0)} <span className="text-base font-black text-primary">{plan.billing_currency_code || "USD"}</span><span className="text-xs text-muted font-bold"> / mes</span></p>
           <div className="mt-3 rounded-xl bg-subtle border border-base p-2.5">
             <p className="text-[9px] font-bold text-primary leading-4">{String((plan.features as any)?.description || "Plan PALMYRA para gestión empresarial.")}</p>
@@ -154,7 +156,7 @@ export default function Subscription(){
               const features = Array.isArray(rawFeatures) ? rawFeatures : (Array.isArray(plan.features) ? plan.features : []);
               return features.map((feature:string) => (
                 <div key={feature} className="flex items-start gap-2">
-                  <CheckCircle2 className="w-3 h-3 shrink-0 mt-0.5 text-emerald-600"/>
+                  <CheckCircle2 className={cn("w-3 h-3 shrink-0 mt-0.5",visual.text)}/>
                   <span>{feature}</span>
                 </div>
               ));
