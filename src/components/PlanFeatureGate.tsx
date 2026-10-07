@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { LockKeyhole, ArrowUpCircle, Loader2, Sparkles, Check, ShieldCheck, ArrowRight } from 'lucide-react';
+import { LockKeyhole, ArrowUpCircle, Loader2, Sparkles, Check, ShieldCheck, ArrowRight, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { loadSaaSContext } from '../services/saas';
 import { canUsePlanFeature, getPlanDisplayName, getRequiredPlanCode, type PlanFeature } from '../services/planAccess';
@@ -18,6 +18,7 @@ export default function PlanFeatureGate({
   children?: React.ReactNode;
 }) {
   const navigate = useNavigate();
+  const [dismissed, setDismissed] = useState(false);
   const [state, setState] = useState<{loading:boolean; allowed:boolean; plan:string; required:string}>({
     loading:true, allowed:false, plan:'', required:getRequiredPlanCode(feature)
   });
@@ -43,6 +44,25 @@ export default function PlanFeatureGate({
   const requiredName = REQUIRED_NAMES[state.required] || state.required;
   const currentName = getPlanDisplayName(state.plan);
 
+  if (dismissed) {
+    return (
+      <div className="min-h-[24vh] flex items-center justify-center p-4">
+        <div className="w-full max-w-xl rounded-2xl border border-base bg-secondary p-4 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <LockKeyhole className="w-4 h-4 text-violet-600 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-[10px] font-black text-primary uppercase truncate">{title}</p>
+              <p className="text-[9px] font-bold text-muted">Disponible desde {requiredName}.</p>
+            </div>
+          </div>
+          <button type="button" onClick={() => setDismissed(false)} className="shrink-0 px-3 py-2 rounded-xl bg-violet-600 text-white text-[9px] font-black uppercase">
+            Ver información
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-[60vh] flex items-center justify-center p-4 sm:p-6">
       <div className="relative w-full max-w-2xl overflow-hidden rounded-[30px] border border-violet-100/80 bg-white shadow-[0_24px_70px_-28px_rgba(91,33,182,0.35)]">
@@ -50,6 +70,15 @@ export default function PlanFeatureGate({
         <div className="absolute -left-20 bottom-0 h-48 w-48 rounded-full bg-indigo-100/55 blur-3xl" />
 
         <div className="relative p-5 sm:p-7">
+          <button
+            type="button"
+            onClick={() => setDismissed(true)}
+            className="absolute right-4 top-4 h-8 w-8 rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-slate-700 hover:bg-slate-50 flex items-center justify-center"
+            aria-label="Cerrar aviso"
+            title="Cerrar"
+          >
+            <X className="w-4 h-4" />
+          </button>
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
               <div className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white shadow-lg shadow-violet-600/25">
