@@ -293,7 +293,7 @@ export default function Dashboard() {
           </div>
         </div>
         
-        <div className="flex items-center gap-1.5 w-full sm:w-auto">
+        <div className="flex items-center justify-end gap-1.5 w-full sm:w-auto ml-auto shrink-0">
           <button
             onClick={handleGenerateAI}
             disabled={isGeneratingAI}
