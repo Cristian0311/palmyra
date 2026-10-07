@@ -15,6 +15,7 @@ export type PlatformCompany = {
   last_sale_at?: string | null;
   plan_code?: string | null;
   plan_name?: string | null;
+  plan_limits?: { products?: number; employees?: number; warehouses?: number } | null;
   created_at?: string | null;
 };
 
