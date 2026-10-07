@@ -1135,7 +1135,7 @@ export default function Inventory() {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2"
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                           <div className="space-y-1">
                             <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">SKU</label>
                             <div className="flex gap-1.5 min-w-0">
@@ -1152,11 +1152,11 @@ export default function Inventory() {
                           </div>
                           <div className="space-y-1">
                             <label className="block text-[7px] sm:text-[8px] font-black text-slate-500 uppercase tracking-wider ml-1">Código barras</label>
-                            <div className="flex gap-2">
+                            <div className="flex gap-1.5 min-w-0">
                               <input 
                                 type="text" value={formData.barcode || ''} 
                                 onChange={e => setFormData({...formData, barcode: e.target.value})} 
-                                className="flex-1 h-9 px-3 py-2 bg-slate-50 border border-slate-100 rounded-xl focus:ring-2 focus:ring-indigo-500/20 outline-none text-sm font-mono font-bold transition-all" 
+                                className="flex-1 min-w-0 h-8 px-2.5 py-1.5 bg-slate-50 border border-slate-100 rounded-lg focus:ring-2 focus:ring-indigo-500/20 outline-none text-[10px] font-mono font-bold transition-all" 
                                 placeholder="EAN-13 / UPC" 
                               />
                               <button type="button" onClick={() => setFormData({...formData, barcode: `750${Math.floor(Math.random() * 100000000).toString().padStart(8, '0')}`})} className="w-8 h-8 shrink-0 flex items-center justify-center bg-slate-200 text-slate-600 rounded-lg hover:bg-slate-300 transition-colors" title="Autogenerar código de barras" aria-label="Autogenerar código de barras">
