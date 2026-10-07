@@ -18,6 +18,7 @@ import * as XLSX from 'xlsx';
 import { loadSaaSContext } from '../services/saas';
 import { canUsePlanFeature } from '../services/planAccess';
 import PlanFeatureGate from '../components/PlanFeatureGate';
+import "./team.css";
 
 export default function Inventory() {
   const { 
@@ -556,14 +557,14 @@ export default function Inventory() {
           </div>
           
           {/* Filters: Sucursal, Categoría, Stock y Gestión */}
-          <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(70px,.72fr)_auto] sm:flex sm:items-center gap-1">
+          <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 w-full sm:w-auto">
             {/* Sucursal */}
-            <div className="relative group min-w-0 sm:min-w-[110px] sm:max-w-[140px]">
+            <div className="relative group w-full sm:min-w-[140px] sm:max-w-[180px]">
               <Building2 className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted pointer-events-none" />
               <select 
                 value={selectedBranch}
                 onChange={(e) => setSelectedBranch(e.target.value)}
-                className="w-full pl-6 pr-5 h-7 bg-subtle border border-base text-primary rounded-lg text-[8px] sm:text-[9px] font-bold outline-none hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
+                className="w-full pl-6 pr-7 h-8 bg-subtle border border-base text-primary rounded-lg text-[9px] sm:text-[9px] font-bold outline-none hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
                 title="Filtrar por sucursal"
               >
                 <option value="all">Sucursal</option>
@@ -575,7 +576,7 @@ export default function Inventory() {
             </div>
 
             {/* Categoría */}
-            <div className="relative group min-w-0 sm:min-w-[110px] sm:max-w-[140px]">
+            <div className="relative group w-full sm:min-w-[140px] sm:max-w-[180px]">
               <Tag className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-muted pointer-events-none" />
               <select 
                 value={selectedCategory}
@@ -592,11 +593,11 @@ export default function Inventory() {
             </div>
 
             {/* Stock */}
-            <div className="relative group min-w-0 sm:min-w-[90px] sm:max-w-[120px]">
+            <div className="relative group w-full sm:min-w-[110px] sm:max-w-[150px]">
               <select 
                 value={stockFilter}
                 onChange={(e) => setStockFilter(e.target.value as any)}
-                className="w-full px-1 sm:px-2 h-7 bg-subtle border border-base text-primary rounded-lg text-[8px] sm:text-[9px] font-bold outline-none hover:bg-secondary transition-colors cursor-pointer appearance-none text-center truncate"
+                className="w-full px-6 pr-7 h-8 bg-subtle border border-base text-primary rounded-lg text-[9px] sm:text-[9px] font-bold outline-none hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
                 title="Filtrar por stock"
               >
                 <option value="all">Stock</option>
@@ -610,7 +611,7 @@ export default function Inventory() {
             {/* Botón Gestión Categorías */}
             <button 
               onClick={() => setShowCategoryModal(true)}
-              className="w-8 h-8 flex items-center justify-center bg-subtle border border-base rounded-xl text-muted hover:text-indigo-600 hover:bg-secondary transition-all cursor-pointer shrink-0"
+              className="w-full sm:w-8 h-8 flex items-center justify-center bg-subtle border border-base rounded-xl text-muted hover:text-indigo-600 hover:bg-secondary transition-all cursor-pointer shrink-0"
               title="Gestionar Categorías"
             >
               <Settings2 className="w-3.5 h-3.5" />
@@ -677,7 +678,7 @@ export default function Inventory() {
       {activeTab === 'restock' && <RestockAlerts />}
 
       {activeTab === 'bulk' && (
-        <div className="flex-1 min-h-0 bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-base overflow-hidden animate-in fade-in zoom-in-95 duration-300 flex flex-col">
+        <div className="inventory-bulk-panel flex-1 min-h-0 bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-base overflow-hidden animate-in fade-in zoom-in-95 duration-300 flex flex-col">
           <div className="p-4 border-b border-base bg-slate-50/50 dark:bg-slate-800/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
             <div className="flex items-center gap-4">
               <div>
@@ -706,7 +707,7 @@ export default function Inventory() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto">
+          <div className="inventory-bulk-scroll flex-1 min-h-0 overflow-y-auto overflow-x-auto overscroll-contain touch-pan-y">
             <table className="w-full text-left border-collapse min-w-[700px]">
               <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800 border-b border-base">
                 <tr>
@@ -1050,50 +1051,50 @@ export default function Inventory() {
 
       {showAddModal && (
         <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-[2px] z-50 flex justify-center items-center p-2 overflow-y-auto">
-          <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] flex flex-col shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden border border-white/20 my-auto">
-            <header className="p-3 sm:p-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center relative overflow-hidden shrink-0">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-indigo-500/5 rounded-full -mr-32 -mt-32 blur-3xl"></div>
-              <div className="relative z-10">
-                <h2 className="text-base sm:text-lg font-black text-slate-900 tracking-tight uppercase">
+          <div className="team-employee-modal inventory-product-modal w-full max-w-3xl bg-secondary border border-base rounded-[28px] shadow-2xl overflow-hidden">
+            <header className="team-employee-modal-head relative overflow-hidden shrink-0">
+              
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="team-employee-hero-icon" aria-hidden="true"><PackagePlus className="w-5 h-5" /></div>
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="team-employee-kicker">Inventario · Alta de producto</span>
+                    <span className="team-employee-status"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Ficha guiada</span>
+                  </div>
+                  <h2 className="text-xl sm:text-2xl font-black text-primary tracking-tight mt-1">
                   {editingProduct ? 'Editar Producto' : 'Nuevo Producto'}
                 </h2>
-                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">Ficha Técnica y Almacén</p>
+                <p className="text-[11px] sm:text-xs text-muted mt-1.5 leading-5 max-w-xl">Completa la información básica, configura variantes y termina con precios y alertas. Puedes avanzar por cada etapa sin perder lo escrito.</p>
+                </div>
               </div>
               <button 
                 onClick={() => { setShowAddModal(false); setEditingProduct(null); setActiveFormTab('general'); }}
-                className="p-1.5 hover:bg-slate-200 rounded-lg transition-all active:scale-90 relative z-10"
+                className="w-10 h-10 rounded-2xl bg-subtle text-muted hover:text-primary hover:bg-primary border border-base flex items-center justify-center shrink-0 transition"
               >
                 <X className="w-4 h-4 text-slate-400" />
               </button>
             </header>
 
-            <nav className="px-3 sm:px-4 bg-slate-50/50 flex gap-2 sm:gap-4 border-b border-slate-100 overflow-x-auto">
+            <nav className="team-employee-stepbar" aria-label="Pasos para registrar producto">
               {[
-                { id: 'general', label: 'Datos del producto', icon: Tag },
-                { id: 'variants', label: 'Variantes', icon: Package },
-                { id: 'extra', label: 'Precios y extras', icon: DollarSign },
-              ].map(tab => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveFormTab(tab.id as any)}
-                  className={cn(
-                    "flex items-center gap-1.5 py-2.5 px-1 text-[8px] sm:text-[9px] font-black uppercase tracking-wider transition-all relative whitespace-nowrap",
-                    activeFormTab === tab.id ? "text-indigo-600" : "text-slate-400 hover:text-slate-600"
-                  )}
-                >
-                  <tab.icon className={cn("w-3.5 h-3.5", activeFormTab === tab.id ? "text-indigo-600" : "text-slate-400")} />
-                  {tab.label}
-                  {activeFormTab === tab.id && (
-                    <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-600 rounded-full" />
-                  )}
-                </button>
+                ['general','01','Producto','Datos básicos'],
+                ['variants','02','Variantes','Tallas y colores'],
+                ['extra','03','Precios','Extras y alertas']
+              ].map(([id,num,label,sub], index) => (
+                <React.Fragment key={id}>
+                  <button type="button" className={cn("team-step-item", activeFormTab === id && "team-step-active", ['general','variants','extra'].indexOf(activeFormTab) > index && "team-step-done")} onClick={() => setActiveFormTab(id as any)}>
+                    <span>{['general','variants','extra'].indexOf(activeFormTab) > index ? <span>✓</span> : num}</span>
+                    <div><strong>{label}</strong><small>{sub}</small></div>
+                  </button>
+                  {index < 2 && <div className={cn("team-step-line", ['general','variants','extra'].indexOf(activeFormTab) > index && "is-complete")} />}
+                </React.Fragment>
               ))}
             </nav>
 
             <form onSubmit={handleAddSubmit} className="flex-1 overflow-hidden flex flex-col">
-              <div className="flex-1 overflow-y-auto p-2.5 sm:p-3 custom-scrollbar">
+              <div className="team-employee-modal-body flex-1 min-h-0 custom-scrollbar">
                 {activeFormTab === 'general' && (
-                  <div className="space-y-3 sm:space-y-4">
+                  <div className="team-form-section space-y-3 sm:space-y-4">
                     <div className="grid grid-cols-[76px_1fr] sm:grid-cols-[100px_1fr] md:grid-cols-[120px_1fr] gap-2.5 sm:gap-3">
                       <div className="space-y-1">
                         <label className="block text-[7px] sm:text-[8px] font-black text-slate-400 uppercase tracking-wider ml-1 text-center">Imagen de Producto</label>
@@ -1190,7 +1191,7 @@ export default function Inventory() {
                 )}
 
                 {activeFormTab === 'variants' && (
-                  <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3 sm:p-4">
+                  <div className="team-form-section rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3 sm:p-4">
                     <div className="flex items-start justify-between gap-3 mb-3">
                       <div>
                         <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-800">Variantes del producto</h3>
@@ -1284,7 +1285,7 @@ export default function Inventory() {
                 )}
 
                 {activeFormTab === 'extra' && (
-                  <div className="space-y-8">
+                  <div className="team-form-section space-y-8">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div className="bg-slate-50 p-3 rounded-2xl border border-slate-100 space-y-3">
                         <h3 className="text-[10px] font-black text-slate-900 uppercase tracking-widest flex items-center gap-1.5">
@@ -1382,20 +1383,24 @@ export default function Inventory() {
                 )}
               </div>
 
-              <footer className="p-2.5 sm:p-3 border-t border-slate-100 bg-slate-50/50 flex items-center justify-end gap-2 shrink-0">
+              <footer className="team-employee-modal-footer">
+                <div className="team-footer-icon" aria-hidden="true"><Package className="w-4 h-4" /></div>
+                <p>Los datos se guardan al registrar el producto. Las existencias se gestionan después desde <strong>Gestionar stock</strong>.</p>
+                <div className="team-footer-actions">
                 <button 
                   type="button" 
                   onClick={() => { setShowAddModal(false); setEditingProduct(null); setActiveFormTab('general'); }} 
-                  className="px-4 py-2.5 text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-slate-600 transition-colors"
+                  className="team-footer-secondary"
                 >
                   Descartar
                 </button>
                 <button 
                   type="submit" 
-                  className="px-4 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-wider shadow-lg shadow-indigo-200 hover:bg-indigo-700 active:scale-95 transition-all"
+                  className="team-footer-primary"
                 >
                   {editingProduct ? 'Guardar Cambios' : 'Registrar Producto'}
                 </button>
+                </div>
               </footer>
             </form>
           </div>
