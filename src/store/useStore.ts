@@ -213,7 +213,17 @@ export const useStore = create<AppState>()(
         currentBranchId: state.currentBranchId === id ? (newBranches[0]?.id || '') : state.currentBranchId
       };
     });
-    deleteBranchFromSupabase(id);
+
+    const actionId = 'branch-delete:' + id;
+    const queueDeletion = () => enqueueOfflineItem('branch_delete', { id }, actionId)
+      .catch((error) => console.warn('[PALMYRA] No se pudo guardar la eliminación de almacén en la cola:', error));
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      deleteBranchFromSupabase(id).then((ok) => {
+        if (!ok) queueDeletion();
+      }).catch(() => queueDeletion());
+    } else {
+      queueDeletion();
+    }
   },
   
   categories: INITIAL_CATEGORIES,
@@ -243,7 +253,16 @@ export const useStore = create<AppState>()(
   },
   deleteCategory: (id) => {
     set((state) => ({ categories: state.categories.filter(c => c.id !== id) }));
-    deleteCategoryFromSupabase(id);
+    const actionId = 'category-delete:' + id;
+    const queueDeletion = () => enqueueOfflineItem('category_delete', { id }, actionId)
+      .catch((error) => console.warn('[PALMYRA] No se pudo guardar la eliminación de categoría en la cola:', error));
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      deleteCategoryFromSupabase(id).then((ok) => {
+        if (!ok) queueDeletion();
+      }).catch(() => queueDeletion());
+    } else {
+      queueDeletion();
+    }
   },
   
   ...createInventoryActions(set, get),
