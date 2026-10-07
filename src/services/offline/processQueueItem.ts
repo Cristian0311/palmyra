@@ -310,10 +310,8 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       ]);
       if (results.some(x => !x.success)) throw new Error('Transferencia confirmada, pero no se pudo reconciliar el inventario.');
       replaceWarehousesInventory(
-        data.fromBranchId,
-        results[0].inventory || [],
-        data.toBranchId,
-        results[1].inventory || []
+        [data.fromBranchId, data.toBranchId],
+        [...(results[0].inventory || []), ...(results[1].inventory || [])]
       );
       return true;
     }
@@ -326,10 +324,8 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       ]);
       if (results.some(x => !x.success)) throw new Error('Traslado confirmado, pero no se pudo reconciliar el inventario.');
       replaceWarehousesInventory(
-        data.fromBranchId,
-        results[0].inventory || [],
-        data.toBranchId,
-        results[1].inventory || []
+        [data.fromBranchId, data.toBranchId],
+        [...(results[0].inventory || []), ...(results[1].inventory || [])]
       );
       return true;
     }
