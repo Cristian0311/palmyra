@@ -13,7 +13,10 @@ import {
   deleteCompanyEmployee,
   updateEmployee,
   updateEmployeePosSecure,
-  setEmployeeCompensation,
+  loadCompensationSettings,
+  saveCompensationSettings,
+  type CompanyCompensationMode,
+  type CompanyCompensationSettings,
   upsertCompanyRole,
   type TeamEmployee,
   type TeamRole,
@@ -58,6 +61,8 @@ export default function Team() {
     permissionKeys: [] as string[]
   });
   const [roleFormStep, setRoleFormStep] = useState<1 | 2>(1);
+  const [compensationSettings, setCompensationSettings] = useState<CompanyCompensationSettings>({ mode: 'fixed_product', percentRate: 0, fixedAmount: 0, workerCount: 1, active: true });
+  const [savingCompensation, setSavingCompensation] = useState(false);
 
   const canManageRoles = currentUser?.permissions?.includes("roles.manage") || currentUser?.role === "admin";
   const canUseCustomRoles = context?.subscription?.planCode !== "starter";
@@ -72,8 +77,6 @@ export default function Team() {
     email: "",
     sendInvite: true,
     posPassword: "",
-    compensationType: 'fixed_product' as 'fixed_product' | 'sales_percentage',
-    salesPercentage: '0'
   });
 
   const refresh = async () => {
@@ -84,6 +87,7 @@ export default function Team() {
       if (!nextSnapshot) throw new Error("No se recibió el estado del equipo.");
       setContext(nextContext);
       setSnapshot(nextSnapshot);
+      try { setCompensationSettings(await loadCompensationSettings(nextSnapshot.companyId)); } catch (e) { console.warn("[PALMYRA] No se pudo cargar compensación global", e); }
       if (!form.roleId) {
         const employeeRole = (nextSnapshot.roles || []).find(role => role.key === "employee") || (nextSnapshot.roles || []).find(role => role.key !== "admin");
         if (employeeRole) setForm(prev => ({ ...prev, roleId: employeeRole.id }));
@@ -121,8 +125,6 @@ export default function Team() {
       email: "",
       sendInvite: true,
       posPassword: "",
-      compensationType: 'fixed_product',
-      salesPercentage: '0'
     });
   };
 
@@ -220,8 +222,6 @@ export default function Team() {
       email: employee.login_email || employee.pending_invitation?.email || "",
       sendInvite: !employee.user_id,
       posPassword: "",
-      compensationType: employee.compensation_type,
-      salesPercentage: String(employee.sales_percentage || 0)
     });
     setFormStep(1);
     setShowForm(true);
@@ -267,9 +267,7 @@ export default function Team() {
             fullName: form.fullName,
             baseSalary: Number(form.baseSalary) || 0,
             roleId: form.roleId,
-            warehouseIds: form.warehouseIds,
-            compensationType: form.compensationType,
-            salesPercentage: Number(form.salesPercentage) || 0
+            warehouseIds: form.warehouseIds
           });
         } else {
           await updateEmployeePosSecure({
@@ -280,17 +278,13 @@ export default function Team() {
             baseSalary: Number(form.baseSalary) || 0,
             roleId: form.roleId,
             warehouseIds: form.warehouseIds,
-            posPassword: form.posPassword.trim() || undefined,
-            compensationType: form.compensationType,
-            salesPercentage: Number(form.salesPercentage) || 0
+            posPassword: form.posPassword.trim() || undefined
           });
         }
 
         await setEmployeeCompensation({
           companyId: snapshot.companyId,
-          employeeId: editing.id,
-          compensationType: form.compensationType,
-          salesPercentage: Number(form.salesPercentage) || 0
+          employeeId: editing.id
         });
 
         if (form.sendInvite && !editing.user_id) {
@@ -316,9 +310,7 @@ export default function Team() {
             baseSalary: Number(form.baseSalary) || 0,
             roleId: form.roleId,
             warehouseIds: form.warehouseIds,
-            email: form.email,
-            compensationType: form.compensationType,
-            salesPercentage: Number(form.salesPercentage) || 0
+            email: form.email
           });
           const link = `${window.location.origin}/invite?token=${encodeURIComponent(invite.token)}`;
           setInviteLink(link);
@@ -331,9 +323,7 @@ export default function Team() {
             baseSalary: Number(form.baseSalary) || 0,
             roleId: form.roleId,
             warehouseIds: form.warehouseIds,
-            posPassword: form.posPassword.trim(),
-            compensationType: form.compensationType,
-            salesPercentage: Number(form.salesPercentage) || 0
+            posPassword: form.posPassword.trim()
           });
           setMessage("Empleado creado sin acceso web y con contraseña para POS.");
         }
@@ -636,32 +626,6 @@ export default function Team() {
               <section className={cn("team-form-section", formStep !== 2 && "team-form-hidden")} data-section="employee-operation" aria-hidden={formStep !== 2}>
                 <div className="team-form-section-head"><div className="team-form-section-icon"><ShieldCheck className="w-4 h-4" /></div><div><h3>Rol y almacenes</h3><p>Define dónde trabaja y qué nivel de operación tendrá.</p></div></div>
                 <label className="team-field-wrap"><span className="team-field-label">Rol <b>*</b></span><span className="team-field"><span className="team-field-icon"><ShieldCheck className="w-4 h-4" /></span><select value={form.roleId} onChange={e => setForm({...form, roleId:e.target.value})} disabled={busy || availableRoles.length===0} className="team-field-input team-field-select">{availableRoles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}</select></span>{!canManageRoles && <span className="team-field-help"><Info className="w-3.5 h-3.5" />Solo puedes asignar el rol operativo estándar.</span>}</label>
-                <div className="mt-4 p-3 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40">
-                  <div className="flex items-start gap-2 mb-3">
-                    <WalletCards className="w-4 h-4 text-indigo-600 mt-0.5" />
-                    <div>
-                      <p className="text-[10px] font-black text-indigo-900 dark:text-indigo-200 uppercase tracking-wider">Forma de pago del trabajador</p>
-                      <p className="text-[9px] font-bold text-indigo-700/80 dark:text-indigo-300/80 mt-0.5">Elige cómo se calcula su pago por ventas. Esta configuración controla también qué comisión por producto aplica.</p>
-                    </div>
-                  </div>
-                  <div className="grid sm:grid-cols-2 gap-2">
-                    <button type="button" onClick={() => setForm(prev => ({...prev, compensationType:'fixed_product', salesPercentage:'0'}))} className={cn("text-left p-3 rounded-xl border transition", form.compensationType==='fixed_product' ? "bg-white border-indigo-400 shadow-sm" : "bg-transparent border-indigo-100 dark:border-indigo-900")}>
-                      <p className="text-[10px] font-black text-primary uppercase">CUP fijo por producto</p>
-                      <p className="text-[9px] text-muted mt-1">Usa el monto CUP configurado en cada producto.</p>
-                    </button>
-                    <button type="button" onClick={() => setForm(prev => ({...prev, compensationType:'sales_percentage'}))} className={cn("text-left p-3 rounded-xl border transition", form.compensationType==='sales_percentage' ? "bg-white border-indigo-400 shadow-sm" : "bg-transparent border-indigo-100 dark:border-indigo-900")}>
-                      <p className="text-[10px] font-black text-primary uppercase">% sobre el total de venta</p>
-                      <p className="text-[9px] text-muted mt-1">Calcula el porcentaje sobre el total vendido por el trabajador.</p>
-                    </button>
-                  </div>
-                  {form.compensationType === 'sales_percentage' && (
-                    <label className="team-field-wrap mt-3">
-                      <span className="team-field-label">Porcentaje sobre ventas <b>*</b></span>
-                      <span className="team-field"><span className="team-field-icon"><WalletCards className="w-4 h-4" /></span><input type="number" min="0" max="100" step="0.01" inputMode="decimal" value={form.salesPercentage} onChange={e => setForm({...form,salesPercentage:e.target.value})} disabled={busy} className="team-field-input" placeholder="Ej. 5" /><span className="pr-3 font-black text-muted">%</span></span>
-                    </label>
-                  )}
-                </div>
-
                 <div className="mt-4">
                   <div className="flex items-end justify-between gap-3 mb-2"><div><span className="team-field-label">Almacenes permitidos <b>*</b></span><span className="team-field-subtext">Selecciona uno o varios almacenes a los que podrá acceder.</span></div><span className="team-selection-count">{form.warehouseIds.length} seleccionado{form.warehouseIds.length === 1 ? "" : "s"}</span></div>
                   <div className="grid sm:grid-cols-2 gap-2">
@@ -673,6 +637,68 @@ export default function Team() {
                   {!(snapshot?.warehouses || []).some(warehouse => warehouse.active) && <div className="team-empty-inline"><Warehouse className="w-4 h-4" />No hay almacenes activos disponibles. Crea uno en Configuración antes de asignar acceso.</div>}
                 </div>
               </section>
+              <section className="team-compensation-global bg-secondary border border-base rounded-3xl p-4 md:p-5 mt-4">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <WalletCards className="w-5 h-5 text-rose-500 shrink-0" />
+                      <h2 className="text-sm font-black text-primary">Compensación del equipo</h2>
+                    </div>
+                    <p className="text-[10px] text-muted mt-1 leading-5">Una sola configuración para todos los empleados, actuales y futuros.</p>
+                  </div>
+                  <span className="text-[8px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-full bg-subtle border border-base text-muted shrink-0">
+                    {compensationSettings.workerCount} trabajador{compensationSettings.workerCount === 1 ? "" : "es"} activos
+                  </span>
+                </div>
+                <div className="grid md:grid-cols-2 gap-2 mt-4">
+                  {([
+                    ['fixed_product','CUP fijo por producto','Usa la comisión CUP configurada en cada producto.'],
+                    ['sales_percent','% sobre el total de venta','Usa el mismo porcentaje general para todos los empleados.']
+                  ] as [CompanyCompensationMode,string,string][]).map(([mode,label,description]) => (
+                    <button key={mode} type="button" disabled={savingCompensation}
+                      onClick={() => setCompensationSettings(prev => ({ ...prev, mode }))}
+                      className={cn("text-left p-4 rounded-2xl border transition-all", compensationSettings.mode === mode ? "bg-indigo-50/80 dark:bg-indigo-950/20 border-indigo-300 shadow-sm" : "bg-primary border-base hover:border-indigo-200")}>
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-[10px] font-black text-primary uppercase tracking-wider">{label}</p>
+                        <span className={cn("w-5 h-5 rounded-full border flex items-center justify-center shrink-0", compensationSettings.mode === mode ? "bg-indigo-600 border-indigo-600 text-white" : "border-base text-transparent")}><Check className="w-3 h-3" /></span>
+                      </div>
+                      <p className="text-[9px] text-muted mt-1.5 leading-5">{description}</p>
+                    </button>
+                  ))}
+                </div>
+                {compensationSettings.mode === 'sales_percent' && (
+                  <div className="mt-3 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 p-3">
+                    <label className="team-field-wrap">
+                      <span className="team-field-label">Porcentaje general sobre ventas <b>*</b></span>
+                      <span className="team-field"><span className="team-field-icon"><WalletCards className="w-4 h-4" /></span>
+                        <input type="number" min="0" max="100" step="0.01" inputMode="decimal" value={String(compensationSettings.percentRate)}
+                          onChange={e => setCompensationSettings(prev => ({ ...prev, percentRate: Math.max(0, Math.min(100, Number(e.target.value) || 0)) }))}
+                          disabled={savingCompensation} className="team-field-input" placeholder="Ej. 5" />
+                        <span className="pr-3 font-black text-muted">%</span>
+                      </span>
+                    </label>
+                  </div>
+                )}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-3 border-t border-base">
+                  <p className="text-[9px] text-muted leading-5">El cambio no modifica comisiones históricas; controla las nuevas ventas.</p>
+                  <button type="button" disabled={savingCompensation || !snapshot?.companyId}
+                    onClick={async () => {
+                      if (!snapshot?.companyId) return;
+                      setSavingCompensation(true); setError(""); setMessage("");
+                      try {
+                        await saveCompensationSettings({ companyId: snapshot.companyId, mode: compensationSettings.mode, percentRate: compensationSettings.mode === 'sales_percent' ? Number(compensationSettings.percentRate) || 0 : 0 });
+                        await refresh();
+                        addNotification(compensationSettings.mode === "sales_percent" ? "Compensación global guardada." : "Compensación CUP fijo por producto guardada.", "success");
+                      } catch (e: any) {
+                        setError(e?.message || "No se pudo guardar la configuración de compensación.");
+                      } finally { setSavingCompensation(false); }
+                    }}
+                    className="w-full sm:w-auto h-10 px-4 rounded-xl bg-indigo-600 text-white font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50">
+                    {savingCompensation ? <><RefreshCw className="w-4 h-4 animate-spin" /> Guardando…</> : <><Save className="w-4 h-4" /> Guardar configuración</>}
+                  </button>
+                </div>
+              </section>
+
                             <section className={cn("team-form-section team-access-section", form.sendInvite && "is-enabled", formStep !== 3 && "team-form-hidden")} data-section="employee-access" aria-hidden={formStep !== 3}>
                 <div className="team-form-section-head"><div className="team-form-section-icon"><Link2 className="w-4 h-4" /></div><div className="min-w-0"><h3>Acceso al sistema</h3><p>Elige si tendrá cuenta web o solo contraseña para operar en el POS.</p></div><label className="team-switch ml-auto shrink-0"><input type="checkbox" checked={form.sendInvite} onChange={e => setForm({...form, sendInvite:e.target.checked, posPassword: e.target.checked ? "" : form.posPassword})} disabled={busy || Boolean(editing?.user_id)} className="sr-only" /><span className="team-switch-track"><span className="team-switch-thumb" /></span></label></div>
 
