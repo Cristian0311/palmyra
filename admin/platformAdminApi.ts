@@ -134,6 +134,64 @@ export async function saveSupportSettings(settings: PlatformSupportSettings): Pr
   };
 }
 
+export type InfrastructureUsage = {
+  capturedAt: string;
+  monthStart: string;
+  render: {
+    configured: boolean;
+    workspacePlan: string;
+    bandwidthGb: number | null;
+    bandwidthLimitGb: number | null;
+    bandwidthAvailableGb: number | null;
+    bandwidthPercent: number | null;
+    services: Array<{
+      id: string;
+      name: string;
+      type: string;
+      url: string;
+      configured: boolean;
+      bandwidthGb: number | null;
+      bandwidthLimitGb: number | null;
+      bandwidthAvailableGb: number | null;
+      bandwidthPercent: number | null;
+      cpuCurrent: number | null;
+      cpuLimit: number | null;
+      cpuPercent: number | null;
+      memoryCurrentMb: number | null;
+      memoryLimitMb: number | null;
+      memoryPercent: number | null;
+      error: string | null;
+    }>;
+  };
+  supabase: {
+    configured: boolean;
+    plan: string;
+    databaseMb: number | null;
+    databaseLimitMb: number | null;
+    databaseAvailableMb: number | null;
+    databasePercent: number | null;
+    apiRequests: number | null;
+    apiRequestsLimit: number | null;
+    error: string | null;
+  };
+};
+
+export async function loadInfrastructureUsage(): Promise<InfrastructureUsage> {
+  const supabase = await assertPlatformAdmin();
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  const token = sessionData.session?.access_token;
+  if (!token) throw new Error("La sesión administrativa no está disponible.");
+
+  const response = await fetch("https://palmyracrm.onrender.com/api/platform-usage", {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload?.error || "No se pudo consultar el consumo de infraestructura.");
+  return payload as InfrastructureUsage;
+}
+
 export async function loadSupportRequests(status?: string): Promise<PlatformSupportRequest[]> {
   const supabase = await assertPlatformAdmin();
   const { data, error } = await supabase.rpc("get_platform_support_requests", {
