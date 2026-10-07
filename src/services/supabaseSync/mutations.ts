@@ -22,7 +22,7 @@ async function onlineClient() {
 }
 const queue=async(type:any,data:any,id:string)=>{await enqueueOfflineItem(type,data,id);};
 
-export async function pushProductToSupabase(product:Product){
+export async function pushProductToSupabase(product:Product, options?: { queueOnTransientFailure?: boolean }){
   try{
     const supabase=await onlineClient();const {companyId,defaultCurrencyCode}=await getActiveTenant();
     const row={id:product.id,company_id:companyId,category_id:product.categoryId||null,brand_id:null,sku:product.sku||product.id.slice(0,12),name:product.name,description:null,status:product.status||'active',track_stock:true,base_unit:product.unit||'unidad',cost:Number(product.costPrice)||0,commission_fixed:product.commissionType==='fixed'?Number(product.commissionValue)||0:0,commission_percent:product.commissionType==='percentage'?Number(product.commissionValue)||0:0,image_path:product.image||null,minimum_stock:Number(product.minStockAlert)||0,is_kit:Boolean(product.isKit),track_serial:Boolean(product.hasSerial)};
@@ -164,8 +164,11 @@ export async function pushProductToSupabase(product:Product){
     console.warn('[PALMYRA] product sync failed', { code, message, hint, productId: product.id, transient });
 
     if (transient) {
-      await queue('product',product,product.id);
-      return false;
+      if (options?.queueOnTransientFailure !== false) {
+        await queue('product',product,product.id);
+        return false;
+      }
+      throw diagnostic;
     }
 
     // Database/RLS/constraint errors are not transient. Do not put the same
