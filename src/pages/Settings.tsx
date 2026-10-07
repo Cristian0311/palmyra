@@ -9,7 +9,7 @@ import { SettingsCategoriesSection } from "../components/settings/SettingsCatego
 import { Branch, Category } from "../types";
 import { cn } from "../lib/utils";
 import { normalizeSemanticText } from "../utils/textUtils";
-import { connectBluetoothPrinter, connectPrinter, printESCPOS, isInsideIframe } from "../lib/escpos";
+import { connectBluetoothPrinter, connectPrinter, printESCPOS, isInsideIframe, isThermalPrinterAutoConnectEnabled, setThermalPrinterAutoConnect } from "../lib/escpos";
 import { getSupabase } from "../lib/supabase";
 import { loadSaaSContext } from "../services/saas";
 import { canUsePlanFeature } from "../services/planAccess";
@@ -76,6 +76,8 @@ export default function Settings() {
     setTicketConfig(receiptConfig);
   }, [receiptConfig]);
   
+  const [autoConnectPrinter, setAutoConnectPrinter] = useState(() => isThermalPrinterAutoConnectEnabled());
+
   const [printerStatus, setPrinterStatus] = useState<{
     type: 'idle' | 'loading' | 'success' | 'error' | 'warning';
     message: string;
@@ -399,7 +401,12 @@ export default function Settings() {
                     </div>
                   </label>
 
-                  <div className="bg-amber-50/50 dark:bg-amber-950/10 p-3.5 rounded-2xl border border-amber-100 dark:border-amber-900/30 flex items-start gap-3">
+                  <label className="flex items-start gap-3 p-3.5 rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/60 dark:bg-indigo-950/20 cursor-pointer">
+                 <input type="checkbox" checked={autoConnectPrinter} onChange={e => { setAutoConnectPrinter(e.target.checked); setThermalPrinterAutoConnect(e.target.checked); }} className="mt-0.5 h-4 w-4 accent-indigo-600" />
+                 <span className="min-w-0"><span className="block text-[10px] font-black uppercase tracking-wider text-indigo-800 dark:text-indigo-200">Siempre conectar la impresora térmica</span><span className="block mt-0.5 text-[9px] leading-4 font-semibold text-indigo-700/80 dark:text-indigo-300/80">PALMYRA intentará reconectar automáticamente la última impresora autorizada al abrir la web o la PWA.</span></span>
+               </label>
+
+               <div className="bg-amber-50/50 dark:bg-amber-950/10 p-3.5 rounded-2xl border border-amber-100 dark:border-amber-900/30 flex items-start gap-3">
                     <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
                     <p className="text-[9px] text-amber-700 dark:text-amber-400 font-medium leading-relaxed">
                       <strong>Recomendación:</strong> Activa el modo manual en zonas con internet inestable. El sistema guardará todo en una cola local protegida y solo subirá cuando tú lo decidas, garantizando la integridad de cada transacción.
