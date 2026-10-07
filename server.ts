@@ -304,6 +304,45 @@ async function startServer() {
     }
   });
 
+  // Informational exchange-rate proxy. The elTOQUE token never reaches the browser.
+  app.get('/api/exchange-rates', async (_req, res) => {
+    try {
+      const token = process.env.ELTOQUE_API_TOKEN || '';
+      if (!token) {
+        return res.status(503).json({
+          configured: false,
+          source: 'elTOQUE API',
+          error: 'ELTOQUE_API_TOKEN no está configurado en el servidor.'
+        });
+      }
+      const response = await fetch('https://tasas.eltoque.com/v1/trmi', {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        return res.status(response.status).json({
+          configured: true,
+          source: 'elTOQUE API',
+          error: payload?.error || `elTOQUE respondió HTTP ${response.status}`
+        });
+      }
+      return res.json({
+        configured: true,
+        source: 'elTOQUE API',
+        capturedAt: new Date().toISOString(),
+        informationalOnly: true,
+        data: payload
+      });
+    } catch (error: any) {
+      console.error('[PALMYRA] exchange rates:', error);
+      return res.status(502).json({
+        configured: true,
+        source: 'elTOQUE API',
+        error: error?.message || 'No se pudo consultar elTOQUE.'
+      });
+    }
+  });
+
   // AI Financial & Operational Report Analyzer
   app.post('/api/ai-analyze-report', async (req, res) => {
     try {
