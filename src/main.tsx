@@ -119,11 +119,6 @@ const updateSW = registerSW({
     try { localStorage.setItem(PALMYRA_UPDATE_AVAILABLE_KEY, '1'); } catch {}
     window.dispatchEvent(new CustomEvent('palmyra:update-available'));
   },
-  onRegistered(registration) {
-    // Ejecuta una comprobación inmediata y conserva la detección en segundo
-    // plano; el usuario decide cuándo aplicar la actualización.
-    void registration.update();
-  },
 
 
   onRegisteredSW(swUrl, registration) {
