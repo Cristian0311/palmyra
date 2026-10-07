@@ -504,7 +504,7 @@ export default function Inventory() {
         </div>
         <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide w-full sm:w-auto py-1">
           <button 
-            onClick={() => setActiveTab('stock')}
+            onClick={() => setActiveTab('products')}
             className="shrink-0 bg-emerald-600 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-emerald-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
           >
             <PackageCheck className="w-3.5 h-3.5" /> Stock
