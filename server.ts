@@ -260,14 +260,12 @@ async function startServer() {
       const managementToken = process.env.SUPABASE_MANAGEMENT_TOKEN || '';
       if (managementToken) {
         const projectRef = process.env.SUPABASE_PROJECT_REF || 'hmcvujyqloyjdvngpdxz';
-        const usageResponse = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/analytics/endpoints/usage.api-counts?interval=1d`, {
+        const usageResponse = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/analytics/endpoints/usage.api-requests-count?interval=1d`, {
           headers:{Accept:'application/json',Authorization:`Bearer ${managementToken}`}
         });
         if (usageResponse.ok) {
           const payload = await usageResponse.json();
-          supabase.apiRequests = (payload?.result || []).reduce((total:number,row:any)=>
-            total + Number(row?.total_auth_requests || 0) + Number(row?.total_realtime_requests || 0) +
-            Number(row?.total_rest_requests || 0) + Number(row?.total_storage_requests || 0),0);
+          supabase.apiRequests = (payload?.result || []).reduce((total:number,row:any)=> total + Number(row?.count || 0),0);
           supabase.apiRequestsSource = 'supabase_management_api';
         } else {
           supabase.error = `Supabase Management API HTTP ${usageResponse.status}`;
