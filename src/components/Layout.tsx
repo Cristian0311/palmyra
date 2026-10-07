@@ -61,7 +61,7 @@ const adminNavItems = [
   { name: "Catálogo Online", href: "#online-catalog", icon: Store, public: true, comingSoon: true },
 ];
 
-const APP_VERSION = "V 1.0.3";
+const APP_VERSION = "V 1.0.2";
 const APP_UPDATE_NOTES = [
   "POS: egresos, gastos e ingresos ahora tienen una sección y comprobante independiente de los tickets y productos vendidos.",
   "Reportes: el detalle del turno incorpora los movimientos de caja y los filtros fueron compactados para trabajar mejor en pantallas pequeñas.",
