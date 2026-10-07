@@ -50,6 +50,15 @@ async function startServer() {
   // the caller.
   app.get('/api/platform-usage', async (req, res) => {
     try {
+      const allowedOrigin = 'https://palmyra-admin.onrender.com';
+      const origin = String(req.headers.origin || '');
+      if (origin === allowedOrigin) {
+        res.setHeader('Access-Control-Allow-Origin', allowedOrigin);
+        res.setHeader('Vary', 'Origin');
+        res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+      }
+      if (req.method === 'OPTIONS') return res.status(204).end();
+
       const authHeader = String(req.headers.authorization || '');
       const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
       const supabaseUrl = process.env.SUPABASE_URL || 'https://hmcvujyqloyjdvngpdxz.supabase.co';
@@ -74,35 +83,117 @@ async function startServer() {
 
       const now = new Date();
       const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
-      const commonParams = new URLSearchParams({
-        resource: process.env.RENDER_SERVICE_ID || 'srv-db089k49v7es73ab7750',
-        startTime: monthStart,
-        endTime: now.toISOString()
-      });
-      const renderHeaders = process.env.RENDER_API_KEY
-        ? { Accept: 'application/json', Authorization: `Bearer ${process.env.RENDER_API_KEY}` }
+      const renderKey = process.env.RENDER_API_KEY || '';
+      const renderHeaders = renderKey
+        ? { Accept: 'application/json', Authorization: `Bearer ${renderKey}` }
         : null;
 
-      let render = { configured: false, bandwidthGb: null as number | null, requests: null as number | null, error: null as string | null };
-      if (renderHeaders) {
-        render.configured = true;
-        const [bandwidthResponse, requestsResponse] = await Promise.all([
-          fetch(`https://api.render.com/v1/metrics/bandwidth?${commonParams.toString()}`, { headers: renderHeaders }),
-          fetch(`https://api.render.com/v1/metrics/http-requests?${new URLSearchParams({ ...Object.fromEntries(commonParams), resolutionSeconds: '3600' }).toString()}`, { headers: renderHeaders })
-        ]);
-        if (bandwidthResponse.ok) {
-          const series = await bandwidthResponse.json();
-          render.bandwidthGb = (Array.isArray(series) ? series : []).reduce((total: number, item: any) =>
-            total + (item?.values || []).reduce((sum: number, point: any) => sum + Number(point?.value || 0), 0), 0);
-        } else render.error = `Render bandwidth HTTP ${bandwidthResponse.status}`;
-        if (requestsResponse.ok) {
-          const series = await requestsResponse.json();
-          render.requests = (Array.isArray(series) ? series : []).reduce((total: number, item: any) =>
-            total + (item?.values || []).reduce((sum: number, point: any) => sum + Number(point?.value || 0), 0), 0);
-        } else render.error = render.error || `Render requests HTTP ${requestsResponse.status}`;
-      }
+      const renderServices = [
+        { id: process.env.RENDER_SERVICE_ID || 'srv-db089k49v7es73ab7750', name: 'PALMYRA CRM', type: 'Web Service', url: 'https://palmyracrm.onrender.com' },
+        { id: process.env.RENDER_ADMIN_SERVICE_ID || 'srv-db1t348u01pc73fu26j0', name: 'PALMYRA ADMIN', type: 'Static Site', url: 'https://palmyra-admin.onrender.com' },
+      ];
 
-      let supabase = { configured: false, apiRequests: null as number | null, databaseMb: null as number | null, error: null as string | null };
+      const sumSeries = (payload: any, unitScale = 1) =>
+        (Array.isArray(payload) ? payload : []).reduce((total: number, item: any) =>
+          total + (item?.values || []).reduce((sum: number, point: any) => sum + Number(point?.value || 0), 0), 0
+        ) * unitScale;
+
+      const lastSeriesValue = (payload: any) => {
+        const points = (Array.isArray(payload) ? payload : [])
+          .flatMap((item: any) => Array.isArray(item?.values) ? item.values : [])
+          .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        return points.length ? Number(points[0].value || 0) : null;
+      };
+
+      const renderServicesUsage = await Promise.all(renderServices.map(async (service) => {
+        const empty = {
+          ...service,
+          configured: Boolean(renderHeaders),
+          bandwidthGb: null as number | null,
+          bandwidthLimitGb: 5,
+          bandwidthAvailableGb: null as number | null,
+          bandwidthPercent: null as number | null,
+          cpuCurrent: null as number | null,
+          cpuLimit: null as number | null,
+          cpuPercent: null as number | null,
+          memoryCurrentMb: null as number | null,
+          memoryLimitMb: null as number | null,
+          memoryPercent: null as number | null,
+          error: null as string | null,
+        };
+        if (!renderHeaders) {
+          empty.error = 'Render API no está configurada en el servidor.';
+          return empty;
+        }
+
+        try {
+          const base = new URLSearchParams({
+            resource: service.id,
+            startTime: monthStart,
+            endTime: now.toISOString(),
+            resolutionSeconds: '3600'
+          });
+          const currentWindow = new URLSearchParams({
+            resource: service.id,
+            startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+            endTime: now.toISOString(),
+            resolutionSeconds: '300'
+          });
+
+          const [bandwidthResponse, cpuResponse, cpuLimitResponse, memoryResponse, memoryLimitResponse] = await Promise.all([
+            fetch(`https://api.render.com/v1/metrics/bandwidth?${base.toString()}`, { headers: renderHeaders }),
+            fetch(`https://api.render.com/v1/metrics/cpu?${currentWindow.toString()}`, { headers: renderHeaders }),
+            fetch(`https://api.render.com/v1/metrics/cpu?aggregationMethod=MAX&${base.toString()}`, { headers: renderHeaders }),
+            fetch(`https://api.render.com/v1/metrics/memory?${currentWindow.toString()}`, { headers: renderHeaders }),
+            fetch(`https://api.render.com/v1/metrics/memory?aggregationMethod=MAX&${base.toString()}`, { headers: renderHeaders })
+          ]);
+
+          const bandwidth = bandwidthResponse.ok ? await bandwidthResponse.json() : [];
+          const cpu = cpuResponse.ok ? await cpuResponse.json() : [];
+          const cpuLimit = cpuLimitResponse.ok ? await cpuLimitResponse.json() : [];
+          const memory = memoryResponse.ok ? await memoryResponse.json() : [];
+          const memoryLimit = memoryLimitResponse.ok ? await memoryLimitResponse.json() : [];
+
+          const bandwidthGb = sumSeries(bandwidth, 1 / 1024);
+          const cpuCurrent = lastSeriesValue(cpu);
+          const cpuCap = lastSeriesValue(cpuLimit);
+          const memoryCurrentMb = lastSeriesValue(memory) == null ? null : lastSeriesValue(memory)! / 1024 / 1024;
+          const memoryCapMb = lastSeriesValue(memoryLimit) == null ? null : lastSeriesValue(memoryLimit)! / 1024 / 1024;
+
+          empty.bandwidthGb = bandwidthGb;
+          empty.bandwidthAvailableGb = Math.max(0, empty.bandwidthLimitGb - bandwidthGb);
+          empty.bandwidthPercent = Math.min(100, (bandwidthGb / empty.bandwidthLimitGb) * 100);
+          empty.cpuCurrent = cpuCurrent;
+          empty.cpuLimit = cpuCap;
+          empty.cpuPercent = cpuCurrent != null && cpuCap ? Math.min(100, (cpuCurrent / cpuCap) * 100) : null;
+          empty.memoryCurrentMb = memoryCurrentMb;
+          empty.memoryLimitMb = memoryCapMb;
+          empty.memoryPercent = memoryCurrentMb != null && memoryCapMb ? Math.min(100, (memoryCurrentMb / memoryCapMb) * 100) : null;
+
+          const failed = [bandwidthResponse, cpuResponse, cpuLimitResponse, memoryResponse, memoryLimitResponse].filter((response) => !response.ok);
+          if (failed.length) empty.error = `Render devolvió HTTP ${failed[0].status} para una métrica.`;
+        } catch (error: any) {
+          empty.error = error?.message || 'No se pudo consultar Render.';
+        }
+        return empty;
+      }));
+
+      const renderBandwidthGb = renderServicesUsage.reduce((sum, service) => sum + Number(service.bandwidthGb || 0), 0);
+      const renderBandwidthLimitGb = 5;
+      const renderBandwidthAvailableGb = Math.max(0, renderBandwidthLimitGb - renderBandwidthGb);
+
+      const supabase = {
+        configured: false,
+        plan: 'Free',
+        databaseMb: null as number | null,
+        databaseLimitMb: 500,
+        databaseAvailableMb: null as number | null,
+        databasePercent: null as number | null,
+        apiRequests: null as number | null,
+        apiRequestsLimit: null as number | null,
+        error: null as string | null
+      };
+
       const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
       if (serviceRoleKey) {
         supabase.configured = true;
@@ -114,7 +205,11 @@ async function startServer() {
         if (dbResponse.ok) {
           const bytes = Number(await dbResponse.json());
           supabase.databaseMb = Number.isFinite(bytes) ? bytes / 1024 / 1024 : null;
-        } else supabase.error = `Supabase database size HTTP ${dbResponse.status}`;
+          supabase.databaseAvailableMb = supabase.databaseMb == null ? null : Math.max(0, supabase.databaseLimitMb - supabase.databaseMb);
+          supabase.databasePercent = supabase.databaseMb == null ? null : Math.min(100, (supabase.databaseMb / supabase.databaseLimitMb) * 100);
+        } else {
+          supabase.error = `Supabase database size HTTP ${dbResponse.status}`;
+        }
       }
 
       const managementToken = process.env.SUPABASE_MANAGEMENT_TOKEN || '';
@@ -131,24 +226,34 @@ async function startServer() {
             Number(row?.total_realtime_requests || 0) +
             Number(row?.total_rest_requests || 0) +
             Number(row?.total_storage_requests || 0), 0);
-        } else supabase.error = supabase.error || `Supabase usage HTTP ${usageResponse.status}`;
+        } else {
+          supabase.error = supabase.error || `Supabase usage HTTP ${usageResponse.status}`;
+        }
       }
 
       return res.json({
         capturedAt: now.toISOString(),
         monthStart,
-        render,
+        render: {
+          configured: Boolean(renderHeaders),
+          workspacePlan: 'Hobby',
+          bandwidthGb: renderBandwidthGb,
+          bandwidthLimitGb: renderBandwidthLimitGb,
+          bandwidthAvailableGb: renderBandwidthAvailableGb,
+          bandwidthPercent: Math.min(100, (renderBandwidthGb / renderBandwidthLimitGb) * 100),
+          services: renderServicesUsage
+        },
         supabase,
         limits: {
-          renderFreeBandwidthGb: 5,
-          renderFreeInstanceHours: 750,
+          renderHobbyBandwidthGb: 5,
+          renderHobbyInstanceHours: 750,
           supabaseFreeDatabaseMb: 500,
           supabaseFreeEgressGb: 5
         },
         notes: [
-          'Los límites mostrados corresponden a las referencias configuradas para los planes gratuitos actuales.',
-          'Render contabiliza además horas de instancia y minutos de build; esas métricas no se infieren a partir de solicitudes HTTP.',
-          'Supabase mantiene API requests ilimitadas en el plan Free; el riesgo principal del Free actual es tamaño de base y egress.'
+          'El consumo de Render se consolida para PALMYRA CRM y PALMYRA ADMIN dentro del mismo workspace.',
+          'CPU y memoria muestran capacidad de servicio y consumo reciente; el límite de ancho de banda es mensual.',
+          'Supabase Free incluye 500 MB de base de datos por proyecto; API requests no tienen un límite mensual de solicitudes en el plan Free.'
         ]
       });
     } catch (error: any) {
