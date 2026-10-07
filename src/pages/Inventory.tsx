@@ -89,6 +89,27 @@ export default function Inventory() {
   }, []);
   const [showBatchPriceModal, setShowBatchPriceModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [categoryViewport, setCategoryViewport] = useState({ height: 0, top: 0 });
+
+  useEffect(() => {
+    if (!showCategoryModal || typeof window === 'undefined') return;
+    const viewport = window.visualViewport;
+    const syncViewport = () => {
+      setCategoryViewport({
+        height: viewport?.height || window.innerHeight,
+        top: viewport?.offsetTop || 0,
+      });
+    };
+    syncViewport();
+    viewport?.addEventListener('resize', syncViewport);
+    viewport?.addEventListener('scroll', syncViewport);
+    window.addEventListener('resize', syncViewport);
+    return () => {
+      viewport?.removeEventListener('resize', syncViewport);
+      viewport?.removeEventListener('scroll', syncViewport);
+      window.removeEventListener('resize', syncViewport);
+    };
+  }, [showCategoryModal]);
   const [activeFormTab, setActiveFormTab] = useState<'general' | 'variants' | 'extra'>('general');
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [categoryFormData, setCategoryFormData] = useState({ name: "", department: "" });
@@ -614,7 +635,7 @@ export default function Inventory() {
               className="inventory-add-category-button"
               title="Agregar categorías" aria-label="Agregar categorías"
             >
-              <Settings2 className="w-3.5 h-3.5" />
+              Agregar categorías
             </button>
           </div>
         </div>
@@ -1517,7 +1538,13 @@ export default function Inventory() {
       )}
       {/* Modal Categorías */}
       {showCategoryModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex justify-center items-center p-3 sm:p-4">
+        <div
+          className="fixed inset-x-0 z-[60] flex items-center justify-center bg-slate-900/60 p-3 sm:p-4"
+          style={{
+            top: categoryViewport.top,
+            height: categoryViewport.height || undefined,
+          }}
+        >
           <div className="inventory-category-modal">
             <div className="inventory-category-header">
               <div className="inventory-category-title">
