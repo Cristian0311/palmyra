@@ -1,6 +1,6 @@
 import React,{useEffect,useState} from "react";
-import {Check,Clock3,RefreshCw,ShieldAlert,Building2,Ban,XCircle,Headphones,Save,MessageCircle,Link2} from "lucide-react";
-import {loadPlatformAdminSnapshot,approvePlanRequest,rejectPlanRequest,setPlatformCompanyStatus,setPlatformSupportSettings,type PlatformSupportSettings} from "../services/platformAdmin";
+import {Check,Clock3,RefreshCw,ShieldAlert,Building2,Ban,XCircle,Headphones,Save,MessageCircle,Link2,Activity,DatabaseZap} from "lucide-react";
+import {loadPlatformAdminSnapshot,loadPlatformUsage,approvePlanRequest,rejectPlanRequest,setPlatformCompanyStatus,setPlatformSupportSettings,type PlatformSupportSettings} from "../services/platformAdmin";
 import {useStore} from "../store/useStore";
 import {DEFAULT_FACEBOOK_URL} from "../services/platformSupport";
 
@@ -23,12 +23,16 @@ function WhatsAppMark({className=""}:{className?:string}){
 export default function PlatformAdmin(){
  const {addNotification}=useStore();
  const [data,setData]=useState<any>(null),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState("");
- const [supportForm,setSupportForm]=useState<PlatformSupportSettings>(EMPTY_SUPPORT);
+ const [supportForm,setSupportForm]=useState<PlatformSupportSettings>(EMPTY_SUPPORT);\n const [usage,setUsage]=useState<any>(null);
  const refresh=async()=>{
   setLoading(true);setError("");
   try{
-   const snapshot=await loadPlatformAdminSnapshot();
+   const [snapshot,usageSnapshot]=await Promise.all([
+    loadPlatformAdminSnapshot(),
+    loadPlatformUsage().catch(()=>null)
+   ]);
    setData(snapshot);
+   setUsage(usageSnapshot);
    setSupportForm({...EMPTY_SUPPORT,...snapshot.supportSettings});
   }catch(e:any){
    setError(String(e?.message||"No tienes acceso a la consola de plataforma."));
@@ -57,6 +61,49 @@ export default function PlatformAdmin(){
     <button onClick={()=>void refresh()} disabled={busy} className="h-10 px-4 rounded-xl border border-base font-black text-xs flex items-center gap-2"><RefreshCw className="w-4 h-4"/>Actualizar</button>
    </header>
    {error&&<div className="rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold p-3">{error}</div>}
+
+   <section className="bg-secondary border border-base rounded-3xl p-5">
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
+        <Activity className="w-5 h-5 text-emerald-600"/>
+        <div><h2 className="text-sm font-black text-primary">Consumo de API e infraestructura</h2><p className="text-[11px] text-muted mt-0.5">Vigila Render y Supabase antes de que el crecimiento de PALMYRA obligue a ampliar infraestructura.</p></div>
+      </div>
+      <button type="button" onClick={()=>void refresh()} disabled={loading||busy} className="h-9 px-3 rounded-xl border border-base text-[9px] font-black uppercase flex items-center gap-1.5"><RefreshCw className="w-3.5 h-3.5"/>Actualizar</button>
+    </div>
+    {!usage ? (
+      <div className="mt-4 rounded-2xl border border-dashed border-base p-4 text-center text-[10px] font-bold text-muted">
+        Configura las credenciales de servidor de Render/Supabase para activar la lectura automática de consumo.
+      </div>
+    ) : (
+      <div className="mt-4 grid md:grid-cols-2 gap-3">
+        {(() => {
+          const renderGb=Number(usage.render?.bandwidthGb);
+          const renderPct=Number.isFinite(renderGb)?Math.min(100,(renderGb/Number(usage.limits.renderFreeBandwidthGb||5))*100):null;
+          const dbMb=Number(usage.supabase?.databaseMb);
+          const dbPct=Number.isFinite(dbMb)?Math.min(100,(dbMb/Number(usage.limits.supabaseFreeDatabaseMb||500))*100):null;
+          const renderWarn=renderPct!==null&&renderPct>=80;
+          const dbWarn=dbPct!==null&&dbPct>=80;
+          return <>
+            <div className={`rounded-2xl border p-4 ${renderWarn?'border-amber-200 bg-amber-50/60':'border-base bg-primary'}`}>
+              <div className="flex items-center justify-between gap-2"><div className="flex items-center gap-2"><Activity className="w-4 h-4 text-rose-500"/><span className="text-[10px] font-black uppercase text-primary">Render · ancho de banda</span></div><span className="text-[9px] font-black text-muted">Free: 5 GB/mes</span></div>
+              <p className="mt-3 text-2xl font-black text-primary">{renderPct!==null?`${renderGb.toFixed(2)} GB`:"No disponible"}</p>
+              {renderPct!==null&&<div className="mt-2 h-2 rounded-full bg-slate-200 overflow-hidden"><div className={`h-full rounded-full ${renderWarn?'bg-amber-500':'bg-emerald-500'}`} style={{width:`${renderPct}%`}}/></div>}
+              <p className={`mt-2 text-[9px] font-bold ${renderWarn?'text-amber-700':'text-muted'}`}>{renderWarn?"Alerta: consumo cercano al límite configurado.":"Seguimiento mensual activo."}</p>
+              <p className="mt-1 text-[8px] font-bold text-muted">{usage.render?.requests!==null?Number(usage.render.requests).toLocaleString("es-CU")+" solicitudes HTTP":""}</p>
+            </div>
+            <div className={`rounded-2xl border p-4 ${dbWarn?'border-amber-200 bg-amber-50/60':'border-base bg-primary'}`}>
+              <div className="flex items-center justify-between gap-2"><div className="flex items-center gap-2"><DatabaseZap className="w-4 h-4 text-violet-600"/><span className="text-[10px] font-black uppercase text-primary">Supabase · base de datos</span></div><span className="text-[9px] font-black text-muted">Free: 500 MB</span></div>
+              <p className="mt-3 text-2xl font-black text-primary">{dbPct!==null?`${dbMb.toFixed(1)} MB`:"No disponible"}</p>
+              {dbPct!==null&&<div className="mt-2 h-2 rounded-full bg-slate-200 overflow-hidden"><div className={`h-full rounded-full ${dbWarn?'bg-amber-500':'bg-violet-500'}`} style={{width:`${dbPct}%`}}/></div>}
+              <p className={`mt-2 text-[9px] font-bold ${dbWarn?'text-amber-700':'text-muted'}`}>{dbWarn?"Alerta: la base se acerca al límite Free.":"Seguimiento del tamaño real de PostgreSQL."}</p>
+              <p className="mt-1 text-[8px] font-bold text-muted">{usage.supabase?.apiRequests!==null?Number(usage.supabase.apiRequests).toLocaleString("es-CU")+" solicitudes API (muestra disponible)":""}</p>
+            </div>
+          </>;
+        })()}
+      </div>
+    )}
+    <p className="mt-3 text-[8px] leading-4 font-bold text-muted">Las alertas se muestran al alcanzar aproximadamente el 80 % del límite configurado. Render también controla horas de instancia y minutos de build; esos valores no se estiman a partir de solicitudes HTTP. Supabase mantiene API requests ilimitadas en Free, por lo que el panel prioriza tamaño de base y otros recursos reales.</p>
+   </section>
 
    <section className="bg-secondary border border-base rounded-3xl p-5">
     <div className="flex items-center gap-2"><Headphones className="w-5 h-5 text-violet-600"/><div><h2 className="text-sm font-black text-primary">Centro de atención y canales oficiales</h2><p className="text-[11px] text-muted mt-0.5">Configura los canales que utilizarán las empresas desde el CRM y durante el registro gratuito.</p></div></div>
