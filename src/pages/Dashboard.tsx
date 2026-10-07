@@ -296,26 +296,26 @@ export default function Dashboard() {
           aria-hidden="true"
         />
 
-        <div className="relative z-10 flex min-h-[280px] sm:min-h-[290px] lg:min-h-[310px] items-center px-5 py-7 sm:px-8 lg:px-10">
-          <div className="w-full max-w-[560px]">
-            <div className="flex items-center gap-1.5 text-[7.5px] sm:text-[9px] font-black uppercase tracking-[0.14em] text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.55)] -translate-y-1 sm:-translate-y-1">
+        <div className="relative z-10 flex min-h-[280px] sm:min-h-[290px] lg:min-h-[310px] items-center px-4 py-6 sm:px-8 lg:px-10">
+          <div className="w-full max-w-[445px] sm:max-w-[560px]">
+            <div className="flex items-center gap-1.5 text-[7.5px] sm:text-[9px] font-black uppercase tracking-[0.14em] text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.55)] -translate-y-2 sm:-translate-y-1">
               <Sparkles className="h-3.5 w-3.5 shrink-0 text-violet-100" />
               <span>PALMYRA · Gestión empresarial</span>
             </div>
 
-            <h1 className="mt-2 text-[2.5rem] sm:text-4xl lg:text-5xl font-black tracking-[-0.045em] leading-[.91] text-white drop-shadow-[0_2px_9px_rgba(0,0,0,0.58)]">
-              Hola{dashboardUserName ? ", " + dashboardUserName.split(" ")[0] : ""} <span className="text-[0.72em] align-[-0.04em]" aria-hidden="true">👋</span>
+            <h1 className="mt-1.5 text-[2.35rem] sm:text-4xl lg:text-5xl font-black tracking-[-0.045em] leading-[.9] text-white drop-shadow-[0_2px_9px_rgba(0,0,0,0.58)]">
+              Hola{dashboardUserName ? ", " + dashboardUserName.split(" ")[0] : ""} <span className="text-[0.7em] align-[-0.04em]" aria-hidden="true">👋</span>
             </h1>
 
-            <p className="mt-2 text-[1.18rem] sm:text-xl lg:text-2xl font-black leading-[1.02] tracking-[-0.02em] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.58)]">
+            <p className="mt-2 text-[1.08rem] sm:text-xl lg:text-2xl font-black leading-[1.02] tracking-[-0.02em] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.58)]">
               Bienvenido a <span className="text-violet-100">{businessName}</span>
             </p>
 
-            <p className="mt-2.5 max-w-[490px] text-[9.5px] sm:text-xs lg:text-sm font-semibold leading-[1.4] text-white/95 drop-shadow-[0_1px_6px_rgba(0,0,0,0.62)]">
+            <p className="mt-2.5 max-w-[410px] text-[9.5px] sm:text-xs lg:text-sm font-semibold leading-[1.4] text-white/95 drop-shadow-[0_1px_6px_rgba(0,0,0,0.62)]">
               Todo tu negocio en un solo lugar: ventas, inventario, clientes y actividad para tomar decisiones con claridad.
             </p>
 
-            <div className="mt-4.5 flex flex-wrap items-center gap-1.5 sm:gap-2">
+            <div className="mt-5 flex flex-wrap items-center gap-1.5 sm:gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-slate-950/28 px-2.5 py-1.5 text-[7.5px] sm:text-[9px] font-black text-white shadow-sm backdrop-blur-[2px]">
                 <TrendingUp className="h-3.5 w-3.5 text-emerald-300" /> Datos en tiempo real
               </span>
