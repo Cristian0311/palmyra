@@ -154,7 +154,7 @@ export default function Settings() {
 
   const settingsContentRef = useRef<HTMLDivElement | null>(null);
 
-  const [activeTab, setActiveTab] = useState<'connectivity' | 'company' | 'currency' | 'branches' | 'categories' | 'visual' | 'advanced'>('connectivity');
+  const [activeTab, setActiveTab] = useState<'connectivity' | 'company' | 'currency' | 'branches' | 'categories' | 'ticket' | 'visual' | 'advanced'>('connectivity');
   const [planCode, setPlanCode] = useState<string | null>(null);
   const [fontScale, setFontScale] = useState(() => { try { const saved = Number(localStorage.getItem('palmyra-font-scale') || '1'); return [0.9,1,1.1,1.2].includes(saved) ? saved : 1; } catch { return 1; } });
   useEffect(() => {
@@ -198,6 +198,55 @@ export default function Settings() {
 
   const toggleAllResetSections = () => {
     setResetSections(prev => prev.length === RESET_OPTIONS.length ? [] : RESET_OPTIONS.map(x => x.id));
+  };
+
+  useEffect(() => {
+    setConfig(storeConfig);
+  }, [storeConfig]);
+
+  const handleAddBranch = () => {
+    const name = newBranchName.trim();
+    if (!name) return showToast("Escribe el nombre del almacén.", "error");
+    if (editingBranch) {
+      updateBranch(editingBranch.id, { name });
+      setEditingBranch(null);
+      setNewBranchName("");
+      showToast("Almacén actualizado correctamente.");
+      return;
+    }
+    addBranch({ id: crypto.randomUUID(), name, isActive: true });
+    setNewBranchName("");
+    showToast("Almacén guardado correctamente.");
+  };
+
+  const handleAddCategory = () => {
+    const name = newCategory.name.trim();
+    const department = newCategory.department.trim();
+    if (!name) return showToast("Escribe el nombre de la categoría.", "error");
+    if (editingCategory) {
+      updateCategory(editingCategory.id, { name, department });
+      setEditingCategory(null);
+      setNewCategory({ name: "", department: "" });
+      showToast("Categoría actualizada correctamente.");
+      return;
+    }
+    addCategory({ id: crypto.randomUUID(), name, department });
+    setNewCategory({ name: "", department: "" });
+    showToast("Categoría guardada correctamente.");
+  };
+
+  const confirmDeleteBranch = () => {
+    if (!branchToDelete) return;
+    deleteBranch(branchToDelete.id);
+    setBranchToDelete(null);
+    showToast("Almacén eliminado correctamente.");
+  };
+
+  const confirmDeleteCategory = () => {
+    if (!categoryToDelete) return;
+    deleteCategory(categoryToDelete.id);
+    setCategoryToDelete(null);
+    showToast("Categoría eliminada correctamente.");
   };
 
   const handleSaveRates = () => {
@@ -325,6 +374,7 @@ export default function Settings() {
             { id: 'currency', label: 'Monedas', icon: DollarSign },
             { id: 'branches', label: 'Almacenes', icon: Building2 },
             { id: 'categories', label: 'Categorías', icon: LayoutGrid },
+            { id: 'ticket', label: 'Ticket e impresión', icon: Printer },
             { id: 'visual', label: 'Estilo visual', icon: Palette },
             { id: 'advanced', label: 'Avanzado', icon: AlertTriangle },
           ].map(tab => {
@@ -575,19 +625,57 @@ export default function Settings() {
           </div>
         )}
 
-        {/* Categorías */}
-        {activeTab === 'categories' && (
-          <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-4" style={{ display: 'none' }}>
+        <SettingsWarehousesSection
+          active={activeTab === 'branches'}
+          branches={branches}
+          editingBranch={editingBranch}
+          newBranchName={newBranchName}
+          setEditingBranch={setEditingBranch}
+          setNewBranchName={setNewBranchName}
+          setBranchToDelete={setBranchToDelete}
+          onAddBranch={handleAddBranch}
+          warehouseLimit={warehousePlanLimit}
+          warehousePlanName={warehousePlanName}
+        />
+
+        <SettingsCategoriesSection
+          active={activeTab === 'categories'}
+          categories={categories}
+          editingCategory={editingCategory}
+          newCategory={newCategory}
+          setEditingCategory={setEditingCategory}
+          setNewCategory={setNewCategory}
+          setCategoryToDelete={setCategoryToDelete}
+          onAddCategory={handleAddCategory}
+        />
+
+        {activeTab === 'ticket' && (
+          <div className="bg-secondary rounded-2xl shadow-sm border border-base p-3 sm:p-5 space-y-4 min-w-0">
             <div className="flex items-center gap-3 border-b border-base pb-3">
-              <div className="bg-amber-50 dark:bg-amber-950/30 p-2 rounded-lg text-amber-600 dark:text-amber-400">
-                <LayoutGrid size={16} />
-              </div>
-              <div>
-                <h3 className="text-xs font-black text-primary uppercase tracking-wider">Categorías de Productos</h3>
-                <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Clasificación de inventario para reportes</p>
-              </div>
+              <div className="bg-indigo-50 dark:bg-indigo-950/30 p-2 rounded-lg text-indigo-600 dark:text-indigo-400"><Printer size={16} /></div>
+              <div><h3 className="text-xs font-black text-primary uppercase tracking-wider">Ticket e impresión</h3><p className="text-[8px] font-bold text-muted uppercase tracking-tight">Configuración que queda guardada por empresa</p></div>
             </div>
-            {/* ... Categories content ... */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {[['showLogo','Mostrar logo'],['showAddress','Mostrar dirección'],['showPhone','Mostrar teléfono'],['showFooter','Mostrar pie del ticket'],['autoPrint','Imprimir automáticamente']].map(([key,label]) => (
+                <label key={key} className="flex items-center justify-between gap-3 rounded-xl border border-base bg-primary p-3 cursor-pointer">
+                  <span className="text-[10px] font-black text-primary uppercase">{label}</span>
+                  <input type="checkbox" checked={Boolean((ticketConfig as any)[key])} onChange={e => setTicketConfig(prev => ({ ...prev, [key]: e.target.checked }))} className="h-4 w-4 accent-indigo-600" />
+                </label>
+              ))}
+              <label className="space-y-1.5"><span className="text-[10px] font-black text-muted uppercase">Ancho</span><select value={ticketConfig.printerWidth || '80mm'} onChange={e => setTicketConfig(prev => ({ ...prev, printerWidth: e.target.value as '58mm' | '80mm' }))} className="w-full px-3 py-2.5 bg-primary border border-base rounded-xl text-xs font-bold text-primary"><option value="58mm">58 mm</option><option value="80mm">80 mm</option></select></label>
+              <label className="space-y-1.5 md:col-span-2"><span className="text-[10px] font-black text-muted uppercase">Texto del pie</span><textarea value={ticketConfig.footerText || ''} onChange={e => setTicketConfig(prev => ({ ...prev, footerText: e.target.value }))} rows={2} className="w-full px-3 py-2.5 bg-primary border border-base rounded-xl text-xs font-bold text-primary resize-y" /></label>
+            </div>
+            <div className="flex justify-end"><button type="button" onClick={handleSaveTicket} className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2"><Save size={14}/> Guardar configuración de ticket</button></div>
+          </div>
+        )}
+
+        {(branchToDelete || categoryToDelete) && (
+          <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
+            <div className="w-full max-w-sm rounded-3xl bg-white dark:bg-slate-900 border border-base shadow-2xl p-5">
+              <div className="flex items-center gap-3"><AlertTriangle className="w-5 h-5 text-rose-600"/><h3 className="text-sm font-black text-primary">Confirmar eliminación</h3></div>
+              <p className="mt-3 text-xs text-secondary">¿Seguro que deseas eliminar <strong>{branchToDelete?.name || categoryToDelete?.name}</strong>? Los registros históricos no se borrarán.</p>
+              <div className="mt-5 flex gap-2"><button type="button" onClick={() => { setBranchToDelete(null); setCategoryToDelete(null); }} className="flex-1 h-10 rounded-xl border border-base text-xs font-black">Cancelar</button><button type="button" onClick={() => branchToDelete ? confirmDeleteBranch() : confirmDeleteCategory()} className="flex-1 h-10 rounded-xl bg-rose-600 text-white text-xs font-black">Eliminar</button></div>
+            </div>
           </div>
         )}
 
