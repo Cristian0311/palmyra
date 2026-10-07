@@ -9,6 +9,7 @@ import { InfoTooltip } from "../components/InfoTooltip";
 import { getOfflineQueue, waitForOfflineQueueReady } from "../services/offlineQueue";
 import { getActiveTenant } from "../services/tenant";
 import { flushLocalStateStorage } from "../services/localStateStorage";
+import { getPalmyraLocalScope } from "../services/localScope";
 import { usePOSOfflineStatus } from "../modules/pos/hooks/usePOSOfflineStatus";
 import { POSCatalog } from "../components/POSCatalog";
 import { formatMoney } from "../modules/pos/utils/paymentMath";
@@ -219,17 +220,29 @@ export default function POS() {
           sessionMap.set(id, session);
         }
 
-        const transactionMap = new Map<string, Transaction>(
-          (state.transactions || []).map(transaction => [String(transaction.id), transaction])
-        );
+        // Las ventas locales y remotas pueden representar la misma operación
+        // con un id local/ticket y un remoteId UUID diferente. Indexamos por
+        // remoteId cuando existe para no duplicar una venta al hidratar el turno.
+        const transactionMap = new Map<string, Transaction>();
+        const transactionKey = (transaction: Transaction) =>
+          String(transaction.remoteId || transaction.id);
+        for (const transaction of state.transactions || []) {
+          transactionMap.set(transactionKey(transaction), transaction);
+        }
         for (const transaction of remoteCash.transactions || []) {
-          const id = String(transaction.id);
-          const local = transactionMap.get(id);
+          const key = transactionKey(transaction);
+          const local = transactionMap.get(key);
+          const localIds = new Set([
+            String(transaction.id),
+            String(transaction.remoteId || ''),
+            String(local?.id || ''),
+            String(local?.remoteId || '')
+          ].filter(Boolean));
           // Las ventas pendientes son la autoridad local hasta que el outbox
           // confirme/reconcilie la operación. Evitamos que un pull intermedio
           // la haga desaparecer o retroceda de estado.
-          if (pendingTransactionIds.has(id) || local?.offlinePending === true) continue;
-          transactionMap.set(id, transaction);
+          if ([...localIds].some(id => pendingTransactionIds.has(id)) || local?.offlinePending === true) continue;
+          transactionMap.set(key, transaction);
         }
 
         const inventoryMap = new Map<string, any>();
@@ -1561,7 +1574,17 @@ export default function POS() {
       return;
     }
 
-    const { companyId } = await getActiveTenant();
+    let companyId: string;
+    try {
+      ({ companyId } = await getActiveTenant());
+    } catch (tenantError) {
+      // navigator.onLine puede seguir en true durante una caída real de red.
+      // El alcance local ya validado identifica la misma empresa sin convertir
+      // un fallo de transporte en un bloqueo del POS.
+      const localScope = getPalmyraLocalScope();
+      if (!localScope?.companyId) throw tenantError;
+      companyId = localScope.companyId;
+    }
 
     // La credencial que debe desbloquear el turno depende de quién está
     // reanudando:
