@@ -284,7 +284,7 @@ export default function Dashboard() {
         <img
           src="https://d2ol7oe51mr4n9.cloudfront.net/user_3KG5QIrHdwLjDQrkaTsZRm5ddIT/c1f1a8ae-fb77-44d7-b826-2bff743932d1.png"
           alt=""
-          className="absolute inset-0 h-full w-full object-cover object-[88%_center] sm:object-[78%_center] lg:object-center"
+          className="absolute inset-0 h-full w-full object-cover object-[75%_center] scale-[1.08] origin-center sm:object-[78%_center] sm:scale-100 lg:object-center"
           aria-hidden="true"
         />
         <div
