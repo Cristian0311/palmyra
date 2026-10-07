@@ -286,10 +286,10 @@ export default function Dashboard() {
           className="absolute inset-0 overflow-hidden"
         >
           <div
-            className="absolute inset-0 bg-cover bg-center bg-no-repeat scale-x-[-1]"
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat"
             style={{
               backgroundImage:
-                "url('/palmyra-dashboard-hero.webp?v=20261007-local')",
+                "url('/palmyra-dashboard-hero-fixed.webp')",
             }}
           />
         </div>
