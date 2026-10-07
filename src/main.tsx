@@ -177,25 +177,19 @@ const updateSW = registerSW({
 const applyPalmyraUpdate = async () => {
   try {
     const registration = await navigator.serviceWorker?.getRegistration();
-
+    // Pide al worker pendiente que se active, pero no bloquea la interfaz
+    // esperando controllerchange: esa espera era la causa de estados blancos
+    // durante algunos cambios de versión en PWA/móvil.
     if (registration?.waiting) {
-      const waiting = registration.waiting;
-      await new Promise<void>((resolve) => {
-        const timeout = window.setTimeout(resolve, 5000);
-        const onControllerChange = () => {
-          window.clearTimeout(timeout);
-          navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
-          resolve();
-        };
-        navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
-        waiting.postMessage({ type: 'SKIP_WAITING' });
-      });
+      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+      await new Promise(resolve => window.setTimeout(resolve, 650));
     } else {
-      await updateSW(true);
+      await updateSW(false);
       await registration?.update?.();
+      await new Promise(resolve => window.setTimeout(resolve, 350));
     }
   } catch (error) {
-    console.warn('[PWA] No se pudo aplicar inmediatamente la actualización:', error);
+    console.warn('[PWA] No se pudo preparar inmediatamente la actualización:', error);
   } finally {
     try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
     window.location.reload();
