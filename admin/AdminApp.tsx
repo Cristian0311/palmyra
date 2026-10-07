@@ -30,6 +30,9 @@ import {
   Users,
   X,
   XCircle,
+  Banknote,
+  MapPinned,
+  LockKeyhole,
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import {
@@ -470,43 +473,49 @@ function BillingView({
 }
 
 function ExchangeRateView() {
-  const [payload, setPayload] = useState<ExchangeRatePayload | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  return (
+    <div className="admin-content-stack">
+      <section className="admin-page-head">
+        <div>
+          <p className="admin-eyebrow">TASA DE CAMBIO PALMYRA</p>
+          <h1>Referencia informativa del mercado cubano.</h1>
+          <p>PALMYRA mostrará las cotizaciones publicadas por la fuente oficial de datos una vez habilitada la integración.</p>
+        </div>
+        <span className="admin-mini-badge"><LockKeyhole size={11}/> PRÓXIMAMENTE</span>
+      </section>
 
-  const refresh = async () => {
-    setLoading(true); setError("");
-    try { setPayload(await loadExchangeRates()); }
-    catch (err) { setError(err instanceof Error ? err.message : "No se pudo consultar la tasa."); }
-    finally { setLoading(false); }
-  };
-  useEffect(() => { void refresh(); }, []);
+      <section className="admin-coming-soon admin-coming-soon--exchange">
+        <div className="admin-coming-soon__icon"><Banknote size={28}/></div>
+        <p className="admin-eyebrow">EN DESARROLLO</p>
+        <h2>Tasa de Cambio PALMYRA</h2>
+        <p>
+          Esta sección será exclusivamente informativa. No permitirá configurar una tasa,
+          modificar precios del CRM ni funcionará como conversor.
+        </p>
 
-  const raw: any = payload?.data || {};
-  const tasas: Record<string, number> = raw?.tasas && typeof raw.tasas === "object" ? raw.tasas : {};
-  const currencyLabels: Record<string,string> = { USD:"Dólar estadounidense", ECU:"Euro", EUR:"Euro", MLC:"MLC" };
-  const rates = Object.entries(tasas).filter(([,v]) => Number.isFinite(Number(v))).map(([code,value]) => ({
-    code, label: currencyLabels[code] || code, value: Number(value)
-  }));
+        <div className="admin-exchange-preview">
+          <div className="admin-exchange-preview__head">
+            <div><strong>Cotizaciones por provincia</strong><span>Vista preparada para datos oficiales</span></div>
+            <MapPinned size={17}/>
+          </div>
+          <div className="admin-exchange-preview__columns">
+            <span>Provincia</span><span>USD</span><span>EUR</span><span>MLC</span>
+          </div>
+          {["Pinar del Río","Artemisa","La Habana","Mayabeque","Matanzas","Villa Clara","Cienfuegos","Sancti Spíritus","Ciego de Ávila","Camagüey","Las Tunas","Holguín","Granma","Santiago de Cuba","Guantánamo","Isla de la Juventud"].slice(0,6).map((province) => (
+            <div className="admin-exchange-preview__row" key={province}>
+              <strong>{province}</strong><span>—</span><span>—</span><span>—</span>
+            </div>
+          ))}
+          <div className="admin-exchange-preview__more">+ provincias restantes cuando la fuente oficial esté habilitada</div>
+        </div>
 
-  return <div className="admin-content-stack">
-    <section className="admin-page-head">
-      <div><p className="admin-eyebrow">TASA DE CAMBIO PALMYRA</p><h1>Referencia informativa del mercado cubano.</h1><p>Datos consultados desde la API oficial de elTOQUE. Esta sección es exclusivamente informativa: no modifica precios, monedas ni operaciones del CRM.</p></div>
-      <Button onClick={() => void refresh()} disabled={loading}><RefreshCw size={14} className={loading ? "spin" : ""}/>{loading ? "Actualizando…" : "Actualizar"}</Button>
-    </section>
-    {error ? <div className="admin-alert admin-alert--error"><AlertCircle size={16}/>{error}</div> : null}
-    {!payload?.configured && !loading ? <section className="admin-panel"><div className="admin-panel__head"><div><p className="admin-kicker">CONEXIÓN PENDIENTE</p><h2>API de elTOQUE no configurada</h2><p>La clave debe permanecer como secreto del servidor. No se puede colocar en el navegador.</p></div><ShieldCheck size={17}/></div></section> : null}
-    {payload?.configured && rates.length ? <section className="admin-panel">
-      <div className="admin-panel__head"><div><p className="admin-kicker">MERCADO INFORMAL · TRMI</p><h2>Cotización actual</h2><p>1 unidad de cada divisa expresada en CUP. Fuente: elTOQUE.</p></div><CircleDollarSign size={18}/></div>
-      <div className="admin-rate-grid">{rates.map(rate => <article className="admin-rate-card" key={rate.code}><span>{rate.code}</span><strong>{rate.value.toLocaleString("es-CU")}</strong><small>{rate.label} · CUP</small></article>)}</div>
-      <div className="admin-rate-foot">Última lectura: {formatDate(payload.capturedAt)} · Solo informativa · Sin actualización automática del CRM.</div>
-    </section> : null}
-    <section className="admin-panel">
-      <div className="admin-panel__head"><div><p className="admin-kicker">PROVINCIAS</p><h2>Separación territorial</h2><p>La API oficial actualmente documentada expone <strong>/v1/trmi</strong> con la TRMI general. La publicación provincial de elTOQUE es actualmente un servicio separado y, por su información oficial, la tasa territorial publicada es USD y no todas las provincias tienen dato cada día.</p></div><Building2 size={18}/></div>
-      <div className="admin-province-notice"><AlertCircle size={15}/><div><strong>No voy a inventar tasas provinciales.</strong><span>Cuando elTOQUE habilite un endpoint/API territorial oficial, PALMYRA podrá conectarlo aquí sin cambiar el diseño. Por ahora mostramos únicamente lo que la API oficial permite obtener.</span></div></div>
-      <div className="admin-province-grid">{["Pinar del Río","Artemisa","La Habana","Mayabeque","Matanzas","Villa Clara","Cienfuegos","Sancti Spíritus","Ciego de Ávila","Camagüey","Las Tunas","Holguín","Granma","Santiago de Cuba","Guantánamo","Isla de la Juventud"].map(name => <div className="admin-province-card" key={name}><span>{name}</span><strong>Sin dato API</strong><small>Esperando fuente territorial oficial</small></div>)}</div>
-    </section>
-  </div>;
+        <div className="admin-coming-soon__note">
+          <ShieldCheck size={15}/>
+          <span>La integración utilizará la API oficial de elTOQUE cuando sea habilitada. Hasta entonces PALMYRA no mostrará valores inventados.</span>
+        </div>
+      </section>
+    </div>
+  );
 }
 
 function SupportView() {
