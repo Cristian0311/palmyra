@@ -1087,8 +1087,11 @@ export default function Inventory() {
       )}
 
       {showAddModal && (
-        <div className="fixed inset-0 bg-slate-900/75 backdrop-blur-[2px] z-50 flex justify-center items-center p-2 overflow-y-auto">
-          <div className="team-employee-modal inventory-product-modal w-full max-w-3xl bg-secondary border border-base rounded-[28px] shadow-2xl overflow-hidden">
+        <div className="fixed inset-x-0 z-50 flex justify-center p-2"
+          style={{ top: 0, height: '100dvh', maxHeight: '100dvh', paddingTop: 'max(0.5rem, env(safe-area-inset-top))', paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
+          <div className="absolute inset-0 bg-slate-900/75 backdrop-blur-[2px]" aria-hidden="true" />
+          <div className="team-employee-modal inventory-product-modal relative z-10 w-full max-w-3xl bg-secondary border border-base rounded-[28px] shadow-2xl overflow-hidden flex flex-col min-h-0"
+            style={{ maxHeight: 'calc(100dvh - 1rem)' }}>
             <header className="team-employee-modal-head relative overflow-hidden shrink-0">
               
               <div className="flex items-start gap-3 min-w-0">
