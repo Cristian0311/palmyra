@@ -494,7 +494,14 @@ transfers: [],
   // en cada cambio de UI.
   onRehydrateStorage: () => (state, error) => {
     if (error) console.error('[Store] Error hidratando el estado local:', error);
-    useStore.setState({ isInitialized: true });
+    const hydratedMaxTurn = (state?.cashSessions || []).reduce((max: number, session: any) => {
+      const n = Number(session?.turnNumber);
+      return Number.isFinite(n) ? Math.max(max, Math.trunc(n)) : max;
+    }, 0);
+    useStore.setState((current) => ({
+      isInitialized: true,
+      lastTurnNumber: Math.max(Number(current.lastTurnNumber) || 0, hydratedMaxTurn)
+    }));
 
     // Recuperación crítica del POS offline:
     // la cola durable (IndexedDB/localStorage) puede contener una venta que
@@ -511,6 +518,7 @@ transfers: [],
       });
   },
   partialize: (state) => ({
+    lastTurnNumber: state.lastTurnNumber,
     // Passwords are credentials, never durable application state. POS rehydration
     // must restore the employee identity, not a saved password.
     users: (state.users || []).map(({ password: _password, ...user }) => user),
