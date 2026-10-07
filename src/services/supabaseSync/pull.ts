@@ -163,41 +163,68 @@ async function loadInventory(branchId?: string) {
 async function loadSales(branchId?: string, limit = 500) {
   const tenant = await getActiveTenant();
   const supabase = getSupabase()!;
-  let salesQ = supabase.from('sales').select('*').eq('company_id', tenant.companyId).order('created_at', { ascending: false }).limit(Math.max(limit, 5000));
-  if (branchId) salesQ = salesQ.eq('warehouse_id', branchId);
-  const { data: sales, error: salesErr } = await salesQ;
-  if (salesErr) throw salesErr;
-
-  const ids = (sales || []).map((s:any) => s.id);
+  // Paginate explicitly instead of imposing a hidden 5,000-sale ceiling.
+  // Reports/POS history must not silently lose older sales once a business grows.
+  const pageSize = 500;
+  const maxRows = Math.max(limit, 0);
+  const sales: any[] = [];
+  for (let from = 0; ; from += pageSize) {
+    let salesQ = supabase
+      .from('sales')
+      .select('*')
+      .eq('company_id', tenant.companyId)
+      .order('created_at', { ascending: false })
+      .range(from, from + pageSize - 1);
+    if (branchId) salesQ = salesQ.eq('warehouse_id', branchId);
+    const { data: page, error: salesErr } = await salesQ;
+    if (salesErr) throw salesErr;
+    if (!page?.length) break;
+    sales.push(...page);
+    if (page.length < pageSize || (maxRows > 0 && sales.length >= maxRows)) break;
+  }
+  const selectedSales = maxRows > 0 ? sales.slice(0, maxRows) : sales;
+  const ids = selectedSales.map((s:any) => s.id);
   if (!ids.length) return [] as Transaction[];
 
-  const [itemsRes, paymentsRes, productsRes, variantsRes, companyRes] = await Promise.all([
-    supabase.from('sale_items').select('*').in('sale_id', ids),
-    supabase.from('payments').select('*').in('sale_id', ids),
+  const [productsRes, variantsRes, companyRes] = await Promise.all([
     supabase.from('products').select('*').eq('company_id', tenant.companyId),
     supabase.from('product_variants').select('id,name').eq('company_id', tenant.companyId),
     supabase.from('companies').select('default_currency_code').eq('id', tenant.companyId).single(),
   ]);
-  if (itemsRes.error) throw itemsRes.error;
-  if (paymentsRes.error) throw paymentsRes.error;
+  if (productsRes.error) throw productsRes.error;
+  if (variantsRes.error) throw variantsRes.error;
   if (productsRes.error) throw productsRes.error;
   if (variantsRes.error) throw variantsRes.error;
   if (companyRes.error) throw companyRes.error;
   const defaultCurrencyCode = companyRes.data?.default_currency_code || 'CUP';
 
+  // Supabase .in() is batched to keep URL/query sizes bounded for large histories.
+  const itemRows: any[] = [];
+  const paymentRows: any[] = [];
+  for (let i = 0; i < ids.length; i += 400) {
+    const batch = ids.slice(i, i + 400);
+    const [itemsRes, paymentsRes] = await Promise.all([
+      supabase.from('sale_items').select('*').in('sale_id', batch),
+      supabase.from('payments').select('*').in('sale_id', batch),
+    ]);
+    if (itemsRes.error) throw itemsRes.error;
+    if (paymentsRes.error) throw paymentsRes.error;
+    itemRows.push(...(itemsRes.data || []));
+    paymentRows.push(...(paymentsRes.data || []));
+  }
   const barcodeRes = await supabase.from('product_barcodes').select('product_id,barcode').eq('company_id', tenant.companyId).eq('active', true);
   const productMap = new Map<string,Product>();
   for (const p of productsRes.data || []) productMap.set(p.id, mapProduct(p, (barcodeRes.data || []).find((b:any)=>b.product_id===p.id)?.barcode || ''));
   const variantMap = new Map<string,string>((variantsRes.data || []).map((v:any)=>[v.id,v.name]));
 
   const itemsBySale = new Map<string, any[]>();
-  for (const item of itemsRes.data || []) {
+  for (const item of itemRows) {
     const arr = itemsBySale.get(item.sale_id) || [];
     arr.push(item);
     itemsBySale.set(item.sale_id, arr);
   }
   const paymentsBySale = new Map<string, any[]>();
-  for (const p of paymentsRes.data || []) {
+  for (const p of paymentRows) {
     const arr = paymentsBySale.get(p.sale_id) || [];
     arr.push(p);
     paymentsBySale.set(p.sale_id, arr);
@@ -207,7 +234,7 @@ async function loadSales(branchId?: string, limit = 500) {
   const employeesRes = await supabase.from('employees').select('id,full_name,user_id').eq('company_id',tenant.companyId);
   for (const e of employeesRes.data || []) employeeNames.set(e.id,e.full_name);
 
-  return (sales || []).map((s:any) => {
+  return selectedSales.map((s:any) => {
     const itemRows = itemsBySale.get(s.id) || [];
     const pRows = paymentsBySale.get(s.id) || [];
     const payments = pRows.map((p:any) => ({
@@ -261,9 +288,22 @@ async function loadCashSessions(branchId?: string) {
   const profileMap = new Map<string,string>((profilesRes.data || []).filter((p:any)=>p.id && p.full_name).map((p:any)=>[p.id,p.full_name]));
   const defaultCurrencyCode = companyRes.data?.default_currency_code || 'CUP';
 
-  let q=supabase.from('cash_sessions').select('*').eq('company_id',tenant.companyId).order('opened_at',{ascending:false}).limit(200);
-  const { data, error }=await q;
-  if(error) throw error;
+  // Cash history is paginated as well; the previous 200-row cap made
+  // older turns disappear from Reports while still existing in Supabase.
+  const cashPageSize = 200;
+  const data: any[] = [];
+  for (let from = 0; ; from += cashPageSize) {
+    const { data: page, error } = await supabase
+      .from('cash_sessions')
+      .select('*')
+      .eq('company_id', tenant.companyId)
+      .order('opened_at', { ascending: false })
+      .range(from, from + cashPageSize - 1);
+    if (error) throw error;
+    if (!page?.length) break;
+    data.push(...page);
+    if (page.length < cashPageSize) break;
+  }
 
   const sessionIds=(data||[]).map((s:any)=>s.id).filter(Boolean);
   const movementRows=sessionIds.length
