@@ -214,8 +214,11 @@ const pendingCategoryDeleteIds = new Set(getOfflineQueue().filter(i => i.type ==
 const mergedProducts = mergeUnique(data.products, state.products || []);
 // A successful remote snapshot may omit a newly-created offline product.
 // Keep it until its durable product operation is confirmed remotely.
-const finalProducts = (Array.isArray(data.products) && data.products.length > 0)
-  ? mergedProducts.filter(p => !pendingProductDeleteIds.has(p.id) && (data.products.some((sp: any) => sp.id === p.id) || pendingProductIds.has(p.id)))
+const finalProducts = Array.isArray(data.products)
+  ? mergedProducts.filter(p =>
+      !pendingProductDeleteIds.has(p.id) &&
+      (data.products.some((sp: any) => sp.id === p.id) || pendingProductIds.has(p.id))
+    )
   : mergedProducts;
 
 const mergedCategories = mergeUnique(data.categories, state.categories || []);
