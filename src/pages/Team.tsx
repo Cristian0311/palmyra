@@ -282,11 +282,6 @@ export default function Team() {
           });
         }
 
-        await setEmployeeCompensation({
-          companyId: snapshot.companyId,
-          employeeId: editing.id
-        });
-
         if (form.sendInvite && !editing.user_id) {
           const invite = await resendEmployeeInvitation({
             companyId: snapshot.companyId,
