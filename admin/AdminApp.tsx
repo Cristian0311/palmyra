@@ -16,6 +16,7 @@ import {
   Menu,
   RefreshCw,
   Search,
+  ShoppingCart,
   Settings2,
   Shield,
   Headphones,
