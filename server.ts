@@ -143,9 +143,9 @@ async function startServer() {
           const [bandwidthResponse, cpuResponse, cpuLimitResponse, memoryResponse, memoryLimitResponse] = await Promise.all([
             fetch(`https://api.render.com/v1/metrics/bandwidth?${base.toString()}`, { headers: renderHeaders }),
             fetch(`https://api.render.com/v1/metrics/cpu?${currentWindow.toString()}`, { headers: renderHeaders }),
-            fetch(`https://api.render.com/v1/metrics/cpu?aggregationMethod=MAX&${base.toString()}`, { headers: renderHeaders }),
+            fetch(`https://api.render.com/v1/metrics/cpu-limit?${currentWindow.toString()}`, { headers: renderHeaders }),
             fetch(`https://api.render.com/v1/metrics/memory?${currentWindow.toString()}`, { headers: renderHeaders }),
-            fetch(`https://api.render.com/v1/metrics/memory?aggregationMethod=MAX&${base.toString()}`, { headers: renderHeaders })
+            fetch(`https://api.render.com/v1/metrics/memory-limit?${currentWindow.toString()}`, { headers: renderHeaders })
           ]);
 
           const bandwidth = bandwidthResponse.ok ? await bandwidthResponse.json() : [];
@@ -154,7 +154,7 @@ async function startServer() {
           const memory = memoryResponse.ok ? await memoryResponse.json() : [];
           const memoryLimit = memoryLimitResponse.ok ? await memoryLimitResponse.json() : [];
 
-          const bandwidthGb = sumSeries(bandwidth, 1 / 1024);
+          const bandwidthGb = sumSeries(bandwidth, 1);
           const cpuCurrent = lastSeriesValue(cpu);
           const cpuCap = lastSeriesValue(cpuLimit);
           const memoryCurrentMb = lastSeriesValue(memory) == null ? null : lastSeriesValue(memory)! / 1024 / 1024;
