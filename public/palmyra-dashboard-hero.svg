@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 430" role="img" aria-label="Escena empresarial PALMYRA con asesora, paneles de negocio y La Habana">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 430" role="img" aria-label="Escena empresarial con asesora, paneles de negocio y ciudad costera">
 <defs>
   <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
     <stop offset="0" stop-color="#ffffff"/>
@@ -107,10 +107,4 @@
   <path d="M260 323 L274 311 L284 318 L301 302" fill="none" stroke="#22a06b" stroke-width="4" stroke-linecap="round"/>
 </g>
 
-<!-- small PALMYRA wordmark accent -->
-<g transform="translate(1225 340)">
-  <circle cx="22" cy="22" r="22" fill="#ffffff" opacity=".95"/>
-  <path d="M9 30 C12 20 12 12 18 9 C25 6 33 12 35 18 C29 16 25 17 22 21 C18 25 16 29 16 34Z" fill="#6d28d9"/>
-  <text x="53" y="28" font-family="Arial,sans-serif" font-size="16" font-weight="800" fill="#ffffff" letter-spacing="2">PALMYRA</text>
-</g>
 </svg>
