@@ -525,3 +525,8 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .admin-company-detail__footer{margin-top:16px}
 .admin-company-detail__footer .admin-btn{width:100%;justify-content:center}
 @media(max-width:520px){.admin-company-detail{width:100%;padding:16px}.admin-company-details-btn{font-size:7px!important;padding:5px 6px!important}}
+
+.admin-request-actions{flex-wrap:wrap;justify-content:flex-end}
+.admin-request-actions .admin-btn{white-space:nowrap}
+.admin-company-details-btn{margin-left:auto}
+.admin-company-plan--alert{background:#fff0f0!important;color:#b42318!important}
