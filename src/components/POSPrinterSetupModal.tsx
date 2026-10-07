@@ -138,7 +138,7 @@ export default function POSPrinterSetupModal({
             onClick={async () => {
               const printed = await printThermalReceipt({
                 lines: [
-                  "CENTER|BOLD|MARÉ POS",
+                  "CENTER|BOLD|PALMYRA",
                   "CENTER|TICKET DE PRUEBA",
                   "---",
                   `Fecha: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`,
