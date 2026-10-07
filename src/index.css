@@ -969,3 +969,5 @@ html.pos-keyboard-open .pos-page .animate-in,html.pos-keyboard-open .pos-page [c
   .tutorial-page{padding:14px!important}
   .tutorial-flow-node>span{max-width:125px}
 }
+
+@media(max-width:767px){.tutorial-section-grid{grid-template-columns:1fr!important}.tutorial-section-grid>*{width:100%;min-width:0}.tutorial-card-body{overflow:hidden}.tutorial-card-body .space-y-2\.5{min-width:0}.tutorial-card-body .space-y-2\.5>div{min-width:0}.tutorial-card-body p{overflow-wrap:anywhere}}
