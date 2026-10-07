@@ -27,6 +27,7 @@ async function loadCatalog() {
     supabase.from('product_barcodes').select('*').eq('company_id', tenant.companyId).eq('active', true),
     supabase.from('product_kit_components').select('*').eq('company_id', tenant.companyId),
     supabase.from('currencies').select('*').eq('active', true).order('code'),
+    supabase.from('exchange_rates').select('base_currency,quote_currency,rate,effective_at').eq('company_id', tenant.companyId).order('effective_at', { ascending: false }),
     supabase.from('product_prices').select('product_id,currency_code,price,valid_from,valid_to').eq('company_id', tenant.companyId).is('valid_to', null).order('valid_from', { ascending: false }),
   ]);
 
@@ -83,12 +84,17 @@ async function loadCatalog() {
 
   const branches = (warehousesRes.data || []).map(mapBranch);
 
+  const latestRates = new Map<string, number>();
+  for (const row of (exchangeRatesRes.data || [])) {
+    if (!latestRates.has(row.quote_currency)) latestRates.set(row.quote_currency, Number(row.rate) || 0);
+  }
+  const baseCurrencyCode = companyRes.data?.default_currency_code || 'USD';
   const currencies = (currenciesRes.data || []).map((c:any) => ({
     code: c.code,
     name: c.name || c.code,
     symbol: c.symbol || c.code,
-    rateToBase: c.code === (companyRes.data?.default_currency_code || 'USD') ? 1 : 1,
-    isBase: c.code === (companyRes.data?.default_currency_code || 'USD'),
+    rateToBase: c.code === baseCurrencyCode ? 1 : (latestRates.get(c.code) || 1),
+    isBase: c.code === baseCurrencyCode,
   }));
 
   const { data: companySettings, error: settingsError } = await supabase
