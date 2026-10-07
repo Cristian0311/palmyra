@@ -19,6 +19,20 @@ export type PlatformCompany = {
   created_at?: string | null;
 };
 
+export type PlatformPlan = {
+  id: string; code: string; name: string; monthly_price: number; trial_days: number;
+  limits: { products?: number; employees?: number; warehouses?: number; reports?: string; support?: string } | null;
+  features: { features?: string[]; description?: string; feature_keys?: string[] } | string[] | null;
+  active: boolean; billing_currency_code?: string | null; companies?: number;
+};
+
+export async function loadPlatformPlans(): Promise<PlatformPlan[]> {
+  const supabase = await assertPlatformAdmin();
+  const { data, error } = await supabase.rpc("get_platform_plans");
+  if (error) throw error;
+  return Array.isArray(data) ? data as PlatformPlan[] : [];
+}
+
 export type PlanRequest = {
   id: string;
   company_name?: string | null;
