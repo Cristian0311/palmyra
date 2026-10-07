@@ -385,3 +385,18 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .admin-table-list-row>b{font-size:8px;color:#6d3bd2;white-space:nowrap}
 @media(max-width:720px){.admin-infra-real-grid{grid-template-columns:1fr 1fr!important}.admin-service-meta-line{font-size:6.5px}}
 @media(max-width:480px){.admin-infra-real-grid{grid-template-columns:1fr!important}}
+
+.admin-plan-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.admin-plan-card{padding:13px;border:1px solid #ebe5f2;border-radius:16px;background:#fff;min-width:0;box-shadow:0 4px 18px rgba(61,32,103,.04)}
+.admin-plan-card.is-inactive{opacity:.68}
+.admin-plan-card__head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.admin-plan-code{font-size:6.5px;font-weight:950;letter-spacing:.12em;text-transform:uppercase;color:#7651a8}
+.admin-plan-card h2{margin:2px 0 0;font-size:15px;line-height:1.1;color:var(--admin-deep)}
+.admin-plan-status{font-size:6.5px;font-weight:950;padding:4px 7px;border-radius:999px}.admin-plan-status.is-active{background:#e9f9ef;color:#15803d}.admin-plan-status.is-inactive{background:#f1f1f1;color:#64748b}
+.admin-plan-price{display:flex;align-items:baseline;gap:5px;margin:10px 0}.admin-plan-price strong{font-size:21px;color:var(--admin-deep)}.admin-plan-price span{font-size:7px;color:var(--admin-muted)}
+.admin-plan-facts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px}
+.admin-plan-facts>div{padding:7px;border-radius:9px;background:#f8f6fb;text-align:center}.admin-plan-facts strong{display:block;font-size:11px;color:var(--admin-deep)}.admin-plan-facts span{display:block;margin-top:2px;font-size:6px;color:var(--admin-muted)}
+.admin-plan-trial{display:inline-flex;align-items:center;gap:4px;margin-top:8px;padding:5px 7px;border-radius:8px;background:#f1ebff;color:#6633bd;font-size:6.5px;font-weight:900}
+.admin-plan-description{margin:8px 0 0;font-size:7px;line-height:1.45;color:var(--admin-muted)}
+.admin-plan-features{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}.admin-plan-features span{display:inline-flex;align-items:center;gap:3px;padding:4px 6px;border:1px solid #eee8f5;border-radius:7px;background:#fcfbfe;color:#4c3c5d;font-size:6.2px;font-weight:800}
+@media(max-width:720px){.admin-plan-grid{grid-template-columns:1fr}.admin-plan-facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
