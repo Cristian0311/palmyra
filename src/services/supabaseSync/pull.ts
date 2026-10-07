@@ -166,7 +166,7 @@ async function loadInventory(branchId?: string) {
   return inventory;
 }
 
-async function loadSales(branchId?: string, limit = 500) {
+async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string[]) {
   const tenant = await getActiveTenant();
   const supabase = getSupabase()!;
   // Paginate explicitly instead of imposing a hidden 5,000-sale ceiling.
@@ -182,6 +182,7 @@ async function loadSales(branchId?: string, limit = 500) {
       .order('created_at', { ascending: false })
       .range(from, from + pageSize - 1);
     if (branchId) salesQ = salesQ.eq('warehouse_id', branchId);
+    if (cashSessionIds?.length) salesQ = salesQ.in('cash_session_id', cashSessionIds);
     const { data: page, error: salesErr } = await salesQ;
     if (salesErr) throw salesErr;
     if (!page?.length) break;
@@ -374,6 +375,40 @@ export async function pullOpenCashSessionsFromSupabase() {
     const result = await supabase.rpc('palmyra_list_open_cash_sessions', { p_company_id: tenant.companyId });
     if (result.error) throw result.error;
     const rows: any[] = Array.isArray(result.data) ? result.data : [];
+    const sessionIds = rows.map((row: any) => String(row.id || '')).filter(Boolean);
+
+    // Un turno visible en línea debe quedar convertido en un snapshot local
+    // utilizable sin red. El RPC devuelve la identidad básica, pero los
+    // movimientos y las ventas viven en tablas separadas, por lo que los
+    // descargamos expresamente por cash_session_id.
+    const movementRes = sessionIds.length
+      ? await supabase
+          .from('cash_movements')
+          .select('*')
+          .eq('company_id', tenant.companyId)
+          .in('cash_session_id', sessionIds)
+          .order('created_at', { ascending: true })
+      : { data: [], error: null } as any;
+    if (movementRes.error) throw movementRes.error;
+
+    const transactions = sessionIds.length
+      ? await loadSales(undefined, 0, sessionIds)
+      : [] as Transaction[];
+
+    // También precargamos el inventario de las sucursales que tienen turnos
+    // abiertos. Esto permite reanudar una caja en otro almacén y seguir
+    // cobrando aunque la conexión vuelva a desaparecer inmediatamente después.
+    const branchIds = Array.from(new Set(rows.map((row: any) => String(row.branch_id || '')).filter(Boolean)));
+    const inventoryResults = await Promise.all(branchIds.map((branchId) => loadInventory(branchId)));
+    const inventory = inventoryResults.flat();
+
+    const movementsBySession = new Map<string, any[]>();
+    for (const movement of movementRes.data || []) {
+      const list = movementsBySession.get(String(movement.cash_session_id)) || [];
+      list.push(movement);
+      movementsBySession.set(String(movement.cash_session_id), list);
+    }
+
     const cashSessions: CashRegisterSession[] = rows.map((row: any) => ({
       id: row.id,
       turnNumber: Number(row.turn_number) || undefined,
@@ -386,19 +421,34 @@ export async function pullOpenCashSessionsFromSupabase() {
       userId: row.user_id || row.opened_by || '',
       workerName: row.worker_name || 'Administrador',
       workingEmployeeIds: Array.isArray(row.working_employee_ids) ? row.working_employee_ids : [row.user_id || row.opened_by].filter(Boolean),
-      closingBalances: [],
-      isForcedClose: false,
-      hasDiscrepancy: false,
-      discrepancyDetails: [],
-      discrepancyDeductionApplied: 0,
-      deductedFromSalary: false,
-      auditStatus: 'pending_review',
-      auditNotes: '',
+      movements: (movementsBySession.get(String(row.id)) || []).map((m: any) => ({
+        id: m.id,
+        sessionId: row.id,
+        type: ['cash_in', 'income', 'ingreso', 'entrada', 'deposit'].includes(String(m.movement_type || '').toLowerCase()) ? 'income' : 'expense',
+        amount: Math.abs(Number(m.amount) || 0),
+        currencyCode: m.currency_code || 'CUP',
+        description: m.note || '',
+        date: m.created_at
+      })),
+      closingBalances: Array.isArray(row.closing_balances) ? row.closing_balances : [],
+      isForcedClose: Boolean(row.is_forced_close),
+      hasDiscrepancy: Boolean(row.has_discrepancy),
+      discrepancyDetails: Array.isArray(row.discrepancy_details) ? row.discrepancy_details : [],
+      discrepancyDeductionApplied: Number(row.discrepancy_deduction_applied) || 0,
+      auditStatus: row.audit_status || 'pending_review',
+      auditNotes: row.audit_notes || '',
       expectedBalance: row.expected_cash == null ? undefined : Number(row.expected_cash),
     }));
-    return { success: true as const, cashSessions };
+
+    return { success: true as const, cashSessions, transactions, inventory };
   } catch (e: any) {
-    return { success: false as const, cashSessions: [] as CashRegisterSession[], message: e?.message || 'No se pudieron actualizar los turnos de caja' };
+    return {
+      success: false as const,
+      cashSessions: [] as CashRegisterSession[],
+      transactions: [] as Transaction[],
+      inventory: [] as InventoryLevel[],
+      message: e?.message || 'No se pudieron actualizar los turnos de caja'
+    };
   }
 }
 
