@@ -39,6 +39,8 @@ import {
   type PlanRequest,
   type PlatformCompany,
   type PlatformSnapshot,
+  type InfrastructureUsage,
+  loadInfrastructureUsage,
   loadSupportRequests,
   loadSupportSettings,
   saveSupportSettings,
@@ -504,55 +506,164 @@ function SupportView() {
   );
 }
 
+function capacityTone(percent: number | null) {
+  if (percent == null) return "neutral";
+  if (percent >= 90) return "danger";
+  if (percent >= 75) return "warning";
+  return "healthy";
+}
+
+function capacityLabel(percent: number | null) {
+  if (percent == null) return "Sin dato";
+  if (percent >= 90) return "Crítico";
+  if (percent >= 75) return "Vigilar";
+  return "Saludable";
+}
+
+function formatUsage(value: number | null, unit: "gb" | "mb" | "percent") {
+  if (value == null) return "—";
+  if (unit === "percent") return `${value.toFixed(1)}%`;
+  if (unit === "gb") return value >= 1 ? `${value.toFixed(2)} GB` : `${(value * 1024).toFixed(0)} MB`;
+  return value >= 1024 ? `${(value / 1024).toFixed(2)} GB` : `${value.toFixed(1)} MB`;
+}
+
+function UsageBar({ percent, label }: { percent: number | null; label: string }) {
+  const tone = capacityTone(percent);
+  return (
+    <div className="admin-usage-bar-wrap">
+      <div className="admin-usage-bar"><span className={`admin-usage-bar__fill admin-usage-bar__fill--${tone}`} style={{ width: `${Math.min(100, Math.max(0, percent || 0))}%` }} /></div>
+      <span className={`admin-usage-status admin-usage-status--${tone}`}>{label}</span>
+    </div>
+  );
+}
+
 function InfrastructureView() {
+  const [usage, setUsage] = useState<InfrastructureUsage | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  const refresh = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      setUsage(await loadInfrastructureUsage());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo consultar el consumo.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void refresh(); }, []);
+
+  const render = usage?.render;
+  const supabase = usage?.supabase;
+
   return (
     <div className="admin-content-stack">
       <section className="admin-page-head">
         <div>
           <p className="admin-eyebrow">INFRAESTRUCTURA</p>
-          <h1>Control del entorno de PALMYRA.</h1>
-          <p>Este panel vive separado del CRM y se despliega como <strong>palmyra-admin</strong>. Aquí puedes comprobar rápidamente qué entorno estás operando y qué recursos están conectados.</p>
+          <h1>Capacidad real de PALMYRA.</h1>
+          <p>Visualiza cuánto estás consumiendo, cuánto queda disponible y cuándo una infraestructura empieza a pedir una ampliación de plan.</p>
         </div>
-        <span className="admin-status admin-status--green"><span/>Operativo</span>
+        <Button onClick={() => void refresh()} variant="secondary" disabled={loading}>
+          <RefreshCw size={15} className={loading ? "spin" : ""} />{loading ? "Actualizando..." : "Actualizar consumo"}
+        </Button>
       </section>
 
-      <section className="admin-grid-2">
-        <div className="admin-panel">
-          <div className="admin-panel__head"><div><p className="admin-kicker">SERVICIOS</p><h2>Entornos Render</h2></div><Database size={17}/></div>
-          <div className="admin-infra-list">
-            <div><span><strong>PALMYRA CRM</strong><small>Aplicación principal de clientes</small></span><a href="https://palmyracrm.onrender.com" target="_blank" rel="noreferrer"><ExternalLink size={13}/></a></div>
-            <div><span><strong>PALMYRA ADMIN</strong><small>Control Center independiente</small></span><a href="https://palmyra-admin.onrender.com" target="_blank" rel="noreferrer"><ExternalLink size={13}/></a></div>
-            <div><span><strong>SUPABASE</strong><small>Datos, autenticación y funciones seguras</small></span><span className="admin-status admin-status--green"><span/>Conectado</span></div>
-          </div>
-        </div>
+      {error ? <div className="admin-alert admin-alert--error"><AlertCircle size={16} />{error}</div> : null}
 
-        <div className="admin-panel admin-panel--dark">
-          <div className="admin-panel__head"><div><p className="admin-kicker">OPERACIÓN</p><h2>Qué controlar aquí</h2></div><ShieldCheck size={17}/></div>
-          <div className="admin-rules">
-            {[
-              "Empresas y estados de cuenta.",
-              "Solicitudes de planes y activaciones.",
-              "Soporte recibido desde los clientes.",
-              "Configuración de canales oficiales.",
-              "Auditoría y trazabilidad de acciones.",
-            ].map((item) => <div key={item}><Check size={14}/><span>{item}</span></div>)}
+      <section className="admin-grid-3">
+        <article className="admin-capacity-summary admin-capacity-summary--render">
+          <div className="admin-capacity-summary__head"><span className="admin-icon-box"><Database size={15}/></span><span className="admin-capacity-plan">{render?.workspacePlan || "Render"}</span></div>
+          <p>Render · Ancho de banda mensual</p>
+          <strong>{formatUsage(render?.bandwidthGb ?? null, "gb")}</strong>
+          <span>Total disponible: {formatUsage(render?.bandwidthLimitGb ?? null, "gb")}</span>
+          <UsageBar percent={render?.bandwidthPercent ?? null} label={capacityLabel(render?.bandwidthPercent ?? null)} />
+          <small>Queda {formatUsage(render?.bandwidthAvailableGb ?? null, "gb")} este mes.</small>
+        </article>
+
+        <article className="admin-capacity-summary admin-capacity-summary--supabase">
+          <div className="admin-capacity-summary__head"><span className="admin-icon-box"><Database size={15}/></span><span className="admin-capacity-plan">{supabase?.plan || "Supabase"}</span></div>
+          <p>Supabase · Base de datos</p>
+          <strong>{formatUsage(supabase?.databaseMb ?? null, "mb")}</strong>
+          <span>Total disponible: {formatUsage(supabase?.databaseLimitMb ?? null, "mb")}</span>
+          <UsageBar percent={supabase?.databasePercent ?? null} label={capacityLabel(supabase?.databasePercent ?? null)} />
+          <small>Queda {formatUsage(supabase?.databaseAvailableMb ?? null, "mb")} de espacio de base de datos.</small>
+        </article>
+
+        <article className="admin-capacity-summary admin-capacity-summary--decision">
+          <div className="admin-capacity-summary__head"><span className="admin-icon-box"><ShieldCheck size={15}/></span><span className="admin-capacity-plan">DECISIÓN</span></div>
+          <p>Recomendación de capacidad</p>
+          <strong>
+            {render && (render.bandwidthPercent || 0) >= 75 || supabase && (supabase.databasePercent || 0) >= 75 ? "Vigilar crecimiento" : "Capacidad saludable"}
+          </strong>
+          <span>La alerta se basa en el uso de los recursos con cuota medible.</span>
+          <div className="admin-capacity-decision">
+            <Check size={14}/>
+            <span>{render && (render.bandwidthPercent || 0) >= 90 || supabase && (supabase.databasePercent || 0) >= 90 ? "Conviene preparar una ampliación." : "Todavía no hay presión para subir de plan."}</span>
           </div>
+        </article>
+      </section>
+
+      <section className="admin-panel">
+        <div className="admin-panel__head">
+          <div><p className="admin-kicker">RENDER</p><h2>Consumo por servicio</h2></div>
+          <span className="admin-mini-badge">{formatUsage(render?.bandwidthGb ?? null, "gb")} / {formatUsage(render?.bandwidthLimitGb ?? null, "gb")} total</span>
+        </div>
+        <div className="admin-infra-usage-grid">
+          {(render?.services || []).map((service) => (
+            <article className="admin-infra-service" key={service.id}>
+              <div className="admin-infra-service__head">
+                <div><strong>{service.name}</strong><small>{service.type}</small></div>
+                <span className={`admin-capacity-dot admin-capacity-dot--${capacityTone(service.bandwidthPercent)}`} />
+              </div>
+              <div className="admin-infra-metric">
+                <div><span>Ancho de banda</span><strong>{formatUsage(service.bandwidthGb, "gb")}</strong></div>
+                <span>de {formatUsage(service.bandwidthLimitGb, "gb")}</span>
+              </div>
+              <UsageBar percent={service.bandwidthPercent} label={capacityLabel(service.bandwidthPercent)} />
+              <div className="admin-infra-available">Disponible <strong>{formatUsage(service.bandwidthAvailableGb, "gb")}</strong></div>
+              <div className="admin-infra-resource-grid">
+                <div><span>CPU reciente</span><strong>{service.cpuPercent == null ? "—" : formatUsage(service.cpuPercent, "percent")}</strong><small>{service.cpuCurrent == null || service.cpuLimit == null ? "Sin lectura" : `${service.cpuCurrent.toFixed(3)} / ${service.cpuLimit.toFixed(2)} CPU`}</small></div>
+                <div><span>Memoria reciente</span><strong>{service.memoryPercent == null ? "—" : formatUsage(service.memoryPercent, "percent")}</strong><small>{formatUsage(service.memoryCurrentMb, "mb")} / {formatUsage(service.memoryLimitMb, "mb")}</small></div>
+              </div>
+              {service.error ? <small className="admin-infra-error">{service.error}</small> : null}
+              <a href={service.url} target="_blank" rel="noreferrer">Abrir servicio <ExternalLink size={12}/></a>
+            </article>
+          ))}
         </div>
       </section>
 
       <section className="admin-panel">
-        <div className="admin-panel__head"><div><p className="admin-kicker">DIAGNÓSTICO</p><h2>Checklist operativo</h2></div><ShieldCheck size={17}/></div>
+        <div className="admin-panel__head">
+          <div><p className="admin-kicker">SUPABASE</p><h2>Base de datos y capacidad</h2></div>
+          <span className="admin-mini-badge">{supabase?.plan || "Plan"}</span>
+        </div>
         <div className="admin-grid-3">
-          {[
-            ["Acceso administrativo", "La entrada se valida mediante Supabase y autorización segura.", "OK"],
-            ["Separación CRM/Admin", "El Control Center se publica en un servicio Render independiente.", "OK"],
-            ["Datos centralizados", "Las consultas administrativas usan RPC protegidas en Supabase.", "OK"],
-          ].map(([title, text, badge]) => <div className="admin-mini-panel" key={title}><h3>{title}</h3><p>{text}</p><span className="admin-mini-badge">{badge}</span></div>)}
+          <div className="admin-mini-panel"><h3>Base de datos</h3><strong className="admin-overview-number">{formatUsage(supabase?.databaseMb ?? null, "mb")}</strong><p>de {formatUsage(supabase?.databaseLimitMb ?? null, "mb")}</p><UsageBar percent={supabase?.databasePercent ?? null} label={capacityLabel(supabase?.databasePercent ?? null)} /></div>
+          <div className="admin-mini-panel"><h3>Disponible</h3><strong className="admin-overview-number">{formatUsage(supabase?.databaseAvailableMb ?? null, "mb")}</strong><p>espacio restante estimado</p></div>
+          <div className="admin-mini-panel"><h3>Solicitudes API</h3><strong className="admin-overview-number">{supabase?.apiRequests == null ? "—" : supabase.apiRequests.toLocaleString("es-CU")}</strong><p>métrica informativa; el plan Free no limita el número de API requests</p></div>
         </div>
       </section>
+
+      <section className="admin-panel admin-panel--dark">
+        <div className="admin-panel__head"><div><p className="admin-kicker">CUÁNDO ESCALAR</p><h2>Lectura para tomar decisiones</h2></div><ArrowUpRight size={17}/></div>
+        <div className="admin-rules">
+          <div><Check size={14}/><span><strong>0–74%</strong> · operación saludable. Mantener vigilancia normal.</span></div>
+          <div><Check size={14}/><span><strong>75–89%</strong> · crecimiento cercano. Revisar tendencia y preparar ampliación.</span></div>
+          <div><Check size={14}/><span><strong>90–100%</strong> · capacidad crítica. Conviene ampliar antes de llegar al límite.</span></div>
+          <div><Check size={14}/><span>El ancho de banda de Render se mide como cuota mensual del workspace; CRM y Admin consumen la misma bolsa.</span></div>
+          <div><Check size={14}/><span>CPU y memoria se muestran como capacidad del servicio y consumo reciente, no como una cuota mensual.</span></div>
+        </div>
+      </section>
+
+      {usage ? <p className="admin-infra-updated">Última lectura: {formatDate(usage.capturedAt)} · Periodo: {formatDate(usage.monthStart)}</p> : null}
     </div>
   );
 }
+
 
 function SettingsView() {
   const [settings,setSettings] = useState<PlatformSupportSettings>({whatsapp_number:null,support_email:null,privacy_url:null});
