@@ -288,39 +288,39 @@ export default function Dashboard() {
           aria-hidden="true"
         />
         <div
-          className="absolute inset-0 bg-gradient-to-r from-slate-950/82 via-slate-950/46 to-transparent sm:from-slate-950/64 sm:via-slate-950/20 sm:to-transparent"
+          className="absolute inset-0 bg-gradient-to-r from-slate-950/68 via-slate-950/30 to-transparent sm:from-slate-950/56 sm:via-slate-950/14 sm:to-transparent"
           aria-hidden="true"
         />
         <div
-          className="absolute inset-y-0 left-0 w-[88%] sm:w-[68%] bg-gradient-to-r from-slate-950/34 via-slate-950/10 to-transparent"
+          className="absolute inset-y-0 left-0 w-[78%] sm:w-[60%] bg-gradient-to-r from-slate-950/22 via-slate-950/6 to-transparent"
           aria-hidden="true"
         />
 
         <div className="relative z-10 flex min-h-[280px] sm:min-h-[290px] lg:min-h-[310px] items-center px-5 py-7 sm:px-8 lg:px-10">
-          <div className="w-full max-w-[610px]">
-            <div className="flex items-center gap-2 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-white drop-shadow-[0_2px_7px_rgba(0,0,0,0.55)]">
-              <Sparkles className="h-4 w-4 shrink-0 text-violet-200" />
+          <div className="w-full max-w-[560px]">
+            <div className="flex items-center gap-1.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.14em] text-white drop-shadow-[0_2px_6px_rgba(0,0,0,0.55)]">
+              <Sparkles className="h-3.5 w-3.5 shrink-0 text-violet-100" />
               <span>PALMYRA · Gestión empresarial</span>
             </div>
 
-            <h1 className="mt-3 text-4xl sm:text-4xl lg:text-5xl font-black tracking-[-0.045em] leading-[.95] text-white drop-shadow-[0_2px_12px_rgba(0,0,0,0.6)]">
-              Hola{dashboardUserName ? ", " + dashboardUserName.split(" ")[0] : ""} <span aria-hidden="true">👋</span>
+            <h1 className="mt-3 text-[2.75rem] sm:text-4xl lg:text-5xl font-black tracking-[-0.04em] leading-[.92] text-white drop-shadow-[0_2px_9px_rgba(0,0,0,0.58)]">
+              Hola{dashboardUserName ? ", " + dashboardUserName.split(" ")[0] : ""} <span className="text-[0.76em] align-[-0.06em]" aria-hidden="true">👋</span>
             </h1>
 
-            <p className="mt-3 text-xl sm:text-xl lg:text-2xl font-black leading-tight text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
-              Bienvenido a <span className="text-violet-200">{businessName}</span>
+            <p className="mt-3 text-[1.35rem] sm:text-xl lg:text-2xl font-black leading-[1.05] tracking-[-0.02em] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.58)]">
+              Bienvenido a <span className="text-violet-100">{businessName}</span>
             </p>
 
-            <p className="mt-3 max-w-[540px] text-[11px] sm:text-xs lg:text-sm font-semibold leading-relaxed text-white/92 drop-shadow-[0_1px_7px_rgba(0,0,0,0.6)]">
+            <p className="mt-3 max-w-[500px] text-[10px] sm:text-xs lg:text-sm font-semibold leading-[1.45] text-white/95 drop-shadow-[0_1px_6px_rgba(0,0,0,0.62)]">
               Todo tu negocio en un solo lugar: ventas, inventario, clientes y actividad para tomar decisiones con claridad.
             </p>
 
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/35 bg-slate-950/35 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-white shadow-sm backdrop-blur-[2px]">
+            <div className="mt-4 flex flex-wrap items-center gap-1.5 sm:gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-slate-950/28 px-2.5 py-1.5 text-[7.5px] sm:text-[9px] font-black text-white shadow-sm backdrop-blur-[2px]">
                 <TrendingUp className="h-3.5 w-3.5 text-emerald-300" /> Datos en tiempo real
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/35 bg-slate-950/35 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-white shadow-sm backdrop-blur-[2px]">
-                <MapPin className="h-3.5 w-3.5 text-violet-200" /> {selectedBranchFilter === "all" ? "Todas las sucursales" : (branchById.get(selectedBranchFilter)?.name || "Sucursal")}
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-slate-950/28 px-2.5 py-1.5 text-[7.5px] sm:text-[9px] font-black text-white shadow-sm backdrop-blur-[2px]">
+                <MapPin className="h-3.5 w-3.5 text-violet-100" /> {selectedBranchFilter === "all" ? "Todas las sucursales" : (branchById.get(selectedBranchFilter)?.name || "Sucursal")}
               </span>
             </div>
           </div>
