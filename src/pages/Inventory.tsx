@@ -1179,6 +1179,100 @@ export default function Inventory() {
                   </div>
                 )}
 
+                {activeFormTab === 'general' && (
+                  <div className="mt-5 rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3 sm:p-4">
+                    <div className="flex items-start justify-between gap-3 mb-3">
+                      <div>
+                        <h3 className="text-[11px] font-black uppercase tracking-widest text-slate-800">Variantes del producto</h3>
+                        <p className="text-[9px] font-semibold text-slate-500 mt-0.5">
+                          Agrega tallas, colores u otras presentaciones. El stock se asigna después desde <b>Gestionar stock</b>.
+                        </p>
+                      </div>
+                      <InfoTooltip text="Cuando un producto tiene variantes, PALMYRA no crea stock base. Cada variante tendrá su propia cantidad y mínimo de alerta." />
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="bg-white rounded-xl border border-slate-200 p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-[9px] font-black uppercase tracking-widest text-slate-500">Tallas</label>
+                          <span className="text-[8px] font-bold text-slate-400">{(formData.availableSizes || []).length}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <input
+                            value={newSize}
+                            onChange={e => setNewSize(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const value = newSize.trim();
+                                if (!value) return;
+                                setFormData(prev => ({ ...prev, availableSizes: Array.from(new Set([...(prev.availableSizes || []), value])) }));
+                                setNewSize('');
+                              }
+                            }}
+                            className="min-w-0 flex-1 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+                            placeholder="Ej. M, 40, 42"
+                          />
+                          <button type="button" onClick={() => {
+                            const value = newSize.trim();
+                            if (!value) return;
+                            setFormData(prev => ({ ...prev, availableSizes: Array.from(new Set([...(prev.availableSizes || []), value])) }));
+                            setNewSize('');
+                          }} className="px-3 rounded-xl bg-indigo-600 text-white text-[9px] font-black uppercase">Agregar</button>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {(formData.availableSizes || []).map(size => (
+                            <button type="button" key={size} onClick={() => setFormData(prev => ({ ...prev, availableSizes: (prev.availableSizes || []).filter(x => x !== size) }))}
+                              className="px-2 py-1 rounded-lg bg-indigo-50 text-indigo-700 border border-indigo-100 text-[9px] font-black">{size} ×</button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="bg-white rounded-xl border border-slate-200 p-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <label className="text-[9px] font-black uppercase tracking-widest text-slate-500">Colores</label>
+                          <span className="text-[8px] font-bold text-slate-400">{(formData.availableColors || []).length}</span>
+                        </div>
+                        <div className="flex gap-2">
+                          <input
+                            value={newColor}
+                            onChange={e => setNewColor(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const value = newColor.trim();
+                                if (!value) return;
+                                setFormData(prev => ({ ...prev, availableColors: Array.from(new Set([...(prev.availableColors || []), value])) }));
+                                setNewColor('');
+                              }
+                            }}
+                            className="min-w-0 flex-1 px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500/20"
+                            placeholder="Ej. Negro, Rojo"
+                          />
+                          <button type="button" onClick={() => {
+                            const value = newColor.trim();
+                            if (!value) return;
+                            setFormData(prev => ({ ...prev, availableColors: Array.from(new Set([...(prev.availableColors || []), value])) }));
+                            setNewColor('');
+                          }} className="px-3 rounded-xl bg-indigo-600 text-white text-[9px] font-black uppercase">Agregar</button>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {(formData.availableColors || []).map(color => (
+                            <button type="button" key={color} onClick={() => setFormData(prev => ({ ...prev, availableColors: (prev.availableColors || []).filter(x => x !== color) }))}
+                              className="px-2 py-1 rounded-lg bg-violet-50 text-violet-700 border border-violet-100 text-[9px] font-black">{color} ×</button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {(formData.availableSizes?.length || formData.availableColors?.length) ? (
+                      <div className="mt-3 rounded-xl bg-white/80 border border-indigo-100 px-3 py-2 text-[9px] font-bold text-slate-500">
+                        <b>Producto con variantes:</b> no habrá stock base. Después de guardar, asigna la cantidad de cada variante desde el botón de inventario.
+                      </div>
+                    ) : null}
+                  </div>
+                )}
+
                 {activeFormTab === 'extra' && (
                   <div className="space-y-8">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
