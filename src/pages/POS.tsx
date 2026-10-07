@@ -28,7 +28,7 @@ import { pullOpenCashSessionsFromSupabase } from "../services/supabaseSync";
 import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
 import { aggregateTransferPayments, buildTransactionTicketId, finalizeCheckoutPayments } from '../modules/pos/utils/checkoutUtils';
 import { calculateEmployeeSaleCommission } from '../services/employeeCompensation';
-import { rememberOfflinePosCredential, verifyOfflinePosCredential } from "../services/offlinePosAuth";
+import { rememberOfflinePosCredential, verifyOfflinePosCredential, rememberOfflinePosResumeGrant, verifyOfflinePosResumeGrant } from "../services/offlinePosAuth";
 const CheckoutModal = lazy(() => import("../components/pos/CheckoutModal"));
 
 const POSReceiptModal = lazy(() => import("../components/POSReceiptModal"));
@@ -192,6 +192,31 @@ export default function POS() {
       await waitForOfflineQueueReady();
       const remoteCash = await pullOpenCashSessionsFromSupabase();
       if (!remoteCash.success) return false;
+
+      // La cuenta que está autenticada en este dispositivo ya ha sido
+      // autorizada por el servidor para ver los turnos devueltos por el RPC.
+      // Guardamos un permiso local por turno, no una contraseña, para que el
+      // mismo terminal pueda reanudarlo si la red vuelve a caer inmediatamente.
+      const localUser = useStore.getState().currentUser;
+      let resumeCompanyId = '';
+      try {
+        resumeCompanyId = (await getActiveTenant()).companyId;
+      } catch {}
+      if (localUser?.id && resumeCompanyId) {
+        for (const session of remoteCash.cashSessions || []) {
+          const canResumeThisSession =
+            localUser.role === 'admin' ||
+            session.userId === localUser.id ||
+            session.workingEmployeeIds?.includes(localUser.id);
+          if (canResumeThisSession) {
+            rememberOfflinePosResumeGrant(
+              resumeCompanyId,
+              localUser.id,
+              session.id
+            );
+          }
+        }
+      }
 
       // Una vez que el terminal recibe conexión, no descargamos únicamente el
       // encabezado del turno: cacheamos también sus movimientos, ventas e
@@ -1569,10 +1594,6 @@ export default function POS() {
     }
 
     const enteredPassword = (joiningSessionPassword || '').trim();
-    if (!enteredPassword) {
-      setPosError("Introduce la contraseña para reanudar este turno.");
-      return;
-    }
 
     let companyId: string;
     try {
@@ -1607,20 +1628,36 @@ export default function POS() {
     let authorized = false;
 
     if (!navigator.onLine) {
-      authorized = await verifyOfflinePosCredential(
-        companyId,
-        credentialUserId,
-        enteredPassword
-      );
+      // Primero usamos el permiso local generado cuando este mismo usuario
+      // recibió el turno abierto mientras estaba conectado. Esto permite
+      // "online -> descargar turno -> perder red -> reanudar" sin exigir una
+      // segunda consulta a Supabase ni depender de que exista un verificador
+      // de la contraseña del trabajador en este dispositivo.
+      const resumeGrant = currentUser?.id
+        ? verifyOfflinePosResumeGrant(companyId, currentUser.id, targetSession.id)
+        : false;
+      if (resumeGrant) {
+        authorized = true;
+      } else if (enteredPassword) {
+        authorized = await verifyOfflinePosCredential(
+          companyId,
+          credentialUserId,
+          enteredPassword
+        );
+      }
+
       if (!authorized) {
         setPosError(
-          "No se pudo validar offline la contraseña de " +
-          (credentialUser?.name || targetSession.workerName || 'empleado') +
-          ". Conéctate una vez desde este dispositivo con esa credencial para habilitar el acceso offline."
+          "Este turno no fue autorizado previamente para reanudación offline en este dispositivo. " +
+          "Conéctate una vez mientras el turno esté abierto para descargar y habilitar su reanudación sin conexión."
         );
         return;
       }
     } else if (isAdminOwnSession) {
+      if (!enteredPassword) {
+        setPosError("Introduce la contraseña de PALMYRA para reanudar este turno.");
+        return;
+      }
       try {
         const valid = await verifySaaSPosAccessPassword(
           companyId,
@@ -1647,6 +1684,14 @@ export default function POS() {
         }
       }
     } else {
+      if (!enteredPassword) {
+        setPosError(
+          "Introduce la contraseña de " +
+          (credentialUser?.name || targetUser.name || 'empleado') +
+          " para reanudar este turno."
+        );
+        return;
+      }
       try {
         const valid = await verifyEmployeePosAccessPassword(
           companyId,
@@ -1807,7 +1852,7 @@ export default function POS() {
                   </label>
                   <input
                     type="password"
-                    required
+                    required={isOnline}
                     value={joiningSessionPassword}
                     onChange={e => {
                       setJoiningSessionPassword(e.target.value);
