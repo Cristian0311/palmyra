@@ -114,11 +114,15 @@ let swCheckTimer: ReturnType<typeof setInterval> | null = null;
 const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {
-    // El aviso puede sobrevivir a un cierre/reapertura de la web o de la PWA.
-    // Por eso la acción de aplicar la actualización NO depende de que este
-    // callback vuelva a ejecutarse en la misma sesión.
+    // El worker nuevo queda en waiting. Persistimos el aviso y notificamos
+    // inmediatamente al CRM para que la burbuja aparezca en la sesión actual.
     try { localStorage.setItem(PALMYRA_UPDATE_AVAILABLE_KEY, '1'); } catch {}
     window.dispatchEvent(new CustomEvent('palmyra:update-available'));
+  },
+  onRegistered(registration) {
+    // Ejecuta una comprobación inmediata y conserva la detección en segundo
+    // plano; el usuario decide cuándo aplicar la actualización.
+    void registration.update();
   },
 
 
