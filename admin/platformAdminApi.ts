@@ -60,6 +60,25 @@ async function assertPlatformAdmin() {
   return supabase;
 }
 
+
+export type PlatformControlCenter = {
+  captured_at: string;
+  companies: Array<PlatformCompany & { status?: string|null; plan_price?: number|null; subscription_status?: string|null; period_end?: string|null; sync_pending?: number; sync_failed?: number; sync_conflicts?: number; last_sync_at?: string|null }>;
+  alerts: Array<{type:string;severity:string;title:string;detail:string;company_id?:string;company_name?:string;created_at:string}>;
+  sync: Array<{id:string;company_id:string;company_name:string;operation_id:string;entity_type:string;entity_id:string;operation:string;status:string;attempts:number;last_error?:string|null;created_at:string;processed_at?:string|null}>;
+  conflicts: Array<{id:string;company_id:string;company_name:string;operation_id:string;entity_type:string;entity_id:string;resolution?:string|null;created_at:string}>;
+  audit: Array<{id:string;company_id?:string|null;company_name?:string|null;user_id?:string|null;action:string;entity_type:string;entity_id?:string|null;before_data?:unknown;after_data?:unknown;metadata?:unknown;created_at:string}>;
+  billing: {mrr:number;active_subscriptions:number;pending_invoices:number;pending_amount:number;paid_amount_30d:number;payments_30d:number};
+  analytics: {companies_total:number;companies_active:number;users_total:number;products_total:number;sales_total:number;sales_30d:number;sales_value_30d:number;sync_failed:number;sync_pending:number;conflicts_open:number};
+};
+
+export async function loadPlatformControlCenter(): Promise<PlatformControlCenter> {
+  const supabase = await assertPlatformAdmin();
+  const { data, error } = await supabase.rpc("get_platform_control_center");
+  if (error) throw error;
+  return data as PlatformControlCenter;
+}
+
 export async function loadPlatformSnapshot(): Promise<PlatformSnapshot> {
   const supabase = await assertPlatformAdmin();
 
