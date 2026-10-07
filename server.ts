@@ -45,9 +45,9 @@ async function startServer() {
 
 
 
-  // Platform infrastructure usage. Secrets stay server-side; the browser only
-  // receives sanitized metrics after the existing platform-admin RPC authorizes
-  // the caller.
+  // Platform infrastructure usage. All provider secrets remain server-side.
+  // Render resources are discovered live from the workspace API; Supabase metrics
+  // are read through an admin-authorized database RPC.
   app.options('/api/platform-usage', (req, res) => {
     const allowedOrigin = 'https://palmyra-admin.onrender.com';
     const origin = String(req.headers.origin || '');
@@ -69,7 +69,6 @@ async function startServer() {
         res.setHeader('Vary', 'Origin');
         res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
       }
-      if (req.method === 'OPTIONS') return res.status(204).end();
 
       const authHeader = String(req.headers.authorization || '');
       const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
@@ -84,193 +83,224 @@ async function startServer() {
 
       const adminResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/get_platform_companies`, {
         method: 'POST',
-        headers: {
-          apikey: supabaseAnonKey,
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
         body: '{}'
       });
-      if (!adminResponse.ok) return res.status(403).json({ error: 'Solo el administrador de plataforma puede consultar consumo.' });
+      if (!adminResponse.ok) return res.status(403).json({ error: 'Solo el administrador de plataforma puede consultar infraestructura.' });
 
       const now = new Date();
       const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
       const renderKey = process.env.RENDER_API_KEY || '';
-      const renderHeaders = renderKey
-        ? { Accept: 'application/json', Authorization: `Bearer ${renderKey}` }
-        : null;
+      const renderWorkspaceId = process.env.RENDER_WORKSPACE_ID || 'tea-d7f95hf7f7vs739rkq2g';
+      const renderHeaders = renderKey ? { Accept: 'application/json', Authorization: `Bearer ${renderKey}` } : null;
 
-      const renderServices = [
-        { id: process.env.RENDER_SERVICE_ID || 'srv-db089k49v7es73ab7750', name: 'PALMYRA CRM', type: 'Web Service', url: 'https://palmyracrm.onrender.com' },
-        { id: process.env.RENDER_ADMIN_SERVICE_ID || 'srv-db1t348u01pc73fu26j0', name: 'PALMYRA ADMIN', type: 'Static Site', url: 'https://palmyra-admin.onrender.com' },
-      ];
-
-      const sumSeries = (payload: any, unitScale = 1) =>
-        (Array.isArray(payload) ? payload : []).reduce((total: number, item: any) =>
-          total + (item?.values || []).reduce((sum: number, point: any) => sum + Number(point?.value || 0), 0), 0
-        ) * unitScale;
-
-      const lastSeriesValue = (payload: any) => {
-        const points = (Array.isArray(payload) ? payload : [])
-          .flatMap((item: any) => Array.isArray(item?.values) ? item.values : [])
-          .sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-        return points.length ? Number(points[0].value || 0) : null;
+      const toNumber = (value: unknown) => {
+        const n = Number(value);
+        return Number.isFinite(n) ? n : null;
       };
+      const seriesPoints = (payload: any) => (Array.isArray(payload) ? payload : [])
+        .flatMap((item: any) => Array.isArray(item?.values) ? item.values.map((point: any) => ({
+          value: Number(point?.value),
+          unit: String(item?.unit || point?.unit || ''),
+          timestamp: point?.timestamp
+        })) : [])
+        .filter((point: any) => Number.isFinite(point.value));
+      const latestSeriesValue = (payload: any) => {
+        const points = seriesPoints(payload).sort((a: any, b: any) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+        return points[0] || null;
+      };
+      const sumBandwidthGb = (payload: any) => seriesPoints(payload).reduce((total: number, point: any) => {
+        const unit = point.unit.toLowerCase();
+        if (unit === 'gb') return total + point.value;
+        if (unit === 'mb') return total + point.value / 1024;
+        if (unit === 'kb') return total + point.value / (1024 * 1024);
+        if (unit === 'bytes' || unit === 'b') return total + point.value / (1024 * 1024 * 1024);
+        return total + point.value;
+      }, 0);
 
-      const renderServicesUsage = await Promise.all(renderServices.map(async (service) => {
-        const empty = {
-          ...service,
-          configured: Boolean(renderHeaders),
-          bandwidthGb: null as number | null,
-          bandwidthLimitGb: 5,
-          bandwidthAvailableGb: null as number | null,
-          bandwidthPercent: null as number | null,
-          cpuCurrent: null as number | null,
-          cpuLimit: null as number | null,
-          cpuPercent: null as number | null,
-          memoryCurrentMb: null as number | null,
-          memoryLimitMb: null as number | null,
-          memoryPercent: null as number | null,
-          error: null as string | null,
-        };
-        if (!renderHeaders) {
-          empty.error = 'Render API no está configurada en el servidor.';
-          return empty;
-        }
+      let renderServicesUsage: any[] = [];
+      let renderApiError: string | null = null;
 
+      if (renderHeaders) {
         try {
-          const base = new URLSearchParams({
-            resource: service.id,
-            startTime: monthStart,
-            endTime: now.toISOString(),
-            resolutionSeconds: '3600'
-          });
-          const currentWindow = new URLSearchParams({
-            resource: service.id,
-            startTime: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-            endTime: now.toISOString(),
-            resolutionSeconds: '300'
-          });
+          const servicesResponse = await fetch(
+            `https://api.render.com/v1/services?ownerId=${encodeURIComponent(renderWorkspaceId)}&includePreviews=false&limit=100`,
+            { headers: renderHeaders }
+          );
+          if (!servicesResponse.ok) throw new Error(`Render services HTTP ${servicesResponse.status}`);
+          const servicesPayload = await servicesResponse.json();
+          const discoveredServices = (Array.isArray(servicesPayload) ? servicesPayload : [])
+            .map((entry: any) => entry?.service || entry)
+            .filter((service: any) => service?.id);
 
-          const [bandwidthResponse, cpuResponse, cpuLimitResponse, memoryResponse, memoryLimitResponse] = await Promise.all([
-            fetch(`https://api.render.com/v1/metrics/bandwidth?${base.toString()}`, { headers: renderHeaders }),
-            fetch(`https://api.render.com/v1/metrics/cpu?${currentWindow.toString()}`, { headers: renderHeaders }),
-            fetch(`https://api.render.com/v1/metrics/cpu-limit?${currentWindow.toString()}`, { headers: renderHeaders }),
-            fetch(`https://api.render.com/v1/metrics/memory?${currentWindow.toString()}`, { headers: renderHeaders }),
-            fetch(`https://api.render.com/v1/metrics/memory-limit?${currentWindow.toString()}`, { headers: renderHeaders })
-          ]);
+          renderServicesUsage = await Promise.all(discoveredServices.map(async (service: any) => {
+            const currentStart = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
+            const serviceBase = new URLSearchParams({
+              resource: service.id,
+              startTime: monthStart,
+              endTime: now.toISOString(),
+              resolutionSeconds: '3600'
+            });
+            const currentWindow = new URLSearchParams({
+              resource: service.id,
+              startTime: currentStart,
+              endTime: now.toISOString(),
+              resolutionSeconds: '300'
+            });
+            try {
+              const types = ['bandwidth','cpu','cpu-limit','memory','memory-limit','http-request-count'];
+              const [bandwidthResponse,cpuResponse,cpuLimitResponse,memoryResponse,memoryLimitResponse,httpResponse] = await Promise.all([
+                fetch(`https://api.render.com/v1/metrics/bandwidth?${serviceBase}`, {headers:renderHeaders}),
+                fetch(`https://api.render.com/v1/metrics/cpu?${currentWindow}`, {headers:renderHeaders}),
+                fetch(`https://api.render.com/v1/metrics/cpu-limit?${currentWindow}`, {headers:renderHeaders}),
+                fetch(`https://api.render.com/v1/metrics/memory?${currentWindow}`, {headers:renderHeaders}),
+                fetch(`https://api.render.com/v1/metrics/memory-limit?${currentWindow}`, {headers:renderHeaders}),
+                fetch(`https://api.render.com/v1/metrics/http-request-count?${currentWindow}`, {headers:renderHeaders})
+              ]);
+              const [bandwidth,cpu,cpuLimit,memory,memoryLimit,httpRequests] = await Promise.all([
+                bandwidthResponse.ok ? bandwidthResponse.json() : [],
+                cpuResponse.ok ? cpuResponse.json() : [],
+                cpuLimitResponse.ok ? cpuLimitResponse.json() : [],
+                memoryResponse.ok ? memoryResponse.json() : [],
+                memoryLimitResponse.ok ? memoryLimitResponse.json() : [],
+                httpResponse.ok ? httpResponse.json() : []
+              ]);
+              const latestCpu = latestSeriesValue(cpu)?.value ?? null;
+              const latestCpuLimit = latestSeriesValue(cpuLimit)?.value ?? null;
+              const latestMemory = latestSeriesValue(memory);
+              const latestMemoryLimit = latestSeriesValue(memoryLimit);
+              const memoryMb = latestMemory ? latestMemory.value / 1024 / 1024 : null;
+              const memoryLimitMb = latestMemoryLimit ? latestMemoryLimit.value / 1024 / 1024 : null;
+              const serviceBandwidthGb = sumBandwidthGb(bandwidth);
+              const requestPoints = seriesPoints(httpRequests);
+              const requestCount6h = requestPoints.reduce((sum:number,p:any)=>sum+p.value,0);
 
-          const bandwidth = bandwidthResponse.ok ? await bandwidthResponse.json() : [];
-          const cpu = cpuResponse.ok ? await cpuResponse.json() : [];
-          const cpuLimit = cpuLimitResponse.ok ? await cpuLimitResponse.json() : [];
-          const memory = memoryResponse.ok ? await memoryResponse.json() : [];
-          const memoryLimit = memoryLimitResponse.ok ? await memoryLimitResponse.json() : [];
-
-          const bandwidthGb = sumSeries(bandwidth, 1);
-          const cpuCurrent = lastSeriesValue(cpu);
-          const cpuCap = lastSeriesValue(cpuLimit);
-          const memoryCurrentMb = lastSeriesValue(memory) == null ? null : lastSeriesValue(memory)! / 1024 / 1024;
-          const memoryCapMb = lastSeriesValue(memoryLimit) == null ? null : lastSeriesValue(memoryLimit)! / 1024 / 1024;
-
-          empty.bandwidthGb = bandwidthGb;
-          empty.bandwidthAvailableGb = Math.max(0, empty.bandwidthLimitGb - bandwidthGb);
-          empty.bandwidthPercent = Math.min(100, (bandwidthGb / empty.bandwidthLimitGb) * 100);
-          empty.cpuCurrent = cpuCurrent;
-          empty.cpuLimit = cpuCap;
-          empty.cpuPercent = cpuCurrent != null && cpuCap ? Math.min(100, (cpuCurrent / cpuCap) * 100) : null;
-          empty.memoryCurrentMb = memoryCurrentMb;
-          empty.memoryLimitMb = memoryCapMb;
-          empty.memoryPercent = memoryCurrentMb != null && memoryCapMb ? Math.min(100, (memoryCurrentMb / memoryCapMb) * 100) : null;
-
-          const failed = [bandwidthResponse, cpuResponse, cpuLimitResponse, memoryResponse, memoryLimitResponse].filter((response) => !response.ok);
-          if (failed.length) empty.error = `Render devolvió HTTP ${failed[0].status} para una métrica.`;
+              return {
+                id: service.id,
+                name: service.name || service.id,
+                type: service.type || 'unknown',
+                repo: service.repo || null,
+                branch: service.branch || null,
+                region: service.region || null,
+                plan: service.serviceDetails?.plan || service.plan || service.serviceDetails?.buildPlan || null,
+                url: service.serviceDetails?.url || service.url || null,
+                suspended: service.suspended || null,
+                autoDeploy: service.autoDeployTrigger || service.autoDeploy || null,
+                bandwidthGb: serviceBandwidthGb,
+                cpuCurrent: latestCpu,
+                cpuLimit: latestCpuLimit,
+                cpuPercent: latestCpu != null && latestCpuLimit ? Math.min(100,(latestCpu/latestCpuLimit)*100) : null,
+                memoryCurrentMb: memoryMb,
+                memoryLimitMb,
+                memoryPercent: memoryMb != null && memoryLimitMb ? Math.min(100,(memoryMb/memoryLimitMb)*100) : null,
+                requestCount6h,
+                metricsAvailable: {
+                  bandwidth: bandwidthResponse.ok,
+                  cpu: cpuResponse.ok,
+                  memory: memoryResponse.ok,
+                  requests: httpResponse.ok
+                },
+                error: [bandwidthResponse,cpuResponse,cpuLimitResponse,memoryResponse,memoryLimitResponse,httpResponse].some((x:any)=>!x.ok)
+                  ? 'Una o más métricas no están disponibles para este tipo de servicio.'
+                  : null
+              };
+            } catch (error: any) {
+              return {
+                id: service.id,name:service.name || service.id,type:service.type || 'unknown',
+                repo:service.repo || null,branch:service.branch || null,region:service.region || null,
+                plan:service.serviceDetails?.plan || service.plan || service.serviceDetails?.buildPlan || null,
+                url:service.serviceDetails?.url || service.url || null,suspended:service.suspended || null,
+                autoDeploy:service.autoDeployTrigger || service.autoDeploy || null,
+                bandwidthGb:null,cpuCurrent:null,cpuLimit:null,cpuPercent:null,memoryCurrentMb:null,memoryLimitMb:null,memoryPercent:null,
+                requestCount6h:null,metricsAvailable:{bandwidth:false,cpu:false,memory:false,requests:false},
+                error:error?.message || 'No se pudo consultar este servicio.'
+              };
+            }
+          }));
         } catch (error: any) {
-          empty.error = error?.message || 'No se pudo consultar Render.';
+          renderApiError = error?.message || 'No se pudo enumerar Render.';
         }
-        return empty;
-      }));
+      } else {
+        renderApiError = 'RENDER_API_KEY no está configurada en el servidor.';
+      }
 
+      // Render outbound bandwidth is a workspace quota. Keep the documented
+      // quota configurable so the UI never invents a plan-specific number.
+      const renderBandwidthLimitGb = toNumber(process.env.RENDER_MONTHLY_BANDWIDTH_GB) ?? 5;
       const renderBandwidthGb = renderServicesUsage.reduce((sum, service) => sum + Number(service.bandwidthGb || 0), 0);
-      const renderBandwidthLimitGb = 5;
       const renderBandwidthAvailableGb = Math.max(0, renderBandwidthLimitGb - renderBandwidthGb);
 
+      const supabaseResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/get_platform_infrastructure_metrics`, {
+        method:'POST',
+        headers:{apikey:supabaseAnonKey,Authorization:`Bearer ${accessToken}`,'Content-Type':'application/json'},
+        body:'{}'
+      });
+      if (!supabaseResponse.ok) throw new Error(`Supabase infrastructure RPC HTTP ${supabaseResponse.status}`);
+      const supabaseMetrics = await supabaseResponse.json();
+
       const supabase = {
-        configured: false,
-        plan: 'Free',
-        databaseMb: null as number | null,
-        databaseLimitMb: 500,
-        databaseAvailableMb: null as number | null,
-        databasePercent: null as number | null,
+        configured: true,
+        plan: process.env.SUPABASE_PLAN || 'Free',
+        databaseMb: Number(supabaseMetrics?.database_bytes || 0) / 1024 / 1024,
+        databaseLimitMb: toNumber(process.env.SUPABASE_DATABASE_LIMIT_MB) ?? 500,
+        databaseAvailableMb: Math.max(0,(toNumber(process.env.SUPABASE_DATABASE_LIMIT_MB) ?? 500) - Number(supabaseMetrics?.database_bytes || 0)/1024/1024),
+        databasePercent: Math.min(100,(Number(supabaseMetrics?.database_bytes || 0)/1024/1024)/(toNumber(process.env.SUPABASE_DATABASE_LIMIT_MB) ?? 500)*100),
+        activeConnections: Number(supabaseMetrics?.active_connections || 0),
+        storageBytes: Number(supabaseMetrics?.storage_bytes || 0),
+        storageObjects: Number(supabaseMetrics?.storage_objects || 0),
+        tables: Array.isArray(supabaseMetrics?.tables) ? supabaseMetrics.tables : [],
+        syncQueue: supabaseMetrics?.sync_queue || {pending:0,failed:0,conflicts:0,applied_operations:0},
+        companyMetrics: Array.isArray(supabaseMetrics?.companies) ? supabaseMetrics.companies : [],
         apiRequests: null as number | null,
         apiRequestsLimit: null as number | null,
+        apiRequestsSource: 'not_configured',
         error: null as string | null
       };
 
-      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-      if (serviceRoleKey) {
-        supabase.configured = true;
-        const dbResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/platform_database_size_bytes`, {
-          method: 'POST',
-          headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, 'Content-Type': 'application/json' },
-          body: '{}'
-        });
-        if (dbResponse.ok) {
-          const bytes = Number(await dbResponse.json());
-          supabase.databaseMb = Number.isFinite(bytes) ? bytes / 1024 / 1024 : null;
-          supabase.databaseAvailableMb = supabase.databaseMb == null ? null : Math.max(0, supabase.databaseLimitMb - supabase.databaseMb);
-          supabase.databasePercent = supabase.databaseMb == null ? null : Math.min(100, (supabase.databaseMb / supabase.databaseLimitMb) * 100);
-        } else {
-          supabase.error = `Supabase database size HTTP ${dbResponse.status}`;
-        }
-      }
-
       const managementToken = process.env.SUPABASE_MANAGEMENT_TOKEN || '';
       if (managementToken) {
-        supabase.configured = true;
         const projectRef = process.env.SUPABASE_PROJECT_REF || 'hmcvujyqloyjdvngpdxz';
         const usageResponse = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/analytics/endpoints/usage.api-counts?interval=1d`, {
-          headers: { Accept: 'application/json', Authorization: `Bearer ${managementToken}` }
+          headers:{Accept:'application/json',Authorization:`Bearer ${managementToken}`}
         });
         if (usageResponse.ok) {
           const payload = await usageResponse.json();
-          supabase.apiRequests = (payload?.result || []).reduce((total: number, row: any) =>
-            total + Number(row?.total_auth_requests || 0) +
-            Number(row?.total_realtime_requests || 0) +
-            Number(row?.total_rest_requests || 0) +
-            Number(row?.total_storage_requests || 0), 0);
+          supabase.apiRequests = (payload?.result || []).reduce((total:number,row:any)=>
+            total + Number(row?.total_auth_requests || 0) + Number(row?.total_realtime_requests || 0) +
+            Number(row?.total_rest_requests || 0) + Number(row?.total_storage_requests || 0),0);
+          supabase.apiRequestsSource = 'supabase_management_api';
         } else {
-          supabase.error = supabase.error || `Supabase usage HTTP ${usageResponse.status}`;
+          supabase.error = `Supabase Management API HTTP ${usageResponse.status}`;
         }
       }
 
       return res.json({
         capturedAt: now.toISOString(),
         monthStart,
+        providerSources: {
+          render: renderHeaders ? 'Render REST API' : 'not_configured',
+          supabase: 'Supabase PostgreSQL + REST RPC',
+          supabaseManagement: managementToken ? 'Supabase Management API' : 'not_configured'
+        },
         render: {
           configured: Boolean(renderHeaders),
-          workspacePlan: 'Hobby',
+          workspaceId: renderWorkspaceId,
           bandwidthGb: renderBandwidthGb,
           bandwidthLimitGb: renderBandwidthLimitGb,
           bandwidthAvailableGb: renderBandwidthAvailableGb,
-          bandwidthPercent: Math.min(100, (renderBandwidthGb / renderBandwidthLimitGb) * 100),
-          services: renderServicesUsage
+          bandwidthPercent: renderBandwidthLimitGb ? Math.min(100,(renderBandwidthGb/renderBandwidthLimitGb)*100) : null,
+          services: renderServicesUsage,
+          error: renderApiError
         },
         supabase,
         limits: {
-          renderHobbyBandwidthGb: 5,
-          renderHobbyInstanceHours: 750,
-          supabaseFreeDatabaseMb: 500,
-          supabaseFreeEgressGb: 5
-        },
-        notes: [
-          'El consumo de Render se consolida para PALMYRA CRM y PALMYRA ADMIN dentro del mismo workspace.',
-          'CPU y memoria muestran capacidad de servicio y consumo reciente; el límite de ancho de banda es mensual.',
-          'Supabase Free incluye 500 MB de base de datos por proyecto; API requests no tienen un límite mensual de solicitudes en el plan Free.'
-        ]
+          renderMonthlyBandwidthGb: renderBandwidthLimitGb,
+          supabaseFreeDatabaseMb: 500
+        }
       });
     } catch (error: any) {
       console.error('[PALMYRA] platform usage:', error);
-      return res.status(500).json({ error: error?.message || 'No se pudo consultar el consumo.' });
+      return res.status(500).json({ error: error?.message || 'No se pudo consultar el consumo real.' });
     }
   });
 
