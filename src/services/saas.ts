@@ -1,7 +1,7 @@
 import type { User } from '../types';
 import { getSupabase } from '../lib/supabase';
 import { slugifyCompany, type PlanCode } from '../config/saas';
-import { setPalmyraLocalScope, clearPalmyraLocalScope } from './localScope';
+import { setPalmyraLocalScope, clearPalmyraLocalScope, getPalmyraLocalScope } from './localScope';
 import { clearActiveTenant } from './tenant';
 import { cacheSaaSContext, clearCachedSaaSContext, getCachedSaaSContext } from './offlineAuthContext';
 
