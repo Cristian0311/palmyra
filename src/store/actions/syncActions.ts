@@ -62,14 +62,15 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
         const pendingCategoryDeleteIds = new Set(queue.filter(i => i.type === 'category_delete').map(i => i.data?.id).filter(Boolean));
         const pendingBranchDeleteIds = new Set(queue.filter(i => i.type === 'branch_delete').map(i => i.data?.id).filter(Boolean));
         const pendingUserIds = new Set(queue.filter(i => i.type === 'user').map(i => i.data?.id).filter(Boolean));
-        const pendingCurrencyCodes = new Set(queue.filter(i => i.type === 'currency').map(i => i.data?.code).filter(Boolean));
+        const pendingUserDeleteIds = new Set(queue.filter(i => i.type === 'user_delete').map(i => i.data?.id).filter(Boolean));
+        const pendingCurrencyCodes = new Set(queue.filter(i => i.type === 'currency' || i.type === 'currency_rate').map(i => i.data?.code).filter(Boolean));
         const validProductIds = new Set((d.products || []).map((p: any) => p.id));
         const validCategoryIds = new Set((d.categories || []).map((x: any) => x.id));
         return {
           branches: replaceRemoteRecords(d.branches || [], state.branches || [], pendingBranchIds).filter(x => !pendingBranchDeleteIds.has(x.id)),
           categories: replaceRemoteRecords(d.categories || [], state.categories || [], pendingCategoryIds).filter(x => !pendingCategoryDeleteIds.has(x.id)),
           products: replaceRemoteRecords(d.products || [], state.products || [], pendingProductIds).filter(x => !pendingProductDeleteIds.has(x.id)),
-          users: replaceRemoteRecords(d.users || [], state.users || [], pendingUserIds),
+          users: replaceRemoteRecords(d.users || [], state.users || [], pendingUserIds).filter((u: any) => !pendingUserDeleteIds.has(u.id)),
           currencies: Array.isArray(d.currencies) && d.currencies.length
             ? (() => {
                 const currencyMap = new Map<string, Currency>((state.currencies || []).map(currency => [currency.code, currency]));
