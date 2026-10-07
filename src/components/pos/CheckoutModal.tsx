@@ -212,7 +212,7 @@ export default function CheckoutModal({
                     {paymentLines.find(l => l.id === activePaymentLineId)?.method === 'transfer' && (
                       <div className="bg-slate-900 text-white rounded-2xl p-3 sm:p-3.5 border border-slate-800 shadow-md space-y-2.5 animate-in fade-in duration-200">
                         {/* Header: Selector & Bank Info */}
-                        <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-800/80">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-slate-800/80 min-w-0">
                           <div className="flex items-center gap-1.5 shrink-0">
                             <div className="w-6 h-6 rounded-lg bg-blue-500/20 text-blue-400 border border-blue-500/30 flex items-center justify-center">
                               <CreditCard className="w-3.5 h-3.5" />
@@ -223,7 +223,7 @@ export default function CheckoutModal({
                           <select
                             value={paymentLines.find(l => l.id === activePaymentLineId)?.bankCardId || ''}
                             onChange={(e) => onUpdatePaymentLine(activePaymentLineId, 'bankCardId', e.target.value)}
-                            className="flex-1 max-w-[240px] px-2.5 py-1.5 bg-slate-800 hover:bg-slate-750 text-white border border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-[10px] font-bold truncate transition-colors"
+                            className="w-full sm:flex-1 sm:max-w-[240px] min-w-0 px-2.5 py-1.5 bg-slate-800 hover:bg-slate-750 text-white border border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none text-[10px] font-bold truncate transition-colors"
                           >
                             <option value="" className="text-slate-900 bg-white">Seleccionar Cuenta / Tarjeta...</option>
                             {(() => {
