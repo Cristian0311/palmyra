@@ -522,8 +522,8 @@ export default function Team() {
             {snapshot.employees.map(employee => {
               const warehouseNames = employee.warehouse_ids.map(id => snapshot?.warehouses.find(w => w.id === id)?.name).filter(Boolean);
               return (
-                <div key={employee.id} className="p-4 md:p-5 flex flex-col md:flex-row md:items-center gap-4">
-                  <div className={cn("w-11 h-11 rounded-2xl flex items-center justify-center shrink-0", employee.active ? "bg-rose-100 text-rose-600" : "bg-slate-100 text-slate-400")}>
+                <div key={employee.id} className="team-employee-row flex flex-col md:flex-row md:items-center gap-2.5 border border-base bg-secondary">
+                  <div className={cn("team-employee-avatar w-11 h-11 rounded-2xl flex items-center justify-center shrink-0", employee.active ? "bg-rose-100 text-rose-600" : "bg-slate-100 text-slate-400")}>
                     {employee.user_id ? <UserRound className="w-5 h-5" /> : <UserX className="w-5 h-5" />}
                   </div>
                   <div className="min-w-0 flex-1">
