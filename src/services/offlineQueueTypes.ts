@@ -7,7 +7,7 @@ export type OfflineActionType =
   | 'store_config' | 'catalog_config' | 'salary_settlement' | 'user' | 'currency'
   | 'warranty' | 'time_shift' | 'quote' | 'bank_internal_transfer'
   | 'bank_internal_transfer_delete' | 'bank_transaction_delete' | 'bank_card_delete'
-  | 'bank_card' | 'bank_card_balance' | 'supplier' | 'supplier_order'
+  | 'bank_card' | 'bank_card_balance' | 'currency_rate' | 'supplier' | 'supplier_order'
   | 'inventory_audit' | 'audit_start' | 'audit_recount' | 'audit_approve'
   | 'cash_movement' | 'cash_movement_delete'
   | 'branch_delete' | 'category_delete' | 'supplier_delete';
