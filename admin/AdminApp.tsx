@@ -48,13 +48,11 @@ import {
   type InfrastructureUsage,
   loadInfrastructureUsage,
   loadExchangeRates,
-  type ExchangeRatePayload,
   loadSupportRequests,
   loadSupportSettings,
   saveSupportSettings,
   type PlatformSupportRequest,
   type PlatformSupportSettings,
-  type PlatformPlan,
   loadPlatformPlans,
 } from "./platformAdminApi";
 import { adminSignIn, adminSignOut, adminUser, getAdminSupabase } from "./supabase";
@@ -70,7 +68,6 @@ const navItems: Array<{ id: View; label: string; icon: typeof BarChart3; hint: s
   { id: "support", label: "Soporte", icon: TicketCheck, hint: "Atención operativa" },
   { id: "audit", label: "Auditoría", icon: Activity, hint: "Acciones administrativas" },
   { id: "infrastructure", label: "Infraestructura", icon: Database, hint: "Salud y recursos del SaaS" },
-  { id: "exchange", label: "Tasa de cambio", icon: CircleDollarSign, hint: "Referencia informativa de mercado" },
   { id: "settings", label: "Configuración", icon: Settings2, hint: "Seguridad de la plataforma" },
 ];
 
@@ -862,7 +859,6 @@ function AdminShell({
                 view === "exchange" ? <ExchangeRateView /> :
                 view === "support" ? <SupportView /> :
                 view === "infrastructure" ? <InfrastructureView /> :
-                view === "exchange" ? <ExchangeRateView /> :
                 view === "settings" ? <SettingsView /> :
                 <div className="admin-placeholder"><div className="admin-placeholder__icon"><Shield size={24}/></div><p className="admin-eyebrow">PRÓXIMAMENTE</p><h1>{current.label}</h1><p>Área preparada para ampliar el control de plataforma sobre el mismo núcleo seguro.</p></div>}
             </motion.div>
