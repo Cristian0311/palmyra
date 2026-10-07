@@ -3,7 +3,7 @@ import { getSupabase } from '../lib/supabase';
 import { slugifyCompany, type PlanCode } from '../config/saas';
 import { setPalmyraLocalScope, clearPalmyraLocalScope } from './localScope';
 import { clearActiveTenant } from './tenant';
-import { cacheSaaSContext, clearCachedSaaSContext } from './offlineAuthContext';
+import { cacheSaaSContext, clearCachedSaaSContext, getCachedSaaSContext } from './offlineAuthContext';
 
 export interface SaaSContext {
   authUserId: string;
@@ -97,9 +97,17 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     if (refreshError) throw refreshError;
   }
 
-  const { data: authData, error: authError } = await supabase.auth.getUser();
-  if (authError) throw authError;
-  const authUser = authData.user;
+  let authUser: any = null;
+  try {
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (!authError) authUser = authData.user;
+  } catch {}
+  if (!authUser && typeof navigator !== 'undefined' && !navigator.onLine) {
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      authUser = sessionData.session?.user || null;
+    } catch {}
+  }
   if (!authUser) return null;
 
   // Evitamos relaciones embebidas de PostgREST durante el arranque.
@@ -108,6 +116,10 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     supabase.from('profiles').select('full_name,phone,active_company_id').eq('id', authUser.id).maybeSingle(),
     supabase.from('company_memberships').select('company_id,is_owner,status,joined_at').eq('user_id', authUser.id).eq('status','active').order('joined_at',{ascending:true}).limit(10)
   ]);
+  if ((profileError || membershipError) && typeof navigator !== 'undefined' && !navigator.onLine) {
+    const cached = getCachedSaaSContext(authUser.id);
+    if (cached) return cached;
+  }
   if (profileError) throw new Error(`No se pudo cargar el perfil de la cuenta: ${profileError.message}`);
   if (membershipError) throw new Error(`No se pudo verificar la membresía de la empresa: ${membershipError.message}`);
 
@@ -160,6 +172,12 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     supabase.rpc('has_pending_plan_request', { p_company_id: companyId })
   ]);
 
+  if (companyError || userRoleError || locationsError || employeeError || subscriptionError || pendingPlanRequestError) {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      const cached = getCachedSaaSContext(authUser.id);
+      if (cached) return cached;
+    }
+  }
   if (companyError) throw new Error(`No se pudo cargar la empresa: ${companyError.message}`);
   if (!company) throw new Error('La empresa de la cuenta no existe en PALMYRA.');
   if (userRoleError) throw new Error(`No se pudo cargar el rol de acceso: ${userRoleError.message}`);
