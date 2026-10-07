@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-const CITY_IMAGE = "https://live.staticflickr.com/5016/5514619147_c7d54849af_o.jpg";
+const CITY_IMAGE = "/landing/palmyra-city.svg";
 const CITY_CREDIT = "Palmyra histórica · Erik Hermans / Institute for the Study of the Ancient World · CC BY 2.0";
 const CaravanIcon = Caravan;
 const CitadelIcon = Castle;
