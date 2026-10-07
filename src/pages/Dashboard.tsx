@@ -280,32 +280,40 @@ export default function Dashboard() {
   return (
     <div className="space-y-2.5 text-[9px] animate-in fade-in slide-in-from-bottom-2 duration-500 pb-5">
 
-      <section className="relative overflow-hidden rounded-[1.35rem] border border-indigo-100 dark:border-indigo-900/40 bg-gradient-to-br from-indigo-700 via-violet-700 to-slate-900 text-white px-4 py-4 sm:px-5 sm:py-5 shadow-lg shadow-indigo-200/40 dark:shadow-none">
-        <div className="absolute -right-10 -top-14 h-36 w-36 rounded-full bg-white/10 blur-2xl" aria-hidden="true" />
-        <div className="absolute right-8 bottom-0 h-20 w-20 rounded-full bg-violet-300/10 blur-xl" aria-hidden="true" />
-        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="min-w-0">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-[7px] font-black uppercase tracking-[0.16em] text-indigo-100">
-              <Sparkles className="h-3 w-3" /> PALMYRA · Panel de negocio
+      <section className="relative isolate overflow-hidden rounded-[1.75rem] border border-indigo-100/80 dark:border-indigo-900/40 bg-gradient-to-br from-[#111c3b] via-[#273b82] to-[#4b3b8f] text-white shadow-xl shadow-indigo-200/40 dark:shadow-none min-h-[280px] sm:min-h-[300px] lg:min-h-[315px]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_20%,rgba(255,255,255,.16),transparent_30%),linear-gradient(90deg,rgba(10,20,48,.98)_0%,rgba(24,39,84,.94)_42%,rgba(53,65,133,.52)_72%,rgba(53,65,133,.15)_100%)]" aria-hidden="true" />
+        <div className="absolute inset-y-0 right-0 w-full sm:w-[68%] lg:w-[64%] opacity-95 pointer-events-none" aria-hidden="true">
+          <img src="/palmyra-dashboard-hero.svg" alt="" className="h-full w-full object-cover object-center sm:object-right" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[#111c3b] via-[#111c3b]/45 to-transparent sm:from-[#111c3b] sm:via-[#111c3b]/20 sm:to-transparent" />
+        </div>
+        <div className="absolute -right-20 -top-24 h-64 w-64 rounded-full bg-violet-300/15 blur-3xl" aria-hidden="true" />
+        <div className="absolute left-1/3 -bottom-24 h-52 w-52 rounded-full bg-cyan-300/10 blur-3xl" aria-hidden="true" />
+
+        <div className="relative z-10 flex min-h-[280px] sm:min-h-[300px] lg:min-h-[315px] items-end px-5 py-6 sm:px-7 sm:py-7 lg:px-9 lg:py-8">
+          <div className="max-w-[620px] pr-0 sm:pr-20 lg:pr-24">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-indigo-100 backdrop-blur-md shadow-sm">
+              <Sparkles className="h-3.5 w-3.5" /> PALMYRA · Panel de negocio
             </div>
-            <h1 className="mt-2 text-xl sm:text-2xl font-black tracking-tight leading-tight">
-              Hola{dashboardUserName ? ", " + dashboardUserName.split(" ")[0] : ""} 👋
+
+            <h1 className="mt-3 text-3xl sm:text-4xl lg:text-5xl font-black tracking-[-0.035em] leading-[.98] text-white">
+              Hola{dashboardUserName ? ", " + dashboardUserName.split(" ")[0] : ""} <span aria-hidden="true">👋</span>
             </h1>
-            <p className="mt-1 text-sm sm:text-base font-bold text-white/95 leading-tight">
+
+            <p className="mt-3 text-lg sm:text-xl lg:text-2xl font-black leading-tight text-white">
               Bienvenido a <span className="text-indigo-100">{businessName}</span>
             </p>
-            <p className="mt-1.5 max-w-2xl text-[9px] sm:text-[10px] font-medium leading-relaxed text-indigo-100/85">
-              Aquí tienes una vista rápida de lo que está pasando en tu negocio. Consulta ventas, inventario y actividad para tomar decisiones con más claridad.
+
+            <p className="mt-3 max-w-[570px] text-[11px] sm:text-xs lg:text-sm font-medium leading-relaxed text-indigo-50/90">
+              Tu negocio, tus números y tus decisiones en un solo lugar. Consulta ventas, inventario, clientes y actividad para saber qué está pasando y actuar con claridad.
             </p>
-          </div>
-          <div className="grid grid-cols-2 gap-1.5 sm:min-w-[230px]">
-            <div className="rounded-xl border border-white/10 bg-white/10 px-2.5 py-2.5 backdrop-blur-sm">
-              <span className="block text-[7px] font-black uppercase tracking-widest text-indigo-100/75">Ventas hoy</span>
-              <strong className="mt-1 block text-sm font-black tabular-nums">{baseCurrency.code} {formatMoney(totalSalesToday)}</strong>
-            </div>
-            <div className="rounded-xl border border-white/10 bg-white/10 px-2.5 py-2.5 backdrop-blur-sm">
-              <span className="block text-[7px] font-black uppercase tracking-widest text-indigo-100/75">Tickets</span>
-              <strong className="mt-1 block text-sm font-black tabular-nums">{todayTransactions.length}</strong>
+
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-white/90 backdrop-blur-sm">
+                <TrendingUp className="h-3.5 w-3.5 text-emerald-300" /> Datos de tu negocio en tiempo real
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-white/90 backdrop-blur-sm">
+                <MapPin className="h-3.5 w-3.5 text-cyan-200" /> {selectedBranchFilter === "all" ? "Todas las sucursales" : (branchById.get(selectedBranchFilter)?.name || "Sucursal")}
+              </span>
             </div>
           </div>
         </div>
