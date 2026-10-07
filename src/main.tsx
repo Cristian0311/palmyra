@@ -169,30 +169,74 @@ const updateSW = registerSW({
   },
 });
 
-// La burbuja de actualización puede aparecer por una marca persistente aunque
-// el evento onNeedRefresh haya ocurrido en una sesión anterior. Exponemos una
-// acción estable desde el arranque para que el botón SIEMPRE funcione.
-// Primero intenta aplicar el Service Worker que está esperando y, si no existe,
-// fuerza una comprobación; después recarga una sola vez la aplicación.
+// La burbuja de actualización debe activar primero el Service Worker nuevo
+// y SOLO después recargar la aplicación. En móviles, recargar inmediatamente
+// después de SKIP_WAITING puede ocurrir antes de que el worker tome el control;
+// eso hacía que la misma burbuja reapareciera una y otra vez.
 const applyPalmyraUpdate = async () => {
+  let reloadAfterActivation = false;
+
   try {
     const registration = await navigator.serviceWorker?.getRegistration();
-    // Pide al worker pendiente que se active, pero no bloquea la interfaz
-    // esperando controllerchange: esa espera era la causa de estados blancos
-    // durante algunos cambios de versión en PWA/móvil.
-    if (registration?.waiting) {
-      registration.waiting.postMessage({ type: 'SKIP_WAITING' });
-      await new Promise(resolve => window.setTimeout(resolve, 650));
-    } else {
-      await updateSW(false);
-      await registration?.update?.();
-      await new Promise(resolve => window.setTimeout(resolve, 350));
+    if (!registration) {
+      throw new Error('No hay un Service Worker registrado para actualizar PALMYRA.');
     }
-  } catch (error) {
-    console.warn('[PWA] No se pudo preparar inmediatamente la actualización:', error);
-  } finally {
+
+    // Si el navegador todavía no ha movido el worker nuevo a waiting, fuerza
+    // una comprobación de red y dale unos segundos para que aparezca.
+    if (!registration.waiting) {
+      await registration.update();
+      const deadline = Date.now() + 10_000;
+      while (!registration.waiting && Date.now() < deadline) {
+        await new Promise(resolve => window.setTimeout(resolve, 250));
+        await registration.update().catch(() => {});
+      }
+    }
+
+    const waitingWorker = registration.waiting;
+    if (!waitingWorker) {
+      throw new Error('La nueva versión todavía no está lista para activarse.');
+    }
+
+    // Esperamos controllerchange en lugar de adivinar un retraso fijo. Esto es
+    // especialmente importante en Chrome Android/PWA, donde 650 ms no siempre
+    // alcanza para activar el worker nuevo.
+    const controllerChange = new Promise<void>((resolve, reject) => {
+      let settled = false;
+      const cleanup = () => {
+        navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
+        window.clearTimeout(timeout);
+      };
+      const onControllerChange = () => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve();
+      };
+      const timeout = window.setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(new Error('PALMYRA no pudo activar la nueva versión a tiempo.'));
+      }, 12_000);
+
+      navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
+    });
+
+    waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+    await controllerChange;
+
+    reloadAfterActivation = true;
     try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
     window.location.reload();
+  } catch (error) {
+    console.warn('[PWA] No se pudo aplicar la actualización:', error);
+    // Conservamos la marca para que la burbuja no desaparezca si la activación
+    // falló. Layout recupera el botón y permite reintentar sin recargar en bucle.
+    if (!reloadAfterActivation) {
+      try { localStorage.setItem(PALMYRA_UPDATE_AVAILABLE_KEY, '1'); } catch {}
+    }
+    throw error;
   }
 };
 
