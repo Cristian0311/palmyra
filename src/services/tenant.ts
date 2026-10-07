@@ -1,4 +1,5 @@
 import { getSupabase } from '../lib/supabase';
+import { getCachedSaaSContext } from './offlineAuthContext';
 
 export interface ActiveTenant {
   companyId: string;
@@ -18,13 +19,40 @@ export async function getActiveTenant(forceRefresh = false): Promise<ActiveTenan
   const supabase = getSupabase();
   if (!supabase) throw new Error('Supabase no está configurado.');
 
-  const { data: authData, error: authError } = await supabase.auth.getUser();
-  if (authError || !authData.user) throw new Error('Debes iniciar sesión para acceder a la empresa.');
+  let authUserId: string | null = null;
+  let offlineContext: ReturnType<typeof getCachedSaaSContext> = null;
+  try {
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (!authError && authData.user) authUserId = authDataUserId;
+  } catch {}
+
+  if (!authUserId && typeof navigator !== 'undefined' && !navigator.onLine) {
+    // Offline: the authenticated tenant is already persisted by the SaaS auth
+    // context. Do not turn a valid local session into a false "must sign in" error.
+    try {
+      const storedUser = localStorage.getItem('palmyra:offline-auth-user');
+      const candidateId = storedUser ? JSON.parse(storedUser)?.id : null;
+      if (candidateId) offlineContext = getCachedSaaSContext(candidateId);
+    } catch {}
+    if (!offlineContext) throw new Error('No existe una sesión local válida para trabajar sin conexión.');
+    if (offlineContext.companyId && offlineContext.authUserId) {
+      cached = {
+        companyId: offlineContext.companyId,
+        authUserId: offlineContext.authUserId,
+        defaultCurrencyCode: offlineContext.subscription?.planCode ? 'USD' : 'USD'
+      };
+      return cached;
+    }
+  }
+
+  if (!authUserId) throw new Error('Debes iniciar sesión para acceder a la empresa.');
+
+  const authDataUserId = authUserId;
 
   const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('active_company_id')
-    .eq('id', authData.user.id)
+    .eq('id', authDataUserId)
     .maybeSingle();
   if (profileError) throw profileError;
 
@@ -33,7 +61,7 @@ export async function getActiveTenant(forceRefresh = false): Promise<ActiveTenan
     const { data: membership, error: membershipError } = await supabase
       .from('company_memberships')
       .select('company_id')
-      .eq('user_id', authData.user.id)
+      .eq('user_id', authDataUserId)
       .eq('status', 'active')
       .order('joined_at', { ascending: true })
       .limit(1)
@@ -54,7 +82,7 @@ export async function getActiveTenant(forceRefresh = false): Promise<ActiveTenan
 
   cached = {
     companyId: company.id,
-    authUserId: authData.user.id,
+    authUserId: authDataUserId,
     defaultCurrencyCode: company.default_currency_code || 'USD'
   };
   return cached;
