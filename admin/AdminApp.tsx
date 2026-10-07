@@ -355,6 +355,7 @@ function CompanyCard({
   company,
   busy,
   onToggle,
+  onDetails,
 }: {
   company: PlatformCompany;
   busy: boolean;
