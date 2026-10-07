@@ -891,7 +891,16 @@ function AdminShell({
     window.location.reload();
   };
 
-  useEffect(() => { void loadPlatformControlCenter().then(setControl).catch((err) => setError(err instanceof Error ? err.message : "No se pudo cargar el centro Enterprise.")); }, [snapshot]);
+  useEffect(() => {
+    const enterpriseViews: View[] = ["sync", "audit", "analytics", "security", "health"];
+    if (!enterpriseViews.includes(view)) return;
+    let cancelled = false;
+    setError("");
+    void loadPlatformControlCenter()
+      .then((value) => { if (!cancelled) setControl(value); })
+      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "No se pudo cargar el centro Enterprise."); });
+    return () => { cancelled = true; };
+  }, [view]);
   const current = navItems.find((item) => item.id === view) || navItems[0];
 
   return (
