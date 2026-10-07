@@ -287,12 +287,12 @@ export default function Dashboard() {
           className="absolute inset-0 h-full w-full object-cover object-center"
           aria-hidden="true"
         />
-        <div className="absolute inset-0 bg-gradient-to-r from-white via-white/88 to-white/8 dark:from-slate-950 dark:via-slate-950/86 dark:to-slate-950/10" aria-hidden="true" />
-        <div className="absolute inset-y-0 left-0 w-full sm:w-[65%] bg-gradient-to-r from-white/96 via-white/78 to-transparent dark:from-slate-950/96 dark:via-slate-950/82 dark:to-transparent" aria-hidden="true" />
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-950/55 via-slate-950/18 to-transparent dark:from-slate-950/62 dark:via-slate-950/24 dark:to-transparent" aria-hidden="true" />
+        <div className="absolute inset-y-0 left-0 w-full sm:w-[58%] bg-gradient-to-r from-slate-950/38 via-slate-950/12 to-transparent dark:from-slate-950/42 dark:via-slate-950/16 dark:to-transparent" aria-hidden="true" />
 
         <div className="relative z-10 flex min-h-[250px] sm:min-h-[275px] lg:min-h-[300px] items-center px-5 py-6 sm:px-8 lg:px-10">
           <div className="max-w-[560px] rounded-2xl sm:rounded-[1.5rem] bg-white/20 dark:bg-slate-950/25 px-4 py-4 sm:px-5 sm:py-5 shadow-sm backdrop-blur-[1px] border border-white/25 dark:border-slate-700/30">
-            <div className="inline-flex items-center gap-2 rounded-full border border-violet-100 bg-white/92 px-3 py-1.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-violet-800 shadow-sm dark:border-violet-800/50 dark:bg-slate-900/90 dark:text-violet-200">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/35 bg-slate-950/28 px-3 py-1.5 text-[8px] sm:text-[9px] font-black uppercase tracking-[0.16em] text-white shadow-sm dark:border-violet-800/50 dark:bg-slate-900/40 dark:text-violet-100">
               <Sparkles className="h-3.5 w-3.5" /> PALMYRA · Gestión empresarial
             </div>
 
@@ -309,10 +309,10 @@ export default function Dashboard() {
             </p>
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-100 bg-white/92 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-violet-900 shadow-sm dark:border-violet-800/50 dark:bg-slate-900/88 dark:text-violet-200">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-slate-950/25 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-white shadow-sm dark:border-violet-800/50 dark:bg-slate-900/40 dark:text-violet-100">
                 <TrendingUp className="h-3.5 w-3.5 text-emerald-500" /> Datos en tiempo real
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white/92 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-slate-700 shadow-sm dark:border-slate-700 dark:bg-slate-900/88 dark:text-slate-200">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-slate-950/25 px-3 py-1.5 text-[8px] sm:text-[9px] font-black text-white shadow-sm dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-100">
                 <MapPin className="h-3.5 w-3.5 text-violet-600" /> {selectedBranchFilter === "all" ? "Todas las sucursales" : (branchById.get(selectedBranchFilter)?.name || "Sucursal")}
               </span>
             </div>
