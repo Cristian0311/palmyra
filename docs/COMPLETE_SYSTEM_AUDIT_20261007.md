@@ -338,9 +338,9 @@ Correcto:
 - recuperación de chunks fallidos cuando existe red.
 - IndexedDB + localStateStorage.
 
-Riesgo:
-- vendor-xlsx y vendor-charts están excluidos del precache.
-- Debe ejecutarse prueba de entrada en frío offline a Reports/exportación.
+Verificación:
+- Los chunks vendor-xlsx y vendor-charts ya están incluidos en el precache PWA.
+- Sigue siendo necesaria la prueba física de entrada en frío offline a Reports/exportación.
 
 ## 7. Persistencia local
 
@@ -405,24 +405,12 @@ Recomendación:
 
 ## 10. CI / calidad
 
-Último workflow PALMYRA CI:
-- run 37583315459
-- resultado: failure
-- paso que falla: TypeScript
-- unit tests, admin typecheck/build, architecture audit y production build quedan omitidos por fail-fast.
+La corrección offline del POS quedó validada por GitHub Actions:
+- run 37636839088 sobre `d0a9f1c2684fb7510e53a1ee2d6dedbfb46ebe97`: SUCCESS.
+- run posterior 37637146938 sobre `a333cda5079b575417c2449b015ce6c58fdbfc6c`: SUCCESS.
+- TypeScript, unit tests, Admin TypeScript/build, architecture audit y production build terminaron correctamente.
 
-Errores actuales verificados:
-- Layout.tsx: typing de requiredFeature.
-- getClosureReceiptLines.ts: salesPercentage no existe en User.
-- useReportsPayroll.ts: salesPercentage no existe en User.
-- CashRegister.tsx: calculateEmployeeSaleCommission no definida/importada.
-- Inventory.tsx: 'stock' no pertenece al union de activeTab.
-- POS.tsx: salesPercentage no existe en User.
-- Team.tsx: compensationType no pertenece al input de updateEmployee.
-- employeeCompensation.ts: salesPercentage no existe en User.
-- processQueueItem.ts: argumentos incorrectos en replaceWarehousesInventory.
-- processQueueItem.ts: reconcileSupplierReceiveCanonical no definida/importada.
-- processQueueItem.ts: deleteBankCardFromSupabase no definida/importada.
+Los errores de compilación y replay identificados al inicio de la auditoría fueron corregidos en los commits anteriores de la misma rama.
 
 ## 11. Prueba E2E obligatoria antes de declarar “100%”
 
@@ -544,3 +532,32 @@ El núcleo offline-first quedó corregido y validado a nivel de compilación/tes
 
 Las funciones que requieren terceros/red (alta de cuenta, correo, recuperación de contraseña, pagos/cambios de plan, IA remota y canales externos) continúan correctamente clasificadas como online-only.
 
+
+
+## 17. Corrección específica: reanudación de turnos y POS offline total
+
+Se corrigió el flujo que mostraba “No se pudo validar tu contraseña. Verifica la conexión y vuelve a intentarlo.” al reanudar un turno.
+
+Cambios aplicados:
+- Reanudar turno offline usa el verificador local salado de la credencial previamente validada en ese dispositivo.
+- Cuando la red está inestable y `navigator.onLine` todavía indica conexión, una falla de transporte ya no bloquea el reingreso: se intenta la validación local.
+- La resolución del `companyId` para el reingreso también puede apoyarse en el scope local previamente validado cuando falla la consulta remota.
+- Un trabajador que participa en `workingEmployeeIds` valida su propia credencial; no se cambia la atribución del turno.
+- El administrador que retoma un turno de un empleado no cambia la identidad operativa del turno.
+- Al recuperar conexión, PALMYRA descarga y persiste un snapshot de los turnos abiertos visibles para ese terminal.
+- Ese snapshot incluye turno, movimientos de caja, ventas asociadas al turno e inventario de la sucursal.
+- La descarga se ejecuta al volver la conexión y al recuperar el foco de la aplicación.
+- Se protege el estado local frente a operaciones pendientes del outbox para que una actualización remota no borre una venta, cierre o movimiento todavía no sincronizado.
+- La hidratación del turno evita duplicar ventas cuando el mismo registro local y remoto usa identificadores distintos pero relacionados.
+
+GitHub:
+- CI SUCCESS en `37637146938`.
+- Commit final de código: `a333cda5079b575417c2449b015ce6c58fdbfc6c`.
+
+Render:
+- Servicio `palmyracrm`.
+- Deploy `dep-db35g0favr4c739rnki0`.
+- Estado LIVE.
+- Commit desplegado: `a333cda5079b575417c2449b015ce6c58fdbfc6c`.
+
+Este cambio mejora el comportamiento offline real del POS, pero la certificación absoluta de “100%” todavía requiere ejecutar en un dispositivo/navegador físico la secuencia: conexión -> descargar turno abierto -> cortar red -> reanudar -> vender -> cerrar -> reiniciar navegador/dispositivo -> reconectar -> confirmar sincronización, además de la prueba real de impresora Bluetooth/USB y concurrencia entre terminales.
