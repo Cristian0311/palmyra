@@ -678,6 +678,13 @@ export default function Settings() {
               <div><h3 className="text-xs font-black text-primary uppercase tracking-wider">Impresora térmica</h3><p className="text-[8px] font-bold text-muted uppercase tracking-tight">Configuración que queda guardada por empresa</p></div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <label className="flex items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/60 dark:bg-indigo-950/20 dark:border-indigo-900/40 p-3 cursor-pointer md:col-span-2">
+                <div className="min-w-0">
+                  <span className="block text-[10px] font-black text-indigo-900 dark:text-indigo-100 uppercase">Siempre conectarse automáticamente</span>
+                  <span className="block text-[8px] font-semibold text-indigo-700/80 dark:text-indigo-300/80 mt-0.5">Al abrir PALMYRA o la PWA intentará reconectar la última impresora autorizada.</span>
+                </div>
+                <input type="checkbox" checked={autoConnectPrinter} onChange={e => { setAutoConnectPrinter(e.target.checked); setThermalPrinterAutoConnect(e.target.checked); }} className="h-4 w-4 accent-indigo-600 shrink-0" />
+              </label>
               {[['showLogo','Mostrar logo'],['showAddress','Mostrar dirección'],['showPhone','Mostrar teléfono'],['showFooter','Mostrar pie del ticket'],['autoPrint','Imprimir automáticamente']].map(([key,label]) => (
                 <label key={key} className="flex items-center justify-between gap-3 rounded-xl border border-base bg-primary p-3 cursor-pointer">
                   <span className="text-[10px] font-black text-primary uppercase">{label}</span>
