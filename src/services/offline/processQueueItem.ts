@@ -21,7 +21,7 @@ import {
   pushProductToSupabase, pushUserToSupabase, pushWarrantyToSupabase, pushTimeShiftToSupabase, deleteBankCardFromSupabase,
   pushQuoteToSupabase, pushBankCardToSupabase, pushReturnToSupabase,
   pushSupplierToSupabase, pushSupplierOrderToSupabase, pushInventoryAuditToSupabase,
-  pushSalarySettlementToSupabase, pushInventoryToSupabase,
+  pushSalarySettlementToSupabase, pushInventoryToSupabase, pushCurrencyToSupabase,
   pushCashMovementToSupabase, deleteCashMovementFromSupabase, pushCashSessionMetadataToSupabase,
   applyInventoryAdjustmentToSupabase, reconcileInventoryToSupabase
 } from '../supabaseSync';
@@ -441,7 +441,16 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       if (!ok) throw new Error('No se pudo sincronizar el empleado pendiente.');
       return true;
     }
-    case 'currency': { const c=data; const {error}=await supabase.from('currencies').upsert({code:c.code,name:c.name,symbol:c.symbol,rate_to_base:c.rateToBase,is_base:c.isBase},{onConflict:'code'}); if(error) throw error; return true; }
+    case 'currency_rate': {
+      const ok = await pushCurrencyToSupabase(data as any);
+      if (!ok) throw new Error('No se pudo sincronizar la tasa de cambio pendiente.');
+      return true;
+    }
+    case 'currency': {
+      const ok = await pushCurrencyToSupabase(data as any);
+      if (!ok) throw new Error('No se pudo sincronizar la tasa de cambio pendiente.');
+      return true;
+    }
     case 'warranty': {
       const ok = await pushWarrantyToSupabase(data as any);
       if (!ok) throw new Error('No se pudo sincronizar la garantía pendiente.');
