@@ -90,7 +90,7 @@ export function useReportsPayroll(params: {
           return sum + sessionTx.reduce((sellerSum, tx) => {
             const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
             return sellers.includes(sellerId)
-              ? sellerSum + calculateEmployeeSaleCommission(seller, tx, products, sellers.length)
+              ? sellerSum + calculateEmployeeSaleCommission(seller, tx, Array.from(productById.values()), sellers.length)
               : sellerSum;
           }, 0);
         }, 0);
