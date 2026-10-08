@@ -63,6 +63,29 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
   if (!reachability.ok) {
     return { processed: 0, failed: 0, remaining: getOfflineQueueCount(), conflicts: getOfflineConflictCount(), errors: [{ type: 'network', actionId: 'connectivity', message: reachability.message || 'Supabase no está accesible todavía.' }] };
   }
+
+  // Reanima conflictos creados por fallos de infraestructura que ya fueron
+  // corregidos en Supabase. No se elimina ninguna operación: solo vuelve a
+  // estado pending para que el replay normal la procese con las nuevas reglas.
+  const hydratedQueue = getOfflineQueue();
+  const repairedQueue = hydratedQueue.map((item: any) => {
+    if (item?.status !== 'conflict') return item;
+    const message = String(item?.lastError || '');
+    const repairable =
+      /permission denied for function plan_entity_limit_ok/i.test(message) ||
+      /permission denied for table compensation_settings/i.test(message) ||
+      /no unique or exclusion constraint matching the ON CONFLICT specification/i.test(message) ||
+      /variant_stock_record_missing/i.test(message) ||
+      /No se pudo sincronizar un movimiento de caja del turno/i.test(message);
+    return repairable
+      ? { ...item, status: 'pending', lastError: message, retryCount: Number(item.retryCount || 0) }
+      : item;
+  });
+  if (repairedQueue.some((item: any, i: number) => item !== hydratedQueue[i])) {
+    setOfflineQueueMemory(repairedQueue);
+    try { await persistOfflineQueueSnapshot(repairedQueue); } catch {}
+  }
+
   const allQueueAtStart = getOfflineQueue();
   const queueAtStart = allQueueAtStart.filter(item => item.status !== 'conflict');
   if (!queueAtStart.length) return { processed: 0, failed: 0, remaining: 0, conflicts: getOfflineConflictCount(), errors: [] };
