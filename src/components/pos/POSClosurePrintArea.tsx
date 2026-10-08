@@ -1,4 +1,4 @@
-import type { CashRegisterSession, Currency, Product, ReceiptConfig, Transaction, User } from "../../types";
+import type { CashRegisterSession, Currency, Product, ReceiptConfig, Transaction, User, SalarySettlement } from "../../types";
 
 type Props = {
   session: CashRegisterSession | null;
@@ -12,6 +12,7 @@ type Props = {
   formatMoney: (amount: number, symbol?: string) => string;
   formatSalaryCUP: (value: number) => string;
   companyCompensation?: { mode: 'fixed_product' | 'sales_percent'; percentRate: number };
+  salarySettlement?: SalarySettlement | null;
 };
 
 export function POSClosurePrintArea({
@@ -26,6 +27,7 @@ export function POSClosurePrintArea({
   formatMoney,
   formatSalaryCUP,
   companyCompensation = { mode: 'fixed_product', percentRate: 0 },
+  salarySettlement,
 }: Props) {
   if (!session) return null;
 
@@ -79,8 +81,9 @@ export function POSClosurePrintArea({
     }, 0);
   }, 0);
 
-  const baseSalary = companyCompensation.mode === 'sales_percent' ? 0 : Math.max(0, Number(employee?.baseSalary) || 0);
-  const totalSalary = baseSalary + commissions;
+  const baseSalary = salarySettlement?.baseSalary ?? (companyCompensation.mode === 'sales_percent' ? 0 : Math.max(0, Number(employee?.baseSalary) || 0));
+  const settledCommissions = salarySettlement?.commissions ?? commissions;
+  const totalSalary = salarySettlement?.total ?? (baseSalary + settledCommissions);
 
   return (
     <div
@@ -181,7 +184,7 @@ export function POSClosurePrintArea({
         </div>
         <div className="flex justify-between text-[10px]">
           <span>{companyCompensation.mode === 'sales_percent' ? `Comisión global (${companyCompensation.percentRate}%):` : 'Comisiones Productos:'}</span>
-          <span>{formatSalaryCUP(commissions)}</span>
+          <span>{formatSalaryCUP(settledCommissions)}</span>
         </div>
         <div className="flex justify-between font-black text-xs pt-1 border-t border-dotted border-black">
           <span>SALARIO A PAGAR:</span>
