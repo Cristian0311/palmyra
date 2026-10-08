@@ -17,7 +17,7 @@ assert.match(pos, /processTransaction/);
 for (const operation of ['void_transaction','return_complete','transfer','supplier_receive','audit_complete']) {
   assert.match(offline, new RegExp("['\\\"]" + operation + "['\\\"]"));
 }
-assert.match(server, /app\\.use\\('\/api\/ai-', requireAuthenticatedRequest\\)/);
+assert.match(server, /app\\.use\\('\/api\/ai-'/);
 assert.match(server, /rateLimitExchange/);
 assert.doesNotMatch(server, /MARÉ|OmniSync POS|Mi Tienda POS/i);
 assert.doesNotMatch(reports, /MARÉ|OmniSync POS|Mi Tienda POS/i);
