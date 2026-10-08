@@ -11,6 +11,7 @@ type Props = {
   baseCurrency: Currency;
   formatMoney: (amount: number, symbol?: string) => string;
   formatSalaryCUP: (value: number) => string;
+  companyCompensation?: { mode: 'fixed_product' | 'sales_percent'; percentRate: number };
 };
 
 export function POSClosurePrintArea({
@@ -24,6 +25,7 @@ export function POSClosurePrintArea({
   baseCurrency,
   formatMoney,
   formatSalaryCUP,
+  companyCompensation = { mode: 'fixed_product', percentRate: 0 },
 }: Props) {
   if (!session) return null;
 
@@ -57,33 +59,27 @@ export function POSClosurePrintArea({
     0
   );
 
-  const commissions = sessionTransactions.reduce(
-    (sum, transaction) =>
-      sum +
-      (transaction.items || []).reduce((itemSum, item) => {
-        const productId =
-          typeof item.product === "string"
-            ? item.product
-            : item.product?.id;
-        const product = products.find((candidate) => candidate.id === productId);
-        return itemSum + (product?.commissionValue || 0) * item.quantity;
-      }, 0),
-    0
-  );
-
   const employee =
-    users.find(
-      (user) =>
-        user.id === session.userId || user.name === session.workerName
-    ) ||
-    users.find(
-      (user) =>
-        user.name?.toLowerCase() === session.workerName?.toLowerCase()
-    ) ||
+    users.find((user) => user.id === session.userId || user.name === session.workerName) ||
+    users.find((user) => user.name?.toLowerCase() === session.workerName?.toLowerCase()) ||
     users.find((user) => user.role === "employee") ||
     currentUser;
 
-  const baseSalary = employee?.baseSalary || 0;
+  const commissions = sessionTransactions.reduce((sum, transaction) => {
+    const sellers = transaction.sellerEmployeeIds?.length ? transaction.sellerEmployeeIds : [transaction.userId];
+    const splitFactor = Math.max(1, sellers.length);
+    if (!sellers.includes(session.userId) && !sellers.includes(employee?.id || '')) return sum;
+    if (companyCompensation.mode === 'sales_percent') {
+      return sum + (Math.max(0, Number(transaction.total) || 0) * companyCompensation.percentRate / 100) / splitFactor;
+    }
+    return sum + (transaction.items || []).reduce((itemSum, item) => {
+      const productId = typeof item.product === "string" ? item.product : item.product?.id;
+      const product = products.find(candidate => candidate.id === productId);
+      return itemSum + (Math.max(0, Number(product?.commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) / splitFactor;
+    }, 0);
+  }, 0);
+
+  const baseSalary = companyCompensation.mode === 'sales_percent' ? 0 : Math.max(0, Number(employee?.baseSalary) || 0);
   const totalSalary = baseSalary + commissions;
 
   return (
@@ -181,11 +177,11 @@ export function POSClosurePrintArea({
         </div>
         <div className="flex justify-between text-[10px]">
           <span>Salario Base:</span>
-          <span>{formatMoney(baseSalary, baseCurrency.symbol)}</span>
+          <span>{formatSalaryCUP(baseSalary)}</span>
         </div>
         <div className="flex justify-between text-[10px]">
-          <span>Comisiones Productos:</span>
-          <span>+{formatMoney(commissions, baseCurrency.symbol)}</span>
+          <span>{companyCompensation.mode === 'sales_percent' ? `Comisión global (${companyCompensation.percentRate}%):` : 'Comisiones Productos:'}</span>
+          <span>{formatSalaryCUP(commissions)}</span>
         </div>
         <div className="flex justify-between font-black text-xs pt-1 border-t border-dotted border-black">
           <span>SALARIO A PAGAR:</span>
