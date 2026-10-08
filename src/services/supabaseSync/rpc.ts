@@ -244,7 +244,35 @@ export async function callDeleteBankTransactionRPC(transactionId:string){ try{co
 export async function callDeleteBankCardRPC(cardId:string){ try{const supabase=getSupabase()!;const {companyId}=await getActiveTenant();const {error}=await supabase.from('bank_accounts').update({active:false}).eq('id',cardId).eq('company_id',companyId);if(error)throw error;return {success:true as const,error:undefined,errorCode:undefined,data:{id:cardId}};}catch(e:any){return errorResult(e);} }
 export async function callCompleteReturnRPC(returnId:string,userId:string){try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_complete_return',{p_return_id:returnId,p_company_id:companyId});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);}}
 export async function callVoidTransactionRPC(id:string,userId:string,reason:string){try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_void_sale',{p_sale_id:id,p_company_id:companyId,p_reason:reason||'Anulación de venta'});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);}}
-export async function callCancelSessionRPC(sessionId:string,userId:string,reason:string,password?:string){try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_cancel_cash_session',{p_session_id:sessionId,p_company_id:companyId,p_reason:reason||'Cancelación de turno',p_password:password||null});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);}}
+export async function callCancelSessionRPC(sessionId:string,userId:string,reason:string,password?:string){
+  try{
+    const {companyId}=await getActiveTenant();
+    const data=await rpc('palmyra_cancel_cash_session',{
+      p_session_id:sessionId,
+      p_company_id:companyId,
+      p_reason:reason||'Cancelación de turno',
+      p_password:password||null
+    });
+    return {success:true as const,error:undefined,errorCode:undefined,data};
+  }catch(e:any){
+    const raw=String(e?.message||'');
+    const friendly: Record<string,string> = {
+      employee_password_required: 'Introduce la contraseña del empleado que abrió la caja.',
+      employee_password_invalid: 'La contraseña no coincide con la del empleado que abrió la caja.',
+      session_employee_required: 'Este turno no tiene un empleado de apertura asociado.',
+      permission_denied: 'No tienes permiso para cancelar turnos de caja.',
+      cash_session_not_found: 'El turno de caja ya no existe o no pertenece a esta empresa.',
+      authentication_required: 'La sesión expiró. Inicia sesión nuevamente.'
+    };
+    const key=Object.keys(friendly).find(k=>raw.includes(k));
+    return {
+      success:false as const,
+      error:key ? friendly[key] : (raw || 'No se pudo cancelar el turno.'),
+      errorCode:e?.code||e?.status||undefined,
+      data:undefined
+    };
+  }
+}
 export async function callCloseSessionRPC(sessionId:string,closingBalances:any[],closedAt:string,notes:string,settlement:SalarySettlement,expectedCash?:number){
   try{
     const {companyId}=await getActiveTenant();
