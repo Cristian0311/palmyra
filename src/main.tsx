@@ -12,7 +12,7 @@ import { protectPwaStorage } from './services/pwaStorageHealth';
 // Recover gracefully when a cached HTML/service-worker version references a
 // chunk removed by a newer deployment. Vite emits this event for failed
 // dynamic imports; prevent React from being left on a blank screen.
-const CHUNK_RECOVERY_KEY = 'omnisync-chunk-recovery';
+const CHUNK_RECOVERY_KEY = 'palmyra-chunk-recovery';
 const CHUNK_RECOVERY_TTL_MS = 30_000;
 
 const DYNAMIC_CHUNK_RECOVERY_KEY = 'palmyra-dynamic-chunk-recovery';
@@ -43,7 +43,7 @@ window.addEventListener('vite:preloadError', (event) => {
   // old HTML shell with the current hashed chunks.
   if (!navigator.onLine) {
     event.preventDefault();
-    window.dispatchEvent(new CustomEvent('omni:chunk-offline-error'));
+    window.dispatchEvent(new CustomEvent('palmyra:chunk-offline-error'));
     return;
   }
 
