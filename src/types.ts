@@ -347,7 +347,7 @@ export interface SupplierOrder {
     cost: number;
   }[];
   total: number;
-  status: 'pending' | 'received' | 'cancelled';
+  status: 'pending' | 'draft' | 'received' | 'cancelled';
   branchId: string;
   transportDetails?: string;
   transportCost?: number;
