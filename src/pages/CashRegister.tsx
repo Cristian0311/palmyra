@@ -9,12 +9,35 @@ import { InfoTooltip } from "../components/InfoTooltip";
 import { cn } from "../lib/utils";
 import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
 import { calculateEmployeeSaleCommission } from "../services/employeeCompensation";
+import { loadCompensationSettings } from "../services/team";
+import { getActiveTenant } from "../services/tenant";
 
 export default function CashRegister() {
   const { branches, currentBranchId, setCurrentBranch, getCurrentSession, openSession, closeSession, getBaseCurrency, currencies, currentUser, transactions, users, products, salarySettlements, updateSalarySettlement, cashSessions } = useStore(useShallow((state) => ({ branches: state.branches, currentBranchId: state.currentBranchId, setCurrentBranch: state.setCurrentBranch, getCurrentSession: state.getCurrentSession, openSession: state.openSession, closeSession: state.closeSession, getBaseCurrency: state.getBaseCurrency, currencies: state.currencies, currentUser: state.currentUser, transactions: state.transactions, users: state.users, products: state.products, salarySettlements: state.salarySettlements, updateSalarySettlement: state.updateSalarySettlement, cashSessions: state.cashSessions })));
   const session = getCurrentSession(currentBranchId, currentUser?.id || 'u1');
   const baseCurrency = getBaseCurrency();
   const productCatalog = products || [];
+  const [companyCompensation, setCompanyCompensation] = useState<{ mode: 'fixed_product' | 'sales_percent'; percentRate: number }>({ mode: 'fixed_product', percentRate: 0 });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const tenant = await getActiveTenant();
+        if (!tenant?.companyId) return;
+        const settings = await loadCompensationSettings(tenant.companyId);
+        if (!cancelled) {
+          setCompanyCompensation({
+            mode: settings.mode,
+            percentRate: Math.max(0, Math.min(100, Number(settings.percentRate) || 0)),
+          });
+        }
+      } catch (error) {
+        console.warn('[PALMYRA] No se pudo cargar la compensación global en Caja:', error);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
   const currentBranch = branches.find(b => b.id === currentBranchId);
 
   // El arqueo siempre debe mostrar efectivo CUP, aunque la configuración
@@ -114,8 +137,8 @@ export default function CashRegister() {
           // La comisión configurada en el producto es fija: X CUP por unidad.
           // Se toma del catálogo, no del precio de venta ni de un porcentaje.
           const employee = users.find(u => u.id === pendingSettlement.userId);
-          const percentageMode = employee?.compensationType === 'sales_percentage';
-          const percentageRate = Math.max(0, Math.min(100, Number(employee?.salesPercentage ?? employee?.commissionRate) || 0));
+          const percentageMode = companyCompensation.mode === 'sales_percent';
+          const percentageRate = companyCompensation.percentRate;
           const unitCommission = Number(
             product?.commissionValue ??
             rawProduct?.commissionValue ??
@@ -150,7 +173,7 @@ export default function CashRegister() {
       });
 
     return Array.from(rows.values()).sort((a, b) => b.quantity - a.quantity);
-  }, [pendingSettlement, transactions, currentBranchId, cashSessions]);
+  }, [pendingSettlement, transactions, currentBranchId, cashSessions, companyCompensation]);
 
 
   const [openingAmount, setOpeningAmount] = useState("");
@@ -176,6 +199,9 @@ export default function CashRegister() {
   // Los salarios y las comisiones fijas de productos siempre se liquidan en CUP/MN.
   // No dependen de la moneda base ni del precio final de venta.
   const formatSalaryCUP = (value: number) => `${Math.round(Number(value) || 0).toLocaleString('es-ES')} CUP`;
+  const compensationLabel = companyCompensation.mode === 'sales_percent'
+    ? `Porcentaje sobre el total de la venta · ${companyCompensation.percentRate}%`
+    : 'CUP fijo por producto';
 
   const handleOpen = (e: React.FormEvent) => {
     e.preventDefault();
@@ -235,7 +261,7 @@ export default function CashRegister() {
   // Liquidación del turno: detalle real de productos vendidos y salario generado.
   // Se calcula con las mismas reglas usadas al cerrar el turno, incluyendo reparto
   // de comisión cuando una venta tiene varios vendedores.
-  const turnProductSalaryRows = useTurnProductSalaryRows(session, transactions, currentBranchId, products || [], users || []);
+  const turnProductSalaryRows = useTurnProductSalaryRows(session, transactions, currentBranchId, products || [], users || [], companyCompensation);
 
   const totalToDeliver = useMemo(() => {
     if (!session) return 0;
@@ -306,7 +332,9 @@ export default function CashRegister() {
 
       sellers.forEach(sellerId => {
         const employee = users.find(u => u.id === sellerId);
-        const commission = calculateEmployeeSaleCommission(employee, tx, productCatalog, splitFactor);
+        const commission = companyCompensation.mode === 'sales_percent'
+          ? (Math.max(0, Number(tx.total) || 0) * companyCompensation.percentRate / 100) / splitFactor
+          : calculateEmployeeSaleCommission(employee, tx, productCatalog, splitFactor);
         if (!employeeCommissions[sellerId]) employeeCommissions[sellerId] = 0;
         employeeCommissions[sellerId] += commission;
       });
@@ -584,7 +612,7 @@ export default function CashRegister() {
                     <div className="flex items-center justify-between gap-3 border-b border-indigo-100 pb-3">
                       <div>
                         <h4 className="text-[10px] font-black text-indigo-900 uppercase tracking-[0.18em]">Liquidación del turno</h4>
-                        <p className="text-[8px] font-bold text-indigo-500 uppercase mt-1">Comisión calculada según la modalidad de pago configurada</p>
+                        <p className="text-[8px] font-black text-indigo-600 uppercase mt-1">{compensationLabel}</p>
                       </div>
                       <span className="text-[8px] font-black text-indigo-500 uppercase whitespace-nowrap">
                         {turnProductSalaryRows.reduce((sum, row) => sum + row.quantity, 0)} unidades
@@ -875,7 +903,7 @@ export default function CashRegister() {
                         <div className="text-right">
                           <p className="text-[10px] font-black text-slate-900">{formatMoney(actual, eb.currencyCode)}</p>
                           <p className={cn("text-[9px] font-black uppercase tracking-tighter", diff >= 0 ? (diff < 0.01 ? "text-slate-400" : "text-emerald-600") : "text-rose-600")}>
-                            {diff > 0 ? "+" : ""}{formatMoney(diff, eb.currencyCode)}
+                            {formatMoney(diff, eb.currencyCode)}
                           </p>
                         </div>
                       </div>
