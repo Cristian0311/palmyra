@@ -65,7 +65,7 @@ const adminNavItems = [
   { name: "Catálogo Online", href: "#online-catalog", icon: Store, public: true, comingSoon: true },
 ];
 
-const APP_VERSION = "V 1.0.2";
+const APP_VERSION = "PALMYRA";
 const APP_UPDATE_NOTES: string[] = [];
 
 const cashierNavItems = [
