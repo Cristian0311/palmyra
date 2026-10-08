@@ -44,12 +44,14 @@ export function calculateExpectedSessionBalances(
   addExpected(expected[0]);
 
   sessionTxs.forEach(transaction => {
-    (transaction.payments || []).forEach(payment => addExpected(payment));
+    (transaction.payments || [])
+      .filter(payment => payment.method === 'cash')
+      .forEach(payment => addExpected(payment));
 
     if (transaction.changePayments?.length) {
-      transaction.changePayments.forEach(change =>
-        addExpected(change, -change.amount),
-      );
+      transaction.changePayments
+        .filter(change => change.method === 'cash')
+        .forEach(change => addExpected(change, -change.amount));
     } else if (transaction.changeGiven && transaction.changeGiven > 0) {
       addExpected(
         {
