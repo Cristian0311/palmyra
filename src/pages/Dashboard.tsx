@@ -285,9 +285,9 @@ export default function Dashboard() {
           className="dashboard-hero-media absolute inset-0 block"
           aria-hidden="true"
         >
-          <source media="(max-width: 767px)" srcSet="/palmyra-dashboard-hero-fixed.webp?v=20261007-mobile" />
+          <source media="(max-width: 767px)" srcSet="/palmyra-dashboard-hero-right.svg?v=20261008-dashboard" />
           <img
-            src="/palmyra-dashboard-hero-fixed.webp?v=20261007-desktop"
+            src="/palmyra-dashboard-hero-right.svg?v=20261008-dashboard"
             alt=""
             className="dashboard-hero-image absolute inset-0 h-full w-full"
             loading="eager"
