@@ -45,16 +45,16 @@ export function useTurnProductSalaryRows(session: CashRegisterSession | null, tr
           const quantity = Number(rawItem.quantity || 0);
           if (!productId || quantity <= 0) return;
 
-          // commissionValue es la comisión FIJA en CUP por unidad.
-          // Nunca usar el precio final de venta para calcular el salario.
           const commissionValue = Number(
             product?.commissionValue ??
             rawItem.product_snapshot?.commissionValue ??
             rawItem.commissionValue ??
             0
           ) || 0;
-          const unitCommission = commissionValue;
-          const salaryPerUnitForSeller = unitCommission / splitFactor;
+          const salaryPerUnitForSeller = employee?.compensationType === 'sales_percentage'
+            ? ((Number(rawItem.price ?? rawItem.unit_price ?? product?.price) || 0) *
+              Math.max(0, Math.min(100, Number(employee.salesPercentage) || 0)) / 100) / splitFactor
+            : commissionValue / splitFactor;
 
           sellers.forEach((sellerId: string) => {
             const employee = users.find(u => u.id === sellerId);
