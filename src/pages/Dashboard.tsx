@@ -342,7 +342,7 @@ export default function Dashboard() {
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/[.07] p-3.5 shadow-xl backdrop-blur-md">
               <p className="text-[7px] font-black uppercase tracking-[.14em] text-violet-200/65">Stock bajo</p>
-              <p className="mt-2 text-base font-black tracking-tight text-white sm:text-lg">{lowStockCount{'}'}</p>
+              <p className="mt-2 text-base font-black tracking-tight text-white sm:text-lg">{lowStockCount}</p>
               <p className="mt-1 text-[8px] font-semibold text-amber-300">Requiere atención</p>
             </div>
           </div>
