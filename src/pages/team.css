@@ -245,10 +245,10 @@
 }
 /* Alta de producto: modal compacto, sin espacios muertos y con scroll interno cuando el contenido lo requiere. */
 .inventory-product-modal{
-  width:min(100%,500px)!important;
-  max-width:500px!important;
-  max-height:min(72dvh,620px)!important;
-  border-radius:18px!important;
+  width:min(100%,672px)!important;
+  max-width:672px!important;
+  max-height:calc(100dvh - 1.5rem)!important;
+  border-radius:28px!important;
 }
 .inventory-product-modal .team-employee-modal-head{
   padding:7px 10px 6px!important;
