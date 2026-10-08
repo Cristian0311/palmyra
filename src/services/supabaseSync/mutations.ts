@@ -67,7 +67,10 @@ export async function pushProductToSupabase(product:Product, options?: { queueOn
       code === 'PGRST001' ||
       code === 'PGRST002' ||
       code === 'PGRST003' ||
-      /failed to fetch|network|timeout|timed out|connection/i.test(message);
+      /failed to fetch|network|timeout|timed out|connection/i.test(message) ||
+      /permission denied for function plan_entity_limit_ok/i.test(message) ||
+      /permission denied for table compensation_settings/i.test(message) ||
+      /no unique or exclusion constraint matching the ON CONFLICT specification/i.test(message);
     const diagnostic = new Error(
       `No se pudo guardar el producto en Supabase.${code ? ` [${code}]` : ''} ${message}${hint ? ` · ${hint}` : ''}`
     );
