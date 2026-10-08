@@ -178,11 +178,13 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
     }
 
     const sessionTxs = get().transactions.filter(t =>
-      t.sessionId
+      t.status === 'completed' &&
+      !t.deletedAt &&
+      (t.sessionId
         ? t.sessionId === session.id
         : (t.branchId === session.branchId &&
            new Date(t.date).getTime() >= new Date(session.openedAt).getTime() &&
-           (!session.closedAt || new Date(t.date).getTime() <= new Date(session.closedAt).getTime()))
+           (!session.closedAt || new Date(t.date).getTime() <= new Date(session.closedAt).getTime())))
     );
     const user = get().users.find(u => u.id === session.userId || u.name?.toLowerCase() === (workerName || session.workerName)?.toLowerCase());
 
