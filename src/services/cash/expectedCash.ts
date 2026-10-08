@@ -12,11 +12,13 @@ export function calculateExpectedCashBase(
   };
   let expected = Number(session.openingBalance) || 0;
   const sessionTxs = (transactions || []).filter((tx) =>
-    tx.sessionId
+    tx.status === 'completed' &&
+    !tx.deletedAt &&
+    (tx.sessionId
       ? tx.sessionId === session.id
       : (tx.branchId === session.branchId &&
          new Date(tx.date).getTime() >= new Date(session.openedAt).getTime() &&
-         (!session.closedAt || new Date(tx.date).getTime() <= new Date(session.closedAt).getTime()))
+         (!session.closedAt || new Date(tx.date).getTime() <= new Date(session.closedAt).getTime())))
   );
   for (const tx of sessionTxs) {
     for (const payment of tx.payments || []) {
