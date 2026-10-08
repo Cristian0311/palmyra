@@ -4,7 +4,7 @@
  * The durable queue itself lives in offlineQueue.ts so the application store can
  * enqueue operations without importing the replay engine or Supabase adapters.
  */
-import { getSupabase, checkSupabaseReachability } from '../lib/supabase';
+import { getSupabase, waitForSupabaseReachability } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import type { OfflineActionType, OfflineQueueItem } from './offlineQueue';
 import type { Transaction, CashRegisterSession, Customer, ReturnItem, InventoryLevel } from '../types';
@@ -52,7 +52,7 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
   }
   const supabase = getSupabase();
   if (!supabase) return { processed: 0, failed: 0, remaining: getOfflineQueueCount(), conflicts: getOfflineConflictCount(), errors: [{ type: 'system', actionId: 'supabase', message: 'Supabase no está disponible en esta sesión.' }] };
-  const reachability = await checkSupabaseReachability();
+  const reachability = await waitForSupabaseReachability(3, 8000);
   // La comprobación de conectividad contiene un await. Dos disparadores
   // (online + intervalo/focus) pueden llegar aquí simultáneamente; volver a
   // comprobar el lock justo después del await evita dos consumidores
