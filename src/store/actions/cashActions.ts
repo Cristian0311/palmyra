@@ -180,6 +180,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
     const sessionTxs = get().transactions.filter(t =>
       t.status === 'completed' &&
       !t.deletedAt &&
+      !String(t.notes || '').startsWith('AJUSTE_') &&
       (t.sessionId
         ? t.sessionId === session.id
         : (t.branchId === session.branchId &&
