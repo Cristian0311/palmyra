@@ -280,23 +280,23 @@ export default function Dashboard() {
   return (
     <div className="space-y-2.5 text-[9px] animate-in fade-in slide-in-from-bottom-2 duration-500 pb-5">
 
-      <section className="dashboard-hero relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100/80 bg-[#12082f] shadow-lg shadow-violet-100/40 min-h-[330px] sm:min-h-[370px] lg:min-h-[390px]">
-        <picture className="dashboard-hero-media absolute inset-0 block" aria-hidden="true">
-          <source media="(max-width: 767px)" srcSet="/palmyra-dashboard-hero.webp?v=20261008-dashboard" />
+      <section className="dashboard-hero relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100/80 bg-[#12082f] shadow-lg shadow-violet-100/40 min-h-[520px] sm:min-h-[370px] lg:min-h-[390px]">
+        <picture className="dashboard-hero-media absolute inset-x-0 top-0 block h-[255px] sm:inset-0 sm:h-auto" aria-hidden="true">
+          <source media="(max-width: 767px)" srcSet="/palmyra-dashboard-hero.webp?v=20261008-dashboard-mobile" />
           <img
             src="/palmyra-dashboard-hero.webp?v=20261008-dashboard"
             alt=""
-            className="dashboard-hero-image absolute inset-0 h-full w-full object-cover object-[78%_center] sm:object-[74%_center] lg:object-[72%_center] scale-[1.01]"
+            className="dashboard-hero-image absolute inset-0 h-full w-full object-cover object-[70%_center] sm:object-[74%_center] lg:object-[72%_center] scale-[1.01]"
             loading="eager"
             decoding="async"
             fetchPriority="high"
           />
         </picture>
         <div
-          className="dashboard-hero-shade absolute inset-0 z-[1] pointer-events-none bg-gradient-to-r from-[#10052f]/95 via-[#1d0d49]/68 to-[#2b1458]/10 sm:from-[#10052f]/92 sm:via-[#1d0d49]/50 sm:to-transparent"
+          className="dashboard-hero-shade absolute inset-0 z-[1] pointer-events-none bg-gradient-to-b from-transparent via-[#12082f]/25 to-[#12082f] sm:bg-gradient-to-r sm:from-[#10052f]/92 sm:via-[#1d0d49]/50 sm:to-transparent"
           aria-hidden="true"
         />
-        <div className="relative z-10 flex min-h-[330px] sm:min-h-[370px] lg:min-h-[390px] items-center px-4 py-7 sm:px-8 lg:px-10">
+        <div className="relative z-10 flex min-h-[520px] sm:min-h-[370px] lg:min-h-[390px] items-end sm:items-center px-4 py-6 sm:px-8 sm:py-7 lg:px-10">
           <div className="w-full max-w-[445px] sm:max-w-[560px]">
             <div className="flex items-center gap-1.5 text-[7.5px] sm:text-[9px] font-black uppercase tracking-[0.14em] text-violet-100 -translate-y-2 sm:-translate-y-1">
               <Sparkles className="h-3.5 w-3.5 shrink-0 text-violet-200" />
