@@ -25,7 +25,7 @@ export default function CashRegister() {
       configured.unshift({
         code: 'CUP',
         name: 'Peso Cubano',
-        symbol: '$',
+        symbol: 'CUP',
         rateToBase: 1,
         isBase: true
       });
@@ -113,6 +113,9 @@ export default function CashRegister() {
           const name = product?.name || 'Producto desconocido';
           // La comisión configurada en el producto es fija: X CUP por unidad.
           // Se toma del catálogo, no del precio de venta ni de un porcentaje.
+          const employee = users.find(u => u.id === pendingSettlement.userId);
+          const percentageMode = employee?.compensationType === 'sales_percentage';
+          const percentageRate = Math.max(0, Math.min(100, Number(employee?.salesPercentage ?? employee?.commissionRate) || 0));
           const unitCommission = Number(
             product?.commissionValue ??
             rawProduct?.commissionValue ??
@@ -120,8 +123,12 @@ export default function CashRegister() {
             (item as any).commissionValue ??
             0
           ) || 0;
-          const salaryPerUnit = unitCommission / splitFactor;
-          const quantity = Number(item.quantity || 0);
+          const quantity = Math.max(0, Number(item.quantity || 0));
+          const saleCommission = percentageMode
+            ? (Math.max(0, Number(tx.total) || 0) * percentageRate / 100) / splitFactor
+            : unitCommission * quantity / splitFactor;
+          const saleQuantity = Math.max(1, tx.items.reduce((sum, line) => sum + Math.max(0, Number(line.quantity || 0)), 0));
+          const salaryPerUnit = percentageMode ? saleCommission / saleQuantity : unitCommission / splitFactor;
 
           const current = rows.get(productId);
           if (current) {
@@ -161,9 +168,9 @@ export default function CashRegister() {
   const [showMovementForm, setShowMovementForm] = useState(false);
   const [movementData, setMovementData] = useState({ type: 'expense' as 'income' | 'expense', amount: '', currencyCode: 'CUP', description: '' });
 
-  const formatMoney = (amount: number, symbol: string) => {
-    const formatted = amount.toLocaleString('es-CU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    return `${symbol} ${formatted}`;
+  const formatMoney = (amount: number, currencyCode = 'CUP') => {
+    const formatted = Number(amount || 0).toLocaleString('es-CU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return \`${currencyCode} ${formatted}\`;
   };
 
   // Los salarios y las comisiones fijas de productos siempre se liquidan en CUP/MN.
@@ -286,9 +293,9 @@ export default function CashRegister() {
     
     // Todas las transacciones de la sucursal durante el turno
     const sessionTxs = transactions.filter(t => {
-      const isAfterOpen = new Date(t.date) >= new Date(session.openedAt);
-      if (!isAfterOpen) return false;
-      return t.branchId === currentBranchId;
+      if (t.status !== 'completed' || t.deletedAt) return false;
+      if (t.sessionId) return t.sessionId === session.id;
+      return t.branchId === currentBranchId && new Date(t.date) >= new Date(session.openedAt);
     });
 
     const employeeCommissions: Record<string, number> = {};
@@ -316,8 +323,7 @@ export default function CashRegister() {
 
     employeesToSettle.forEach(empId => {
       const emp = users.find(u => u.id === empId);
-      // Skip if not found, or if it's an admin
-      if (!emp || emp.role === 'admin') return;
+      if (!emp) return;
 
       const baseSalary = emp.baseSalary || 0;
       const comm = employeeCommissions[empId] || 0;
@@ -484,7 +490,7 @@ export default function CashRegister() {
             </div>
             <div className="text-right">
               <p className="text-slate-500 text-[8px] font-black uppercase tracking-[0.2em] mb-0.5">Fondo Inicial</p>
-              <p className="text-lg font-black tracking-tight">{formatMoney(session.openingBalance, baseCurrency.symbol)}</p>
+              <p className="text-lg font-black tracking-tight">{formatMoney(session.openingBalance, baseCurrency.code)}</p>
             </div>
           </div>
 
@@ -572,13 +578,13 @@ export default function CashRegister() {
                         <h4 className="text-[10px] font-black text-indigo-900 uppercase tracking-[0.18em]">Total a entregar</h4>
                         <p className="text-[8px] font-bold text-indigo-500 uppercase mt-1">Monto esperado del turno</p>
                       </div>
-                      <span className="text-base font-black text-indigo-700">{formatMoney(totalToDeliver, baseCurrency.symbol)}</span>
+                      <span className="text-base font-black text-indigo-700">{formatMoney(totalToDeliver, baseCurrency.code)}</span>
                     </div>
 
                     <div className="flex items-center justify-between gap-3 border-b border-indigo-100 pb-3">
                       <div>
                         <h4 className="text-[10px] font-black text-indigo-900 uppercase tracking-[0.18em]">Liquidación del turno</h4>
-                        <p className="text-[8px] font-bold text-indigo-500 uppercase mt-1">Cada producto cobrado y el salario que corresponde a cada empleado</p>
+                        <p className="text-[8px] font-bold text-indigo-500 uppercase mt-1">Comisión calculada según la modalidad de pago configurada</p>
                       </div>
                       <span className="text-[8px] font-black text-indigo-500 uppercase whitespace-nowrap">
                         {turnProductSalaryRows.reduce((sum, row) => sum + row.quantity, 0)} unidades
@@ -602,7 +608,7 @@ export default function CashRegister() {
                                 <p className="text-[8px] font-black text-slate-800 uppercase leading-tight break-words">{row.name}</p>
                                 <p className="text-[9px] font-black text-slate-800 text-right">{row.quantity}</p>
                                 <p className="text-[9px] font-black text-indigo-700 text-right">{formatSalaryCUP(row.salaryPerUnit)}</p>
-                                <p className="text-[9px] font-black text-indigo-900 text-right">{formatMoney(row.salaryTotal, baseCurrency.symbol)}</p>
+                                <p className="text-[9px] font-black text-indigo-900 text-right">{formatMoney(row.salaryTotal, baseCurrency.code)}</p>
                               </div>
                             ))}
                           </div>
@@ -712,7 +718,7 @@ export default function CashRegister() {
                             "text-[11px] font-black",
                             m.type === 'income' ? "text-emerald-600" : "text-rose-600"
                           )}>
-                            {m.type === 'income' ? '+' : '-'}{formatMoney(m.amount, currencies.find(c => c.code === m.currencyCode)?.symbol || '')}
+                            {m.type === 'income' ? '+' : '-'}{formatMoney(m.amount, m.currencyCode)}
                           </p>
                         </div>
                       ))
@@ -761,7 +767,7 @@ export default function CashRegister() {
                         <div className="flex justify-between items-center">
                           <p className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{sp.quantity} unidad(es)</p>
                           <p className="text-[10px] font-black text-slate-700">
-                            {formatMoney(sp.total, currencies.find(c => c.code === sp.currency)?.symbol || '')}
+                            {formatMoney(sp.total, sp.currency)}
                           </p>
                         </div>
                       </div>
@@ -813,14 +819,14 @@ export default function CashRegister() {
                         </p>
                       </td>
                       <td className="px-5 py-3 text-right">
-                        <p className="text-[10px] font-black text-slate-600">{formatMoney(s.openingBalance, baseCurrency.symbol)}</p>
+                        <p className="text-[10px] font-black text-slate-600">{formatMoney(s.openingBalance, baseCurrency.code)}</p>
                       </td>
                       <td className="px-5 py-3 text-right">
                         <p className={cn(
                           "text-[10px] font-black",
                           s.status === 'open' ? "text-slate-300" : "text-emerald-600"
                         )}>
-                          {s.status === 'open' ? 'EN CURSO' : formatMoney(finalCash, baseCurrency.symbol)}
+                          {s.status === 'open' ? 'EN CURSO' : formatMoney(finalCash, baseCurrency.code)}
                         </p>
                       </td>
                       <td className="px-5 py-3">
@@ -891,7 +897,7 @@ export default function CashRegister() {
                             <p className="text-[9px] font-black text-slate-900 uppercase tracking-tighter">{tx.id.slice(0, 10)}</p>
                             <p className="text-[8px] font-bold text-slate-400 uppercase tracking-tight">{new Date(tx.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                           </div>
-                          <p className="text-xs font-black text-slate-900">{formatMoney(tx.total, baseCurrency.symbol)}</p>
+                          <p className="text-xs font-black text-slate-900">{formatMoney(tx.total, baseCurrency.code)}</p>
                         </div>
                         <div className="flex flex-wrap gap-1">
                           {tx.items.map((item, idx) => (
@@ -947,7 +953,7 @@ export default function CashRegister() {
               <div className="bg-slate-50 rounded-2xl p-4 flex flex-col gap-3">
                 <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-slate-500">
                   <span>Sueldo Base</span>
-                  <span className="text-slate-900">{formatMoney(pendingSettlement.baseSalary, baseCurrency.symbol)}</span>
+                  <span className="text-slate-900">{formatMoney(pendingSettlement.baseSalary, baseCurrency.code)}</span>
                 </div>
                 <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-slate-500">
                   <span>Comisiones</span>
@@ -965,7 +971,7 @@ export default function CashRegister() {
                 <div className="text-left space-y-2 pt-1">
                   <div className="flex items-center justify-between border-b border-slate-200 pb-2">
                     <h4 className="text-[9px] font-black text-slate-500 uppercase tracking-[0.16em]">
-                      Productos vendidos y salario por unidad
+                      Ventas y comisión generada
                     </h4>
                     <span className="text-[8px] font-bold text-slate-400 uppercase">
                       {pendingSettlementProducts.reduce((sum, row) => sum + row.quantity, 0)} unidades
