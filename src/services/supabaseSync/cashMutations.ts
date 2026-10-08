@@ -118,9 +118,19 @@ export async function pushCashSessionToSupabase(session: CashRegisterSession): P
     // ingresos/egresos y turnos offline consecutivos.
 
     return true;
-  } catch (error) {
+  } catch (error:any) {
+    // Offline replay needs the real database error. Converting it to false
+    // here made cash-close failures appear as "[object Object]" and blocked
+    // every dependent salary settlement without an actionable cause.
     await queue('cash_session', session, session.id);
-    return false;
+    if (error instanceof Error) throw error;
+    const raw = error?.message || error?.details || error?.hint || error;
+    const normalized = typeof raw === 'string' ? raw : JSON.stringify(raw);
+    const wrapped:any = new Error(normalized || 'No se pudo sincronizar el turno de caja.');
+    wrapped.code = error?.code;
+    wrapped.details = error?.details;
+    wrapped.hint = error?.hint;
+    throw wrapped;
   }
 }
 
