@@ -34,9 +34,28 @@ import { getOfflineQueueCount } from "../services/offlineQueue";
 import PlanFeatureGate from "../components/PlanFeatureGate";
 import { canUsePlanFeature } from "../services/planAccess";
 import { loadSaaSContext } from "../services/saas";
+import { getActiveTenant } from "../services/tenant";
+import { loadCompensationSettings } from "../services/team";
 import { printThermalReceipt, format58mmLine } from "../lib/escpos";
 
 export default function Reports() {
+  const [companyCompensation, setCompanyCompensation] = useState<{ mode: 'fixed_product' | 'sales_percent'; percentRate: number }>({ mode: 'fixed_product', percentRate: 0 });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const tenant = await getActiveTenant();
+        if (!tenant?.companyId) return;
+        const settings = await loadCompensationSettings(tenant.companyId);
+        if (!cancelled) setCompanyCompensation({ mode: settings.mode, percentRate: Math.max(0, Math.min(100, Number(settings.percentRate) || 0)) });
+      } catch (error) {
+        console.warn('[Reports] No se pudo cargar la compensación global:', error);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const store = useStore(useShallow((state) => ({
     addInformationalSoldProductToSession: state.addInformationalSoldProductToSession,
     addNotification: state.addNotification,
@@ -323,6 +342,7 @@ export default function Reports() {
     selectedWorkerFilter,
     selectedFilterDate,
     sessionFilter,
+    companyCompensation,
   });
 
   const filteredCashSessions = filteredSessions;
