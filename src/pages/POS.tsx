@@ -59,7 +59,7 @@ export default function POS() {
       }
     })();
     return () => { cancelled = true; };
-  }, [currentUser?.id]);
+  }, []);
 
   // Suscripción única al estado operativo del POS. currentBranchId es el alias
   // interno existente del almacén activo y no reintroduce la capa legacy.
@@ -3646,7 +3646,7 @@ export default function POS() {
                     }, 0);
                   }, 0);
                 }, 0);
-                const baseSalary = settlement?.baseSalary ?? (companyCompensation.mode === 'sales_percent' ? 0 : getSalaryBase({ ...(employee || currentUser), compensationType: 'fixed_product' }));
+                const baseSalary = settlement?.baseSalary ?? (companyCompensation.mode === 'sales_percent' ? 0 : Math.max(0, Number(employee?.baseSalary ?? currentUser?.baseSalary) || 0));
                 const commissions = settlement?.commissions ?? fallbackCommissions;
                 const totalSalary = (settlement?.total ?? (baseSalary + commissions)) - deduction;
                 
