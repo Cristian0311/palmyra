@@ -3148,6 +3148,8 @@ export default function POS() {
                           </div>
                         );
                       })()}
+                    </div>
+
                     <div className="space-y-3">
                       <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest border-b border-slate-100 pb-2">Arqueo de Efectivo Físico</h4>
                       <div className="grid grid-cols-2 gap-3">
