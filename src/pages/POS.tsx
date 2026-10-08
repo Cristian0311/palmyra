@@ -3120,17 +3120,30 @@ export default function POS() {
                         const totalSales = sessionTx.reduce((sum, tx) => sum + (tx.total || 0), 0);
                         
                         const productCommissions = sessionTx.reduce((sum, tx) => {
+                          const sellerIds = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
+                          const splitFactor = Math.max(1, sellerIds.length);
                           return sum + (tx.items || []).reduce((itemSum, item) => {
                             const prodId = typeof item.product === 'string' ? item.product : item.product?.id;
                             const prodObj = products.find(p => p.id === prodId);
-                            const commVal = prodObj?.commissionValue || 0;
-                            return itemSum + (commVal * (item.quantity || 0));
+                            const unitPrice = Number(item.price ?? prodObj?.price ?? 0) || 0;
+                            const fixed = Number(prodObj?.commissionValue || 0) || 0;
+                            const lineTotal = unitPrice * (Number(item.quantity) || 0);
+                            return itemSum + sellerIds.reduce((sellerSum, sellerId) => {
+                              const seller = users.find(u => u.id === sellerId) || sessionUser;
+                              const type = seller?.compensationType || 'fixed_product';
+                              if (type === 'sales_percentage') {
+                                const percentage = Math.max(0, Math.min(100, Number(seller?.salesPercentage) || 0));
+                                return sellerSum + (lineTotal * percentage / 100) / splitFactor;
+                              }
+                              return sellerSum + (fixed * (Number(item.quantity) || 0)) / splitFactor;
+                            }, 0);
                           }, 0);
                         }, 0);
 
-                        // La liquidación por producto es exclusivamente la comisión fija
-                        // configurada en CUP por unidad. No se mezcla con el precio de venta
-                        // ni con una comisión porcentual del total vendido.
+                        const compensationLabel = sessionUser.compensationType === 'sales_percentage'
+                          ? 'Porcentaje sobre ventas · ' + Math.max(0, Math.min(100, Number(sessionUser.salesPercentage) || 0)) + '%'
+                          : 'Comisión fija por producto';
+
                         const totalCommissions = productCommissions;
                         const totalSalary = (sessionUser.baseSalary || 0) + totalCommissions;
                         
@@ -3152,7 +3165,8 @@ export default function POS() {
                                 <p className="text-sm font-black text-amber-900">{formatSalaryCUP(sessionUser.baseSalary || 0)}</p>
                               </div>
                               <div>
-                                <p className="text-[8px] font-bold text-amber-600 uppercase tracking-tighter">Comisiones por productos</p>
+                                <p className="text-[8px] font-bold text-amber-600 uppercase tracking-tighter">Forma de pago</p>
+                                <p className="text-[10px] font-black text-emerald-700">{compensationLabel}</p>
                                 <p className="text-sm font-black text-emerald-700">+{formatSalaryCUP(totalCommissions)}</p>
                                 {productCommissions > 0 && (
                                   <p className="text-[7px] text-emerald-600 font-bold mt-0.5">({formatSalaryCUP(productCommissions)} por productos)</p>
@@ -3214,6 +3228,21 @@ export default function POS() {
                           <div key={c.code} className="bg-slate-50 p-3 rounded-xl border border-slate-100 focus-within:ring-2 focus-within:ring-emerald-500 transition-all">
                             <label className="block text-[8px] font-black text-emerald-600 uppercase tracking-widest mb-1">Efectivo {c.code}</label>
                             <input type="number" min="0" step="0.01" value={closingBalances[c.code + '-cash'] || ''} onFocus={(e) => e.target.select()} onChange={(e) => setClosingBalances({ ...closingBalances, [c.code + '-cash']: parseFloat(e.target.value) || 0 })} className="w-full bg-transparent border-none focus:ring-0 outline-none font-black text-slate-900 text-sm p-0" placeholder="0.00" />
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest border-b border-slate-100 pb-2">Resumen de pagos del turno</h4>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {expectedBalances.map((line) => (
+                          <div key={line.currencyCode + '-' + line.method} className="bg-white border border-slate-200 rounded-xl px-3 py-2 flex items-center justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-[8px] font-black text-slate-500 uppercase">{line.method === 'cash' ? 'Efectivo' : 'Transferencia'} · {line.currencyCode}</p>
+                              <p className="text-[7px] font-bold text-slate-400">Esperado en arqueo</p>
+                            </div>
+                            <span className="text-xs font-black text-slate-900 whitespace-nowrap">{formatMoney(Number(line.amount) || 0, currencies.find(c => c.code === line.currencyCode)?.symbol || line.currencyCode)}</span>
                           </div>
                         ))}
                       </div>
