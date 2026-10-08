@@ -382,10 +382,14 @@ export function initOfflineSyncWatcher(): () => void {
     try {
       const res = await processOfflineQueue();
       if (res.remaining > 0 || res.conflicts > 0) {
+        const pendingDetails = getOfflineQueue()
+          .filter(item => item.status !== 'synced' && item.status !== 'conflict')
+          .map(item => `${item.type} · ${item.actionId}: ${item.lastError || 'Pendiente por dependencia de otra operación.'}`);
         const details = [
-          res.errors?.length ? res.errors.map(e => `${e.type} · ${e.actionId}: ${e.message}`).join('\n') : '',
+          ...(res.errors || []).map(e => `${e.type} · ${e.actionId}: ${e.message}`),
+          ...pendingDetails,
           res.conflicts > 0 ? `${res.conflicts} operación(es) quedaron en conflicto y no se volverán a reintentar hasta resolverlas.` : ''
-        ].filter(Boolean).join('\n');
+        ].filter(Boolean).filter((v,i,a) => a.indexOf(v) === i).slice(0, 12).join('\n');
         useStore.getState().addNotification(
           `Sincronización parcial: ${res.processed} procesadas; ${res.remaining} pendientes; ${res.conflicts} en conflicto.`,
           res.conflicts > 0 ? 'warning' : 'warning',
