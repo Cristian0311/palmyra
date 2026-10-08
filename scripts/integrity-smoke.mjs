@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 const read = (p) => fs.readFileSync(p, 'utf8');
 const store = read('src/store/useStore.ts');
-const offline = read('src/services/offlineSync.ts');
+const offline = read('src/services/offlineQueue.ts');
 const pos = read('src/pages/POS.tsx');
 const server = read('server.ts');
 const reports = read('src/pages/Reports.tsx');
