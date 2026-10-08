@@ -66,8 +66,6 @@ const adminNavItems = [
 ];
 
 const APP_VERSION = "PALMYRA";
-const APP_UPDATE_NOTES: string[] = [];
-
 const cashierNavItems = [
   { name: "Soporte", href: "/help", icon: Headphones, public: true },
   { name: "POS", href: "/pos", icon: ShoppingCart },
