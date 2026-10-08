@@ -659,7 +659,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         : Promise.resolve({data:null,error:null});
       const { data: persisted, error: verifyError } = await persistedQuery;
       if (verifyError) throw verifyError;
-      if (!persisted || persisted.status === 'refunded' || persisted.status === 'cancelled') {
+      if (!persisted || persisted.status !== 'completed') {
         throw new Error('Supabase no confirmó la venta como completada después de procesarla');
       }
 
