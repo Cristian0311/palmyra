@@ -280,50 +280,47 @@ export default function Dashboard() {
   return (
     <div className="space-y-2.5 text-[9px] animate-in fade-in slide-in-from-bottom-2 duration-500 pb-5">
 
-      <section className="dashboard-hero relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100/80 bg-[#f6f1ff] shadow-lg shadow-violet-100/40 min-h-[420px] sm:min-h-[380px] lg:min-h-[360px]">
-        <picture
-          className="dashboard-hero-media absolute inset-0 block"
-          aria-hidden="true"
-        >
-          <source media="(max-width: 767px)" srcSet="/palmyra-dashboard-hero-right.svg?v=20261008-dashboard" />
+      <section className="dashboard-hero relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100/80 bg-[#12082f] shadow-lg shadow-violet-100/40 min-h-[330px] sm:min-h-[370px] lg:min-h-[390px]">
+        <picture className="dashboard-hero-media absolute inset-0 block" aria-hidden="true">
+          <source media="(max-width: 767px)" srcSet="/palmyra-dashboard-hero.webp?v=20261008-dashboard" />
           <img
-            src="/palmyra-dashboard-hero-right.svg?v=20261008-dashboard"
+            src="/palmyra-dashboard-hero.webp?v=20261008-dashboard"
             alt=""
-            className="dashboard-hero-image absolute inset-0 h-full w-full"
+            className="dashboard-hero-image absolute inset-0 h-full w-full object-cover object-[78%_center] sm:object-[74%_center] lg:object-[72%_center] scale-[1.01]"
             loading="eager"
             decoding="async"
             fetchPriority="high"
           />
         </picture>
         <div
-          className="dashboard-hero-shade absolute inset-0 z-[1] pointer-events-none"
+          className="dashboard-hero-shade absolute inset-0 z-[1] pointer-events-none bg-gradient-to-r from-[#10052f]/95 via-[#1d0d49]/68 to-[#2b1458]/10 sm:from-[#10052f]/92 sm:via-[#1d0d49]/50 sm:to-transparent"
           aria-hidden="true"
         />
-        <div className="relative z-10 flex min-h-[420px] sm:min-h-[380px] lg:min-h-[360px] items-center px-4 py-7 sm:px-8 lg:px-10">
+        <div className="relative z-10 flex min-h-[330px] sm:min-h-[370px] lg:min-h-[390px] items-center px-4 py-7 sm:px-8 lg:px-10">
           <div className="w-full max-w-[445px] sm:max-w-[560px]">
-            <div className="flex items-center gap-1.5 text-[7.5px] sm:text-[9px] font-black uppercase tracking-[0.14em] text-[#4C1D95] drop-shadow-[0_1px_3px_rgba(255,255,255,0.85)] -translate-y-2 sm:-translate-y-1">
-              <Sparkles className="h-3.5 w-3.5 shrink-0 text-violet-100" />
+            <div className="flex items-center gap-1.5 text-[7.5px] sm:text-[9px] font-black uppercase tracking-[0.14em] text-violet-100 -translate-y-2 sm:-translate-y-1">
+              <Sparkles className="h-3.5 w-3.5 shrink-0 text-violet-200" />
               <span>PALMYRA · Gestión empresarial</span>
             </div>
 
-            <h1 className="mt-1.5 text-[2.35rem] sm:text-4xl lg:text-5xl font-black tracking-[-0.045em] leading-[.9] text-[#2F176B] drop-shadow-[0_2px_8px_rgba(255,255,255,0.9)]">
+            <h1 className="mt-1.5 text-[2.2rem] sm:text-4xl lg:text-5xl font-black tracking-[-0.045em] leading-[.9] text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.35)]">
               Hola{dashboardUserName ? ", " + dashboardUserName.split(" ")[0] : ""} <span className="text-[0.7em] align-[-0.04em]" aria-hidden="true">👋</span>
             </h1>
 
-            <p className="mt-2 text-[1.08rem] sm:text-xl lg:text-2xl font-black leading-[1.02] tracking-[-0.02em] text-[#3B1B6E] drop-shadow-[0_2px_7px_rgba(255,255,255,0.9)]">
-              Bienvenido a <span className="text-[#4C1D95]">{businessName}</span>
+            <p className="mt-2 text-[1.05rem] sm:text-xl lg:text-2xl font-black leading-[1.02] tracking-[-0.02em] text-violet-50 drop-shadow-[0_2px_8px_rgba(0,0,0,0.35)]">
+              Bienvenido a <span className="text-violet-200">{businessName}</span>
             </p>
 
-            <p className="mt-2.5 max-w-[410px] text-[9.5px] sm:text-xs lg:text-sm font-semibold leading-[1.4] text-[#4C3D74] drop-shadow-[0_1px_4px_rgba(255,255,255,0.9)]">
+            <p className="mt-2.5 max-w-[410px] text-[9.5px] sm:text-xs lg:text-sm font-semibold leading-[1.4] text-violet-100/90 drop-shadow-[0_1px_5px_rgba(0,0,0,0.4)]">
               Todo tu negocio en un solo lugar: ventas, inventario, clientes y actividad para tomar decisiones con claridad.
             </p>
 
             <div className="mt-5 flex flex-wrap items-center gap-1.5 sm:gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/70 bg-white/72 px-2.5 py-1.5 text-[7.5px] sm:text-[9px] font-black text-[#3B1B6E] shadow-sm backdrop-blur-[3px]">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/12 px-2.5 py-1.5 text-[7.5px] sm:text-[9px] font-black text-white shadow-sm backdrop-blur-[5px]">
                 <TrendingUp className="h-3.5 w-3.5 text-emerald-300" /> Datos en tiempo real
               </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/30 bg-slate-950/28 px-2.5 py-1.5 text-[7.5px] sm:text-[9px] font-black text-white shadow-sm backdrop-blur-[2px]">
-                <MapPin className="h-3.5 w-3.5 text-violet-100" /> {selectedBranchFilter === "all" ? "Todas las sucursales" : (branchById.get(selectedBranchFilter)?.name || "Sucursal")}
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/20 px-2.5 py-1.5 text-[7.5px] sm:text-[9px] font-black text-white shadow-sm backdrop-blur-[5px]">
+                <MapPin className="h-3.5 w-3.5 text-violet-200" /> {selectedBranchFilter === "all" ? "Todas las sucursales" : (branchById.get(selectedBranchFilter)?.name || "Sucursal")}
               </span>
             </div>
           </div>
