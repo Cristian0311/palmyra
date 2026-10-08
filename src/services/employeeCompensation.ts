@@ -54,6 +54,7 @@ export function getCompensationLabel(employee?: User | null): string {
 }
 
 export function getSalaryBase(employee?: User | null): number {
+  if (getCompensationType(employee) === 'sales_percentage') return 0;
   return Math.max(0, Number(employee?.baseSalary) || 0);
 }
 
