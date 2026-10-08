@@ -229,9 +229,33 @@ export async function callReceiveSupplierOrderRPC(orderId:string,userId:string){
 export async function callReserveNCFRangeRPC(params:{fiscalType:string;deviceId:string;blockSize?:number;userId:string}){
   try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_reserve_ncf_range',{p_company_id:companyId,p_fiscal_type:params.fiscalType,p_device_id:params.deviceId,p_block_size:params.blockSize||100});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);}
 }
+async function deriveVariantOperationId(baseOperationId:string, variantLabel:string, index:number): Promise<string> {
+  const normalized = normalizeUuidOperationId(baseOperationId);
+  const seed = new TextEncoder().encode(`${normalized}:variant:${index}:${String(variantLabel || '')}`);
+  const digest = await crypto.subtle.digest('SHA-256', seed);
+  const bytes = new Uint8Array(digest).slice(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  return Array.from(bytes).map((b,i)=>[4,6,8,10].includes(i)?'-'+b.toString(16).padStart(2,'0'):b.toString(16).padStart(2,'0')).join('');
+}
+
 export async function callTransferInventoryRPC(params:{operationId:string;batchId?:string;productId:string;fromBranchId:string;toBranchId:string;variants:{variantLabel:string;quantity:number}[];userId:string}){
-  try{const {companyId}=await getActiveTenant();
-    if(params.variants?.length){ for(const v of params.variants){const vid=await resolveVariantId(params.productId,v.variantLabel);await rpc('palmyra_transfer_inventory',{p_operation_id:normalizeUuidOperationId(params.operationId),p_company_id:companyId,p_from_warehouse_id:params.fromBranchId,p_to_warehouse_id:params.toBranchId,p_product_id:params.productId,p_variant_id:vid,p_quantity:Number(v.quantity)||0,p_notes:''});} }
+  try{
+    const {companyId}=await getActiveTenant();
+    if(params.variants?.length){
+      for(let index=0; index<params.variants.length; index++){
+        const v=params.variants[index];
+        const vid=await resolveVariantId(params.productId,v.variantLabel);
+        const operationId = params.variants.length === 1
+          ? normalizeUuidOperationId(params.operationId)
+          : await deriveVariantOperationId(params.operationId,v.variantLabel,index);
+        await rpc('palmyra_transfer_inventory',{
+          p_operation_id:operationId,p_company_id:companyId,p_from_warehouse_id:params.fromBranchId,
+          p_to_warehouse_id:params.toBranchId,p_product_id:params.productId,p_variant_id:vid,
+          p_quantity:Number(v.quantity)||0,p_notes:''
+        });
+      }
+    }
     return {success:true as const,error:undefined,errorCode:undefined,data:{success:true}};
   }catch(e:any){return errorResult(e);}
 }
