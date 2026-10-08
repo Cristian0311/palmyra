@@ -151,7 +151,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [pwaInstallAvailable, setPwaInstallAvailable] = useState(false);
   const [pwaInstalling, setPwaInstalling] = useState(false);
   const [showOnlineCatalogInfo, setShowOnlineCatalogInfo] = useState(false);
-  const { currentUser, logout, notifications, removeNotification, storeConfig, syncWithSupabase, addNotification } = useStore(useShallow((state) => ({ currentUser: state.currentUser, logout: state.logout, notifications: state.notifications, removeNotification: state.removeNotification, storeConfig: state.storeConfig, syncWithSupabase: state.syncWithSupabase, addNotification: state.addNotification })));
+  const { currentUser, logout, notifications, removeNotification, storeConfig, syncWithSupabase, addNotification, cart, currentBranchId, getCurrentSession } = useStore(useShallow((state) => ({ currentUser: state.currentUser, logout: state.logout, notifications: state.notifications, removeNotification: state.removeNotification, storeConfig: state.storeConfig, syncWithSupabase: state.syncWithSupabase, addNotification: state.addNotification, cart: state.cart, currentBranchId: state.currentBranchId, getCurrentSession: state.getCurrentSession })));
   const location = useLocation();
   const isPosPage = location.pathname === "/pos";
 
@@ -331,15 +331,25 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     window.addEventListener('offline_queue_updated', updateCount);
+    const handleStorageWarning = () => {
+      addNotification('Almacenamiento local casi lleno', 'warning', 'PALMYRA detectó poco espacio disponible. No borres los datos del sitio mientras haya ventas offline pendientes. Sincroniza primero.');
+    };
+    window.addEventListener('palmyra:storage-warning', handleStorageWarning);
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
       window.removeEventListener('offline_queue_updated', updateCount);
+      window.removeEventListener('palmyra:storage-warning', handleStorageWarning);
     };
   }, []);
 
   const handleApplyUpdate = async () => {
     if (isApplyingUpdate) return;
+    const activeSession = currentUser?.id ? getCurrentSession(currentBranchId, currentUser.id) : undefined;
+    if (isPosPage && activeSession && cart.length > 0) {
+      addNotification('Actualización preparada', 'info', 'Finaliza o limpia la venta actual antes de actualizar PALMYRA. La caja y los datos permanecen protegidos.');
+      return;
+    }
     setIsApplyingUpdate(true);
     try {
       const apply = (window as typeof window & { __palmyraApplyUpdate?: () => Promise<void> }).__palmyraApplyUpdate;
