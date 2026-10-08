@@ -36,7 +36,7 @@ export function useTurnProductSalaryRows(session: CashRegisterSession | null, tr
         sellers.forEach((sellerId: string) => {
           const employee = users.find(u => u.id === sellerId);
           const employeeName = employee?.name || tx.cashierName || sellerId || 'Empleado';
-          const percentageMode = companyCompensation?.mode === 'sales_percent' || percentageMode;
+          const percentageMode = companyCompensation?.mode === 'sales_percent' || employee?.compensationType === 'sales_percentage';
           const percentageRate = companyCompensation?.mode === 'sales_percent'
             ? Math.max(0, Math.min(100, Number(companyCompensation.percentRate) || 0))
             : Math.max(0, Math.min(100, Number(employee?.salesPercentage ?? employee?.commissionRate) || 0));
