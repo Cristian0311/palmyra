@@ -74,7 +74,7 @@ async function loadCatalog() {
     .select('mode,percent_rate,active')
     .eq('company_id', tenant.companyId)
     .maybeSingle();
-  const globalCompensationMode = compensationSettings?.mode === 'sales_percent' ? 'sales_percentage' : 'fixed_product';
+  const globalCompensationMode: User['compensationType'] = compensationSettings?.mode === 'sales_percent' ? 'sales_percentage' : 'fixed_product';
   const globalSalesPercentage = Math.max(0, Math.min(100, Number(compensationSettings?.percent_rate) || 0));
 
   const users: User[] = [
