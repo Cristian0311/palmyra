@@ -28,7 +28,6 @@ import { getAuthorizedWarehouseIds, getWarehouseId } from "../modules/warehouse/
 import { pullOpenCashSessionsFromSupabase } from "../services/supabaseSync";
 import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
 import { aggregateTransferPayments, buildTransactionTicketId, finalizeCheckoutPayments } from '../modules/pos/utils/checkoutUtils';
-import { calculateEmployeeSaleCommission, getCompensationLabel, getSalesPercentage, getSalaryBase } from '../services/employeeCompensation';
 import { rememberOfflinePosCredential, verifyOfflinePosCredential, rememberOfflinePosResumeGrant, verifyOfflinePosResumeGrant } from "../services/offlinePosAuth";
 const CheckoutModal = lazy(() => import("../components/pos/CheckoutModal"));
 
