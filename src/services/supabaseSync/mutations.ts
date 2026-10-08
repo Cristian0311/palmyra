@@ -373,15 +373,19 @@ export async function pushSalarySettlementToSupabase(settlement:SalarySettlement
 
     // El ID del acuerdo local es estable y se usa como llave de idempotencia
     // para que un reintento después de un corte de red nunca cree otra nómina.
-    const runId = settlement.id;
     const { data: existingItem, error: existingItemError } = await supabase
       .from('payroll_items')
-      .select('id')
-      .eq('id', settlement.id)
+      .select('id,payroll_run_id,details')
       .eq('company_id', companyId)
+      .eq('details->>session_id', settlement.sessionId)
       .maybeSingle();
     if (existingItemError) throw existingItemError;
 
+    // El turno es la verdadera unidad de idempotencia. Si el cierre remoto
+    // ocurrió pero la respuesta se perdió, un reintento puede llegar con otro
+    // UUID local; reutilizamos la nómina existente en vez de crear otra.
+    const runId = existingItem?.payroll_run_id || settlement.id;
+    const itemId = existingItem?.id || settlement.id;
     const day=settlement.date.slice(0,10);
     const {error:re}=await supabase.from('payroll_runs').upsert({
       id:runId,
@@ -394,7 +398,7 @@ export async function pushSalarySettlementToSupabase(settlement:SalarySettlement
     if(re)throw re;
 
     const {error:ie}=await supabase.from('payroll_items').upsert({
-      id:settlement.id,
+      id:itemId,
       company_id:companyId,
       payroll_run_id:runId,
       employee_id:employee.id,
