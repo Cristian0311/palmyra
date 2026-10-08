@@ -3877,6 +3877,7 @@ export default function POS() {
         formatSalaryCUP={(value) =>
           `${Math.round(Number(value) || 0).toLocaleString("es-ES")} CUP`
         }
+        companyCompensation={companyCompensation}
       />
 
       {showPrinterSetupModal && (
