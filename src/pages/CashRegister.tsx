@@ -17,7 +17,10 @@ export default function CashRegister() {
   const session = getCurrentSession(currentBranchId, currentUser?.id || 'u1');
   const baseCurrency = getBaseCurrency();
   const productCatalog = products || [];
-  const [companyCompensation, setCompanyCompensation] = useState<{ mode: 'fixed_product' | 'sales_percent'; percentRate: number }>({ mode: 'fixed_product', percentRate: 0 });
+  const [companyCompensation, setCompanyCompensation] = useState<{ mode: 'fixed_product' | 'sales_percent'; percentRate: number }>(() => ({
+    mode: currentUser?.compensationType === 'sales_percentage' ? 'sales_percent' : 'fixed_product',
+    percentRate: Math.max(0, Math.min(100, Number(currentUser?.salesPercentage ?? currentUser?.commissionRate) || 0)),
+  }));
 
   useEffect(() => {
     let cancelled = false;
