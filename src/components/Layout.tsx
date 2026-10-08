@@ -35,7 +35,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { cn } from "../lib/utils";
 import { loadSaaSContext } from "../services/saas";
 import { useStore } from "../store/useStore";
-import { getOfflineQueueCount, getOfflineQueue, waitForOfflineQueueReady } from "../services/offlineQueue";
+import { getOfflineQueueCount, getOfflineQueue } from "../services/offlineQueue";
 import { canUsePlanFeature, getPlanVisual, type PlanFeature } from "../services/planAccess";
 import { 
   CheckCircle2, 
@@ -408,7 +408,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       // La cola debe estar completamente hidratada antes de diagnosticar el
       // resultado final. Esto evita que una carrera entre IndexedDB y la
       // sincronización produzca el aviso engañoso "sin detalle".
-      await waitForOfflineQueueReady();
+      // processOfflineQueue ya espera la hidratación durable antes de procesar.
+      // El diagnóstico no depende de otra exportación del módulo de cola para
+      // evitar incompatibilidades entre chunks PWA de distintas versiones.
       const finalQueue = getOfflineQueue();
       const finalPendingCount = finalQueue.filter((item: any) => item?.status !== 'conflict').length;
       setPendingOfflineCount(finalPendingCount);
