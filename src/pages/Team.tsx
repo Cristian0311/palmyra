@@ -736,7 +736,14 @@ export default function Team() {
                 <div className="grid sm:grid-cols-2 gap-3">
                   <label className="team-field-wrap sm:col-span-2"><span className="team-field-label">Nombre completo <b>*</b></span><span className="team-field"><span className="team-field-icon"><UserRound className="w-4 h-4" /></span><input value={form.fullName} onChange={e => setForm({...form, fullName:e.target.value})} disabled={busy} className="team-field-input" placeholder="Ej. María González Pérez" autoComplete="name" /></span></label>
                   <label className="team-field-wrap"><span className="team-field-label">Código de empleado <b>*</b></span><span className="team-field"><span className="team-field-icon"><Hash className="w-4 h-4" /></span><input value={form.employeeCode} onChange={e => setForm({...form, employeeCode:e.target.value})} disabled={busy} className="team-field-input" placeholder="Ej. EMP-001" autoComplete="off" /></span></label>
-                  <label className="team-field-wrap"><span className="team-field-label">Salario base</span><span className="team-field"><span className="team-field-icon"><WalletCards className="w-4 h-4" /></span><input type="number" min="0" step="0.01" inputMode="decimal" value={form.baseSalary} onChange={e => setForm({...form, baseSalary:e.target.value})} disabled={busy} className="team-field-input" placeholder="0.00" /></span></label>
+                  {compensationSettings.mode === 'fixed_product' ? (
+                    <label className="team-field-wrap"><span className="team-field-label">Salario base</span><span className="team-field"><span className="team-field-icon"><WalletCards className="w-4 h-4" /></span><input type="number" min="0" step="0.01" inputMode="decimal" value={form.baseSalary} onChange={e => setForm({...form, baseSalary:e.target.value})} disabled={busy} className="team-field-input" placeholder="0.00" /></span></label>
+                  ) : (
+                    <div className="team-field-wrap">
+                      <span className="team-field-label">Modalidad de pago</span>
+                      <div className="team-field bg-indigo-50/60 border-indigo-100"><span className="team-field-icon"><WalletCards className="w-4 h-4" /></span><span className="team-field-input text-indigo-700 font-black">Porcentaje sobre el total de la venta · {Number(compensationSettings.percentRate || 0)}%</span></div>
+                    </div>
+                  )}
                 </div>
               </section>
               <section className={cn("team-form-section", formStep !== 2 && "team-form-hidden")} data-section="employee-operation" aria-hidden={formStep !== 2}>
