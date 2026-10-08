@@ -179,16 +179,29 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
     // migración inicial de IndexedDB y quede fuera del snapshot durable.
     await waitForOfflineQueueReady();
 
+    // Asignamos una identidad remota UUID estable ANTES de encolar la venta.
+    // Los tickets antiguos pueden usar IDs legibles (PALMYRA-TK..., INF-..., etc.)
+    // que no son UUID. Si generamos un UUID distinto en cada reintento y la
+    // primera RPC alcanzó a confirmar antes de perder la respuesta, el replay
+    // podría crear una segunda venta. El remoteId queda dentro de IndexedDB y
+    // acompaña a la venta durante todo su ciclo de vida.
+    const stableRemoteId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(transaction.remoteId || ''))
+      ? String(transaction.remoteId)
+      : (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(transaction.id || ''))
+        ? String(transaction.id)
+        : crypto.randomUUID());
+    const transactionForSync = { ...transaction, remoteId: stableRemoteId };
+    
     // Primero persistimos la operación en la cola durable. Así, aunque la
     // pestaña se cierre durante el cobro, existe una operación reintentable.
-    const durableTransaction = { ...transaction, offlinePending: true };
+    const durableTransaction = { ...transactionForSync, offlinePending: true };
     await enqueueOfflineItem('transaction', durableTransaction, transaction.id);
 
     // Offline real o conexión inestable: el POS debe conservar inmediatamente
     // la venta localmente. En una conexión mala navigator.onLine puede seguir
     // siendo true aunque la RPC falle por timeout/DNS/TLS.
     const applyLocalSale = async (pending: boolean) => {
-      const localTransaction = { ...transaction, offlinePending: pending };
+      const localTransaction = { ...transactionForSync, offlinePending: pending };
       const alreadyLocal = get().transactions.some(
         t => t.id === transaction.id && !t.deletedAt
       );
@@ -213,7 +226,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
     }
 
     try {
-      const res = await callProcessTransactionRPC(transaction);
+      const res = await callProcessTransactionRPC(transactionForSync);
 
       if (!res.success) {
         const code = String(res.errorCode || '');
