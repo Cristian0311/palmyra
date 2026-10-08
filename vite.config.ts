@@ -43,11 +43,13 @@ export default defineConfig(() => {
           ]
         },
         workbox: {
-          maximumFileSizeToCacheInBytes: 5000000,
+          maximumFileSizeToCacheInBytes: 10000000,
           // Remove caches from previous generated service workers so an old
           // application shell cannot survive a Render deployment.
           cleanupOutdatedCaches: true,
+          cacheId: 'palmyra',
           globIgnores: ['**/version.json'],
+          globPatterns: ['**/*.{js,css,html,svg,png,webp,woff,woff2}'],
           // Keep the new worker waiting so registerType:'prompt' can
           // notify Layout through onNeedRefresh and show the update bubble.
           clientsClaim: false,
@@ -70,14 +72,6 @@ export default defineConfig(() => {
               urlPattern: /^https:\/\/hmcvujyqloyjdvngpdxz\.supabase\.co\/(rest|auth|storage|functions)\/.*$/i,
               handler: 'NetworkOnly',
               options: { cacheName: 'supabase-network-only' }
-            },
-            {
-              urlPattern: /\/assets\/.*\.js$/i,
-              handler: 'CacheFirst',
-              options: {
-                cacheName: 'palmyra-js-runtime-cache-v2',
-                expiration: { maxEntries: 120, maxAgeSeconds: 60 * 60 * 24 * 30 }
-              }
             }
           ]
         }
