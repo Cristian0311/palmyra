@@ -82,27 +82,22 @@ export function useReportsPayroll(params: {
       const workerName = session.workerName || existing?.userName || emp?.name || 'Vendedor';
 
       let commissions = existing?.commissions || 0;
-      const compensationType = emp?.compensationType || 'fixed_product';
-      const salesPercentage = Number(emp?.salesPercentage || 0);
-
+      const compensationType = getCompensationType(emp);
       if (!existing) {
-        if (compensationType === 'sales_percentage') {
-          commissions = totalSales * Math.max(0, Math.min(100, salesPercentage)) / 100;
-        } else {
-          commissions = sessionTx.reduce(
-            (sum, tx) =>
-              sum +
-              (tx.items || []).reduce((itemsSum, item) => {
-                const productId = typeof item.product === 'string' ? item.product : item.product?.id;
-                const product = productId ? productById.get(productId) : undefined;
-                return itemsSum + (product?.commissionValue || 0) * item.quantity;
-              }, 0),
-            0
-          );
-        }
+        const sellerIds = new Set<string>();
+        sessionTx.forEach(tx => (tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId]).forEach(id => sellerIds.add(id)));
+        commissions = Array.from(sellerIds).reduce((sum, sellerId) => {
+          const seller = userById.get(sellerId);
+          return sum + sessionTx.reduce((sellerSum, tx) => {
+            const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
+            return sellers.includes(sellerId)
+              ? sellerSum + calculateEmployeeSaleCommission(seller, tx, products, sellers.length)
+              : sellerSum;
+          }, 0);
+        }, 0);
       }
 
-      const baseSalary = existing?.baseSalary ?? (compensationType === 'sales_percentage' ? 0 : (emp?.baseSalary ?? 0));
+      const baseSalary = existing?.baseSalary ?? getSalaryBase(emp);
       const totalSalary = existing?.total ?? (baseSalary + commissions);
       const status = existing?.status === 'paid' ? 'paid' : 'pending';
       const date = existing?.date || session.closingDate || session.closedAt || session.openedAt;
