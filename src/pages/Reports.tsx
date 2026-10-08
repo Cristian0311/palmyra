@@ -815,12 +815,20 @@ export default function Reports() {
         <h3 className="text-[8px] font-black text-muted uppercase tracking-[0.3em] mb-3 px-1">Desglose por Divisas</h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
           {currencies.map(c => {
-            const cashTotal = transactions.reduce((sum, tx) => {
+            // Mantener el desglose monetario alineado con Ingresos Ventas:
+            // solo ventas completadas, no eliminadas y no ajustes de auditoría.
+            const validSalesTransactions = transactions.filter(
+              tx =>
+                tx.status === 'completed' &&
+                !tx.deletedAt &&
+                !String(tx.notes || '').startsWith('AJUSTE_')
+            );
+            const cashTotal = validSalesTransactions.reduce((sum, tx) => {
               const payment = tx.payments.find(p => p.currencyCode === c.code && p.method === 'cash');
               const change = tx.changePayments?.find(cp => cp.currencyCode === c.code && cp.method === 'cash');
               return sum + (payment?.amount || 0) - (change?.amount || 0);
             }, 0);
-            const transferTotal = transactions.reduce((sum, tx) => {
+            const transferTotal = validSalesTransactions.reduce((sum, tx) => {
               const payment = tx.payments.find(p => p.currencyCode === c.code && p.method === 'transfer');
               const change = tx.changePayments?.find(cp => cp.currencyCode === c.code && cp.method === 'transfer');
               return sum + (payment?.amount || 0) - (change?.amount || 0);
