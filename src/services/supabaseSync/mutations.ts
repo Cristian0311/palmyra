@@ -2,7 +2,7 @@ import { salePayload } from './salePayload';
 import { getSupabase } from '../../lib/supabase';
 import { enqueueOfflineItem } from '../offlineQueue';
 import { getActiveTenant, getEmployeeForIdentity } from '../tenant';
-import { callAdjustInventoryRPC } from './rpc';
+import { callAdjustInventoryRPC, callProcessBankTransactionRPC } from './rpc';
 export { pushCashMovementToSupabase, deleteCashMovementFromSupabase, pushCashSessionMetadataToSupabase } from './cashMutations';
 export type ResetSection =
   | 'inventory' | 'reports' | 'catalog' | 'customers' | 'suppliers'
