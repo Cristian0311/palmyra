@@ -280,32 +280,32 @@ export default function Dashboard() {
   return (
     <div className="space-y-2.5 text-[9px] animate-in fade-in slide-in-from-bottom-2 duration-500 pb-5">
 
-      <section className="dashboard-hero relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100/80 bg-[#12082f] shadow-lg shadow-violet-100/40 min-h-[430px] sm:min-h-[390px] lg:min-h-[410px]">
-        <picture className="absolute inset-0 block h-full w-full" aria-hidden="true">
+      <section className="dashboard-hero relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100/80 bg-[#12082f] shadow-lg shadow-violet-100/40 min-h-[520px] sm:min-h-[390px] lg:min-h-[410px]">
+        <picture className="absolute inset-x-0 top-0 block h-[245px] sm:inset-0 sm:h-full" aria-hidden="true">
           <img
-            src="/palmyra-dashboard-hero-option1.webp?v=20261008-enterprise-final"
+            src="/palmyra-dashboard-hero-option1.webp?v=20261008-enterprise-responsive"
             alt=""
-            className="absolute inset-0 h-full w-full object-cover object-[76%_center] sm:object-[76%_center] lg:object-[78%_center]"
+            className="absolute inset-0 h-full w-full object-cover object-[42%_center] sm:object-[52%_center] lg:object-[50%_center]"
             loading="eager"
             decoding="async"
             fetchPriority="high"
           />
         </picture>
 
-        <div className="absolute inset-0 z-[1] pointer-events-none bg-gradient-to-b from-[#10052f]/25 via-[#16083b]/42 to-[#10052f]/88 sm:bg-gradient-to-r sm:from-[#10052f]/92 sm:via-[#17083d]/54 sm:to-transparent" aria-hidden="true" />
+        <div className="absolute inset-0 z-[1] pointer-events-none bg-gradient-to-b from-transparent via-[#12082f]/12 to-[#12082f] sm:bg-gradient-to-r sm:from-[#10052f]/90 sm:via-[#17083d]/48 sm:to-transparent" aria-hidden="true" />
 
-        <div className="relative z-10 flex min-h-[430px] sm:min-h-[390px] lg:min-h-[410px] items-end sm:items-center px-4 py-7 sm:px-8 sm:py-8 lg:px-10">
+        <div className="relative z-10 flex min-h-[520px] items-end sm:min-h-[390px] sm:items-center lg:min-h-[410px] px-4 pb-7 pt-[235px] sm:px-8 sm:py-8 lg:px-10">
           <div className="w-full max-w-[500px] sm:max-w-[560px]">
             <div className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1.5 text-[7.5px] sm:text-[9px] font-black uppercase tracking-[0.14em] text-violet-50 shadow-lg backdrop-blur-md">
               <Sparkles className="h-3.5 w-3.5 shrink-0 text-violet-200" />
               <span>PALMYRA · Gestión empresarial</span>
             </div>
 
-            <h1 className="mt-3 text-[2.35rem] sm:text-4xl lg:text-5xl font-black tracking-[-0.045em] leading-[.92] text-white drop-shadow-[0_3px_14px_rgba(0,0,0,0.42)]">
+            <h1 className="mt-3 text-[2.25rem] sm:text-4xl lg:text-5xl font-black tracking-[-0.045em] leading-[.92] text-white drop-shadow-[0_3px_14px_rgba(0,0,0,0.42)]">
               Hola{dashboardUserName ? ", " + dashboardUserName.split(" ")[0] : ""} <span className="text-[0.7em] align-[-0.04em]" aria-hidden="true">👋</span>
             </h1>
 
-            <p className="mt-2 text-[1.05rem] sm:text-xl lg:text-2xl font-black leading-[1.05] tracking-[-0.02em] text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
+            <p className="mt-2 text-[1.02rem] sm:text-xl lg:text-2xl font-black leading-[1.05] tracking-[-0.02em] text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
               Bienvenido a <span className="text-violet-200">{businessName}</span>
             </p>
 
@@ -313,7 +313,7 @@ export default function Dashboard() {
               Todo tu negocio en un solo lugar: ventas, inventario, clientes y actividad para tomar decisiones con claridad.
             </p>
 
-            <div className="mt-5 flex flex-wrap items-center gap-1.5 sm:gap-2">
+            <div className="mt-4 flex flex-wrap items-center gap-1.5 sm:mt-5 sm:gap-2">
               <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/12 px-2.5 py-1.5 text-[7.5px] sm:text-[9px] font-black text-white shadow-sm backdrop-blur-md">
                 <TrendingUp className="h-3.5 w-3.5 text-emerald-300" />
                 Datos en tiempo real
