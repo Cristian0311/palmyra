@@ -11,7 +11,7 @@ export default defineConfig(() => {
       tailwindcss(),
       VitePWA({
         registerType: 'prompt',
-        includeAssets: ['palmyra-email-logo.jpg'],
+        includeAssets: ['favicon.svg', 'icon.png', 'pwa-192.svg', 'pwa-512.svg'],
         devOptions: {
           enabled: true
         },
@@ -47,6 +47,7 @@ export default defineConfig(() => {
           // Remove caches from previous generated service workers so an old
           // application shell cannot survive a Render deployment.
           cleanupOutdatedCaches: true,
+          globIgnores: ['**/version.json'],
           // Keep the new worker waiting so registerType:'prompt' can
           // notify Layout through onNeedRefresh and show the update bubble.
           clientsClaim: false,
@@ -60,6 +61,11 @@ export default defineConfig(() => {
           // offline. Se precachean junto al resto del shell para que Reportes
           // funcione tras un arranque en frío sin conexión.
           runtimeCaching: [
+            {
+              urlPattern: /\/version\.json$/i,
+              handler: 'NetworkOnly',
+              options: { cacheName: 'palmyra-version-network-only' }
+            },
             {
               urlPattern: /^https:\/\/hmcvujyqloyjdvngpdxz\.supabase\.co\/(rest|auth|storage|functions)\/.*$/i,
               handler: 'NetworkOnly',
