@@ -91,7 +91,20 @@ export function useReportsContext({
     currencies[0] ||
     { code: 'CUP', name: 'Peso Cubano', symbol: '$', rateToBase: 1, isBase: true };
 
-  const totalSales = transactions.reduce((sum, t) => sum + (t?.total || 0), 0);
+  // Los KPIs comerciales solo deben contar ventas realmente completadas.
+  // Los AJUSTE_* son regularizaciones de auditoría/inventario y nunca representan
+  // una venta nueva; las operaciones anuladas o pendientes tampoco deben inflar
+  // ingresos, flujo neto ni el contador de tickets.
+  const validSalesTransactions = transactions.filter(
+    t =>
+      t?.status === 'completed' &&
+      !t.deletedAt &&
+      !String(t.notes || '').startsWith('AJUSTE_')
+  );
+  const totalSales = validSalesTransactions.reduce(
+    (sum, t) => sum + Math.max(0, Number(t?.total) || 0),
+    0
+  );
   const allMovements = cashSessions.flatMap(s => s.movements || []);
 
   const totalCashIncomes = allMovements
@@ -139,7 +152,7 @@ export function useReportsContext({
   const totalIncomes = totalCashIncomes + bankOtherDeposits;
   const totalExpenses = totalCashExpenses + totalBankWithdrawals;
   const netFlow = totalSales + totalIncomes - totalExpenses;
-  const txCount = transactions.length;
+  const txCount = validSalesTransactions.length;
 
   const formatMoney = (amount: number, code: string = baseCurrency.code) => {
     const currency = currencyByCode.get(code) || baseCurrency;
