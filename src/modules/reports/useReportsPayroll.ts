@@ -72,7 +72,7 @@ export function useReportsPayroll(params: {
       // Payroll must never count voided/refunded/pending tickets as completed sales.
       // Reports can contain a broader transaction cache than the active POS.
       const sessionTx = (transactionsBySession.get(session.id) || []).filter(
-        tx => tx.status === 'completed' && !tx.deletedAt
+        tx => tx.status === 'completed' && !tx.deletedAt && !String(tx.notes || '').startsWith('AJUSTE_')
       );
       const totalSales = sessionTx.reduce((sum, tx) => sum + Math.max(0, Number(tx.total) || 0), 0);
       const totalItems = sessionTx.reduce(
