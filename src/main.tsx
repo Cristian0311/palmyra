@@ -7,6 +7,7 @@ import { startPerformanceAudit } from './utils/performanceAudit';
 applyDevicePerformanceProfile();
 startPerformanceAudit();
 import './index.css';
+import { protectPwaStorage } from './services/pwaStorageHealth';
 
 // Recover gracefully when a cached HTML/service-worker version references a
 // chunk removed by a newer deployment. Vite emits this event for failed
@@ -110,6 +111,7 @@ import { registerSW } from 'virtual:pwa-register';
 const SW_CHECK_INTERVAL_MS = 5 * 60_000;
 const PALMYRA_UPDATE_AVAILABLE_KEY = 'palmyra:update-available';
 const PALMYRA_BUILD_ID_KEY = 'palmyra:build-id';
+const PALMYRA_UPDATE_APPLY_KEY = 'palmyra:update-applying';
 let swCheckTimer: ReturnType<typeof setInterval> | null = null;
 
 const markUpdateAvailable = () => {
@@ -134,7 +136,12 @@ const checkServerVersion = async () => {
       localStorage.setItem(PALMYRA_BUILD_ID_KEY, serverBuildId);
       return;
     }
-    if (localBuildId !== serverBuildId) markUpdateAvailable();
+    if (localBuildId !== serverBuildId) {
+      markUpdateAvailable();
+    } else {
+      try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
+      try { sessionStorage.removeItem(PALMYRA_UPDATE_APPLY_KEY); } catch {}
+    }
   } catch {
     // Network interruptions must never affect POS/offline operation.
   }
@@ -189,10 +196,11 @@ const updateSW = registerSW({
 
 const applyPalmyraUpdate = async () => {
   try {
+    try { sessionStorage.setItem(PALMYRA_UPDATE_APPLY_KEY, String(Date.now())); } catch {}
+
     const registration = await navigator.serviceWorker?.getRegistration();
     if (registration) await registration.update().catch(() => {});
     await updateSW(true);
-    try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
     try {
       const response = await fetch('/version.json?ts=' + Date.now(), { cache: 'no-store' });
       if (response.ok) {
@@ -202,11 +210,22 @@ const applyPalmyraUpdate = async () => {
     } catch {}
   } catch (error) {
     try { localStorage.setItem(PALMYRA_UPDATE_AVAILABLE_KEY, '1'); } catch {}
+    try { sessionStorage.removeItem(PALMYRA_UPDATE_APPLY_KEY); } catch {}
     throw error;
   }
 };
 
 (window as typeof window & { __palmyraApplyUpdate?: () => Promise<void> }).__palmyraApplyUpdate = applyPalmyraUpdate;
+
+// Storage protection is best-effort and never blocks application startup.
+void protectPwaStorage().then((health) => {
+  if (health.warning) {
+    window.dispatchEvent(new CustomEvent('palmyra:storage-warning', { detail: health }));
+  }
+  if (!health.indexedDbAvailable) {
+    console.warn('[PWA] IndexedDB no está disponible; PALMYRA usará su respaldo local cuando sea posible.');
+  }
+}).catch(() => {});
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
