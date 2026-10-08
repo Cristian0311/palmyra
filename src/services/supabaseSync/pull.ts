@@ -511,7 +511,24 @@ async function loadBanks() {
   if(a.error)throw a.error;if(t.error)throw t.error;
   return {
     bankCards:(a.data||[]).map((x:any):BankCard=>({id:x.id,name:x.name,bank:x.bank_name,bankName:x.bank_name,cardHolder:'',lastFour:x.last_four,lastFourDigits:x.last_four,balance:Number(x.balance)||0,currency:x.currency_code||'USD',isActive:x.active!==false})),
-    bankTransactions:(t.data||[]).map((x:any):BankTransaction=>({id:x.id,cardId:x.bank_account_id,type:x.transaction_type,amount:Number(x.amount)||0,date:x.created_at,reference:x.reference||'',description:x.note||'',transactionId:x.reference_id||undefined}))
+    bankTransactions:(t.data||[]).map((x:any):BankTransaction=>({
+      id:x.id,
+      cardId:x.bank_account_id,
+      // Supabase stores the canonical ledger values credit/debit/transfer.
+      // The UI intentionally keeps its existing vocabulary deposit/withdrawal.
+      type:x.transaction_type==='credit'
+        ? 'deposit'
+        : x.transaction_type==='debit'
+          ? 'withdrawal'
+          : x.transaction_type==='transfer'
+            ? 'withdrawal'
+            : 'withdrawal',
+      amount:Number(x.amount)||0,
+      date:x.created_at,
+      reference:x.reference||'',
+      description:x.note||'',
+      transactionId:x.reference_id||undefined
+    }))
   };
 }
 async function loadSuppliersOrders() {
