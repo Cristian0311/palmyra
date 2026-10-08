@@ -608,7 +608,7 @@ export default function CashRegister() {
                                 <p className="text-[8px] font-black text-slate-800 uppercase leading-tight break-words">{row.name}</p>
                                 <p className="text-[9px] font-black text-slate-800 text-right">{row.quantity}</p>
                                 <p className="text-[9px] font-black text-indigo-700 text-right">{formatSalaryCUP(row.salaryPerUnit)}</p>
-                                <p className="text-[9px] font-black text-indigo-900 text-right">{formatMoney(row.salaryTotal, baseCurrency.code)}</p>
+                                <p className="text-[9px] font-black text-indigo-900 text-right">{formatSalaryCUP(row.salaryTotal)}</p>
                               </div>
                             ))}
                           </div>
@@ -718,7 +718,7 @@ export default function CashRegister() {
                             "text-[11px] font-black",
                             m.type === 'income' ? "text-emerald-600" : "text-rose-600"
                           )}>
-                            {m.type === 'income' ? '+' : '-'}{formatMoney(m.amount, m.currencyCode)}
+                            {formatMoney(m.amount, m.currencyCode)}
                           </p>
                         </div>
                       ))
