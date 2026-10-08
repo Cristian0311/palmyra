@@ -421,7 +421,7 @@ export default function CashRegister() {
             <div className="text-left bg-slate-50 p-3 sm:p-4 rounded-2xl border border-slate-100">
               <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Fondo Inicial ({baseCurrency.code})</label>
               <div className="relative mb-4">
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 text-base font-black text-slate-300">$</span>
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[9px] font-black text-slate-400">CUP</span>
                 <input 
                   type="number" 
                   required
@@ -524,7 +524,7 @@ export default function CashRegister() {
                       </label>
                       <p className="text-[7px] font-bold text-emerald-500 uppercase mb-1">Conteo físico de efectivo</p>
                       <div className="relative">
-                        <span className="absolute left-0 top-1/2 -translate-y-1/2 text-xs font-black text-emerald-300">$</span>
+                        <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[9px] font-black text-emerald-500">CUP</span>
                         <input
                           type="number"
                           min="0"
@@ -541,7 +541,7 @@ export default function CashRegister() {
                       <div key={`cash-${c.code}`} className="bg-slate-50 p-3 rounded-2xl border border-slate-100 focus-within:border-indigo-200 transition-colors">
                         <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Efectivo {c.code}</label>
                         <div className="relative">
-                          <span className="absolute left-0 top-1/2 -translate-y-1/2 text-xs font-black text-slate-300">{c.symbol}</span>
+                          <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[9px] font-black text-slate-400">{c.code}</span>
                           <input
                             type="number"
                             min="0"
@@ -598,7 +598,7 @@ export default function CashRegister() {
                             <span>Empleado</span>
                             <span>Producto</span>
                             <span className="text-right">Cantidad</span>
-                            <span className="text-right">Salario / unidad</span>
+                            <span className="text-right">Comisión / unidad</span>
                             <span className="text-right">Salario total</span>
                           </div>
                           <div className="max-h-72 overflow-y-auto custom-scrollbar space-y-1.5">
@@ -953,7 +953,7 @@ export default function CashRegister() {
               <div className="bg-slate-50 rounded-2xl p-4 flex flex-col gap-3">
                 <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-slate-500">
                   <span>Sueldo Base</span>
-                  <span className="text-slate-900">{formatMoney(pendingSettlement.baseSalary, baseCurrency.code)}</span>
+                  <span className="text-slate-900">{formatSalaryCUP(pendingSettlement.baseSalary)}</span>
                 </div>
                 <div className="flex justify-between items-center text-[9px] font-black uppercase tracking-widest text-slate-500">
                   <span>Comisiones</span>
@@ -989,7 +989,7 @@ export default function CashRegister() {
                           </p>
                         </div>
                         <div className="text-right shrink-0">
-                          <p className="text-[8px] font-black text-indigo-500 uppercase">Salario / unidad</p>
+                          <p className="text-[8px] font-black text-indigo-500 uppercase">Comisión / unidad</p>
                           <p className="text-[10px] font-black text-slate-900">
                             {formatSalaryCUP(row.salaryPerUnit)}
                           </p>
