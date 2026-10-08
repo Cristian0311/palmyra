@@ -549,6 +549,68 @@ export default function Team() {
         </section>
       )}
 
+                    <section className="team-compensation-global bg-secondary border border-base rounded-3xl p-4 md:p-5 mt-4">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <WalletCards className="w-5 h-5 text-rose-500 shrink-0" />
+                      <h2 className="text-sm font-black text-primary">Compensación del equipo</h2>
+                    </div>
+                    <p className="text-[10px] text-muted mt-1 leading-5">Una sola configuración para todos los empleados, actuales y futuros.</p>
+                  </div>
+                  <span className="text-[8px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-full bg-subtle border border-base text-muted shrink-0">
+                    {compensationSettings.workerCount} trabajador{compensationSettings.workerCount === 1 ? "" : "es"} activos
+                  </span>
+                </div>
+                <div className="grid md:grid-cols-2 gap-2 mt-4">
+                  {([
+                    ['fixed_product','CUP fijo por producto','Usa la comisión CUP configurada en cada producto.'],
+                    ['sales_percent','% sobre el total de venta','Usa el mismo porcentaje general para todos los empleados.']
+                  ] as [CompanyCompensationMode,string,string][]).map(([mode,label,description]) => (
+                    <button key={mode} type="button" disabled={savingCompensation}
+                      onClick={() => setCompensationSettings(prev => ({ ...prev, mode }))}
+                      className={cn("text-left p-4 rounded-2xl border transition-all", compensationSettings.mode === mode ? "bg-indigo-50/80 dark:bg-indigo-950/20 border-indigo-300 shadow-sm" : "bg-primary border-base hover:border-indigo-200")}>
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-[10px] font-black text-primary uppercase tracking-wider">{label}</p>
+                        <span className={cn("w-5 h-5 rounded-full border flex items-center justify-center shrink-0", compensationSettings.mode === mode ? "bg-indigo-600 border-indigo-600 text-white" : "border-base text-transparent")}><Check className="w-3 h-3" /></span>
+                      </div>
+                      <p className="text-[9px] text-muted mt-1.5 leading-5">{description}</p>
+                    </button>
+                  ))}
+                </div>
+                {compensationSettings.mode === 'sales_percent' && (
+                  <div className="mt-3 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 p-3">
+                    <label className="team-field-wrap">
+                      <span className="team-field-label">Porcentaje general sobre ventas <b>*</b></span>
+                      <span className="team-field"><span className="team-field-icon"><WalletCards className="w-4 h-4" /></span>
+                        <input type="number" min="0" max="100" step="0.01" inputMode="decimal" value={String(compensationSettings.percentRate)}
+                          onChange={e => setCompensationSettings(prev => ({ ...prev, percentRate: Math.max(0, Math.min(100, Number(e.target.value) || 0)) }))}
+                          disabled={savingCompensation} className="team-field-input" placeholder="Ej. 5" />
+                        <span className="pr-3 font-black text-muted">%</span>
+                      </span>
+                    </label>
+                  </div>
+                )}
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-3 border-t border-base">
+                  <p className="text-[9px] text-muted leading-5">El cambio no modifica comisiones históricas; controla las nuevas ventas.</p>
+                  <button type="button" disabled={savingCompensation || !snapshot?.companyId}
+                    onClick={async () => {
+                      if (!snapshot?.companyId) return;
+                      setSavingCompensation(true); setError(""); setMessage("");
+                      try {
+                        await saveCompensationSettings({ companyId: snapshot.companyId, mode: compensationSettings.mode, percentRate: compensationSettings.mode === 'sales_percent' ? Number(compensationSettings.percentRate) || 0 : 0 });
+                        await refresh();
+                        addNotification(compensationSettings.mode === "sales_percent" ? "Compensación global guardada." : "Compensación CUP fijo por producto guardada.", "success");
+                      } catch (e: any) {
+                        setError(e?.message || "No se pudo guardar la configuración de compensación.");
+                      } finally { setSavingCompensation(false); }
+                    }}
+                    className="w-full sm:w-auto h-10 px-4 rounded-xl bg-indigo-600 text-white font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50">
+                    {savingCompensation ? <><RefreshCw className="w-4 h-4 animate-spin" /> Guardando…</> : <><Save className="w-4 h-4" /> Guardar configuración</>}
+                  </button>
+                </div>
+              </section>
+
       {inviteLink && (
         <section className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
           <div className="flex flex-col md:flex-row md:items-center gap-3">
@@ -691,69 +753,7 @@ export default function Team() {
                   {!(snapshot?.warehouses || []).some(warehouse => warehouse.active) && <div className="team-empty-inline"><Warehouse className="w-4 h-4" />No hay almacenes activos disponibles. Crea uno en Configuración antes de asignar acceso.</div>}
                 </div>
               </section>
-              <section className="team-compensation-global bg-secondary border border-base rounded-3xl p-4 md:p-5 mt-4">
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <WalletCards className="w-5 h-5 text-rose-500 shrink-0" />
-                      <h2 className="text-sm font-black text-primary">Compensación del equipo</h2>
-                    </div>
-                    <p className="text-[10px] text-muted mt-1 leading-5">Una sola configuración para todos los empleados, actuales y futuros.</p>
-                  </div>
-                  <span className="text-[8px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-full bg-subtle border border-base text-muted shrink-0">
-                    {compensationSettings.workerCount} trabajador{compensationSettings.workerCount === 1 ? "" : "es"} activos
-                  </span>
-                </div>
-                <div className="grid md:grid-cols-2 gap-2 mt-4">
-                  {([
-                    ['fixed_product','CUP fijo por producto','Usa la comisión CUP configurada en cada producto.'],
-                    ['sales_percent','% sobre el total de venta','Usa el mismo porcentaje general para todos los empleados.']
-                  ] as [CompanyCompensationMode,string,string][]).map(([mode,label,description]) => (
-                    <button key={mode} type="button" disabled={savingCompensation}
-                      onClick={() => setCompensationSettings(prev => ({ ...prev, mode }))}
-                      className={cn("text-left p-4 rounded-2xl border transition-all", compensationSettings.mode === mode ? "bg-indigo-50/80 dark:bg-indigo-950/20 border-indigo-300 shadow-sm" : "bg-primary border-base hover:border-indigo-200")}>
-                      <div className="flex items-center justify-between gap-3">
-                        <p className="text-[10px] font-black text-primary uppercase tracking-wider">{label}</p>
-                        <span className={cn("w-5 h-5 rounded-full border flex items-center justify-center shrink-0", compensationSettings.mode === mode ? "bg-indigo-600 border-indigo-600 text-white" : "border-base text-transparent")}><Check className="w-3 h-3" /></span>
-                      </div>
-                      <p className="text-[9px] text-muted mt-1.5 leading-5">{description}</p>
-                    </button>
-                  ))}
-                </div>
-                {compensationSettings.mode === 'sales_percent' && (
-                  <div className="mt-3 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 p-3">
-                    <label className="team-field-wrap">
-                      <span className="team-field-label">Porcentaje general sobre ventas <b>*</b></span>
-                      <span className="team-field"><span className="team-field-icon"><WalletCards className="w-4 h-4" /></span>
-                        <input type="number" min="0" max="100" step="0.01" inputMode="decimal" value={String(compensationSettings.percentRate)}
-                          onChange={e => setCompensationSettings(prev => ({ ...prev, percentRate: Math.max(0, Math.min(100, Number(e.target.value) || 0)) }))}
-                          disabled={savingCompensation} className="team-field-input" placeholder="Ej. 5" />
-                        <span className="pr-3 font-black text-muted">%</span>
-                      </span>
-                    </label>
-                  </div>
-                )}
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mt-4 pt-3 border-t border-base">
-                  <p className="text-[9px] text-muted leading-5">El cambio no modifica comisiones históricas; controla las nuevas ventas.</p>
-                  <button type="button" disabled={savingCompensation || !snapshot?.companyId}
-                    onClick={async () => {
-                      if (!snapshot?.companyId) return;
-                      setSavingCompensation(true); setError(""); setMessage("");
-                      try {
-                        await saveCompensationSettings({ companyId: snapshot.companyId, mode: compensationSettings.mode, percentRate: compensationSettings.mode === 'sales_percent' ? Number(compensationSettings.percentRate) || 0 : 0 });
-                        await refresh();
-                        addNotification(compensationSettings.mode === "sales_percent" ? "Compensación global guardada." : "Compensación CUP fijo por producto guardada.", "success");
-                      } catch (e: any) {
-                        setError(e?.message || "No se pudo guardar la configuración de compensación.");
-                      } finally { setSavingCompensation(false); }
-                    }}
-                    className="w-full sm:w-auto h-10 px-4 rounded-xl bg-indigo-600 text-white font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50">
-                    {savingCompensation ? <><RefreshCw className="w-4 h-4 animate-spin" /> Guardando…</> : <><Save className="w-4 h-4" /> Guardar configuración</>}
-                  </button>
-                </div>
-              </section>
-
-                            <section className={cn("team-form-section team-access-section", form.sendInvite && "is-enabled", formStep !== 3 && "team-form-hidden")} data-section="employee-access" aria-hidden={formStep !== 3}>
+              <section className={cn("team-form-section team-access-section", form.sendInvite && "is-enabled", formStep !== 3 && "team-form-hidden")} data-section="employee-access" aria-hidden={formStep !== 3}>
                 <div className="team-form-section-head"><div className="team-form-section-icon"><Link2 className="w-4 h-4" /></div><div className="min-w-0"><h3>Acceso al sistema</h3><p>Elige si tendrá cuenta web o solo contraseña para operar en el POS.</p></div><label className="team-switch ml-auto shrink-0"><input type="checkbox" checked={form.sendInvite} onChange={e => setForm({...form, sendInvite:e.target.checked, posPassword: e.target.checked ? "" : form.posPassword})} disabled={busy || Boolean(editing?.user_id)} className="sr-only" /><span className="team-switch-track"><span className="team-switch-thumb" /></span></label></div>
 
                 {form.sendInvite ? (
