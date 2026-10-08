@@ -18,6 +18,7 @@ type PayrollRow = {
   baseSalary: number;
   commissions: number;
   totalSalary: number;
+  discrepancyDeduction: number;
   totalSales: number;
   totalItems: number;
   status: 'pending' | 'paid';
@@ -109,7 +110,8 @@ export function useReportsPayroll(params: {
       }
 
       const baseSalary = existing?.baseSalary ?? (companyCompensation.mode === 'sales_percent' ? 0 : Math.max(0, Number(emp?.baseSalary) || 0));
-      const totalSalary = existing?.total ?? (baseSalary + commissions);
+      const discrepancyDeduction = Math.max(0, Number(existing?.discrepancyDeduction) || 0);
+      const totalSalary = Math.max(0, baseSalary + commissions - discrepancyDeduction);
       const status = existing?.status === 'paid' ? 'paid' : 'pending';
       const date = existing?.date || session.closingDate || session.closedAt || session.openedAt;
 
@@ -124,6 +126,7 @@ export function useReportsPayroll(params: {
         baseSalary,
         commissions,
         totalSalary,
+        discrepancyDeduction,
         totalSales,
         totalItems,
         status,
@@ -162,7 +165,7 @@ export function useReportsPayroll(params: {
     const map = new Map<string, AggregatedPayrollRow>();
 
     filteredPayrollList.forEach(item => {
-      const key = item.workerName;
+      const key = item.userId || item.workerName;
       if (!map.has(key)) {
         map.set(key, {
           userId: item.userId,
