@@ -358,6 +358,7 @@ export default function Reports() {
     selectedBranchFilter,
     selectedFilterDate,
     sessionFilter,
+    companyCompensation,
   });
 
   // Toggle payment status handler
