@@ -8,8 +8,8 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-const CITY_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/8/83/Palmyra_-_Decumanus_Maximus.jpg";
-const CITY_CREDIT = "Palmyra histórica · Erik Hermans / Institute for the Study of the Ancient World · Wikimedia Commons · CC BY 2.0";
+const CITY_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/6/65/Palmyra%2C_Syria%2C_Ruins.jpg?palmyra=real-20261008";
+const CITY_CREDIT = "Fotografía real de Palmyra, Siria · Vyacheslav Argenberg · Wikimedia Commons · CC BY 4.0";
 const CaravanIcon = Caravan;
 const CitadelIcon = Castle;
 
@@ -367,16 +367,7 @@ export default function LandingPage() {
         <section id="historia" className="bg-[#F7F5FC]">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 lg:py-18 grid lg:grid-cols-[1.05fr_.95fr] gap-8 items-center">
             <div className="relative rounded-[28px] overflow-hidden border border-violet-100 shadow-[0_30px_70px_-40px_rgba(59,27,110,.45)] bg-gradient-to-br from-[#241143] via-[#5D2DB9] to-[#A987F3] h-[300px] sm:h-[390px]">
-                  <div className="absolute inset-0 opacity-35">
-                    <div className="absolute bottom-0 left-[9%] w-[5%] h-[42%] bg-white/30 rounded-t-sm"/>
-                    <div className="absolute bottom-0 left-[18%] w-[4%] h-[58%] bg-white/25 rounded-t-sm"/>
-                    <div className="absolute bottom-0 left-[27%] w-[6%] h-[50%] bg-white/20 rounded-t-sm"/>
-                    <div className="absolute bottom-0 left-[40%] w-[4%] h-[68%] bg-white/25 rounded-t-sm"/>
-                    <div className="absolute bottom-0 left-[49%] w-[7%] h-[46%] bg-white/20 rounded-t-sm"/>
-                    <div className="absolute bottom-0 left-[65%] w-[4%] h-[62%] bg-white/25 rounded-t-sm"/>
-                    <div className="absolute bottom-0 left-[74%] w-[6%] h-[51%] bg-white/20 rounded-t-sm"/>
-                  </div>
-              <img src={CITY_IMAGE} alt="Ruinas de la antigua ciudad de Palmyra, Siria" className="absolute inset-0 w-full h-full object-cover" loading="eager" referrerPolicy="no-referrer" />
+              <img src={CITY_IMAGE} alt="Fotografía real de las ruinas de la antigua ciudad de Palmyra, Siria" className="absolute inset-0 w-full h-full object-cover" loading="eager" referrerPolicy="no-referrer" />
               <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/70 to-transparent text-white"><p className="text-[8px] font-bold opacity-80">{CITY_CREDIT}</p></div>
             </div>
             <div>
