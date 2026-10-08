@@ -376,24 +376,30 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       // The cloud refresh can surface/requeue operations that failed during the
       // pull/push cycle. Always read the durable queue again before declaring
       // synchronization complete; the first result is only a snapshot.
-      const finalPendingCount = getOfflineQueueCount();
+      // La cola debe estar completamente hidratada antes de diagnosticar el
+      // resultado final. Esto evita que una carrera entre IndexedDB y la
+      // sincronización produzca el aviso engañoso "sin detalle".
+      await waitForOfflineQueueReady();
+      const finalQueue = getOfflineQueue();
+      const finalPendingCount = finalQueue.filter((item: any) => item?.status !== 'conflict').length;
       setPendingOfflineCount(finalPendingCount);
       if (finalPendingCount > 0 || cloudResult?.success === false) {
-        // No ocultar la causa cuando una operación padre falla y sus
-        // dependientes quedan bloqueadas. La cola durable conserva lastError,
-        // status y actionId; ese estado es la fuente de verdad para explicar
-        // por qué siguen pendientes.
-        const remainingQueue = getOfflineQueue();
-        const queueDetails = remainingQueue
-          .filter((item: any) => item?.status !== 'conflict' || item?.lastError)
+        // Nunca ocultar la causa: cada operación pendiente debe quedar trazable
+        // por tipo, actionId, estado, reintento y último error conocido.
+        const queueDetails = finalQueue
           .slice(0, 30)
           .map((item: any) => {
             const status = item?.status ? ` [${item.status}]` : '';
             const retry = Number(item?.retryCount) > 0 ? ` · intento ${item.retryCount}` : '';
-            const error = item?.lastError || 'Esperando una dependencia anterior que todavía no fue confirmada.';
+            const error = item?.lastError || (
+              item?.status === 'conflict'
+                ? 'Operación en conflicto: requiere revisión.'
+                : 'Sin error registrado; probablemente bloqueada por una dependencia pendiente.'
+            );
             return `${item?.type || 'operación'} · ${item?.actionId || item?.id || 'sin-id'}${status}${retry}: ${error}`;
           });
         const detailLines = [
+          `Resultado de esta sincronización: ${res.processed} procesadas, ${res.failed} fallidas, ${res.remaining} restantes.`,
           ...(res.errors || []).map(e => `${e.type} · ${e.actionId}: ${e.message}`),
           ...(cloudResult?.errors || []).map((e: string) => `Nube: ${e}`),
           cloudResult?.success === false && cloudResult?.message ? `Sincronización nube: ${cloudResult.message}` : '',
@@ -402,7 +408,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         addNotification(
           `Sincronización incompleta: quedan ${finalPendingCount} operaciones pendientes.`,
           'warning',
-          detailLines.join('\\n') || 'La cola conserva operaciones pendientes, pero todavía no existe un error registrado. Vuelve a sincronizar para obtener el detalle.'
+          detailLines.join('\\n') || `La cola reporta ${finalPendingCount} operaciones pendientes, pero no devolvió ningún detalle. Abre Configuración > Monitor de Logs para revisar el evento técnico.`
         );
       } else {
         addNotification("Sincronización con la nube completada con éxito", 'success');
