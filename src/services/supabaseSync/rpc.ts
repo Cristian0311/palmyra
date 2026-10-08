@@ -6,7 +6,19 @@ export type RpcFailure = { success: false; error: string; errorCode?: string; da
 export type RpcSuccess<T = any> = { success: true; data: T; error?: string; errorCode?: string };
 export type RpcResult<T = any> = RpcSuccess<T> | RpcFailure;
 
-function errorResult(e:any): RpcFailure { return { success:false, error:e?.message || String(e), errorCode:e?.code || e?.status || undefined, data:undefined }; }
+function errorResult(e:any): RpcFailure {
+  const raw = e?.message || e?.error_description || e?.details || e?.hint || e;
+  let message = typeof raw === 'string' ? raw : '';
+  if (!message) {
+    try { message = JSON.stringify(raw); } catch { message = String(raw || 'Error desconocido'); }
+  }
+  return {
+    success:false,
+    error:message || 'Error desconocido de Supabase',
+    errorCode:e?.code || e?.status || undefined,
+    data:undefined
+  };
+}
 function isUuid(value: unknown): value is string {
   return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
@@ -303,6 +315,14 @@ export async function callCancelSessionRPC(sessionId:string,userId:string,reason
     };
   }
 }
+export async function callGetCompensationSettingsRPC(){
+  try{
+    const {companyId}=await getActiveTenant();
+    const data=await rpc('palmyra_get_compensation_settings',{p_company_id:companyId});
+    return {success:true as const,error:undefined,errorCode:undefined,data};
+  }catch(e:any){return errorResult(e);}
+}
+
 export async function callCloseSessionRPC(sessionId:string,closingBalances:any[],closedAt:string,notes:string,settlement:SalarySettlement,expectedCash?:number){
   try{
     const {companyId}=await getActiveTenant();
