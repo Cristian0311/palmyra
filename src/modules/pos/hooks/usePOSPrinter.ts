@@ -21,6 +21,7 @@ type UsePOSPrinterOptions = {
   users: User[];
   currentUser: User | null;
   salarySettlements: any[];
+  companyCompensation?: { mode: 'fixed_product' | 'sales_percent'; percentRate: number };
   receiptConfig: ReceiptConfigLike;
   addNotification: (message: string, type?: "info" | "success" | "warning" | "error") => void;
   setPosError: (message: string) => void;
@@ -36,6 +37,7 @@ export function usePOSPrinter({
   users,
   currentUser,
   salarySettlements,
+  companyCompensation = { mode: 'fixed_product', percentRate: 0 },
   receiptConfig,
   addNotification,
   setPosError,
@@ -120,6 +122,7 @@ export function usePOSPrinter({
       users,
       currentUser,
       salarySettlements,
+      companyCompensation,
       baseCurrency,
       formatMoney,
       formatSalaryCUP,
