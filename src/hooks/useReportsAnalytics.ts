@@ -84,7 +84,7 @@ export function useReportsAnalytics(params: {
   const branchData = useMemo(() => {
     const data: Record<string, number> = {};
     branches.forEach(b => data[b.name] = 0);
-    transactions.forEach(tx => {
+    validSalesTransactions.forEach(tx => {
       const branch = branchById.get(tx.branchId);
       if (branch) data[branch.name] += tx.total;
     });
