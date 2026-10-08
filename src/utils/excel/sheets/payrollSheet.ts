@@ -1,5 +1,6 @@
 import type { ExcelExportData } from "../types";
 import type { SalarySettlement } from "../../../types";
+import { calculateEmployeeSaleCommission } from "../../../services/employeeCompensation";
 
 export function generatePayrollSheet(data: ExcelExportData): any[][] {
   const { salarySettlements, cashSessions, transactions, products, baseCurrency } = data;
@@ -33,21 +34,17 @@ export function generatePayrollSheet(data: ExcelExportData): any[][] {
 
     const commissionDetail: string[] = [];
     let calculatedCommissions = 0;
-
-    sessionTx.forEach(tx => {
-      tx.items.forEach(item => {
-        const prodId = typeof item.product === 'string' ? item.product : item.product.id;
-        const prod = products.find(p => p.id === prodId);
-        if (prod && (prod.commissionValue || 0) > 0) {
-          const comm = prod.commissionType === 'percentage'
-            ? (prod.price * (prod.commissionValue || 0) / 100) * item.quantity
-            : (prod.commissionValue || 0) * item.quantity;
-          calculatedCommissions += comm;
-          commissionDetail.push(`${item.quantity}x ${prod.name}: +${comm.toFixed(2)}`);
-        }
-      });
-    });
-
+    const sessionWorkers = new Set<string>();
+    sessionTx.forEach(tx => (tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId]).forEach(id => sessionWorkers.add(id)));
+    calculatedCommissions = Array.from(sessionWorkers).reduce((sum, employeeId) => {
+      const employee = data.users.find(u => u.id === employeeId);
+      return sum + sessionTx.reduce((employeeSum, tx) => {
+        const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
+        return sellers.includes(employeeId)
+          ? employeeSum + calculateEmployeeSaleCommission(employee, tx, products, sellers.length)
+          : employeeSum;
+      }, 0);
+    }, 0);
     const baseSalary = st ? st.baseSalary : 0;
     const commissions = st ? st.commissions : calculatedCommissions;
     const totalToPay = st ? st.total : (baseSalary + commissions);
