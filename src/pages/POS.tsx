@@ -3650,7 +3650,7 @@ export default function POS() {
                 }, 0);
                 const baseSalary = settlement?.baseSalary ?? (companyCompensation.mode === 'sales_percent' ? 0 : Math.max(0, Number(employee?.baseSalary ?? currentUser?.baseSalary) || 0));
                 const commissions = settlement?.commissions ?? fallbackCommissions;
-                const totalSalary = (settlement?.total ?? (baseSalary + commissions)) - deduction;
+                const totalSalary = settlement?.total ?? ((baseSalary + commissions) - deduction);
                 
                 const totalSales = sessionTransactions.reduce((sum, tx) => sum + (tx.total || 0), 0);
                 const totalItems = sessionTransactions.reduce((sum, tx) => sum + (tx.items || []).reduce((s, i) => s + (i.quantity || 0), 0), 0);
