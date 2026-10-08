@@ -3867,6 +3867,7 @@ export default function POS() {
           `${Math.round(Number(value) || 0).toLocaleString("es-ES")} CUP`
         }
         companyCompensation={companyCompensation}
+        salarySettlement={lastClosedSession ? salarySettlements.find(s => s.sessionId === lastClosedSession.id) : null}
       />
 
       {showPrinterSetupModal && (
