@@ -429,7 +429,7 @@ export default function Banks() {
       </div>
 
       {/* Bank Cards Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
+      <div className="bank-cards-carousel grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
         {bankCards.map(card => (
           <div key={card.id} onClick={() => setSelectedCardId(card.id)} className={`relative overflow-hidden rounded-xl p-2 sm:p-2.5 cursor-pointer transition-all duration-300 ${selectedCardId === card.id ? 'ring-2 ring-indigo-500 shadow-md scale-[1.01]' : 'hover:shadow-xs hover:-translate-y-0.5'} bg-gradient-to-br from-slate-800 to-slate-900 text-white min-h-[98px] flex flex-col justify-between`}>
              {/* Background Pattern */}
