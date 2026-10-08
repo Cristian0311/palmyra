@@ -379,11 +379,31 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       const finalPendingCount = getOfflineQueueCount();
       setPendingOfflineCount(finalPendingCount);
       if (finalPendingCount > 0 || cloudResult?.success === false) {
-        addNotification(`Sincronización incompleta: quedan ${finalPendingCount} operaciones pendientes.`, 'warning', [
+        // No ocultar la causa cuando una operación padre falla y sus
+        // dependientes quedan bloqueadas. La cola durable conserva lastError,
+        // status y actionId; ese estado es la fuente de verdad para explicar
+        // por qué siguen pendientes.
+        const remainingQueue = getOfflineQueue();
+        const queueDetails = remainingQueue
+          .filter((item: any) => item?.status !== 'conflict' || item?.lastError)
+          .slice(0, 30)
+          .map((item: any) => {
+            const status = item?.status ? ` [${item.status}]` : '';
+            const retry = Number(item?.retryCount) > 0 ? ` · intento ${item.retryCount}` : '';
+            const error = item?.lastError || 'Esperando una dependencia anterior que todavía no fue confirmada.';
+            return `${item?.type || 'operación'} · ${item?.actionId || item?.id || 'sin-id'}${status}${retry}: ${error}`;
+          });
+        const detailLines = [
           ...(res.errors || []).map(e => `${e.type} · ${e.actionId}: ${e.message}`),
           ...(cloudResult?.errors || []).map((e: string) => `Nube: ${e}`),
-          cloudResult?.success === false && cloudResult?.message ? `Sincronización nube: ${cloudResult.message}` : ''
-        ].filter(Boolean).join('\\n') || 'No se recibió un detalle específico. Abre Configuración y revisa el registro de sincronización.');
+          cloudResult?.success === false && cloudResult?.message ? `Sincronización nube: ${cloudResult.message}` : '',
+          ...queueDetails
+        ].filter(Boolean);
+        addNotification(
+          `Sincronización incompleta: quedan ${finalPendingCount} operaciones pendientes.`,
+          'warning',
+          detailLines.join('\\n') || 'La cola conserva operaciones pendientes, pero todavía no existe un error registrado. Vuelve a sincronizar para obtener el detalle.'
+        );
       } else {
         addNotification("Sincronización con la nube completada con éxito", 'success');
       }
