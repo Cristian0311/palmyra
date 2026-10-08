@@ -1,9 +1,12 @@
 import type { ExcelExportData } from "../types";
-import type { SalarySettlement } from "../../../types";
+import type { SalarySettlement, User } from "../../../types";
+import { calculateEmployeeSaleCommission } from "../../../services/employeeCompensation";
 import { calculateEmployeeSaleCommission } from "../../../services/employeeCompensation";
 
 export function generatePayrollSheet(data: ExcelExportData): any[][] {
   const { salarySettlements, cashSessions, transactions, products, baseCurrency } = data;
+  const users = ((data as any).users || []) as User[];
+  const userById = new Map(users.map(user => [user.id, user]));
 
   const rows: any[][] = [
     [
