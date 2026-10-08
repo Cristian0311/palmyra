@@ -206,7 +206,7 @@ export async function pushUserToSupabase(user:User){
     let targetWarehouses=warehouses;
     if(!targetWarehouses.length){const {data:w}=await supabase.from('warehouses').select('id').eq('company_id',companyId).eq('active',true).order('created_at').limit(1).maybeSingle();if(w?.id)targetWarehouses=[w.id];}
     if(!targetWarehouses.length)throw new Error('La empresa no tiene almacenes activos.');
-    const {error}=await supabase.rpc('create_employee_secure',{p_company_id:companyId,p_employee_id:user.id,p_employee_code:(user as any).employeeCode||('EMP-'+user.id.slice(0,6).toUpperCase()),p_full_name:user.name,p_base_salary:Number(user.baseSalary)||0,p_role_id:role.id,p_warehouse_ids:targetWarehouses});if(error)throw error;return true;
+    const {data,error}=await supabase.rpc('create_employee_secure',{p_company_id:companyId,p_employee_id:user.id,p_employee_code:(user as any).employeeCode||('EMP-'+user.id.slice(0,6).toUpperCase()),p_full_name:user.name,p_base_salary:Number(user.baseSalary)||0,p_role_id:role.id,p_warehouse_ids:targetWarehouses});if(error)throw error;if(data?.success===false)throw new Error(data?.message||data?.error||'El empleado fue rechazado por Supabase.');return true;
   }catch(e:any){await queue('user',user,user.id);return false;}
 }
 export async function deleteUserFromSupabase(id:string):Promise<boolean>{
@@ -266,10 +266,15 @@ export async function pushCurrencyToSupabase(currency:Currency){
     if (currency.code === baseCode) return true;
     const rate = Number(currency.rateToBase);
     if (!Number.isFinite(rate) || rate <= 0) throw new Error('La tasa de cambio debe ser mayor que 0.');
-    const { error } = await supabase.from('exchange_rates').insert({
-      id: crypto.randomUUID(), company_id: companyId, base_currency: baseCode,
+    const seed = new TextEncoder().encode(`currency-rate:${companyId}:${currency.code}:${rate}`);
+    const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', seed)).slice(0, 16);
+    digest[6] = (digest[6] & 0x0f) | 0x50;
+    digest[8] = (digest[8] & 0x3f) | 0x80;
+    const stableId = Array.from(digest).map((b,i)=>[4,6,8,10].includes(i)?'-'+b.toString(16).padStart(2,'0'):b.toString(16).padStart(2,'0')).join('');
+    const { error } = await supabase.from('exchange_rates').upsert({
+      id: stableId, company_id: companyId, base_currency: baseCode,
       quote_currency: currency.code, rate, effective_at: new Date().toISOString(), created_by: authUserId || null
-    });
+    }, {onConflict:'id'});
     if (error) throw error;
     return true;
   } catch (e:any) {
