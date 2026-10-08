@@ -72,9 +72,9 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         type: movement.type,
         amount: Math.abs(Number(movement.amount)||0),
         currencyCode: movement.currencyCode,
-        description: movement.description || ''
+        description: movement.description || '',
+        throwOnError: true
       });
-      if (!ok) throw new Error('No se pudo sincronizar el movimiento de caja.');
       return true;
     }
     case 'cash_movement_delete': {
@@ -98,9 +98,9 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
             type: movement.type,
             amount: Math.abs(Number(movement.amount) || 0),
             currencyCode: movement.currencyCode,
-            description: movement.description || ''
+            description: movement.description || '',
+            throwOnError: true
           });
-          if (!ok) throw new Error('No se pudo sincronizar un movimiento de caja del turno.');
         }
       };
       if (session.__operation === 'close') {
