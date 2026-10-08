@@ -399,7 +399,7 @@ export async function pushSalarySettlementToSupabase(settlement:SalarySettlement
       company_id:companyId,
       payroll_run_id:runId,
       employee_id:employee.id,
-      currency_code:'USD',
+      currency_code:'CUP',
       base_salary:Number(settlement.baseSalary)||0,
       commission_amount:Number(settlement.commissions)||0,
       adjustments:0,

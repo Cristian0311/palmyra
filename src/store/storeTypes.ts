@@ -94,7 +94,7 @@ export interface AppState {
   openSession: (session: CashRegisterSession) => Promise<boolean>;
   closeSession: (sessionId: string, closingBalances: import('../types').Payment[], workerName?: string, closingDate?: string, discrepancyDeduction?: number, sessionMeta?: Partial<CashRegisterSession>) => Promise<boolean>;
   updateCashSession: (id: string, updates: Partial<CashRegisterSession>) => void;
-  cancelSession: (sessionId: string, reason?: string) => Promise<boolean>;
+  cancelSession: (sessionId: string, reason?: string, password?: string) => Promise<boolean>;
   updateCashSessionDateCascade: (sessionId: string, newDateYMD: string) => Promise<boolean>;
   joinOpenSession: (sessionId: string, userId: string, workerName?: string) => void;
   getCurrentSession: (branchId: string, userId: string) => CashRegisterSession | undefined;

@@ -342,7 +342,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
     pushTransactionToSupabase(updated).catch(() => {});
   },
 
-  cancelSession: async (sessionId: string, reason = 'Cancelación de turno') => {
+  cancelSession: async (sessionId: string, reason = 'Cancelación de turno', password?: string) => {
     const state = get();
     const session = state.cashSessions.find(s => s.id === sessionId);
     if (!session) return false;
@@ -361,15 +361,14 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
       closedAt: cancelledAt,
       closingDate: cancelledAt,
       deleteReason: reason,
-      __operation: 'cancel'
+      __operation: 'cancel',
+      requiresEmployeePassword: true
     };
 
     // Persist the cancellation intent before any local mutation.
-    await enqueueOfflineItem('cash_session', queueData, 'cash-cancel:' + sessionId);
-
     if (navigator.onLine) {
       try {
-        const res = await callCancelSessionRPC(sessionId, userId, reason);
+        const res = await callCancelSessionRPC(sessionId, userId, reason, password);
         if (!res.success) {
           if (res.errorCode) {
             get().addNotification(res.error || 'No se pudo cancelar el turno.', 'error');
@@ -403,6 +402,13 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
         removeFromOfflineQueueByAction('cash_session', 'cash-cancel:' + sessionId);
         return true;
       } catch (err) {
+        // Si el servidor rechazó la operación por credencial/permisos, no debemos
+        // marcar el turno como cancelado localmente ni dejar una cola fantasma.
+        const message = String((err as any)?.message || err || '');
+        if (/permission|password|authentication|authorized|credential/i.test(message)) {
+          get().addNotification(message || 'La contraseña del empleado no fue aceptada.', 'error');
+          return false;
+        }
         console.warn('[cancelSession] La cancelación no pudo completarse en línea; se conserva localmente y queda durable:', err);
         const sessionTxs = (get().transactions || []).filter(t => t.sessionId === sessionId && !t.deletedAt);
         sessionTxs.forEach(tx => set(current => buildLocalVoidTransactionPatch(current, tx)));
@@ -422,6 +428,11 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
         return true;
       }
     }
+
+    // Offline: la contraseña se verifica localmente en POS. No persistimos la
+    // contraseña en IndexedDB. Al recuperar conexión, la operación pendiente
+    // exige reautenticación antes de ser enviada al servidor.
+    await enqueueOfflineItem('cash_session', queueData, 'cash-cancel:' + sessionId);
 
     const sessionTxs = (state.transactions || []).filter(t => t.sessionId === sessionId && !t.deletedAt);
     sessionTxs.forEach(tx => set(current => buildLocalVoidTransactionPatch(current, tx)));

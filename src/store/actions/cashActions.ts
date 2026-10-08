@@ -184,8 +184,18 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
            (!session.closedAt || new Date(t.date).getTime() <= new Date(session.closedAt).getTime()))
     );
     const user = get().users.find(u => u.id === session.userId || u.name?.toLowerCase() === (workerName || session.workerName)?.toLowerCase());
-    const commissions = sessionTxs.reduce((sum, tx) =>
-      sum + calculateEmployeeSaleCommission(user, tx, get().products || [], 1), 0);
+    const commissions = sessionTxs.reduce((sum, tx) => {
+      const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
+      const sellerCount = Math.max(1, sellers.length);
+      if (sellers.length === 1) {
+        const seller = get().users.find(u => u.id === sellers[0]) || user;
+        return sum + calculateEmployeeSaleCommission(seller, tx, get().products || [], 1);
+      }
+      return sum + sellers.reduce((sellerSum, sellerId) => {
+        const seller = get().users.find(u => u.id === sellerId);
+        return sellerSum + calculateEmployeeSaleCommission(seller, tx, get().products || [], sellerCount);
+      }, 0);
+    }, 0);
      const baseSalary = user?.compensationType === 'sales_percentage' ? 0 : (user?.baseSalary || 0);
     const deduction = discrepancyDeduction || 0;
     const settlement: SalarySettlement = {

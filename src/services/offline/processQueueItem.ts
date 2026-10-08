@@ -113,7 +113,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         // que una venta rechazada no termine dentro de la liquidación salarial.
         const { data: persistedSales, error: salesError } = await supabase
           .from('sales')
-          .select('id,status')
+          .select('id,status,employee_id,seller_user_id')
           .eq('cash_session_id', session.id);
         if (salesError) throw salesError;
 
@@ -123,21 +123,39 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
 
         let commissions = 0;
         if (completedSaleIds.length) {
-          const [itemsRes, productsRes] = await Promise.all([
-            supabase.from('sale_items').select('product_id,quantity,line_total').in('sale_id', completedSaleIds),
-            supabase.from('products').select('id,commission_fixed,commission_percent').eq('company_id', (await getActiveTenant()).companyId)
+          const [itemsRes, productsRes, employeesRes] = await Promise.all([
+            supabase.from('sale_items').select('sale_id,product_id,quantity,line_total').in('sale_id', completedSaleIds),
+            supabase.from('products').select('id,commission_fixed,commission_percent').eq('company_id', (await getActiveTenant()).companyId),
+            supabase.from('employees').select('id,user_id,compensation_type,sales_percentage').eq('company_id', (await getActiveTenant()).companyId).eq('active', true)
           ]);
           if (itemsRes.error) throw itemsRes.error;
           if (productsRes.error) throw productsRes.error;
+          if (employeesRes.error) throw employeesRes.error;
+
           const productMap = new Map<string, any>((productsRes.data || []).map((p: any) => [p.id, p]));
+          const employeeById = new Map<string, any>((employeesRes.data || []).map((e: any) => [e.id, e]));
+          const employeeByUserId = new Map<string, any>((employeesRes.data || []).filter((e: any) => e.user_id).map((e: any) => [e.user_id, e]));
+          const saleMap = new Map<string, any>((persistedSales || []).map((s: any) => [s.id, s]));
+
           for (const saleItem of itemsRes.data || []) {
             const product = productMap.get(saleItem.product_id);
-            if (!product) continue;
+            const sale = saleMap.get(saleItem.sale_id);
+            if (!product || !sale) continue;
+
             const quantity = Number(saleItem.quantity) || 0;
             const lineTotal = Number(saleItem.line_total) || 0;
-            const fixed = Number(product.commission_fixed) || 0;
-            const percent = Number(product.commission_percent) || 0;
-            commissions += (fixed * quantity) + (lineTotal * percent / 100);
+            const seller = (sale.employee_id && employeeById.get(sale.employee_id))
+              || (sale.seller_user_id && employeeByUserId.get(sale.seller_user_id))
+              || employeeById.get(session.userId)
+              || employeeByUserId.get(session.userId);
+
+            const compensationType = seller?.compensation_type || 'fixed_product';
+            if (compensationType === 'sales_percentage') {
+              const percentage = Math.max(0, Math.min(100, Number(seller?.sales_percentage) || 0));
+              commissions += lineTotal * percentage / 100;
+            } else {
+              commissions += (Number(product.commission_fixed) || 0) * quantity;
+            }
           }
         }
 
@@ -167,9 +185,16 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         // descuadres/liquidaciones incluso después de reiniciar el dispositivo.
         const metadataOk = await pushCashSessionMetadataToSupabase(session);
         if (!metadataOk) throw new Error('El cierre fue confirmado, pero el metadata del turno aún no pudo sincronizarse.');
+
+        // La liquidación salarial debe persistirse en la misma sincronización
+        // del cierre. Esto hace que una comisión porcentual no quede solo en
+        // memoria/localStorage.
+        const salaryOk = await pushSalarySettlementToSupabase(recalculatedSettlement);
+        if (!salaryOk) throw new Error('El cierre fue confirmado, pero la liquidación salarial aún no pudo sincronizarse.');
         return true;
       }
       if (session.__operation === 'cancel') {
+        if (session.requiresEmployeePassword) throw new Error('employee_password_required_reauthentication');
         const res = await callCancelSessionRPC(session.id, session.userId || 'system', session.deleteReason || 'Cancelación de turno');
         if (!res.success) throw new Error(res.error || 'No se pudo cancelar el turno');
         return true;
