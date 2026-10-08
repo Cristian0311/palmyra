@@ -353,18 +353,6 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
 
     const userId = state.currentUser?.id || 'system';
     const cancelledAt = new Date().toISOString();
-    const queueData = {
-      id: sessionId,
-      branchId: session.branchId,
-      userId,
-      status: 'cancelled',
-      closedAt: cancelledAt,
-      closingDate: cancelledAt,
-      deleteReason: reason,
-      __operation: 'cancel',
-      requiresEmployeePassword: true
-    };
-
     // La cancelación se confirma primero en Supabase. Nunca marcamos un turno
     // como cancelado localmente si la respuesta del servidor es incierta: así
     // un timeout no convierte una operación sin contraseña en una cancelación.
