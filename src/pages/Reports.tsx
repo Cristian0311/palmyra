@@ -494,7 +494,7 @@ export default function Reports() {
     let dateFilterLabel = 'Todo el historial';
     if (selectedFilterDate) dateFilterLabel = `Fecha específica: ${selectedFilterDate}`;
     else if (sessionFilter === 'today') dateFilterLabel = `Hoy: ${new Date().toLocaleDateString('es-CU')}`;
-    return { businessName: receiptConfig?.businessName || 'MARÉ POS', transactions, cashSessions, salarySettlements, products, categories, currencies, branches, users, customers, bankTransactions, bankCards, inventory, transfers, returns, warranties, baseCurrency, dateFilterLabel };
+    return { businessName: receiptConfig?.businessName || 'PALMYRA', transactions, cashSessions, salarySettlements, products, categories, currencies, branches, users, customers, bankTransactions, bankCards, inventory, transfers, returns, warranties, baseCurrency, dateFilterLabel };
   };
 
   const { exportMenuRef, showExportMenu, setShowExportMenu, exportSuccess, handleExportFullExcel, handleExportSectionExcel } = useReportsExport(getExportData);
@@ -3217,7 +3217,7 @@ export default function Reports() {
             return (
               <>
                 <div className="text-center mb-3">
-                  <h1 className="text-base font-black uppercase tracking-wider">MARÉ</h1>
+                  <h1 className="text-base font-black uppercase tracking-wider">PALMYRA</h1>
                   <p className="text-[10px] uppercase font-bold">{printBranch?.name || 'Sucursal Principal'}</p>
                   <p className="text-[9px] mt-1 font-bold">COMPROBANTE DE CIERRE DE TURNO</p>
                   <div className="border-b-2 border-black my-2"></div>
@@ -3310,7 +3310,7 @@ export default function Reports() {
           <div className="mt-8 pt-6 border-t border-black border-dashed text-center text-[9px]">
             <p className="mb-6">Firma del Trabajador: ______________________</p>
             <p>Firma del Supervisor: ______________________</p>
-            <p className="mt-4 font-mono text-[8px]">MARÉ SISTEMA DE PUNTO DE VENTA</p>
+            <p className="mt-4 font-mono text-[8px]">PALMYRA SISTEMA DE PUNTO DE VENTA</p>
           </div>
         </div>
       )}

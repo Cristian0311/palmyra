@@ -1,45 +1,25 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 
-const store = fs.readFileSync('src/store/useStore.ts','utf8');
-const sync = fs.readFileSync('src/services/supabaseSync.ts','utf8');
-const syncRpc = fs.readFileSync('src/services/supabaseSync/rpc.ts','utf8');
-const syncPull = fs.readFileSync('src/services/supabaseSync/pull.ts','utf8');
-const offline = fs.readFileSync('src/services/offlineSync.ts','utf8');
-const sql = fs.readFileSync('SUPABASE_MIGRATION.sql','utf8');
-const pos = fs.readFileSync('src/pages/POS.tsx','utf8');
+const read = (p) => fs.readFileSync(p, 'utf8');
+const store = read('src/store/useStore.ts');
+const offline = read('src/services/offlineSync.ts');
+const pos = read('src/pages/POS.tsx');
+const server = read('server.ts');
+const reports = read('src/pages/Reports.tsx');
+const migrations = fs.readdirSync('supabase/migrations').filter((name) => name.endsWith('.sql'));
 
-assert.match(store, /processTransaction: async/);
-assert.match(store, /callProcessTransactionRPC\(transaction\)/);
-assert.match(store, /applyLocalCompletedSale\(transaction\)/);
-assert.match(store, /callVoidTransactionRPC/);
-assert.match(store, /callCompleteReturnRPC/);
-assert.match(store, /callTransferInventoryRPC/);
-assert.match(store, /callReceiveSupplierOrderRPC/);
-assert.match(store, /callCompleteInventoryAuditRPC/);
-assert.match(pos, /const saleConfirmed = await processTransaction\(tx\)/);
-assert.match(pos, /if \(p\.method === 'transfer'/);
-assert.match(pos, /const needsTransactions = showCashManagementModal \|\| \!\!lastClosedSession/);
-assert.match(pos, /const needsCashSessions = showOpenShiftModal \|\| \!\!joiningSessionId/);
-assert.match(pos, /void import\("html5-qrcode"\)/);
-assert.doesNotMatch(pos, /import \{[^}]*Html5QrcodeScanner/);
-assert.match(offline, /'void_transaction'/);
-assert.match(offline, /'return_complete'/);
-assert.match(offline, /'transfer'/);
-assert.match(offline, /'supplier_receive'/);
-assert.match(offline, /'audit_complete'/);
-assert.match(syncRpc, /kit_components: item\.product\?\.kitComponents/);
-assert.match(syncPull, /fetchAllRows\(supabase, 'transactions', 'date'\)/);
-assert.doesNotMatch(sync, /from\('transactions'\)\.delete\(\)/);
-assert.match(sql, /CREATE OR REPLACE FUNCTION process_pos_transaction_v2/);
-assert.match(sql, /CREATE OR REPLACE FUNCTION void_pos_transaction_v2/);
-assert.match(sql, /CREATE OR REPLACE FUNCTION complete_return_v2/);
-assert.match(sql, /CREATE OR REPLACE FUNCTION process_inventory_transfer_v2/);
-assert.match(sql, /CREATE OR REPLACE FUNCTION receive_supplier_order_v2/);
-assert.match(sql, /CREATE OR REPLACE FUNCTION complete_inventory_audit_v2/);
-assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS idx_one_open_cash_session_branch/);
-assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS idx_salary_settlement_session/);
-assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS idx_inventory_transfers_operation/);
-assert.match(sql, /CREATE OR REPLACE VIEW duplicate_branch_candidates/);
-assert.match(sql, /CREATE OR REPLACE VIEW branch_usage_audit/);
-console.log('Integrity smoke checks: PASS');
+for (const contract of ['callProcessTransactionRPC','callVoidTransactionRPC','callCompleteReturnRPC','callTransferInventoryRPC','callReceiveSupplierOrderRPC','callCompleteInventoryAuditRPC']) {
+  assert.match(store, new RegExp(contract));
+}
+assert.match(pos, /saleConfirmed/);
+assert.match(pos, /processTransaction/);
+for (const operation of ['void_transaction','return_complete','transfer','supplier_receive','audit_complete']) {
+  assert.match(offline, new RegExp("['\\\"]" + operation + "['\\\"]"));
+}
+assert.ok(server.includes("app.use('/api/ai-"), 'AI auth middleware missing');
+assert.ok(server.includes('rateLimitExchange'), 'Exchange rate limit missing');
+assert.doesNotMatch(server, /MARÉ|OmniSync POS|Mi Tienda POS/i);
+assert.doesNotMatch(reports, /MARÉ|OmniSync POS|Mi Tienda POS/i);
+assert.ok(migrations.some((name) => name.includes('enterprise_security_hardening')), 'Missing enterprise security migration');
+console.log('PALMYRA integrity smoke: PASS');

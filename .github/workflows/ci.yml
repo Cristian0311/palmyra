@@ -44,6 +44,9 @@ jobs:
       - name: Architecture audit
         run: npm run audit:architecture:strict
 
+      - name: Integrity smoke
+        run: npm run test:integrity
+
       - name: Production build
         run: npm run build
 

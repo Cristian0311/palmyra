@@ -14,6 +14,66 @@ async function startServer() {
 
   app.use(express.json({ limit: '15mb' }));
 
+  // Production security baseline without adding another runtime dependency.
+  app.disable('x-powered-by');
+  app.use((_req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Permissions-Policy', 'camera=(self), microphone=(), geolocation=()');
+    next();
+  });
+
+  const requestRateLimit = new Map<string, { count: number; resetAt: number }>();
+  const consumeRateLimit = (key: string, limit: number, windowMs: number) => {
+    const now = Date.now();
+    const current = requestRateLimit.get(key);
+    if (!current || current.resetAt <= now) {
+      requestRateLimit.set(key, { count: 1, resetAt: now + windowMs });
+      return { allowed: true, remaining: limit - 1, retryAfter: 0 };
+    }
+    if (current.count >= limit) return { allowed: false, remaining: 0, retryAfter: Math.ceil((current.resetAt - now) / 1000) };
+    current.count += 1;
+    return { allowed: true, remaining: limit - current.count, retryAfter: 0 };
+  };
+
+  const requireAuthenticatedRequest = async (req: any, res: any, next: any) => {
+    const authHeader = String(req.headers.authorization || '');
+    const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const supabaseUrl = process.env.SUPABASE_URL || 'https://hmcvujyqloyjdvngpdxz.supabase.co';
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+    if (!accessToken || !supabaseAnonKey) return res.status(401).json({ success: false, error: 'Se requiere una sesión autenticada.' });
+
+    const userResponse = await fetch(supabaseUrl + '/auth/v1/user', {
+      headers: { apikey: supabaseAnonKey, Authorization: 'Bearer ' + accessToken }
+    }).catch(() => null);
+    if (!userResponse?.ok) return res.status(401).json({ success: false, error: 'Sesión no válida o expirada.' });
+
+    const user = await userResponse.json().catch(() => null);
+    const userId = String(user?.id || 'unknown');
+    const limit = consumeRateLimit('ai:' + userId, 30, 60_000);
+    res.setHeader('X-RateLimit-Remaining', String(limit.remaining));
+    if (!limit.allowed) {
+      res.setHeader('Retry-After', String(limit.retryAfter || 60));
+      return res.status(429).json({ success: false, error: 'Demasiadas solicitudes de IA. Intenta nuevamente en unos segundos.' });
+    }
+    req.authenticatedUser = user;
+    return next();
+  };
+
+  const rateLimitExchange = (req: any, res: any, next: any) => {
+    const key = 'exchange:' + (req.ip || req.socket?.remoteAddress || 'unknown');
+    const limit = consumeRateLimit(key, 60, 60_000);
+    if (!limit.allowed) {
+      res.setHeader('Retry-After', String(limit.retryAfter || 60));
+      return res.status(429).json({ configured: true, error: 'Demasiadas consultas de tasa de cambio. Intenta nuevamente en unos segundos.' });
+    }
+    return next();
+  };
+
+  // AI routes are authenticated and rate-limited to prevent quota abuse.
+  app.use('/api/ai-', requireAuthenticatedRequest);
+
   // Single, crisp PNG version of the official PALMYRA master logo for
   // email clients such as Gmail. The vector source lives in public/ and is
   // rendered server-side so email never depends on SVG support.
@@ -303,7 +363,7 @@ async function startServer() {
   });
 
   // Informational exchange-rate proxy. The elTOQUE token never reaches the browser.
-  app.get('/api/exchange-rates', async (_req, res) => {
+  app.get('/api/exchange-rates', rateLimitExchange, async (_req, res) => {
     try {
       const token = process.env.ELTOQUE_API_TOKEN || '';
       if (!token) {
@@ -353,7 +413,7 @@ async function startServer() {
     try {
       const payload = req.body || {};
       const {
-        businessName = 'MARÉ POS',
+        businessName = 'PALMYRA',
         dateFilterLabel = 'Todo el historial',
         baseCurrencyCode = 'CUP',
         baseCurrencySymbol = '$',
@@ -696,7 +756,7 @@ Responde ESTRICTAMENTE con un objeto JSON:
         }
       });
       const prompt = `
-        Eres un analista de negocios experto para una tienda minorista llamada MARÉ.
+        Eres un analista de negocios experto para una tienda minorista llamada PALMYRA.
         Analiza los siguientes datos de hoy y proporciona un resumen ejecutivo MUY breve (máximo 3 oraciones) y 2 recomendaciones tácticas.
         Datos de hoy:
         - Ventas totales: ${data.salesToday} ${data.baseCurrency}
@@ -751,7 +811,7 @@ Responde ESTRICTAMENTE con un objeto JSON:
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[OmniSync POS API] Server running on http://0.0.0.0:${PORT}`);
+    console.log(`[PALMYRA API] Server running on http://0.0.0.0:${PORT}`);
   });
 }
 

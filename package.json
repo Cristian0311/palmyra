@@ -1,7 +1,7 @@
 {
-  "name": "react-example",
+  "name": "palmyra",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",
@@ -13,7 +13,8 @@
     "lint": "tsc --noEmit",
     "audit:architecture": "node scripts/architecture-audit.mjs",
     "audit:architecture:strict": "node scripts/architecture-audit.mjs --strict",
-    "test:unit": "tsx --test tests/unit/*.test.ts"
+    "test:unit": "tsx --test tests/unit/*.test.ts",
+    "test:integrity": "node scripts/integrity-smoke.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
