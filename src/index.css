@@ -936,10 +936,47 @@ html.pos-keyboard-open .pos-page .animate-in,html.pos-keyboard-open .pos-page [c
 }
 
 
-/* Dashboard hero: preserve the source aspect ratio; enlarge/crop by background-size instead of stretching the woman. */
-.dashboard-hero-image{background-position:right center!important;background-size:150% auto!important;background-repeat:no-repeat!important;background-color:#f5f0ff}
-@media(max-width:1023px){.dashboard-hero-image{background-size:auto 125%!important;background-position:76% center!important;min-width:100%;background-color:#f5f0ff}}
-@media(max-width:767px){.dashboard-hero-image{background-size:auto 120%!important;background-position:73% center!important;min-width:100%;background-color:#f5f0ff}}
+/* Dashboard hero: the photo is a real image layer; all variable dashboard text stays in React/HTML above it.
+   Never stretch the source horizontally: use object-fit/object-position only. */
+.dashboard-hero{isolation:isolate}
+.dashboard-hero-media{overflow:hidden}
+.dashboard-hero-image{
+  display:block!important;
+  width:100%!important;
+  height:100%!important;
+  max-width:none!important;
+  object-fit:cover!important;
+  object-position:68% 48%!important;
+  transform:none!important;
+  filter:none!important;
+  image-rendering:auto;
+}
+.dashboard-hero-shade{
+  background:
+    linear-gradient(90deg,rgba(255,255,255,.92) 0%,rgba(255,255,255,.72) 30%,rgba(255,255,255,.16) 55%,rgba(255,255,255,0) 72%),
+    linear-gradient(180deg,rgba(255,255,255,.05) 0%,rgba(255,255,255,0) 48%,rgba(76,29,149,.08) 100%);
+}
+@media(min-width:768px) and (max-width:1023px){
+  .dashboard-hero-image{object-position:70% 48%!important}
+  .dashboard-hero-shade{
+    background:
+      linear-gradient(90deg,rgba(255,255,255,.9) 0%,rgba(255,255,255,.62) 34%,rgba(255,255,255,.1) 62%,rgba(255,255,255,0) 78%),
+      linear-gradient(180deg,rgba(255,255,255,.04),rgba(76,29,149,.08));
+  }
+}
+@media(max-width:767px){
+  .dashboard-hero-image{
+    object-position:74% 46%!important;
+  }
+  .dashboard-hero-shade{
+    background:
+      linear-gradient(180deg,rgba(255,255,255,.06) 0%,rgba(255,255,255,.02) 35%,rgba(255,255,255,.72) 58%,rgba(255,255,255,.94) 100%),
+      linear-gradient(90deg,rgba(255,255,255,.34) 0%,rgba(255,255,255,0) 62%);
+  }
+}
+@media(max-width:420px){
+  .dashboard-hero-image{object-position:76% 45%!important}
+}
 
 /* Enterprise tutorial layout: no page-level horizontal drift, readable flow at every viewport. */
 .tutorial-page{overflow-x:hidden;min-width:0}
