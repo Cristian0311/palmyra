@@ -297,7 +297,7 @@ export default function Team() {
       const localEmployee: TeamEmployee = {
         id: localId, user_id: null, employee_code: form.employeeCode.trim(), full_name: form.fullName.trim(),
         login_email: form.sendInvite ? form.email.trim().toLowerCase() : null, base_salary: Number(form.baseSalary) || 0,
-        compensation_type: "fixed_product", sales_percentage: 0, active: true, role_id: form.roleId,
+        compensation_type: compensationSettings.mode === "sales_percent" ? "sales_percentage" : "fixed_product", sales_percentage: compensationSettings.mode === "sales_percent" ? Number(compensationSettings.percentRate) || 0 : 0, active: true, role_id: form.roleId,
         role_name: role?.name || "Empleado", role_key: role?.key || "employee", warehouse_ids: [...form.warehouseIds],
         default_warehouse_id: form.warehouseIds[0] || null,
         pending_invitation: form.sendInvite ? { id: localId + "-invite", email: form.email.trim().toLowerCase(), status: "pending_offline", expires_at: new Date(Date.now()+7*86400000).toISOString(), created_at: now } : null
