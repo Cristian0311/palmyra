@@ -936,9 +936,9 @@ html.pos-keyboard-open .pos-page .animate-in,html.pos-keyboard-open .pos-page [c
 }
 
 
-/* Dashboard hero: use the image's visual half instead of its old blank canvas, keeping it sharp on desktop and mobile. */
-.dashboard-hero-image{background-position:right center!important;background-size:auto 183%!important;background-repeat:no-repeat!important;background-color:#f5f0ff}
-@media(max-width:767px){.dashboard-hero-image{background-size:auto 110%!important;background-position:72% center!important;min-width:100%;background-color:#f5f0ff}}
+/* Dashboard hero: the legacy asset contains a blank left canvas; horizontal framing reveals only its visual half without vertically cropping the woman. */
+.dashboard-hero-image{background-position:right center!important;background-size:auto 100%!important;background-repeat:no-repeat!important;background-color:#f5f0ff;transform:scaleX(1.83);transform-origin:right center}
+@media(max-width:767px){.dashboard-hero-image{background-size:auto 100%!important;background-position:80% center!important;min-width:100%;background-color:#f5f0ff;transform:scaleX(1.15);transform-origin:right center}}
 
 /* Enterprise tutorial layout: no page-level horizontal drift, readable flow at every viewport. */
 .tutorial-page{overflow-x:hidden;min-width:0}
