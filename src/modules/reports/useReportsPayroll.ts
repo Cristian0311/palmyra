@@ -69,10 +69,14 @@ export function useReportsPayroll(params: {
 
     return closedSessions.map(session => {
       const turnLabel = sessionTurnMap.get(session.id) || session.id;
-      const sessionTx = transactionsBySession.get(session.id) || [];
-      const totalSales = sessionTx.reduce((sum, tx) => sum + (tx.total || 0), 0);
+      // Payroll must never count voided/refunded/pending tickets as completed sales.
+      // Reports can contain a broader transaction cache than the active POS.
+      const sessionTx = (transactionsBySession.get(session.id) || []).filter(
+        tx => tx.status === 'completed' && !tx.deletedAt
+      );
+      const totalSales = sessionTx.reduce((sum, tx) => sum + Math.max(0, Number(tx.total) || 0), 0);
       const totalItems = sessionTx.reduce(
-        (sum, tx) => sum + (tx.items || []).reduce((itemsSum, item) => itemsSum + (item.quantity || 0), 0),
+        (sum, tx) => sum + (tx.items || []).reduce((itemsSum, item) => itemsSum + Math.max(0, Number(item.quantity) || 0), 0),
         0
       );
 
