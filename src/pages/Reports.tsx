@@ -342,7 +342,6 @@ export default function Reports() {
     selectedWorkerFilter,
     selectedFilterDate,
     sessionFilter,
-    companyCompensation,
   });
 
   const filteredCashSessions = filteredSessions;
