@@ -291,9 +291,15 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
       item.retryCount = (item.retryCount || 0) + 1;
       const code = err?.code ? ` [${err.code}]` : '';
       const status = err?.status || err?.statusCode ? ` HTTP ${err?.status || err?.statusCode}` : '';
-      const detail = err?.details ? ` — ${err.details}` : '';
-      const hint = err?.hint ? ` — ${err.hint}` : '';
-      item.lastError = `${err?.message || 'Error desconocido'}${code}${status}${detail}${hint}`;
+      const detail = err?.details ? ` — ${typeof err.details === 'string' ? err.details : JSON.stringify(err.details)}` : '';
+      const hint = err?.hint ? ` — ${typeof err.hint === 'string' ? err.hint : JSON.stringify(err.hint)}` : '';
+      const rawMessage = typeof err === 'string'
+        ? err
+        : (typeof err?.message === 'string' ? err.message : '');
+      const fallbackObject = rawMessage ? '' : (() => {
+        try { return JSON.stringify(err); } catch { return String(err); }
+      })();
+      item.lastError = `${rawMessage || fallbackObject || 'Error desconocido'}${code}${status}${detail}${hint}`;
       const permanent = err?.permanent === true;
       // Ninguna operación durable válida se abandona por cantidad de reintentos.
       // Una tablet puede permanecer offline muchas horas o días; el elemento
