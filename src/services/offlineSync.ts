@@ -271,14 +271,29 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
   const remainingFromRun: OfflineQueueItem[] = [];
   const handledIds = new Set<string>();
   const failedDependencyIds = new Set<string>();
+  const permanentDependencyIds = new Set<string>();
 
   for (let index = 0; index < sorted.length; index++) {
     const item = sorted[index];
     const itemDependencies = dependencies(item);
-    if (itemDependencies.some(d => failedDependencyIds.has(d.id) || blockedExistingIds.has(d.id))) {
-      // Un padre falló o quedó en conflicto: el hijo permanece en cola y no se
-      // ejecuta con un estado incompleto.
-      remainingFromRun.push({ ...item, status: 'failed' });
+    const blockedByPermanentDependency = itemDependencies.find(d => permanentDependencyIds.has(d.id) || blockedExistingIds.has(d.id));
+    if (blockedByPermanentDependency) {
+      const blockedMessage = `Bloqueada porque su dependencia ${blockedByPermanentDependency.type} / ${blockedByPermanentDependency.actionId} fue rechazada definitivamente. No se ejecutará con un estado incompleto.`;
+      const conflictItem = {
+        ...item,
+        status: 'conflict' as const,
+        lastError: blockedMessage,
+        retryCount: Number(item.retryCount || 0)
+      };
+      remainingFromRun.push(conflictItem);
+      failed++;
+      errors.push({ type: item.type, actionId: item.actionId, message: blockedMessage, retryCount: conflictItem.retryCount });
+      continue;
+    }
+    if (itemDependencies.some(d => failedDependencyIds.has(d.id))) {
+      // Un padre falló transitoriamente: el hijo queda pendiente, pero no se
+      // convierte en conflicto porque podrá reintentarse cuando el padre vuelva.
+      remainingFromRun.push({ ...item, status: 'failed', lastError: 'Pendiente por una dependencia que falló temporalmente.' });
       continue;
     }
     item.status = 'processing';
@@ -307,6 +322,7 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
       // queda pendiente hasta una confirmación real o un rechazo explícitamente permanente.
       item.status = permanent ? 'conflict' : 'failed';
       failedDependencyIds.add(item.id);
+      if (permanent) permanentDependencyIds.add(item.id);
       remainingFromRun.push(item);
       errors.push({ type: item.type, actionId: item.actionId, message: item.lastError, retryCount: item.retryCount });
       addSyncLog({ level:'error', source:'offline_queue', title:`Error al procesar item (${item.type})`, details:item.lastError, entityType:item.type, actionId:item.actionId, retryAttempt:item.retryCount, maxRetries:8 });
