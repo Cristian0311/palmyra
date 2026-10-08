@@ -76,6 +76,7 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
       /permission denied for table compensation_settings/i.test(message) ||
       /no unique or exclusion constraint matching the ON CONFLICT specification/i.test(message) ||
       /variant_stock_record_missing/i.test(message) ||
+      /stock_movements_quantity_check/i.test(message) ||
       /No se pudo sincronizar un movimiento de caja del turno/i.test(message);
     return repairable
       ? { ...item, status: 'pending', lastError: message, retryCount: Number(item.retryCount || 0) }
