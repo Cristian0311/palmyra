@@ -6,7 +6,7 @@ export function calculateEmployeeSaleCommission(
   products: Product[],
   sellerCount = 1,
 ): number {
-  if (!employee || employee.role === 'admin') return 0;
+  if (!employee) return 0;
   const split = Math.max(1, sellerCount);
   if (employee.compensationType === 'sales_percentage') {
     return Math.max(0, Number(transaction.total) || 0) * Math.max(0, Number(employee.salesPercentage ?? employee.commissionRate) || 0) / 100 / split;
