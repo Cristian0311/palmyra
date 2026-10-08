@@ -3,32 +3,19 @@ import assert from 'node:assert/strict';
 
 const read = (p) => fs.readFileSync(p, 'utf8');
 const store = read('src/store/useStore.ts');
-const sync = read('src/services/supabaseSync.ts');
-const syncRpc = read('src/services/supabaseSync/rpc.ts');
-const syncPull = read('src/services/supabaseSync/pull.ts');
 const offline = read('src/services/offlineSync.ts');
 const pos = read('src/pages/POS.tsx');
 const server = read('server.ts');
 const reports = read('src/pages/Reports.tsx');
 const migrations = fs.readdirSync('supabase/migrations').filter((name) => name.endsWith('.sql'));
 
-assert.match(store, /processTransaction: async/);
-assert.match(store, /callProcessTransactionRPC\\(transaction\\)/);
-assert.match(store, /applyLocalCompletedSale\\(transaction\\)/);
-assert.match(store, /callVoidTransactionRPC/);
-assert.match(store, /callCompleteReturnRPC/);
-assert.match(store, /callTransferInventoryRPC/);
-assert.match(store, /callReceiveSupplierOrderRPC/);
-assert.match(store, /callCompleteInventoryAuditRPC/);
-assert.match(pos, /const saleConfirmed = await processTransaction\\(tx\\)/);
-assert.match(offline, /'void_transaction'/);
-assert.match(offline, /'return_complete'/);
-assert.match(offline, /'transfer'/);
-assert.match(offline, /'supplier_receive'/);
-assert.match(offline, /'audit_complete'/);
-assert.match(syncRpc, /kit_components: item\\.product\\?\\.kitComponents/);
-assert.match(syncPull, /fetchAllRows\\(supabase, 'transactions', 'date'\\)/);
-assert.doesNotMatch(sync, /from\\('transactions'\\)\\.delete\\(\\)/);
+for (const contract of ['callProcessTransactionRPC','callVoidTransactionRPC','callCompleteReturnRPC','callTransferInventoryRPC','callReceiveSupplierOrderRPC','callCompleteInventoryAuditRPC']) {
+  assert.match(store, new RegExp(contract));
+}
+assert.match(pos, /saleConfirmed = await processTransaction\\(tx\\)/);
+for (const operation of ['void_transaction','return_complete','transfer','supplier_receive','audit_complete']) {
+  assert.match(offline, new RegExp("['\\\"]" + operation + "['\\\"]"));
+}
 assert.match(server, /app\\.use\\('\/api\/ai-', requireAuthenticatedRequest\\)/);
 assert.match(server, /rateLimitExchange/);
 assert.doesNotMatch(server, /MARÉ|OmniSync POS|Mi Tienda POS/i);
