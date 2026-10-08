@@ -542,7 +542,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         const res = await callDeleteBankTransactionRPC(d.id);
         if (!res.success) {
           const code = String(res.errorCode || '');
-          if (['P0001','23503','23505','42501','22003','22P02'].includes(code)) {
+          if (['P0001','23503','23505','42501','22003','22P02','23514'].includes(code)) {
             await reconcileBankCanonical();
             throw new PermanentSyncError(res.error || 'No se pudo eliminar el movimiento bancario');
           }
