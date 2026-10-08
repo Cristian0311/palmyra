@@ -3090,19 +3090,25 @@ export default function POS() {
                           (u.name && currentSession?.workerName && u.name.toLowerCase() === currentSession.workerName.toLowerCase())) || currentUser;
                         if (!sessionUser) return null;
                         const sessionTx = activeTransactions.filter(t => t.sessionId === currentSession?.id && !t.deletedAt && t.status === 'completed');
-                        const sellerIds = new Set<string>();
-                        sessionTx.forEach(tx => (tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId]).forEach(id => sellerIds.add(id)));
-                        const commissions = Array.from(sellerIds).reduce((sum, sellerId) => {
-                          const seller = users.find(u => u.id === sellerId);
-                          return sum + sessionTx.reduce((sellerSum, tx) => {
-                            const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
-                            return sellers.includes(sellerId) ? sellerSum + calculateEmployeeSaleCommission(seller, tx, products, sellers.length) : sellerSum;
+                        const commissions = sessionTx.reduce((sum, tx) => {
+                          const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
+                          if (!sellers.includes(sessionUser.id)) return sum;
+                          const splitFactor = Math.max(1, sellers.length);
+                          if (companyCompensation.mode === 'sales_percent') {
+                            return sum + (Math.max(0, Number(tx.total) || 0) * companyCompensation.percentRate / 100) / splitFactor;
+                          }
+                          return sum + (tx.items || []).reduce((itemSum, item) => {
+                            const productId = typeof item.product === 'string' ? item.product : item.product?.id;
+                            const product = productId ? products.find(p => p.id === productId) : undefined;
+                            return itemSum + (Math.max(0, Number(product?.commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) / splitFactor;
                           }, 0);
                         }, 0);
-                        const baseSalary = getSalaryBase(sessionUser);
+                        const baseSalary = companyCompensation.mode === 'sales_percent' ? 0 : Math.max(0, Number(sessionUser.baseSalary) || 0);
                         const totalSalary = baseSalary + commissions;
-                        const compensationLabel = getCompensationLabel(sessionUser);
-                        const percentageMode = sessionUser.compensationType === 'sales_percentage';
+                        const percentageMode = companyCompensation.mode === 'sales_percent';
+                        const compensationLabel = percentageMode
+                          ? `Porcentaje sobre el total de la venta · ${companyCompensation.percentRate}%`
+                          : 'CUP fijo por producto';
                         return (
                           <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200 space-y-2 shadow-sm animate-in fade-in slide-in-from-top-2">
                             <div className="flex items-center justify-between">
@@ -3111,15 +3117,11 @@ export default function POS() {
                             </div>
                             <div className="grid grid-cols-2 gap-3 pt-2 border-t border-amber-100">
                               <div><p className="text-[8px] font-bold text-amber-600 uppercase tracking-tighter">Salario base</p><p className="text-sm font-black text-amber-900">{formatSalaryCUP(baseSalary)}</p></div>
-                              <div><p className="text-[8px] font-bold text-amber-600 uppercase tracking-tighter">Modelo de pago</p><p className="text-[10px] font-black text-emerald-700">{compensationLabel}</p><p className="text-sm font-black text-emerald-700">+{formatSalaryCUP(commissions)}</p></div>
+                              <div><p className="text-[8px] font-bold text-amber-600 uppercase tracking-tighter">Modelo de pago</p><p className="text-[10px] font-black text-emerald-700">{compensationLabel}</p><p className="text-sm font-black text-emerald-700">{formatSalaryCUP(commissions)}</p></div>
                             </div>
                             <div className={percentageMode ? "rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2" : "rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2"}>
                               <p className={percentageMode ? "text-[8px] font-black uppercase tracking-wider text-emerald-700" : "text-[8px] font-black uppercase tracking-wider text-indigo-700"}>Cómo se calcula</p>
-                              <p className={percentageMode ? "text-[9px] font-bold text-emerald-800" : "text-[9px] font-bold text-indigo-800"}>
-                                {percentageMode
-                                  ? 'La comisión se aplica al total de cada venta (' + getSalesPercentage(sessionUser) + '%) y se divide entre los vendedores de esa venta cuando corresponde.'
-                                  : 'Cada producto aporta el CUP fijo configurado por unidad vendida.'}
-                              </p>
+                              <p className={percentageMode ? "text-[9px] font-bold text-emerald-800" : "text-[9px] font-bold text-indigo-800"}>{percentageMode ? `La comisión se aplica al total de cada venta (${companyCompensation.percentRate}%) y se divide entre los vendedores de esa venta cuando corresponde.` : 'Cada producto aporta el CUP fijo configurado por unidad vendida.'}</p>
                             </div>
                             <div className="pt-2 border-t border-amber-100 flex justify-between items-center">
                               <span className="text-[9px] font-black text-amber-900 uppercase">Total salario del turno</span><span className="text-lg font-black text-amber-600">{formatSalaryCUP(totalSalary)}</span>
@@ -3129,22 +3131,8 @@ export default function POS() {
                               {turnProductSalaryRows.length > 0 ? (
                                 <div className="overflow-x-auto rounded-xl border border-amber-100 bg-white">
                                   <table className="w-full min-w-[560px] text-left">
-                                    <thead><tr className="bg-amber-50 border-b border-amber-100">
-                                      <th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase">Empleado</th>
-                                      <th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase">Producto</th>
-                                      <th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase text-right">Cantidad</th>
-                                      <th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase text-right">Valor / unidad</th>
-                                      <th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase text-right">Comisión total</th>
-                                    </tr></thead>
-                                    <tbody className="divide-y divide-amber-50">{turnProductSalaryRows.map(row => (
-                                      <tr key={row.key}>
-                                        <td className="px-3 py-2 text-[8px] font-black text-slate-700 uppercase break-words">{row.employeeName}</td>
-                                        <td className="px-3 py-2 text-[8px] font-black text-slate-900 uppercase break-words">{row.productName}</td>
-                                        <td className="px-3 py-2 text-[8px] font-black text-slate-800 text-right">{row.quantity}</td>
-                                        <td className="px-3 py-2 text-[8px] font-black text-indigo-700 text-right">{formatSalaryCUP(row.salaryPerUnit)}</td>
-                                        <td className="px-3 py-2 text-[8px] font-black text-indigo-900 text-right">{formatSalaryCUP(row.salaryTotal)}</td>
-                                      </tr>
-                                    ))}</tbody>
+                                    <thead><tr className="bg-amber-50 border-b border-amber-100"><th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase">Empleado</th><th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase">Producto</th><th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase text-right">Cantidad</th><th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase text-right">Valor / unidad</th><th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase text-right">Comisión total</th></tr></thead>
+                                    <tbody className="divide-y divide-amber-50">{turnProductSalaryRows.map(row => (<tr key={row.key}><td className="px-3 py-2 text-[8px] font-black text-slate-700 uppercase break-words">{row.employeeName}</td><td className="px-3 py-2 text-[8px] font-black text-slate-900 uppercase break-words">{row.productName}</td><td className="px-3 py-2 text-[8px] font-black text-slate-800 text-right">{row.quantity}</td><td className="px-3 py-2 text-[8px] font-black text-indigo-700 text-right">{formatSalaryCUP(row.salaryPerUnit)}</td><td className="px-3 py-2 text-[8px] font-black text-indigo-900 text-right">{formatSalaryCUP(row.salaryTotal)}</td></tr>))}</tbody>
                                   </table>
                                 </div>
                               ) : <div className="bg-white rounded-xl border border-amber-100 px-3 py-4 text-center"><p className="text-[7px] font-black text-slate-400 uppercase tracking-wider">No hay ventas cobradas en este turno</p></div>}
@@ -3715,7 +3703,7 @@ export default function POS() {
                         {deduction > 0 && (
                           <div className="flex justify-between items-center p-1.5 bg-rose-50 dark:bg-rose-950/30 rounded-lg border border-rose-100 dark:border-rose-900/50">
                             <span className="font-bold text-rose-600 dark:text-rose-400 text-[9px] uppercase">Descuento Descuadre</span>
-                            <span className="font-mono font-black text-rose-600 dark:text-rose-400">-{formatMoney(deduction, baseCurrency.symbol)}</span>
+                            <span className="font-mono font-black text-rose-600 dark:text-rose-400">{formatMoney(deduction, baseCurrency.symbol)}</span>
                           </div>
                         )}
                       </div>
