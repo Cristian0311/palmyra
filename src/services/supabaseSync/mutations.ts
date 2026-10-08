@@ -376,53 +376,29 @@ export async function pushInventoryAuditToSupabase(audit:InventoryAudit){
 export async function pushSalarySettlementToSupabase(settlement:SalarySettlement){
   try{
     const supabase=await onlineClient();
-    const {companyId,authUserId}=await getActiveTenant();
-    const employee=await getEmployeeForIdentity(settlement.userId);
-    if(!employee)throw new Error('Empleado no encontrado');
-
-    // El ID del acuerdo local es estable y se usa como llave de idempotencia
-    // para que un reintento después de un corte de red nunca cree otra nómina.
-    const { data: existingItem, error: existingItemError } = await supabase
-      .from('payroll_items')
-      .select('id,payroll_run_id,details')
-      .eq('company_id', companyId)
-      .eq('details->>session_id', settlement.sessionId)
-      .maybeSingle();
-    if (existingItemError) throw existingItemError;
-
-    // El turno es la verdadera unidad de idempotencia. Si el cierre remoto
-    // ocurrió pero la respuesta se perdió, un reintento puede llegar con otro
-    // UUID local; reutilizamos la nómina existente en vez de crear otra.
-    const runId = existingItem?.payroll_run_id || settlement.id;
-    const itemId = existingItem?.id || settlement.id;
-    const day=settlement.date.slice(0,10);
-    const {error:re}=await supabase.from('payroll_runs').upsert({
-      id:runId,
-      company_id:companyId,
-      period_start:day,
-      period_end:day,
-      status:settlement.status==='paid'?'paid':'draft',
-      created_by:authUserId
-    },{onConflict:'id'});
-    if(re)throw re;
-
-    const {error:ie}=await supabase.from('payroll_items').upsert({
-      id:itemId,
-      company_id:companyId,
-      payroll_run_id:runId,
-      employee_id:employee.id,
-      currency_code:'CUP',
-      base_salary:Number(settlement.baseSalary)||0,
-      commission_amount:Number(settlement.commissions)||0,
-      adjustments:-Math.abs(Number(settlement.discrepancyDeduction)||0),
-      total_amount:Number(settlement.total)||0,
-      details:{session_id:settlement.sessionId||null,discrepancy_deduction:Math.abs(Number(settlement.discrepancyDeduction)||0)}
-    },{onConflict:'id'});
-    if(ie)throw ie;
+    const {companyId}=await getActiveTenant();
+    const {data,error}=await supabase.rpc('palmyra_record_salary_settlement',{
+      p_company_id:companyId,
+      p_settlement:{
+        id:settlement.id,
+        sessionId:settlement.sessionId,
+        userId:settlement.userId,
+        date:settlement.date,
+        baseSalary:Number(settlement.baseSalary)||0,
+        commissions:Number(settlement.commissions)||0,
+        discrepancyDeduction:Math.abs(Number(settlement.discrepancyDeduction)||0),
+        total:Math.max(0,Number(settlement.total)||0),
+        status:settlement.status
+      }
+    });
+    if(error) throw error;
+    if(data?.success===false) throw new Error(data?.message||data?.error||'La liquidación salarial fue rechazada.');
     return true;
   }catch(e:any){
     await queue('salary_settlement',settlement,settlement.id);
-    return false;
+    // Propagate the real Supabase error so the durable queue records the exact
+    // cause instead of converting every salary failure into a generic message.
+    throw e;
   }
 }
 
