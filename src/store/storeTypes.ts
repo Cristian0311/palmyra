@@ -92,7 +92,7 @@ export interface AppState {
   // Caja
   cashSessions: CashRegisterSession[];
   openSession: (session: CashRegisterSession) => Promise<boolean>;
-  closeSession: (sessionId: string, closingBalances: import('../types').Payment[], workerName?: string, closingDate?: string, discrepancyDeduction?: number, sessionMeta?: Partial<CashRegisterSession>) => Promise<boolean>;
+  closeSession: (sessionId: string, closingBalances: import('../types').Payment[], workerName?: string, closingDate?: string, discrepancyDeduction?: number, sessionMeta?: Partial<CashRegisterSession>, compensationOverride?: { mode: 'fixed_product' | 'sales_percent'; percentRate: number }) => Promise<boolean>;
   updateCashSession: (id: string, updates: Partial<CashRegisterSession>) => void;
   cancelSession: (sessionId: string, reason?: string, password?: string) => Promise<boolean>;
   updateCashSessionDateCascade: (sessionId: string, newDateYMD: string) => Promise<boolean>;
