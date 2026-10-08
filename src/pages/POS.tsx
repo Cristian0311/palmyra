@@ -2659,7 +2659,7 @@ export default function POS() {
                               <Banknote className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
                             </div>
                             <span className="text-[11px] sm:text-xs font-black text-emerald-900 truncate">
-                              \${formatMoney(cashCupSum, baseCurrency.symbol)}
+                              {formatMoney(cashCupSum, '')} CUP
                             </span>
                           </div>
 
@@ -2680,11 +2680,11 @@ export default function POS() {
 
                           <div className="min-w-0 bg-blue-50/80 border border-blue-100 rounded-xl p-2 sm:p-2.5 flex min-h-[68px] flex-col justify-between shadow-sm">
                             <div className="flex items-center justify-between text-blue-700 mb-0.5">
-                              <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-wider">Transferencia</span>
+                              <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-wider">Transferencia CUP</span>
                               <CreditCard className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
                             </div>
                             <span className="text-[11px] sm:text-xs font-black text-blue-900 truncate">
-                              \${formatMoney(transferCupSum, baseCurrency.symbol)}
+                              {formatMoney(transferCupSum, '')} CUP
                             </span>
                           </div>
 
