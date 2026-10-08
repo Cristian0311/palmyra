@@ -1,4 +1,3 @@
-import { calculateEmployeeSaleCommission, getSalaryBase } from '../../services/employeeCompensation';
 import { Branch, Category, Product, InventoryLevel, CartItem, Transaction, ReturnItem, Currency, Customer, CashRegisterSession, User, PendingOrder, SalarySettlement, InventoryTransfer, Warranty, CashMovement, Supplier, SupplierOrder, InventoryAudit, FiscalConfig, DemandForecast, BankCard, BankTransaction } from '../../types';
 import { generateId, generateReadableId } from '../../lib/utils';
 import { 
