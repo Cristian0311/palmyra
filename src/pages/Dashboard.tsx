@@ -280,48 +280,70 @@ export default function Dashboard() {
   return (
     <div className="space-y-2.5 text-[9px] animate-in fade-in slide-in-from-bottom-2 duration-500 pb-5">
 
-      <section className="dashboard-hero relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100/80 bg-[#12082f] shadow-lg shadow-violet-100/40 min-h-[520px] sm:min-h-[390px] lg:min-h-[410px]">
-        <picture className="absolute inset-0 block" aria-hidden="true">
-          <img
-            src="/palmyra-dashboard-hero-option1.webp?v=20261008-enterprise-responsive-2"
-            alt=""
-            className="absolute inset-0 h-full w-full object-cover object-[50%_38%] sm:object-[52%_42%] lg:object-[50%_45%]"
-            loading="eager"
-            decoding="async"
-            fetchPriority="high"
-          />
-        </picture>
+      <section className="dashboard-hero relative isolate overflow-hidden rounded-[1.6rem] border border-violet-300/20 bg-[radial-gradient(circle_at_78%_18%,rgba(139,92,246,.32),transparent_28%),radial-gradient(circle_at_15%_100%,rgba(99,102,241,.28),transparent_35%),linear-gradient(135deg,#0b0620_0%,#171044_52%,#28135f_100%)] shadow-[0_20px_60px_rgba(67,34,140,.24)] min-h-[390px] sm:min-h-[350px] lg:min-h-[365px]">
+        <div className="pointer-events-none absolute inset-0 opacity-30" aria-hidden="true">
+          <div className="absolute -right-16 -top-20 h-64 w-64 rounded-full border border-violet-300/20" />
+          <div className="absolute -right-5 -top-9 h-44 w-44 rounded-full border border-violet-300/15" />
+          <div className="absolute right-16 top-12 h-20 w-20 rounded-full bg-violet-400/15 blur-2xl" />
+          <div className="absolute bottom-0 left-1/3 h-px w-2/3 bg-gradient-to-r from-transparent via-violet-300/30 to-transparent" />
+          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.035)_1px,transparent_1px)] bg-[size:28px_28px]" />
+        </div>
 
-        <div className="absolute inset-0 z-[1] pointer-events-none bg-gradient-to-t from-black/70 via-black/20 to-transparent sm:bg-gradient-to-r sm:from-black/65 sm:via-black/15 sm:to-transparent" aria-hidden="true" />
-
-        <div className="relative z-10 flex min-h-[520px] items-end sm:min-h-[390px] sm:items-center lg:min-h-[410px] px-4 pb-7 pt-12 sm:px-8 sm:py-8 lg:px-10">
-          <div className="w-full max-w-[500px] sm:max-w-[560px]">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1.5 text-[7.5px] sm:text-[9px] font-black uppercase tracking-[0.14em] text-violet-50 shadow-lg backdrop-blur-md">
-              <Sparkles className="h-3.5 w-3.5 shrink-0 text-violet-200" />
-              <span>PALMYRA · Gestión empresarial</span>
+        <div className="relative z-10 grid min-h-[390px] items-center gap-6 px-5 py-6 sm:min-h-[350px] sm:grid-cols-[1.15fr_.85fr] sm:px-8 sm:py-8 lg:min-h-[365px] lg:px-10">
+          <div className="min-w-0">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-violet-200/20 bg-white/[.07] px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[.16em] text-violet-100 backdrop-blur-sm">
+              <Sparkles className="h-3.5 w-3.5 text-violet-300" />
+              <span>PALMYRA · Centro de mando</span>
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,.9)]" />
             </div>
 
-            <h1 className="mt-3 text-[2.25rem] sm:text-4xl lg:text-5xl font-black tracking-[-0.045em] leading-[.92] text-white drop-shadow-[0_3px_14px_rgba(0,0,0,0.42)]">
-              Hola{dashboardUserName ? ", " + dashboardUserName.split(" ")[0] : ""} <span className="text-[0.7em] align-[-0.04em]" aria-hidden="true">👋</span>
+            <h1 className="mt-4 text-[2.2rem] font-black leading-[.9] tracking-[-.055em] text-white sm:text-4xl lg:text-5xl">
+              Hola{dashboardUserName ? ", " + dashboardUserName.split(" ")[0] : ""} <span className="text-[.62em] align-[.02em]" aria-hidden="true">👋</span>
             </h1>
 
-            <p className="mt-2 text-[1.02rem] sm:text-xl lg:text-2xl font-black leading-[1.05] tracking-[-0.02em] text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
-              Bienvenido a <span className="text-violet-200">{businessName}</span>
+            <p className="mt-2 text-base font-black tracking-[-.02em] text-white/95 sm:text-xl lg:text-2xl">
+              Bienvenido a <span className="text-violet-300">{businessName}</span>
             </p>
 
-            <p className="mt-2.5 max-w-[440px] text-[9.5px] sm:text-xs lg:text-sm font-semibold leading-[1.45] text-violet-50/90 drop-shadow-[0_1px_6px_rgba(0,0,0,0.45)]">
-              Todo tu negocio en un solo lugar: ventas, inventario, clientes y actividad para tomar decisiones con claridad.
+            <p className="mt-3 max-w-[520px] text-[10px] font-medium leading-[1.55] text-violet-100/75 sm:text-xs lg:text-sm">
+              Una vista ejecutiva de tu negocio. Observa el movimiento, detecta oportunidades y toma decisiones con información real.
             </p>
 
-            <div className="mt-4 flex flex-wrap items-center gap-1.5 sm:mt-5 sm:gap-2">
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/12 px-2.5 py-1.5 text-[7.5px] sm:text-[9px] font-black text-white shadow-sm backdrop-blur-md">
-                <TrendingUp className="h-3.5 w-3.5 text-emerald-300" />
-                Datos en tiempo real
-              </span>
-              <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-black/20 px-2.5 py-1.5 text-[7.5px] sm:text-[9px] font-black text-white shadow-sm backdrop-blur-md">
-                <MapPin className="h-3.5 w-3.5 text-violet-200" />
-                {selectedBranchFilter === "all" ? "Todas las sucursales" : (branchById.get(selectedBranchFilter)?.name || "Sucursal")}
-              </span>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <div className="rounded-xl border border-white/10 bg-white/[.06] px-3 py-2 backdrop-blur-sm">
+                <p className="text-[7px] font-bold uppercase tracking-[.16em] text-violet-200/65">Sucursal activa</p>
+                <p className="mt-0.5 flex items-center gap-1.5 text-[9px] font-black text-white">
+                  <MapPin className="h-3 w-3 text-violet-300" />
+                  {selectedBranchFilter === "all" ? "Todas las sucursales" : (branchById.get(selectedBranchFilter)?.name || "Sucursal")}
+                </p>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/[.06] px-3 py-2 backdrop-blur-sm">
+                <p className="text-[7px] font-bold uppercase tracking-[.16em] text-violet-200/65">Moneda base</p>
+                <p className="mt-0.5 text-[9px] font-black text-white">{baseCurrency.code} · {baseCurrency.symbol}</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5 sm:gap-3">
+            <div className="rounded-2xl border border-white/10 bg-white/[.07] p-3.5 shadow-xl backdrop-blur-md">
+              <p className="text-[7px] font-black uppercase tracking-[.14em] text-violet-200/65">Ventas de hoy</p>
+              <p className="mt-2 text-base font-black tracking-tight text-white sm:text-lg">{formatMoney(totalSalesToday)}</p>
+              <p className="mt-1 text-[8px] font-semibold text-emerald-300">Movimiento real</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/[.07] p-3.5 shadow-xl backdrop-blur-md">
+              <p className="text-[7px] font-black uppercase tracking-[.14em] text-violet-200/65">Tickets</p>
+              <p className="mt-2 text-base font-black tracking-tight text-white sm:text-lg">{todayTransactions.length}</p>
+              <p className="mt-1 text-[8px] font-semibold text-violet-200">Operaciones hoy</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/[.07] p-3.5 shadow-xl backdrop-blur-md">
+              <p className="text-[7px] font-black uppercase tracking-[.14em] text-violet-200/65">Ticket promedio</p>
+              <p className="mt-2 text-base font-black tracking-tight text-white sm:text-lg">{formatMoney(averageTicketToday)}</p>
+              <p className="mt-1 text-[8px] font-semibold text-violet-200">Por operación</p>
+            </div>
+            <div className="rounded-2xl border border-white/10 bg-white/[.07] p-3.5 shadow-xl backdrop-blur-md">
+              <p className="text-[7px] font-black uppercase tracking-[.14em] text-violet-200/65">Stock bajo</p>
+              <p className="mt-2 text-base font-black tracking-tight text-white sm:text-lg">{lowStockCount{'}'}</p>
+              <p className="mt-1 text-[8px] font-semibold text-amber-300">Requiere atención</p>
             </div>
           </div>
         </div>
