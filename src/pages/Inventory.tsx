@@ -28,7 +28,7 @@ export default function Inventory() {
     currentBranchId, addNotification, users
   } = useStore(useShallow((state) => ({ products: state.products, inventory: state.inventory, branches: state.branches, addProduct: state.addProduct, updateProduct: state.updateProduct, transferInventory: state.transferInventory, setInventoryQuantity: state.setInventoryQuantity, deleteProduct: state.deleteProduct, deleteCategory: state.deleteCategory, transfers: state.transfers, categories: state.categories, batchDeleteProducts: state.batchDeleteProducts, batchUpdateProducts: state.batchUpdateProducts, getBaseCurrency: state.getBaseCurrency, currencies: state.currencies, currentBranchId: state.currentBranchId, addNotification: state.addNotification, users: state.users })));
   const baseCurrency = getBaseCurrency();
-  const hasFixedProductEmployees = (users || []).some(user => user.role === 'employee' && (user.compensationType || 'fixed_product') === 'fixed_product');
+  const hasFixedProductEmployees = (users || []).some(user => user.isActive !== false && (user.compensationType || 'fixed_product') === 'fixed_product');
   const categoryById = useMemo(
     () => new Map((categories || []).map(category => [category.id, category])),
     [categories]
