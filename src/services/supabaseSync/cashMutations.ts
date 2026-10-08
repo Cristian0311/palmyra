@@ -126,7 +126,7 @@ export async function pushCashSessionToSupabase(session: CashRegisterSession): P
 
 export async function pushCashMovementToSupabase(params:{
   id:string; sessionId:string; type:'income'|'expense'; amount:number;
-  currencyCode:string; description?:string;
+  currencyCode:string; description?:string; throwOnError?: boolean;
 }):Promise<boolean>{
   try{
     const supabase=await onlineClient();
@@ -144,6 +144,11 @@ export async function pushCashMovementToSupabase(params:{
     if(data?.success===false) throw new Error(data?.message||'No se pudo registrar el movimiento de caja.');
     return true;
   }catch(error){
+    // The normal UI keeps the boolean contract, but offline replay can request
+    // the original database error so the queue records the real cause.
+    if (params.throwOnError) {
+      throw error instanceof Error ? error : new Error(String(error));
+    }
     return false;
   }
 }
