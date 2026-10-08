@@ -7,7 +7,7 @@ import {
 import { 
   getSyncLogs, addSyncLog, clearSyncLogs, exportSyncLogsJSON, exportSyncLogsTXT, SyncLogEntry 
 } from '../utils/syncLogger';
-import { getOfflineQueueCount } from '../services/offlineQueue';
+import { getOfflineQueue, getOfflineQueueCount } from '../services/offlineQueue';
 import { testSupabaseTables } from '../services/supabaseSync';
 import { useStore } from '../store/useStore';
 import { cn } from '../lib/utils';
@@ -134,20 +134,30 @@ export function SyncLogsPanel() {
       setPendingQueueCount(res.remaining);
       await syncWithSupabase();
 
+      const localQueue = getOfflineQueue();
+      const queueDetails = localQueue
+        .filter(item => item.status !== 'synced' && item.status !== 'conflict')
+        .map(item => {
+          const detail = item.lastError || 'La operación permanece pendiente por una dependencia de otra operación que no se pudo confirmar.';
+          return `${item.type} · ${item.actionId}: ${detail}`;
+        });
+      const resultDetails = (res.errors || []).map(e => `${e.type} · ${e.actionId}: ${e.message}`);
+      const detailLines = [...new Set([...resultDetails, ...queueDetails])].slice(0, 12);
       const hasPending = res.remaining > 0;
       const hasErrors = res.failed > 0 || (res.errors?.length || 0) > 0;
       if (hasPending || hasErrors) {
+        const summary = `Confirmadas: ${res.processed}. Fallidas/error: ${res.failed}. Restantes en cola: ${res.remaining}.`;
         addSyncLog({
           level: 'warning',
           source: 'background_sync',
           title: 'Sincronización Manual Incompleta',
-          details: `Confirmadas: ${res.processed}. Fallidas/error: ${res.failed}. Restantes en cola: ${res.remaining}.`
+          details: `${summary}\\n${detailLines.join('\\n')}`
         });
         if (addNotification) {
           addNotification(
             `Sincronización incompleta: ${res.processed} confirmadas; ${res.remaining} pendientes.`,
             'warning',
-            res.errors?.length ? res.errors.map(e => `${e.type} · ${e.actionId}: ${e.message}`).join('\n') : undefined
+            detailLines.length ? detailLines.join('\\n') : summary
           );
         }
       } else {
