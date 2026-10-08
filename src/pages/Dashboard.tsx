@@ -280,24 +280,26 @@ export default function Dashboard() {
   return (
     <div className="space-y-2.5 text-[9px] animate-in fade-in slide-in-from-bottom-2 duration-500 pb-5">
 
-      <section className="relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100/80 bg-white shadow-lg shadow-violet-100/40 min-h-[360px] sm:min-h-[340px] lg:min-h-[360px]">
-        <div
+      <section className="dashboard-hero relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100/80 bg-[#f6f1ff] shadow-lg shadow-violet-100/40 min-h-[420px] sm:min-h-[380px] lg:min-h-[360px]">
+        <picture
+          className="dashboard-hero-media absolute inset-0 block"
           aria-hidden="true"
-          className="absolute inset-0 overflow-hidden"
         >
-          <div
-            className="dashboard-hero-image absolute inset-0 bg-cover bg-right-center bg-no-repeat"
-            style={{
-              backgroundImage:
-                "url('/palmyra-dashboard-hero-fixed.webp')",
-            }}
+          <source media="(max-width: 767px)" srcSet="/palmyra-dashboard-hero-fixed.webp?v=20261007-mobile" />
+          <img
+            src="/palmyra-dashboard-hero-fixed.webp?v=20261007-desktop"
+            alt=""
+            className="dashboard-hero-image absolute inset-0 h-full w-full"
+            loading="eager"
+            decoding="async"
+            fetchPriority="high"
           />
-        </div>
+        </picture>
         <div
-          className="absolute inset-y-0 left-0 z-[1] w-[42%] bg-gradient-to-r from-white/24 via-white/8 to-transparent pointer-events-none"
+          className="dashboard-hero-shade absolute inset-0 z-[1] pointer-events-none"
           aria-hidden="true"
         />
-        <div className="relative z-10 flex min-h-[360px] sm:min-h-[340px] lg:min-h-[360px] items-center px-4 py-6 sm:px-8 lg:px-10">
+        <div className="relative z-10 flex min-h-[420px] sm:min-h-[380px] lg:min-h-[360px] items-center px-4 py-7 sm:px-8 lg:px-10">
           <div className="w-full max-w-[445px] sm:max-w-[560px]">
             <div className="flex items-center gap-1.5 text-[7.5px] sm:text-[9px] font-black uppercase tracking-[0.14em] text-[#4C1D95] drop-shadow-[0_1px_3px_rgba(255,255,255,0.85)] -translate-y-2 sm:-translate-y-1">
               <Sparkles className="h-3.5 w-3.5 shrink-0 text-violet-100" />
