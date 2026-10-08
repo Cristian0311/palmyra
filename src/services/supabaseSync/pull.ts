@@ -281,6 +281,9 @@ async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string
       sessionId: s.cash_session_id || undefined,
       notes: s.notes || '',
       paymentMethod: payments[0]?.method || 'cash',
+      sellerEmployeeIds: Array.isArray(s.metadata?.sellerEmployeeIds)
+        ? s.metadata.sellerEmployeeIds.map((id:any) => String(id)).filter(Boolean)
+        : undefined,
     } as Transaction;
   });
 }
