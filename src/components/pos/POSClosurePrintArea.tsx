@@ -33,7 +33,9 @@ export function POSClosurePrintArea({
 
   const sessionTransactions = transactions.filter(
     (transaction) =>
-      transaction.sessionId === session.id && !transaction.deletedAt
+      transaction.sessionId === session.id &&
+      transaction.status === 'completed' &&
+      !transaction.deletedAt
   );
 
   const soldMap: Record<string, { name: string; qty: number; total: number }> = {};
@@ -49,15 +51,16 @@ export function POSClosurePrintArea({
       }
 
       const price =
-        typeof item.product === "object" ? item.product?.price || 0 : 0;
-      soldMap[name].qty += item.quantity;
-      soldMap[name].total += price * item.quantity;
+        Number(item.price) ||
+        (typeof item.product === "object" ? Number(item.product?.price) || 0 : 0);
+      soldMap[name].qty += Math.max(0, Number(item.quantity) || 0);
+      soldMap[name].total += price * Math.max(0, Number(item.quantity) || 0);
     });
   });
 
   const soldList = Object.values(soldMap);
   const totalSales = sessionTransactions.reduce(
-    (sum, transaction) => sum + transaction.total,
+    (sum, transaction) => sum + Math.max(0, Number(transaction.total) || 0),
     0
   );
 
