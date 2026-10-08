@@ -190,7 +190,7 @@ export function createBankActions(set: StoreSet, get: StoreGet): any {
         const res = await callProcessBankTransactionRPC(transaction);
         if (!res.success) {
           const code = String(res.errorCode || '');
-          const permanentCodes = new Set(['P0001','23503','23505','42501','22003','22P02','IDEMPOTENCY_CONFLICT']);
+          const permanentCodes = new Set(['P0001','23503','23505','23514','42501','22003','22P02','IDEMPOTENCY_CONFLICT']);
           if (permanentCodes.has(code)) {
             await removeFromOfflineQueueByAction('bank_transaction', actionId);
             await get().reconcileBankBalances();
