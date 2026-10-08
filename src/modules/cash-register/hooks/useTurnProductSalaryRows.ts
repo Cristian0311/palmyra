@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { Product, Transaction, User, CashRegisterSession } from '../../../types';
 
-export function useTurnProductSalaryRows(session: CashRegisterSession | null, transactions: Transaction[], currentBranchId: string, products: Product[], users: User[]) {
+export function useTurnProductSalaryRows(session: CashRegisterSession | null, transactions: Transaction[], currentBranchId: string, products: Product[], users: User[], companyCompensation?: { mode: 'fixed_product' | 'sales_percent'; percentRate: number }) {
   const turnProductSalaryRows = useMemo(() => {
     if (!session) return [];
 
@@ -36,10 +36,10 @@ export function useTurnProductSalaryRows(session: CashRegisterSession | null, tr
         sellers.forEach((sellerId: string) => {
           const employee = users.find(u => u.id === sellerId);
           const employeeName = employee?.name || tx.cashierName || sellerId || 'Empleado';
-          const percentageRate = Math.max(
-            0,
-            Math.min(100, Number(employee?.salesPercentage ?? employee?.commissionRate) || 0)
-          );
+          const percentageMode = companyCompensation?.mode === 'sales_percent' || percentageMode;
+          const percentageRate = companyCompensation?.mode === 'sales_percent'
+            ? Math.max(0, Math.min(100, Number(companyCompensation.percentRate) || 0))
+            : Math.max(0, Math.min(100, Number(employee?.salesPercentage ?? employee?.commissionRate) || 0));
 
           tx.items.forEach(item => {
             const rawItem = item as any;
@@ -96,7 +96,7 @@ export function useTurnProductSalaryRows(session: CashRegisterSession | null, tr
     return Array.from(rows.values()).sort((a, b) =>
       a.employeeName.localeCompare(b.employeeName) || b.quantity - a.quantity
     );
-  }, [session, transactions, currentBranchId, products, users]);
+  }, [session, transactions, currentBranchId, products, users, companyCompensation]);
 
   return turnProductSalaryRows;
 }
