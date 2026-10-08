@@ -261,7 +261,13 @@ export async function callTransferInventoryRPC(params:{operationId:string;batchI
 }
 async function resolveVariantId(productId:string,label?:string){const supabase=getSupabase()!;const {companyId}=await getActiveTenant();if(!label?.trim())return null;const {data,error}=await supabase.from('product_variants').select('id').eq('company_id',companyId).eq('product_id',productId).eq('name',label.trim()).eq('active',true).maybeSingle();if(error)throw error;return data?.id||null;}
 export async function callTransferInventoryBulkRPC(params:{batchId:string;fromBranchId:string;toBranchId:string;items:{operationId:string;productId:string;variants:{variantLabel:string;quantity:number}[]}[];userId:string}){
-  try{for(const item of params.items){await callTransferInventoryRPC({operationId:item.operationId,batchId:params.batchId,productId:item.productId,fromBranchId:params.fromBranchId,toBranchId:params.toBranchId,variants:item.variants||[],userId:params.userId});}return {success:true as const,error:undefined,errorCode:undefined,data:{success:true}};}catch(e:any){return errorResult(e);}
+  try{
+    for(const item of params.items){
+      const result=await callTransferInventoryRPC({operationId:item.operationId,batchId:params.batchId,productId:item.productId,fromBranchId:params.fromBranchId,toBranchId:params.toBranchId,variants:item.variants||[],userId:params.userId});
+      if(!result.success) throw Object.assign(new Error(result.error || 'No se pudo sincronizar un artículo del traslado.'), { code: result.errorCode });
+    }
+    return {success:true as const,error:undefined,errorCode:undefined,data:{success:true}};
+  }catch(e:any){return errorResult(e);}
 }
 export async function callDeleteBankInternalTransferRPC(operationId:string){ try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_delete_bank_internal_transfer',{p_operation_id:operationId,p_company_id:companyId});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);} }
 export async function callDeleteBankTransactionRPC(transactionId:string){ try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_delete_bank_transaction',{p_transaction_id:transactionId,p_company_id:companyId});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);} }
