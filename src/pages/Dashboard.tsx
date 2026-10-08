@@ -328,22 +328,8 @@ export default function Dashboard() {
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
           <h2 className="text-sm font-black text-primary tracking-tight">Dashboard</h2>
-          <div className="flex flex-wrap items-center gap-2 text-muted mt-0.5">
-            <div className="flex items-center gap-1">
-              <MapPin className="w-3 h-3 text-indigo-500" />
-              <p className="text-[9px] font-black uppercase tracking-widest">
-                {selectedBranchFilter === 'all' 
-                  ? 'Todas las Sucursales' 
-                  : (branchById.get(selectedBranchFilter)?.name || 'Sucursal')}
-              </p>
-            </div>
-            <span className="text-slate-300 dark:text-slate-700">·</span>
-            <div className="flex items-center gap-1.5 text-[8.5px] font-bold text-slate-500 dark:text-slate-400">
-              <span>Moneda Base: <strong className="text-indigo-600 dark:text-indigo-400">{baseCurrency.code} ({baseCurrency.symbol})</strong></span>
-            </div>
-          </div>
-        </div>
-        
+          <p className="text-[8px] font-bold uppercase tracking-[0.16em] text-muted mt-0.5">Resumen y actividad de tu negocio</p>
+        </div>        
         <div className="flex items-center justify-end gap-1.5 w-full sm:w-auto ml-auto shrink-0">
           <button
             onClick={handleGenerateAI}
