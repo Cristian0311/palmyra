@@ -281,20 +281,20 @@ export default function Dashboard() {
     <div className="space-y-2.5 text-[9px] animate-in fade-in slide-in-from-bottom-2 duration-500 pb-5">
 
       <section className="dashboard-hero relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100/80 bg-[#12082f] shadow-lg shadow-violet-100/40 min-h-[520px] sm:min-h-[390px] lg:min-h-[410px]">
-        <picture className="absolute inset-x-0 top-0 block h-[245px] sm:inset-0 sm:h-full" aria-hidden="true">
+        <picture className="absolute inset-0 block" aria-hidden="true">
           <img
-            src="/palmyra-dashboard-hero-option1.webp?v=20261008-enterprise-responsive"
+            src="/palmyra-dashboard-hero-option1.webp?v=20261008-enterprise-responsive-2"
             alt=""
-            className="absolute inset-0 h-full w-full object-cover object-[42%_center] sm:object-[52%_center] lg:object-[50%_center]"
+            className="absolute inset-0 h-full w-full object-cover object-[50%_38%] sm:object-[52%_42%] lg:object-[50%_45%]"
             loading="eager"
             decoding="async"
             fetchPriority="high"
           />
         </picture>
 
-        <div className="absolute inset-0 z-[1] pointer-events-none bg-gradient-to-b from-transparent via-[#12082f]/12 to-[#12082f] sm:bg-gradient-to-r sm:from-[#10052f]/90 sm:via-[#17083d]/48 sm:to-transparent" aria-hidden="true" />
+        <div className="absolute inset-0 z-[1] pointer-events-none bg-gradient-to-t from-black/70 via-black/20 to-transparent sm:bg-gradient-to-r sm:from-black/65 sm:via-black/15 sm:to-transparent" aria-hidden="true" />
 
-        <div className="relative z-10 flex min-h-[520px] items-end sm:min-h-[390px] sm:items-center lg:min-h-[410px] px-4 pb-7 pt-[235px] sm:px-8 sm:py-8 lg:px-10">
+        <div className="relative z-10 flex min-h-[520px] items-end sm:min-h-[390px] sm:items-center lg:min-h-[410px] px-4 pb-7 pt-12 sm:px-8 sm:py-8 lg:px-10">
           <div className="w-full max-w-[500px] sm:max-w-[560px]">
             <div className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1.5 text-[7.5px] sm:text-[9px] font-black uppercase tracking-[0.14em] text-violet-50 shadow-lg backdrop-blur-md">
               <Sparkles className="h-3.5 w-3.5 shrink-0 text-violet-200" />
