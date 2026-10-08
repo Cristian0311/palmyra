@@ -48,6 +48,7 @@ export function useReportsPayroll(params: {
   selectedBranchFilter: string;
   selectedFilterDate: string;
   sessionFilter: 'all' | 'today' | 'yesterday' | 'custom';
+  companyCompensation?: { mode: 'fixed_product' | 'sales_percent'; percentRate: number };
 }) {
   const {
     closedSessions,
@@ -60,6 +61,7 @@ export function useReportsPayroll(params: {
     selectedBranchFilter,
     selectedFilterDate,
     sessionFilter,
+    companyCompensation = { mode: 'fixed_product', percentRate: 0 },
   } = params;
 
   const payrollList = useMemo<PayrollRow[]>(() => {
@@ -86,12 +88,19 @@ export function useReportsPayroll(params: {
         const sellerIds = new Set<string>();
         sessionTx.forEach(tx => (tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId]).forEach(id => sellerIds.add(id)));
         commissions = Array.from(sellerIds).reduce((sum, sellerId) => {
-          const seller = userById.get(sellerId);
           return sum + sessionTx.reduce((sellerSum, tx) => {
             const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
-            return sellers.includes(sellerId)
-              ? sellerSum + calculateEmployeeSaleCommission(seller, tx, Array.from(productById.values()), sellers.length)
-              : sellerSum;
+            if (!sellers.includes(sellerId)) return sellerSum;
+            const splitFactor = Math.max(1, sellers.length);
+            if (companyCompensation.mode === 'sales_percent') {
+              return sellerSum + (Math.max(0, Number(tx.total) || 0) * companyCompensation.percentRate / 100) / splitFactor;
+            }
+            const products = Array.from(productById.values());
+            return sellerSum + (tx.items || []).reduce((itemSum, item) => {
+              const productId = typeof item.product === 'string' ? item.product : item.product?.id;
+              const product = products.find(p => p.id === productId);
+              return itemSum + (Math.max(0, Number(product?.commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) / splitFactor;
+            }, 0);
           }, 0);
         }, 0);
       }
@@ -126,6 +135,7 @@ export function useReportsPayroll(params: {
     userByName,
     productById,
     sessionTurnMap,
+    companyCompensation,
   ]);
 
   const filteredPayrollList = useMemo(
