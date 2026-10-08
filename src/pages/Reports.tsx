@@ -373,6 +373,7 @@ export default function Reports() {
         userName: item.workerName,
         baseSalary: item.baseSalary,
         commissions: item.commissions,
+        discrepancyDeduction: Math.max(0, Number((item as any).discrepancyDeduction) || 0),
         total: item.totalSalary,
         date: item.date,
         status: nextStatus

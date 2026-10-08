@@ -381,7 +381,6 @@ export async function pushSalarySettlementToSupabase(settlement:SalarySettlement
       .eq('company_id', companyId)
       .maybeSingle();
     if (existingItemError) throw existingItemError;
-    if (existingItem?.id) return true;
 
     const day=settlement.date.slice(0,10);
     const {error:re}=await supabase.from('payroll_runs').upsert({
