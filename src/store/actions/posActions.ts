@@ -365,68 +365,58 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
       requiresEmployeePassword: true
     };
 
-    // Persist the cancellation intent before any local mutation.
-    if (navigator.onLine) {
-      try {
-        const res = await callCancelSessionRPC(sessionId, userId, reason, password);
-        if (!res.success) {
-          if (res.errorCode) {
-            get().addNotification(res.error || 'No se pudo cancelar el turno.', 'error');
-            return false;
-          }
-          throw new Error(res.error || 'No se pudo cancelar el turno');
-        }
+    // La cancelación se confirma primero en Supabase. Nunca marcamos un turno
+    // como cancelado localmente si la respuesta del servidor es incierta: así
+    // un timeout no convierte una operación sin contraseña en una cancelación.
+    if (typeof navigator === 'undefined' || !navigator.onLine) {
+      get().addNotification(
+        'Conexión necesaria para cancelar el turno',
+        'warning',
+        'La contraseña se valida contra el empleado que abrió la caja. Conéctate a Internet para confirmar la cancelación de forma segura.'
+      );
+      return false;
+    }
 
-        const sessionTxs = (get().transactions || []).filter(t => t.sessionId === sessionId && !t.deletedAt);
-        sessionTxs.forEach(tx => set(current => buildLocalVoidTransactionPatch(current, tx)));
-        set(current => ({
-          cashSessions: (current.cashSessions || []).map(s => s.id === sessionId ? {
-            ...s, status: 'cancelled', closedAt: cancelledAt, closingDate: cancelledAt, deleteReason: reason
-          } : s),
-          transactions: (current.transactions || []).map(t =>
-            t.sessionId === sessionId && !t.deletedAt
-              ? { ...t, deletedAt: cancelledAt, deletedBy: userId, deleteReason: reason, status: 'refunded' as const }
-              : t
-          ),
-          cart: []
-        }));
-
-        const inventoryReconciled = await get().refreshBranchInventory();
-        const { pullBankDataFromSupabase } = await import('../../services/supabaseSync');
-        const bankRes = await pullBankDataFromSupabase();
-        if (!inventoryReconciled || !bankRes.success) {
-          throw new Error('Turno cancelado en servidor, pero el inventario/saldos locales aún no pudieron reconciliarse');
-        }
-        set({ bankCards: bankRes.bankCards, bankTransactions: bankRes.bankTransactions });
-
-        removeFromOfflineQueueByAction('cash_session', 'cash-cancel:' + sessionId);
-        return true;
-      } catch (err) {
-        // Si el servidor rechazó la operación por credencial/permisos, no debemos
-        // marcar el turno como cancelado localmente ni dejar una cola fantasma.
-        const message = String((err as any)?.message || err || '');
-        if (/permission|password|authentication|authorized|credential/i.test(message)) {
-          get().addNotification(message || 'La contraseña del empleado no fue aceptada.', 'error');
-          return false;
-        }
-        console.warn('[cancelSession] La cancelación no pudo completarse en línea; se conserva localmente y queda durable:', err);
-        const sessionTxs = (get().transactions || []).filter(t => t.sessionId === sessionId && !t.deletedAt);
-        sessionTxs.forEach(tx => set(current => buildLocalVoidTransactionPatch(current, tx)));
-        set(current => ({
-          cashSessions: (current.cashSessions || []).map(s => s.id === sessionId ? {
-            ...s, status: 'cancelled', closedAt: cancelledAt, closingDate: cancelledAt, deleteReason: reason
-          } : s),
-          transactions: (current.transactions || []).map(t =>
-            t.sessionId === sessionId && !t.deletedAt
-              ? { ...t, deletedAt: cancelledAt, deletedBy: userId, deleteReason: reason, status: 'refunded' as const }
-              : t
-          ),
-          cart: []
-        }));
-        await flushLocalStateStorage();
-        get().addNotification('Turno cancelado localmente. La cancelación quedó pendiente de sincronización.', 'info');
-        return true;
+    try {
+      const res = await callCancelSessionRPC(sessionId, userId, reason, password);
+      if (!res.success) {
+        get().addNotification(res.error || 'No se pudo cancelar el turno.', 'error');
+        return false;
       }
+
+      const sessionTxs = (get().transactions || []).filter(t => t.sessionId === sessionId && !t.deletedAt);
+      sessionTxs.forEach(tx => set(current => buildLocalVoidTransactionPatch(current, tx)));
+      set(current => ({
+        cashSessions: (current.cashSessions || []).map(s => s.id === sessionId ? {
+          ...s, status: 'cancelled', closedAt: cancelledAt, closingDate: cancelledAt, deleteReason: reason
+        } : s),
+        transactions: (current.transactions || []).map(t =>
+          t.sessionId === sessionId && !t.deletedAt
+            ? { ...t, deletedAt: cancelledAt, deletedBy: userId, deleteReason: reason, status: 'refunded' as const }
+            : t
+        ),
+        cart: []
+      }));
+
+      const inventoryReconciled = await get().refreshBranchInventory();
+      const { pullBankDataFromSupabase } = await import('../../services/supabaseSync');
+      const bankRes = await pullBankDataFromSupabase();
+      if (!inventoryReconciled || !bankRes.success) {
+        get().addNotification('Turno cancelado, pero la reconciliación local aún está pendiente.', 'warning');
+      } else {
+        set({ bankCards: bankRes.bankCards, bankTransactions: bankRes.bankTransactions });
+      }
+      removeFromOfflineQueueByAction('cash_session', 'cash-cancel:' + sessionId);
+      await flushLocalStateStorage();
+      return true;
+    } catch (err) {
+      console.warn('[cancelSession] No se pudo confirmar la cancelación:', err);
+      get().addNotification(
+        'No se pudo confirmar la cancelación',
+        'warning',
+        'El turno permanece abierto. Vuelve a intentarlo con conexión estable; PALMYRA no lo cancelará sin validación.'
+      );
+      return false;
     }
 
     // La cancelación de caja requiere validación contra el empleado que abrió
