@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { calculateEmployeeSaleCommission, getCompensationType, getSalesPercentage, getSalaryBase } from '../../services/employeeCompensation';
+import { calculateEmployeeSaleCommission, getCompensationType, getSalaryBase } from '../../services/employeeCompensation';
 import type {
   CashRegisterSession,
   Product,
