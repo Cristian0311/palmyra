@@ -53,6 +53,13 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
   const supabase = getSupabase();
   if (!supabase) return { processed: 0, failed: 0, remaining: getOfflineQueueCount(), conflicts: getOfflineConflictCount(), errors: [{ type: 'system', actionId: 'supabase', message: 'Supabase no está disponible en esta sesión.' }] };
   const reachability = await checkSupabaseReachability();
+  // La comprobación de conectividad contiene un await. Dos disparadores
+  // (online + intervalo/focus) pueden llegar aquí simultáneamente; volver a
+  // comprobar el lock justo después del await evita dos consumidores
+  // procesando la misma instantánea y golpeando la misma RPC a la vez.
+  if (isProcessingQueue) {
+    return { processed: 0, failed: 0, remaining: getOfflineQueueCount(), conflicts: getOfflineConflictCount(), errors: [] };
+  }
   if (!reachability.ok) {
     return { processed: 0, failed: 0, remaining: getOfflineQueueCount(), conflicts: getOfflineConflictCount(), errors: [{ type: 'network', actionId: 'connectivity', message: reachability.message || 'Supabase no está accesible todavía.' }] };
   }
