@@ -191,7 +191,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         const recalculatedSettlement = {
           ...settlement,
           commissions,
-          total: (Number(settlement.baseSalary) || 0) + commissions - discrepancyDeduction
+          total: Math.max(0, (Number(settlement.baseSalary) || 0) + commissions - discrepancyDeduction)
         };
 
         // Compatibilidad con snapshots antiguos: sus movimientos deben existir
