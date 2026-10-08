@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { calculateEmployeeSaleCommission, getCompensationType, getSalaryBase } from '../../services/employeeCompensation';
+import { calculateEmployeeSaleCommission, getSalaryBase from '../../services/employeeCompensation';
 import type {
   CashRegisterSession,
   Product,
@@ -82,7 +82,6 @@ export function useReportsPayroll(params: {
       const workerName = session.workerName || existing?.userName || emp?.name || 'Vendedor';
 
       let commissions = existing?.commissions || 0;
-      const compensationType = getCompensationType(emp);
       if (!existing) {
         const sellerIds = new Set<string>();
         sessionTx.forEach(tx => (tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId]).forEach(id => sellerIds.add(id)));
