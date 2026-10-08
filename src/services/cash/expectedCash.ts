@@ -14,6 +14,7 @@ export function calculateExpectedCashBase(
   const sessionTxs = (transactions || []).filter((tx) =>
     tx.status === 'completed' &&
     !tx.deletedAt &&
+    !String(tx.notes || '').startsWith('AJUSTE_') &&
     (tx.sessionId
       ? tx.sessionId === session.id
       : (tx.branchId === session.branchId &&
