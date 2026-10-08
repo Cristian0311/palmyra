@@ -429,25 +429,20 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
       }
     }
 
-    // Offline: la contraseña se verifica localmente en POS. No persistimos la
-    // contraseña en IndexedDB. Al recuperar conexión, la operación pendiente
-    // exige reautenticación antes de ser enviada al servidor.
-    await enqueueOfflineItem('cash_session', queueData, 'cash-cancel:' + sessionId);
+    // La cancelación de caja requiere validación contra el empleado que abrió
+    // el turno. No permitimos cancelaciones offline porque el dispositivo no
+    // conserva la contraseña en el estado persistido y no debemos aceptar una
+    // credencial que no pueda validar el servidor.
+    if (typeof navigator === 'undefined' || !navigator.onLine) {
+      get().addNotification(
+        'Conexión necesaria para cancelar el turno',
+        'warning',
+        'La contraseña se valida contra el empleado que abrió la caja. Conéctate a Internet para confirmar la cancelación de forma segura.'
+      );
+      return false;
+    }
 
-    const sessionTxs = (state.transactions || []).filter(t => t.sessionId === sessionId && !t.deletedAt);
-    sessionTxs.forEach(tx => set(current => buildLocalVoidTransactionPatch(current, tx)));
-    set(current => ({
-      cashSessions: (current.cashSessions || []).map(s => s.id === sessionId ? {
-        ...s, status: 'cancelled', closedAt: cancelledAt, closingDate: cancelledAt, deleteReason: reason
-      } : s),
-      transactions: (current.transactions || []).map(t =>
-        t.sessionId === sessionId && !t.deletedAt
-          ? { ...t, deletedAt: cancelledAt, deletedBy: userId, deleteReason: reason, status: 'refunded' as const }
-          : t
-      ),
-      cart: []
-    }));
-    return true;
+    return false;
   },
 
   createReturn: (returnItem) => {
