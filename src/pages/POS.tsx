@@ -2845,11 +2845,11 @@ export default function POS() {
                                 const customer = useStore.getState().customers.find(c => c.id === tx.customerId);
                                 const cat = getTxPaymentCategory(tx);
                                 return (
-                                  <div key={tx.id} className="p-3 bg-white rounded-xl border border-slate-200/80 shadow-sm space-y-2">
-                                    <div className="flex items-start justify-between gap-2">
+                                  <div key={tx.id} className="p-2 sm:p-2.5 bg-white rounded-xl border border-slate-200/80 shadow-sm space-y-1.5">
+                                    <div className="flex items-center justify-between gap-2">
                                       <div>
                                         <div className="flex items-center gap-1.5 flex-wrap">
-                                          <span className="font-mono text-[10px] font-black text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                                          <span className="font-mono text-[9px] font-black text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-md border border-indigo-100">
                                             {tx.id}
                                           </span>
                                           <span className="text-[9px] font-bold text-slate-400">
@@ -2897,7 +2897,7 @@ export default function POS() {
                                     </div>
 
                                     {/* Products list in this ticket - Compact & Contained */}
-                                    <div className="bg-slate-50 dark:bg-slate-800/40 rounded-lg p-2 space-y-1 text-[9px] max-h-24 sm:max-h-28 overflow-y-auto custom-scrollbar">
+                                    <div className="bg-slate-50 dark:bg-slate-800/40 rounded-lg p-1.5 space-y-0.5 text-[8px] max-h-20 sm:max-h-24 overflow-y-auto custom-scrollbar">
                                       {tx.items.map((item, idx) => (
                                         <div key={idx} className="flex justify-between items-center text-slate-700 font-bold">
                                           <span className="truncate pr-2">
@@ -2914,7 +2914,7 @@ export default function POS() {
 
 
                         {/* Payment Method Badges & Breakdown */}
-                                    <div className="flex items-center justify-between gap-2 flex-wrap pt-1 border-t border-slate-100 text-[8px] font-black">
+                                    <div className="flex items-center justify-between gap-1.5 flex-wrap pt-0.5 border-t border-slate-100 text-[7px] font-black">
                                       <div className="flex items-center gap-1 flex-wrap">
                                         {cat === 'usd' && (
                                           <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full flex items-center gap-1">
@@ -3039,10 +3039,10 @@ export default function POS() {
                 </div>
               ) : (
                 <div className="space-y-6">
-                  <div className="bg-indigo-50 rounded-2xl p-4 flex justify-between items-center border border-indigo-100">
+                  <div className="bg-gradient-to-r from-indigo-50 to-violet-50 rounded-2xl p-3 border border-indigo-100 shadow-sm">
                     <div>
                       <p className="text-[9px] font-black text-indigo-400 uppercase tracking-widest">Fondo Inicial</p>
-                      <p className="text-lg font-black text-indigo-900">{(currentSession?.openingBalance || 0).toLocaleString('es-CU', { minimumFractionDigits: 2 })} {baseCurrency.code}</p>
+                      <p className="text-base font-black text-indigo-900">{(currentSession?.openingBalance || 0).toLocaleString('es-CU', { minimumFractionDigits: 2 })} {baseCurrency.code}</p>
                     </div>
                     <button 
                       onClick={() => {
