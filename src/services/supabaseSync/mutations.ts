@@ -353,7 +353,8 @@ export async function pushSupplierOrderToSupabase(order:SupplierOrder){
       transport_details:order.transportDetails||null
     },{onConflict:'id'});
     if(error)throw error;
-    await supabase.from('purchase_items').delete().eq('purchase_order_id',order.id);
+    const { error:de } = await supabase.from('purchase_items').delete().eq('purchase_order_id',order.id);
+    if(de) throw de;
     if(order.items?.length){
       const {error:ie}=await supabase.from('purchase_items').insert(order.items.map(i=>({
         id:crypto.randomUUID(),purchase_order_id:order.id,product_id:i.productId,quantity:Number(i.quantity)||0,
