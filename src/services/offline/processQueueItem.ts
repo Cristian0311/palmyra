@@ -113,7 +113,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         // que una venta rechazada no termine dentro de la liquidación salarial.
         const { data: persistedSales, error: salesError } = await supabase
           .from('sales')
-          .select('id,status,employee_id,seller_user_id')
+          .select('id,status,total,employee_id,seller_user_id')
           .eq('cash_session_id', session.id);
         if (salesError) throw salesError;
 
@@ -140,13 +140,13 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
           const employeeByUserId = new Map<string, any>((employeesRes.data || []).filter((e: any) => e.user_id).map((e: any) => [e.user_id, e]));
           const saleMap = new Map<string, any>((persistedSales || []).map((s: any) => [s.id, s]));
 
+          const processedPercentageSales = new Set<string>();
           for (const saleItem of itemsRes.data || []) {
             const product = productMap.get(saleItem.product_id);
             const sale = saleMap.get(saleItem.sale_id);
             if (!product || !sale) continue;
 
             const quantity = Number(saleItem.quantity) || 0;
-            const lineTotal = Number(saleItem.line_total) || 0;
             const seller = (sale.employee_id && employeeById.get(sale.employee_id))
               || (sale.seller_user_id && employeeByUserId.get(sale.seller_user_id))
               || employeeById.get(session.userId)
@@ -158,8 +158,12 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
             const percentage = Math.max(0, Math.min(100,
               Number(seller?.sales_percentage ?? (globalMode === 'sales_percentage' ? globalRate : 0)) || 0
             ));
+
             if (compensationType === 'sales_percentage') {
-              commissions += lineTotal * percentage / 100;
+              if (!processedPercentageSales.has(sale.id)) {
+                commissions += Math.max(0, Number(sale.total) || 0) * percentage / 100;
+                processedPercentageSales.add(sale.id);
+              }
             } else {
               commissions += (Number(product.commission_fixed) || 0) * quantity;
             }
