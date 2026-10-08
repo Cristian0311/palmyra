@@ -282,10 +282,8 @@ export default function Dashboard() {
 
       <section className="dashboard-hero relative isolate overflow-hidden rounded-[1.6rem] border border-violet-100/80 bg-[#12082f] shadow-lg shadow-violet-100/40 min-h-[430px] sm:min-h-[390px] lg:min-h-[410px]">
         <picture className="absolute inset-0 block h-full w-full" aria-hidden="true">
-          <source media="(max-width: 639px)" srcSet="/palmyra-dashboard-hero-option1-mobile.webp?v=20261008-enterprise" />
-          <source media="(max-width: 1023px)" srcSet="/palmyra-dashboard-hero-option1-tablet.webp?v=20261008-enterprise" />
           <img
-            src="/palmyra-dashboard-hero-option1.webp?v=20261008-enterprise"
+            src="/palmyra-dashboard-hero-option1.webp?v=20261008-enterprise-final"
             alt=""
             className="absolute inset-0 h-full w-full object-cover object-[76%_center] sm:object-[76%_center] lg:object-[78%_center]"
             loading="eager"
