@@ -2863,8 +2863,13 @@ export default function POS() {
                                       <div>
                                         <div className="flex items-center gap-1.5 flex-wrap">
                                           <span className="font-mono text-[9px] font-black text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded-md border border-indigo-100">
-                                            {tx.id}
+                                            {tx.ticketNumber || `#${tx.id.slice(0, 8).toUpperCase()}`}
                                           </span>
+                                          {tx.offlinePending && (
+                                            <span className="text-[8px] font-black uppercase tracking-wide text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-100">
+                                              Pendiente
+                                            </span>
+                                          )}
                                           <span className="text-[9px] font-bold text-slate-400">
                                             {new Date(tx.date).toLocaleDateString("es-CU", { day: "2-digit", month: "2-digit", year: "2-digit" })} · {new Date(tx.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                                           </span>
