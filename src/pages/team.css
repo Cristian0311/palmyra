@@ -243,35 +243,30 @@
   touch-action:pan-y;
   scrollbar-gutter:stable;
 }
-.inventory-product-modal{width:min(520px,calc(100vw - 1.25rem))!important;max-width:520px!important;max-height:min(760px,calc(100dvh - 1.25rem))!important}
-.inventory-product-modal .team-employee-modal-head{padding:13px 15px 11px}.inventory-product-modal .team-employee-modal-body{padding:11px 15px 13px}.inventory-product-modal .team-employee-modal-footer{padding:9px 15px 11px}
-@media(max-width:720px){.inventory-product-modal{width:calc(100vw - 1.25rem)!important;max-width:520px!important;max-height:calc(100dvh - 1rem)!important;border-radius:18px}.inventory-product-modal .team-employee-modal-head{padding:11px 12px 9px}.inventory-product-modal .team-employee-modal-body{padding:9px 11px 11px}.inventory-product-modal .team-employee-modal-footer{padding:8px 11px 9px}}
-@media(max-width:420px){.inventory-product-modal{width:calc(100vw - 1rem)!important;max-height:calc(100dvh - .75rem)!important}.inventory-product-modal .team-employee-modal-head{padding:10px 10px 8px}.inventory-product-modal .team-employee-modal-body{padding:8px 9px 10px}.inventory-product-modal .team-employee-modal-footer{padding:7px 9px 8px}}
-@media(max-width:720px){
-  .inventory-bulk-panel{
-    flex:0 0 auto;
-    height:calc(100dvh - 15rem);
-    min-height:320px;
-  }
-  .inventory-bulk-scroll{
-    min-height:0;
-    overflow-y:auto;
-    overflow-x:auto;
-  }
-  .inventory-product-modal{
-    max-height:calc(100dvh - .75rem);
-    border-radius:23px;
-  }
+.inventory-product-modal{
+  width:min(100%,672px)!important;
+  max-width:672px!important;
+  max-height:min(92dvh,900px)!important;
 }
-@media(max-width:480px){
-  .inventory-bulk-panel{
-    height:calc(100dvh - 13.5rem);
-    min-height:300px;
-  }
+.inventory-product-modal .team-employee-modal-head{padding:16px 18px 13px}
+.inventory-product-modal .team-employee-modal-body{padding:13px 18px 15px;gap:10px}
+.inventory-product-modal .team-employee-modal-footer{padding:10px 18px 12px}
+@media(max-width:720px){
   .inventory-product-modal{
-    max-height:calc(100dvh - .5rem);
-    border-radius:18px;
+    width:calc(100vw - 1rem)!important;
+    max-width:672px!important;
+    max-height:calc(100dvh - .75rem)!important;
+    border-radius:20px;
   }
+  .inventory-product-modal .team-employee-modal-head{padding:11px 12px 9px}
+  .inventory-product-modal .team-employee-modal-body{padding:9px 11px 11px;gap:8px}
+  .inventory-product-modal .team-employee-modal-footer{padding:8px 11px 9px}
+}
+@media(max-width:420px){
+  .inventory-product-modal{width:calc(100vw - .75rem)!important}
+  .inventory-product-modal .team-employee-modal-head{padding:9px 10px 8px}
+  .inventory-product-modal .team-employee-modal-body{padding:7px 9px 9px;gap:7px}
+  .inventory-product-modal .team-employee-modal-footer{padding:7px 9px 8px}
 }
 
 .inventory-product-general{min-width:0}
