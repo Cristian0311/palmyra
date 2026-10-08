@@ -35,7 +35,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { cn } from "../lib/utils";
 import { loadSaaSContext } from "../services/saas";
 import { useStore } from "../store/useStore";
-import { getOfflineQueueCount, getOfflineQueue } from "../services/offlineQueue";
+import { getOfflineQueueCount, getOfflineQueue, waitForOfflineQueueReady } from "../services/offlineQueue";
 import { canUsePlanFeature, getPlanVisual, type PlanFeature } from "../services/planAccess";
 import { 
   CheckCircle2, 
