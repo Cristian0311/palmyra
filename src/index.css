@@ -964,10 +964,8 @@ html.pos-keyboard-open .pos-page .animate-in,html.pos-keyboard-open .pos-page [c
   .tutorial-flow-node>span{max-width:none;font-size:8px}
   .tutorial-flow-arrow{position:absolute;right:9px;transform:rotate(90deg);width:10px;height:10px}
   .tutorial-flow-node:last-child .tutorial-flow-arrow{display:none}
-  .tutorial-shell .grid.lg\\:grid-cols-2{grid-template-columns:1fr!important}
   .tutorial-card-body{padding:11px!important}
   .tutorial-step-card{padding:10px!important;gap:9px!important}
-  .tutorial-step-card .text\\-[9px]{font-size:10px!important;line-height:1.45!important}
 }
 @media(min-width:768px) and (max-width:1023px){
   .tutorial-page{padding:14px!important}
