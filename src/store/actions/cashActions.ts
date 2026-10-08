@@ -226,7 +226,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       baseSalary,
       commissions,
       discrepancyDeduction: deduction,
-      total: (baseSalary + commissions) - deduction,
+      total: Math.max(0, (baseSalary + commissions) - deduction),
       date: finalClosingDate,
       status: 'pending'
     };
