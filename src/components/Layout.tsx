@@ -371,8 +371,37 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     setIsSyncingOffline(true);
     try {
       const { processOfflineQueue } = await import("../services/offlineSync");
-      const res = await processOfflineQueue();
-      const cloudResult = await syncWithSupabase();
+      // Primero vaciamos la cola durable. El motor ya realiza una comprobación
+      // de conectividad con reintentos, por lo que una microcaída de Starlink no
+      // convierte una operación local en pérdida de datos.
+      let res = await processOfflineQueue();
+
+      // El pull completo de Supabase puede fallar aunque la conexión ya haya
+      // vuelto. Reintentamos únicamente los fallos transitorios; no repetimos
+      // ciegamente errores de permisos/datos.
+      let cloudResult = await syncWithSupabase();
+      for (let attempt = 1; attempt < 3 && cloudResult?.success === false; attempt++) {
+        const message = String(cloudResult?.message || '');
+        const transient = /network|fetch|failed|timeout|timed out|gateway|connection|503|502|504|temporarily|unavailable/i.test(message);
+        if (!transient) break;
+        await new Promise(resolve => setTimeout(resolve, 700 * attempt));
+        cloudResult = await syncWithSupabase();
+      }
+
+      // Si el primer replay encontró un fallo de red, vuelve a intentarlo
+      // después del pull/reintento en lugar de dejar la cola esperando hasta el
+      // siguiente intervalo automático.
+      if (res.failed > 0 && res.errors?.some((e: any) => /network|timeout|fetch|connection|supabase no está accesible/i.test(String(e?.message || '')))) {
+        await new Promise(resolve => setTimeout(resolve, 700));
+        const retryRes = await processOfflineQueue();
+        res = {
+          processed: res.processed + retryRes.processed,
+          failed: retryRes.failed,
+          remaining: retryRes.remaining,
+          conflicts: retryRes.conflicts,
+          errors: [...(res.errors || []), ...(retryRes.errors || [])]
+        };
+      }
       // The cloud refresh can surface/requeue operations that failed during the
       // pull/push cycle. Always read the durable queue again before declaring
       // synchronization complete; the first result is only a snapshot.
@@ -413,8 +442,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       } else {
         addNotification("Sincronización con la nube completada con éxito", 'success');
       }
-    } catch {
-      addNotification("Error al sincronizar con Supabase", 'error', 'La sincronización lanzó una excepción antes de completar el proceso. Revisa la conexión y vuelve a intentarlo.');
+    } catch (error: any) {
+      // Nunca ocultar una excepción real. La cola durable permanece intacta;
+      // mostramos el detalle para poder diagnosticar el punto exacto sin borrar
+      // operaciones pendientes.
+      const detail = [
+        error?.message || String(error || 'Error desconocido'),
+        error?.code ? `Código: ${error.code}` : '',
+        error?.status ? `HTTP: ${error.status}` : '',
+        error?.details ? `Detalle: ${error.details}` : '',
+        error?.hint ? `Ayuda: ${error.hint}` : ''
+      ].filter(Boolean).join(' · ');
+      addNotification(
+        "Error al sincronizar con Supabase",
+        'error',
+        `${detail || 'La sincronización lanzó una excepción sin detalle.'}\nLas operaciones locales permanecen protegidas y se reintentará automáticamente cuando la conexión esté estable.`
+      );
     } finally {
       setIsSyncingOffline(false);
     }
