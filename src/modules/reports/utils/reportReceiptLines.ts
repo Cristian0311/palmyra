@@ -62,7 +62,7 @@ export function buildShiftReceiptLines(
       "---",
       "BOLD|LIQUIDACION SALARIO:",
       format58mmLine("Salario Base:", formatMoney(payrollItem.baseSalary), 32),
-      format58mmLine("Comisiones:", `+${formatMoney(payrollItem.commissions)}`, 32),
+      format58mmLine("Comisiones:", formatMoney(payrollItem.commissions), 32),
       format58mmLine("TOTAL SALARIO:", formatMoney(payrollItem.totalSalary), 32),
       format58mmLine("Estado:", payrollItem.status === 'paid' ? 'PAGADO' : 'PENDIENTE', 32),
     );
@@ -92,15 +92,15 @@ export function buildDiscrepancyReceiptLines(
   ];
   info.details.forEach(d => {
     const methodLabel = d.method === 'cash' ? 'EFEC' : 'TRANSF';
-    const typeLabel = d.difference > 0 ? '+SOBRANTE' : '-FALTANTE';
+    const typeLabel = d.difference > 0 ? 'SOBRANTE' : 'FALTANTE';
     lines.push(
       format58mmLine(`${d.currencyCode} (${methodLabel})`, `${d.actual.toFixed(2)} / ${d.expected.toFixed(2)}`, 32),
       format58mmLine(`DIFERENCIA:`, `${typeLabel} ${Math.abs(d.difference).toFixed(2)}`, 32),
     );
   });
   lines.push("---");
-  if (info.totalShortageBase > 0) lines.push(format58mmLine("TOTAL FALTANTE:", `-${formatMoney(info.totalShortageBase)}`, 32));
-  if (info.totalOverageBase > 0) lines.push(format58mmLine("TOTAL SOBRANTE:", `+${formatMoney(info.totalOverageBase)}`, 32));
+  if (info.totalShortageBase > 0) lines.push(format58mmLine("TOTAL FALTANTE:", formatMoney(info.totalShortageBase), 32));
+  if (info.totalOverageBase > 0) lines.push(format58mmLine("TOTAL SOBRANTE:", formatMoney(info.totalOverageBase), 32));
   if (info.deducted) lines.push(format58mmLine("DESC. SALARIO:", `-${formatMoney(info.deductionAmount)}`, 32));
   if (session.auditNotes) {
     lines.push("---");
