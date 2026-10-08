@@ -107,6 +107,30 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         const settlement = session.settlement;
         if (!settlement) throw new Error('Cierre offline sin liquidación asociada');
 
+        // Recuperación de sesiones antiguas: una cola de cierre puede sobrevivir
+        // a una versión en la que la operación de apertura ya fue retirada.
+        // Si el turno no existe todavía en Supabase, recreamos exactamente ese
+        // turno mediante el RPC idempotente de apertura antes de intentar cerrar.
+        // Si ya está cerrado, no intentamos reabrirlo ni insertar movimientos
+        // sobre una sesión cerrada.
+        let remoteSessionStatus: string | null = null;
+        const { data: existingRemoteSession, error: remoteSessionError } = await supabase
+          .from('cash_sessions')
+          .select('id,status')
+          .eq('id', session.id)
+          .eq('company_id', (await getActiveTenant()).companyId)
+          .maybeSingle();
+        if (remoteSessionError) throw remoteSessionError;
+        if (!existingRemoteSession) {
+          const openRecovery = await callOpenSessionRPCWithId(session);
+          if (!openRecovery.success) {
+            throw new Error(openRecovery.error || 'No se pudo recuperar el turno antes del cierre.');
+          }
+          remoteSessionStatus = 'open';
+        } else {
+          remoteSessionStatus = String(existingRemoteSession.status || '');
+        }
+
         // Las ventas offline ya fueron procesadas (o marcadas como conflicto)
         // antes del cierre por el grafo de dependencias. Recalculamos las
         // comisiones desde las ventas que realmente existen en Supabase para
@@ -196,7 +220,9 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
 
         // Compatibilidad con snapshots antiguos: sus movimientos deben existir
         // antes de cerrar el turno, porque el RPC de movimientos exige una sesión abierta.
-        await syncLegacySessionMovements();
+        if (remoteSessionStatus === 'open') {
+          await syncLegacySessionMovements();
+        }
 
         const res = await (await import('../supabaseSync')).callCloseSessionRPC(
           session.id,
