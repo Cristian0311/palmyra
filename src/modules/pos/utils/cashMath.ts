@@ -3,7 +3,7 @@ import type { CashRegisterSession, Currency, Payment, Transaction } from '../../
 export function calculateExpectedSessionBalances(
   session: CashRegisterSession | undefined,
   transactions: Transaction[],
-  currentBranchId: string,
+  _currentBranchId: string,
   baseCurrency: Currency,
   currencies: Currency[],
 ): Payment[] {
@@ -21,8 +21,10 @@ export function calculateExpectedSessionBalances(
 
   const sessionTxs = transactions.filter(
     transaction =>
-      transaction.sessionId === session.id &&
-      (!session.branchId || transaction.branchId === session.branchId || transaction.branchId === currentBranchId),
+      transaction.status === 'completed' &&
+      !transaction.deletedAt &&
+      !String(transaction.notes || '').startsWith('AJUSTE_') &&
+      transaction.sessionId === session.id,
   );
 
   const expectedMap = new Map<string, Payment>();
