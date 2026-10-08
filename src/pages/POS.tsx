@@ -27,7 +27,7 @@ import { getAuthorizedWarehouseIds, getWarehouseId } from "../modules/warehouse/
 import { pullOpenCashSessionsFromSupabase } from "../services/supabaseSync";
 import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
 import { aggregateTransferPayments, buildTransactionTicketId, finalizeCheckoutPayments } from '../modules/pos/utils/checkoutUtils';
-import { calculateEmployeeSaleCommission } from '../services/employeeCompensation';
+import { calculateEmployeeSaleCommission, getCompensationLabel, getSalesPercentage, getSalaryBase } from '../services/employeeCompensation';
 import { rememberOfflinePosCredential, verifyOfflinePosCredential, rememberOfflinePosResumeGrant, verifyOfflinePosResumeGrant } from "../services/offlinePosAuth";
 const CheckoutModal = lazy(() => import("../components/pos/CheckoutModal"));
 
@@ -640,84 +640,55 @@ export default function POS() {
     [currentSession, activeTransactions, currentBranchId, baseCurrency, currencies]
   );
 
-  // Liquidación por producto del turno actual.
+  // Desglose de liquidación del turno usando los dos modelos salariales oficiales.
   const turnProductSalaryRows = React.useMemo(() => {
     if (!currentSession) return [];
-    const rows = new Map();
-
+    const rows = new Map<string, any>();
     activeTransactions
-      .filter(tx =>
-        tx.branchId === currentBranchId &&
-        tx.status === 'completed' &&
-        !tx.deletedAt &&
+      .filter(tx => tx.branchId === currentBranchId && tx.status === 'completed' && !tx.deletedAt &&
         new Date(tx.date) >= new Date(currentSession.openedAt) &&
-        (!tx.sessionId || tx.sessionId === currentSession.id)
-      )
+        (!tx.sessionId || tx.sessionId === currentSession.id))
       .forEach(tx => {
         const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
         const splitFactor = Math.max(1, sellers.length);
-
+        const saleTotal = Math.max(0, Number(tx.total) || 0);
         (tx.items || []).forEach(item => {
           const rawItem = item as any;
           const rawProduct = rawItem.product ?? rawItem.productId;
-          const product = typeof rawProduct === 'string'
-            ? productById.get(rawProduct)
-            : rawProduct;
-
+          const product = typeof rawProduct === 'string' ? productById.get(rawProduct) : rawProduct;
           const productId = product?.id || rawItem.product_id || (typeof rawProduct === 'string' ? rawProduct : '');
-          if (!productId) return;
-
-          const productName = product?.name || rawItem.product_name || (typeof rawProduct === 'string' ? rawProduct : 'Producto vendido');
-          const quantity = Number(rawItem.quantity || 0);
-          if (!Number.isFinite(quantity) || quantity <= 0) return;
-
-          // La forma de pago del trabajador manda:
-          // - fixed_product: CUP fijo configurado en el producto por unidad.
-          // - sales_percentage: porcentaje sobre el importe vendido.
-          const saleUnitPrice = Number(
-            rawItem.price ??
-            product?.price ??
-            rawItem.product_snapshot?.price ??
-            0
-          ) || 0;
-          const fixedCommission = Number(
-            product?.commissionValue ??
-            rawItem.product_snapshot?.commissionValue ??
-            rawItem.commissionValue ??
-            0
-          ) || 0;
-
+          const quantity = Math.max(0, Number(rawItem.quantity) || 0);
+          if (!productId || quantity <= 0) return;
+          const productName = product?.name || rawItem.product_name || 'Producto vendido';
+          const unitPrice = Number(rawItem.price ?? product?.price ?? rawItem.product_snapshot?.price ?? 0) || 0;
+          const lineTotal = Math.max(0, unitPrice * quantity);
+          const fixedCommission = Number(product?.commissionValue ?? rawItem.product_snapshot?.commissionValue ?? rawItem.commissionValue ?? 0) || 0;
           sellers.forEach((sellerId: string) => {
             const employee = userById.get(sellerId);
-            const compensationType = employee?.compensationType || 'fixed_product';
-            const salesPercentage = Number(employee?.salesPercentage || 0);
-            const salaryPerUnit = compensationType === 'sales_percentage'
-              ? (saleUnitPrice * Math.max(0, Math.min(100, salesPercentage)) / 100) / splitFactor
-              : fixedCommission / splitFactor;
+            const isPercentage = employee?.compensationType === 'sales_percentage';
+            const percentageCommission = saleTotal > 0
+              ? (saleTotal * getSalesPercentage(employee) / 100 / splitFactor) * (lineTotal / saleTotal)
+              : 0;
+            const salaryTotal = isPercentage ? percentageCommission : (Math.max(0, fixedCommission) * quantity) / splitFactor;
+            const salaryPerUnit = salaryTotal / quantity;
             const key = sellerId + '::' + productId;
             const existing = rows.get(key);
-
             if (existing) {
               existing.quantity += quantity;
-              existing.salaryTotal += salaryPerUnit * quantity;
+              existing.salaryTotal += salaryTotal;
               existing.salaryPerUnit = existing.quantity > 0 ? existing.salaryTotal / existing.quantity : 0;
             } else {
               rows.set(key, {
-                key,
-                employeeName: employee?.name || tx.cashierName || 'Empleado',
-                productName,
-                quantity,
-                salaryPerUnit,
-                salaryTotal: salaryPerUnit * quantity
+                key, employeeName: employee?.name || tx.cashierName || 'Empleado', productName,
+                quantity, salaryPerUnit, salaryTotal, compensationType: employee?.compensationType || 'fixed_product',
+                percentage: getSalesPercentage(employee)
               });
             }
           });
         });
       });
-
-    return Array.from(rows.values()).sort((a, b) =>
-      String(a.employeeName).localeCompare(String(b.employeeName)) ||
-      String(a.productName).localeCompare(String(b.productName))
+    return Array.from(rows.values()).sort((a: any, b: any) =>
+      String(a.employeeName).localeCompare(String(b.employeeName)) || String(a.productName).localeCompare(String(b.productName))
     );
   }, [currentSession, activeTransactions, currentBranchId, productById, userById]);
 
@@ -3111,78 +3082,46 @@ export default function POS() {
 
                       {/* Salary Calculation Card */}
                       {(() => {
-                        const sessionUser = users.find(u => u.id === currentSession?.userId || (u.name && currentSession?.workerName && u.name.toLowerCase() === currentSession.workerName.toLowerCase())) || currentUser;
+                        const sessionUser = users.find(u => u.id === currentSession?.userId ||
+                          (u.name && currentSession?.workerName && u.name.toLowerCase() === currentSession.workerName.toLowerCase())) || currentUser;
                         if (!sessionUser) return null;
-                        
-                        const sessionTx = activeTransactions.filter(t => 
-                          t.sessionId === currentSession?.id && !t.deletedAt
-                        );
-                        const totalSales = sessionTx.reduce((sum, tx) => sum + (tx.total || 0), 0);
-                        
-                        const productCommissions = sessionTx.reduce((sum, tx) => {
-                          const sellerIds = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
-                          const splitFactor = Math.max(1, sellerIds.length);
-                          return sum + (tx.items || []).reduce((itemSum, item) => {
-                            const prodId = typeof item.product === 'string' ? item.product : item.product?.id;
-                            const prodObj = products.find(p => p.id === prodId);
-                            const unitPrice = Number(item.price ?? prodObj?.price ?? 0) || 0;
-                            const fixed = Number(prodObj?.commissionValue || 0) || 0;
-                            const lineTotal = unitPrice * (Number(item.quantity) || 0);
-                            return itemSum + sellerIds.reduce((sellerSum, sellerId) => {
-                              const seller = users.find(u => u.id === sellerId) || sessionUser;
-                              const type = seller?.compensationType || 'fixed_product';
-                              if (type === 'sales_percentage') {
-                                const percentage = Math.max(0, Math.min(100, Number(seller?.salesPercentage) || 0));
-                                return sellerSum + (lineTotal * percentage / 100) / splitFactor;
-                              }
-                              return sellerSum + (fixed * (Number(item.quantity) || 0)) / splitFactor;
-                            }, 0);
+                        const sessionTx = activeTransactions.filter(t => t.sessionId === currentSession?.id && !t.deletedAt && t.status === 'completed');
+                        const sellerIds = new Set<string>();
+                        sessionTx.forEach(tx => (tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId]).forEach(id => sellerIds.add(id)));
+                        const commissions = Array.from(sellerIds).reduce((sum, sellerId) => {
+                          const seller = users.find(u => u.id === sellerId);
+                          return sum + sessionTx.reduce((sellerSum, tx) => {
+                            const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
+                            return sellers.includes(sellerId) ? sellerSum + calculateEmployeeSaleCommission(seller, tx, products, sellers.length) : sellerSum;
                           }, 0);
                         }, 0);
-
-                        const compensationLabel = sessionUser.compensationType === 'sales_percentage'
-                          ? 'Porcentaje sobre ventas · ' + Math.max(0, Math.min(100, Number(sessionUser.salesPercentage) || 0)) + '%'
-                          : 'Comisión fija por producto';
-
-                        const totalCommissions = productCommissions;
-                        const totalSalary = (sessionUser.baseSalary || 0) + totalCommissions;
-                        
+                        const baseSalary = getSalaryBase(sessionUser);
+                        const totalSalary = baseSalary + commissions;
+                        const compensationLabel = getCompensationLabel(sessionUser);
+                        const percentageMode = sessionUser.compensationType === 'sales_percentage';
                         return (
                           <div className="bg-amber-50 p-4 rounded-2xl border border-amber-200 space-y-2 shadow-sm animate-in fade-in slide-in-from-top-2">
                             <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-2">
-                                <DollarSign className="w-4 h-4 text-amber-600" />
-                                <span className="text-[10px] font-black text-amber-900 uppercase tracking-widest">Liquidación del Turno</span>
-                              </div>
-                              <span className="text-xs font-black text-amber-900 uppercase">
-                                {sessionUser?.name || "Empleado"}
-                              </span>
+                              <div className="flex items-center gap-2"><DollarSign className="w-4 h-4 text-amber-600" /><span className="text-[10px] font-black text-amber-900 uppercase tracking-widest">Liquidación del Turno</span></div>
+                              <span className="text-xs font-black text-amber-900 uppercase">{sessionUser.name || 'Empleado'}</span>
                             </div>
-                            
                             <div className="grid grid-cols-2 gap-3 pt-2 border-t border-amber-100">
-                              <div>
-                                <p className="text-[8px] font-bold text-amber-600 uppercase tracking-tighter">Salario Base</p>
-                                <p className="text-sm font-black text-amber-900">{formatSalaryCUP(sessionUser.baseSalary || 0)}</p>
-                              </div>
-                              <div>
-                                <p className="text-[8px] font-bold text-amber-600 uppercase tracking-tighter">Forma de pago</p>
-                                <p className="text-[10px] font-black text-emerald-700">{compensationLabel}</p>
-                                <p className="text-sm font-black text-emerald-700">+{formatSalaryCUP(totalCommissions)}</p>
-                                {productCommissions > 0 && (
-                                  <p className="text-[7px] text-emerald-600 font-bold mt-0.5">({formatSalaryCUP(productCommissions)} por productos)</p>
-                                )}
-                              </div>
+                              <div><p className="text-[8px] font-bold text-amber-600 uppercase tracking-tighter">Salario base</p><p className="text-sm font-black text-amber-900">{formatSalaryCUP(baseSalary)}</p></div>
+                              <div><p className="text-[8px] font-bold text-amber-600 uppercase tracking-tighter">Modelo de pago</p><p className="text-[10px] font-black text-emerald-700">{compensationLabel}</p><p className="text-sm font-black text-emerald-700">+{formatSalaryCUP(commissions)}</p></div>
                             </div>
-                            
+                            <div className={percentageMode ? "rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2" : "rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2"}>
+                              <p className={percentageMode ? "text-[8px] font-black uppercase tracking-wider text-emerald-700" : "text-[8px] font-black uppercase tracking-wider text-indigo-700"}>Cómo se calcula</p>
+                              <p className={percentageMode ? "text-[9px] font-bold text-emerald-800" : "text-[9px] font-bold text-indigo-800"}>
+                                {percentageMode
+                                  ? 'La comisión se aplica al total de cada venta (' + getSalesPercentage(sessionUser) + '%) y se divide entre los vendedores de esa venta cuando corresponde.'
+                                  : 'Cada producto aporta el CUP fijo configurado por unidad vendida.'}
+                              </p>
+                            </div>
                             <div className="pt-2 border-t border-amber-100 flex justify-between items-center">
-                              <span className="text-[9px] font-black text-amber-900 uppercase">Total a Entregar</span>
-                              <span className="text-lg font-black text-amber-600">{formatSalaryCUP(totalSalary)}</span>
+                              <span className="text-[9px] font-black text-amber-900 uppercase">Total salario del turno</span><span className="text-lg font-black text-amber-600">{formatSalaryCUP(totalSalary)}</span>
                             </div>
                             <div className="pt-3 border-t border-amber-100 space-y-2">
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="text-[9px] font-black text-amber-900 uppercase tracking-widest">Productos cobrados y salario por producto</span>
-                                <span className="text-[8px] font-black text-amber-700 uppercase whitespace-nowrap">{turnProductSalaryRows.reduce((sum, row) => sum + row.quantity, 0)} uds</span>
-                              </div>
+                              <div className="flex items-center justify-between gap-2"><span className="text-[9px] font-black text-amber-900 uppercase tracking-widest">Detalle de comisión</span><span className="text-[8px] font-black text-amber-700 uppercase whitespace-nowrap">{turnProductSalaryRows.reduce((sum, row) => sum + row.quantity, 0)} uds</span></div>
                               {turnProductSalaryRows.length > 0 ? (
                                 <div className="overflow-x-auto rounded-xl border border-amber-100 bg-white">
                                   <table className="w-full min-w-[560px] text-left">
@@ -3190,32 +3129,25 @@ export default function POS() {
                                       <th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase">Empleado</th>
                                       <th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase">Producto</th>
                                       <th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase text-right">Cantidad</th>
-                                      <th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase text-right">Salario / unidad</th>
-                                      <th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase text-right">Salario total</th>
+                                      <th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase text-right">Valor / unidad</th>
+                                      <th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase text-right">Comisión total</th>
                                     </tr></thead>
-                                    <tbody className="divide-y divide-amber-50">
-                                      {turnProductSalaryRows.map(row => (
-                                        <tr key={row.key}>
-                                          <td className="px-3 py-2 text-[8px] font-black text-slate-700 uppercase break-words">{row.employeeName}</td>
-                                          <td className="px-3 py-2 text-[8px] font-black text-slate-900 uppercase break-words">{row.productName}</td>
-                                          <td className="px-3 py-2 text-[8px] font-black text-slate-800 text-right">{row.quantity}</td>
-                                          <td className="px-3 py-2 text-[8px] font-black text-indigo-700 text-right">{formatSalaryCUP(row.salaryPerUnit)}</td>
-                                          <td className="px-3 py-2 text-[8px] font-black text-indigo-900 text-right">{formatSalaryCUP(row.salaryTotal)}</td>
-                                        </tr>
-                                      ))}
-                                    </tbody>
+                                    <tbody className="divide-y divide-amber-50">{turnProductSalaryRows.map(row => (
+                                      <tr key={row.key}>
+                                        <td className="px-3 py-2 text-[8px] font-black text-slate-700 uppercase break-words">{row.employeeName}</td>
+                                        <td className="px-3 py-2 text-[8px] font-black text-slate-900 uppercase break-words">{row.productName}</td>
+                                        <td className="px-3 py-2 text-[8px] font-black text-slate-800 text-right">{row.quantity}</td>
+                                        <td className="px-3 py-2 text-[8px] font-black text-indigo-700 text-right">{formatSalaryCUP(row.salaryPerUnit)}</td>
+                                        <td className="px-3 py-2 text-[8px] font-black text-indigo-900 text-right">{formatSalaryCUP(row.salaryTotal)}</td>
+                                      </tr>
+                                    ))}</tbody>
                                   </table>
                                 </div>
-                              ) : (
-                                <div className="bg-white rounded-xl border border-amber-100 px-3 py-4 text-center">
-                                  <p className="text-[7px] font-black text-slate-400 uppercase tracking-wider">No hay productos cobrados en este turno</p>
-                                </div>
-                              )}
+                              ) : <div className="bg-white rounded-xl border border-amber-100 px-3 py-4 text-center"><p className="text-[7px] font-black text-slate-400 uppercase tracking-wider">No hay ventas cobradas en este turno</p></div>}
                             </div>
                           </div>
                         );
                       })()}
-                    </div>
                     <div className="space-y-3">
                       <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest border-b border-slate-100 pb-2">Arqueo de Efectivo Físico</h4>
                       <div className="grid grid-cols-2 gap-3">
