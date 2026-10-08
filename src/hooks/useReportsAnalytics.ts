@@ -39,9 +39,20 @@ export function useReportsAnalytics(params: {
   const branchById = useMemo(() => new Map(branches.map(branch => [branch.id, branch])), [branches]);
   const userById = useMemo(() => new Map(users.map(user => [user.id, user])), [users]);
 
+  const validSalesTransactions = useMemo(
+    () =>
+      transactions.filter(
+        tx =>
+          tx.status === 'completed' &&
+          !tx.deletedAt &&
+          !String(tx.notes || '').startsWith('AJUSTE_')
+      ),
+    [transactions]
+  );
+
   const categoryData = useMemo(() => {
     const data: Record<string, number> = {};
-    transactions.forEach(tx => {
+    validSalesTransactions.forEach(tx => {
       (tx.items || []).forEach(item => {
         const prodId = typeof item.product === 'string' ? item.product : item.product?.id;
         const prod = prodId ? productById.get(prodId) : undefined;
@@ -55,12 +66,12 @@ export function useReportsAnalytics(params: {
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 5);
-  }, [transactions, productById, categoryById]);
+  }, [validSalesTransactions, productById, categoryById]);
 
   const hourData = useMemo(() => {
     const data: Record<number, number> = {};
     for (let i = 0; i < 24; i++) data[i] = 0;
-    transactions.forEach(tx => {
+    validSalesTransactions.forEach(tx => {
       const hour = new Date(tx.date).getHours();
       data[hour] += tx.total;
     });
@@ -68,7 +79,7 @@ export function useReportsAnalytics(params: {
       hour: `${hour}:00`,
       total: Math.round(total)
     }));
-  }, [transactions]);
+  }, [validSalesTransactions]);
 
   const branchData = useMemo(() => {
     const data: Record<string, number> = {};
@@ -78,7 +89,7 @@ export function useReportsAnalytics(params: {
       if (branch) data[branch.name] += tx.total;
     });
     return Object.entries(data).map(([name, total]) => ({ name, total }));
-  }, [transactions, branches, branchById]);
+  }, [validSalesTransactions, branches, branchById]);
 
   const filteredTransfers = useMemo(() => {
     const todayYMD = getLocalDateYMD(new Date().toISOString());
