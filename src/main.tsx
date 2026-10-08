@@ -195,12 +195,48 @@ const updateSW = registerSW({
 });
 
 const applyPalmyraUpdate = async () => {
+  if (!navigator.onLine) throw new Error('La actualización requiere conexión.');
   try {
     try { sessionStorage.setItem(PALMYRA_UPDATE_APPLY_KEY, String(Date.now())); } catch {}
 
     const registration = await navigator.serviceWorker?.getRegistration();
-    if (registration) await registration.update().catch(() => {});
-    await updateSW(true);
+    if (!registration) {
+      try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
+      window.location.reload();
+      return;
+    }
+
+    await registration.update().catch(() => {});
+    const waiting = registration.waiting;
+    if (waiting) {
+      waiting.postMessage({ type: 'SKIP_WAITING' });
+    } else if (registration.installing) {
+      await new Promise<void>((resolve) => {
+        const installing = registration.installing!;
+        const finish = () => { installing.removeEventListener('statechange', onState); resolve(); };
+        const onState = () => {
+          if (installing.state === 'installed') finish();
+        };
+        installing.addEventListener('statechange', onState);
+        window.setTimeout(finish, 5000);
+      });
+      registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
+    }
+
+    // Never wait forever for the SW/controller event. If the browser does not
+    // expose it, a normal reload still gets the newest HTML and assets.
+    await new Promise<void>((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        navigator.serviceWorker.removeEventListener('controllerchange', finish);
+        resolve();
+      };
+      navigator.serviceWorker.addEventListener('controllerchange', finish, { once: true });
+      window.setTimeout(finish, 3500);
+    });
+
     try {
       const response = await fetch('/version.json?ts=' + Date.now(), { cache: 'no-store' });
       if (response.ok) {
@@ -208,7 +244,12 @@ const applyPalmyraUpdate = async () => {
         if (payload?.buildId) localStorage.setItem(PALMYRA_BUILD_ID_KEY, String(payload.buildId));
       }
     } catch {}
+
+    try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
+    try { sessionStorage.removeItem(PALMYRA_UPDATE_APPLY_KEY); } catch {}
+    window.location.reload();
   } catch (error) {
+    console.warn('[PALMYRA] No se pudo aplicar la actualización:', error);
     try { localStorage.setItem(PALMYRA_UPDATE_AVAILABLE_KEY, '1'); } catch {}
     try { sessionStorage.removeItem(PALMYRA_UPDATE_APPLY_KEY); } catch {}
     throw error;
