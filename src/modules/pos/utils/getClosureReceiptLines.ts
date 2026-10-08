@@ -68,8 +68,10 @@ export function getClosureReceiptLines(session: CashRegisterSession, deps: Closu
     return s + (cost * item.quantity);
   }, 0), 0);
 
-  const baseSalary = employee?.compensationType === 'sales_percentage' ? 0 : (employee?.baseSalary || 0);
-  const totalSalary = baseSalary + commissions;
+  const settlement = salarySettlements.find(s => s.sessionId === session.id);
+  const baseSalary = settlement?.baseSalary ?? (employee?.compensationType === 'sales_percentage' ? 0 : (employee?.baseSalary || 0));
+  const settledCommissions = settlement?.commissions ?? commissions;
+  const totalSalary = settlement?.total ?? (baseSalary + settledCommissions);
   const lines: string[] = [];
   lines.push(`CENTER|BOLD|${receiptConfig.businessName || 'PALMYRA POS'}`);
   if (receiptConfig.showAddress && receiptConfig.businessAddress) lines.push(`CENTER|${receiptConfig.businessAddress}`);
@@ -109,14 +111,14 @@ export function getClosureReceiptLines(session: CashRegisterSession, deps: Closu
     const salVal = formatMoney(baseSalary, baseCurrency.symbol);
     lines.push(`${salLabel}${" ".repeat(Math.max(1, 32 - salLabel.length - salVal.length))}${salVal}`);
     const comLabel = "Comisiones:";
-    const comVal = formatMoney(commissions, baseCurrency.symbol);
+    const comVal = formatSalaryCUP(settledCommissions);
     lines.push(`${comLabel}${" ".repeat(Math.max(1, 32 - comLabel.length - comVal.length))}${comVal}`);
     const netLabel = "Total a Pagar:";
     const netVal = formatSalaryCUP(totalSalary);
     lines.push(`BOLD|${netLabel}${" ".repeat(Math.max(1, 32 - netLabel.length - netVal.length))}${netVal}`);
     const settlement = salarySettlements.find(s => s.sessionId === session.id);
     if (settlement && settlement.discrepancyDeduction && settlement.discrepancyDeduction > 0) {
-      const dedLabel = "(-) Descuento:";
+      const dedLabel = "Descuento:";
       const dedVal = formatMoney(settlement.discrepancyDeduction, baseCurrency.symbol);
       lines.push(`${dedLabel}${" ".repeat(Math.max(1, 32 - dedLabel.length - dedVal.length))}${dedVal}`);
       const finalLabel = "NETO RECIBIR:";
@@ -201,7 +203,7 @@ export function getClosureReceiptLines(session: CashRegisterSession, deps: Closu
   const baseVal = formatMoney(baseSalary, baseCurrency.symbol);
   lines.push(`${baseLabel}${" ".repeat(Math.max(1, 32 - baseLabel.length - baseVal.length))}${baseVal}`);
   const comLabel = "Comisiones:";
-  const comVal = "+" + formatMoney(commissions, baseCurrency.symbol);
+  const comVal = formatSalaryCUP(settledCommissions);
   lines.push(comLabel + " ".repeat(Math.max(1, 32 - comLabel.length - comVal.length)) + comVal);
   const totSalLabel = "TOTAL SALARIO:";
   const totSalVal = formatSalaryCUP(totalSalary);
