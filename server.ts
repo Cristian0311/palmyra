@@ -756,7 +756,7 @@ Responde ESTRICTAMENTE con un objeto JSON:
         }
       });
       const prompt = `
-        Eres un analista de negocios experto para una tienda minorista llamada MARÉ.
+        Eres un analista de negocios experto para una tienda minorista llamada PALMYRA.
         Analiza los siguientes datos de hoy y proporciona un resumen ejecutivo MUY breve (máximo 3 oraciones) y 2 recomendaciones tácticas.
         Datos de hoy:
         - Ventas totales: ${data.salesToday} ${data.baseCurrency}
