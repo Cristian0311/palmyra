@@ -8,6 +8,7 @@ import { Product, Payment, Transaction, CashRegisterSession } from "../types";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { getOfflineQueue, waitForOfflineQueueReady } from "../services/offlineQueue";
 import { getActiveTenant } from "../services/tenant";
+import { loadCompensationSettings } from "../services/team";
 import { flushLocalStateStorage } from "../services/localStateStorage";
 import { getPalmyraLocalScope } from "../services/localScope";
 import { usePOSOfflineStatus } from "../modules/pos/hooks/usePOSOfflineStatus";
@@ -44,6 +45,22 @@ export default function POS() {
   const [joiningSessionId, setJoiningSessionId] = useState<string | null>(null);
   const [showOpenSessionsModal, setShowOpenSessionsModal] = useState(false);
   const [isRefreshingOpenSessions, setIsRefreshingOpenSessions] = useState(false);
+  const [companyCompensation, setCompanyCompensation] = useState<{ mode: 'fixed_product' | 'sales_percent'; percentRate: number }>({ mode: 'fixed_product', percentRate: 0 });
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const tenant = await getActiveTenant();
+        if (!tenant?.companyId) return;
+        const settings = await loadCompensationSettings(tenant.companyId);
+        if (!cancelled) setCompanyCompensation({ mode: settings.mode, percentRate: Math.max(0, Math.min(100, Number(settings.percentRate) || 0)) });
+      } catch (error) {
+        console.warn('[POS] No se pudo cargar la compensación global:', error);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [currentUser?.id]);
 
   // Suscripción única al estado operativo del POS. currentBranchId es el alias
   // interno existente del almacén activo y no reintroduce la capa legacy.
@@ -640,57 +657,44 @@ export default function POS() {
     [currentSession, activeTransactions, currentBranchId, baseCurrency, currencies]
   );
 
-  // Desglose de liquidación del turno usando los dos modelos salariales oficiales.
+  // Desglose de liquidación del turno conectado a la configuración salarial global.
   const turnProductSalaryRows = React.useMemo(() => {
     if (!currentSession) return [];
     const rows = new Map<string, any>();
-    activeTransactions
-      .filter(tx => tx.branchId === currentBranchId && tx.status === 'completed' && !tx.deletedAt &&
-        new Date(tx.date) >= new Date(currentSession.openedAt) &&
-        (!tx.sessionId || tx.sessionId === currentSession.id))
-      .forEach(tx => {
-        const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
-        const splitFactor = Math.max(1, sellers.length);
-        const saleTotal = Math.max(0, Number(tx.total) || 0);
-        (tx.items || []).forEach(item => {
-          const rawItem = item as any;
-          const rawProduct = rawItem.product ?? rawItem.productId;
-          const product = typeof rawProduct === 'string' ? productById.get(rawProduct) : rawProduct;
-          const productId = product?.id || rawItem.product_id || (typeof rawProduct === 'string' ? rawProduct : '');
-          const quantity = Math.max(0, Number(rawItem.quantity) || 0);
-          if (!productId || quantity <= 0) return;
-          const productName = product?.name || rawItem.product_name || 'Producto vendido';
-          const unitPrice = Number(rawItem.price ?? product?.price ?? rawItem.product_snapshot?.price ?? 0) || 0;
-          const lineTotal = Math.max(0, unitPrice * quantity);
-          const fixedCommission = Number(product?.commissionValue ?? rawItem.product_snapshot?.commissionValue ?? rawItem.commissionValue ?? 0) || 0;
-          sellers.forEach((sellerId: string) => {
-            const employee = userById.get(sellerId);
-            const isPercentage = employee?.compensationType === 'sales_percentage';
-            const percentageCommission = saleTotal > 0
-              ? (saleTotal * getSalesPercentage(employee) / 100 / splitFactor) * (lineTotal / saleTotal)
-              : 0;
-            const salaryTotal = isPercentage ? percentageCommission : (Math.max(0, fixedCommission) * quantity) / splitFactor;
-            const salaryPerUnit = salaryTotal / quantity;
-            const key = sellerId + '::' + productId;
-            const existing = rows.get(key);
-            if (existing) {
-              existing.quantity += quantity;
-              existing.salaryTotal += salaryTotal;
-              existing.salaryPerUnit = existing.quantity > 0 ? existing.salaryTotal / existing.quantity : 0;
-            } else {
-              rows.set(key, {
-                key, employeeName: employee?.name || tx.cashierName || 'Empleado', productName,
-                quantity, salaryPerUnit, salaryTotal, compensationType: employee?.compensationType || 'fixed_product',
-                percentage: getSalesPercentage(employee)
-              });
-            }
-          });
+    activeTransactions.filter(tx => tx.branchId === currentBranchId && tx.status === 'completed' && !tx.deletedAt && new Date(tx.date) >= new Date(currentSession.openedAt) && (!tx.sessionId || tx.sessionId === currentSession.id)).forEach(tx => {
+      const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
+      const splitFactor = Math.max(1, sellers.length);
+      const saleTotal = Math.max(0, Number(tx.total) || 0);
+      const totalItems = Math.max(1, (tx.items || []).reduce((sum, line) => sum + Math.max(0, Number((line as any).quantity) || 0), 0));
+      (tx.items || []).forEach(item => {
+        const raw = item as any;
+        const rawProduct = raw.product ?? raw.productId;
+        const product = typeof rawProduct === 'string' ? productById.get(rawProduct) : rawProduct;
+        const productId = product?.id || raw.product_id || (typeof rawProduct === 'string' ? rawProduct : '');
+        const quantity = Math.max(0, Number(raw.quantity) || 0);
+        if (!productId || quantity <= 0) return;
+        const productName = product?.name || raw.product_name || 'Producto vendido';
+        const unitPrice = Number(raw.price ?? product?.price ?? raw.product_snapshot?.price ?? 0) || 0;
+        const lineTotal = Math.max(0, unitPrice * quantity);
+        const fixedCommission = Math.max(0, Number(product?.commissionValue ?? raw.product_snapshot?.commissionValue ?? raw.commissionValue ?? 0) || 0);
+        sellers.forEach((sellerId: string) => {
+          const employee = userById.get(sellerId);
+          const salaryTotal = companyCompensation.mode === 'sales_percent'
+            ? (saleTotal * companyCompensation.percentRate / 100 / splitFactor) * (saleTotal > 0 ? lineTotal / saleTotal : quantity / totalItems)
+            : (fixedCommission * quantity) / splitFactor;
+          const salaryPerUnit = salaryTotal / quantity;
+          const key = sellerId + '::' + productId;
+          const current = rows.get(key);
+          if (current) {
+            current.quantity += quantity;
+            current.salaryTotal += salaryTotal;
+            current.salaryPerUnit = current.quantity > 0 ? current.salaryTotal / current.quantity : 0;
+          } else rows.set(key, { key, employeeName: employee?.name || tx.cashierName || 'Empleado', productName, quantity, salaryPerUnit, salaryTotal });
         });
       });
-    return Array.from(rows.values()).sort((a: any, b: any) =>
-      String(a.employeeName).localeCompare(String(b.employeeName)) || String(a.productName).localeCompare(String(b.productName))
-    );
-  }, [currentSession, activeTransactions, currentBranchId, productById, userById]);
+    });
+    return Array.from(rows.values()).sort((x: any, y: any) => String(x.employeeName).localeCompare(String(y.employeeName)) || String(x.productName).localeCompare(String(y.productName)));
+  }, [currentSession, activeTransactions, currentBranchId, productById, userById, companyCompensation]);
 
   const totalExpectedToDeliver = React.useMemo(() => {
     return expectedBalances.reduce((sum, line) => {
@@ -3247,7 +3251,7 @@ export default function POS() {
                                 "text-xs font-black",
                                 diff > 0 ? "text-emerald-600" : "text-rose-600"
                               )}>
-                                {diff > 0 ? 'SOBRANTE: +' : 'FALTANTE: '}{diff.toLocaleString('es-CU')}
+                                {diff > 0 ? 'SOBRANTE: ' : 'FALTANTE: '}{Math.abs(diff).toLocaleString('es-CU')}
                               </span>
                             </div>
                             
@@ -3640,21 +3644,24 @@ export default function POS() {
                 );
 
                 const employee = users.find(u => u.id === lastClosedSession.userId || u.name === lastClosedSession.workerName) || users.find(u => u.name?.toLowerCase() === lastClosedSession.workerName?.toLowerCase()) || users.find(u => u.role === 'employee') || currentUser;
-                const isIndependent = false;
-
-                const sellers = lastClosedSession.workingEmployeeIds && lastClosedSession.workingEmployeeIds.length > 0
-                  ? lastClosedSession.workingEmployeeIds
-                  : [lastClosedSession.userId];
-                const commissions = isIndependent ? 0 : sessionTransactions.reduce((sum, tx) =>
-                  sum + sellers.reduce((sellerSum, sellerId) =>
-                    sellerSum + calculateEmployeeSaleCommission(users.find(u => u.id === sellerId), tx, products, sellers.length), 0
-                  ), 0
-                );
-
-                const baseSalary = employee?.baseSalary || 0;
                 const settlement = salarySettlements.find(s => s.sessionId === lastClosedSession.id);
                 const deduction = settlement?.discrepancyDeduction || 0;
-                const totalSalary = (baseSalary + commissions) - deduction;
+                const fallbackCommissions = sessionTransactions.reduce((sum, tx) => {
+                  const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
+                  const splitFactor = Math.max(1, sellers.length);
+                  return sum + sellers.reduce((sellerSum, sellerId) => {
+                    if (sellerId !== lastClosedSession.userId && !(lastClosedSession.workingEmployeeIds || []).includes(sellerId)) return sellerSum;
+                    if (companyCompensation.mode === 'sales_percent') return sellerSum + (Math.max(0, Number(tx.total) || 0) * companyCompensation.percentRate / 100) / splitFactor;
+                    return sellerSum + (tx.items || []).reduce((itemSum, item) => {
+                      const productId = typeof item.product === 'string' ? item.product : item.product?.id;
+                      const product = productId ? products.find(p => p.id === productId) : undefined;
+                      return itemSum + (Math.max(0, Number(product?.commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) / splitFactor;
+                    }, 0);
+                  }, 0);
+                }, 0);
+                const baseSalary = settlement?.baseSalary ?? (companyCompensation.mode === 'sales_percent' ? 0 : getSalaryBase({ ...(employee || currentUser), compensationType: 'fixed_product' }));
+                const commissions = settlement?.commissions ?? fallbackCommissions;
+                const totalSalary = (settlement?.total ?? (baseSalary + commissions)) - deduction;
                 
                 const totalSales = sessionTransactions.reduce((sum, tx) => sum + (tx.total || 0), 0);
                 const totalItems = sessionTransactions.reduce((sum, tx) => sum + (tx.items || []).reduce((s, i) => s + (i.quantity || 0), 0), 0);
@@ -3702,7 +3709,7 @@ export default function POS() {
                         </div>
                         <div className="flex justify-between items-center">
                           <span className="font-semibold text-slate-500 dark:text-slate-400 text-[10px] uppercase">Comisiones</span>
-                          <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">+{formatMoney(commissions, baseCurrency.symbol)}</span>
+                          <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">{formatMoney(commissions, baseCurrency.symbol)}</span>
                         </div>
                         
                         {deduction > 0 && (
