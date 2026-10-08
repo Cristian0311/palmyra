@@ -3226,11 +3226,14 @@ export default function Reports() {
       {printSession && (
         <div id="print-closure-area" className="hidden">
           {(() => {
-            const sessionTx = transactions.filter(t => 
-              t.branchId === printSession.branchId && 
-              t.sessionId === printSession.id
+            const sessionTx = transactions.filter(t =>
+              t.branchId === printSession.branchId &&
+              t.sessionId === printSession.id &&
+              t.status === 'completed' &&
+              !t.deletedAt &&
+              !String(t.notes || '').startsWith('AJUSTE_')
             );
-            const totalSales = sessionTx.reduce((sum, tx) => sum + (tx.total || 0), 0);
+            const totalSales = sessionTx.reduce((sum, tx) => sum + Math.max(0, Number(tx.total) || 0), 0);
             const totalItems = sessionTx.reduce((sum, tx) => sum + (tx.items || []).reduce((s, i) => s + (i.quantity || 0), 0), 0);
             const workerName = printSession.workerName || users.find(u => u.id === printSession.userId)?.name || 'Vendedor';
             const sequentialTurn = sessionTurnMap.get(printSession.id) || printSession.id;
@@ -3274,8 +3277,8 @@ export default function Reports() {
                         const name = prodObj?.name || getProductName(item.product);
                         if (!grouped[name]) grouped[name] = { name, quantity: 0, total: 0 };
                         grouped[name].quantity += (item.quantity || 0);
-                        const price = prodObj?.price || 0;
-                        grouped[name].total += (price * (item.quantity || 0));
+                        const price = Number((item as any)?.price ?? prodObj?.price ?? 0);
+                        grouped[name].total += Math.max(0, price) * Math.max(0, Number(item.quantity) || 0);
                       });
                     });
 
