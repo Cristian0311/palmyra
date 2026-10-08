@@ -35,7 +35,8 @@ export function POSClosurePrintArea({
     (transaction) =>
       transaction.sessionId === session.id &&
       transaction.status === 'completed' &&
-      !transaction.deletedAt
+      !transaction.deletedAt &&
+      !String(transaction.notes || '').startsWith('AJUSTE_')
   );
 
   const soldMap: Record<string, { name: string; qty: number; total: number }> = {};
