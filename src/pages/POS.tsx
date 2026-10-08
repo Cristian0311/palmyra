@@ -1204,11 +1204,24 @@ export default function POS() {
     }
 
     // Close all checkout and mobile cart drawers cleanly
+    const saleStillPending = getOfflineQueue().some(
+      item => item.type === 'transaction' && item.actionId === tx.id && item.status !== 'conflict'
+    );
+
     setShowCheckoutModal(false);
     setShowMobileCart(false);
     clearCart();
-    setPosSuccess(`Venta ${tx.id} registrada correctamente.`);
-    setTimeout(() => setPosSuccess(""), 3000);
+    if (saleStillPending) {
+      setPosSuccess('Venta guardada localmente. Se sincronizará automáticamente cuando vuelva una conexión estable.');
+      addNotification(
+        'Venta guardada localmente',
+        'info',
+        'La venta está protegida en este dispositivo y se enviará automáticamente cuando PALMYRA recupere una conexión estable.'
+      );
+    } else {
+      setPosSuccess('Venta registrada correctamente.');
+    }
+    setTimeout(() => setPosSuccess(""), saleStillPending ? 5000 : 3000);
 
     // Show receipt modal so cashier gets receipt details & print option
     setShowReceiptModal(tx);
