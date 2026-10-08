@@ -887,8 +887,8 @@
 @media(max-width:720px){
   .inventory-product-modal{
     width:calc(100vw - .75rem)!important;
-    max-width:460px!important;
-    max-height:min(86dvh,560px)!important;
+    max-width:480px!important;
+    max-height:min(90dvh,620px)!important;
   }
   .inventory-product-modal .team-employee-modal-head{padding:4px 7px 3px!important}
   .inventory-product-modal .team-employee-modal-body{padding:3px 7px!important}
