@@ -1,4 +1,4 @@
-import { calculateEmployeeSaleCommission } from '../../services/employeeCompensation';
+import { calculateEmployeeSaleCommission, getSalaryBase } from '../../services/employeeCompensation';
 import { Branch, Category, Product, InventoryLevel, CartItem, Transaction, ReturnItem, Currency, Customer, CashRegisterSession, User, PendingOrder, SalarySettlement, InventoryTransfer, Warranty, CashMovement, Supplier, SupplierOrder, InventoryAudit, FiscalConfig, DemandForecast, BankCard, BankTransaction } from '../../types';
 import { generateId, generateReadableId } from '../../lib/utils';
 import { 
@@ -607,17 +607,24 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
         new Date(t.date).getTime() <= new Date(finalClosingDate).getTime())
     );
     const user = get().users.find(u => u.id === session.userId || u.name?.toLowerCase() === session.workerName?.toLowerCase());
-    const commissions = sessionTxs.reduce((sum, tx) =>
-      sum + calculateEmployeeSaleCommission(user, tx, get().products || [], 1), 0);
-     const settlement: SalarySettlement = {
+    const commissions = sessionTxs.reduce((sum, tx) => {
+      const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
+      const sellerCount = Math.max(1, sellers.length);
+      return sum + sellers.reduce((sellerSum, sellerId) => {
+        const seller = get().users.find(u => u.id === sellerId) || (sellerId === session.userId ? user : undefined);
+        return sellerSum + calculateEmployeeSaleCommission(seller, tx, get().products || [], sellerCount);
+      }, 0);
+    }, 0);
+    const baseSalary = getSalaryBase(user);
+    const settlement: SalarySettlement = {
       id: crypto.randomUUID(),
       userId: session.userId,
       userName: session.workerName || user?.name || 'Vendedor',
       sessionId: session.id,
-      baseSalary: user?.baseSalary || 0,
+      baseSalary,
       commissions,
       discrepancyDeduction: 0,
-      total: (user?.baseSalary || 0) + commissions,
+      total: baseSalary + commissions,
       date: finalClosingDate,
       status: 'pending'
     };
