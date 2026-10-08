@@ -2853,7 +2853,7 @@ export default function POS() {
                                             {tx.id}
                                           </span>
                                           <span className="text-[9px] font-bold text-slate-400">
-                                            {new Date(tx.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            {new Date(tx.date).toLocaleDateString("es-CU", { day: "2-digit", month: "2-digit", year: "2-digit" })} · {new Date(tx.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                                           </span>
                                           <span className="text-[9px] font-bold text-slate-600">
                                             • {customer?.name || 'Consumidor Final'}
@@ -3144,7 +3144,7 @@ export default function POS() {
                     </div>
 
                     <div className="space-y-3">
-                      <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest border-b border-slate-100 pb-2">Arqueo de Efectivo Físico</h4>
+                      <div className="flex items-center justify-between border-b border-slate-100 pb-2"><div><h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest">Arqueo de efectivo</h4><p className="text-[8px] font-bold text-slate-400 uppercase mt-0.5">Cuenta lo que realmente hay en caja</p></div><span className="text-[8px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-full">PASO 1</span></div>
                       <div className="grid grid-cols-2 gap-3">
                         <div className="bg-emerald-50 p-3 rounded-xl border-2 border-emerald-200 focus-within:ring-2 focus-within:ring-emerald-500 transition-all shadow-sm">
                           <label className="block text-[9px] font-black text-emerald-700 uppercase tracking-widest mb-1">Efectivo CUP / MN</label>
