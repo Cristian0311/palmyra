@@ -599,6 +599,25 @@ export default function Team() {
                       setSavingCompensation(true); setError(""); setMessage("");
                       try {
                         await saveCompensationSettings({ companyId: snapshot.companyId, mode: compensationSettings.mode, percentRate: compensationSettings.mode === 'sales_percent' ? Number(compensationSettings.percentRate) || 0 : 0 });
+                        // Sincronizar inmediatamente la modalidad global con el estado local del POS.
+                        // Así Caja/POS/Reportes no siguen usando una configuración antigua persistida.
+                        const nextType = compensationSettings.mode === 'sales_percent' ? 'sales_percentage' : 'fixed_product';
+                        const nextRate = compensationSettings.mode === 'sales_percent' ? Number(compensationSettings.percentRate) || 0 : 0;
+                        const store = useStore.getState();
+                        store.users.forEach(user => store.updateUser(user.id, {
+                          compensationType: nextType,
+                          salesPercentage: nextRate,
+                          commissionRate: nextRate,
+                          ...(nextType === 'sales_percentage' ? { baseSalary: 0 } : {})
+                        }));
+                        if (store.currentUser) {
+                          store.updateUser(store.currentUser.id, {
+                            compensationType: nextType,
+                            salesPercentage: nextRate,
+                            commissionRate: nextRate,
+                            ...(nextType === 'sales_percentage' ? { baseSalary: 0 } : {})
+                          });
+                        }
                         await refresh();
                         addNotification(compensationSettings.mode === "sales_percent" ? "Compensación global guardada." : "Compensación CUP fijo por producto guardada.", "success");
                       } catch (e: any) {
