@@ -572,34 +572,8 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
     // Sincronizar transacción con Supabase
     pushTransactionToSupabase(informationalTx).catch(() => {});
 
-    // Si el turno está cerrado, recalcular nómina si aplica
-    if (session.status === 'closed') {
-      const existingSettlement = (get().salarySettlements || []).find(st => st.sessionId === session.id);
-      if (existingSettlement) {
-        const productObj = get().products.find(p => p.id === itemData.productId);
-        const employee = get().users.find(u => u.id === session.userId);
-        const commValue = employee?.compensationType === 'sales_percentage' ? 0 : (productObj?.commissionValue || 0);
-        const commDelta = commValue * Math.abs(itemData.quantity);
-        const newCommissions = isDeduction
-          ? Math.max(0, (existingSettlement.commissions || 0) - commDelta)
-          : (existingSettlement.commissions || 0) + commDelta;
-        const newTotal = isDeduction
-          ? Math.max(0, (existingSettlement.total || 0) - commDelta)
-          : (existingSettlement.total || 0) + commDelta;
-
-        const updatedSettlement = {
-          ...existingSettlement,
-          commissions: newCommissions,
-          total: newTotal
-        };
-        set(state => ({
-          salarySettlements: state.salarySettlements.map(st => st.id === existingSettlement.id ? updatedSettlement : st)
-        }));
-        import('../../services/supabaseSync').then(({ pushSalarySettlementToSupabase }) => {
-          pushSalarySettlementToSupabase(updatedSettlement).catch(() => {});
-        });
-      }
-    }
+    // Los registros AJUSTE_* son movimientos informativos de inventario.
+    // Nunca deben modificar una liquidación salarial ya cerrada.
 
     return { success: true, transactionId: txId };
   },
@@ -620,11 +594,14 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
         : [{ currencyCode: get().getBaseCurrency().code, amount: session.openingBalance || 0, method: 'cash' as const, exchangeRate: 1 }];
 
     const sessionTxs = (get().transactions || []).filter(t =>
-      t.sessionId === session.id ||
-      (t.sessionId == null &&
-        t.branchId === session.branchId &&
-        new Date(t.date).getTime() >= new Date(session.openedAt).getTime() &&
-        new Date(t.date).getTime() <= new Date(finalClosingDate).getTime())
+      !String(t.notes || '').startsWith('AJUSTE_') &&
+      t.status === 'completed' &&
+      !t.deletedAt &&
+      (t.sessionId === session.id ||
+        (t.sessionId == null &&
+          t.branchId === session.branchId &&
+          new Date(t.date).getTime() >= new Date(session.openedAt).getTime() &&
+          new Date(t.date).getTime() <= new Date(finalClosingDate).getTime()))
     );
     const user = get().users.find(u => u.id === session.userId || u.name?.toLowerCase() === session.workerName?.toLowerCase());
     let compensation = null;
