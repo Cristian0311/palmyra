@@ -13,6 +13,8 @@ import {
   deleteBankTransactionFromSupabase, clearSelectedDataFromSupabase, callOpenSessionRPCWithId, callProcessTransactionRPC, callVoidTransactionRPC, callCompleteReturnRPC, callTransferInventoryRPC, callReceiveSupplierOrderRPC, callStartInventoryAuditRPC, callSaveInventoryAuditCountRPC, callRequestInventoryAuditRecountRPC, callApproveInventoryAuditRPC, callCompleteInventoryAuditRPC, callCloseSessionRPC, pushCashSessionMetadataToSupabase, callCancelSessionRPC, callDeleteBankInternalTransferRPC, callDeleteBankTransactionRPC, callDeleteBankCardRPC, callProcessBankTransactionRPC
 } from '../../services/supabaseSync';
 import { getSupabaseCredentials } from '../../lib/supabase';
+import { getActiveTenant } from '../../services/tenant';
+import { loadCompensationSettings } from '../../services/team';
 import { loadSaaSContext, signInSaaSAccount, signOutSaaSAccount } from '../../services/saas';
 import { getOfflineQueue, enqueueOfflineItem, removeFromOfflineQueue, waitForOfflineQueueReady } from '../../services/offlineQueue';
 import { normalizeSemanticText, areSemanticallyEqual } from '../../utils/textUtils';
@@ -156,7 +158,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
     await flushLocalStateStorage();
     return true;
   },
-  closeSession: async (sessionId, closingBalances, workerName, closingDate, discrepancyDeduction, sessionMeta) => {
+  closeSession: async (sessionId, closingBalances, workerName, closingDate, discrepancyDeduction, sessionMeta, compensationOverride) => {
     const finalClosingDate = closingDate || new Date().toISOString();
     const session = get().cashSessions.find(s => s.id === sessionId);
     if (!session) return false;
@@ -184,20 +186,36 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
            (!session.closedAt || new Date(t.date).getTime() <= new Date(session.closedAt).getTime()))
     );
     const user = get().users.find(u => u.id === session.userId || u.name?.toLowerCase() === (workerName || session.workerName)?.toLowerCase());
+
+    let compensation = compensationOverride || null;
+    if (!compensation && typeof navigator !== 'undefined' && navigator.onLine) {
+      try {
+        const tenant = await getActiveTenant();
+        if (tenant?.companyId) compensation = await loadCompensationSettings(tenant.companyId);
+      } catch (error) {
+        console.warn('[closeSession] No se pudo cargar la configuración global de compensación; se usará el fallback local:', error);
+      }
+    }
+    const compensationMode = compensation?.mode === 'sales_percent' ? 'sales_percent' : 'fixed_product';
+    const compensationRate = Math.max(0, Math.min(100, Number(compensation?.percentRate) || 0));
+
     const commissions = sessionTxs.reduce((sum, tx) => {
       const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
-      const sellerCount = Math.max(1, sellers.length);
-      if (sellers.length === 1) {
-        const seller = get().users.find(u => u.id === sellers[0]) || user;
-        return sum + calculateEmployeeSaleCommission(seller, tx, get().products || [], 1);
-      }
+      const splitFactor = Math.max(1, sellers.length);
       return sum + sellers.reduce((sellerSum, sellerId) => {
-        const seller = get().users.find(u => u.id === sellerId);
-        return sellerSum + calculateEmployeeSaleCommission(seller, tx, get().products || [], sellerCount);
+        if (sellerId !== session.userId && !(session.workingEmployeeIds || []).includes(sellerId)) return sellerSum;
+        if (compensationMode === 'sales_percent') {
+          return sellerSum + (Math.max(0, Number(tx.total) || 0) * compensationRate / 100) / splitFactor;
+        }
+        return sellerSum + (tx.items || []).reduce((itemSum, item) => {
+          const productId = typeof item.product === 'string' ? item.product : item.product?.id;
+          const product = productId ? (get().products || []).find(p => p.id === productId) : undefined;
+          return itemSum + (Math.max(0, Number(product?.commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) / splitFactor;
+        }, 0);
       }, 0);
     }, 0);
-     const baseSalary = user?.compensationType === 'sales_percentage' ? 0 : (user?.baseSalary || 0);
-    const deduction = discrepancyDeduction || 0;
+    const baseSalary = compensationMode === 'sales_percent' ? 0 : Math.max(0, Number(user?.baseSalary) || 0);
+    const deduction = Math.max(0, Number(discrepancyDeduction) || 0);
     const settlement: SalarySettlement = {
       id: crypto.randomUUID(),
       userId: session.userId,
