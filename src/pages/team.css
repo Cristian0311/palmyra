@@ -243,30 +243,152 @@
   touch-action:pan-y;
   scrollbar-gutter:stable;
 }
+/* Alta de producto: modal deliberadamente más pequeño que el workspace y que los formularios largos. */
 .inventory-product-modal{
-  width:min(100%,672px)!important;
-  max-width:672px!important;
-  max-height:min(92dvh,900px)!important;
+  width:min(100%,576px)!important;
+  max-width:576px!important;
+  max-height:min(84dvh,760px)!important;
+  border-radius:22px!important;
 }
-.inventory-product-modal .team-employee-modal-head{padding:16px 18px 13px}
-.inventory-product-modal .team-employee-modal-body{padding:13px 18px 15px;gap:10px}
-.inventory-product-modal .team-employee-modal-footer{padding:10px 18px 12px}
+.inventory-product-modal .team-employee-modal-head{
+  padding:10px 13px 8px!important;
+  gap:7px!important;
+}
+.inventory-product-modal .team-employee-modal-head .team-employee-hero-icon{
+  width:32px!important;
+  height:32px!important;
+  border-radius:9px!important;
+}
+.inventory-product-modal .team-employee-modal-head h2{
+  font-size:15px!important;
+  line-height:1.05!important;
+  margin-top:2px!important;
+}
+.inventory-product-modal .team-employee-modal-head p{
+  display:none!important;
+}
+.inventory-product-modal .team-employee-modal-body{
+  padding:8px 13px 9px!important;
+  gap:6px!important;
+}
+.inventory-product-modal .team-employee-modal-footer{
+  padding:7px 13px 8px!important;
+}
+.inventory-product-modal .team-employee-stepbar,
+.inventory-product-modal .team-step-item{
+  min-height:0!important;
+}
+.inventory-product-modal .team-employee-stepbar{
+  padding:6px 12px!important;
+}
+.inventory-product-modal .team-step-item>span{
+  width:20px!important;
+  height:20px!important;
+  border-radius:6px!important;
+}
+.inventory-product-modal .team-step-item strong{
+  font-size:7px!important;
+}
+.inventory-product-modal .team-step-line{
+  margin:0 4px!important;
+}
+.inventory-product-modal .inventory-product-fields{
+  gap:4px!important;
+}
+.inventory-product-modal .inventory-product-row{
+  gap:4px!important;
+}
+.inventory-product-modal .inventory-product-input,
+.inventory-product-modal .inventory-product-icon-button{
+  height:28px!important;
+}
+.inventory-product-modal .inventory-product-input{
+  padding:0 7px!important;
+  font-size:9px!important;
+}
+.inventory-product-modal .inventory-product-photo-box{
+  width:64px!important;
+  height:64px!important;
+  border-radius:10px!important;
+}
+.inventory-product-modal .inventory-product-general-grid{
+  grid-template-columns:64px minmax(0,1fr)!important;
+  gap:8px!important;
+}
+.inventory-product-modal .inventory-product-step-heading{
+  margin-bottom:5px!important;
+}
+.inventory-product-modal .inventory-step-heading h3{
+  font-size:9px!important;
+}
+.inventory-product-modal .inventory-step-heading p{
+  display:none!important;
+}
+.inventory-product-modal .inventory-variants-grid,
+.inventory-product-modal .inventory-price-grid{
+  gap:5px!important;
+}
+.inventory-product-modal .inventory-variant-group,
+.inventory-product-modal .inventory-price-group{
+  padding:7px!important;
+  border-radius:8px!important;
+}
+.inventory-product-modal .inventory-product-small-button{
+  height:27px!important;
+  min-width:48px!important;
+  padding:0 6px!important;
+  font-size:6.5px!important;
+}
+.inventory-product-modal .inventory-variant-tags{
+  gap:3px!important;
+  margin-top:4px!important;
+}
+.inventory-product-modal .inventory-variant-tag{
+  padding:3px 5px!important;
+  font-size:6.5px!important;
+}
+.inventory-product-modal .inventory-step-note{
+  margin-top:5px!important;
+  padding:5px 7px!important;
+  font-size:7px!important;
+}
+.inventory-product-modal .inventory-margin-row{
+  margin-top:5px!important;
+  padding:5px 7px!important;
+}
+.inventory-product-modal .inventory-margin-row strong{
+  font-size:10px!important;
+}
+.inventory-product-modal .team-footer-actions button{
+  min-height:28px!important;
+}
 @media(max-width:720px){
   .inventory-product-modal{
     width:calc(100vw - 1rem)!important;
-    max-width:672px!important;
+    max-width:576px!important;
     max-height:calc(100dvh - .75rem)!important;
-    border-radius:20px;
+    border-radius:18px!important;
   }
-  .inventory-product-modal .team-employee-modal-head{padding:11px 12px 9px}
-  .inventory-product-modal .team-employee-modal-body{padding:9px 11px 11px;gap:8px}
-  .inventory-product-modal .team-employee-modal-footer{padding:8px 11px 9px}
+  .inventory-product-modal .team-employee-modal-head{padding:9px 10px 7px!important}
+  .inventory-product-modal .team-employee-modal-body{padding:7px 10px 8px!important}
+  .inventory-product-modal .team-employee-modal-footer{padding:6px 10px 7px!important}
 }
 @media(max-width:420px){
-  .inventory-product-modal{width:calc(100vw - .75rem)!important}
-  .inventory-product-modal .team-employee-modal-head{padding:9px 10px 8px}
-  .inventory-product-modal .team-employee-modal-body{padding:7px 9px 9px;gap:7px}
-  .inventory-product-modal .team-employee-modal-footer{padding:7px 9px 8px}
+  .inventory-product-modal{
+    width:calc(100vw - .75rem)!important;
+    max-width:none!important;
+  }
+  .inventory-product-modal .team-employee-modal-head{padding:8px 9px 6px!important}
+  .inventory-product-modal .team-employee-modal-body{padding:6px 9px 7px!important}
+  .inventory-product-modal .team-employee-modal-footer{padding:5px 9px 6px!important}
+  .inventory-product-modal .inventory-product-general-grid{
+    grid-template-columns:54px minmax(0,1fr)!important;
+    gap:6px!important;
+  }
+  .inventory-product-modal .inventory-product-photo-box{
+    width:54px!important;
+    height:54px!important;
+  }
 }
 
 .inventory-product-general{min-width:0}
