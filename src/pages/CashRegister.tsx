@@ -13,7 +13,7 @@ import { loadCompensationSettings } from "../services/team";
 import { getActiveTenant } from "../services/tenant";
 
 export default function CashRegister() {
-  const { branches, currentBranchId, setCurrentBranch, getCurrentSession, openSession, closeSession, getBaseCurrency, currencies, currentUser, transactions, users, products, salarySettlements, updateSalarySettlement, cashSessions } = useStore(useShallow((state) => ({ branches: state.branches, currentBranchId: state.currentBranchId, setCurrentBranch: state.setCurrentBranch, getCurrentSession: state.getCurrentSession, openSession: state.openSession, closeSession: state.closeSession, getBaseCurrency: state.getBaseCurrency, currencies: state.currencies, currentUser: state.currentUser, transactions: state.transactions, users: state.users, products: state.products, salarySettlements: state.salarySettlements, updateSalarySettlement: state.updateSalarySettlement, cashSessions: state.cashSessions })));
+  const { branches, currentBranchId, setCurrentBranch, getCurrentSession, openSession, closeSession, getBaseCurrency, currencies, currentUser, transactions, users, products, salarySettlements, updateSalarySettlement, cashSessions } = useStore(useShallow((state) => ({ branches: state.branches, currentBranchId: state.currentBranchId, setCurrentBranch: state.setCurrentBranch, getCurrentSession: state.getCurrentSession, openSession: state.openSession, closeSession: state.closeSession, getBaseCurrency: state.getBaseCurrency, currencies: state.currencies, currentUser: state.currentUser, transactions: state.transactions, users: state.users, products: state.products, salarySettlements: state.salarySettlements, updateSalarySettlement: state.updateSalarySettlement, cashSessions: state.cashSessions, cancelSession: state.cancelSession })));
   const session = getCurrentSession(currentBranchId, currentUser?.id || 'u1');
   const baseCurrency = getBaseCurrency();
   const productCatalog = products || [];
@@ -188,6 +188,10 @@ export default function CashRegister() {
 
   const [closingBalances, setClosingBalances] = useState<{ [key: string]: number }>({});
   const [showDiscrepancyModal, setShowDiscrepancyModal] = useState(false);
+  const [showCancelSessionModal, setShowCancelSessionModal] = useState(false);
+  const [cancelPassword, setCancelPassword] = useState('');
+  const [cancelReason, setCancelReason] = useState('Cancelación de turno');
+  const [isCancellingSession, setIsCancellingSession] = useState(false);
   const [finalBalancesToClose, setFinalBalancesToClose] = useState<Payment[]>([]);
 
   // Movement Form State
@@ -410,6 +414,26 @@ export default function CashRegister() {
     return method;
   };
 
+  const handleCancelSession = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!session || isCancellingSession) return;
+    const password = cancelPassword.trim();
+    if (!password) return;
+    setIsCancellingSession(true);
+    try {
+      const ok = await cancelSession(session.id, cancelReason.trim() || 'Cancelación de turno', password);
+      if (ok) {
+        setCancelPassword('');
+        setCancelReason('Cancelación de turno');
+        setShowCancelSessionModal(false);
+        alert('Turno cancelado correctamente.');
+      }
+    } finally {
+      setIsCancellingSession(false);
+    }
+  };
+
+
   return (
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 max-w-3xl mx-auto pb-8">
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
@@ -519,9 +543,20 @@ export default function CashRegister() {
                 <p className="text-emerald-400 text-[8px] font-black uppercase tracking-widest mt-1">TURNO ABIERTO • {new Date(session.openedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-slate-500 text-[8px] font-black uppercase tracking-[0.2em] mb-0.5">Fondo Inicial</p>
-              <p className="text-lg font-black tracking-tight">{formatMoney(session.openingBalance, baseCurrency.code)}</p>
+            <div className="flex items-center gap-2 ml-auto">
+              <div className="text-right">
+                <p className="text-slate-500 text-[8px] font-black uppercase tracking-[0.2em] mb-0.5">Fondo Inicial</p>
+                <p className="text-lg font-black tracking-tight">{formatMoney(session.openingBalance, baseCurrency.code)}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCancelSessionModal(true)}
+                className="shrink-0 inline-flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-white/10 hover:bg-rose-500/20 border border-white/10 hover:border-rose-400/30 text-[8px] font-black uppercase tracking-wider text-white transition-all active:scale-95"
+                title="Cancelar turno"
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>Cancelar</span>
+              </button>
             </div>
           </div>
 
@@ -875,6 +910,97 @@ export default function CashRegister() {
           </table>
         </div>
       </div>
+
+      {showCancelSessionModal && session && (
+        <div className="fixed inset-0 bg-slate-950/55 backdrop-blur-sm z-[120] flex items-center justify-center p-3 sm:p-4">
+          <form
+            onSubmit={handleCancelSession}
+            className="w-full max-w-sm bg-white rounded-[1.75rem] shadow-2xl border border-slate-100 overflow-hidden animate-in zoom-in-95"
+          >
+            <div className="px-5 py-4 bg-slate-50 border-b border-slate-100 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100">
+                <Lock className="w-5 h-5" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[9px] font-black uppercase tracking-[0.16em] text-rose-600">Seguridad de Caja</p>
+                <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Cancelar turno</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setShowCancelSessionModal(false); setCancelPassword(''); }}
+                className="ml-auto w-8 h-8 rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-slate-700 font-black"
+                aria-label="Cerrar"
+              >×</button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="rounded-2xl bg-indigo-50 border border-indigo-100 p-3">
+                <p className="text-[8px] font-black uppercase tracking-widest text-indigo-500">Empleado que abrió la caja</p>
+                <p className="mt-1 text-xs font-black text-indigo-950 uppercase">
+                  {users.find(u => u.id === session.userId)?.name || session.workerName || 'Empleado'}
+                </p>
+                <p className="mt-1 text-[8px] font-bold text-indigo-600">
+                  La contraseña debe ser la del empleado que abrió este turno.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">
+                  Contraseña de inicio de sesión
+                </label>
+                <input
+                  autoFocus
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="current-password"
+                  value={cancelPassword}
+                  onChange={(e) => setCancelPassword(e.target.value)}
+                  placeholder="Introduce la contraseña"
+                  className="w-full h-11 rounded-xl border border-slate-200 bg-slate-50 px-3.5 text-sm font-black tracking-[0.12em] text-slate-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10"
+                  disabled={isCancellingSession}
+                />
+              </div>
+
+              <div>
+                <label className="block text-[9px] font-black uppercase tracking-widest text-slate-500 mb-1.5">
+                  Motivo
+                </label>
+                <input
+                  type="text"
+                  value={cancelReason}
+                  onChange={(e) => setCancelReason(e.target.value)}
+                  className="w-full h-10 rounded-xl border border-slate-200 bg-white px-3 text-xs font-bold text-slate-800 outline-none focus:border-indigo-500"
+                  disabled={isCancellingSession}
+                />
+              </div>
+
+              <div className="rounded-xl bg-amber-50 border border-amber-100 px-3 py-2">
+                <p className="text-[8px] font-bold leading-4 text-amber-700">
+                  La contraseña no se guarda en PALMYRA. La validación se realiza contra el empleado que abrió la caja.
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => { setShowCancelSessionModal(false); setCancelPassword(''); }}
+                  disabled={isCancellingSession}
+                  className="flex-1 h-10 rounded-xl bg-slate-100 text-slate-700 text-[9px] font-black uppercase tracking-widest hover:bg-slate-200 disabled:opacity-50"
+                >
+                  Volver
+                </button>
+                <button
+                  type="submit"
+                  disabled={isCancellingSession || !cancelPassword.trim()}
+                  className="flex-1 h-10 rounded-xl bg-rose-600 text-white text-[9px] font-black uppercase tracking-widest shadow-lg shadow-rose-600/20 hover:bg-rose-700 disabled:opacity-50 flex items-center justify-center gap-1.5"
+                >
+                  {isCancellingSession ? 'Validando…' : 'Confirmar cancelación'}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      )}
 
       {showDiscrepancyModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
