@@ -36,10 +36,8 @@ export function useTurnProductSalaryRows(session: CashRegisterSession | null, tr
         sellers.forEach((sellerId: string) => {
           const employee = users.find(u => u.id === sellerId);
           const employeeName = employee?.name || tx.cashierName || sellerId || 'Empleado';
-          const percentageMode = companyCompensation?.mode === 'sales_percent' || employee?.compensationType === 'sales_percentage';
-          const percentageRate = companyCompensation?.mode === 'sales_percent'
-            ? Math.max(0, Math.min(100, Number(companyCompensation.percentRate) || 0))
-            : Math.max(0, Math.min(100, Number(employee?.salesPercentage ?? employee?.commissionRate) || 0));
+          const percentageMode = companyCompensation?.mode === 'sales_percent';
+          const percentageRate = Math.max(0, Math.min(100, Number(companyCompensation?.percentRate) || 0));
 
           tx.items.forEach(item => {
             const rawItem = item as any;
@@ -60,12 +58,15 @@ export function useTurnProductSalaryRows(session: CashRegisterSession | null, tr
               0
             ) || 0;
 
+            const saleTotal = Math.max(0, Number(tx.total) || 0);
             const quantityTotal = Math.max(1, tx.items.reduce((sum, line) => sum + Math.max(0, Number((line as any).quantity) || 0), 0));
-            const sellerTransactionCommission = employee?.compensationType === 'sales_percentage'
-              ? (Math.max(0, Number(tx.total) || 0) * percentageRate / 100) / splitFactor
+            const linePrice = Number((rawItem as any).price ?? product?.price ?? (rawItem as any).product_snapshot?.price ?? 0) || 0;
+            const lineTotal = Math.max(0, linePrice * quantity);
+            const sellerTransactionCommission = percentageMode
+              ? (saleTotal * percentageRate / 100) / splitFactor
               : 0;
-            const salaryPerUnitForSeller = employee?.compensationType === 'sales_percentage'
-              ? sellerTransactionCommission / quantityTotal
+            const salaryPerUnitForSeller = percentageMode
+              ? sellerTransactionCommission * (saleTotal > 0 ? lineTotal / saleTotal : quantity / quantityTotal) / quantity
               : commissionValue / splitFactor;
 
             const key = `${sellerId}-${productId}`;
