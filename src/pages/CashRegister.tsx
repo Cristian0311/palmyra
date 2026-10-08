@@ -170,7 +170,7 @@ export default function CashRegister() {
 
   const formatMoney = (amount: number, currencyCode = 'CUP') => {
     const formatted = Number(amount || 0).toLocaleString('es-CU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    return \`${currencyCode} ${formatted}\`;
+    return `${currencyCode} ${formatted}`;
   };
 
   // Los salarios y las comisiones fijas de productos siempre se liquidan en CUP/MN.
