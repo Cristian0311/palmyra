@@ -554,9 +554,9 @@ export default function Team() {
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <WalletCards className="w-5 h-5 text-rose-500 shrink-0" />
-                      <h2 className="text-sm font-black text-primary">Compensación del equipo</h2>
+                      <h2 className="text-sm font-black text-primary">Configuración de pago del equipo</h2>
                     </div>
-                    <p className="text-[10px] text-muted mt-1 leading-5">Una sola configuración para todos los empleados, actuales y futuros.</p>
+                    <p className="text-[10px] text-muted mt-1 leading-5">Define aquí la modalidad de pago para todos los trabajadores. Esta configuración es independiente del alta individual.</p>
                   </div>
                   <span className="text-[8px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-full bg-subtle border border-base text-muted shrink-0">
                     {compensationSettings.workerCount} trabajador{compensationSettings.workerCount === 1 ? "" : "es"} activos
