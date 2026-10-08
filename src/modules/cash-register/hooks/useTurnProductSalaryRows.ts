@@ -60,15 +60,12 @@ export function useTurnProductSalaryRows(session: CashRegisterSession | null, tr
               0
             ) || 0;
 
-            const unitPrice = Number(
-              rawItem.price ??
-              rawItem.unit_price ??
-              product?.price ??
-              0
-            ) || 0;
-
+            const quantityTotal = Math.max(1, tx.items.reduce((sum, line) => sum + Math.max(0, Number((line as any).quantity) || 0), 0));
+            const sellerTransactionCommission = employee?.compensationType === 'sales_percentage'
+              ? (Math.max(0, Number(tx.total) || 0) * percentageRate / 100) / splitFactor
+              : 0;
             const salaryPerUnitForSeller = employee?.compensationType === 'sales_percentage'
-              ? (unitPrice * percentageRate / 100) / splitFactor
+              ? sellerTransactionCommission / quantityTotal
               : commissionValue / splitFactor;
 
             const key = `${sellerId}-${productId}`;
