@@ -401,36 +401,6 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       if (error) throw error;
       return true;
     }
-    case 'branch_delete': {
-      const { companyId } = await getActiveTenant();
-      const { error } = await supabase
-        .from('warehouses')
-        .update({ active: false })
-        .eq('id', String(data?.id || ''))
-        .eq('company_id', companyId);
-      if (error) throw error;
-      return true;
-    }
-    case 'category_delete': {
-      const { companyId } = await getActiveTenant();
-      const { error } = await supabase
-        .from('categories')
-        .update({ active: false })
-        .eq('id', String(data?.id || ''))
-        .eq('company_id', companyId);
-      if (error) throw error;
-      return true;
-    }
-    case 'supplier_delete': {
-      const { companyId } = await getActiveTenant();
-      const { error } = await supabase
-        .from('suppliers')
-        .update({ active: false })
-        .eq('id', String(data?.id || ''))
-        .eq('company_id', companyId);
-      if (error) throw error;
-      return true;
-    }
     case 'branch': {
       const ok = await pushBranchToSupabase(data as any);
       if (!ok) throw new Error('No se pudo sincronizar el almacén pendiente.');
