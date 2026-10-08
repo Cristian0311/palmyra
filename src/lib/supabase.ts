@@ -75,7 +75,7 @@ export function getSupabase(): SupabaseClient | null {
   return cachedClient;
 }
 
-export async function checkSupabaseReachability(timeoutMs = 10000): Promise<{ ok: boolean; message?: string }> {
+export async function checkSupabaseReachability(timeoutMs = 8000): Promise<{ ok: boolean; message?: string }> {
   if (typeof navigator !== 'undefined' && !navigator.onLine) {
     return { ok: false, message: 'El dispositivo está offline.' };
   }
@@ -86,50 +86,63 @@ export async function checkSupabaseReachability(timeoutMs = 10000): Promise<{ ok
   }
 
   try {
-    // PALMYRA does not have a "settings" table. Probe a table that exists.
+    // Probe a tiny, RLS-protected table. This is only a connectivity check;
+    // it never mutates data and never becomes a dependency for the durable queue.
     const probe = client.from('products').select('id').limit(1);
     const timeout = new Promise<{ data: any; error: any }>(resolve =>
-      setTimeout(
-        () => resolve({
-          data: null,
-          error: {
-            message: 'Tiempo de espera agotado al contactar Supabase.',
-            code: 'NETWORK_TIMEOUT'
-          }
-        }),
-        timeoutMs
-      )
+      setTimeout(() => resolve({
+        data: null,
+        error: { message: 'Tiempo de espera agotado al contactar Supabase.', code: 'NETWORK_TIMEOUT' }
+      }), timeoutMs)
     );
 
     const { error } = await Promise.race([probe, timeout]);
 
-    if (error) {
-      const code = String((error as any).code || '');
-      const status = Number((error as any).status || 0);
+    if (!error) return { ok: true };
 
-      if (
-        code === 'NETWORK_TIMEOUT' ||
-        status >= 500 ||
-        code.startsWith('PGRST') ||
-        /network|fetch|failed|timeout/i.test(error.message || '')
-      ) {
-        return {
-          ok: false,
-          message: error.message || 'La API de Supabase no respondió correctamente.'
-        };
-      }
+    const code = String((error as any).code || '');
+    const status = Number((error as any).status || 0);
+    const message = String((error as any).message || 'La API de Supabase no respondió correctamente.');
+
+    // Authentication/authorization/database errors prove that the API is
+    // reachable. Do not mistake them for a network outage.
+    if (
+      code === 'NETWORK_TIMEOUT' ||
+      status >= 500 ||
+      code.startsWith('PGRST') ||
+      /network|fetch|failed|timeout|connection|gateway/i.test(message)
+    ) {
+      return { ok: false, message };
     }
 
     return { ok: true };
   } catch (e: any) {
     return {
       ok: false,
-      message:
-        e?.name === 'AbortError'
-          ? 'Tiempo de espera agotado al contactar Supabase.'
-          : (e?.message || 'No se pudo contactar Supabase.')
+      message: e?.name === 'AbortError'
+        ? 'Tiempo de espera agotado al contactar Supabase.'
+        : (e?.message || 'No se pudo contactar Supabase.')
     };
   }
+}
+
+export async function waitForSupabaseReachability(
+  attempts = 3,
+  timeoutMs = 8000
+): Promise<{ ok: boolean; message?: string; attempts: number }> {
+  let lastMessage = 'Supabase no está accesible todavía.';
+  for (let attempt = 1; attempt <= Math.max(1, attempts); attempt++) {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return { ok: false, message: 'El dispositivo está offline.', attempts: attempt };
+    }
+    const result = await checkSupabaseReachability(timeoutMs);
+    if (result.ok) return { ok: true, attempts: attempt };
+    lastMessage = result.message || lastMessage;
+    if (attempt < attempts) {
+      await new Promise(resolve => setTimeout(resolve, 450 * Math.pow(2, attempt - 1)));
+    }
+  }
+  return { ok: false, message: lastMessage, attempts: Math.max(1, attempts) };
 }
 
 export async function testSupabaseConnection(
