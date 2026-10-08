@@ -402,9 +402,9 @@ export async function pushSalarySettlementToSupabase(settlement:SalarySettlement
       currency_code:'CUP',
       base_salary:Number(settlement.baseSalary)||0,
       commission_amount:Number(settlement.commissions)||0,
-      adjustments:0,
+      adjustments:-Math.abs(Number(settlement.discrepancyDeduction)||0),
       total_amount:Number(settlement.total)||0,
-      details:{session_id:settlement.sessionId||null}
+      details:{session_id:settlement.sessionId||null,discrepancy_deduction:Math.abs(Number(settlement.discrepancyDeduction)||0)}
     },{onConflict:'id'});
     if(ie)throw ie;
     return true;

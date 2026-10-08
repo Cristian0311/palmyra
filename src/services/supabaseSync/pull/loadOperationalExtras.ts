@@ -123,9 +123,10 @@ export async function loadReturnsWarrantiesQuotesTimePayroll() {
     id:x.id,
     userId:x.employee_id,
     userName:eMap.get(x.employee_id)||'Empleado',
-    sessionId:'',
+    sessionId:String(x.details?.session_id || ''),
     baseSalary:Number(x.base_salary)||0,
     commissions:Number(x.commission_amount)||0,
+    discrepancyDeduction:Math.max(0, Number(x.details?.discrepancy_deduction ?? -(Number(x.adjustments)||0)) || 0),
     total:Number(x.total_amount)||0,
     date:(pr.data||[]).find((run:any)=>run.id===x.payroll_run_id)?.created_at||new Date().toISOString(),
     status:(pr.data||[]).find((run:any)=>run.id===x.payroll_run_id)?.status==='paid'?'paid':'pending'
