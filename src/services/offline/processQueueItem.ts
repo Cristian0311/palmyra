@@ -11,7 +11,7 @@ import {
   persistOfflineQueueSnapshot
 } from '../offlineQueue';
 import {
-  callOpenSessionRPCWithId, callProcessTransactionRPC, callVoidTransactionRPC,
+  callOpenSessionRPCWithId, callProcessTransactionRPC, callVoidTransactionRPC, callGetCompensationSettingsRPC,
   callCompleteReturnRPC, callTransferInventoryRPC, callTransferInventoryBulkRPC, callReceiveSupplierOrderRPC,
   callStartInventoryAuditRPC, callSaveInventoryAuditCountRPC, callRequestInventoryAuditRecountRPC, callApproveInventoryAuditRPC,
   callBankInternalTransferRPC, callDeleteBankInternalTransferRPC, callDeleteBankTransactionRPC, callDeleteBankCardRPC, callProcessBankTransactionRPC,
@@ -128,12 +128,12 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
             supabase.from('sale_items').select('sale_id,product_id,quantity,line_total').in('sale_id', completedSaleIds),
             supabase.from('products').select('id,commission_fixed,commission_percent').eq('company_id', tenant.companyId),
             supabase.from('employees').select('id,user_id,compensation_type,sales_percentage').eq('company_id', tenant.companyId).eq('active', true),
-            supabase.from('compensation_settings').select('mode,percent_rate,active').eq('company_id', tenant.companyId).maybeSingle()
+            callGetCompensationSettingsRPC()
           ]);
           if (itemsRes.error) throw itemsRes.error;
           if (productsRes.error) throw productsRes.error;
           if (employeesRes.error) throw employeesRes.error;
-          if (compensationRes.error) throw compensationRes.error;
+          if (!compensationRes.success) throw new Error(compensationRes.error || 'No se pudo obtener la configuración de compensación.');
 
           const productMap = new Map<string, any>((productsRes.data || []).map((p: any) => [p.id, p]));
           const employeeById = new Map<string, any>((employeesRes.data || []).map((e: any) => [e.id, e]));
