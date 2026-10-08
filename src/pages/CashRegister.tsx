@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { getWarehouseId } from "../modules/warehouse/warehouseScope";
 import { useTurnProductSalaryRows } from '../modules/cash-register/hooks/useTurnProductSalaryRows';
 import { useShallow } from "zustand/react/shallow";
