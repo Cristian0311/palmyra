@@ -113,7 +113,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         // que una venta rechazada no termine dentro de la liquidación salarial.
         const { data: persistedSales, error: salesError } = await supabase
           .from('sales')
-          .select('id,status,total,employee_id,seller_user_id')
+          .select('id,status,total,employee_id,seller_user_id,metadata')
           .eq('cash_session_id', session.id);
         if (salesError) throw salesError;
 
@@ -141,31 +141,48 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
           const saleMap = new Map<string, any>((persistedSales || []).map((s: any) => [s.id, s]));
 
           const processedPercentageSales = new Set<string>();
+          const processedFixedSellerLines = new Set<string>();
           for (const saleItem of itemsRes.data || []) {
             const product = productMap.get(saleItem.product_id);
             const sale = saleMap.get(saleItem.sale_id);
             if (!product || !sale) continue;
 
             const quantity = Number(saleItem.quantity) || 0;
-            const seller = (sale.employee_id && employeeById.get(sale.employee_id))
-              || (sale.seller_user_id && employeeByUserId.get(sale.seller_user_id))
-              || employeeById.get(session.userId)
-              || employeeByUserId.get(session.userId);
-
+            const metadataSellers = Array.isArray(sale.metadata?.sellerEmployeeIds)
+              ? sale.metadata.sellerEmployeeIds.map((id: unknown) => String(id)).filter(Boolean)
+              : [];
+            const sellerIds = Array.from(new Set(
+              metadataSellers.length
+                ? metadataSellers
+                : [
+                    sale.employee_id ? String(sale.employee_id) : '',
+                    sale.seller_user_id ? String(sale.seller_user_id) : '',
+                    session.userId ? String(session.userId) : ''
+                  ].filter(Boolean)
+            ));
+            const splitFactor = Math.max(1, sellerIds.length);
             const globalMode = compensationRes.data?.mode === 'sales_percent' ? 'sales_percentage' : 'fixed_product';
             const globalRate = Math.max(0, Math.min(100, Number(compensationRes.data?.percent_rate) || 0));
-            const compensationType = seller?.compensation_type || globalMode;
-            const percentage = Math.max(0, Math.min(100,
-              Number(seller?.sales_percentage ?? (globalMode === 'sales_percentage' ? globalRate : 0)) || 0
-            ));
 
-            if (compensationType === 'sales_percentage') {
+            if (globalMode === 'sales_percentage') {
               if (!processedPercentageSales.has(sale.id)) {
-                commissions += Math.max(0, Number(sale.total) || 0) * percentage / 100;
+                const sellerRates = sellerIds.map(sellerId =>
+                  employeeById.get(sellerId) || employeeByUserId.get(sellerId)
+                );
+                const effectiveRate = sellerRates.length
+                  ? sellerRates.reduce((sum, seller) =>
+                      sum + Math.max(0, Math.min(100, Number(seller?.sales_percentage ?? globalRate) || 0)), 0
+                    ) / sellerRates.length
+                  : globalRate;
+                commissions += Math.max(0, Number(sale.total) || 0) * effectiveRate / 100;
                 processedPercentageSales.add(sale.id);
               }
             } else {
-              commissions += (Number(product.commission_fixed) || 0) * quantity;
+              const lineKey = `${sale.id}:${saleItem.sale_id}:${saleItem.product_id}`;
+              if (!processedFixedSellerLines.has(lineKey)) {
+                commissions += ((Number(product.commission_fixed) || 0) * quantity) / splitFactor;
+                processedFixedSellerLines.add(lineKey);
+              }
             }
           }
         }
