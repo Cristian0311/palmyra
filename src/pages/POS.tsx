@@ -1044,6 +1044,7 @@ export default function POS() {
     users,
     currentUser,
     salarySettlements,
+    companyCompensation,
     receiptConfig,
     addNotification,
     setPosError,
