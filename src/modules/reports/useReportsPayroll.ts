@@ -105,7 +105,7 @@ export function useReportsPayroll(params: {
         }, 0);
       }
 
-      const baseSalary = existing?.baseSalary ?? getSalaryBase(emp);
+      const baseSalary = existing?.baseSalary ?? (companyCompensation.mode === 'sales_percent' ? 0 : Math.max(0, Number(emp?.baseSalary) || 0));
       const totalSalary = existing?.total ?? (baseSalary + commissions);
       const status = existing?.status === 'paid' ? 'paid' : 'pending';
       const date = existing?.date || session.closingDate || session.closedAt || session.openedAt;
