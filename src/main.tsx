@@ -107,39 +107,58 @@ if (isPALMYRAPWAInstalledAtBoot()) {
 
 import { registerSW } from 'virtual:pwa-register';
 
-const SW_CHECK_INTERVAL_MS = 300_000;
+const SW_CHECK_INTERVAL_MS = 5 * 60_000;
 const PALMYRA_UPDATE_AVAILABLE_KEY = 'palmyra:update-available';
+const PALMYRA_BUILD_ID_KEY = 'palmyra:build-id';
 let swCheckTimer: ReturnType<typeof setInterval> | null = null;
+
+const markUpdateAvailable = () => {
+  try { localStorage.setItem(PALMYRA_UPDATE_AVAILABLE_KEY, '1'); } catch {}
+  window.dispatchEvent(new CustomEvent('palmyra:update-available'));
+};
+
+const checkServerVersion = async () => {
+  if (!navigator.onLine) return;
+  try {
+    const response = await fetch('/version.json?ts=' + Date.now(), {
+      cache: 'no-store',
+      headers: { 'cache-control': 'no-cache', pragma: 'no-cache' },
+    });
+    if (!response.ok) return;
+    const payload = await response.json() as { buildId?: string };
+    const serverBuildId = String(payload?.buildId || '');
+    if (!serverBuildId) return;
+
+    const localBuildId = localStorage.getItem(PALMYRA_BUILD_ID_KEY);
+    if (!localBuildId) {
+      localStorage.setItem(PALMYRA_BUILD_ID_KEY, serverBuildId);
+      return;
+    }
+    if (localBuildId !== serverBuildId) markUpdateAvailable();
+  } catch {
+    // Network interruptions must never affect POS/offline operation.
+  }
+};
 
 const updateSW = registerSW({
   immediate: true,
   onNeedRefresh() {
-    // El worker nuevo queda en waiting. Persistimos el aviso y notificamos
-    // inmediatamente al CRM para que la burbuja aparezca en la sesión actual.
-    try { localStorage.setItem(PALMYRA_UPDATE_AVAILABLE_KEY, '1'); } catch {}
-    window.dispatchEvent(new CustomEvent('palmyra:update-available'));
+    markUpdateAvailable();
   },
-
-
   onRegisteredSW(swUrl, registration) {
     if (!registration) return;
 
     const checkForFreshWorker = async () => {
       try {
-        // Bypass intermediary/browser caching when checking the worker script.
         await fetch(swUrl, {
           cache: 'no-store',
-          headers: {
-            'cache-control': 'no-cache',
-            'pragma': 'no-cache',
-          },
+          headers: { 'cache-control': 'no-cache', pragma: 'no-cache' },
         });
         await registration.update();
       } catch (error) {
-        // Connectivity can be transient on mobile; the next interval/focus
-        // check will retry without disrupting the offline POS.
         console.debug('[PWA] Service Worker update check deferred:', error);
       }
+      await checkServerVersion();
     };
 
     void checkForFreshWorker();
@@ -151,8 +170,7 @@ const updateSW = registerSW({
     window.addEventListener('focus', checkForFreshWorker);
     document.addEventListener('visibilitychange', handleVisibility);
 
-    // Store cleanup on the registration object without changing its public API.
-    (registration as ServiceWorkerRegistration & { __omniCleanup?: () => void }).__omniCleanup = () => {
+    (registration as ServiceWorkerRegistration & { __palmyraCleanup?: () => void }).__palmyraCleanup = () => {
       if (swCheckTimer) {
         clearInterval(swCheckTimer);
         swCheckTimer = null;
@@ -162,80 +180,28 @@ const updateSW = registerSW({
     };
   },
   onOfflineReady() {
-    console.log('App is ready for offline use.');
+    console.log('[PWA] PALMYRA está lista para trabajar sin conexión.');
   },
   onRegisterError(error) {
     console.warn('[PWA] Service Worker registration error:', error);
   },
 });
 
-// La burbuja de actualización debe activar primero el Service Worker nuevo
-// y SOLO después recargar la aplicación. En móviles, recargar inmediatamente
-// después de SKIP_WAITING puede ocurrir antes de que el worker tome el control;
-// eso hacía que la misma burbuja reapareciera una y otra vez.
 const applyPalmyraUpdate = async () => {
-  let reloadAfterActivation = false;
-
   try {
     const registration = await navigator.serviceWorker?.getRegistration();
-    if (!registration) {
-      throw new Error('No hay un Service Worker registrado para actualizar PALMYRA.');
-    }
-
-    // Si el navegador todavía no ha movido el worker nuevo a waiting, fuerza
-    // una comprobación de red y dale unos segundos para que aparezca.
-    if (!registration.waiting) {
-      await registration.update();
-      const deadline = Date.now() + 10_000;
-      while (!registration.waiting && Date.now() < deadline) {
-        await new Promise(resolve => window.setTimeout(resolve, 250));
-        await registration.update().catch(() => {});
-      }
-    }
-
-    const waitingWorker = registration.waiting;
-    if (!waitingWorker) {
-      throw new Error('La nueva versión todavía no está lista para activarse.');
-    }
-
-    // Esperamos controllerchange en lugar de adivinar un retraso fijo. Esto es
-    // especialmente importante en Chrome Android/PWA, donde 650 ms no siempre
-    // alcanza para activar el worker nuevo.
-    const controllerChange = new Promise<void>((resolve, reject) => {
-      let settled = false;
-      const cleanup = () => {
-        navigator.serviceWorker.removeEventListener('controllerchange', onControllerChange);
-        window.clearTimeout(timeout);
-      };
-      const onControllerChange = () => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        resolve();
-      };
-      const timeout = window.setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        reject(new Error('PALMYRA no pudo activar la nueva versión a tiempo.'));
-      }, 12_000);
-
-      navigator.serviceWorker.addEventListener('controllerchange', onControllerChange);
-    });
-
-    waitingWorker.postMessage({ type: 'SKIP_WAITING' });
-    await controllerChange;
-
-    reloadAfterActivation = true;
+    if (registration) await registration.update().catch(() => {});
+    await updateSW(true);
     try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
-    window.location.reload();
+    try {
+      const response = await fetch('/version.json?ts=' + Date.now(), { cache: 'no-store' });
+      if (response.ok) {
+        const payload = await response.json() as { buildId?: string };
+        if (payload?.buildId) localStorage.setItem(PALMYRA_BUILD_ID_KEY, String(payload.buildId));
+      }
+    } catch {}
   } catch (error) {
-    console.warn('[PWA] No se pudo aplicar la actualización:', error);
-    // Conservamos la marca para que la burbuja no desaparezca si la activación
-    // falló. Layout recupera el botón y permite reintentar sin recargar en bucle.
-    if (!reloadAfterActivation) {
-      try { localStorage.setItem(PALMYRA_UPDATE_AVAILABLE_KEY, '1'); } catch {}
-    }
+    try { localStorage.setItem(PALMYRA_UPDATE_AVAILABLE_KEY, '1'); } catch {}
     throw error;
   }
 };
