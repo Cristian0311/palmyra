@@ -204,12 +204,6 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         if (!salaryOk) throw new Error('El cierre fue confirmado, pero la liquidación salarial aún no pudo sincronizarse.');
         return true;
       }
-      if (session.__operation === 'cancel') {
-        if (session.requiresEmployeePassword) throw new Error('employee_password_required_reauthentication');
-        const res = await callCancelSessionRPC(session.id, session.userId || 'system', session.deleteReason || 'Cancelación de turno');
-        if (!res.success) throw new Error(res.error || 'No se pudo cancelar el turno');
-        return true;
-      }
       if (session.__operation === 'open' || String(item.actionId).startsWith('cash-open:')) {
         const res = await callOpenSessionRPCWithId(session);
         if (res.success) {
