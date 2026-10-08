@@ -123,14 +123,17 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
 
         let commissions = 0;
         if (completedSaleIds.length) {
-          const [itemsRes, productsRes, employeesRes] = await Promise.all([
+          const tenant = await getActiveTenant();
+          const [itemsRes, productsRes, employeesRes, compensationRes] = await Promise.all([
             supabase.from('sale_items').select('sale_id,product_id,quantity,line_total').in('sale_id', completedSaleIds),
-            supabase.from('products').select('id,commission_fixed,commission_percent').eq('company_id', (await getActiveTenant()).companyId),
-            supabase.from('employees').select('id,user_id,compensation_type,sales_percentage').eq('company_id', (await getActiveTenant()).companyId).eq('active', true)
+            supabase.from('products').select('id,commission_fixed,commission_percent').eq('company_id', tenant.companyId),
+            supabase.from('employees').select('id,user_id,compensation_type,sales_percentage').eq('company_id', tenant.companyId).eq('active', true),
+            supabase.from('compensation_settings').select('mode,percent_rate,active').eq('company_id', tenant.companyId).maybeSingle()
           ]);
           if (itemsRes.error) throw itemsRes.error;
           if (productsRes.error) throw productsRes.error;
           if (employeesRes.error) throw employeesRes.error;
+          if (compensationRes.error) throw compensationRes.error;
 
           const productMap = new Map<string, any>((productsRes.data || []).map((p: any) => [p.id, p]));
           const employeeById = new Map<string, any>((employeesRes.data || []).map((e: any) => [e.id, e]));
@@ -149,9 +152,13 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
               || employeeById.get(session.userId)
               || employeeByUserId.get(session.userId);
 
-            const compensationType = seller?.compensation_type || 'fixed_product';
+            const globalMode = compensationRes.data?.mode === 'sales_percent' ? 'sales_percentage' : 'fixed_product';
+            const globalRate = Math.max(0, Math.min(100, Number(compensationRes.data?.percent_rate) || 0));
+            const compensationType = seller?.compensation_type || globalMode;
+            const percentage = Math.max(0, Math.min(100,
+              Number(seller?.sales_percentage ?? (globalMode === 'sales_percentage' ? globalRate : 0)) || 0
+            ));
             if (compensationType === 'sales_percentage') {
-              const percentage = Math.max(0, Math.min(100, Number(seller?.sales_percentage) || 0));
               commissions += lineTotal * percentage / 100;
             } else {
               commissions += (Number(product.commission_fixed) || 0) * quantity;
