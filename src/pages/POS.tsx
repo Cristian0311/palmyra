@@ -534,44 +534,36 @@ export default function POS() {
   const handleCancelShift = async () => {
     if (!currentSession || isCancellingShift) return;
 
+    // La autorización pertenece SIEMPRE al empleado que abrió el turno.
     const worker = users.find(u =>
       u.id === currentSession.userId ||
       (u.name && currentSession.workerName && u.name.toLowerCase() === currentSession.workerName.toLowerCase())
     );
+    const targetUser = worker;
+    if (!targetUser?.id) {
+      setPosError("No se pudo identificar al empleado que abrió este turno.");
+      setTimeout(() => setPosError(""), 3000);
+      return;
+    }
 
     let authorized = false;
-    const targetUser = currentUser?.role === 'admin' ? currentUser : worker;
-    if (targetUser?.isActive !== false && targetUser?.id) {
-      try {
-        const { companyId } = await getActiveTenant();
-        if (!navigator.onLine) {
+    try {
+      const { companyId } = await getActiveTenant();
+      if (!navigator.onLine) {
+        authorized = await verifyOfflinePosCredential(companyId, targetUser.id, cancelShiftPassword);
+      } else {
+        try {
+          authorized = await verifyEmployeePosAccessPassword(companyId, targetUser.id, cancelShiftPassword);
+        } catch {
           authorized = await verifyOfflinePosCredential(companyId, targetUser.id, cancelShiftPassword);
-        } else if (currentUser?.role === 'admin' && targetUser.id === currentUser.id) {
-          try {
-            authorized = await verifySaaSPosAccessPassword(companyId, targetUser.id, cancelShiftPassword);
-          } catch {
-            authorized = await verifyOfflinePosCredential(companyId, targetUser.id, cancelShiftPassword);
-          }
-          if (authorized) await rememberOfflinePosCredential(companyId, targetUser.id, cancelShiftPassword).catch(() => {});
-        } else {
-          try {
-            authorized = await verifyEmployeePosAccessPassword(companyId, targetUser.id, cancelShiftPassword);
-          } catch {
-            authorized = await verifyOfflinePosCredential(companyId, targetUser.id, cancelShiftPassword);
-          }
-          if (authorized) await rememberOfflinePosCredential(companyId, targetUser.id, cancelShiftPassword).catch(() => {});
         }
-      } catch {
-        authorized = false;
       }
+    } catch {
+      authorized = false;
     }
 
     if (!authorized) {
-      setPosError(
-        currentUser?.role === 'admin'
-          ? "Contraseña de administrador incorrecta."
-          : `Debes ingresar la contraseña del trabajador del turno (${worker?.name || 'trabajador'}).`
-      );
+      setPosError(`Debes ingresar la contraseña del trabajador que inició el turno (${worker?.name || 'trabajador'}).`);
       setTimeout(() => setPosError(""), 3000);
       return;
     }
@@ -580,7 +572,7 @@ export default function POS() {
     setPosError("");
     try {
       const sessionId = currentSession.id;
-      const ok = await useStore.getState().cancelSession(sessionId);
+      const ok = await useStore.getState().cancelSession(sessionId, 'Cancelación de turno', cancelShiftPassword);
       if (!ok) {
         setPosError("No se pudo cancelar el turno. La operación no fue confirmada; el turno sigue abierto.");
         return;
