@@ -17,8 +17,8 @@ assert.match(pos, /processTransaction/);
 for (const operation of ['void_transaction','return_complete','transfer','supplier_receive','audit_complete']) {
   assert.match(offline, new RegExp("['\\\"]" + operation + "['\\\"]"));
 }
-assert.match(server, /app\\.use\\('\/api\/ai-'/);
-assert.match(server, /rateLimitExchange/);
+assert.ok(server.includes("app.use('/api/ai-"), 'AI auth middleware missing');
+assert.ok(server.includes('rateLimitExchange'), 'Exchange rate limit missing');
 assert.doesNotMatch(server, /MARÉ|OmniSync POS|Mi Tienda POS/i);
 assert.doesNotMatch(reports, /MARÉ|OmniSync POS|Mi Tienda POS/i);
 for (const required of ['process_pos_transaction_v2','void_pos_transaction_v2','complete_return_v2','process_inventory_transfer_v2','receive_supplier_order_v2','complete_inventory_audit_v2']) {
