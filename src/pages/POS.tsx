@@ -660,7 +660,7 @@ export default function POS() {
   const turnProductSalaryRows = React.useMemo(() => {
     if (!currentSession) return [];
     const rows = new Map<string, any>();
-    activeTransactions.filter(tx => tx.branchId === currentBranchId && tx.status === 'completed' && !tx.deletedAt && new Date(tx.date) >= new Date(currentSession.openedAt) && (!tx.sessionId || tx.sessionId === currentSession.id)).forEach(tx => {
+    activeTransactions.filter(tx => tx.branchId === currentBranchId && tx.status === 'completed' && !tx.deletedAt && !String(tx.notes || '').startsWith('AJUSTE_') && new Date(tx.date) >= new Date(currentSession.openedAt) && (!tx.sessionId || tx.sessionId === currentSession.id)).forEach(tx => {
       const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
       const splitFactor = Math.max(1, sellers.length);
       const saleTotal = Math.max(0, Number(tx.total) || 0);
