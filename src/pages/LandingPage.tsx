@@ -8,8 +8,8 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
-const CITY_IMAGE = "/landing/palmyra-city.svg";
-const CITY_CREDIT = "Palmyra histórica · Erik Hermans / Institute for the Study of the Ancient World · CC BY 2.0";
+const CITY_IMAGE = "https://upload.wikimedia.org/wikipedia/commons/8/83/Palmyra_-_Decumanus_Maximus.jpg";
+const CITY_CREDIT = "Palmyra histórica · Erik Hermans / Institute for the Study of the Ancient World · Wikimedia Commons · CC BY 2.0";
 const CaravanIcon = Caravan;
 const CitadelIcon = Castle;
 
@@ -376,7 +376,7 @@ export default function LandingPage() {
                     <div className="absolute bottom-0 left-[65%] w-[4%] h-[62%] bg-white/25 rounded-t-sm"/>
                     <div className="absolute bottom-0 left-[74%] w-[6%] h-[51%] bg-white/20 rounded-t-sm"/>
                   </div>
-              <img src={CITY_IMAGE} alt="Ruinas de la antigua ciudad de Palmyra, Siria" className="absolute inset-0 w-full h-full object-cover" loading="eager" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+              <img src={CITY_IMAGE} alt="Ruinas de la antigua ciudad de Palmyra, Siria" className="absolute inset-0 w-full h-full object-cover" loading="eager" referrerPolicy="no-referrer" />
               <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-black/70 to-transparent text-white"><p className="text-[8px] font-bold opacity-80">{CITY_CREDIT}</p></div>
             </div>
             <div>
