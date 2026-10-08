@@ -33,32 +33,44 @@ export function useTurnProductSalaryRows(session: CashRegisterSession | null, tr
           : [tx.userId];
         const splitFactor = Math.max(1, sellers.length);
 
-        tx.items.forEach(item => {
-          const rawItem = item as any;
-          const rawProduct = rawItem.product ?? rawItem.productId ?? rawItem.id;
-          const product = typeof rawProduct === 'string'
-            ? productCatalog.find(p => p.id === rawProduct)
-            : rawProduct;
+        sellers.forEach((sellerId: string) => {
+          const employee = users.find(u => u.id === sellerId);
+          const employeeName = employee?.name || tx.cashierName || sellerId || 'Empleado';
+          const percentageRate = Math.max(
+            0,
+            Math.min(100, Number(employee?.salesPercentage ?? employee?.commissionRate) || 0)
+          );
 
-          const productId = product?.id || (typeof rawProduct === 'string' ? rawProduct : 'unknown');
-          const name = product?.name || (typeof rawProduct === 'string' ? rawProduct : 'Producto vendido');
-          const quantity = Number(rawItem.quantity || 0);
-          if (!productId || quantity <= 0) return;
+          tx.items.forEach(item => {
+            const rawItem = item as any;
+            const rawProduct = rawItem.product ?? rawItem.productId ?? rawItem.id;
+            const product = typeof rawProduct === 'string'
+              ? productCatalog.find(p => p.id === rawProduct)
+              : rawProduct;
 
-          const commissionValue = Number(
-            product?.commissionValue ??
-            rawItem.product_snapshot?.commissionValue ??
-            rawItem.commissionValue ??
-            0
-          ) || 0;
-          const salaryPerUnitForSeller = employee?.compensationType === 'sales_percentage'
-            ? ((Number(rawItem.price ?? rawItem.unit_price ?? product?.price) || 0) *
-              Math.max(0, Math.min(100, Number(employee.salesPercentage) || 0)) / 100) / splitFactor
-            : commissionValue / splitFactor;
+            const productId = product?.id || (typeof rawProduct === 'string' ? rawProduct : 'unknown');
+            const name = product?.name || (typeof rawProduct === 'string' ? rawProduct : 'Producto vendido');
+            const quantity = Number(rawItem.quantity || 0);
+            if (!productId || quantity <= 0) return;
 
-          sellers.forEach((sellerId: string) => {
-            const employee = users.find(u => u.id === sellerId);
-            const employeeName = employee?.name || tx.cashierName || sellerId || 'Empleado';
+            const commissionValue = Number(
+              product?.commissionValue ??
+              rawItem.product_snapshot?.commissionValue ??
+              rawItem.commissionValue ??
+              0
+            ) || 0;
+
+            const unitPrice = Number(
+              rawItem.price ??
+              rawItem.unit_price ??
+              product?.price ??
+              0
+            ) || 0;
+
+            const salaryPerUnitForSeller = employee?.compensationType === 'sales_percentage'
+              ? (unitPrice * percentageRate / 100) / splitFactor
+              : commissionValue / splitFactor;
+
             const key = `${sellerId}-${productId}`;
             const current = rows.get(key);
 
