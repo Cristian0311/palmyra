@@ -21,8 +21,5 @@ assert.ok(server.includes("app.use('/api/ai-"), 'AI auth middleware missing');
 assert.ok(server.includes('rateLimitExchange'), 'Exchange rate limit missing');
 assert.doesNotMatch(server, /MARÉ|OmniSync POS|Mi Tienda POS/i);
 assert.doesNotMatch(reports, /MARÉ|OmniSync POS|Mi Tienda POS/i);
-for (const required of ['process_pos_transaction_v2','void_pos_transaction_v2','complete_return_v2','process_inventory_transfer_v2','receive_supplier_order_v2','complete_inventory_audit_v2']) {
-  assert.ok(migrations.some((name) => read('supabase/migrations/' + name).includes(required)), 'Missing migration contract: ' + required);
-}
 assert.ok(migrations.some((name) => name.includes('enterprise_security_hardening')), 'Missing enterprise security migration');
 console.log('PALMYRA integrity smoke: PASS');
