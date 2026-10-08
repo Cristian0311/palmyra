@@ -69,6 +69,14 @@ async function loadCatalog() {
   });
 
   const ctx = await loadSaaSContext();
+  const { data: compensationSettings } = await supabase
+    .from('compensation_settings')
+    .select('mode,percent_rate,active')
+    .eq('company_id', tenant.companyId)
+    .maybeSingle();
+  const globalCompensationMode = compensationSettings?.mode === 'sales_percent' ? 'sales_percentage' : 'fixed_product';
+  const globalSalesPercentage = Math.max(0, Math.min(100, Number(compensationSettings?.percent_rate) || 0));
+
   const users: User[] = [
     ...(ctx?.user && ctx.roleKey === 'admin' ? [{
       ...ctx.user,
@@ -76,6 +84,8 @@ async function loadCatalog() {
       email: ctx.user.email || '',
       role: 'admin' as const,
       baseSalary: 0,
+      commissionRate: globalSalesPercentage,
+      compensationType: globalCompensationMode,
       permissions: ['pos_access','reports_access','inventory_access','admin_access','cash_audit'],
       isActive: true,
     }] : []),
