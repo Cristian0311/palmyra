@@ -21,10 +21,12 @@ export type ClosureReceiptDependencies = {
   baseCurrency: Currency;
   formatMoney: (amount: number, symbol: string) => string;
   formatSalaryCUP: (value: number) => string;
+  companyCompensation?: { mode: 'fixed_product' | 'sales_percent'; percentRate: number };
 };
 
 export function getClosureReceiptLines(session: CashRegisterSession, deps: ClosureReceiptDependencies): string[] {
   const { receiptConfig, transactions, products, currencies, branches, users, currentUser, salarySettlements, baseCurrency, formatMoney, formatSalaryCUP } = deps;
+  const companyCompensation = deps.companyCompensation || { mode: 'fixed_product' as const, percentRate: 0 };
   const sessionTx = transactions.filter(t => t.sessionId === session.id && !t.deletedAt);
   const soldMap: { [name: string]: { name: string; qty: number; total: number } } = {};
 
@@ -52,13 +54,26 @@ export function getClosureReceiptLines(session: CashRegisterSession, deps: Closu
     || users.find(u => u.role === 'employee')
     || currentUser;
 
-  const commissions = employee?.compensationType === 'sales_percentage'
-    ? totalSales * Math.max(0, Math.min(100, Number(employee.salesPercentage || 0))) / 100
-    : sessionTx.reduce((sum, tx) => sum + tx.items.reduce((s, item) => {
-        const prodId = typeof item.product === 'string' ? item.product : item.product.id;
-        const prod = products.find(p => p.id === prodId);
-        return s + ((prod?.commissionValue || 0) * item.quantity);
-      }, 0), 0);
+  const commissions = companyCompensation.mode === 'sales_percent'
+    ? sessionTx.reduce((sum, tx) => {
+        const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
+        const splitFactor = Math.max(1, sellers.length);
+        const sessionSellers = sellers.filter(sellerId => sellerId === session.userId || (session.workingEmployeeIds || []).includes(sellerId));
+        return sessionSellers.length > 0
+          ? sum + (Math.max(0, Number(tx.total) || 0) * Math.max(0, Math.min(100, Number(companyCompensation.percentRate) || 0)) / 100) * (sessionSellers.length / splitFactor)
+          : sum;
+      }, 0)
+    : sessionTx.reduce((sum, tx) => {
+        const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
+        const splitFactor = Math.max(1, sellers.length);
+        const sessionSellers = sellers.filter(sellerId => sellerId === session.userId || (session.workingEmployeeIds || []).includes(sellerId));
+        if (!sessionSellers.length) return sum;
+        return sum + (tx.items || []).reduce((itemSum, item) => {
+          const prodId = typeof item.product === 'string' ? item.product : item.product?.id;
+          const prod = products.find(p => p.id === prodId);
+          return itemSum + (Math.max(0, Number(prod?.commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) * (sessionSellers.length / splitFactor);
+        }, 0);
+      }, 0);
 
   // Keep the existing dormant independent-settlement calculation for compatibility.
   const totalShopCost = sessionTx.reduce((sum, tx) => sum + tx.items.reduce((s, item) => {
@@ -69,7 +84,7 @@ export function getClosureReceiptLines(session: CashRegisterSession, deps: Closu
   }, 0), 0);
 
   const settlement = salarySettlements.find(s => s.sessionId === session.id);
-  const baseSalary = settlement?.baseSalary ?? (employee?.compensationType === 'sales_percentage' ? 0 : (employee?.baseSalary || 0));
+  const baseSalary = settlement?.baseSalary ?? (companyCompensation.mode === 'sales_percent' ? 0 : Math.max(0, Number(employee?.baseSalary) || 0));
   const settledCommissions = settlement?.commissions ?? commissions;
   const totalSalary = settlement?.total ?? (baseSalary + settledCommissions);
   const lines: string[] = [];
