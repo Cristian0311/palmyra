@@ -816,7 +816,8 @@ export default function POS() {
         sessionWorkerName || currentSession.workerName,
         finalClosingDate,
         discrepancyDeduction,
-        { ...(sessionMeta || {}), expectedBalance: expectedCashBase }
+        { ...(sessionMeta || {}), expectedBalance: expectedCashBase },
+        companyCompensation
       );
 
       if (!confirmed) {
