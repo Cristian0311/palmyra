@@ -2670,10 +2670,10 @@ export default function POS() {
                             </div>
                             <div className="min-w-0">
                               <span className="text-[11px] sm:text-xs font-black text-amber-900 block truncate">
-                                \$\{cashUsdSum.toFixed(2)} USD
+                                ${cashUsdSum.toFixed(2)} USD
                               </span>
                               <span className="text-[7px] sm:text-[8px] font-bold text-amber-600 block truncate">
-                                \${formatMoney(cashUsdSum * (currencies.find(c => c.code === 'USD')?.rateToBase || 1), baseCurrency.symbol)} eq.
+                                {formatMoney(cashUsdSum * (currencies.find(c => c.code === 'USD')?.rateToBase || 1), baseCurrency.symbol)} CUP eq.
                               </span>
                             </div>
                           </div>
@@ -2695,10 +2695,10 @@ export default function POS() {
                             </div>
                             <div className="min-w-0">
                               <span className="text-[11px] sm:text-xs font-black text-indigo-900 block truncate">
-                                \${formatMoney(totalSalesAmount, baseCurrency.symbol)}
+                                {formatMoney(totalSalesAmount, baseCurrency.symbol)} CUP
                               </span>
                               <span className="text-[7px] sm:text-[8px] font-bold text-indigo-600 block truncate">
-                                \${sessionTx.length} \${sessionTx.length === 1 ? 'ticket' : 'tickets'}
+                                {sessionTx.length} {sessionTx.length === 1 ? 'ticket' : 'tickets'}
                               </span>
                             </div>
                           </div>
@@ -2710,10 +2710,10 @@ export default function POS() {
                             </div>
                             <div className="min-w-0">
                               <span className="text-[11px] sm:text-xs font-black text-rose-900 block truncate">
-                                -\${formatMoney(movementTotals.expenseBase, baseCurrency.symbol)}
+                                {formatMoney(movementTotals.expenseBase, baseCurrency.symbol)} CUP
                               </span>
                               <span className="text-[6.5px] sm:text-[7px] font-bold text-rose-600 block truncate">
-                                \${movementTotals.expenseBase > 0 ? 'Ya descontado del efectivo' : 'Sin egresos registrados'}
+                                {movementTotals.expenseBase > 0 ? 'Ya descontado del efectivo' : 'Sin egresos registrados'}
                               </span>
                             </div>
                           </div>
@@ -2725,10 +2725,10 @@ export default function POS() {
                             </div>
                             <div className="min-w-0">
                               <span className="text-[11px] sm:text-xs font-black text-violet-900 block truncate">
-                                +\${formatMoney(movementTotals.incomeBase, baseCurrency.symbol)}
+                                {formatMoney(movementTotals.incomeBase, baseCurrency.symbol)} CUP
                               </span>
                               <span className="text-[6.5px] sm:text-[7px] font-bold text-violet-600 block truncate">
-                                \${movementTotals.incomeBase > 0 ? 'Ya agregado al efectivo' : 'Sin ingresos registrados'}
+                                {movementTotals.incomeBase > 0 ? 'Ya agregado al efectivo' : 'Sin ingresos registrados'}
                               </span>
                             </div>
                           </div>
