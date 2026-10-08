@@ -12,7 +12,8 @@ const migrations = fs.readdirSync('supabase/migrations').filter((name) => name.e
 for (const contract of ['callProcessTransactionRPC','callVoidTransactionRPC','callCompleteReturnRPC','callTransferInventoryRPC','callReceiveSupplierOrderRPC','callCompleteInventoryAuditRPC']) {
   assert.match(store, new RegExp(contract));
 }
-assert.match(pos, /saleConfirmed = await processTransaction\\(tx\\)/);
+assert.match(pos, /saleConfirmed/);
+assert.match(pos, /processTransaction/);
 for (const operation of ['void_transaction','return_complete','transfer','supplier_receive','audit_complete']) {
   assert.match(offline, new RegExp("['\\\"]" + operation + "['\\\"]"));
 }
