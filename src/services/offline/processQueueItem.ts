@@ -185,6 +185,12 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         // descuadres/liquidaciones incluso después de reiniciar el dispositivo.
         const metadataOk = await pushCashSessionMetadataToSupabase(session);
         if (!metadataOk) throw new Error('El cierre fue confirmado, pero el metadata del turno aún no pudo sincronizarse.');
+
+        // La liquidación salarial debe persistirse en la misma sincronización
+        // del cierre. Esto hace que una comisión porcentual no quede solo en
+        // memoria/localStorage.
+        const salaryOk = await pushSalarySettlementToSupabase(recalculatedSettlement);
+        if (!salaryOk) throw new Error('El cierre fue confirmado, pero la liquidación salarial aún no pudo sincronizarse.');
         return true;
       }
       if (session.__operation === 'cancel') {
