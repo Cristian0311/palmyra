@@ -25,6 +25,6 @@ test("administrator-only cash sessions do not require an employee payroll record
     "both ordinary and report-based cash closure must apply the employee gate"
   );
   assert.match(queueProcessor, /case 'salary_settlement':[\s\S]*hasPayrollEmployeeForSettlement/);
-  assert.match(queueProcessor, /admin-owned[\s\S]*salarySettlements/);
+  assert.match(queueProcessor, /company admin[\s\S]*salarySettlements/);
   assert.match(offlineSync, /employee_not_found[\s\S]*cash-close:/);
 });
