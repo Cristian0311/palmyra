@@ -9,7 +9,7 @@ import {
   pushSupplierToSupabase, deleteSupplierFromSupabase, pushSupplierOrderToSupabase, pushCustomerToSupabase,
   applyInventoryAdjustmentToSupabase, reconcileInventoryToSupabase,
   pushReceiptConfigToSupabase, pushStoreConfigToSupabase, deleteTransactionFromSupabase, deleteCustomerFromSupabase, callReserveNCFRangeRPC, callTransferInventoryBulkRPC,
-  deleteBankTransactionFromSupabase, clearSelectedDataFromSupabase, callOpenSessionRPCWithId, callProcessTransactionRPC, callVoidTransactionRPC, callCompleteReturnRPC, callTransferInventoryRPC, callReceiveSupplierOrderRPC, callStartInventoryAuditRPC, callSaveInventoryAuditCountRPC, callRequestInventoryAuditRecountRPC, callApproveInventoryAuditRPC, callCompleteInventoryAuditRPC, callCloseSessionRPC, pushCashSessionMetadataToSupabase, pushSalarySettlementToSupabase, callCancelSessionRPC, callDeleteBankInternalTransferRPC, callDeleteBankTransactionRPC, callDeleteBankCardRPC, callProcessBankTransactionRPC
+  deleteBankTransactionFromSupabase, clearSelectedDataFromSupabase, callOpenSessionRPCWithId, callProcessTransactionRPC, callVoidTransactionRPC, callCompleteReturnRPC, callTransferInventoryRPC, callReceiveSupplierOrderRPC, callStartInventoryAuditRPC, callSaveInventoryAuditCountRPC, callRequestInventoryAuditRecountRPC, callApproveInventoryAuditRPC, callCompleteInventoryAuditRPC, callCloseSessionRPC, pushCashSessionMetadataToSupabase, pushSalarySettlementToSupabase, hasPayrollEmployeeForSettlement, callCancelSessionRPC, callDeleteBankInternalTransferRPC, callDeleteBankTransactionRPC, callDeleteBankCardRPC, callProcessBankTransactionRPC
 } from '../../services/supabaseSync';
 import { getSupabaseCredentials } from '../../lib/supabase';
 import { getActiveTenant } from '../../services/tenant';
@@ -260,11 +260,20 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
         }
         const metadataOk = await pushCashSessionMetadataToSupabase(updatedSession);
         if (!metadataOk) throw new Error('El cierre fue confirmado, pero los datos del turno aún no pudieron sincronizarse.');
-        const salaryOk = await pushSalarySettlementToSupabase(settlement);
-        if (!salaryOk) throw new Error('El cierre fue confirmado, pero la liquidación salarial aún no pudo sincronizarse.');
+        const shouldPersistSalary = await hasPayrollEmployeeForSettlement(settlement);
+        if (shouldPersistSalary) {
+          const salaryOk = await pushSalarySettlementToSupabase(settlement, { employeeEligibilityChecked: true });
+          if (!salaryOk) throw new Error('El cierre fue confirmado, pero la liquidación salarial aún no pudo sincronizarse.');
+        } else {
+          // Remove any stale payroll operation left by a previous failed sync.
+          removeFromOfflineQueueByAction('salary_settlement', settlement.id);
+        }
         set((state) => ({
           cashSessions: (state.cashSessions || []).map(s => s.id === sessionId ? updatedSession : s),
-          salarySettlements: [...(state.salarySettlements || []).filter(st => st.sessionId !== sessionId), { ...settlement, id: res.data?.settlement_id || settlement.id }],
+          salarySettlements: [
+            ...(state.salarySettlements || []).filter(st => st.sessionId !== sessionId),
+            ...(shouldPersistSalary ? [{ ...settlement, id: res.data?.settlement_id || settlement.id }] : [])
+          ],
           cart: []
         }));
         removeFromOfflineQueueByAction('cash_session', actionId);
@@ -671,11 +680,19 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
         }
         const metadataOk = await pushCashSessionMetadataToSupabase(updatedSession);
         if (!metadataOk) throw new Error('El cierre fue confirmado, pero los datos del turno aún no pudieron sincronizarse.');
-        const salaryOk = await pushSalarySettlementToSupabase(settlement);
-        if (!salaryOk) throw new Error('El cierre fue confirmado, pero la liquidación salarial aún no pudo sincronizarse.');
+        const shouldPersistSalary = await hasPayrollEmployeeForSettlement(settlement);
+        if (shouldPersistSalary) {
+          const salaryOk = await pushSalarySettlementToSupabase(settlement, { employeeEligibilityChecked: true });
+          if (!salaryOk) throw new Error('El cierre fue confirmado, pero la liquidación salarial aún no pudo sincronizarse.');
+        } else {
+          removeFromOfflineQueueByAction('salary_settlement', settlement.id);
+        }
         set(state => ({
           cashSessions: state.cashSessions.map(s => s.id === sessionId ? updatedSession : s),
-          salarySettlements: [...(state.salarySettlements || []).filter(st => st.sessionId !== sessionId), { ...settlement, id: res.data?.settlement_id || settlement.id }]
+          salarySettlements: [
+            ...(state.salarySettlements || []).filter(st => st.sessionId !== sessionId),
+            ...(shouldPersistSalary ? [{ ...settlement, id: res.data?.settlement_id || settlement.id }] : [])
+          ]
         }));
         removeFromOfflineQueueByAction('cash_session', 'cash-close:' + sessionId);
         return { success: true };

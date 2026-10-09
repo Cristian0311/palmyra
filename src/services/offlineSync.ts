@@ -4,7 +4,7 @@
  * The durable queue itself lives in offlineQueue.ts so the application store can
  * enqueue operations without importing the replay engine or Supabase adapters.
  */
-import { getSupabase, waitForSupabaseReachability } from '../lib/supabase';
+import { getSupabase, checkSupabaseReachability, waitForSupabaseReachability } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import type { OfflineActionType, OfflineQueueItem } from './offlineQueue';
 import type { Transaction, CashRegisterSession, Customer, ReturnItem, InventoryLevel } from '../types';
@@ -69,9 +69,16 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
   // estado pending para que el replay normal la procese con las nuevas reglas.
   const hydratedQueue = getOfflineQueue();
   const repairedQueue = hydratedQueue.map((item: any) => {
-    if (item?.status !== 'conflict') return item;
     const message = String(item?.lastError || '');
+    const adminPayrollFailure =
+      /employee_not_found/i.test(message) &&
+      (item?.type === 'salary_settlement' ||
+        (item?.type === 'cash_session' && String(item?.actionId || '').startsWith('cash-close:')));
+    // A previous build marked P0001 as permanent. Re-open only this known,
+    // now-recoverable admin-only payroll case, including legacy "failed" items.
+    if (item?.status !== 'conflict' && !(adminPayrollFailure && item?.status === 'failed')) return item;
     const repairable =
+      adminPayrollFailure ||
       /permission denied for function plan_entity_limit_ok/i.test(message) ||
       /permission denied for table compensation_settings/i.test(message) ||
       /no unique or exclusion constraint matching the ON CONFLICT specification/i.test(message) ||
@@ -429,7 +436,7 @@ export function initOfflineSyncWatcher(): () => void {
       const res = await processOfflineQueue();
       if (res.remaining > 0 || res.conflicts > 0) {
         const pendingDetails = getOfflineQueue()
-          .filter(item => item.status !== 'synced' && item.status !== 'conflict')
+          .filter(item => item.status !== 'conflict')
           .map(item => `${item.type} · ${item.actionId}: ${item.lastError || 'Pendiente por dependencia de otra operación.'}`);
         const details = [
           ...(res.errors || []).map(e => `${e.type} · ${e.actionId}: ${e.message}`),

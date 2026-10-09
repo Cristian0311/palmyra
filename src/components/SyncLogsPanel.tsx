@@ -136,7 +136,7 @@ export function SyncLogsPanel() {
 
       const localQueue = getOfflineQueue();
       const queueDetails = localQueue
-        .filter(item => item.status !== 'synced' && item.status !== 'conflict')
+        .filter(item => item.status !== 'conflict')
         .map(item => {
           const detail = item.lastError || 'La operación permanece pendiente por una dependencia de otra operación que no se pudo confirmar.';
           return `${item.type} · ${item.actionId}: ${detail}`;
