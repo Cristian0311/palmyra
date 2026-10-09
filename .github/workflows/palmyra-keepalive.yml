@@ -1,0 +1,26 @@
+name: PALMYRA availability check
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Request PALMYRA service
+        env:
+          PALMYRA_URL: https://palmyracrm.onrender.com/
+        run: |
+          set -eu
+          code="$(curl --silent --show-error --location --output /dev/null --write-out '%{http_code}' --max-time 30 "$PALMYRA_URL")"
+          echo "PALMYRA HTTP status: $code"
+          case "$code" in
+            2*|3*) exit 0 ;;
+            *) exit 1 ;;
+          esac
