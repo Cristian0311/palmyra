@@ -238,7 +238,8 @@ export default function ExchangeRate() {
               <span className="rounded-lg bg-subtle p-2 text-violet-700"><ArrowDownUp className="h-4 w-4" /></span>
             </div>
             <p className="mt-5 break-words text-2xl font-black tracking-tight text-primary sm:text-3xl">{money(value)} <span className="text-xs font-semibold text-muted">CUP</span></p>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><Delta value={delta} /><span className="text-[10px] text-muted">{rate.buy !== undefined || rate.sell !== undefined ? "Compra y venta disponibles" : "Tasa de referencia"}</span></div>
+            <div className="mt-2"><Sparkline values={history.filter((snapshot) => snapshot.rates[rate.code] !== undefined).slice(-18).map((snapshot) => snapshot.rates[rate.code])} positive={previous === undefined || value === undefined ? true : value >= previous} /></div>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2"><AbsoluteDelta current={value} previous={previous} /><span className="text-[10px] text-muted">{rate.buy !== undefined || rate.sell !== undefined ? "Compra y venta disponibles" : "Tasa de referencia"}</span></div>
           </button>;
         })}
       </section>}
