@@ -101,16 +101,24 @@ export const useStore = create<AppState>()(
   ...createAuthActions(set, get),
   currencies: INITIAL_CURRENCIES,
   
-  updateCurrencyRate: (code, newRate) => {
-    set((state) => ({
-      currencies: (state.currencies || INITIAL_CURRENCIES)
-        .filter(c => ['CUP', 'USD', 'EUR'].includes(c.code))
-        .map(c => c.code === code ? { ...c, rateToBase: newRate } : c)
-    }));
-    const updated = get().currencies.find(c => c.code === code);
-    if (updated) {
-      pushCurrencyToSupabase(updated);
+  updateCurrencyRate: async (code, newRate) => {
+    if (!['CUP', 'USD', 'EUR'].includes(code) || !Number.isFinite(newRate) || newRate <= 0) {
+      return false;
     }
+
+    const currencies = (get().currencies || INITIAL_CURRENCIES)
+      .filter(c => ['CUP', 'USD', 'EUR'].includes(c.code));
+    const current = currencies.find(c => c.code === code);
+    if (!current) return false;
+
+    const updatedCurrency = { ...current, rateToBase: newRate };
+    // Actualizar inmediatamente el estado local conserva el trabajo offline.
+    set({
+      currencies: currencies.map(c => c.code === code ? updatedCurrency : c)
+    });
+
+    // No informar éxito remoto hasta recibir confirmación de Supabase.
+    return await pushCurrencyToSupabase(updatedCurrency);
   },
 
   getBaseCurrency: () => {
