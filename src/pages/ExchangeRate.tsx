@@ -326,7 +326,7 @@ export default function ExchangeRate() {
                   <span className={"flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[10px] font-black " + (isCryptoCode(rate.code) ? "bg-indigo-100 text-indigo-800" : "bg-violet-100 text-violet-800")}>{rate.code.length > 5 ? rate.code.slice(0, 4) : rate.code}</span>
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-extrabold text-primary">{rate.name}</span>
-                    <span className="mt-0.5 block truncate text-[11px] text-muted">{rate.country}{rate.sourceCode === "ECU" ? " · código de origen elTOQUE: ECU" : ""}</span>
+                    <span className="mt-0.5 block min-w-0 break-words text-[11px] leading-tight text-muted">{rate.country}{rate.sourceCode === "ECU" ? " · código de origen elTOQUE: ECU" : ""}</span>
                   </span>
                 </div>
                 <div className="min-w-0">
