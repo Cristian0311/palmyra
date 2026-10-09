@@ -143,9 +143,9 @@ function getRates(data: any): Rate[] {
 type OfferStats = { buy: number | null; sell: number | null; total: number | null; available: boolean };
 
 function getOfferStats(data: unknown): OfferStats {
-  const buyKeys = new Set(["buy", "compra", "bids", "buy_offers", "buyoffers", "offers_buy", "offersbuy", "ofertas_compra", "ofertascompra", "compras"]);
-  const sellKeys = new Set(["sell", "venta", "asks", "sell_offers", "selloffers", "offers_sell", "offerssell", "ofertas_venta", "ofertasventa", "ventas"]);
-  const allKeys = new Set(["offers", "ofertas", "listings", "anuncios", "market_offers", "marketoffers"]);
+  const buyKeys = new Set(["buy", "compra", "bids", "buyoffers", "offersbuy", "ofertascompra", "compras"]);
+  const sellKeys = new Set(["sell", "venta", "asks", "selloffers", "offerssell", "ofertasventa", "ventas"]);
+  const allKeys = new Set(["offers", "ofertas", "listings", "anuncios", "marketoffers"]);
   const normalize = (key: string) => key.toLowerCase().replace(/[-_\s]/g, "");
   let buy: number | null = null;
   let sell: number | null = null;
