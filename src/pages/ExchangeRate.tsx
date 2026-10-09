@@ -1,13 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Activity, AlertCircle, ArrowDownRight, ArrowDownUp, ArrowUpRight, BarChart3,
-  CheckCircle2, Clock3, RefreshCw, ShieldCheck, TrendingDown, TrendingUp
+  Activity, AlertCircle, ArrowDownRight, ArrowUpRight, BarChart3,
+  CheckCircle2, RefreshCw, ShieldCheck, TrendingDown, TrendingUp
 } from "lucide-react";
 import {
   CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis
 } from "recharts";
 
-type Rate = { code: string; name: string; value?: number; buy?: number; sell?: number };
+type Rate = {
+  code: string;
+  sourceCode: string;
+  name: string;
+  country: string;
+  value?: number;
+  buy?: number;
+  sell?: number;
+};
 type Payload = { source?: string; capturedAt?: string; data?: any; error?: string; configured?: boolean };
 type Snapshot = { capturedAt: string; rates: Record<string, number> };
 type Period = "24h" | "7d" | "30d" | "all";
@@ -17,34 +25,120 @@ const HISTORY_KEY = "palmyra.exchange-rate-history.v1";
 const HISTORY_LIMIT = 2500;
 const REFRESH_MS = 5 * 60 * 1000;
 
+const ASSET_META: Record<string, { name: string; country: string }> = {
+  USD: { name: "Dólar estadounidense", country: "Estados Unidos · uso oficial también en Ecuador" },
+  EUR: { name: "Euro", country: "Zona euro" },
+  ECU: { name: "Euro", country: "Zona euro" },
+  MLC: { name: "Moneda libremente convertible", country: "Cuba · saldo en USD" },
+  CAD: { name: "Dólar canadiense", country: "Canadá" },
+  MXN: { name: "Peso mexicano", country: "México" },
+  GBP: { name: "Libra esterlina", country: "Reino Unido" },
+  CHF: { name: "Franco suizo", country: "Suiza" },
+  RUB: { name: "Rublo ruso", country: "Rusia" },
+  CUP: { name: "Peso cubano", country: "Cuba" },
+  CNY: { name: "Yuan chino", country: "China" },
+  JPY: { name: "Yen japonés", country: "Japón" },
+  BRL: { name: "Real brasileño", country: "Brasil" },
+  COP: { name: "Peso colombiano", country: "Colombia" },
+  DOP: { name: "Peso dominicano", country: "República Dominicana" },
+  AUD: { name: "Dólar australiano", country: "Australia" },
+  NZD: { name: "Dólar neozelandés", country: "Nueva Zelanda" },
+  ZELLE: { name: "Zelle · pagos en USD", country: "Estados Unidos · servicio de pagos" },
+  CLA: { name: "Clásica", country: "Medio de pago publicado en Cuba" },
+  BTC: { name: "Bitcoin", country: "Criptoactivo · red Bitcoin" },
+  ETH: { name: "Ethereum", country: "Criptoactivo · red Ethereum" },
+  BNB: { name: "BNB", country: "Criptoactivo · BNB Chain" },
+  TRX: { name: "TRON", country: "Criptoactivo · red TRON" },
+  USDT: { name: "Tether (USDT)", country: "Stablecoin vinculada al USD" },
+  USDTTRC20: { name: "Tether (USDT · TRC-20)", country: "Stablecoin · red TRON" },
+  USDTTRC: { name: "Tether (USDT · TRC-20)", country: "Stablecoin · red TRON" },
+  USDC: { name: "USD Coin (USDC)", country: "Stablecoin vinculada al USD" },
+  LTC: { name: "Litecoin", country: "Criptoactivo · red Litecoin" },
+  DOGE: { name: "Dogecoin", country: "Criptoactivo · red Dogecoin" },
+  SOL: { name: "Solana", country: "Criptoactivo · red Solana" },
+  XRP: { name: "XRP", country: "Criptoactivo · red XRP Ledger" },
+  TON: { name: "Toncoin", country: "Criptoactivo · red TON" }
+};
+
 function numeric(value: unknown): number | undefined {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value !== "string" || !value.trim()) return undefined;
   const parsed = Number(value.trim().replace(/\s/g, "").replace(",", "."));
   return Number.isFinite(parsed) ? parsed : undefined;
 }
+
+function rateNumber(...values: unknown[]): number | undefined {
+  for (const value of values) {
+    const direct = numeric(value);
+    if (direct !== undefined) return direct;
+    if (value && typeof value === "object") {
+      const nested = value as Record<string, unknown>;
+      const parsed = numeric(nested.value ?? nested.rate ?? nested.valor ?? nested.tasa ?? nested.median ?? nested.mediana);
+      if (parsed !== undefined) return parsed;
+    }
+  }
+  return undefined;
+}
+
+function isCryptoCode(code: string): boolean {
+  const compact = code.toUpperCase().replace(/[-_\s]/g, "");
+  return /^(BTC|ETH|BNB|TRX|USDT|USDC|LTC|DOGE|SOL|XRP|TON|ADA|BCH|DOT|AVAX|SHIB|LINK|XMR|MATIC|POL)/.test(compact);
+}
+
 function getRates(data: any): Rate[] {
   if (!data || typeof data !== "object") return [];
-  const candidates = [data.rates, data.data, data.result, data.tasas, data.exchangeRates, data.cotizaciones];
-  const list = candidates.find(Array.isArray) ?? candidates.find((x) => x && typeof x === "object") ?? data;
+  let list: any = data;
+  const containerKeys = ["tasas", "rates", "data", "result", "exchangeRates", "exchange_rates", "cotizaciones"];
+  for (let depth = 0; depth < 4 && list && typeof list === "object" && !Array.isArray(list); depth += 1) {
+    const looksLikeRate = ["rate", "value", "valor", "tasa", "median", "mediana", "buy", "compra", "sell", "venta"].some((key) => list[key] !== undefined);
+    if (looksLikeRate) break;
+    const nestedKey = containerKeys.find((key) => list[key] !== undefined && list[key] !== null);
+    if (!nestedKey) break;
+    list = list[nestedKey];
+  }
+
   const makeRate = (raw: any, fallbackCode: string, index: number): Rate | null => {
     if (!raw || typeof raw !== "object") {
-      const value = numeric(raw);
-      return value === undefined ? null : { code: fallbackCode, name: fallbackCode, value };
+      const value = rateNumber(raw);
+      if (value === undefined) return null;
+      const sourceCode = (fallbackCode || "RATE-" + (index + 1)).toUpperCase();
+      const code = sourceCode === "ECU" ? "EUR" : sourceCode;
+      const compact = code.replace(/[-_\s]/g, "");
+      const meta = ASSET_META[code] ?? ASSET_META[compact];
+      return {
+        code, sourceCode,
+        name: meta?.name ?? code,
+        country: meta?.country ?? "Referencia del mercado informal cubano",
+        value
+      };
     }
-    const code = String(raw.code ?? raw.currency ?? raw.moneda ?? raw.symbol ?? raw.codigo ?? fallbackCode ?? `RATE-${index + 1}`).toUpperCase();
-    const value = numeric(raw.rate ?? raw.value ?? raw.valor ?? raw.tasa ?? raw.median ?? raw.mediana ?? raw.trm ?? raw.promedio ?? raw.price ?? raw.precio ?? raw.last);
-    const buy = numeric(raw.buy ?? raw.compra ?? raw.bid ?? raw.tasa_compra);
-    const sell = numeric(raw.sell ?? raw.venta ?? raw.ask ?? raw.tasa_venta);
+    const sourceCode = String(raw.code ?? raw.currency ?? raw.moneda ?? raw.symbol ?? raw.codigo ?? (fallbackCode || ("RATE-" + (index + 1)))).toUpperCase().trim();
+    const code = sourceCode === "ECU" ? "EUR" : sourceCode;
+    const compact = code.replace(/[-_\s]/g, "");
+    const meta = ASSET_META[code] ?? ASSET_META[compact];
+    const value = rateNumber(raw.rate, raw.value, raw.valor, raw.tasa, raw.tasa_referencia, raw.reference, raw.median, raw.mediana, raw.trm, raw.promedio, raw.price, raw.precio, raw.last, raw.rate_mid, raw.compra_venta);
+    const buy = rateNumber(raw.buy, raw.compra, raw.bid, raw.tasa_compra, raw.median_buy, raw.mediana_compra, raw.compra_mediana, raw.rate_buy);
+    const sell = rateNumber(raw.sell, raw.venta, raw.ask, raw.tasa_venta, raw.median_sell, raw.mediana_venta, raw.venta_mediana, raw.rate_sell);
     if (value === undefined && buy === undefined && sell === undefined) return null;
-    const names: Record<string, string> = { USD: "Dólar estadounidense", EUR: "Euro", MLC: "Moneda libremente convertible", CAD: "Dólar canadiense", MXN: "Peso mexicano" };
-    return { code, name: String(raw.name ?? raw.nombre ?? raw.description ?? names[code] ?? code), value, buy, sell };
+    const apiName = raw.name ?? raw.nombre ?? raw.description ?? raw.descripcion;
+    const apiCountry = raw.country ?? raw.pais ?? raw.countryName;
+    return {
+      code,
+      sourceCode,
+      name: meta?.name ?? (apiName ? String(apiName) : code),
+      country: meta?.country ?? (apiCountry ? String(apiCountry) : "Referencia del mercado informal cubano"),
+      value, buy, sell
+    };
   };
-  if (Array.isArray(list)) return list.map((r, i) => makeRate(r, "", i)).filter((r): r is Rate => Boolean(r));
-  return Object.entries(list).flatMap(([code, raw], i) => {
-    const rate = makeRate(raw, code, i);
-    return rate ? [rate] : [];
-  });
+
+  if (Array.isArray(list)) return list.map((item, index) => makeRate(item, "", index)).filter((item): item is Rate => Boolean(item));
+  if (list && typeof list === "object") {
+    return Object.entries(list).flatMap(([code, raw], index) => {
+      const rate = makeRate(raw, code, index);
+      return rate ? [rate] : [];
+    });
+  }
+  return [];
 }
 function money(value: unknown) {
   const n = numeric(value);
@@ -78,13 +172,13 @@ function AbsoluteDelta({ current, previous }: { current?: number; previous?: num
   return <span className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold ${color}`}><Icon className="h-3.5 w-3.5" />{difference > 0 ? "+" : ""}{money(difference)} CUP{pct === null ? "" : ` (${pct > 0 ? "+" : ""}${pct.toFixed(2)}%)`}</span>;
 }
 function Sparkline({ values, positive }: { values: number[]; positive: boolean }) {
-  if (values.length < 2) return <div className="h-10 flex items-center text-[10px] text-muted">Gráfica en formación</div>;
+  if (values.length < 2) return <span className="text-[10px] text-muted">Sin historial</span>;
   const min = Math.min(...values);
   const max = Math.max(...values);
   const range = max - min || 1;
-  const points = values.map((value, i) => `${(i / (values.length - 1)) * 100},${36 - ((value - min) / range) * 30}`).join(" ");
+  const points = values.map((value, i) => (i / (values.length - 1)) * 100 + "," + (22 - ((value - min) / range) * 17)).join(" ");
   const color = positive ? "#16A34A" : "#E11D48";
-  return <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="h-10 w-full" aria-label="Gráfica de evolución reciente"><polyline points={points} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" /></svg>;
+  return <svg viewBox="0 0 100 26" preserveAspectRatio="none" className="h-6 w-full" aria-label="Gráfica de evolución reciente"><polyline points={points} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" /></svg>;
 }
 function Delta({ value }: { value: number | null }) {
   if (value === null) return <span className="text-xs font-semibold text-muted">Sin historial comparable</span>;
@@ -104,7 +198,6 @@ export default function ExchangeRate() {
   const [period, setPeriod] = useState<Period>("7d");
   const [marketTab, setMarketTab] = useState<MarketTab>("divisas");
   const [selectedCode, setSelectedCode] = useState("");
-  const [lastAttempt, setLastAttempt] = useState<string | null>(null);
 
   const load = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true); else setLoading(true);
@@ -115,7 +208,6 @@ export default function ExchangeRate() {
       if (!response.ok) throw new Error(body.error || `Error HTTP ${response.status}`);
       setPayload(body);
       const capturedAt = typeof body.capturedAt === "string" ? body.capturedAt : new Date().toISOString();
-      setLastAttempt(new Date().toISOString());
       const rates = getRates(body.data);
       const values = Object.fromEntries(rates.flatMap((rate) => {
         const value = rate.value ?? rate.sell ?? rate.buy;
@@ -132,7 +224,6 @@ export default function ExchangeRate() {
       }
     } catch (e: any) {
       setError(e?.message || "No se pudo conectar con el servicio de tasas.");
-      setLastAttempt(new Date().toISOString());
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -153,11 +244,17 @@ export default function ExchangeRate() {
   }, [history]);
 
   const rates = useMemo(() => getRates(payload?.data), [payload]);
-  useEffect(() => {
-    if (rates.length && (!selectedCode || !rates.some((rate) => rate.code === selectedCode))) setSelectedCode(rates[0].code);
-  }, [rates, selectedCode]);
+  const currencyRates = useMemo(() => rates.filter((rate) => !isCryptoCode(rate.code)), [rates]);
+  const cryptoRates = useMemo(() => rates.filter((rate) => isCryptoCode(rate.code)), [rates]);
+  const visibleRates = marketTab === "crypto" ? cryptoRates : currencyRates;
 
-  const selectedRate = rates.find((rate) => rate.code === selectedCode) ?? rates[0];
+  useEffect(() => {
+    if (visibleRates.length && !visibleRates.some((rate) => rate.code === selectedCode)) {
+      setSelectedCode(visibleRates[0].code);
+    }
+  }, [visibleRates, selectedCode]);
+
+  const selectedRate = visibleRates.find((rate) => rate.code === selectedCode) ?? visibleRates[0];
   const now = Date.now();
   const cutoff = period === "24h" ? now - 24 * 60 * 60 * 1000
     : period === "7d" ? now - 7 * 24 * 60 * 60 * 1000
@@ -169,158 +266,156 @@ export default function ExchangeRate() {
   const comparable = chartData.length > 1 ? chartData[0].value : undefined;
   const change = percentChange(currentValue, comparable);
   const updated = payload?.capturedAt ? formatDate(payload.capturedAt, true) : "";
-  const statusText = error ? "Con incidencias" : payload ? "Fuente consultada" : "Esperando datos";
 
   return <div className="h-full w-full overflow-y-auto bg-primary px-3 py-4 sm:px-5 sm:py-6">
     <div className="mx-auto max-w-7xl space-y-5 pb-8">
-      <section className="overflow-hidden rounded-2xl border border-base bg-secondary shadow-sm">
-        <header className="bg-gradient-to-r from-violet-950 via-indigo-900 to-violet-800 px-5 py-6 text-white sm:px-7">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10"><BarChart3 className="h-6 w-6" /></div>
-              <div>
-                <p className="text-[9px] font-black uppercase tracking-[.2em] text-violet-200">PALMYRA · INTELIGENCIA DE MERCADO</p>
-                <h1 className="mt-1 text-2xl font-black sm:text-3xl">Mercados</h1>
-                <p className="mt-1 max-w-2xl text-xs text-violet-100">Divisas y criptomonedas, con evolución y variación frente al dato anterior.</p>
-              </div>
+      <section className="rounded-2xl border border-base bg-secondary px-4 py-3 shadow-sm">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-800"><BarChart3 className="h-5 w-5" /></div>
+            <div className="min-w-0">
+              <p className="text-[9px] font-black uppercase tracking-[.16em] text-violet-700">PALMYRA · FUENTE elTOQUE</p>
+              <h1 className="text-xl font-black text-primary sm:text-2xl">Tasas de cambio</h1>
+              <p className="text-xs text-muted">Mercado informal de Cuba · referencias, compra/venta e historial</p>
             </div>
-            <button onClick={() => void load(true)} disabled={loading || refreshing} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-xs font-bold transition hover:bg-white/20 disabled:opacity-60">
-              <RefreshCw className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`} /> {refreshing ? "Actualizando…" : "Actualizar datos"}
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-lg bg-subtle px-2.5 py-2 text-xs font-bold text-primary"><span className={"h-2 w-2 rounded-full " + (error ? "bg-amber-500" : "bg-emerald-500")} />{error ? "Con incidencias" : payload ? "Fuente consultada" : "Conectando"}</span>
+            <span className="text-xs text-muted">{updated ? "Actualizado " + updated : "Sin fecha disponible"}</span>
+            <button onClick={() => void load(true)} disabled={loading || refreshing} className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg bg-violet-700 px-3 py-2 text-xs font-bold text-white transition hover:bg-violet-800 disabled:opacity-60">
+              <RefreshCw className={"h-3.5 w-3.5 " + (refreshing ? "animate-spin" : "")} />{refreshing ? "Actualizando…" : "Actualizar"}
             </button>
           </div>
-        </header>
-        <div className="grid gap-3 p-4 sm:p-5 lg:grid-cols-[1fr_auto] lg:items-center">
-          <div className="flex items-start gap-3">
-            <div className={`mt-0.5 rounded-xl p-2 ${error ? "bg-amber-50 text-amber-700" : "bg-emerald-50 text-emerald-700"}`}>{error ? <AlertCircle className="h-4 w-4" /> : <CheckCircle2 className="h-4 w-4" />}</div>
-            <div>
-              <p className="text-sm font-extrabold text-primary">Fuente: elTOQUE</p>
-              <p className="mt-1 text-xs leading-5 text-muted">{error ? "No se pudo confirmar una actualización reciente. Se conservan los últimos datos disponibles." : "Valores de referencia del mercado informal; no equivalen a una tasa oficial ni garantizan una operación."}</p>
-              {error && <p role="alert" className="mt-1 text-xs font-semibold text-amber-700">{error}</p>}
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted lg:justify-end">
-            <span className="inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" /> {updated ? `Dato: ${updated}` : "Sin fecha de cotización"}</span>
-            <span className="inline-flex items-center gap-1.5"><Activity className="h-3.5 w-3.5" /> {statusText}</span>
-            <span className="inline-flex items-center gap-1.5"><RefreshCw className="h-3.5 w-3.5" /> Revisión cada 5 min</span>
-          </div>
         </div>
+        {error && <p role="alert" className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"><AlertCircle className="mr-1 inline h-3.5 w-3.5" />{error}</p>}
       </section>
 
       {loading && !payload && <div className="rounded-2xl border border-base bg-secondary p-6 text-sm text-muted" aria-live="polite">Consultando las cotizaciones de elTOQUE…</div>}
 
-      <nav className="flex gap-2 rounded-2xl border border-base bg-secondary p-2" aria-label="Tipo de mercado">
-        <button type="button" onClick={() => setMarketTab("divisas")} className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-extrabold transition ${marketTab === "divisas" ? "bg-violet-700 text-white shadow-sm" : "text-muted hover:bg-primary"}`}><Activity className="h-4 w-4" /> Divisas</button>
-        <button type="button" onClick={() => setMarketTab("crypto")} className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-extrabold transition ${marketTab === "crypto" ? "bg-violet-700 text-white shadow-sm" : "text-muted hover:bg-primary"}`}><BarChart3 className="h-4 w-4" /> Crypto</button>
+      <nav className="flex w-full gap-1 rounded-xl border border-base bg-secondary p-1.5 sm:w-fit" aria-label="Tipo de mercado">
+        <button type="button" onClick={() => setMarketTab("divisas")} className={"inline-flex min-w-32 flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-extrabold transition sm:flex-none " + (marketTab === "divisas" ? "bg-violet-700 text-white shadow-sm" : "text-muted hover:bg-primary")}>
+          <Activity className="h-4 w-4" />Divisas<span className={"rounded-md px-1.5 py-0.5 text-[10px] " + (marketTab === "divisas" ? "bg-white/15 text-white" : "bg-subtle text-muted")}>{currencyRates.length}</span>
+        </button>
+        <button type="button" onClick={() => setMarketTab("crypto")} className={"inline-flex min-w-32 flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-extrabold transition sm:flex-none " + (marketTab === "crypto" ? "bg-violet-700 text-white shadow-sm" : "text-muted hover:bg-primary")}>
+          <BarChart3 className="h-4 w-4" />Crypto<span className={"rounded-md px-1.5 py-0.5 text-[10px] " + (marketTab === "crypto" ? "bg-white/15 text-white" : "bg-subtle text-muted")}>{cryptoRates.length}</span>
+        </button>
       </nav>
 
-      {marketTab === "crypto" && <section className="rounded-2xl border border-base bg-secondary p-6 shadow-sm sm:p-8">
-        <div className="mx-auto flex max-w-xl flex-col items-center text-center">
-          <div className="rounded-2xl bg-violet-100 p-4 text-violet-800"><BarChart3 className="h-8 w-8" /></div>
-          <h2 className="mt-4 text-xl font-black text-primary">Mercado cripto</h2>
-          <p className="mt-2 text-sm leading-6 text-muted">Esta pestaña queda separada de las divisas tradicionales. Para mostrar precios, gráficas y variaciones reales de BTC, ETH y otras criptomonedas, falta conectar una fuente de mercado cripto; no mostraremos cotizaciones inventadas.</p>
-          <span className="mt-4 inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800"><Clock3 className="h-3.5 w-3.5" /> Fuente de datos pendiente</span>
-        </div>
-      </section>}
+      <section className="overflow-hidden rounded-2xl border border-base bg-secondary shadow-sm">
+        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-base px-4 py-3 sm:px-5">
+          <div>
+            <h2 className="text-sm font-extrabold text-primary">{marketTab === "divisas" ? "Divisas y medios de pago" : "Criptomonedas cotizadas"}</h2>
+            <p className="mt-0.5 text-xs text-muted">{marketTab === "divisas" ? "Nombre, país o área monetaria y cotización frente al CUP." : "Solo activos que aparecen en la respuesta de elTOQUE; no se agregan precios externos ni estimados."}</p>
+          </div>
+          <span className="rounded-lg bg-subtle px-2.5 py-1.5 text-xs font-bold text-muted">{visibleRates.length} {visibleRates.length === 1 ? "activo" : "activos"}</span>
+        </header>
 
-      {marketTab === "divisas" && <>
+        {visibleRates.length ? <>
+          <div className="hidden grid-cols-[minmax(200px,1.7fr)_minmax(100px,1fr)_minmax(90px,.8fr)_minmax(90px,.8fr)_minmax(155px,1.1fr)] gap-3 bg-primary px-5 py-2.5 text-[10px] font-black uppercase tracking-wider text-muted md:grid">
+            <span>Moneda / activo</span><span>Referencia</span><span>Compra</span><span>Venta</span><span>Variación / tendencia</span>
+          </div>
+          <div className="divide-y divide-base">
+            {visibleRates.map((rate) => {
+              const value = rate.value ?? rate.sell ?? rate.buy;
+              const previous = [...history].reverse().find((snapshot) => snapshot.rates[rate.code] !== undefined && snapshot.capturedAt !== payload?.capturedAt)?.rates[rate.code];
+              const sparkValues = history.filter((snapshot) => snapshot.rates[rate.code] !== undefined).slice(-18).map((snapshot) => snapshot.rates[rate.code]);
+              const rising = previous === undefined || value === undefined ? true : value >= previous;
+              const active = selectedCode === rate.code;
+              return <button key={rate.code} type="button" onClick={() => setSelectedCode(rate.code)} className={"grid w-full grid-cols-2 gap-x-3 gap-y-2 px-4 py-3 text-left transition hover:bg-primary sm:px-5 md:grid-cols-[minmax(200px,1.7fr)_minmax(100px,1fr)_minmax(90px,.8fr)_minmax(90px,.8fr)_minmax(155px,1.1fr)] md:items-center md:gap-3 " + (active ? "bg-violet-50/50" : "bg-secondary")}>
+                <div className="col-span-2 flex min-w-0 items-center gap-3 md:col-span-1">
+                  <span className={"flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[10px] font-black " + (isCryptoCode(rate.code) ? "bg-indigo-100 text-indigo-800" : "bg-violet-100 text-violet-800")}>{rate.code.length > 5 ? rate.code.slice(0, 4) : rate.code}</span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-extrabold text-primary">{rate.name}</span>
+                    <span className="mt-0.5 block truncate text-[11px] text-muted">{rate.country}{rate.sourceCode === "ECU" ? " · código de origen elTOQUE: ECU" : ""}</span>
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <span className="block text-[10px] text-muted md:hidden">Referencia</span>
+                  <span className="block break-words text-base font-black tabular-nums text-primary">{money(value)} <span className="text-[10px] font-semibold text-muted">CUP</span></span>
+                </div>
+                <div className="min-w-0">
+                  <span className="block text-[10px] text-muted md:hidden">Compra</span>
+                  <span className="text-sm font-semibold tabular-nums text-primary">{money(rate.buy)}</span>
+                </div>
+                <div className="min-w-0">
+                  <span className="block text-[10px] text-muted md:hidden">Venta</span>
+                  <span className="text-sm font-semibold tabular-nums text-primary">{money(rate.sell)}</span>
+                </div>
+                <div className="col-span-2 flex min-w-0 items-center justify-between gap-3 md:col-span-1">
+                  <AbsoluteDelta current={value} previous={previous} />
+                  <div className="w-[76px] shrink-0">{sparkValues.length > 1 ? <Sparkline values={sparkValues} positive={rising} /> : <span className="block text-right text-[10px] text-muted">Sin historial</span>}</div>
+                </div>
+              </button>;
+            })}
+          </div>
+        </> : <div className="flex flex-col items-center px-5 py-8 text-center">
+          <div className="rounded-xl bg-subtle p-3 text-violet-700">{marketTab === "crypto" ? <BarChart3 className="h-5 w-5" /> : <Activity className="h-5 w-5" />}</div>
+          <p className="mt-3 text-sm font-bold text-primary">{loading ? "Consultando elTOQUE…" : marketTab === "crypto" ? "No hay criptomonedas en esta respuesta" : "No hay cotizaciones de divisas disponibles"}</p>
+          <p className="mt-1 max-w-md text-xs leading-5 text-muted">{marketTab === "crypto" ? "La pestaña se llena automáticamente con BTC, USDT, TRX, BNB u otros activos únicamente cuando elTOQUE los devuelve. No se mostrarán precios inventados ni datos de otra fuente como si fueran de elTOQUE." : "Cuando la API responda con cotizaciones reconocibles, aparecerán aquí."}</p>
+          {error && <button type="button" onClick={() => void load(true)} className="mt-3 rounded-lg bg-violet-700 px-3 py-2 text-xs font-bold text-white">Reintentar conexión</button>}
+        </div>}
+        <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-base px-4 py-2.5 text-[10px] text-muted sm:px-5">
+          <span><CheckCircle2 className="mr-1 inline h-3.5 w-3.5 text-emerald-600" />Fuente: elTOQUE · valores informativos</span>
+          <span>Compra/venta solo se muestran si la API los entrega por separado.</span>
+        </footer>
+      </section>
 
-      {rates.length > 0 && <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {rates.map((rate) => {
-          const value = rate.value ?? rate.sell ?? rate.buy;
-          const active = selectedCode === rate.code;
-          const previous = [...history].reverse().find((snapshot) => snapshot.rates[rate.code] !== undefined && snapshot.capturedAt !== payload?.capturedAt)?.rates[rate.code];
-          const delta = percentChange(value, previous);
-          const sparkValues = history.filter((snapshot) => snapshot.rates[rate.code] !== undefined).slice(-18).map((snapshot) => snapshot.rates[rate.code]);
-          const rising = sparkValues.length > 1 ? sparkValues[sparkValues.length - 1] >= sparkValues[0] : true;
-          return <button key={rate.code} type="button" onClick={() => setSelectedCode(rate.code)} className={`min-w-0 rounded-2xl border bg-secondary p-4 text-left shadow-sm transition hover:border-violet-300 hover:shadow-md ${active ? "border-violet-400 ring-2 ring-violet-500/10" : "border-base"}`}>
-            <div className="flex items-start justify-between gap-2">
-              <div><p className="text-[10px] font-black uppercase tracking-[.15em] text-violet-700">{rate.code} <span className="text-muted">/ CUP</span></p><h2 className="mt-1 text-sm font-bold text-primary">{rate.name}</h2></div>
-              <span className="rounded-lg bg-subtle p-2 text-violet-700"><ArrowDownUp className="h-4 w-4" /></span>
-            </div>
-            <p className="mt-5 break-words text-2xl font-black tracking-tight text-primary sm:text-3xl">{money(value)} <span className="text-xs font-semibold text-muted">CUP</span></p>
-            <div className="mt-2"><Sparkline values={history.filter((snapshot) => snapshot.rates[rate.code] !== undefined).slice(-18).map((snapshot) => snapshot.rates[rate.code])} positive={previous === undefined || value === undefined ? true : value >= previous} /></div>
-            <div className="mt-2 flex flex-wrap items-center justify-between gap-2"><AbsoluteDelta current={value} previous={previous} /><span className="text-[10px] text-muted">{rate.buy !== undefined || rate.sell !== undefined ? "Compra y venta disponibles" : "Tasa de referencia"}</span></div>
-          </button>;
-        })}
-      </section>}
-
-      <section className="grid gap-4 xl:grid-cols-[minmax(0,1.65fr)_minmax(280px,.85fr)]">
+      {selectedRate && <section className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_minmax(250px,.8fr)]">
         <div className="min-w-0 rounded-2xl border border-base bg-secondary p-4 shadow-sm sm:p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div><p className="text-[10px] font-black uppercase tracking-[.16em] text-violet-700">Análisis histórico</p><h2 className="mt-1 text-lg font-extrabold text-primary">Evolución de la cotización</h2><p className="mt-1 text-xs text-muted">{selectedRate ? `${selectedRate.code} frente al CUP` : "Selecciona una moneda para analizarla"}</p></div>
-            <div className="flex flex-wrap gap-1 rounded-xl bg-subtle p-1">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[.16em] text-violet-700">Historial local</p>
+              <h2 className="mt-1 text-base font-extrabold text-primary">{selectedRate.name} <span className="font-semibold text-muted">/ CUP</span></h2>
+              <p className="mt-0.5 text-xs text-muted">{selectedRate.country}</p>
+            </div>
+            <div className="flex gap-1 rounded-lg bg-subtle p-1">
               {([{ id: "24h", label: "24 h" }, { id: "7d", label: "7 días" }, { id: "30d", label: "30 días" }, { id: "all", label: "Todo" }] as const).map((item) =>
-                <button key={item.id} onClick={() => setPeriod(item.id)} className={`rounded-lg px-3 py-2 text-xs font-bold transition ${period === item.id ? "bg-secondary text-violet-700 shadow-sm" : "text-muted hover:text-primary"}`}>{item.label}</button>)}
+                <button key={item.id} type="button" onClick={() => setPeriod(item.id)} className={"rounded-md px-2.5 py-1.5 text-[11px] font-bold transition " + (period === item.id ? "bg-secondary text-violet-700 shadow-sm" : "text-muted hover:text-primary")}>{item.label}</button>)}
             </div>
           </div>
-          <div className="mt-5 h-[260px] w-full">
+          <div className="mt-4 h-[190px] w-full">
             {chartData.length >= 2 ? <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 12, right: 12, left: 0, bottom: 4 }}>
+              <LineChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 3 }}>
                 <CartesianGrid stroke="var(--border-base)" strokeDasharray="3 5" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 10, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} minTickGap={24} />
-                <YAxis domain={["auto", "auto"]} width={58} tick={{ fontSize: 10, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} tickFormatter={(v) => new Intl.NumberFormat("es-ES", { notation: "compact", maximumFractionDigits: 2 }).format(v)} />
-                <Tooltip formatter={(value) => [`${money(value)} CUP`, "Cotización"]} labelFormatter={(label) => `Fecha: ${label}`} contentStyle={{ borderRadius: 12, borderColor: "var(--border-base)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 12 }} />
-                <Line type="monotone" dataKey="value" stroke="#7C4DDE" strokeWidth={2.5} dot={false} activeDot={{ r: 5, strokeWidth: 0 }} connectNulls />
+                <XAxis dataKey="label" tick={{ fontSize: 9, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} minTickGap={22} />
+                <YAxis domain={["auto", "auto"]} width={48} tick={{ fontSize: 9, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} tickFormatter={(v) => new Intl.NumberFormat("es-ES", { notation: "compact", maximumFractionDigits: 2 }).format(v)} />
+                <Tooltip formatter={(value) => [money(value) + " CUP", "Cotización"]} labelFormatter={(label) => "Fecha: " + label} contentStyle={{ borderRadius: 10, borderColor: "var(--border-base)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 11 }} />
+                <Line type="monotone" dataKey="value" stroke="#7C4DDE" strokeWidth={2.25} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} connectNulls />
               </LineChart>
-            </ResponsiveContainer> : <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-base bg-primary px-5 text-center">
-              <div className="rounded-xl bg-subtle p-3 text-violet-700"><BarChart3 className="h-6 w-6" /></div>
-              <p className="mt-3 text-sm font-bold text-primary">{chartData.length === 1 ? "Primer registro guardado" : "Recopilando historial real"}</p>
-              <p className="mt-1 max-w-sm text-xs leading-5 text-muted">{chartData.length === 1 ? "La gráfica aparecerá cuando se registre otra cotización distinta o en la siguiente consulta periódica." : "Las cotizaciones se guardan en este navegador cuando la sección consulta la API. No se inventan puntos históricos."}</p>
+            </ResponsiveContainer> : <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-base bg-primary px-4 text-center">
+              <p className="text-sm font-bold text-primary">{chartData.length === 1 ? "Primer registro guardado" : "Aún no hay historial suficiente"}</p>
+              <p className="mt-1 max-w-sm text-xs leading-5 text-muted">El histórico se acumula en este navegador con las consultas reales a la API; no se inventan puntos ni se descargan datos anteriores que elTOQUE no entregue.</p>
             </div>}
           </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-base pt-3 text-[10px] text-muted">
-            <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" /> Datos capturados, sin valores simulados</span>
-            <span>{chartData.length} puntos en el período</span>
+            <span>{chartData.length} puntos en el período seleccionado</span><span>Consulta automática cada 5 min mientras la página está abierta</span>
           </div>
         </div>
 
-        <aside className="space-y-4">
-          <div className="rounded-2xl border border-base bg-secondary p-4 shadow-sm sm:p-5">
-            <p className="text-[10px] font-black uppercase tracking-[.16em] text-violet-700">Resumen del período</p>
-            <h2 className="mt-1 text-lg font-extrabold text-primary">{selectedRate?.code ?? "Cotización"}</h2>
-            <div className="mt-4 rounded-xl bg-primary p-4">
-              <p className="text-xs font-semibold text-muted">Valor de referencia actual</p>
-              <p className="mt-1 text-2xl font-black text-primary">{money(currentValue)} <span className="text-xs font-semibold text-muted">CUP</span></p>
-            </div>
-            <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-base p-3"><span className="text-xs text-muted">Variación frente al inicio</span><Delta value={change} /></div>
-            {(selectedRate?.buy !== undefined || selectedRate?.sell !== undefined) && <div className="mt-3 grid grid-cols-2 gap-2">
-              <div className="rounded-xl bg-emerald-50 p-3"><p className="text-[10px] font-bold uppercase text-emerald-800">Compra</p><p className="mt-1 text-lg font-black text-emerald-950">{money(selectedRate?.buy)}</p></div>
-              <div className="rounded-xl bg-sky-50 p-3"><p className="text-[10px] font-bold uppercase text-sky-800">Venta</p><p className="mt-1 text-lg font-black text-sky-950">{money(selectedRate?.sell)}</p></div>
-            </div>}
+        <aside className="rounded-2xl border border-base bg-secondary p-4 shadow-sm sm:p-5">
+          <p className="text-[10px] font-black uppercase tracking-[.16em] text-violet-700">Detalle de cotización</p>
+          <div className="mt-2 flex items-start justify-between gap-3">
+            <div><h3 className="text-lg font-black text-primary">{selectedRate.code}</h3><p className="text-xs text-muted">{selectedRate.name}</p></div>
+            <span className="rounded-lg bg-violet-100 px-2 py-1 text-[10px] font-bold text-violet-800">{marketTab === "crypto" ? "Crypto" : "Divisa"}</span>
           </div>
-          <div className="rounded-2xl border border-base bg-secondary p-4 shadow-sm sm:p-5">
-            <div className="flex items-center gap-2"><Clock3 className="h-4 w-4 text-violet-700" /><h3 className="text-sm font-extrabold text-primary">Control de actualización</h3></div>
-            <div className="mt-3 space-y-3 text-xs">
-              <div className="flex items-center justify-between gap-3"><span className="text-muted">Última cotización</span><span className="font-semibold text-primary">{updated || "No disponible"}</span></div>
-              <div className="flex items-center justify-between gap-3"><span className="text-muted">Último intento</span><span className="font-semibold text-primary">{lastAttempt ? formatDate(lastAttempt, true) : "—"}</span></div>
-              <div className="flex items-center justify-between gap-3"><span className="text-muted">Registros guardados</span><span className="font-semibold text-primary">{history.length}</span></div>
-              <div className="flex items-center justify-between gap-3"><span className="text-muted">Estado</span><span className={`font-bold ${error ? "text-amber-700" : "text-emerald-700"}`}>{error ? "Revisar conexión" : "Monitorizando"}</span></div>
-            </div>
+          <div className="mt-4 rounded-xl bg-primary p-3">
+            <p className="text-xs font-semibold text-muted">Tasa de referencia</p>
+            <p className="mt-1 text-2xl font-black tabular-nums text-primary">{money(currentValue)} <span className="text-xs font-semibold text-muted">CUP</span></p>
+            <div className="mt-2"><Delta value={change} /></div>
           </div>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="rounded-xl border border-base p-3"><p className="text-[10px] font-bold uppercase text-muted">Compra</p><p className="mt-1 text-base font-black tabular-nums text-primary">{money(selectedRate.buy)}</p></div>
+            <div className="rounded-xl border border-base p-3"><p className="text-[10px] font-bold uppercase text-muted">Venta</p><p className="mt-1 text-base font-black tabular-nums text-primary">{money(selectedRate.sell)}</p></div>
+          </div>
+          <p className="mt-3 text-[10px] leading-4 text-muted">País / área monetaria: {selectedRate.country}. Los campos no publicados por elTOQUE se muestran como “—”.</p>
         </aside>
-      </section>
+      </section>}
 
-      <section className="overflow-hidden rounded-2xl border border-base bg-secondary shadow-sm">
-        <div className="flex flex-col gap-2 border-b border-base p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-          <div><h2 className="text-base font-extrabold text-primary">Tabla de cotizaciones</h2><p className="mt-1 text-xs text-muted">Valores recibidos directamente de la fuente.</p></div>
-          <span className="text-xs text-muted">{rates.length} monedas detectadas</span>
-        </div>
-        {rates.length ? <div className="overflow-x-auto">
-          <table className="w-full min-w-[620px] text-left text-xs">
-            <thead className="bg-primary text-[10px] uppercase tracking-wider text-muted"><tr><th className="px-5 py-3 font-black">Moneda</th><th className="px-5 py-3 font-black">Referencia</th><th className="px-5 py-3 font-black">Compra</th><th className="px-5 py-3 font-black">Venta</th><th className="px-5 py-3 font-black">Variación</th></tr></thead>
-            <tbody>{rates.map((rate) => {
-              const value = rate.value ?? rate.sell ?? rate.buy;
-              const previous = [...history].reverse().find((snapshot) => snapshot.rates[rate.code] !== undefined && snapshot.capturedAt !== payload?.capturedAt)?.rates[rate.code];
-              return <tr key={rate.code} className="border-t border-base transition hover:bg-primary"><td className="px-5 py-3.5"><button onClick={() => setSelectedCode(rate.code)} className="text-left"><span className="font-black text-violet-700">{rate.code}</span><span className="mt-0.5 block text-muted">{rate.name}</span></button></td><td className="px-5 py-3.5 font-bold text-primary">{money(value)}</td><td className="px-5 py-3.5 text-primary">{money(rate.buy)}</td><td className="px-5 py-3.5 text-primary">{money(rate.sell)}</td><td className="px-5 py-3.5"><Delta value={percentChange(value, previous)} /></td></tr>;
-            })}</tbody>
-          </table>
-        </div> : <div className="p-6 text-sm text-muted">{error ? "No hay cotizaciones disponibles. Comprueba la conexión y vuelve a intentarlo." : "Las cotizaciones aparecerán cuando la API responda con datos reconocibles."}</div>}
-      </section>
-
-      </>}\n\n      <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-950">
-        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-        <p><strong>Transparencia y control.</strong> Las tasas son informativas y no modifican automáticamente precios, costos, inventario ni operaciones del POS. El historial se conserva en este navegador; para recopilar cotizaciones mientras nadie tiene abierta esta sección y compartirlas entre dispositivos, se necesitaría un almacenamiento histórico central y un proceso programado en el servidor.</p>
+      <div className="flex items-start gap-2 rounded-xl border border-base bg-secondary px-3 py-2.5 text-[10px] leading-4 text-muted">
+        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-violet-700" />
+        <p><strong className="text-primary">Nota:</strong> tasas referenciales de elTOQUE, no oficiales ni garantía de una operación. Los datos de compra/venta no se calculan si la fuente no los publica. El histórico se conserva en este navegador y no modifica precios, costos ni operaciones del POS.</p>
       </div>
+
     </div>
   </div>;
 }
