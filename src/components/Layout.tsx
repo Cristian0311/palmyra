@@ -65,7 +65,7 @@ const adminNavItems = [
   { name: "Catálogo Online", href: "#online-catalog", icon: Store, public: true, comingSoon: true },
 ];
 
-const APP_VERSION = "PALMYRA";
+const APP_VERSION = "V 1.0.3";
 const cashierNavItems = [
   { name: "Soporte", href: "/help", icon: Headphones, public: true },
   { name: "POS", href: "/pos", icon: ShoppingCart },
@@ -478,22 +478,31 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       ? adminNavItems
       : adminNavItems.filter(item => Boolean(item.public) || currentUser?.permissions?.includes(item.permission) || item.href === "/pos");
 
-  const visibleNavItems = navItems.length > 0 ? navItems : cashierNavItems;
+  const baseNavItems = navItems.length > 0 ? navItems : cashierNavItems;
+  const visibleNavItems = baseNavItems.filter(
+    (item, index, items) => items.findIndex((candidate) => candidate.href === item.href) === index
+  );
   const currentPlanCode = saasContext?.subscription?.planCode || "";
   const isPlanLocked = (item: { requiredFeature?: PlanFeature }) => Boolean(item.requiredFeature && !canUsePlanFeature(currentPlanCode, item.requiredFeature));
   const getRequiredPlanCode = (feature?: PlanFeature) => feature === 'advanced_analytics' || feature === 'excel_exports' || feature === 'ai_dashboard' || feature === 'warranty_returns' || feature === 'abc_analysis' || feature === 'labels' ? 'pro' : feature ? 'growth' : '';
 
-  const navSections = currentUser?.role === "admin"
+  const navSectionDefinitions = currentUser?.role === "admin"
     ? [
         { label: "Operación", hrefs: ["/", "/pos", "/transfers", "/returns"] },
         { label: "Gestión", hrefs: ["/customers", "/inventory", "/inventory-audit", "/suppliers", "#online-catalog"] },
         { label: "Finanzas", hrefs: ["/banks", "/reports"] },
         { label: "Administración", hrefs: ["/settings", "/team", "/help", "/subscription", "/tutorial", "/exchange-rate"] },
-      ].map(section => ({
-        ...section,
-        items: visibleNavItems.filter(item => section.hrefs.includes(item.href)),
-      })).filter(section => section.items.length > 0)
-    : [{ label: "", hrefs: [], items: visibleNavItems }];
+      ]
+    : [{ label: "", hrefs: visibleNavItems.map((item) => item.href) }];
+  const assignedNavHrefs = new Set<string>();
+  const navSections = navSectionDefinitions.map((section) => ({
+    ...section,
+    items: visibleNavItems.filter((item) => {
+      if (!section.hrefs.includes(item.href) || assignedNavHrefs.has(item.href)) return false;
+      assignedNavHrefs.add(item.href);
+      return true;
+    }),
+  })).filter((section) => section.items.length > 0);
 
   return (
     <div className="h-[100dvh] w-full min-h-[100dvh] max-h-[100dvh] overflow-hidden bg-primary text-primary flex flex-col lg:flex-row relative overscroll-none transition-colors duration-200">
@@ -598,8 +607,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </div>
       {/* Mobile / tablet top bar */}
       {(
-        <div className="lg:hidden bg-white text-slate-700 p-2.5 flex justify-between items-center shadow-sm border-b border-violet-100 shrink-0">
-          <div className="flex items-center gap-2 min-w-0"><img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="w-[160px] h-[40px] object-contain object-left" /><span className="rounded-full bg-violet-50 px-1.5 py-1 text-[7px] font-black text-violet-700 tracking-wider shrink-0">{APP_VERSION}</span></div><div className={cn("flex items-center gap-1.5 px-2 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-wider", isOnline ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700")} title="Estado de conexión">{isOnline ? <Wifi className="w-3 h-3 shrink-0" /> : <WifiOff className="w-3 h-3 shrink-0" />}<span>{isOnline ? (pendingOfflineCount > 0 ? pendingOfflineCount+" pendientes" : "Online") : "Offline"}</span></div>
+        <div className="lg:hidden bg-white text-slate-700 p-2.5 flex justify-between items-center gap-2 shadow-sm border-b border-violet-100 shrink-0 min-w-0">
+          <div className="flex items-center gap-2 min-w-0"><img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="w-[clamp(104px,38vw,160px)] h-[34px] object-contain object-left shrink-0" /><span className="rounded-full bg-violet-50 px-2 py-1 text-[9px] font-black text-violet-700 tracking-tight shrink-0">{APP_VERSION}</span></div><div className={cn("flex items-center gap-1.5 px-2 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-wider", isOnline ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700")} title="Estado de conexión">{isOnline ? <Wifi className="w-3 h-3 shrink-0" /> : <WifiOff className="w-3 h-3 shrink-0" />}<span>{isOnline ? (pendingOfflineCount > 0 ? pendingOfflineCount+" pendientes" : "Online") : "Offline"}</span></div>
           <div className="flex items-center gap-1.5 shrink-0"><button data-palmy-menu-toggle type="button" onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 rounded-xl hover:bg-slate-100 transition" aria-label="Abrir menú principal" title="Abrir menú principal" aria-expanded={sidebarOpen}>
             <Menu className="w-3.5 h-3.5" />
           </button></div>
@@ -626,7 +635,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               alt="PALMYRA"
               className="w-[84px] h-[23px] max-w-[calc(100%-2rem)] object-contain object-left"
             />
-            <span className="shrink-0 rounded-full bg-subtle px-1.5 py-1 text-[6px] font-black text-primary tracking-tight leading-none">{APP_VERSION}</span>
+            <span className="shrink-0 rounded-full bg-subtle px-1.5 py-1 text-[8px] font-black text-primary tracking-tight leading-none">{APP_VERSION}</span>
           </div>
 
           <div className={cn("hidden items-center justify-center", sidebarCollapsed && "lg:flex")}>
@@ -671,7 +680,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   const Icon = item.icon;
                   return (
                     <NavLink
-                      key={item.name}
+                      key={item.href}
                       to={item.href}
                       onClick={(event) => {
                         if ((item as any).comingSoon) {
