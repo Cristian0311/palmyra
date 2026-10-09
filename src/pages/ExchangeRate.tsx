@@ -267,8 +267,8 @@ export default function ExchangeRate() {
   const change = percentChange(currentValue, comparable);
   const updated = payload?.capturedAt ? formatDate(payload.capturedAt, true) : "";
 
-  return <div className="h-full w-full overflow-y-auto bg-primary px-3 py-4 sm:px-5 sm:py-6">
-    <div className="mx-auto max-w-7xl space-y-5 pb-8">
+  return <div className="h-full min-h-0 w-full min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-primary px-2 py-3 sm:px-3 sm:py-4 xl:px-5 xl:py-6">
+    <div className="mx-auto w-full max-w-7xl min-w-0 space-y-3 pb-8 sm:space-y-4 xl:space-y-5">
       <section className="rounded-2xl border border-base bg-secondary px-4 py-3 shadow-sm">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
@@ -311,7 +311,7 @@ export default function ExchangeRate() {
         </header>
 
         {visibleRates.length ? <>
-          <div className="hidden grid-cols-[minmax(200px,1.7fr)_minmax(100px,1fr)_minmax(90px,.8fr)_minmax(90px,.8fr)_minmax(155px,1.1fr)] gap-3 bg-primary px-5 py-2.5 text-[10px] font-black uppercase tracking-wider text-muted md:grid">
+          <div className="hidden grid-cols-[minmax(0,1.6fr)_minmax(0,.75fr)_minmax(0,.65fr)_minmax(0,.65fr)_minmax(0,1fr)] gap-3 bg-primary px-5 py-2.5 text-[10px] font-black uppercase tracking-wider text-muted xl:grid">
             <span>Moneda / activo</span><span>Referencia</span><span>Compra</span><span>Venta</span><span>Variación / tendencia</span>
           </div>
           <div className="divide-y divide-base">
@@ -321,8 +321,8 @@ export default function ExchangeRate() {
               const sparkValues = history.filter((snapshot) => snapshot.rates[rate.code] !== undefined).slice(-18).map((snapshot) => snapshot.rates[rate.code]);
               const rising = previous === undefined || value === undefined ? true : value >= previous;
               const active = selectedCode === rate.code;
-              return <button key={rate.code} type="button" onClick={() => setSelectedCode(rate.code)} className={"grid w-full grid-cols-2 gap-x-3 gap-y-2 px-4 py-3 text-left transition hover:bg-primary sm:px-5 md:grid-cols-[minmax(200px,1.7fr)_minmax(100px,1fr)_minmax(90px,.8fr)_minmax(90px,.8fr)_minmax(155px,1.1fr)] md:items-center md:gap-3 " + (active ? "bg-violet-50/50" : "bg-secondary")}>
-                <div className="col-span-2 flex min-w-0 items-center gap-3 md:col-span-1">
+              return <button key={rate.code} type="button" onClick={() => setSelectedCode(rate.code)} className={"grid w-full min-w-0 grid-cols-2 gap-x-3 gap-y-2 px-3 py-3 text-left transition hover:bg-primary sm:grid-cols-3 sm:px-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,.75fr)_minmax(0,.65fr)_minmax(0,.65fr)_minmax(0,1fr)] xl:items-center xl:gap-3 " + (active ? "bg-violet-50/50" : "bg-secondary")}>
+                <div className="col-span-2 flex min-w-0 items-center gap-3 sm:col-span-3 xl:col-span-1">
                   <span className={"flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[10px] font-black " + (isCryptoCode(rate.code) ? "bg-indigo-100 text-indigo-800" : "bg-violet-100 text-violet-800")}>{rate.code.length > 5 ? rate.code.slice(0, 4) : rate.code}</span>
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-extrabold text-primary">{rate.name}</span>
@@ -330,18 +330,18 @@ export default function ExchangeRate() {
                   </span>
                 </div>
                 <div className="min-w-0">
-                  <span className="block text-[10px] text-muted md:hidden">Referencia</span>
+                  <span className="block text-[10px] text-muted xl:hidden">Referencia</span>
                   <span className="block break-words text-base font-black tabular-nums text-primary">{money(value)} <span className="text-[10px] font-semibold text-muted">CUP</span></span>
                 </div>
                 <div className="min-w-0">
-                  <span className="block text-[10px] text-muted md:hidden">Compra</span>
+                  <span className="block text-[10px] text-muted xl:hidden">Compra</span>
                   <span className="text-sm font-semibold tabular-nums text-primary">{money(rate.buy)}</span>
                 </div>
                 <div className="min-w-0">
-                  <span className="block text-[10px] text-muted md:hidden">Venta</span>
+                  <span className="block text-[10px] text-muted xl:hidden">Venta</span>
                   <span className="text-sm font-semibold tabular-nums text-primary">{money(rate.sell)}</span>
                 </div>
-                <div className="col-span-2 flex min-w-0 items-center justify-between gap-3 md:col-span-1">
+                <div className="col-span-2 flex min-w-0 items-center justify-between gap-3 sm:col-span-3 xl:col-span-1">
                   <AbsoluteDelta current={value} previous={previous} />
                   <div className="w-[76px] shrink-0">{sparkValues.length > 1 ? <Sparkline values={sparkValues} positive={rising} /> : <span className="block text-right text-[10px] text-muted">Sin historial</span>}</div>
                 </div>
@@ -360,7 +360,7 @@ export default function ExchangeRate() {
         </footer>
       </section>
 
-      {selectedRate && <section className="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_minmax(250px,.8fr)]">
+      {selectedRate && <section className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,.8fr)]">
         <div className="min-w-0 rounded-2xl border border-base bg-secondary p-4 shadow-sm sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -373,7 +373,7 @@ export default function ExchangeRate() {
                 <button key={item.id} type="button" onClick={() => setPeriod(item.id)} className={"rounded-md px-2.5 py-1.5 text-[11px] font-bold transition " + (period === item.id ? "bg-secondary text-violet-700 shadow-sm" : "text-muted hover:text-primary")}>{item.label}</button>)}
             </div>
           </div>
-          <div className="mt-4 h-[190px] w-full">
+          <div className="mt-4 h-[170px] w-full sm:h-[200px] xl:h-[220px]">
             {chartData.length >= 2 ? <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 3 }}>
                 <CartesianGrid stroke="var(--border-base)" strokeDasharray="3 5" vertical={false} />
@@ -392,7 +392,7 @@ export default function ExchangeRate() {
           </div>
         </div>
 
-        <aside className="rounded-2xl border border-base bg-secondary p-4 shadow-sm sm:p-5">
+        <aside className="min-w-0 rounded-2xl border border-base bg-secondary p-4 shadow-sm sm:p-5">
           <p className="text-[10px] font-black uppercase tracking-[.16em] text-violet-700">Detalle de cotización</p>
           <div className="mt-2 flex items-start justify-between gap-3">
             <div><h3 className="text-lg font-black text-primary">{selectedRate.code}</h3><p className="text-xs text-muted">{selectedRate.name}</p></div>
