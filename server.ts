@@ -363,25 +363,27 @@ async function startServer() {
   });
 
   // Informational exchange-rate proxy. The elTOQUE token never reaches the browser.
+  // Cache for five minutes to avoid spending the provider's quota on page refreshes.
+  let elToqueCache: { expiresAt: number; body: any } | null = null;
   app.get('/api/exchange-rates', rateLimitExchange, async (_req, res) => {
     try {
+      if (elToqueCache && elToqueCache.expiresAt > Date.now()) {
+        res.setHeader('Cache-Control', 'private, max-age=60');
+        return res.json(elToqueCache.body);
+      }
       const token = process.env.ELTOQUE_API_TOKEN || '';
       if (!token) {
         return res.status(503).json({
           configured: false,
           source: 'elTOQUE API',
-          error: 'ELTOQUE_API_TOKEN no está configurado en el servidor.'
+          error: 'La fuente de tasas todavía no está configurada en el servidor.'
         });
       }
-      const end = new Date();
-      const start = new Date(end.getTime() - 48 * 60 * 60 * 1000);
-      const formatElToqueDate = (value: Date) => value.toISOString().slice(0, 19).replace('T', ' ');
-      const params = new URLSearchParams({
-        date_from: formatElToqueDate(start),
-        date_to: formatElToqueDate(end)
-      });
-      const response = await fetch(`https://tasas.eltoque.com/v1/trmi?${params.toString()}`, {
-        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }
+      // Without date parameters elTOQUE returns the latest rolling 24-hour window.
+      // Its API rejects intervals greater than 24 hours.
+      const response = await fetch('https://tasas.eltoque.com/v1/trmi', {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(10000)
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) {
@@ -391,19 +393,24 @@ async function startServer() {
           error: payload?.error || `elTOQUE respondió HTTP ${response.status}`
         });
       }
-      return res.json({
+      const body = {
         configured: true,
         source: 'elTOQUE API',
         capturedAt: new Date().toISOString(),
         informationalOnly: true,
         data: payload
-      });
+      };
+      elToqueCache = { expiresAt: Date.now() + 5 * 60 * 1000, body };
+      res.setHeader('Cache-Control', 'private, max-age=60');
+      return res.json(body);
     } catch (error: any) {
-      console.error('[PALMYRA] exchange rates:', error);
+      console.error('[PALMYRA] exchange rates:', error?.name || 'request_failed');
       return res.status(502).json({
         configured: true,
         source: 'elTOQUE API',
-        error: error?.message || 'No se pudo consultar elTOQUE.'
+        error: error?.name === 'TimeoutError'
+          ? 'La consulta a elTOQUE tardó demasiado. Intenta nuevamente.'
+          : 'No se pudo consultar elTOQUE en este momento.'
       });
     }
   });
