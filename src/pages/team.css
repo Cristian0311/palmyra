@@ -969,3 +969,186 @@
   .inventory-product-modal .team-footer-actions{width:100%!important;display:grid!important;grid-template-columns:1fr 1.25fr!important;gap:7px!important}
   .inventory-product-modal .team-footer-actions button{min-height:36px!important;padding:0 8px!important;font-size:8px!important}
 }
+
+
+/* PALMYRA 2026-10-09 v2: modal de producto a tamaño amplio, con controles realmente legibles. */
+.inventory-product-modal{
+  width:min(100%, 980px)!important;
+  max-width:980px!important;
+  height:min(calc(var(--palmyra-vv-height,100dvh) - 24px), 920px)!important;
+  max-height:calc(var(--palmyra-vv-height,100dvh) - 24px)!important;
+  min-height:min(680px, calc(var(--palmyra-vv-height,100dvh) - 24px))!important;
+  border-radius:24px!important;
+}
+.inventory-product-modal>form{
+  flex:1 1 auto!important;
+  min-height:0!important;
+  overflow:hidden!important;
+}
+.inventory-product-modal .team-employee-modal-head{
+  flex-shrink:0!important;
+  padding:20px 24px 18px!important;
+  gap:16px!important;
+}
+.inventory-product-modal .team-employee-modal-head .team-employee-hero-icon{
+  width:52px!important;height:52px!important;border-radius:16px!important;
+}
+.inventory-product-modal .team-employee-modal-head h2{
+  font-size:26px!important;line-height:1.2!important;margin-top:5px!important;
+}
+.inventory-product-modal .team-employee-modal-head .team-employee-kicker{
+  font-size:11px!important;letter-spacing:.1em!important;
+}
+.inventory-product-modal .team-employee-modal-head .team-employee-status{
+  padding:6px 10px!important;font-size:11px!important;letter-spacing:.04em!important;
+}
+.inventory-product-modal .team-employee-modal-head p{
+  display:block!important;font-size:14px!important;line-height:1.5!important;
+  max-width:56rem!important;margin-top:8px!important;
+}
+.inventory-product-modal .team-employee-modal-head button{
+  width:46px!important;height:46px!important;border-radius:14px!important;
+}
+.inventory-product-modal .team-employee-stepbar{
+  flex-shrink:0!important;
+  padding:14px 24px!important;gap:14px!important;
+}
+.inventory-product-modal .team-step-item{
+  min-height:46px!important;gap:10px!important;
+}
+.inventory-product-modal .team-step-item>span{
+  width:36px!important;height:36px!important;border-radius:11px!important;font-size:12px!important;
+}
+.inventory-product-modal .team-step-item strong{
+  font-size:13px!important;line-height:1.2!important;letter-spacing:.015em!important;
+}
+.inventory-product-modal .team-step-item small{
+  display:block!important;font-size:11px!important;line-height:1.3!important;margin-top:4px!important;
+}
+.inventory-product-modal .team-step-line{margin:0 4px!important}
+.inventory-product-modal .team-employee-modal-body{
+  flex:1 1 auto!important;min-height:0!important;
+  padding:22px 26px 26px!important;gap:18px!important;
+  overflow-y:auto!important;overscroll-behavior:contain!important;
+  -webkit-overflow-scrolling:touch!important;scroll-padding-block:24px!important;
+}
+.inventory-product-modal .inventory-product-fields,
+.inventory-product-modal .inventory-product-row{gap:14px!important}
+.inventory-product-modal .inventory-product-input,
+.inventory-product-modal .inventory-product-icon-button{
+  height:52px!important;min-height:52px!important;
+}
+.inventory-product-modal .inventory-product-input{
+  padding:0 15px!important;font-size:16px!important;line-height:1.35!important;font-weight:600!important;
+}
+.inventory-product-modal .inventory-product-label{
+  font-size:13px!important;line-height:1.35!important;margin:0 0 7px 1px!important;
+  letter-spacing:.025em!important;
+}
+.inventory-product-modal .inventory-product-photo-box{
+  width:88px!important;height:88px!important;border-radius:16px!important;
+}
+.inventory-product-modal .inventory-product-general-grid{
+  grid-template-columns:88px minmax(0,1fr)!important;gap:18px!important;
+}
+.inventory-product-modal .inventory-product-photo{gap:7px!important}
+.inventory-product-modal .inventory-product-step-heading{margin-bottom:14px!important}
+.inventory-product-modal .inventory-step-heading h3,
+.inventory-product-modal .inventory-product-step-heading h3{font-size:20px!important;line-height:1.3!important}
+.inventory-product-modal .inventory-product-step-heading p,
+.inventory-product-modal .inventory-step-heading p{
+  display:block!important;font-size:14px!important;line-height:1.5!important;
+}
+.inventory-product-modal .inventory-variants-grid,
+.inventory-product-modal .inventory-price-grid{gap:16px!important}
+.inventory-product-modal .inventory-variant-group,
+.inventory-product-modal .inventory-price-group{
+  padding:18px!important;border-radius:16px!important;
+}
+.inventory-product-modal .inventory-product-small-button{
+  height:46px!important;min-width:86px!important;padding:0 14px!important;font-size:12px!important;
+}
+.inventory-product-modal .inventory-variant-tags{gap:8px!important;margin-top:10px!important}
+.inventory-product-modal .inventory-variant-tag{padding:8px 11px!important;font-size:12px!important}
+.inventory-product-modal .inventory-step-note{
+  margin-top:12px!important;padding:13px 15px!important;font-size:12px!important;line-height:1.5!important;
+}
+.inventory-product-modal .inventory-margin-row{
+  margin-top:12px!important;padding:12px 15px!important;
+}
+.inventory-product-modal .inventory-margin-row strong{font-size:16px!important}
+.inventory-product-modal .team-employee-modal-footer{
+  flex-shrink:0!important;padding:16px 24px!important;gap:16px!important;
+}
+.inventory-product-modal .team-employee-modal-footer p{
+  max-width:440px!important;font-size:12px!important;line-height:1.5!important;
+}
+.inventory-product-modal .team-footer-actions{gap:10px!important}
+.inventory-product-modal .team-footer-actions button{
+  min-height:48px!important;height:auto!important;padding:0 18px!important;font-size:12px!important;
+}
+.inventory-product-modal .team-footer-primary{white-space:normal!important}
+@media(max-width:767px){
+  .inventory-product-modal{
+    width:100%!important;max-width:none!important;
+    height:calc(var(--palmyra-vv-height,100dvh) - 24px)!important;
+    max-height:calc(var(--palmyra-vv-height,100dvh) - 24px)!important;
+    min-height:min(560px, calc(var(--palmyra-vv-height,100dvh) - 24px))!important;
+    border-radius:18px!important;
+  }
+  .inventory-product-modal .team-employee-modal-head{padding:14px 14px 12px!important;gap:10px!important}
+  .inventory-product-modal .team-employee-modal-head .team-employee-hero-icon{width:42px!important;height:42px!important}
+  .inventory-product-modal .team-employee-modal-head h2{font-size:22px!important}
+  .inventory-product-modal .team-employee-modal-head .team-employee-kicker{font-size:10px!important}
+  .inventory-product-modal .team-employee-modal-head .team-employee-status{font-size:10px!important}
+  .inventory-product-modal .team-employee-modal-head p{font-size:13px!important;line-height:1.45!important}
+  .inventory-product-modal .team-employee-modal-head button{width:42px!important;height:42px!important}
+  .inventory-product-modal .team-employee-stepbar{padding:11px 12px!important;gap:7px!important}
+  .inventory-product-modal .team-step-item{min-height:42px!important;gap:7px!important;justify-content:flex-start!important}
+  .inventory-product-modal .team-step-item>span{width:30px!important;height:30px!important;font-size:11px!important}
+  .inventory-product-modal .team-step-item strong{font-size:12px!important}
+  .inventory-product-modal .team-step-item small{font-size:10px!important;white-space:normal!important}
+  .inventory-product-modal .team-employee-modal-body{padding:16px 14px 20px!important;gap:14px!important}
+  .inventory-product-modal .inventory-product-fields,
+  .inventory-product-modal .inventory-product-row{gap:12px!important}
+  .inventory-product-modal .inventory-product-input,
+  .inventory-product-modal .inventory-product-icon-button{height:50px!important;min-height:50px!important}
+  .inventory-product-modal .inventory-product-input{font-size:16px!important;padding:0 12px!important}
+  .inventory-product-modal .inventory-product-label{font-size:13px!important;margin-bottom:6px!important}
+  .inventory-product-modal .inventory-product-general-grid{grid-template-columns:80px minmax(0,1fr)!important;gap:12px!important}
+  .inventory-product-modal .inventory-product-photo-box{width:80px!important;height:80px!important}
+  .inventory-product-modal .inventory-product-step-heading{margin-bottom:12px!important}
+  .inventory-product-modal .inventory-step-heading h3,
+  .inventory-product-modal .inventory-product-step-heading h3{font-size:18px!important}
+  .inventory-product-modal .inventory-product-step-heading p,
+  .inventory-product-modal .inventory-step-heading p{font-size:13px!important}
+  .inventory-product-modal .inventory-variants-grid,
+  .inventory-product-modal .inventory-price-grid{gap:10px!important}
+  .inventory-product-modal .inventory-variant-group,
+  .inventory-product-modal .inventory-price-group{padding:13px!important}
+  .inventory-product-modal .inventory-product-small-button{height:42px!important;min-width:74px!important;font-size:11px!important}
+  .inventory-product-modal .inventory-variant-tag{font-size:11px!important;padding:7px 9px!important}
+  .inventory-product-modal .inventory-step-note{font-size:12px!important;padding:11px 12px!important}
+  .inventory-product-modal .team-employee-modal-footer{padding:12px 14px!important;gap:10px!important;flex-direction:column!important;align-items:stretch!important}
+  .inventory-product-modal .team-employee-modal-footer p{display:none!important}
+  .inventory-product-modal .team-footer-actions{width:100%!important;display:grid!important;grid-template-columns:1fr 1.25fr!important;gap:9px!important}
+  .inventory-product-modal .team-footer-actions button{min-height:46px!important;padding:0 12px!important;font-size:11px!important}
+}
+@media(max-width:420px){
+  .inventory-product-modal{border-radius:14px!important}
+  .inventory-product-modal .team-employee-modal-head{padding:11px 10px 10px!important}
+  .inventory-product-modal .team-employee-modal-head h2{font-size:20px!important}
+  .inventory-product-modal .team-employee-modal-head p{font-size:12px!important}
+  .inventory-product-modal .team-employee-stepbar{padding:8px 8px!important;gap:4px!important}
+  .inventory-product-modal .team-step-item{gap:4px!important;align-items:center!important;flex-direction:column!important;text-align:center!important}
+  .inventory-product-modal .team-step-item>span{width:27px!important;height:27px!important}
+  .inventory-product-modal .team-step-item strong{font-size:11px!important}
+  .inventory-product-modal .team-step-item small{font-size:9px!important;line-height:1.2!important}
+  .inventory-product-modal .team-step-line{min-width:5px!important;margin:0!important}
+  .inventory-product-modal .team-employee-modal-body{padding:13px 10px 16px!important}
+  .inventory-product-modal .inventory-product-general-grid{grid-template-columns:72px minmax(0,1fr)!important;gap:10px!important}
+  .inventory-product-modal .inventory-product-photo-box{width:72px!important;height:72px!important}
+  .inventory-product-modal .inventory-product-label{font-size:12px!important}
+  .inventory-product-modal .inventory-product-input{font-size:16px!important}
+  .inventory-product-modal .team-employee-modal-footer{padding:10px!important}
+}
