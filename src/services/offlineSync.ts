@@ -4,7 +4,7 @@
  * The durable queue itself lives in offlineQueue.ts so the application store can
  * enqueue operations without importing the replay engine or Supabase adapters.
  */
-import { getSupabase, checkSupabaseReachability } from '../lib/supabase';
+import { getSupabase, checkSupabaseReachability, waitForSupabaseReachability } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import type { OfflineActionType, OfflineQueueItem } from './offlineQueue';
 import type { Transaction, CashRegisterSession, Customer, ReturnItem, InventoryLevel } from '../types';
