@@ -94,19 +94,67 @@ export default function Inventory() {
 
   useEffect(() => {
     if (!showAddModal || typeof window === 'undefined') return;
+
     const viewport = window.visualViewport;
+    const modal = document.querySelector<HTMLElement>('.inventory-product-modal');
+
     const syncVisualViewport = () => {
-      document.documentElement.style.setProperty('--palmyra-vv-height', `${viewport?.height || window.innerHeight}px`);
-      document.documentElement.style.setProperty('--palmyra-vv-top', `${viewport?.offsetTop || 0}px`);
+      document.documentElement.style.setProperty(
+        '--palmyra-vv-height',
+        `${viewport?.height || window.innerHeight}px`
+      );
+      document.documentElement.style.setProperty(
+        '--palmyra-vv-top',
+        `${viewport?.offsetTop || 0}px`
+      );
     };
+
+    // Desplaza solo el cuerpo del formulario (no toda la página) cuando el
+    // teclado reduce el área visible, para que el campo enfocado siga accesible.
+    const keepFocusedFieldVisible = () => {
+      const body = modal?.querySelector<HTMLElement>('.team-employee-modal-body');
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement) || !body || !body.contains(active)) return;
+      if (!active.matches('input, textarea, select')) return;
+
+      const fieldRect = active.getBoundingClientRect();
+      const bodyRect = body.getBoundingClientRect();
+      const visibleTop = Math.max(bodyRect.top, viewport?.offsetTop || 0) + 10;
+      const visibleBottom = Math.min(
+        bodyRect.bottom,
+        (viewport?.offsetTop || 0) + (viewport?.height || window.innerHeight)
+      ) - 10;
+
+      if (fieldRect.bottom > visibleBottom) {
+        body.scrollTop += Math.ceil(fieldRect.bottom - visibleBottom + 8);
+      } else if (fieldRect.top < visibleTop) {
+        body.scrollTop -= Math.ceil(visibleTop - fieldRect.top + 8);
+      }
+    };
+
+    const syncAndRevealFocus = () => {
+      syncVisualViewport();
+      requestAnimationFrame(keepFocusedFieldVisible);
+    };
+    const handleViewportScroll = () => syncVisualViewport();
+    const handleFocusIn = (event: FocusEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.matches('input, textarea, select')) {
+        requestAnimationFrame(keepFocusedFieldVisible);
+      }
+    };
+
     syncVisualViewport();
-    viewport?.addEventListener('resize', syncVisualViewport);
-    viewport?.addEventListener('scroll', syncVisualViewport);
-    window.addEventListener('resize', syncVisualViewport);
+    modal?.addEventListener('focusin', handleFocusIn);
+    viewport?.addEventListener('resize', syncAndRevealFocus);
+    viewport?.addEventListener('scroll', handleViewportScroll);
+    window.addEventListener('resize', syncAndRevealFocus);
+
     return () => {
-      viewport?.removeEventListener('resize', syncVisualViewport);
-      viewport?.removeEventListener('scroll', syncVisualViewport);
-      window.removeEventListener('resize', syncVisualViewport);
+      modal?.removeEventListener('focusin', handleFocusIn);
+      viewport?.removeEventListener('resize', syncAndRevealFocus);
+      viewport?.removeEventListener('scroll', handleViewportScroll);
+      window.removeEventListener('resize', syncAndRevealFocus);
       document.documentElement.style.removeProperty('--palmyra-vv-height');
       document.documentElement.style.removeProperty('--palmyra-vv-top');
     };
@@ -1108,13 +1156,21 @@ export default function Inventory() {
       )}
 
       {showAddModal && (
-        <div className="fixed inset-0 z-[200] bg-slate-950/70 backdrop-blur-md p-3 sm:p-5 flex items-center justify-center"
-          style={{ paddingTop: 'max(0.75rem, env(safe-area-inset-top))', paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
+        <div
+          className="fixed inset-0 z-[200] bg-slate-950/70 backdrop-blur-md p-3 sm:p-5 flex items-center justify-center overflow-hidden"
+          style={{
+            top: 'var(--palmyra-vv-top, 0px)',
+            bottom: 'auto',
+            height: 'var(--palmyra-vv-height, 100dvh)',
+            paddingTop: 'max(0.5rem, env(safe-area-inset-top))',
+            paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))',
+            overscrollBehavior: 'none'
+          }}
+        >
           <div className="absolute inset-0" aria-hidden="true" />
           <div className="team-employee-modal inventory-product-modal relative z-10 w-full max-w-5xl bg-secondary border border-base rounded-[28px] shadow-2xl overflow-hidden flex flex-col min-h-0"
             style={{
-              maxHeight: 'calc(100dvh - 1rem)',
-              transform: 'translateY(var(--palmyra-vv-top, 0px))'
+              maxHeight: 'calc(var(--palmyra-vv-height, 100dvh) - 1rem)'
             }}>
             <header className="team-employee-modal-head relative overflow-hidden shrink-0">
               
