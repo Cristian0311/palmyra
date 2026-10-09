@@ -11,6 +11,7 @@ type Rate = { code: string; name: string; value?: number; buy?: number; sell?: n
 type Payload = { source?: string; capturedAt?: string; data?: any; error?: string; configured?: boolean };
 type Snapshot = { capturedAt: string; rates: Record<string, number> };
 type Period = "24h" | "7d" | "30d" | "all";
+type MarketTab = "divisas" | "crypto";
 
 const HISTORY_KEY = "palmyra.exchange-rate-history.v1";
 const HISTORY_LIMIT = 2500;
@@ -66,6 +67,25 @@ function formatDate(value: string, withDate = false) {
     ? { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }
     : { hour: "2-digit", minute: "2-digit" }).format(date);
 }
+function AbsoluteDelta({ current, previous }: { current?: number; previous?: number }) {
+  if (current === undefined || previous === undefined) return <span className="text-xs font-semibold text-muted">Sin dato anterior</span>;
+  const difference = current - previous;
+  const up = difference > 0.00001;
+  const down = difference < -0.00001;
+  const Icon = up ? TrendingUp : down ? TrendingDown : Activity;
+  const color = up ? "text-emerald-700 bg-emerald-50" : down ? "text-rose-700 bg-rose-50" : "text-muted bg-subtle";
+  const pct = percentChange(current, previous);
+  return <span className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold ${color}`}><Icon className="h-3.5 w-3.5" />{difference > 0 ? "+" : ""}{money(difference)} CUP{pct === null ? "" : ` (${pct > 0 ? "+" : ""}${pct.toFixed(2)}%)`}</span>;
+}
+function Sparkline({ values, positive }: { values: number[]; positive: boolean }) {
+  if (values.length < 2) return <div className="h-10 flex items-center text-[10px] text-muted">Gráfica en formación</div>;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min || 1;
+  const points = values.map((value, i) => `${(i / (values.length - 1)) * 100},${36 - ((value - min) / range) * 30}`).join(" ");
+  const color = positive ? "#16A34A" : "#E11D48";
+  return <svg viewBox="0 0 100 40" preserveAspectRatio="none" className="h-10 w-full" aria-label="Gráfica de evolución reciente"><polyline points={points} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" /></svg>;
+}
 function Delta({ value }: { value: number | null }) {
   if (value === null) return <span className="text-xs font-semibold text-muted">Sin historial comparable</span>;
   const up = value > 0.00001;
@@ -82,6 +102,7 @@ export default function ExchangeRate() {
   const [error, setError] = useState("");
   const [history, setHistory] = useState<Snapshot[]>(readHistory);
   const [period, setPeriod] = useState<Period>("7d");
+  const [marketTab, setMarketTab] = useState<MarketTab>("divisas");
   const [selectedCode, setSelectedCode] = useState("");
   const [lastAttempt, setLastAttempt] = useState<string | null>(null);
 
@@ -159,8 +180,8 @@ export default function ExchangeRate() {
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-white/15 bg-white/10"><BarChart3 className="h-6 w-6" /></div>
               <div>
                 <p className="text-[9px] font-black uppercase tracking-[.2em] text-violet-200">PALMYRA · INTELIGENCIA DE MERCADO</p>
-                <h1 className="mt-1 text-2xl font-black sm:text-3xl">Tasa de cambio</h1>
-                <p className="mt-1 max-w-2xl text-xs text-violet-100">Cotizaciones de referencia y seguimiento de su evolución.</p>
+                <h1 className="mt-1 text-2xl font-black sm:text-3xl">Mercados</h1>
+                <p className="mt-1 max-w-2xl text-xs text-violet-100">Divisas y criptomonedas, con evolución y variación frente al dato anterior.</p>
               </div>
             </div>
             <button onClick={() => void load(true)} disabled={loading || refreshing} className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-xs font-bold transition hover:bg-white/20 disabled:opacity-60">
@@ -187,19 +208,38 @@ export default function ExchangeRate() {
 
       {loading && !payload && <div className="rounded-2xl border border-base bg-secondary p-6 text-sm text-muted" aria-live="polite">Consultando las cotizaciones de elTOQUE…</div>}
 
+      <nav className="flex gap-2 rounded-2xl border border-base bg-secondary p-2" aria-label="Tipo de mercado">
+        <button type="button" onClick={() => setMarketTab("divisas")} className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-extrabold transition ${marketTab === "divisas" ? "bg-violet-700 text-white shadow-sm" : "text-muted hover:bg-primary"}`}><Activity className="h-4 w-4" /> Divisas</button>
+        <button type="button" onClick={() => setMarketTab("crypto")} className={`inline-flex flex-1 items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-extrabold transition ${marketTab === "crypto" ? "bg-violet-700 text-white shadow-sm" : "text-muted hover:bg-primary"}`}><BarChart3 className="h-4 w-4" /> Crypto</button>
+      </nav>
+
+      {marketTab === "crypto" && <section className="rounded-2xl border border-base bg-secondary p-6 shadow-sm sm:p-8">
+        <div className="mx-auto flex max-w-xl flex-col items-center text-center">
+          <div className="rounded-2xl bg-violet-100 p-4 text-violet-800"><BarChart3 className="h-8 w-8" /></div>
+          <h2 className="mt-4 text-xl font-black text-primary">Mercado cripto</h2>
+          <p className="mt-2 text-sm leading-6 text-muted">Esta pestaña queda separada de las divisas tradicionales. Para mostrar precios, gráficas y variaciones reales de BTC, ETH y otras criptomonedas, falta conectar una fuente de mercado cripto; no mostraremos cotizaciones inventadas.</p>
+          <span className="mt-4 inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1.5 text-xs font-bold text-amber-800"><Clock3 className="h-3.5 w-3.5" /> Fuente de datos pendiente</span>
+        </div>
+      </section>}
+
+      {marketTab === "divisas" && <>
+
       {rates.length > 0 && <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {rates.map((rate) => {
           const value = rate.value ?? rate.sell ?? rate.buy;
           const active = selectedCode === rate.code;
           const previous = [...history].reverse().find((snapshot) => snapshot.rates[rate.code] !== undefined && snapshot.capturedAt !== payload?.capturedAt)?.rates[rate.code];
           const delta = percentChange(value, previous);
+          const sparkValues = history.filter((snapshot) => snapshot.rates[rate.code] !== undefined).slice(-18).map((snapshot) => snapshot.rates[rate.code]);
+          const rising = sparkValues.length > 1 ? sparkValues[sparkValues.length - 1] >= sparkValues[0] : true;
           return <button key={rate.code} type="button" onClick={() => setSelectedCode(rate.code)} className={`min-w-0 rounded-2xl border bg-secondary p-4 text-left shadow-sm transition hover:border-violet-300 hover:shadow-md ${active ? "border-violet-400 ring-2 ring-violet-500/10" : "border-base"}`}>
             <div className="flex items-start justify-between gap-2">
               <div><p className="text-[10px] font-black uppercase tracking-[.15em] text-violet-700">{rate.code} <span className="text-muted">/ CUP</span></p><h2 className="mt-1 text-sm font-bold text-primary">{rate.name}</h2></div>
               <span className="rounded-lg bg-subtle p-2 text-violet-700"><ArrowDownUp className="h-4 w-4" /></span>
             </div>
             <p className="mt-5 break-words text-2xl font-black tracking-tight text-primary sm:text-3xl">{money(value)} <span className="text-xs font-semibold text-muted">CUP</span></p>
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2"><Delta value={delta} /><span className="text-[10px] text-muted">{rate.buy !== undefined || rate.sell !== undefined ? "Compra y venta disponibles" : "Tasa de referencia"}</span></div>
+            <div className="mt-2"><Sparkline values={history.filter((snapshot) => snapshot.rates[rate.code] !== undefined).slice(-18).map((snapshot) => snapshot.rates[rate.code])} positive={previous === undefined || value === undefined ? true : value >= previous} /></div>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2"><AbsoluteDelta current={value} previous={previous} /><span className="text-[10px] text-muted">{rate.buy !== undefined || rate.sell !== undefined ? "Compra y venta disponibles" : "Tasa de referencia"}</span></div>
           </button>;
         })}
       </section>}
@@ -277,7 +317,7 @@ export default function ExchangeRate() {
         </div> : <div className="p-6 text-sm text-muted">{error ? "No hay cotizaciones disponibles. Comprueba la conexión y vuelve a intentarlo." : "Las cotizaciones aparecerán cuando la API responda con datos reconocibles."}</div>}
       </section>
 
-      <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-950">
+      </>}\n\n      <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-950">
         <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
         <p><strong>Transparencia y control.</strong> Las tasas son informativas y no modifican automáticamente precios, costos, inventario ni operaciones del POS. El historial se conserva en este navegador; para recopilar cotizaciones mientras nadie tiene abierta esta sección y compartirlas entre dispositivos, se necesitaría un almacenamiento histórico central y un proceso programado en el servidor.</p>
       </div>
