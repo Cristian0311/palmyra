@@ -21,7 +21,7 @@ import {
   pushProductToSupabase, pushUserToSupabase, pushWarrantyToSupabase, pushTimeShiftToSupabase, deleteBankCardFromSupabase,
   pushQuoteToSupabase, pushBankCardToSupabase, pushReturnToSupabase,
   pushSupplierToSupabase, pushSupplierOrderToSupabase, pushInventoryAuditToSupabase,
-  pushSalarySettlementToSupabase, pushInventoryToSupabase, pushCurrencyToSupabase,
+  pushSalarySettlementToSupabase, hasPayrollEmployeeForSettlement, pushInventoryToSupabase, pushCurrencyToSupabase,
   pushCashMovementToSupabase, deleteCashMovementFromSupabase, pushCashSessionMetadataToSupabase,
   applyInventoryAdjustmentToSupabase, reconcileInventoryToSupabase
 } from '../supabaseSync';
@@ -243,8 +243,19 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         // La liquidación salarial debe persistirse en la misma sincronización
         // del cierre. Esto hace que una comisión porcentual no quede solo en
         // memoria/localStorage.
-        const salaryOk = await pushSalarySettlementToSupabase(recalculatedSettlement);
-        if (!salaryOk) throw new Error('El cierre fue confirmado, pero la liquidación salarial aún no pudo sincronizarse.');
+        const shouldPersistSalary = await hasPayrollEmployeeForSettlement(recalculatedSettlement);
+        if (shouldPersistSalary) {
+          const salaryOk = await pushSalarySettlementToSupabase(recalculatedSettlement, { employeeEligibilityChecked: true });
+          if (!salaryOk) throw new Error('El cierre fue confirmado, pero la liquidación salarial aún no pudo sincronizarse.');
+        } else {
+          // A user who operates as company admin is not an employee/payroll row.
+          // Keep the cash close successful and remove any local pseudo-payroll entry.
+          useStore.setState(state => ({
+            salarySettlements: (state.salarySettlements || []).filter(
+              (entry: any) => entry.sessionId !== session.id
+            )
+          }));
+        }
         return true;
       }
       if (session.__operation === 'open' || String(item.actionId).startsWith('cash-open:')) {
@@ -449,7 +460,19 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       return true;
     }
     case 'salary_settlement': {
-      const ok = await pushSalarySettlementToSupabase(data as any);
+      const settlement = data as any;
+      const hasEmployee = await hasPayrollEmployeeForSettlement(settlement);
+      if (!hasEmployee) {
+        // A prior version queued admin sessions as salary settlements. They
+        // are now intentionally acknowledged and removed from the outbox.
+        useStore.setState(state => ({
+          salarySettlements: (state.salarySettlements || []).filter(
+            (entry: any) => entry.sessionId !== settlement.sessionId
+          )
+        }));
+        return true;
+      }
+      const ok = await pushSalarySettlementToSupabase(settlement, { employeeEligibilityChecked: true });
       if (!ok) throw new Error('No se pudo sincronizar la liquidación pendiente.');
       return true;
     }
