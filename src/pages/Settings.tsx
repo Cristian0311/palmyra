@@ -69,6 +69,18 @@ export default function Settings() {
   const [rates, setRates] = useState<{ [code: string]: number }>(
     currencies.reduce((acc, c) => ({ ...acc, [c.code]: c.rateToBase }), {})
   );
+  const [ratesDirty, setRatesDirty] = useState(false);
+  const [isSavingRates, setIsSavingRates] = useState(false);
+
+  // El catálogo remoto puede hidratarse después del primer render. Mantén la
+  // edición del usuario, pero actualiza el formulario cuando llegan tasas nuevas.
+  useEffect(() => {
+    if (ratesDirty) return;
+    setRates(currencies.reduce((acc, currency) => ({
+      ...acc,
+      [currency.code]: currency.rateToBase
+    }), {} as { [code: string]: number }));
+  }, [currencies, ratesDirty]);
 
   const [config, setConfig] = useState(storeConfig);
   const [ticketConfig, setTicketConfig] = useState(receiptConfig);
@@ -249,11 +261,46 @@ export default function Settings() {
     showToast("Categoría eliminada correctamente.");
   };
 
-  const handleSaveRates = () => {
-    Object.entries(rates).forEach(([code, rate]) => {
-      updateCurrencyRate(code, rate as number);
+  const handleSaveRates = async () => {
+    const baseCode = currencies.find(currency => currency.isBase)?.code || baseCurrency.code;
+    const editableCurrencies = currencies.filter(currency =>
+      ['CUP', 'USD', 'EUR'].includes(currency.code) &&
+      currency.code !== baseCode &&
+      !currency.isBase
+    );
+
+    const invalidCurrency = editableCurrencies.find(currency => {
+      const rate = Number(rates[currency.code]);
+      return !Number.isFinite(rate) || rate <= 0;
     });
-    showToast("Tasas de cambio actualizadas correctamente.");
+    if (invalidCurrency) {
+      showToast(`Introduce una tasa mayor que 0 para ${invalidCurrency.code}.`, 'error');
+      return;
+    }
+
+    setIsSavingRates(true);
+    try {
+      const results = await Promise.all(editableCurrencies.map(currency =>
+        updateCurrencyRate(currency.code, Number(rates[currency.code]))
+      ));
+      const latestCurrencies = useStore.getState().currencies || [];
+      setRates(latestCurrencies.reduce((acc, currency) => ({
+        ...acc,
+        [currency.code]: currency.rateToBase
+      }), {} as { [code: string]: number }));
+      setRatesDirty(false);
+
+      if (results.every(Boolean)) {
+        showToast("Tasas de cambio guardadas y confirmadas por Supabase.");
+      } else {
+        showToast("Tasas guardadas en este dispositivo; una o más no se confirmaron en Supabase y quedan pendientes de revisión/sincronización.", 'info');
+      }
+    } catch (error) {
+      console.error('[Settings] No se pudieron guardar todas las tasas:', error);
+      showToast("No se pudo confirmar el guardado remoto. Los valores locales se conservaron; revisa la conexión y vuelve a intentarlo.", 'error');
+    } finally {
+      setIsSavingRates(false);
+    }
   };
 
   const handleSaveConfig = async () => {
@@ -586,9 +633,19 @@ export default function Settings() {
                     ) : (
                       <div className="flex items-center min-w-0 bg-subtle border border-base rounded-lg px-2 py-0.5">
                         <span className="hidden sm:inline text-[9px] font-black text-muted mr-1 whitespace-nowrap">1 {currency.code} =</span>
-                        <input type="number" step="0.01" min="0" value={rates[currency.code] ?? ''}
-                          onChange={e => setRates({ ...rates, [currency.code]: parseFloat(e.target.value) || 0 })}
-                          className="w-16 bg-transparent text-right text-xs font-black text-primary outline-none border-0 shadow-none" />
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          inputMode="decimal"
+                          aria-label={`Tasa de cambio de ${currency.code} a ${baseCurrency.code}`}
+                          value={rates[currency.code] ?? ''}
+                          onChange={e => {
+                            setRates({ ...rates, [currency.code]: e.target.value === '' ? 0 : Number(e.target.value) });
+                            setRatesDirty(true);
+                          }}
+                          className="w-24 max-w-full min-w-0 bg-transparent text-right text-sm font-black text-primary outline-none border-0 shadow-none"
+                        />
                         <span className="text-[9px] font-black text-muted ml-1">CUP</span>
                       </div>
                     )}
@@ -597,8 +654,13 @@ export default function Settings() {
               })}
             </div>
 
-            <button onClick={handleSaveRates} className="w-full py-2.5 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 transition-all flex items-center justify-center gap-2">
-              <Save size={14} /> Guardar Tasas
+            <button
+              type="button"
+              onClick={handleSaveRates}
+              disabled={isSavingRates}
+              className="w-full py-2.5 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-wait transition-all flex items-center justify-center gap-2"
+            >
+              <Save size={14} /> {isSavingRates ? 'Guardando tasas…' : 'Guardar Tasas'}
             </button>
           </div>
         )}

@@ -23,7 +23,7 @@ export interface AppState {
 
   // Configuración
   currencies: Currency[];
-  updateCurrencyRate: (code: string, newRate: number) => void;
+  updateCurrencyRate: (code: string, newRate: number) => Promise<boolean>;
   getBaseCurrency: () => Currency;
   storeConfig: import('../types').StoreConfig;
   updateStoreConfig: (config: import('../types').StoreConfig) => void;
