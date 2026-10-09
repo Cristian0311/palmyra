@@ -373,31 +373,102 @@ export async function pushInventoryAuditToSupabase(audit:InventoryAudit){
   try{const supabase=await onlineClient();const {companyId,authUserId}=await getActiveTenant();const {error}=await supabase.from('inventory_audits').upsert({id:audit.id,company_id:companyId,warehouse_id:audit.branchId,status:audit.status==='completed'?'approved':'counting',blind_count:Boolean(audit.blindCount),notes:audit.notes||null,created_by:authUserId,submitted_at:audit.submittedAt||null,reviewed_by:audit.reviewedBy||null,reviewed_at:audit.reviewedAt||null},{onConflict:'id'});if(error)throw error;const {error:de}=await supabase.from('inventory_audit_items').delete().eq('audit_id',audit.id);if(de)throw de;if(audit.items?.length){const {error:ie}=await supabase.from('inventory_audit_items').insert(audit.items.map(i=>({id:crypto.randomUUID(),audit_id:audit.id,product_id:i.productId,expected_quantity:Number(i.expected)||0,counted_quantity:i.counted==null?null:Number(i.counted),difference:Number(i.difference)||0,notes:null})));if(ie)throw ie;}return true;}catch(e:any){await queue('inventory_audit',audit,audit.id);return false;}
 }
 
-export async function pushSalarySettlementToSupabase(settlement:SalarySettlement){
-  try{
-    const supabase=await onlineClient();
-    const {companyId}=await getActiveTenant();
-    const {data,error}=await supabase.rpc('palmyra_record_salary_settlement',{
-      p_company_id:companyId,
-      p_settlement:{
-        id:settlement.id,
-        sessionId:settlement.sessionId,
-        userId:settlement.userId,
-        date:settlement.date,
-        baseSalary:Number(settlement.baseSalary)||0,
-        commissions:Number(settlement.commissions)||0,
-        discrepancyDeduction:Math.abs(Number(settlement.discrepancyDeduction)||0),
-        total:Math.max(0,Number(settlement.total)||0),
-        status:settlement.status
+type PayrollSettlementIdentity = Pick<SalarySettlement, 'sessionId' | 'userId'>;
+
+async function payrollEmployeeExistsOnClient(
+  supabase: any,
+  companyId: string,
+  settlement: PayrollSettlementIdentity
+): Promise<boolean> {
+  // A cash session can identify an employee independently from the POS login.
+  // The company creator/admin is intentionally not required to have an employees row.
+  const sessionId = String(settlement.sessionId || '').trim();
+  if (sessionId) {
+    const { data: session, error: sessionError } = await supabase
+      .from('cash_sessions')
+      .select('employee_id')
+      .eq('id', sessionId)
+      .eq('company_id', companyId)
+      .maybeSingle();
+    if (sessionError) throw sessionError;
+
+    const sessionEmployeeId = String(session?.employee_id || '').trim();
+    if (sessionEmployeeId) {
+      const { data: sessionEmployee, error: sessionEmployeeError } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('id', sessionEmployeeId)
+        .maybeSingle();
+      if (sessionEmployeeError) throw sessionEmployeeError;
+      if (sessionEmployee?.id) return true;
+    }
+  }
+
+  const identityId = String(settlement.userId || '').trim();
+  if (!identityId) return false;
+
+  // Match the database RPC's fallback: employee ID or linked auth user ID.
+  const [byEmployeeId, byAuthUserId] = await Promise.all([
+    supabase.from('employees').select('id')
+      .eq('company_id', companyId).eq('id', identityId).maybeSingle(),
+    supabase.from('employees').select('id')
+      .eq('company_id', companyId).eq('user_id', identityId).maybeSingle()
+  ]);
+  if (byEmployeeId.error) throw byEmployeeId.error;
+  if (byAuthUserId.error) throw byAuthUserId.error;
+  return Boolean(byEmployeeId.data?.id || byAuthUserId.data?.id);
+}
+
+/**
+ * Returns whether this close belongs to an actual employee record and can
+ * therefore produce a payroll item. Admin-only sessions should close normally
+ * without manufacturing an employee or blocking the durable offline queue.
+ */
+export async function hasPayrollEmployeeForSettlement(
+  settlement: PayrollSettlementIdentity
+): Promise<boolean> {
+  const supabase = await onlineClient();
+  const { companyId } = await getActiveTenant();
+  return payrollEmployeeExistsOnClient(supabase, companyId, settlement);
+}
+
+export async function pushSalarySettlementToSupabase(
+  settlement: SalarySettlement,
+  options: { employeeEligibilityChecked?: boolean } = {}
+) {
+  try {
+    const supabase = await onlineClient();
+    const { companyId } = await getActiveTenant();
+
+    if (
+      !options.employeeEligibilityChecked &&
+      !(await payrollEmployeeExistsOnClient(supabase, companyId, settlement))
+    ) {
+      // No employee record means this session is admin-owned, not a payroll run.
+      return true;
+    }
+
+    const { data, error } = await supabase.rpc('palmyra_record_salary_settlement', {
+      p_company_id: companyId,
+      p_settlement: {
+        id: settlement.id,
+        sessionId: settlement.sessionId,
+        userId: settlement.userId,
+        date: settlement.date,
+        baseSalary: Number(settlement.baseSalary) || 0,
+        commissions: Number(settlement.commissions) || 0,
+        discrepancyDeduction: Math.abs(Number(settlement.discrepancyDeduction) || 0),
+        total: Math.max(0, Number(settlement.total) || 0),
+        status: settlement.status
       }
     });
-    if(error) throw error;
-    if(data?.success===false) throw new Error(data?.message||data?.error||'La liquidación salarial fue rechazada.');
+    if (error) throw error;
+    if (data?.success === false) throw new Error(data?.message || data?.error || 'La liquidación salarial fue rechazada.');
     return true;
-  }catch(e:any){
-    await queue('salary_settlement',settlement,settlement.id);
-    // Propagate the real Supabase error so the durable queue records the exact
-    // cause instead of converting every salary failure into a generic message.
+  } catch (e: any) {
+    await queue('salary_settlement', settlement, settlement.id);
+    // Preserve real error details for genuine employee payroll sync failures.
     throw e;
   }
 }
