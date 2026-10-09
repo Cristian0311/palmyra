@@ -1157,7 +1157,7 @@ export default function Inventory() {
 
       {showAddModal && (
         <div
-          className="fixed inset-0 z-[200] bg-slate-950/70 backdrop-blur-md p-3 sm:p-5 flex items-center justify-center overflow-hidden"
+          className="fixed inset-0 z-[200] bg-slate-950/70 backdrop-blur-md p-1 md:p-4 flex items-center justify-center overflow-hidden"
           style={{
             top: 'var(--palmyra-vv-top, 0px)',
             bottom: 'auto',
