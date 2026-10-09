@@ -90,6 +90,7 @@ export default function Inventory() {
   const [showBatchPriceModal, setShowBatchPriceModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [categoryViewport, setCategoryViewport] = useState({ height: 0, top: 0 });
+  const [stockViewport, setStockViewport] = useState({ height: 0, top: 0 });
 
 
   useEffect(() => {
@@ -159,6 +160,81 @@ export default function Inventory() {
       document.documentElement.style.removeProperty('--palmyra-vv-top');
     };
   }, [showAddModal]);
+
+  // Mantiene el modal de stock dentro del área realmente visible en móviles,
+  // incluso cuando el teclado virtual reduce el visual viewport.
+  useEffect(() => {
+    if (!managingStockProduct || typeof window === 'undefined') return;
+
+    const viewport = window.visualViewport;
+    const pendingTimers: number[] = [];
+    let pendingFrame: number | undefined;
+
+    const syncStockViewport = () => {
+      setStockViewport({
+        height: viewport?.height || window.innerHeight,
+        top: viewport?.offsetTop || 0,
+      });
+    };
+
+    const revealFocusedStockField = () => {
+      const modal = document.querySelector<HTMLElement>('.stock-manage-modal');
+      const body = modal?.querySelector<HTMLElement>('.stock-manage-scroll');
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement) || !body || !body.contains(active)) return;
+      if (!active.matches('input, textarea, select')) return;
+
+      const viewportTop = viewport?.offsetTop || 0;
+      const viewportHeight = viewport?.height || window.innerHeight;
+      const fieldRect = active.getBoundingClientRect();
+      const visibleTop = viewportTop + 12;
+      const visibleBottom = viewportTop + viewportHeight - 12;
+
+      if (fieldRect.bottom > visibleBottom) {
+        body.scrollTop += Math.ceil(fieldRect.bottom - visibleBottom + 18);
+      } else if (fieldRect.top < visibleTop) {
+        body.scrollTop -= Math.ceil(visibleTop - fieldRect.top + 18);
+      }
+    };
+
+    const syncAndRevealFocusedField = () => {
+      syncStockViewport();
+      if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
+      pendingFrame = requestAnimationFrame(() => {
+        revealFocusedStockField();
+        // Android/Chrome can report the keyboard's final height a moment later.
+        pendingTimers.push(window.setTimeout(revealFocusedStockField, 120));
+        pendingTimers.push(window.setTimeout(revealFocusedStockField, 280));
+      });
+    };
+
+    const handleFocusIn = (event: FocusEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && target.matches('input, textarea, select')) {
+        syncAndRevealFocusedField();
+      }
+    };
+    const handleViewportScroll = () => {
+      syncStockViewport();
+      requestAnimationFrame(revealFocusedStockField);
+    };
+
+    const modal = document.querySelector<HTMLElement>('.stock-manage-modal');
+    syncStockViewport();
+    modal?.addEventListener('focusin', handleFocusIn);
+    viewport?.addEventListener('resize', syncAndRevealFocusedField);
+    viewport?.addEventListener('scroll', handleViewportScroll);
+    window.addEventListener('resize', syncAndRevealFocusedField);
+
+    return () => {
+      modal?.removeEventListener('focusin', handleFocusIn);
+      viewport?.removeEventListener('resize', syncAndRevealFocusedField);
+      viewport?.removeEventListener('scroll', handleViewportScroll);
+      window.removeEventListener('resize', syncAndRevealFocusedField);
+      if (pendingFrame !== undefined) cancelAnimationFrame(pendingFrame);
+      pendingTimers.forEach(timer => window.clearTimeout(timer));
+    };
+  }, [managingStockProduct]);
 
   useEffect(() => {
     if (!showCategoryModal || typeof window === 'undefined') return;
@@ -1418,8 +1494,8 @@ export default function Inventory() {
       {/* (Categoría funcionalidad eliminada) */}
 
       {managingStockProduct && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex justify-center items-center p-3 sm:p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-2xl flex flex-col shadow-2xl border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-200 overflow-hidden max-h-[90vh]">
+        <div className="fixed inset-x-0 bg-slate-900/70 backdrop-blur-sm z-50 flex justify-center items-center p-2 sm:p-4 stock-manage-overlay" style={{ top: `${stockViewport.top}px`, height: stockViewport.height ? `${stockViewport.height}px` : "100dvh" }}>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-2xl flex flex-col shadow-2xl border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-200 overflow-hidden stock-manage-modal" style={{ maxHeight: stockViewport.height ? `${Math.max(160, stockViewport.height - 16)}px` : "calc(100dvh - 16px)", minHeight: 0 }}>
             <div className="flex justify-between items-center px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0">
@@ -1438,7 +1514,7 @@ export default function Inventory() {
               </button>
             </div>
             
-            <div className="p-4 overflow-y-auto custom-scrollbar flex-1 bg-white dark:bg-slate-900">
+            <div className="p-4 overflow-y-auto custom-scrollbar flex-1 min-h-0 bg-white dark:bg-slate-900 stock-manage-scroll" style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {branches.map(branch => {
                   const hasVariants =
