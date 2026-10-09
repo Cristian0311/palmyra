@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Activity, AlertCircle, ArrowDownRight, ArrowUpRight, BarChart3,
-  CheckCircle2, Clock3, RefreshCw, ShieldCheck, TrendingDown, TrendingUp
+  CheckCircle2, RefreshCw, ShieldCheck, TrendingDown, TrendingUp
 } from "lucide-react";
 import {
   CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis
@@ -112,7 +112,7 @@ function getRates(data: any): Rate[] {
         value
       };
     }
-    const sourceCode = String(raw.code ?? raw.currency ?? raw.moneda ?? raw.symbol ?? raw.codigo ?? fallbackCode ?? ("RATE-" + (index + 1))).toUpperCase().trim();
+    const sourceCode = String(raw.code ?? raw.currency ?? raw.moneda ?? raw.symbol ?? raw.codigo ?? (fallbackCode || ("RATE-" + (index + 1)))).toUpperCase().trim();
     const code = sourceCode === "ECU" ? "EUR" : sourceCode;
     const compact = code.replace(/[-_\s]/g, "");
     const meta = ASSET_META[code] ?? ASSET_META[compact];
@@ -198,7 +198,6 @@ export default function ExchangeRate() {
   const [period, setPeriod] = useState<Period>("7d");
   const [marketTab, setMarketTab] = useState<MarketTab>("divisas");
   const [selectedCode, setSelectedCode] = useState("");
-  const [lastAttempt, setLastAttempt] = useState<string | null>(null);
 
   const load = useCallback(async (silent = false) => {
     if (silent) setRefreshing(true); else setLoading(true);
@@ -209,7 +208,6 @@ export default function ExchangeRate() {
       if (!response.ok) throw new Error(body.error || `Error HTTP ${response.status}`);
       setPayload(body);
       const capturedAt = typeof body.capturedAt === "string" ? body.capturedAt : new Date().toISOString();
-      setLastAttempt(new Date().toISOString());
       const rates = getRates(body.data);
       const values = Object.fromEntries(rates.flatMap((rate) => {
         const value = rate.value ?? rate.sell ?? rate.buy;
@@ -226,7 +224,6 @@ export default function ExchangeRate() {
       }
     } catch (e: any) {
       setError(e?.message || "No se pudo conectar con el servicio de tasas.");
-      setLastAttempt(new Date().toISOString());
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -269,7 +266,6 @@ export default function ExchangeRate() {
   const comparable = chartData.length > 1 ? chartData[0].value : undefined;
   const change = percentChange(currentValue, comparable);
   const updated = payload?.capturedAt ? formatDate(payload.capturedAt, true) : "";
-  const statusText = error ? "Con incidencias" : payload ? "Fuente consultada" : "Esperando datos";
 
   return <div className="h-full w-full overflow-y-auto bg-primary px-3 py-4 sm:px-5 sm:py-6">
     <div className="mx-auto max-w-7xl space-y-5 pb-8">
