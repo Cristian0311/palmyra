@@ -175,14 +175,14 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
             const metadataSellers = Array.isArray(sale.metadata?.sellerEmployeeIds)
               ? sale.metadata.sellerEmployeeIds.map((id: unknown) => String(id)).filter(Boolean)
               : [];
-            const sellerIds = Array.from(new Set(
-              metadataSellers.length
+            const sellerIds: string[] = Array.from(new Set<string>(
+              (metadataSellers.length
                 ? metadataSellers
                 : [
                     sale.employee_id ? String(sale.employee_id) : '',
                     sale.seller_user_id ? String(sale.seller_user_id) : '',
                     session.userId ? String(session.userId) : ''
-                  ].filter(Boolean)
+                  ]).map((id: unknown) => String(id)).filter(Boolean)
             ));
             const splitFactor = Math.max(1, sellerIds.length);
             const globalMode = compensationRes.data?.mode === 'sales_percent' ? 'sales_percentage' : 'fixed_product';
