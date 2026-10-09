@@ -4,7 +4,7 @@
  * The durable queue itself lives in offlineQueue.ts so the application store can
  * enqueue operations without importing the replay engine or Supabase adapters.
  */
-import { getSupabase, waitForSupabaseReachability } from '../lib/supabase';
+import { getSupabase, checkSupabaseReachability } from '../lib/supabase';
 import { useStore } from '../store/useStore';
 import type { OfflineActionType, OfflineQueueItem } from './offlineQueue';
 import type { Transaction, CashRegisterSession, Customer, ReturnItem, InventoryLevel } from '../types';
@@ -436,7 +436,7 @@ export function initOfflineSyncWatcher(): () => void {
       const res = await processOfflineQueue();
       if (res.remaining > 0 || res.conflicts > 0) {
         const pendingDetails = getOfflineQueue()
-          .filter(item => item.status !== 'synced' && item.status !== 'conflict')
+          .filter(item => item.status !== 'conflict')
           .map(item => `${item.type} · ${item.actionId}: ${item.lastError || 'Pendiente por dependencia de otra operación.'}`);
         const details = [
           ...(res.errors || []).map(e => `${e.type} · ${e.actionId}: ${e.message}`),
