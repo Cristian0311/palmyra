@@ -140,6 +140,54 @@ function getRates(data: any): Rate[] {
   }
   return [];
 }
+type OfferStats = { buy: number | null; sell: number | null; total: number | null; available: boolean };
+
+function getOfferStats(data: unknown): OfferStats {
+  const buyKeys = new Set(["buy", "compra", "bids", "buy_offers", "buyoffers", "offers_buy", "offersbuy", "ofertas_compra", "ofertascompra", "compras"]);
+  const sellKeys = new Set(["sell", "venta", "asks", "sell_offers", "selloffers", "offers_sell", "offerssell", "ofertas_venta", "ofertasventa", "ventas"]);
+  const allKeys = new Set(["offers", "ofertas", "listings", "anuncios", "market_offers", "marketoffers"]);
+  const normalize = (key: string) => key.toLowerCase().replace(/[-_\s]/g, "");
+  let buy: number | null = null;
+  let sell: number | null = null;
+  let total: number | null = null;
+  const seen = new Set<object>();
+
+  const classify = (item: any): "buy" | "sell" | null => {
+    const raw = [item?.type, item?.side, item?.operation, item?.offer_type, item?.offerType, item?.tipo, item?.operacion, item?.transaction_type]
+      .find((value) => typeof value === "string");
+    const side = String(raw || "").toLowerCase();
+    if (/buy|bid|compra|comprador/.test(side)) return "buy";
+    if (/sell|ask|venta|vendedor/.test(side)) return "sell";
+    return null;
+  };
+
+  const visit = (node: any) => {
+    if (!node || typeof node !== "object" || seen.has(node)) return;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      node.forEach(visit);
+      return;
+    }
+    for (const [key, value] of Object.entries(node)) {
+      const normalized = normalize(key);
+      if (Array.isArray(value) && buyKeys.has(normalized)) buy = (buy ?? 0) + value.length;
+      else if (Array.isArray(value) && sellKeys.has(normalized)) sell = (sell ?? 0) + value.length;
+      else if (Array.isArray(value) && allKeys.has(normalized)) {
+        total = (total ?? 0) + value.length;
+        for (const item of value) {
+          const side = classify(item);
+          if (side === "buy") buy = (buy ?? 0) + 1;
+          if (side === "sell") sell = (sell ?? 0) + 1;
+        }
+      } else visit(value);
+    }
+  };
+
+  visit(data);
+  const available = buy !== null || sell !== null || total !== null;
+  return { buy, sell, total, available };
+}
+
 function money(value: unknown) {
   const n = numeric(value);
   return n === undefined ? "—" : new Intl.NumberFormat("es-ES", { maximumFractionDigits: 2 }).format(n);
@@ -244,6 +292,7 @@ export default function ExchangeRate() {
   }, [history]);
 
   const rates = useMemo(() => getRates(payload?.data), [payload]);
+  const offerStats = useMemo(() => getOfferStats(payload?.data), [payload]);
   const currencyRates = useMemo(() => rates.filter((rate) => !isCryptoCode(rate.code)), [rates]);
   const cryptoRates = useMemo(() => rates.filter((rate) => isCryptoCode(rate.code)), [rates]);
   const visibleRates = marketTab === "crypto" ? cryptoRates : currencyRates;
@@ -300,6 +349,31 @@ export default function ExchangeRate() {
           <BarChart3 className="h-4 w-4" />Crypto<span className={"rounded-md px-1.5 py-0.5 text-[10px] " + (marketTab === "crypto" ? "bg-white/15 text-white" : "bg-subtle text-muted")}>{cryptoRates.length}</span>
         </button>
       </nav>
+
+      <section className="rounded-2xl border border-base bg-secondary p-4 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h2 className="text-sm font-extrabold text-primary">Actividad de ofertas de compra y venta</h2>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-muted">Conteo de ofertas únicamente si la respuesta de elTOQUE incluye registros individuales. Las medianas de las tasas no permiten deducir cuántas personas están comprando o vendiendo.</p>
+          </div>
+          <span className={"rounded-lg px-2.5 py-1.5 text-[10px] font-bold " + (offerStats.available ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-800")}>{offerStats.available ? "Datos de ofertas detectados" : "Conteo no disponible"}</span>
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <div className="rounded-xl border border-base bg-primary p-3">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted">Ofertas de compra</p>
+            <p className="mt-1 text-xl font-black tabular-nums text-primary">{offerStats.buy === null ? "—" : offerStats.buy.toLocaleString("es-ES")}</p>
+          </div>
+          <div className="rounded-xl border border-base bg-primary p-3">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted">Ofertas de venta</p>
+            <p className="mt-1 text-xl font-black tabular-nums text-primary">{offerStats.sell === null ? "—" : offerStats.sell.toLocaleString("es-ES")}</p>
+          </div>
+          <div className="rounded-xl border border-base bg-primary p-3">
+            <p className="text-[10px] font-bold uppercase tracking-wide text-muted">Ofertas registradas</p>
+            <p className="mt-1 text-xl font-black tabular-nums text-primary">{offerStats.total === null ? "—" : offerStats.total.toLocaleString("es-ES")}</p>
+          </div>
+        </div>
+        <p className="mt-2 text-[10px] leading-4 text-muted">{offerStats.available ? "Estos valores cuentan registros de ofertas devueltos por la fuente, no personas únicas ni operaciones completadas." : "La respuesta actual no expone listas de ofertas que se puedan contar; solo se mostrarán cifras cuando la API las entregue. No se estiman ni se inventan conteos."}</p>
+      </section>
 
       <section className="overflow-hidden rounded-2xl border border-base bg-secondary shadow-sm">
         <header className="flex flex-wrap items-center justify-between gap-2 border-b border-base px-4 py-3 sm:px-5">
