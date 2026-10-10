@@ -95,14 +95,20 @@ Deno.serve(async (req: Request) => {
       const since = new Date(now.getTime() - 24 * 60 * 60_000).toISOString();
       const { data: recent } = await supabase
         .from("notifications")
-        .select("title,kind,read_at")
+        .select("id,title,kind,read_at,user_id")
         .eq("company_id", preference.company_id)
         .or(`user_id.eq.${preference.user_id},user_id.is.null`)
         .gte("created_at", since)
         .order("created_at", { ascending: false })
         .limit(100);
       const items = recent || [];
-      const unread = items.filter((item) => !item.read_at).length;
+      const { data: readReceipts } = items.length
+        ? await supabase.from("notification_reads").select("notification_id")
+            .eq("company_id", preference.company_id).eq("user_id", preference.user_id)
+            .in("notification_id", items.map((item) => item.id))
+        : { data: [] };
+      const readIds = new Set((readReceipts || []).map((receipt) => receipt.notification_id));
+      const unread = items.filter((item) => item.user_id === preference.user_id ? !item.read_at : !readIds.has(item.id)).length;
       const topTitles = items.slice(0, 3).map((item) => item.title).filter(Boolean);
       const body = preference.humour_enabled === false
         ? (items.length
