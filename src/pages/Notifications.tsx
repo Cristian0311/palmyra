@@ -77,15 +77,21 @@ export default function Notifications() {
       setCompanyId(cid);
       setUserId(uid);
 
-      const [noticeResult, prefResult] = await Promise.all([
+      const [noticeResult, readResult, prefResult] = await Promise.all([
         supabase.from("notifications").select("id,kind,title,body,read_at,created_at,user_id")
           .eq("company_id", cid).or(`user_id.eq.${uid},user_id.is.null`)
           .order("created_at", { ascending: false }).limit(50),
+        supabase.from("notification_reads").select("notification_id,read_at").eq("company_id", cid).eq("user_id", uid),
         supabase.from("notification_preferences").select("*").eq("company_id", cid).eq("user_id", uid).maybeSingle(),
       ]);
       if (noticeResult.error) throw noticeResult.error;
+      if (readResult.error) throw readResult.error;
       if (prefResult.error) throw prefResult.error;
-      setNotices((noticeResult.data || []) as Notice[]);
+      const readById = new Map((readResult.data || []).map((receipt) => [receipt.notification_id, receipt.read_at]));
+      setNotices(((noticeResult.data || []) as Notice[]).map((notice) => ({
+        ...notice,
+        read_at: notice.user_id === null ? (readById.get(notice.id) || null) : notice.read_at,
+      })));
       if (prefResult.data) {
         setPrefs({
           push_enabled: prefResult.data.push_enabled,
@@ -131,13 +137,18 @@ export default function Notifications() {
   };
 
   const markRead = async (notice: Notice) => {
-    if (notice.read_at || !notice.user_id || notice.user_id !== userId) return;
+    if (notice.read_at || !userId) return;
     const supabase = getSupabase();
     if (!supabase) return;
     const readAt = new Date().toISOString();
-    const { error: updateError } = await supabase.from("notifications").update({ read_at: readAt }).eq("id", notice.id).eq("user_id", userId);
-    if (updateError) {
-      setError(updateError.message);
+    const result = notice.user_id === userId
+      ? await supabase.from("notifications").update({ read_at: readAt }).eq("id", notice.id).eq("user_id", userId)
+      : await supabase.from("notification_reads").upsert(
+          { notification_id: notice.id, company_id: companyId, user_id: userId, read_at: readAt },
+          { onConflict: "notification_id,user_id" },
+        );
+    if (result.error) {
+      setError(result.error.message);
       return;
     }
     setNotices((items) => items.map((item) => item.id === notice.id ? { ...item, read_at: readAt } : item));
