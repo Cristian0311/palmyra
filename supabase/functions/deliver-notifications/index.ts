@@ -103,7 +103,7 @@ Deno.serve(async (req: Request) => {
       if (subscriptionError) throw subscriptionError;
 
       const critical = job.priority === "critical";
-      if (!preference?.push_enabled || (critical && preference?.critical_push_enabled === false)) {
+      if (preference?.push_enabled === false || (critical && preference?.critical_push_enabled === false)) {
         await supabase.from("notification_outbox").update({ status: "suppressed", updated_at: new Date().toISOString() }).eq("id", job.id);
         suppressed++;
         continue;
