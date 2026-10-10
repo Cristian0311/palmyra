@@ -60,6 +60,7 @@ export default function Notifications() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
+  const [testBusy, setTestBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY || "";
@@ -199,6 +200,24 @@ export default function Notifications() {
     }
   };
 
+  const sendTestNotification = async () => {
+    const supabase = getSupabase();
+    if (!supabase || !companyId) return;
+    setTestBusy(true);
+    setMessage("");
+    setError("");
+    try {
+      const { error: testError } = await supabase.rpc("create_my_notification_test", { p_company_id: companyId });
+      if (testError) throw testError;
+      setMessage("¡Prueba enviada! Mira el centro de avisos; si registraste el móvil y diste permiso, el push debería llegar en unos segundos. 😂");
+      await refresh();
+    } catch (e: any) {
+      setError(e?.message || "No se pudo crear la notificación de prueba.");
+    } finally {
+      setTestBusy(false);
+    }
+  };
+
   const update = <K extends keyof Preferences,>(key: K, value: Preferences[K]) => setPrefs((current) => ({ ...current, [key]: value }));
   const unread = notices.filter((notice) => !notice.read_at).length;
 
@@ -242,6 +261,7 @@ export default function Notifications() {
         <div className="mt-4 flex flex-wrap gap-2">
           <button disabled={saving || loading} onClick={() => void savePrefs()} className="rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-black text-white hover:bg-violet-800 disabled:opacity-50">{saving ? "Guardando…" : "Guardar preferencias"}</button>
           <button disabled={pushBusy || loading} onClick={() => void enablePush()} className="inline-flex items-center gap-2 rounded-xl border border-violet-200 px-4 py-2.5 text-sm font-bold text-violet-800 hover:bg-violet-50 disabled:opacity-50"><Smartphone className="h-4 w-4" />{pushBusy ? "Activando…" : "Registrar este móvil"}</button>
+          <button disabled={testBusy || loading || !companyId} onClick={() => void sendTestNotification()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><BellRing className="h-4 w-4" />{testBusy ? "Enviando prueba…" : "Enviar prueba"}</button>
         </div>
         {!vapidPublicKey && <p className="mt-3 text-xs leading-5 text-slate-500">El centro y las preferencias están conectados. Para registrar el móvil y enviar push, falta añadir la clave pública VAPID al despliegue y la clave privada al servidor seguro.</p>}
       </section>
