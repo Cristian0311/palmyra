@@ -494,7 +494,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         { label: "Operación", hrefs: ["/", "/pos", "/transfers", "/returns"] },
         { label: "Gestión", hrefs: ["/customers", "/inventory", "/inventory-audit", "/suppliers", "#online-catalog"] },
         { label: "Finanzas", hrefs: ["/banks", "/reports"] },
-        { label: "Administración", hrefs: ["/settings", "/team", "/help", "/subscription", "/tutorial", "/exchange-rate"] },
+        { label: "Administración", hrefs: ["/settings", "/team", "/help", "/subscription", "/tutorial", "/exchange-rate", "/notifications"] },
       ]
     : [{ label: "", hrefs: visibleNavItems.map((item) => item.href) }];
   const assignedNavHrefs = new Set<string>();
