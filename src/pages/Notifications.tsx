@@ -63,7 +63,50 @@ export default function Notifications() {
   const [testBusy, setTestBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [pushDeviceStatus, setPushDeviceStatus] = useState<"checking" | "unsupported" | "missing_key" | "permission_denied" | "registered" | "not_registered">("checking");
   const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY || "";
+
+  const checkPushStatus = useCallback(async () => {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      setPushDeviceStatus("unsupported");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      setPushDeviceStatus("permission_denied");
+      return;
+    }
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (subscription) {
+        setPushDeviceStatus("registered");
+      } else {
+        setPushDeviceStatus(vapidPublicKey ? "not_registered" : "missing_key");
+      }
+    } catch {
+      setPushDeviceStatus(vapidPublicKey ? "not_registered" : "missing_key");
+    }
+  }, [vapidPublicKey]);
+
+  useEffect(() => { void checkPushStatus(); }, [checkPushStatus]);
+
+  const pushStatusLabel = ({
+    checking: "Comprobando dispositivo…",
+    unsupported: "Navegador no compatible",
+    missing_key: "Falta configuración push",
+    permission_denied: "Permiso bloqueado",
+    registered: "Este móvil está registrado",
+    not_registered: "Este móvil no está registrado",
+  } as const)[pushDeviceStatus];
+
+  const pushStatusDetail = ({
+    checking: "Estamos comprobando el permiso del navegador y si este móvil ya está registrado.",
+    unsupported: "Abre PALMYRA con Chrome en Android o con un navegador compatible con notificaciones push.",
+    missing_key: "El despliegue no está exponiendo la clave pública VAPID. El historial funciona, pero no se puede registrar el móvil hasta corregir esa configuración.",
+    permission_denied: "El navegador bloqueó los avisos. En los ajustes de Android/Chrome, permite las notificaciones para palmyracrm.onrender.com y vuelve a probar.",
+    registered: "Hay una suscripción push guardada en este navegador. Usa «Enviar prueba» para comprobar la entrega real al dispositivo.",
+    not_registered: "Pulsa «Activar notificaciones push» y acepta el permiso cuando el navegador lo solicite.",
+  } as const)[pushDeviceStatus];
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -191,7 +234,16 @@ export default function Notifications() {
         updated_at: new Date().toISOString(),
       }, { onConflict: "endpoint" });
       if (saveError) throw saveError;
+      const { error: prefError } = await supabase.from("notification_preferences").upsert({
+        company_id: companyId,
+        user_id: userId,
+        ...prefs,
+        push_enabled: true,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "company_id,user_id" });
+      if (prefError) throw prefError;
       setPrefs((p) => ({ ...p, push_enabled: true }));
+      setPushDeviceStatus("registered");
       setMessage("¡Dispositivo registrado! PALMYRA ya tiene dónde tocarte el hombro cuando llegue un aviso. 😂");
     } catch (e: any) {
       setError(e?.message || "No se pudo activar el push.");
@@ -242,6 +294,26 @@ export default function Notifications() {
       {message && <div role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">{message}</div>}
       {error && <div role="alert" className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900"><AlertTriangle className="mr-2 inline h-4 w-4" />{error}</div>}
 
+      <section className="rounded-3xl border-2 border-violet-300 bg-white p-4 shadow-sm dark:border-violet-800 dark:bg-slate-900 sm:p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="rounded-xl bg-violet-100 p-2.5 text-violet-700"><Smartphone className="h-6 w-6" /></div>
+            <div>
+              <h2 className="text-lg font-black text-slate-900 dark:text-white">Notificaciones push en tu móvil</h2>
+              <p className="mt-1 text-sm leading-5 text-slate-500">Recibe avisos aunque no estés mirando el historial de PALMYRA.</p>
+            </div>
+          </div>
+          <span className={`inline-flex w-fit items-center rounded-full px-3 py-1.5 text-xs font-black ${pushDeviceStatus === "registered" ? "bg-emerald-100 text-emerald-800" : pushDeviceStatus === "checking" ? "bg-slate-100 text-slate-700" : "bg-amber-100 text-amber-900"}`}>{pushStatusLabel}</span>
+        </div>
+        <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-300">{pushStatusDetail}</p>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button disabled={pushBusy || loading || !companyId || !userId} onClick={() => void enablePush()} className="inline-flex items-center gap-2 rounded-xl bg-violet-700 px-4 py-3 text-sm font-black text-white hover:bg-violet-800 disabled:opacity-50"><Smartphone className="h-4 w-4" />{pushBusy ? "Activando…" : pushDeviceStatus === "registered" ? "Volver a registrar este móvil" : "Activar notificaciones push"}</button>
+          <button disabled={testBusy || loading || !companyId} onClick={() => void sendTestNotification()} className="inline-flex items-center gap-2 rounded-xl border border-violet-200 px-4 py-3 text-sm font-bold text-violet-800 hover:bg-violet-50 disabled:opacity-50"><BellRing className="h-4 w-4" />{testBusy ? "Enviando prueba…" : "Enviar prueba"}</button>
+          <button disabled={loading || pushDeviceStatus === "checking"} onClick={() => void checkPushStatus()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><RefreshCw className="h-4 w-4" />Comprobar estado</button>
+        </div>
+        <p className="mt-3 text-xs leading-5 text-slate-500">Importante: ver avisos en el historial no activa por sí solo el push. Hay que registrar cada móvil y conceder el permiso del navegador. Después, usa «Enviar prueba» para confirmar si llega una notificación del sistema.</p>
+      </section>
+
       <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
         <div className="mb-4 flex items-center gap-3">
           <div className="rounded-xl bg-violet-100 p-2.5 text-violet-700"><Clock3 className="h-5 w-5" /></div>
@@ -260,10 +332,7 @@ export default function Notifications() {
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <button disabled={saving || loading} onClick={() => void savePrefs()} className="rounded-xl bg-violet-700 px-4 py-2.5 text-sm font-black text-white hover:bg-violet-800 disabled:opacity-50">{saving ? "Guardando…" : "Guardar preferencias"}</button>
-          <button disabled={pushBusy || loading} onClick={() => void enablePush()} className="inline-flex items-center gap-2 rounded-xl border border-violet-200 px-4 py-2.5 text-sm font-bold text-violet-800 hover:bg-violet-50 disabled:opacity-50"><Smartphone className="h-4 w-4" />{pushBusy ? "Activando…" : "Registrar este móvil"}</button>
-          <button disabled={testBusy || loading || !companyId} onClick={() => void sendTestNotification()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><BellRing className="h-4 w-4" />{testBusy ? "Enviando prueba…" : "Enviar prueba"}</button>
         </div>
-        {!vapidPublicKey && <p className="mt-3 text-xs leading-5 text-slate-500">El centro y las preferencias están conectados. Para registrar el móvil y enviar push, falta añadir la clave pública VAPID al despliegue y la clave privada al servidor seguro.</p>}
       </section>
 
       <section className="space-y-3">
