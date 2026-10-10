@@ -23,7 +23,70 @@ type Preferences = {
   quiet_hours_end: string;
   timezone: string;
   humour_enabled: boolean;
+  exchange_currency_alerts_enabled: boolean;
+  exchange_currency_codes: string[];
+  exchange_bitcoin_alerts_enabled: boolean;
+  exchange_alert_min_change_pct: number;
 };
+type RateOption = { code: string; name: string };
+const DEFAULT_RATE_OPTIONS: RateOption[] = [
+  { code: "USD", name: "Dólar estadounidense" }, { code: "EUR", name: "Euro" },
+  { code: "MLC", name: "Moneda libremente convertible (MLC)" }, { code: "CAD", name: "Dólar canadiense" },
+  { code: "MXN", name: "Peso mexicano" }, { code: "GBP", name: "Libra esterlina" },
+  { code: "CHF", name: "Franco suizo" }, { code: "RUB", name: "Rublo ruso" },
+  { code: "CUP", name: "Peso cubano" }, { code: "CNY", name: "Yuan chino" },
+  { code: "JPY", name: "Yen japonés" }, { code: "BRL", name: "Real brasileño" },
+  { code: "COP", name: "Peso colombiano" }, { code: "DOP", name: "Peso dominicano" },
+  { code: "AUD", name: "Dólar australiano" }, { code: "NZD", name: "Dólar neozelandés" },
+  { code: "ZELLE", name: "Zelle · pagos en USD" }, { code: "CLA", name: "Clásica" },
+];
+const CRYPTO_PREFIX = /^(BTC|ETH|BNB|TRX|USDT|USDC|LTC|DOGE|SOL|XRP|TON|ADA|BCH|DOT|AVAX|SHIB|LINK|XMR|MATIC|POL)/;
+function normalizedRateCode(value: unknown) {
+  const code = String(value || "").toUpperCase().trim().replace(/[-_\\s]/g, "");
+  return code === "ECU" ? "EUR" : code;
+}
+function isCryptoRate(code: string) {
+  return CRYPTO_PREFIX.test(normalizedRateCode(code));
+}
+function numericRate(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value.trim().replace(/\\s/g, "").replace(",", "."));
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+function getRateOptions(data: unknown): RateOption[] {
+  let list: any = data;
+  const containers = ["tasas", "rates", "data", "result", "exchangeRates", "exchange_rates", "cotizaciones"];
+  for (let depth = 0; depth < 5 && list && typeof list === "object" && !Array.isArray(list); depth++) {
+    const looksLikeRate = ["rate", "value", "valor", "tasa", "median", "mediana", "buy", "compra", "sell", "venta"].some((key) => list[key] !== undefined);
+    if (looksLikeRate) break;
+    const next = containers.find((key) => list[key] !== undefined && list[key] !== null);
+    if (!next) break;
+    list = list[next];
+  }
+  const entries: Array<[string, any]> = Array.isArray(list)
+    ? list.map((item: any, index: number) => [String(index), item])
+    : list && typeof list === "object" ? Object.entries(list) : [];
+  const found = new Map<string, RateOption>();
+  for (const [fallback, raw] of entries) {
+    const code = normalizedRateCode(raw && typeof raw === "object"
+      ? raw.code ?? raw.currency ?? raw.moneda ?? raw.symbol ?? raw.codigo ?? fallback
+      : fallback);
+    if (!code || isCryptoRate(code)) continue;
+    const hasValue = typeof raw === "object" && raw !== null
+      ? ["rate","value","valor","tasa","tasa_referencia","reference","median","mediana","trm","promedio","price","precio","last","rate_mid","buy","compra","sell","venta"]
+          .some((key) => numericRate(raw[key]) !== null)
+      : numericRate(raw) !== null;
+    if (!hasValue) continue;
+    const name = raw && typeof raw === "object"
+      ? String(raw.name ?? raw.nombre ?? raw.description ?? raw.descripcion ?? DEFAULT_RATE_OPTIONS.find((option) => option.code === code)?.name ?? code)
+      : (DEFAULT_RATE_OPTIONS.find((option) => option.code === code)?.name ?? code);
+    found.set(code, { code, name });
+  }
+  return [...found.values()].sort((a, b) => a.name.localeCompare(b.name, "es"));
+}
 
 const defaults: Preferences = {
   push_enabled: true,
@@ -35,6 +98,10 @@ const defaults: Preferences = {
   quiet_hours_end: "08:00",
   timezone: "America/Havana",
   humour_enabled: true,
+  exchange_currency_alerts_enabled: false,
+  exchange_currency_codes: ["USD", "EUR", "MLC"],
+  exchange_bitcoin_alerts_enabled: false,
+  exchange_alert_min_change_pct: 0,
 };
 
 function decodeVapidKey(value: string) {
@@ -64,6 +131,7 @@ export default function Notifications() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [pushDeviceStatus, setPushDeviceStatus] = useState<"checking" | "unsupported" | "missing_key" | "permission_denied" | "registered" | "not_registered">("checking");
+  const [rateOptions, setRateOptions] = useState<RateOption[]>(DEFAULT_RATE_OPTIONS);
   const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY || "";
 
   const checkPushStatus = useCallback(async () => {
@@ -89,6 +157,23 @@ export default function Notifications() {
   }, [vapidPublicKey]);
 
   useEffect(() => { void checkPushStatus(); }, [checkPushStatus]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadRateOptions = async () => {
+      try {
+        const response = await fetch("/api/exchange-rates", { cache: "no-store", signal: controller.signal, headers: { Accept: "application/json" } });
+        if (!response.ok) return;
+        const payload = await response.json();
+        const options = getRateOptions(payload?.data);
+        if (options.length && !controller.signal.aborted) setRateOptions(options);
+      } catch {
+        // Keep the curated choices visible if the rates source is temporarily unavailable.
+      }
+    };
+    void loadRateOptions();
+    return () => controller.abort();
+  }, []);
 
   const pushStatusLabel = ({
     checking: "Comprobando dispositivo…",
@@ -147,6 +232,10 @@ export default function Notifications() {
           quiet_hours_end: String(prefResult.data.quiet_hours_end || "08:00").slice(0, 5),
           timezone: prefResult.data.timezone || "America/Havana",
           humour_enabled: prefResult.data.humour_enabled,
+          exchange_currency_alerts_enabled: prefResult.data.exchange_currency_alerts_enabled ?? false,
+          exchange_currency_codes: Array.isArray(prefResult.data.exchange_currency_codes) ? prefResult.data.exchange_currency_codes.map((code: unknown) => normalizedRateCode(code)) : defaults.exchange_currency_codes,
+          exchange_bitcoin_alerts_enabled: prefResult.data.exchange_bitcoin_alerts_enabled ?? false,
+          exchange_alert_min_change_pct: Number(prefResult.data.exchange_alert_min_change_pct ?? 0),
         });
       }
     } catch (e: any) {
@@ -161,6 +250,11 @@ export default function Notifications() {
   const savePrefs = async () => {
     const supabase = getSupabase();
     if (!supabase || !companyId || !userId) return;
+    setError("");
+    if (prefs.exchange_currency_alerts_enabled && prefs.exchange_currency_codes.length === 0) {
+      setError("Activa las alertas de divisas solo después de seleccionar al menos una moneda.");
+      return;
+    }
     setSaving(true);
     setMessage("");
     setError("");
@@ -259,10 +353,20 @@ export default function Notifications() {
     setMessage("");
     setError("");
     try {
-      const { error: testError } = await supabase.rpc("create_my_notification_test", { p_company_id: companyId });
+      const { data: notificationId, error: testError } = await supabase.rpc("create_my_notification_test", { p_company_id: companyId });
       if (testError) throw testError;
-      setMessage("¡Prueba enviada! Mira el centro de avisos; si registraste el móvil y diste permiso, el push debería llegar en unos segundos. 😂");
-      await refresh();
+      if (notificationId) {
+        setNotices((items) => [{
+          id: String(notificationId),
+          kind: "test",
+          title: "¡PRUEBA DE NOTIFICACIONES! 🔔",
+          body: "Si recibes esto en el móvil, el push ya está funcionando. PALMYRA ha dejado de gritarle al vacío. 😂",
+          read_at: null,
+          created_at: new Date().toISOString(),
+          user_id: userId,
+        }, ...items.filter((item) => item.id !== String(notificationId))].slice(0, 50));
+      }
+      setMessage("Prueba creada; PALMYRA ha solicitado el envío inmediato al móvil. Dale unos segundos para que llegue. 😂");
     } catch (e: any) {
       setError(e?.message || "No se pudo crear la notificación de prueba.");
     } finally {
@@ -312,6 +416,44 @@ export default function Notifications() {
           <button disabled={loading || pushDeviceStatus === "checking"} onClick={() => void checkPushStatus()} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"><RefreshCw className="h-4 w-4" />Comprobar estado</button>
         </div>
         <p className="mt-3 text-xs leading-5 text-slate-500">Importante: ver avisos en el historial no activa por sí solo el push. Hay que registrar cada móvil y conceder el permiso del navegador. Después, usa «Enviar prueba» para confirmar si llega una notificación del sistema.</p>
+      </section>
+
+      <section className="rounded-3xl border-2 border-emerald-200 bg-white p-4 shadow-sm dark:border-emerald-900 dark:bg-slate-900 sm:p-6">
+        <div className="mb-4 flex items-start gap-3">
+          <div className="rounded-xl bg-emerald-100 p-2.5 text-emerald-800"><BellRing className="h-5 w-5" /></div>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-black text-slate-900 dark:text-white">Avisos de tasa de cambio</h2>
+            <p className="mt-1 text-xs leading-5 text-slate-500">Elige las divisas que quieres vigilar y activa Bitcoin por separado. PALMYRA compara la tasa publicada y crea un aviso si supera tu umbral.</p>
+          </div>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="flex items-start justify-between gap-3 rounded-2xl border border-slate-200 p-3 dark:border-slate-700">
+            <span><span className="block text-sm font-bold text-slate-800 dark:text-slate-100">Alertas de divisas</span><span className="mt-1 block text-xs text-slate-500">Notificar cambios solo en las monedas seleccionadas abajo.</span></span>
+            <input type="checkbox" checked={prefs.exchange_currency_alerts_enabled} onChange={(e) => update("exchange_currency_alerts_enabled", e.target.checked)} />
+          </label>
+          <label className="flex items-start justify-between gap-3 rounded-2xl border border-slate-200 p-3 dark:border-slate-700">
+            <span><span className="block text-sm font-bold text-slate-800 dark:text-slate-100">Bitcoin (BTC)</span><span className="mt-1 block text-xs text-slate-500">Avisarme cuando cambie el valor publicado de Bitcoin.</span></span>
+            <input type="checkbox" checked={prefs.exchange_bitcoin_alerts_enabled} onChange={(e) => update("exchange_bitcoin_alerts_enabled", e.target.checked)} />
+          </label>
+        </div>
+        <div className="mt-4 rounded-2xl border border-slate-200 p-3 dark:border-slate-700">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div><h3 className="text-sm font-black text-slate-900 dark:text-white">Selecciona las divisas</h3><p className="mt-1 text-xs text-slate-500">{prefs.exchange_currency_codes.length} seleccionadas · las alertas de divisas deben estar activadas</p></div>
+            <button type="button" onClick={() => update("exchange_currency_codes", rateOptions.map((option) => option.code))} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50">Seleccionar todas</button>
+          </div>
+          {rateOptions.length ? <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {rateOptions.map((option) => <label key={option.code} className="flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-sm dark:bg-slate-800">
+              <input type="checkbox" checked={prefs.exchange_currency_codes.includes(option.code)} onChange={(e) => update("exchange_currency_codes", e.target.checked ? [...new Set([...prefs.exchange_currency_codes, option.code])] : prefs.exchange_currency_codes.filter((code) => code !== option.code))} />
+              <span className="min-w-0 flex-1 truncate text-slate-800 dark:text-slate-100">{option.name}</span><span className="text-xs font-black text-slate-500">{option.code}</span>
+            </label>)}
+          </div> : <p className="text-xs text-slate-500">La fuente no devolvió divisas en este momento. Se conservan las selecciones guardadas.</p>}
+          <p className="mt-3 text-xs leading-5 text-slate-500">Las monedas disponibles se cargan desde la fuente de tasas cuando responde; si el servicio no está disponible, se muestran opciones habituales.</p>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+          <label className="block"><span className="text-xs font-bold text-slate-600 dark:text-slate-300">Variación mínima para avisar (%)</span><input className="mt-1 w-full rounded-xl border border-slate-200 bg-transparent p-2.5 text-sm dark:border-slate-700" type="number" min="0" max="100" step="0.01" value={prefs.exchange_alert_min_change_pct} onChange={(e) => update("exchange_alert_min_change_pct", Math.min(100, Math.max(0, Number(e.target.value) || 0)))} /><span className="mt-1 block text-xs text-slate-500">Usa 0 para avisarte ante cualquier cambio detectado; aumenta el porcentaje para evitar avisos por variaciones pequeñas.</span></label>
+          <button disabled={saving || loading} onClick={() => void savePrefs()} className="rounded-xl bg-emerald-700 px-4 py-3 text-sm font-black text-white hover:bg-emerald-800 disabled:opacity-50">{saving ? "Guardando…" : "Guardar preferencias de alertas"}</button>
+        </div>
+        <p className="mt-3 text-xs leading-5 text-slate-500">La fuente se revisa aproximadamente cada 5 minutos. Las alertas avisan de un cambio en el precio publicado, no de una predicción del mercado.</p>
       </section>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">
