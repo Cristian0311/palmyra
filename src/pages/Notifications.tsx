@@ -180,7 +180,7 @@ export default function Notifications() {
       }, { onConflict: "endpoint" });
       if (saveError) throw saveError;
       setPrefs((p) => ({ ...p, push_enabled: true }));
-      setMessage("¡Dispositivo registrado! Falta conectar la clave privada del servidor para empezar a enviar push de verdad.");
+      setMessage("¡Dispositivo registrado! PALMYRA ya tiene dónde tocarte el hombro cuando llegue un aviso. 😂");
     } catch (e: any) {
       setError(e?.message || "No se pudo activar el push.");
     } finally {
