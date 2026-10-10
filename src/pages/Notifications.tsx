@@ -188,7 +188,7 @@ export default function Notifications() {
     }
   };
 
-  const update = <K extends keyof Preferences>(key: K, value: Preferences[K]) => setPrefs((current) => ({ ...current, [key]: value }));
+  const update = <K extends keyof Preferences,>(key: K, value: Preferences[K]) => setPrefs((current) => ({ ...current, [key]: value }));
   const unread = notices.filter((notice) => !notice.read_at).length;
 
   return (
