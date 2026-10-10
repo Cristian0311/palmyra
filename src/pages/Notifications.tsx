@@ -122,6 +122,8 @@ function decodeVapidKey(value: string) {
 
 function kindLabel(kind: string) {
   const key = kind.toLowerCase();
+  if (key.includes("exchange_rate") || key.includes("currency")) return "Tasa de cambio";
+  if (key.includes("test")) return "Prueba";
   if (key.includes("error") || key.includes("critical")) return "Crítica";
   if (key.includes("warning") || key.includes("alert")) return "Aviso";
   if (key.includes("success") || key.includes("sale")) return "Todo bien";
