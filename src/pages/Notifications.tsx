@@ -42,7 +42,7 @@ const DEFAULT_RATE_OPTIONS: RateOption[] = [
 ];
 const CRYPTO_PREFIX = /^(BTC|ETH|BNB|TRX|USDT|USDC|LTC|DOGE|SOL|XRP|TON|ADA|BCH|DOT|AVAX|SHIB|LINK|XMR|MATIC|POL)/;
 function normalizedRateCode(value: unknown) {
-  const code = String(value || "").toUpperCase().trim().replace(/[-_\\s]/g, "");
+  const code = String(value || "").toUpperCase().trim().replace(/[-_\s]/g, "");
   return code === "ECU" ? "EUR" : code;
 }
 function isCryptoRate(code: string) {
@@ -51,7 +51,7 @@ function isCryptoRate(code: string) {
 function numericRate(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
   if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value.trim().replace(/\\s/g, "").replace(",", "."));
+    const parsed = Number(value.trim().replace(/\s/g, "").replace(",", "."));
     return Number.isFinite(parsed) ? parsed : null;
   }
   return null;
