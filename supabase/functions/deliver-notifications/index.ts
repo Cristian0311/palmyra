@@ -174,7 +174,7 @@ Deno.serve(async (req: Request) => {
       }
 
       const timezone = preference?.timezone || "America/Havana";
-      if (!critical && preference?.quiet_hours_enabled !== false && isQuietNow(new Date(), timezone, preference?.quiet_hours_start || "22:00", preference?.quiet_hours_end || "08:00")) {
+      if (!critical && job.event_type !== "test" && preference?.quiet_hours_enabled !== false && isQuietNow(new Date(), timezone, preference?.quiet_hours_start || "22:00", preference?.quiet_hours_end || "08:00")) {
         const scheduled = nextQuietEnd(new Date(), timezone, preference?.quiet_hours_end || "08:00");
         await supabase.from("notification_outbox").update({ status: "pending", scheduled_at: scheduled, available_at: scheduled, locked_at: null, updated_at: new Date().toISOString() }).eq("id", job.id);
         deferred++;
