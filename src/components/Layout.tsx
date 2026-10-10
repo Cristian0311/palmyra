@@ -29,7 +29,8 @@ import {
   Download,
   Smartphone,
   BookOpen,
-  ArrowDownUp
+  ArrowDownUp,
+  Bell
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
 import { cn } from "../lib/utils";
@@ -61,12 +62,14 @@ const adminNavItems = [
   { name: "Soporte", href: "/help", icon: Headphones, public: true },
   { name: "Plan", href: "/subscription", icon: CreditCard, permission: "settings.manage" },
   { name: "Tasa de cambio", href: "/exchange-rate", icon: ArrowDownUp, public: true },
+  { name: "Notificaciones", href: "/notifications", icon: Bell, public: true },
   { name: "Tutorial", href: "/tutorial", icon: BookOpen, public: true },
   { name: "Catálogo Online", href: "#online-catalog", icon: Store, public: true, comingSoon: true },
 ];
 
 const APP_VERSION = "V 1.0.3";
 const cashierNavItems = [
+  { name: "Notificaciones", href: "/notifications", icon: Bell, public: true },
   { name: "Soporte", href: "/help", icon: Headphones, public: true },
   { name: "POS", href: "/pos", icon: ShoppingCart },
 ];

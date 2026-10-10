@@ -44,6 +44,8 @@ export default defineConfig(() => {
         },
         workbox: {
           maximumFileSizeToCacheInBytes: 10000000,
+          // Add push handlers to the generated Workbox worker without replacing the offline worker.
+          importScripts: ['/push-sw.js'],
           // Remove caches from previous generated service workers so an old
           // application shell cannot survive a Render deployment.
           cleanupOutdatedCaches: true,

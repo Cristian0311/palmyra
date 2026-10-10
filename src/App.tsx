@@ -42,6 +42,7 @@ const PlatformAdmin = lazy(() => import("./pages/PlatformAdmin"));
 const HelpCenter = lazy(() => import("./pages/HelpCenter"));
 const Tutorial = lazy(() => import("./pages/Tutorial"));
 const ExchangeRate = lazy(() => import("./pages/ExchangeRate"));
+const Notifications = lazy(() => import("./pages/Notifications"));
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 
 function PageLoading() {
@@ -439,6 +440,7 @@ export default function App() {
                     <Route path="/help-center" element={<HelpCenter />} />
                     <Route path="/tutorial" element={<Tutorial />} />
                     <Route path="/exchange-rate" element={<ExchangeRate />} />
+                    <Route path="/notifications" element={<Notifications />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </Suspense>
