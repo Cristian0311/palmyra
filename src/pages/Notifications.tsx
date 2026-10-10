@@ -54,6 +54,15 @@ function numericRate(value: unknown): number | null {
     const parsed = Number(value.trim().replace(/\s/g, "").replace(",", "."));
     return Number.isFinite(parsed) ? parsed : null;
   }
+  if (value && typeof value === "object") {
+    const nested = value as Record<string, unknown>;
+    for (const key of ["value", "rate", "valor", "tasa", "median", "mediana", "price", "precio"]) {
+      if (nested[key] !== undefined && nested[key] !== value) {
+        const parsed = numericRate(nested[key]);
+        if (parsed !== null) return parsed;
+      }
+    }
+  }
   return null;
 }
 function getRateOptions(data: unknown): RateOption[] {
