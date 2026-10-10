@@ -65,6 +65,63 @@ Deno.serve(async (req: Request) => {
   if (!publicKey || !privateKey) return response({ error: "VAPID keys are not configured." }, 503);
   webpush.setVapidDetails(subject, publicKey, privateKey);
   const now = new Date();
+
+  // Create each user's daily summary at their configured local time. A unique
+  // company/user/date key makes this safe when the worker is retried.
+  const { data: summaryPreferences } = await supabase
+    .from("notification_preferences")
+    .select("company_id,user_id,timezone,routine_summary_time,routine_summary_enabled")
+    .eq("routine_summary_enabled", true)
+    .limit(250);
+  for (const preference of summaryPreferences || []) {
+    try {
+      const timezone = preference.timezone || "America/Havana";
+      const parts = new Intl.DateTimeFormat("en-GB", {
+        timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+      }).formatToParts(now);
+      const part = (type: string) => parts.find((item) => item.type === type)?.value || "";
+      const localDate = `${part("year")}-${part("month")}-${part("day")}`;
+      const localTime = `${part("hour")}:${part("minute")}`;
+      if (localTime !== String(preference.routine_summary_time || "08:15").slice(0, 5)) continue;
+
+      const { data: run, error: runError } = await supabase
+        .from("notification_summary_runs")
+        .insert({ company_id: preference.company_id, user_id: preference.user_id, local_date: localDate })
+        .select("id").maybeSingle();
+      if (runError?.code === "23505") continue;
+      if (runError || !run) continue;
+
+      const since = new Date(now.getTime() - 24 * 60 * 60_000).toISOString();
+      const { data: recent } = await supabase
+        .from("notifications")
+        .select("title,kind,read_at")
+        .eq("company_id", preference.company_id)
+        .or(`user_id.eq.${preference.user_id},user_id.is.null`)
+        .gte("created_at", since)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      const items = recent || [];
+      const unread = items.filter((item) => !item.read_at).length;
+      const topTitles = items.slice(0, 3).map((item) => item.title).filter(Boolean);
+      const body = items.length
+        ? `En las últimas 24 horas tienes ${items.length} avisos y ${unread} sin leer. ${topTitles.length ? "Para que no juegues al escondite con el negocio: " + topTitles.join(" · ") + ". " : ""}Busca el café y vamos al lío. ☕😂`
+        : "En las últimas 24 horas no hay avisos nuevos. Disfruta esta paz; hasta la impresora está descansando. 😂";
+      const { error: summaryError } = await supabase.from("notifications").insert({
+        company_id: preference.company_id,
+        user_id: preference.user_id,
+        kind: "summary",
+        title: "¡Arriba, jefe! ☕ Tu resumen diario",
+        body,
+      });
+      if (summaryError) {
+        await supabase.from("notification_summary_runs").delete().eq("id", run.id);
+        console.error("[notification-worker] summary insert failed", summaryError.code || "unknown");
+      }
+    } catch (error) {
+      console.error("[notification-worker] summary generation failed", String((error as Error)?.message || "unknown"));
+    }
+  }
   const { data: jobs, error: queueError } = await supabase
     .from("notification_outbox")
     .select("id,company_id,recipient_user_id,notification_id,event_type,payload,dedupe_key,priority,attempts")
