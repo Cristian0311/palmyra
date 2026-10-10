@@ -51,22 +51,19 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return response({ error: "Method not allowed" }, 405);
 
-  const workerSecret = Deno.env.get("NOTIFICATION_WORKER_SECRET");
-  if (!workerSecret || req.headers.get("x-worker-secret") !== workerSecret) {
-    return response({ error: "Worker authentication failed or secret is not configured." }, 401);
-  }
-
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const publicKey = Deno.env.get("VAPID_PUBLIC_KEY");
-  const privateKey = Deno.env.get("VAPID_PRIVATE_KEY");
-  const subject = Deno.env.get("VAPID_SUBJECT") || "mailto:support@palmyracrm.com";
-  if (!supabaseUrl || !serviceKey || !publicKey || !privateKey) {
-    return response({ error: "Push worker secrets are incomplete.", required: ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "VAPID_PUBLIC_KEY", "VAPID_PRIVATE_KEY", "NOTIFICATION_WORKER_SECRET"] }, 503);
-  }
-
-  webpush.setVapidDetails(subject, publicKey, privateKey);
+  if (!supabaseUrl || !serviceKey) return response({ error: "Supabase worker credentials are unavailable." }, 503);
   const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  const { data: secrets, error: secretError } = await supabase.rpc("get_notification_worker_secrets");
+  if (secretError || !secrets) return response({ error: "Could not load notification secrets from Vault." }, 503);
+  const workerSecret = secrets.worker_secret;
+  if (!workerSecret || req.headers.get("x-worker-secret") !== workerSecret) return response({ error: "Worker authentication failed." }, 401);
+  const publicKey = secrets.vapid_public_key;
+  const privateKey = secrets.vapid_private_key;
+  const subject = secrets.vapid_subject || "mailto:support@palmyracrm.com";
+  if (!publicKey || !privateKey) return response({ error: "VAPID keys are not configured." }, 503);
+  webpush.setVapidDetails(subject, publicKey, privateKey);
   const now = new Date();
   const { data: jobs, error: queueError } = await supabase
     .from("notification_outbox")
