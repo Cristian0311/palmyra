@@ -49,6 +49,10 @@ function isCrypto(code: string) {
 }
 
 type RateRow = { code: string; name: string; value: number };
+const RATE_NAMES: Record<string, string> = {
+  USD: "Dólar estadounidense", EUR: "Euro", MLC: "Moneda libremente convertible (MLC)",
+  BTC: "Bitcoin", TRX: "TRON", USDTTRC20: "Tether (USDT · TRC-20)", USDT: "Tether (USDT)",
+};
 
 function extractRates(data: unknown): RateRow[] {
   let list: any = data;
@@ -82,9 +86,11 @@ function extractRates(data: unknown): RateRow[] {
         )
       : numeric(raw);
     if (value === null || value <= 0) continue;
-    const name = typeof raw === "object" && raw !== null
-      ? String(raw.name ?? raw.nombre ?? raw.description ?? raw.descripcion ?? code)
-      : code;
+    const fallbackName = RATE_NAMES[code] || code;
+    const rawName = typeof raw === "object" && raw !== null
+      ? String(raw.name ?? raw.nombre ?? raw.description ?? raw.descripcion ?? fallbackName)
+      : fallbackName;
+    const name = rawName.trim().toUpperCase() === code ? fallbackName : rawName;
     rates.set(code, { code, name, value });
   }
   return [...rates.values()];
