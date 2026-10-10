@@ -70,7 +70,7 @@ Deno.serve(async (req: Request) => {
   // company/user/date key makes this safe when the worker is retried.
   const { data: summaryPreferences } = await supabase
     .from("notification_preferences")
-    .select("company_id,user_id,timezone,routine_summary_time,routine_summary_enabled")
+    .select("company_id,user_id,timezone,routine_summary_time,routine_summary_enabled,humour_enabled")
     .eq("routine_summary_enabled", true)
     .limit(250);
   for (const preference of summaryPreferences || []) {
@@ -104,9 +104,13 @@ Deno.serve(async (req: Request) => {
       const items = recent || [];
       const unread = items.filter((item) => !item.read_at).length;
       const topTitles = items.slice(0, 3).map((item) => item.title).filter(Boolean);
-      const body = items.length
-        ? `En las últimas 24 horas tienes ${items.length} avisos y ${unread} sin leer. ${topTitles.length ? "Para que no juegues al escondite con el negocio: " + topTitles.join(" · ") + ". " : ""}Busca el café y vamos al lío. ☕😂`
-        : "En las últimas 24 horas no hay avisos nuevos. Disfruta esta paz; hasta la impresora está descansando. 😂";
+      const body = preference.humour_enabled === false
+        ? (items.length
+          ? `Resumen de las últimas 24 horas: ${items.length} avisos, ${unread} sin leer.`
+          : "No se registraron avisos nuevos en las últimas 24 horas.")
+        : (items.length
+          ? `En las últimas 24 horas tienes ${items.length} avisos y ${unread} sin leer. ${topTitles.length ? "Para que no juegues al escondite con el negocio: " + topTitles.join(" · ") + ". " : ""}Busca el café y vamos al lío. ☕😂`
+          : "En las últimas 24 horas no hay avisos nuevos. Disfruta esta paz; hasta la impresora está descansando. 😂");
       const { error: summaryError } = await supabase.from("notifications").insert({
         company_id: preference.company_id,
         user_id: preference.user_id,
