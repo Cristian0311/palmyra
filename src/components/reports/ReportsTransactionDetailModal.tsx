@@ -27,6 +27,20 @@ export function ReportsTransactionDetailModal({
 }: Props) {
   if (!transaction) return null;
 
+  const getItemTotal = (item: Transaction["items"][number]) => {
+    const storedTotal = item.total;
+    if (typeof storedTotal === "number" && Number.isFinite(storedTotal)) {
+      return storedTotal;
+    }
+    return (Number(item.quantity) || 0) * (Number(item.price) || 0);
+  };
+  const detailTotal = (transaction.items || []).reduce(
+    (sum, item) => sum + getItemTotal(item),
+    0
+  );
+  const detailDifference = Number(transaction.total) - detailTotal;
+  const hasDetailMismatch = Math.abs(detailDifference) > 0.01;
+
   return (
     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
       <div className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 border border-base my-auto text-primary">
@@ -106,7 +120,7 @@ export function ReportsTransactionDetailModal({
                 const name =
                   product?.name || getProductName(item.product);
                 const price = item.price ?? product?.price ?? 0;
-                const totalItem = (item.quantity || 0) * price;
+                const totalItem = getItemTotal(item);
 
                 return (
                   <div
@@ -159,6 +173,27 @@ export function ReportsTransactionDetailModal({
                 <span className="text-primary font-mono">
                   {formatMoney(transaction.total)}
                 </span>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-subtle p-3 rounded-xl border border-base space-y-1">
+            <div className="flex items-center justify-between gap-3 text-[10px] font-bold">
+              <span className="text-muted uppercase">Suma del detalle</span>
+              <span className="text-primary font-mono">{formatMoney(detailTotal)}</span>
+            </div>
+            {hasDetailMismatch && (
+              <div
+                role="alert"
+                className="mt-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 p-3 text-[10px] text-amber-900 dark:text-amber-200"
+              >
+                <p className="font-black uppercase tracking-wide">Revisar diferencia de importes</p>
+                <p className="mt-1">
+                  {detailDifference > 0
+                    ? "El total facturado supera la suma del detalle por " + formatMoney(detailDifference) + "."
+                    : "La suma del detalle supera el total facturado por " + formatMoney(Math.abs(detailDifference)) + "."}
+                  {" "}Se muestran los importes guardados; no se ajustan automáticamente los datos históricos.
+                </p>
               </div>
             )}
           </div>
