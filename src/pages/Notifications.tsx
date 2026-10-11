@@ -344,13 +344,42 @@ export default function Notifications() {
       const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
       if (permission !== "granted") throw new Error("No se concedió permiso para mostrar notificaciones.");
       const registration = await navigator.serviceWorker.ready;
+      const supabase = getSupabase();
+      if (!supabase) throw new Error("Supabase no está configurado.");
       let subscription = await registration.pushManager.getSubscription();
-      if (!subscription) subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: decodeVapidKey(vapidPublicKey) });
+
+      if (subscription && companyId && userId) {
+        const { data: serverSubscription, error: serverCheckError } = await supabase
+          .from("push_subscriptions")
+          .select("enabled")
+          .eq("company_id", companyId)
+          .eq("user_id", userId)
+          .eq("endpoint", subscription.endpoint)
+          .maybeSingle();
+
+        // If the server has no active row for this browser endpoint, it may
+        // have expired (HTTP 404/410). Remove the stale browser subscription
+        // and obtain a fresh endpoint rather than re-enabling the dead one.
+        if (!serverCheckError && serverSubscription?.enabled !== true) {
+          try {
+            const unsubscribed = await subscription.unsubscribe();
+            if (unsubscribed) subscription = null;
+          } catch (unsubscribeError) {
+            console.warn("[PALMYRA] No se pudo retirar la suscripción push antigua:", unsubscribeError);
+          }
+        }
+      }
+
+      if (!subscription) {
+        subscription = await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: decodeVapidKey(vapidPublicKey)
+        });
+      }
+
       const json = subscription.toJSON();
       const keys = json.keys;
       if (!json.endpoint || !keys?.p256dh || !keys?.auth) throw new Error("El navegador no devolvió una suscripción push válida.");
-      const supabase = getSupabase();
-      if (!supabase) throw new Error("Supabase no está configurado.");
       const { error: saveError } = await supabase.from("push_subscriptions").upsert({
         company_id: companyId,
         user_id: userId,
