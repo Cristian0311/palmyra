@@ -325,7 +325,7 @@ export async function callGetCompensationSettingsRPC(){
 
 export async function callCloseSessionRPC(sessionId:string,closingBalances:any[],closedAt:string,notes:string,settlement:SalarySettlement,expectedCash?:number){
   try{
-    const {companyId}=await getActiveTenant();
+    const {companyId}=await getActiveTenant(true);
     const physicalCashBase=(closingBalances||[])
       .filter((p:any)=>p?.method==='cash')
       .reduce((sum:number,p:any)=>sum+(Number(p?.amount)||0)*(Number(p?.exchangeRate)||1),0);
