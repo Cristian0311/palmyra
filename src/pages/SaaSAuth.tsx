@@ -10,6 +10,7 @@ import {
   updateSaaSPassword
 } from "../services/saas";
 import {
+  forgetOfflineSaaSCredential,
   rememberOfflineSaaSCredential,
   rememberPendingOfflineCredential,
   verifyOfflineSaaSCredential
@@ -128,10 +129,20 @@ export default function SaaSAuth() {
         if (password !== confirmPassword) throw new Error("Las contraseñas no coinciden.");
         const { error: updateError } = await updateSaaSPassword(password);
         if (updateError) throw updateError;
+        // A password change invalidates the old device-side verifier. The user
+        // must next authenticate online with the new password to re-enable
+        // offline login on this device.
+        try {
+          const supabase = getSupabase();
+          const { data: authData } = supabase ? await supabase.auth.getUser() : { data: { user: null } };
+          if (authData.user?.id) forgetOfflineSaaSCredential(authData.user.id);
+        } catch (offlineCredentialError) {
+          console.warn("[PALMYRA] No se pudo invalidar la credencial offline anterior.", offlineCredentialError);
+        }
         setMode("signin");
         setPassword("");
         setConfirmPassword("");
-        setMessage("Contraseña actualizada correctamente.");
+        setMessage("Contraseña actualizada. Inicia sesión con conexión usando la nueva contraseña para volver a habilitar el acceso sin conexión en este dispositivo.");
         window.history.replaceState({}, "", "/auth");
         return;
       }
