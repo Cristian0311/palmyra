@@ -10,6 +10,7 @@ import {
   updateSaaSPassword
 } from "../services/saas";
 import { rememberOfflineSaaSCredential, verifyOfflineSaaSCredential } from "../services/offlineSaaSAuth";
+import { isBrowserOffline, isTransientNetworkError } from "../services/offlineNetwork";
 
 type Mode = "signin" | "signup" | "reset" | "recovery";
 
@@ -154,6 +155,21 @@ export default function SaaSAuth() {
       if (result.error) throw result.error;
       await finishAuth(email, password);
     } catch (err: any) {
+      // navigator.onLine may remain true on Wi-Fi without working Internet.
+      // After a failed real login request, allow only the previously verified
+      // local credential to open this device's cached company context.
+      if (mode === "signin" && email.trim() && password &&
+          (isBrowserOffline() || isTransientNetworkError(err))) {
+        try {
+          const offlineContext = await verifyOfflineSaaSCredential(email, password);
+          if (offlineContext) {
+            window.location.replace("/");
+            return;
+          }
+        } catch (offlineError) {
+          console.warn("[PALMYRA] Offline login check could not complete.", offlineError);
+        }
+      }
       setError(messageFor(err));
     } finally {
       setBusy(false);
