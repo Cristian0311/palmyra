@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { ArrowRight, CheckCircle2, LockKeyhole, Mail, ShieldCheck, UserRound } from "lucide-react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { getSupabase } from "../lib/supabase";
 import { signInSaaSAccount, signUpSaaSAccount, loadSaaSContext } from "../services/saas";
 import { acceptEmployeeInvitation } from "../services/team";
@@ -9,7 +9,6 @@ import { useStore } from "../store/useStore";
 type Mode = "signup" | "signin";
 
 export default function SaaSInvite() {
-  const navigate = useNavigate();
   const [params] = useSearchParams();
   const token = params.get("token") || "";
   const [mode, setMode] = useState<Mode>("signup");
@@ -32,8 +31,9 @@ export default function SaaSInvite() {
       sessionStorage.removeItem("palmyra_pending_invitation");
       sessionStorage.removeItem("palmyra_pending_invitation_email");
     } catch {}
-    setAccepted(true);
-    navigate("/", { replace: true });
+    // Recargar la aplicación para que el guard de rutas vuelva a leer la membresía
+    // recién creada y no use el estado anterior (sin empresa) que envía a onboarding.
+    window.location.replace("/");
   };
 
   useEffect(() => {
