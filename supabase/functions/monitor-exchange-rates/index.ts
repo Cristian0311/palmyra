@@ -203,6 +203,47 @@ Deno.serve(async (req: Request) => {
       if (insertError) throw insertError;
     }
 
+    // Append durable chart points independently of the mutable one-row alert baseline.
+    // Keep each rate's first point, every rate movement, and an hourly sample when stable.
+    const recentHistoryCutoff = new Date(Date.now() - 2 * 60 * 60_000).toISOString();
+    const { data: recentHistory, error: historyReadError } = await supabase
+      .from("exchange_rate_history")
+      .select("code,value,captured_at")
+      .in("code", currentRates.map((rate) => rate.code))
+      .gte("captured_at", recentHistoryCutoff)
+      .order("captured_at", { ascending: false })
+      .limit(1000);
+    if (historyReadError) throw historyReadError;
+
+    const latestHistoryByCode = new Map<string, { value: unknown; captured_at: string }>();
+    for (const row of recentHistory || []) {
+      if (!latestHistoryByCode.has(row.code)) {
+        latestHistoryByCode.set(row.code, { value: row.value, captured_at: row.captured_at });
+      }
+    }
+    const historyRows = currentRates.flatMap((rate) => {
+      const latest = latestHistoryByCode.get(rate.code);
+      const previousValue = latest ? numeric(latest.value) : null;
+      const lastCapturedAt = latest ? new Date(latest.captured_at).getTime() : 0;
+      const changed = previousValue === null || previousValue !== rate.value;
+      const hourlySampleDue = !Number.isFinite(lastCapturedAt) || Date.now() - lastCapturedAt >= 60 * 60_000;
+      if (!changed && !hourlySampleDue) return [];
+      return [{
+        code: rate.code,
+        name: rate.name,
+        value: rate.value,
+        source: ratePayload?.source || "elTOQUE",
+        captured_at: ratePayload?.capturedAt || now,
+      }];
+    });
+    if (historyRows.length) {
+      const { error: historyInsertError } = await supabase
+        .from("exchange_rate_history")
+        .upsert(historyRows, { onConflict: "code,captured_at", ignoreDuplicates: true });
+      if (historyInsertError) throw historyInsertError;
+    }
+
+    // This table is intentionally mutable and is used only as the latest alert baseline.
     const snapshots = currentRates.map((rate) => ({
       code: rate.code,
       name: rate.name,
@@ -219,6 +260,7 @@ Deno.serve(async (req: Request) => {
     return respond({
       source: ratePayload?.source || "elTOQUE",
       ratesChecked: currentRates.length,
+      historyPointsRecorded: historyRows.length,
       changedRates: changes.length,
       notificationsCreated: notifications.length,
       baseline: (previousRates || []).length === 0,
