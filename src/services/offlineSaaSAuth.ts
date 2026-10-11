@@ -135,7 +135,7 @@ export async function verifyOfflineSaaSCredential(
       if (context.deviceActive === false) continue;
 
       // Rehydrate the exact company/user scope before the offline queue starts.
-      setPalmyraLocalScope(context.authUserId, context.companyId);
+      setPalmyraLocalScope(context.authUserId, context.companyId, true);
       return context;
     } catch {
       // A credential or browser crypto error must not be treated as a successful login.
