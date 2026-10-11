@@ -10,9 +10,12 @@ export function generateProductsPerformanceSheet(data: ExcelExportData): any[][]
       const prodId = typeof item.product === 'string' ? item.product : item.product?.id;
       if (!prodId) return;
       const current = salesMap.get(prodId) || { qty: 0, totalRevenue: 0 };
-      const price = typeof item.product === 'object' ? (item.product.price || 0) : 0;
+      const price = typeof item.product === 'object' ? (item.price ?? item.product.price ?? 0) : (item.price ?? 0);
+      const itemTotal = typeof item.total === 'number' && Number.isFinite(item.total)
+        ? item.total
+        : (Number(price) || 0) * (Number(item.quantity) || 0);
       current.qty += (item.quantity || 0);
-      current.totalRevenue += (price * (item.quantity || 0));
+      current.totalRevenue += itemTotal;
       salesMap.set(prodId, current);
     });
   });
@@ -52,7 +55,9 @@ export function generateProductsPerformanceSheet(data: ExcelExportData): any[][]
     const unitPrice = p.price || 0;
     const unitMargin = unitPrice - unitCost;
     const marginPct = unitPrice > 0 ? (unitMargin / unitPrice) * 100 : 0;
-    const totalGrossProfit = unitMargin * s.qty;
+    // Gross profit must use the actual recorded line revenue, which can include
+    // per-line discounts or negotiated prices, rather than list price × quantity.
+    const totalGrossProfit = s.totalRevenue - (unitCost * s.qty);
 
     const totalStock = (inventory || []).filter(inv => inv.productId === p.id).reduce((sum, inv) => sum + (inv.quantity || 0), 0);
     const stockValCost = totalStock * unitCost;
