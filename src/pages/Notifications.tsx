@@ -158,14 +158,38 @@ export default function Notifications() {
       const registration = await navigator.serviceWorker.ready;
       const subscription = await registration.pushManager.getSubscription();
       if (subscription) {
-        setPushDeviceStatus("registered");
+        // A browser subscription may exist locally after the server disabled
+        // an expired endpoint. Confirm the server-side row before claiming the
+        // device can receive push. When offline, we can only report local state.
+        if (!companyId || !userId || typeof navigator !== "undefined" && !navigator.onLine) {
+          setPushDeviceStatus("registered");
+          return;
+        }
+        const supabase = getSupabase();
+        if (!supabase) {
+          setPushDeviceStatus("registered");
+          return;
+        }
+        const { data: serverSubscription, error: serverCheckError } = await supabase
+          .from("push_subscriptions")
+          .select("enabled")
+          .eq("company_id", companyId)
+          .eq("user_id", userId)
+          .eq("endpoint", subscription.endpoint)
+          .maybeSingle();
+        if (!serverCheckError) {
+          setPushDeviceStatus(serverSubscription?.enabled === true ? "registered" : "not_registered");
+        } else {
+          // A transient network error is not proof the endpoint was disabled.
+          setPushDeviceStatus("registered");
+        }
       } else {
         setPushDeviceStatus(vapidPublicKey ? "not_registered" : "missing_key");
       }
     } catch {
       setPushDeviceStatus(vapidPublicKey ? "not_registered" : "missing_key");
     }
-  }, [vapidPublicKey]);
+  }, [vapidPublicKey, companyId, userId]);
 
   useEffect(() => { void checkPushStatus(); }, [checkPushStatus]);
 
