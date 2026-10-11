@@ -4,6 +4,7 @@ import { slugifyCompany, type PlanCode } from '../config/saas';
 import { setPalmyraLocalScope, clearPalmyraLocalScope, getPalmyraLocalScope } from './localScope';
 import { clearActiveTenant } from './tenant';
 import { cacheSaaSContext, clearCachedSaaSContext, getCachedSaaSContext } from './offlineAuthContext';
+import { isBrowserOffline, isTransientNetworkError } from './offlineNetwork';
 
 export interface SaaSContext {
   authUserId: string;
@@ -90,35 +91,53 @@ export async function getAuthenticatedUser() {
 }
 
 export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext | null> {
+  const localScopeAtStart = getPalmyraLocalScope();
   const supabase = getSupabase();
-  if (!supabase) return null;
+  if (!supabase) {
+    const cached = isBrowserOffline() && localScopeAtStart?.userId
+      ? getCachedSaaSContext(localScopeAtStart.userId)
+      : null;
+    return cached;
+  }
 
   // Arranque offline: usar inmediatamente el contexto cacheado y evitar
   // esperas de red antes de montar el CRM. El alcance activo determina empresa
   // y usuario para impedir mezclar sesiones multiempresa.
-  if (typeof navigator !== 'undefined' && !navigator.onLine) {
-    const localScope = getPalmyraLocalScope();
-    const cached = localScope?.userId ? getCachedSaaSContext(localScope.userId) : null;
+  if (isBrowserOffline()) {
+    const cached = localScopeAtStart?.userId ? getCachedSaaSContext(localScopeAtStart.userId) : null;
     if (cached) return cached;
   }
 
+  let fallbackUserId: string | null = localScopeAtStart?.userId || null;
+  try {
   if (forceRefresh) {
     const { error: refreshError } = await supabase.auth.getSession();
     if (refreshError) throw refreshError;
   }
 
   let authUser: any = null;
+  let authRequestError: unknown = null;
   try {
     const { data: authData, error: authError } = await supabase.auth.getUser();
     if (!authError) authUser = authData.user;
-  } catch {}
-  if (!authUser && typeof navigator !== 'undefined' && !navigator.onLine) {
+    else authRequestError = authError;
+  } catch (error) {
+    authRequestError = error;
+  }
+
+  if (!authUser && (isBrowserOffline() || isTransientNetworkError(authRequestError))) {
+    const cachedUserId = localScopeAtStart?.userId || null;
+    const cached = cachedUserId ? getCachedSaaSContext(cachedUserId) : null;
+    if (cached) return cached;
+    // A locally persisted Supabase session can help identify the same user,
+    // but its tokens are not needed to authorize local-only operations.
     try {
       const { data: sessionData } = await supabase.auth.getSession();
       authUser = sessionData.session?.user || null;
     } catch {}
   }
   if (!authUser) return null;
+  fallbackUserId = authUser.id;
 
   // Evitamos relaciones embebidas de PostgREST durante el arranque.
   // Primero resolvemos membresía y luego empresa, rol y plan por separado.
@@ -126,7 +145,7 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     supabase.from('profiles').select('full_name,phone,active_company_id').eq('id', authUser.id).maybeSingle(),
     supabase.from('company_memberships').select('company_id,is_owner,status,joined_at').eq('user_id', authUser.id).eq('status','active').order('joined_at',{ascending:true}).limit(10)
   ]);
-  if ((profileError || membershipError) && typeof navigator !== 'undefined' && !navigator.onLine) {
+  if ((profileError || membershipError) && (isBrowserOffline() || isTransientNetworkError(profileError || membershipError))) {
     const cached = getCachedSaaSContext(authUser.id);
     if (cached) return cached;
   }
@@ -183,7 +202,7 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
   ]);
 
   if (companyError || userRoleError || locationsError || employeeError || subscriptionError || pendingPlanRequestError) {
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    if (isBrowserOffline() || isTransientNetworkError(companyError || userRoleError || locationsError || employeeError || subscriptionError || pendingPlanRequestError)) {
       const cached = getCachedSaaSContext(authUser.id);
       if (cached) return cached;
     }
@@ -334,7 +353,19 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
   };
 
   cacheSaaSContext(context);
+  setPalmyraLocalScope(authUser.id, companyId);
   return context;
+  } catch (error) {
+    const scope = getPalmyraLocalScope();
+    const userId = fallbackUserId || scope?.userId || null;
+    const cached = userId ? getCachedSaaSContext(userId) : null;
+    if (cached && (isBrowserOffline() || isTransientNetworkError(error))) {
+      // Keep the last known-good company, role and warehouse scope while the
+      // network is unavailable; never replace it with a partial response.
+      return cached;
+    }
+    throw error;
+  }
 }
 
 export async function createCompanyOnboarding(input: {
