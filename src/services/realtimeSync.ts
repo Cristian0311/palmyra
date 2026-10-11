@@ -5,6 +5,7 @@ import { isBrowserOffline, isTransientNetworkError } from './offlineNetwork';
 
 let realtimeChannel: any = null;
 let realtimeSubscriptionPromise: Promise<void> | null = null;
+let realtimeSubscriptionGeneration: number | null = null;
 let channelRemovalPromise: Promise<void> = Promise.resolve();
 let pollIntervalId: ReturnType<typeof setInterval> | null = null;
 let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -157,12 +158,12 @@ async function ensureRealtimeSubscribed(supabase: NonNullable<ReturnType<typeof 
   if (realtimeChannel) return;
 
   if (realtimeSubscriptionPromise) {
-    const generationBeforeWait = subscriberGeneration;
+    const pendingGeneration = realtimeSubscriptionGeneration;
     await realtimeSubscriptionPromise;
     // If an offline/cleanup transition invalidated the pending subscription,
     // retry once for the new generation. A failed connection in the same
     // generation is left to the poll/online event, avoiding retry recursion.
-    if (!realtimeChannel && !isBrowserOffline() && generationBeforeWait !== subscriberGeneration) {
+    if (!realtimeChannel && !isBrowserOffline() && pendingGeneration !== subscriberGeneration) {
       await ensureRealtimeSubscribed(supabase);
     }
     return;
@@ -222,9 +223,13 @@ async function ensureRealtimeSubscribed(supabase: NonNullable<ReturnType<typeof 
       console.warn('[PALMYRA] Could not establish Realtime subscription; polling remains active.', error);
     }
   }).finally(() => {
-    if (realtimeSubscriptionPromise === attempt) realtimeSubscriptionPromise = null;
+    if (realtimeSubscriptionPromise === attempt) {
+      realtimeSubscriptionPromise = null;
+      realtimeSubscriptionGeneration = null;
+    }
   });
 
+  realtimeSubscriptionGeneration = generation;
   realtimeSubscriptionPromise = attempt;
   await attempt;
 }
@@ -295,6 +300,7 @@ export function initMultiDeviceRealtimeSync(): () => void {
       refreshTimeout = null;
       stopRealtimeChannel(supabase);
       realtimeSubscriptionPromise = null;
+      realtimeSubscriptionGeneration = null;
     };
   }
 
