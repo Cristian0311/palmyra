@@ -183,7 +183,8 @@ export async function verifyOfflineSaaSCredential(
       const context = getCachedSaaSContext(candidate.userId);
       if (!context || context.authUserId !== candidate.userId || context.user.id !== candidate.userId) continue;
       if (!context.companyId || !context.company || !context.warehouseIds?.length) continue;
-      if (context.membershipStatus && context.membershipStatus !== "active") continue;
+      if (context.membershipStatus !== "active") continue;
+      if (context.user.isActive === false) continue;
       if (context.company.account_status === "suspended" || context.company.account_status === "pending_payment") continue;
       if (context.deviceActive === false) continue;
 
