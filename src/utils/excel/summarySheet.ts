@@ -53,7 +53,7 @@ export function generateSummarySheet(data: ExcelExportData): any[][] {
   const totalBankIncomes = bankPaymentsReceived + bankOtherDeposits;
   const totalBankExpenses = bankSupplierPayments + bankOtherWithdrawals;
   const netFlow = totalSales + totalCashIncomes + totalBankIncomes - totalCashExpenses - totalBankExpenses;
-  const avgTicket = transactions.length > 0 ? totalSales / transactions.length : 0;
+  const avgTicket = validSalesTransactions.length > 0 ? totalSales / validSalesTransactions.length : 0;
 
   const rows: any[][] = [
     [`REPORTE FINANCIERO Y EJECUTIVO - ${businessName.toUpperCase()}`],
@@ -62,7 +62,7 @@ export function generateSummarySheet(data: ExcelExportData): any[][] {
     [],
     ['=== INDICADORES CLAVE DE RENDIMIENTO (KPIs) ==='],
     ['Categoría', 'Indicador Financiero', 'Monto en Moneda Base (' + baseCurrency.code + ')', 'Detalle Operativo'],
-    ['Ventas', 'Total Facturado en Ventas', Number(totalSales.toFixed(2)), `${transactions.length} transacciones registradas`],
+    ['Ventas', 'Total Facturado en Ventas', Number(totalSales.toFixed(2)), `${validSalesTransactions.length} ventas completadas registradas`],
     ['Ventas', 'Ticket Promedio por Venta', Number(avgTicket.toFixed(2)), 'Promedio por comprobante'],
     ['Ventas', 'Volumen de Artículos Vendidos', totalItemsSold, 'Unidades físicas despachadas'],
     ['Caja', 'Entradas Extraordinarias de Caja', Number(totalCashIncomes.toFixed(2)), 'Fondos directos aportados a caja'],
