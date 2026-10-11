@@ -68,6 +68,10 @@ export function normalizeSaleItem(
 ): any {
   const productId = raw.product_id;
   const product = productMap.get(productId);
+  const rawLineTotal = raw.line_total;
+  const lineTotal = rawLineTotal !== null && rawLineTotal !== undefined && rawLineTotal !== '' && Number.isFinite(Number(rawLineTotal))
+    ? Number(rawLineTotal)
+    : (Number(raw.unit_price) || 0) * (Number(raw.quantity) || 0);
   const variantLabel = raw.variant_id ? (variantMap.get(raw.variant_id) || undefined) : undefined;
   const resolvedProduct = product || {
     id: productId,
@@ -87,7 +91,7 @@ export function normalizeSaleItem(
     product: { ...resolvedProduct, price: Number(raw.unit_price) || resolvedProduct.price },
     quantity: Number(raw.quantity) || 0,
     price: Number(raw.unit_price) || 0,
-    total: Number(raw.line_total) || (Number(raw.unit_price) || 0) * (Number(raw.quantity) || 0),
+    total: lineTotal,
     serialNumber: raw.serial_number || undefined,
     variantLabel,
   };
