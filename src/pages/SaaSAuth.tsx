@@ -9,6 +9,7 @@ import {
   signUpSaaSAccount,
   updateSaaSPassword
 } from "../services/saas";
+import { rememberOfflineSaaSCredential, verifyOfflineSaaSCredential } from "../services/offlineSaaSAuth";
 
 type Mode = "signin" | "signup" | "reset" | "recovery";
 
@@ -61,12 +62,27 @@ export default function SaaSAuth() {
     return () => data.subscription.unsubscribe();
   }, [params]);
 
-  const finishAuth = async () => {
+  const finishAuth = async (credentialEmail?: string, credentialPassword?: string) => {
     const ctx = await loadSaaSContext(true);
     if (!ctx) {
       setError("La sesión no pudo ser verificada.");
       return;
     }
+
+    // Save a salted verifier only after Supabase has authenticated the account.
+    // The raw password is never stored. This enables a later offline login on
+    // this same browser after the company context has been cached once.
+    if (credentialEmail && credentialPassword) {
+      try {
+        await rememberOfflineSaaSCredential({
+          authUserId: ctx.authUserId,
+          user: { ...ctx.user, email: credentialEmail.trim().toLowerCase() }
+        }, credentialPassword);
+      } catch (offlineCredentialError) {
+        console.warn("[PALMYRA] No se pudo preparar el acceso offline en este dispositivo.", offlineCredentialError);
+      }
+    }
+
     if (!ctx.companyId) {
       window.location.replace(ctx.membershipStatus && ctx.membershipStatus !== "active" ? "/account-status" : "/onboarding");
       return;
@@ -121,14 +137,22 @@ export default function SaaSAuth() {
         if (typeof sessionStorage !== "undefined") {
           sessionStorage.setItem("palmyra_pending_onboarding", "1");
         }
-        await finishAuth();
+        await finishAuth(email, password);
         return;
       }
 
       if (!email.trim() || !password) throw new Error("Correo y contraseña son obligatorios.");
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        const offlineContext = await verifyOfflineSaaSCredential(email, password);
+        if (!offlineContext) {
+          throw new Error("No hay conexión y este dispositivo no tiene una sesión offline válida para ese correo. Conéctate una vez, inicia sesión y vuelve a intentarlo sin internet.");
+        }
+        window.location.replace("/");
+        return;
+      }
       const result = await signInSaaSAccount(email, password);
       if (result.error) throw result.error;
-      await finishAuth();
+      await finishAuth(email, password);
     } catch (err: any) {
       setError(messageFor(err));
     } finally {
