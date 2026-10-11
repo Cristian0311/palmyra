@@ -31,9 +31,12 @@ export function generateDiscrepanciesSheet(data: ExcelExportData): any[][] {
     if (details.length === 0 && session.status === 'closed' && session.closingBalances && session.closingBalances.length > 0) {
       const openDate = new Date(session.openedAt).getTime();
       const closeDate = session.closedAt ? new Date(session.closedAt).getTime() : Date.now();
-      const sessionTx = (transactions || []).filter(t => 
-        t.branchId === session.branchId && 
-        t.sessionId === session.id
+      const sessionTx = (transactions || []).filter(t =>
+        t.branchId === session.branchId &&
+        t.sessionId === session.id &&
+        t.status === 'completed' &&
+        !t.deletedAt &&
+        !String(t.notes || '').startsWith('AJUSTE_')
       );
 
       const expected: { currencyCode: string; method: 'cash' | 'transfer'; amount: number }[] = [];
@@ -46,10 +49,19 @@ export function generateDiscrepanciesSheet(data: ExcelExportData): any[][] {
           if (ex) ex.amount += p.amount;
           else expected.push({ currencyCode: p.currencyCode, method: p.method, amount: p.amount });
         });
-        (tx.changePayments || []).forEach(cp => {
-          const ex = expected.find(e => e.currencyCode === cp.currencyCode && e.method === cp.method);
-          if (ex) ex.amount -= cp.amount;
-        });
+        if (tx.changePayments && tx.changePayments.length > 0) {
+          tx.changePayments.forEach(cp => {
+            const ex = expected.find(e => e.currencyCode === cp.currencyCode && e.method === cp.method);
+            if (ex) ex.amount -= cp.amount;
+            else expected.push({ currencyCode: cp.currencyCode, method: cp.method, amount: -cp.amount });
+          });
+        } else if (tx.changeGiven && tx.changeGiven > 0) {
+          // The legacy field is a base-currency cash return when there are no
+          // detailed per-currency change entries.
+          const ex = expected.find(e => e.currencyCode === baseCode && e.method === 'cash');
+          if (ex) ex.amount -= tx.changeGiven;
+          else expected.push({ currencyCode: baseCode, method: 'cash', amount: -tx.changeGiven });
+        }
       });
 
       (session.movements || []).forEach(m => {

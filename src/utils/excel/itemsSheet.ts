@@ -29,6 +29,8 @@ export function generateItemsSoldDetailSheet(data: ExcelExportData): any[][] {
   ];
 
   transactions.forEach(t => {
+    // This sheet measures completed sales, not refunds, deleted tickets or audit adjustments.
+    if (t?.status !== 'completed' || t.deletedAt || String(t.notes || '').startsWith('AJUSTE_')) return;
     const branchName = branches.find(b => b.id === t.branchId)?.name || 'Sucursal Principal';
     const seller = users.find(u => u.id === t.userId)?.name || 'Cajero';
     const customer = customers.find(c => c.id === t.customerId)?.name || 'Consumidor Final';
@@ -44,11 +46,13 @@ export function generateItemsSoldDetailSheet(data: ExcelExportData): any[][] {
       const barcode = catalogProd?.barcode || 'S/C';
       const categoryName = categories.find(c => c.id === catalogProd?.categoryId)?.name || 'General';
 
-      const unitPrice = typeof item.product === 'object' ? (item.product.price || 0) : (catalogProd?.price || 0);
+      const rawUnitPrice = item.price ?? (typeof item.product === 'object' ? item.product.price : catalogProd?.price) ?? 0;
+      const unitPrice = Number(rawUnitPrice) || 0;
       const unitCost = catalogProd?.costPrice || 0;
       const qty = item.quantity || 0;
-
-      const lineTotal = unitPrice * qty;
+      const lineTotal = typeof item.total === 'number' && Number.isFinite(item.total)
+        ? item.total
+        : unitPrice * qty;
       const lineCost = unitCost * qty;
       const grossMargin = lineTotal - lineCost;
       const marginPct = lineTotal > 0 ? (grossMargin / lineTotal) : 0;

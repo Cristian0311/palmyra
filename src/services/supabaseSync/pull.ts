@@ -276,6 +276,12 @@ async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string
       exchangeRate: Number(cp.exchangeRate ?? cp.exchange_rate) || 1,
     })).filter((cp:any) => cp.amount > 0);
     const changeGiven = Number(legacyTransaction.change_given ?? s.metadata?.change_given) || 0;
+    const sourceSubtotal = Number(legacyTransaction.subtotal);
+    const sourceTax = Number(legacyTransaction.tax);
+    const sourceDiscount = Number(legacyTransaction.discount);
+    const subtotal = Number.isFinite(sourceSubtotal) ? sourceSubtotal : (Number(s.total) || 0);
+    const tax = Number.isFinite(sourceTax) ? sourceTax : 0;
+    const discount = Number.isFinite(sourceDiscount) ? sourceDiscount : 0;
     const userId = s.employee_id || s.seller_user_id || '';
     return {
       id: s.metadata?.ticket_id || s.id,
@@ -285,9 +291,9 @@ async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string
       userId,
       cashierName: employeeNames.get(s.employee_id) || undefined,
       date: s.created_at,
-      subtotal: Number(s.total) || 0,
-      tax: 0,
-      discount: 0,
+      subtotal,
+      tax,
+      discount,
       total: Number(s.total) || 0,
       payments,
       changeGiven,

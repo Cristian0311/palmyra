@@ -26,11 +26,14 @@ export function buildShiftReceiptLines(
   },
 ): string[] {
   const { branchName, sequentialTurn, workerName, transactions, products, payrollItem, getProductName, formatMoney, format58mmLine } = deps;
-  const totalSales = transactions.reduce((sum, tx) => sum + (tx.total || 0), 0);
-  const totalItems = transactions.reduce((sum, tx) => sum + (tx.items || []).reduce((s, i) => s + (i.quantity || 0), 0), 0);
+  const validTransactions = transactions.filter(tx =>
+    tx.status === 'completed' && !tx.deletedAt && !String(tx.notes || '').startsWith('AJUSTE_')
+  );
+  const totalSales = validTransactions.reduce((sum, tx) => sum + (tx.total || 0), 0);
+  const totalItems = validTransactions.reduce((sum, tx) => sum + (tx.items || []).reduce((s, i) => s + (i.quantity || 0), 0), 0);
   const grouped: {[key: string]: {name: string; quantity: number; total: number}} = {};
 
-  transactions.forEach(tx => {
+  validTransactions.forEach(tx => {
     (tx.items || []).forEach(item => {
       const prodObj = typeof item.product === 'object' ? item.product : products.find(p => p.id === (item.product as unknown as string));
       const name = prodObj?.name || getProductName(item.product);
