@@ -4,6 +4,7 @@ import { slugifyCompany, type PlanCode } from '../config/saas';
 import { setPalmyraLocalScope, clearPalmyraLocalScope, getPalmyraLocalScope } from './localScope';
 import { clearActiveTenant } from './tenant';
 import { cacheSaaSContext, clearCachedSaaSContext, getCachedSaaSContext } from './offlineAuthContext';
+import { forgetOfflineSaaSCredential } from './offlineSaaSAuth';
 import { isBrowserOffline, isTransientNetworkError } from './offlineNetwork';
 
 export interface SaaSContext {
@@ -64,17 +65,29 @@ export async function signInSaaSAccount(email: string, password: string) {
 
 export async function signOutSaaSAccount() {
   clearActiveTenant();
+  const scopeUserId = getPalmyraLocalScope()?.userId || null;
   const supabase = getSupabase();
   if (!supabase) {
     clearCachedSaaSContext();
+    if (scopeUserId) forgetOfflineSaaSCredential(scopeUserId);
     clearPalmyraLocalScope();
     return;
   }
+
+  const userIds = new Set<string>();
+  if (scopeUserId) userIds.add(scopeUserId);
   try {
     const { data } = await supabase.auth.getSession();
     const userId = data.session?.user?.id || null;
-    if (userId) clearCachedSaaSContext(userId);
+    if (userId) userIds.add(userId);
   } catch {}
+
+  // Logging out must also revoke the local offline verifier/context for this
+  // account, otherwise it could be reopened offline without signing in again.
+  for (const userId of userIds) {
+    clearCachedSaaSContext(userId);
+    forgetOfflineSaaSCredential(userId);
+  }
   try { await supabase.auth.signOut(); } catch (error) {
     console.warn("[PALMYRA] Cierre de sesión remoto no disponible; se limpia la sesión local.", error);
   }
