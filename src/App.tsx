@@ -7,7 +7,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { useEffect, useState, useRef, lazy, Suspense } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import Layout from "./components/Layout";
-import { loadSaaSContext } from "./services/saas";
+import { loadSaaSContext, signOutSaaSAccount } from "./services/saas";
 import { getSupabase } from "./lib/supabase";
 import { useStore } from "./store/useStore";
 import { initMultiDeviceRealtimeSync } from "./services/realtimeSync";
@@ -345,7 +345,7 @@ export default function App() {
         if (cancelled || !ctx?.companyId) return;
         const active = await touchCurrentDevice(ctx.companyId);
         if (!active) {
-          await getSupabase()?.auth.signOut();
+          await signOutSaaSAccount();
           return;
         }
       } catch (error) {
