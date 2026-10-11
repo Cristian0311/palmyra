@@ -66,6 +66,22 @@ Deno.serve(async (req: Request) => {
   webpush.setVapidDetails(subject, publicKey, privateKey);
   const now = new Date();
 
+  // Requeue abandoned claims after a process crash. The worker is idempotent at
+  // the outbox claim step, and this prevents jobs staying in "processing" forever.
+  const staleLockCutoff = new Date(now.getTime() - 5 * 60_000).toISOString();
+  const { error: recoveryError } = await supabase
+    .from("notification_outbox")
+    .update({
+      status: "pending",
+      locked_at: null,
+      scheduled_at: now.toISOString(),
+      available_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    })
+    .eq("status", "processing")
+    .lt("locked_at", staleLockCutoff);
+  if (recoveryError) return response({ error: "Could not recover stale notification jobs." }, 500);
+
   // Create each user's daily summary at their configured local time. A unique
   // company/user/date key makes this safe when the worker is retried.
   const { data: summaryPreferences } = await supabase
@@ -136,6 +152,7 @@ Deno.serve(async (req: Request) => {
     .from("notification_outbox")
     .select("id,company_id,recipient_user_id,notification_id,event_type,payload,dedupe_key,priority,attempts")
     .in("status", ["pending", "failed"])
+    .lt("attempts", 5)
     .lte("available_at", now.toISOString())
     .lte("scheduled_at", now.toISOString())
     .order("created_at", { ascending: true })
@@ -148,9 +165,10 @@ Deno.serve(async (req: Request) => {
   let failed = 0;
 
   for (const job of jobs || []) {
+    let attemptCounted = false;
     const { data: claim, error: claimError } = await supabase
       .from("notification_outbox")
-      .update({ status: "processing", locked_at: now.toISOString(), attempts: (job.attempts || 0) + 1, updated_at: now.toISOString() })
+      .update({ status: "processing", locked_at: now.toISOString(), updated_at: now.toISOString() })
       .eq("id", job.id)
       .in("status", ["pending", "failed"])
       .select("id")
@@ -182,7 +200,15 @@ Deno.serve(async (req: Request) => {
       }
 
       if (!subscriptions?.length) {
-        await supabase.from("notification_outbox").update({ status: "sent", sent_at: new Date().toISOString(), last_error: "No active push subscriptions; notification remains in the in-app center.", updated_at: new Date().toISOString() }).eq("id", job.id);
+        // The in-app notification already exists; no push was delivered.
+        // Use "suppressed" rather than falsely reporting the job as sent.
+        await supabase.from("notification_outbox").update({
+          status: "suppressed",
+          sent_at: null,
+          last_error: "No active push subscription; notification remains in the in-app center.",
+          locked_at: null,
+          updated_at: new Date().toISOString(),
+        }).eq("id", job.id);
         suppressed++;
         continue;
       }
@@ -195,6 +221,15 @@ Deno.serve(async (req: Request) => {
         url: "/notifications",
         tag: job.dedupe_key || job.id,
       };
+      const attemptNumber = (job.attempts || 0) + 1;
+      const { error: attemptError } = await supabase
+        .from("notification_outbox")
+        .update({ attempts: attemptNumber, updated_at: new Date().toISOString() })
+        .eq("id", job.id)
+        .eq("status", "processing");
+      if (attemptError) throw attemptError;
+      attemptCounted = true;
+
       let delivered = false;
       for (const sub of subscriptions) {
         try {
@@ -215,18 +250,23 @@ Deno.serve(async (req: Request) => {
       if (delivered) {
         await supabase.from("notification_outbox").update({ status: "sent", sent_at: new Date().toISOString(), last_error: null, updated_at: new Date().toISOString() }).eq("id", job.id);
         sent++;
-      } else if ((job.attempts || 0) >= 5) {
+      } else if (attemptNumber >= 5) {
         await supabase.from("notification_outbox").update({ status: "failed", last_error: "Push failed after multiple attempts.", updated_at: new Date().toISOString() }).eq("id", job.id);
         failed++;
       } else {
-        const retryAt = new Date(Date.now() + Math.min(60, 2 ** ((job.attempts || 0) + 1)) * 60_000).toISOString();
+        const retryAt = new Date(Date.now() + Math.min(60, 2 ** attemptNumber) * 60_000).toISOString();
         await supabase.from("notification_outbox").update({ status: "failed", available_at: retryAt, scheduled_at: retryAt, locked_at: null, last_error: "Temporary push delivery failure.", updated_at: new Date().toISOString() }).eq("id", job.id);
         failed++;
       }
     } catch (error) {
+      const attempts = (job.attempts || 0) + (attemptCounted ? 0 : 1);
       const retryAt = new Date(Date.now() + 5 * 60_000).toISOString();
       await supabase.from("notification_outbox").update({
-        status: "failed", available_at: retryAt, scheduled_at: retryAt, locked_at: null,
+        status: "failed",
+        attempts,
+        available_at: retryAt,
+        scheduled_at: retryAt,
+        locked_at: null,
         last_error: String((error as Error)?.message || "Unexpected delivery error").slice(0, 500),
         updated_at: new Date().toISOString(),
       }).eq("id", job.id);
