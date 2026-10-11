@@ -71,6 +71,16 @@ test("offline SaaS login needs the previously verified password and a cached act
       companyId: "offline-test-company",
       offlineSession: true
     });
+
+    // The offline password must not authorize a cached role/company that was
+    // altered after the last cloud-verified login.
+    const cacheKey = "palmyra_offline_auth_context_v1__offline-test-user";
+    const cachedRaw = storage.getItem(cacheKey);
+    assert.ok(cachedRaw);
+    const tamperedContext = JSON.parse(cachedRaw!);
+    tamperedContext.companyId = "attacker-selected-company";
+    storage.setItem(cacheKey, JSON.stringify(tamperedContext));
+    assert.equal(await verifyOfflineSaaSCredential("offline@example.test", "Test-Passphrase-938!"), null);
   } finally {
     if (originalStorage) Object.defineProperty(globalThis, "localStorage", originalStorage);
     else delete (globalThis as any).localStorage;
