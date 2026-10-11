@@ -15,7 +15,7 @@ test("signup navigation stays inside React until the new-company credential is c
   const auth = source("src/pages/SaaSAuth.tsx");
   const onboarding = source("src/pages/SaaSOnboarding.tsx");
   assert.ok(auth.includes('navigate(ctx.membershipStatus && ctx.membershipStatus !== "active" ? "/account-status" : "/onboarding", { replace: true });'));
-  assert.match(onboarding, /consumePendingOfflineCredential\\(context\\)/);
+  assert.ok(onboarding.includes("consumePendingOfflineCredential(context)"));
 });
 
 test("the new-company signup flow binds the pending offline verifier after onboarding", () => {
