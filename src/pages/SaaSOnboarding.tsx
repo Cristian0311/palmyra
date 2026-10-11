@@ -417,7 +417,7 @@ export default function SaaSOnboarding() {
     <main className="relative h-[100dvh] min-h-[100dvh] overflow-y-auto bg-[#F7F5FC]" data-keyboard-viewport="native">
       <button
         type="button"
-        onClick={() => navigate("/")}
+        onClick={() => navigate("/landing")}
         disabled={busy}
         aria-label="Volver a la página principal de PALMYRA"
         className="fixed left-3 top-3 z-40 inline-flex h-10 items-center gap-2 rounded-xl border border-violet-200 bg-white/95 px-3 text-xs font-black text-[#4B1FA7] shadow-sm transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 sm:left-5 sm:top-5"
