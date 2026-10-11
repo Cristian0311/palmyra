@@ -147,8 +147,12 @@ async function ensureRealtimeSubscribed(supabase: NonNullable<ReturnType<typeof 
   if (realtimeChannel) return;
 
   if (realtimeSubscriptionPromise) {
+    const generationBeforeWait = subscriberGeneration;
     await realtimeSubscriptionPromise;
-    if (!realtimeChannel && !isBrowserOffline()) {
+    // If an offline/cleanup transition invalidated the pending subscription,
+    // retry once for the new generation. A failed connection in the same
+    // generation is left to the poll/online event, avoiding retry recursion.
+    if (!realtimeChannel && !isBrowserOffline() && generationBeforeWait !== subscriberGeneration) {
       await ensureRealtimeSubscribed(supabase);
     }
     return;
@@ -169,7 +173,7 @@ async function ensureRealtimeSubscribed(supabase: NonNullable<ReturnType<typeof 
     // Every postgres_changes callback is registered before subscribe().
     // Adding handlers afterwards throws and can abort the socket lifecycle.
     for (const table of [...GLOBAL_TABLES, ...OP_TABLES]) {
-      const config: Record<string, unknown> = { event: '*', schema: 'public', table };
+      const config: any = { event: '*', schema: 'public', table };
       // currencies is a shared reference table and has no company_id column.
       if (state.companyId && table !== 'currencies') config.filter = 'company_id=eq.' + state.companyId;
       channel.on('postgres_changes', config, (payload: any) => {
