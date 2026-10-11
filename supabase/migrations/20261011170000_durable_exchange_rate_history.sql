@@ -165,3 +165,16 @@ $function$;
 
 REVOKE ALL ON FUNCTION public.import_exchange_rate_legacy_history(jsonb) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.import_exchange_rate_legacy_history(jsonb) TO authenticated;
+
+-- Repair historical queue rows that were incorrectly called "sent" even though
+-- the worker explicitly recorded that no push subscription existed.
+UPDATE public.notification_outbox
+SET status = 'suppressed',
+    sent_at = NULL,
+    last_error = 'No active push subscription; notification remains in the in-app center.',
+    updated_at = now()
+WHERE status = 'sent'
+  AND last_error IN (
+    'No active push subscriptions; notification remains in the in-app center.',
+    'No active push subscription; notification remains in the in-app center.'
+  );
