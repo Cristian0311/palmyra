@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  ArrowLeft,
   ArrowRight,
   Building2,
   Check,
@@ -414,6 +415,16 @@ export default function SaaSOnboarding() {
 
   return (
     <main className="relative h-[100dvh] min-h-[100dvh] overflow-y-auto bg-[#F7F5FC]" data-keyboard-viewport="native">
+      <button
+        type="button"
+        onClick={() => navigate("/")}
+        disabled={busy}
+        aria-label="Volver a la página principal de PALMYRA"
+        className="fixed left-3 top-3 z-40 inline-flex h-10 items-center gap-2 rounded-xl border border-violet-200 bg-white/95 px-3 text-xs font-black text-[#4B1FA7] shadow-sm transition hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 sm:left-5 sm:top-5"
+      >
+        <ArrowLeft className="h-4 w-4" />
+        Volver a PALMYRA
+      </button>
       {busy && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#24133d]/45 px-4 backdrop-blur-sm" aria-live="polite" aria-busy="true">
           <div className="w-full max-w-sm rounded-3xl border border-violet-100 bg-white p-6 text-center shadow-2xl">
