@@ -186,7 +186,7 @@ Deno.serve(async (req: Request) => {
 
       const critical = job.priority === "critical";
       if (preference?.push_enabled === false || (critical && preference?.critical_push_enabled === false)) {
-        await supabase.from("notification_outbox").update({ status: "suppressed", updated_at: new Date().toISOString() }).eq("id", job.id);
+        await supabase.from("notification_outbox").update({ status: "suppressed", locked_at: null, updated_at: new Date().toISOString() }).eq("id", job.id);
         suppressed++;
         continue;
       }
@@ -248,10 +248,10 @@ Deno.serve(async (req: Request) => {
         }
       }
       if (delivered) {
-        await supabase.from("notification_outbox").update({ status: "sent", sent_at: new Date().toISOString(), last_error: null, updated_at: new Date().toISOString() }).eq("id", job.id);
+        await supabase.from("notification_outbox").update({ status: "sent", sent_at: new Date().toISOString(), last_error: null, locked_at: null, updated_at: new Date().toISOString() }).eq("id", job.id);
         sent++;
       } else if (attemptNumber >= 5) {
-        await supabase.from("notification_outbox").update({ status: "failed", last_error: "Push failed after multiple attempts.", updated_at: new Date().toISOString() }).eq("id", job.id);
+        await supabase.from("notification_outbox").update({ status: "failed", last_error: "Push failed after five delivery attempts.", locked_at: null, updated_at: new Date().toISOString() }).eq("id", job.id);
         failed++;
       } else {
         const retryAt = new Date(Date.now() + Math.min(60, 2 ** attemptNumber) * 60_000).toISOString();
