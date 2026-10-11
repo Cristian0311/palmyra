@@ -89,6 +89,8 @@ test('Excel detail uses the stored line total instead of recalculating price tim
   assert.equal(rows[1][12], 100, 'effective unit price should be preserved');
   assert.equal(rows[1][14], 180, 'stored discounted line total should be used');
   assert.equal(rows[1][16], 160, 'gross profit should use recorded line total minus cost');
+  assert.equal(rows[1][20], 30000, 'invoice total should be visible alongside the detail');
+  assert.equal(rows[1][21], 29820, 'the invoice-to-detail mismatch should be explicit');
 });
 
 test('Excel product performance uses recorded revenue and excludes refunded tickets', () => {
