@@ -42,7 +42,10 @@ export function generateSalesSheet(data: ExcelExportData): any[][] {
     let transferPaidInBase = 0;
 
     (t.payments || []).forEach(p => {
-      const rate = currencies.find(c => c.code === p.currencyCode)?.rateToBase || 1;
+      // Prefer the rate saved with this payment: a report for a historical sale
+      // must not change when the company's current currency rate is edited.
+      const recordedRate = Number(p.exchangeRate);
+      const rate = recordedRate > 0 ? recordedRate : (currencies.find(c => c.code === p.currencyCode)?.rateToBase || 1);
       const amtBase = p.amount * rate;
       if (p.method === 'cash') cashPaidInBase += amtBase;
       else if (p.method === 'transfer') transferPaidInBase += amtBase;
@@ -51,7 +54,8 @@ export function generateSalesSheet(data: ExcelExportData): any[][] {
     let changeGivenInBase = t.changeGiven || 0;
     if (t.changePayments && t.changePayments.length > 0) {
       changeGivenInBase = t.changePayments.reduce((s, cp) => {
-        const rate = currencies.find(c => c.code === cp.currencyCode)?.rateToBase || 1;
+        const recordedRate = Number(cp.exchangeRate);
+        const rate = recordedRate > 0 ? recordedRate : (currencies.find(c => c.code === cp.currencyCode)?.rateToBase || 1);
         return s + (cp.amount * rate);
       }, 0);
     }
