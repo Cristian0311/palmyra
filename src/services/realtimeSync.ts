@@ -170,7 +170,8 @@ async function ensureRealtimeSubscribed(supabase: NonNullable<ReturnType<typeof 
     // Adding handlers afterwards throws and can abort the socket lifecycle.
     for (const table of [...GLOBAL_TABLES, ...OP_TABLES]) {
       const config: Record<string, unknown> = { event: '*', schema: 'public', table };
-      if (state.companyId) config.filter = 'company_id=eq.' + state.companyId;
+      // currencies is a shared reference table and has no company_id column.
+      if (state.companyId && table !== 'currencies') config.filter = 'company_id=eq.' + state.companyId;
       channel.on('postgres_changes', config, (payload: any) => {
         if (generation !== subscriberGeneration || realtimeChannel !== channel) return;
         if (typeof window !== 'undefined') {
