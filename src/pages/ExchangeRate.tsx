@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, AlertCircle, ArrowDownRight, ArrowUpRight, BarChart3,
   CheckCircle2, RefreshCw, ShieldCheck, TrendingDown, TrendingUp
@@ -6,6 +6,7 @@ import {
 import {
   CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis
 } from "recharts";
+import { getSupabase } from "../lib/supabase";
 
 type Rate = {
   code: string;
@@ -194,7 +195,10 @@ export default function ExchangeRate() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
-  const [history, setHistory] = useState<Snapshot[]>(readHistory);
+  const [legacyHistory] = useState<Snapshot[]>(readHistory);
+  const [history, setHistory] = useState<Snapshot[]>(legacyHistory);
+  const [historyError, setHistoryError] = useState("");
+  const legacyHistoryImported = useRef(false);
   const [period, setPeriod] = useState<Period>("7d");
   const [marketTab, setMarketTab] = useState<MarketTab>("divisas");
   const [selectedCode, setSelectedCode] = useState("");
@@ -207,21 +211,6 @@ export default function ExchangeRate() {
       const body = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(body.error || `Error HTTP ${response.status}`);
       setPayload(body);
-      const capturedAt = typeof body.capturedAt === "string" ? body.capturedAt : new Date().toISOString();
-      const rates = getRates(body.data);
-      const values = Object.fromEntries(rates.flatMap((rate) => {
-        const value = rate.value ?? rate.sell ?? rate.buy;
-        return value === undefined ? [] : [[rate.code, value]];
-      }));
-      if (Object.keys(values).length) {
-        setHistory((previous) => {
-          const last = previous[previous.length - 1];
-          const sameValues = last && Object.keys(values).length === Object.keys(last.rates).length
-            && Object.entries(values).every(([code, value]) => last.rates[code] === value);
-          if (sameValues && Date.now() - new Date(last.capturedAt).getTime() < REFRESH_MS - 5000) return previous;
-          return [...previous, { capturedAt, rates: values }].slice(-HISTORY_LIMIT);
-        });
-      }
     } catch (e: any) {
       setError(e?.message || "No se pudo conectar con el servicio de tasas.");
     } finally {
@@ -239,9 +228,77 @@ export default function ExchangeRate() {
     return () => { window.clearInterval(timer); window.removeEventListener("focus", onFocus); window.removeEventListener("online", onFocus); };
   }, [load]);
 
+  const loadHistory = useCallback(async () => {
+    const supabase = getSupabase();
+    if (!supabase) {
+      setHistory(legacyHistory);
+      setHistoryError("No hay conexión de Supabase; se muestra temporalmente la copia local disponible.");
+      return;
+    }
+
+    try {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
+
+      // One-time migration: preserve chart points already collected by this browser,
+      // but keep those unverified legacy points private to this authenticated user.
+      if (authData.user && legacyHistory.length && !legacyHistoryImported.current) {
+        legacyHistoryImported.current = true;
+        const { error: importError } = await supabase.rpc("import_exchange_rate_legacy_history", {
+          p_snapshots: legacyHistory.slice(-HISTORY_LIMIT),
+        });
+        if (importError) {
+          legacyHistoryImported.current = false;
+          throw importError;
+        }
+        try { localStorage.removeItem(HISTORY_KEY); } catch { /* The database copy is already durable. */ }
+      }
+
+      if (!authData.user) {
+        setHistory(legacyHistory);
+        setHistoryError("Inicia sesión para cargar el historial permanente guardado en la base de datos.");
+        return;
+      }
+
+      const now = Date.now();
+      const since = period === "24h" ? new Date(now - 24 * 60 * 60 * 1000).toISOString()
+        : period === "7d" ? new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString()
+        : period === "30d" ? new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString()
+        : null;
+      const limit = period === "30d" ? 10000 : HISTORY_LIMIT;
+      const { data, error: historyLoadError } = await supabase.rpc("get_exchange_rate_history", {
+        p_since: since,
+        p_limit: limit,
+      });
+      if (historyLoadError) throw historyLoadError;
+
+      const snapshots = (Array.isArray(data) ? data : [])
+        .filter((item: any) => item?.captured_at && item?.rates && typeof item.rates === "object")
+        .map((item: any) => ({ capturedAt: item.captured_at, rates: item.rates as Record<string, number> }));
+      setHistory(snapshots);
+      setHistoryError("");
+    } catch (e: any) {
+      setHistory((current) => current.length ? current : legacyHistory);
+      setHistoryError(e?.message
+        ? "No se pudo actualizar el historial guardado en la base de datos; se conserva la última copia disponible."
+        : "No se pudo cargar el historial guardado en la base de datos.");
+    }
+  }, [legacyHistory, period]);
+
   useEffect(() => {
-    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history.slice(-HISTORY_LIMIT))); } catch { /* Storage may be disabled or full. */ }
-  }, [history]);
+    void loadHistory();
+    const sync = () => {
+      if (document.visibilityState === "visible") void loadHistory();
+    };
+    const timer = window.setInterval(sync, REFRESH_MS);
+    window.addEventListener("focus", sync);
+    window.addEventListener("online", sync);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", sync);
+      window.removeEventListener("online", sync);
+    };
+  }, [loadHistory]);
 
   const rates = useMemo(() => getRates(payload?.data), [payload]);
   const currencyRates = useMemo(() => rates.filter((rate) => !isCryptoCode(rate.code)), [rates]);
@@ -373,6 +430,7 @@ export default function ExchangeRate() {
                 <button key={item.id} type="button" onClick={() => setPeriod(item.id)} className={"rounded-md px-2.5 py-1.5 text-[11px] font-bold transition " + (period === item.id ? "bg-secondary text-violet-700 shadow-sm" : "text-muted hover:text-primary")}>{item.label}</button>)}
             </div>
           </div>
+          {historyError && <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{historyError}</p>}
           <div className="mt-4 h-[170px] w-full sm:h-[200px] xl:h-[220px]">
             {chartData.length >= 2 ? <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 3 }}>
@@ -384,7 +442,7 @@ export default function ExchangeRate() {
               </LineChart>
             </ResponsiveContainer> : <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-base bg-primary px-4 text-center">
               <p className="text-sm font-bold text-primary">{chartData.length === 1 ? "Primer registro guardado" : "Aún no hay historial suficiente"}</p>
-              <p className="mt-1 max-w-sm text-xs leading-5 text-muted">El histórico se acumula en este navegador con las consultas reales a la API; no se inventan puntos ni se descargan datos anteriores que elTOQUE no entregue.</p>
+              <p className="mt-1 max-w-sm text-xs leading-5 text-muted">El histórico permanente se consulta en la base de datos; los puntos antiguos del navegador se importan de forma privada a tu cuenta. No se inventan cotizaciones.</p>
             </div>}
           </div>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-base pt-3 text-[10px] text-muted">
