@@ -38,11 +38,11 @@ Un inicio offline no puede validar contra el servidor cambios de contraseña, su
 
 ## Validación
 
-- `npm run lint`: PASS en la rama durante la revisión inicial.
+- `npm run lint`: PASS en la validación final local.
 - `npm run test:unit`: 32/32 tests PASS antes de las últimas pruebas estáticas de cobertura.
-- `npm run audit:architecture:strict`: PASS con dos advertencias de mantenimiento ya existentes: `src/pages/POS.tsx` y `src/pages/Reports.tsx` superan 3.500 líneas.
-- `npm run test:integrity`: PASS.
-- `npm run build`: PASS.
-- `npm run build:admin`: PASS.
+- `npm run audit:architecture:strict`: PASS en la validación final, con dos advertencias de mantenimiento ya existentes: `src/pages/POS.tsx` y `src/pages/Reports.tsx` superan 3.500 líneas.
+- `npm run test:integrity`: PASS en la validación final.
+- `npm run build`: PASS en la validación final.
+- `npm run build:admin`: PASS en la validación final.
 - Se vieron advertencias de Node en la instalación local porque el entorno disponible era Node 20.9 mientras algunos paquetes solicitan Node 20.19+/22+. CI usa Node 24.
 - No se ha verificado aún un escenario físico offline → venta → cierre → reconexión → cola vacía ni el despliegue de esta rama en Render. Estos pasos no se deben dar por concluidos hasta que el PR esté integrado y Render confirme el deploy.
