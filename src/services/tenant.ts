@@ -15,8 +15,6 @@ export function clearActiveTenant() {
 }
 
 export async function getActiveTenant(forceRefresh = false): Promise<ActiveTenant> {
-  if (cached && !forceRefresh) return cached;
-
   const supabase = getSupabase();
   if (!supabase) throw new Error('Supabase no está configurado.');
 
@@ -46,6 +44,10 @@ export async function getActiveTenant(forceRefresh = false): Promise<ActiveTenan
   }
 
   if (!authUserId) throw new Error('Debes iniciar sesión para acceder a la empresa.');
+
+  // El tenant cacheado es global al módulo. Nunca reutilizarlo si la sesión de
+  // Supabase cambió (por ejemplo, al entrar con una cuenta de empleado).
+  if (cached && !forceRefresh && cached.authUserId === authUserId) return cached;
 
   const authDataUserId = authUserId;
 
