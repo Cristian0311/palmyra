@@ -32,8 +32,9 @@ export default function SaaSInvite() {
       sessionStorage.removeItem("palmyra_pending_invitation");
       sessionStorage.removeItem("palmyra_pending_invitation_email");
     } catch {}
-    setAccepted(true);
-    navigate("/", { replace: true });
+    // Recargar la aplicación para que el guard de rutas vuelva a leer la membresía
+    // recién creada y no use el estado anterior (sin empresa) que envía a onboarding.
+    window.location.replace("/");
   };
 
   useEffect(() => {
