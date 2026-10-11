@@ -11,6 +11,13 @@ test("online SaaS login survives local-storage quota or privacy-mode failures", 
   assert.match(saas, /catch \(storageError\)[\s\S]*?la sesión online sigue siendo válida/);
 });
 
+test("signup navigation stays inside React until the new-company credential is consumed", () => {
+  const auth = source("src/pages/SaaSAuth.tsx");
+  const onboarding = source("src/pages/SaaSOnboarding.tsx");
+  assert.match(auth, /navigate\\(ctx\\.membershipStatus[\\s\\S]*?\\/onboarding.*replace: true/);
+  assert.match(onboarding, /consumePendingOfflineCredential\\(context\\)/);
+});
+
 test("the new-company signup flow binds the pending offline verifier after onboarding", () => {
   const auth = source("src/pages/SaaSAuth.tsx");
   const onboarding = source("src/pages/SaaSOnboarding.tsx");
@@ -24,7 +31,7 @@ test("the new-company signup flow binds the pending offline verifier after onboa
 test("password reset invalidates the older offline password verifier", () => {
   const auth = source("src/pages/SaaSAuth.tsx");
   const offlineAuth = source("src/services/offlineSaaSAuth.ts");
-  assert.match(auth, /updateSaaSPassword\(password\)[\s\S]*?forgetOfflineSaaSCredential\\(authData\\.session\\?\\.user\\?\\.id\\)/);
+  assert.match(auth, /updateSaaSPassword\\(password\\)[\\s\\S]*?forgetOfflineSaaSCredential\\(authData\\.session\\?\\.user\\?\\.id\\)/);
   assert.match(offlineAuth, /export function forgetOfflineSaaSCredential/);
 });
 
