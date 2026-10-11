@@ -36,7 +36,11 @@ export function buildShiftReceiptLines(
       const name = prodObj?.name || getProductName(item.product);
       if (!grouped[name]) grouped[name] = { name, quantity: 0, total: 0 };
       grouped[name].quantity += item.quantity || 0;
-      grouped[name].total += (prodObj?.price || 0) * (item.quantity || 0);
+      const fallbackPrice = Number(item.price ?? prodObj?.price ?? 0) || 0;
+      const lineTotal = typeof item.total === 'number' && Number.isFinite(item.total)
+        ? item.total
+        : fallbackPrice * (Number(item.quantity) || 0);
+      grouped[name].total += lineTotal;
     });
   });
 
@@ -55,6 +59,15 @@ export function buildShiftReceiptLines(
   const itemsList = Object.values(grouped);
   if (itemsList.length === 0) lines.push("Sin productos vendidos");
   else itemsList.forEach(item => lines.push(format58mmLine(`${item.quantity}x ${item.name.slice(0, 16)}`, formatMoney(item.total), 32)));
+  const detailTotal = itemsList.reduce((sum, item) => sum + item.total, 0);
+  if (Math.abs(totalSales - detailTotal) > 0.01) {
+    const difference = Math.abs(totalSales - detailTotal);
+    lines.push(
+      "---",
+      "BOLD|REVISAR DIFERENCIA DE DETALLE",
+      format58mmLine(totalSales > detailTotal ? "FALTA DETALLE:" : "DETALLE EXCEDE:", formatMoney(difference), 32),
+    );
+  }
   lines.push("---", format58mmLine("TOTAL VENTAS:", formatMoney(totalSales), 32), format58mmLine("ITEMS VENDIDOS:", `${totalItems}`, 32));
 
   if (payrollItem) {
