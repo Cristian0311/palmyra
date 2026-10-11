@@ -28,9 +28,12 @@ export function generateSessionsSheet(data: ExcelExportData): any[][] {
     const openDate = new Date(s.openedAt).toLocaleString('es-CU');
     const closeDate = s.closedAt ? new Date(s.closingDate || s.closedAt).toLocaleString('es-CU') : 'En curso (Abierta)';
 
-    const sessionTx = transactions.filter(t => 
+    const sessionTx = transactions.filter(t =>
       t.branchId === s.branchId &&
-      t.sessionId === s.id
+      t.sessionId === s.id &&
+      t.status === 'completed' &&
+      !t.deletedAt &&
+      !String(t.notes || '').startsWith('AJUSTE_')
     );
     const sessionSales = sessionTx.reduce((sum, tx) => sum + (tx.total || 0), 0);
 
