@@ -34,3 +34,9 @@ test("notification status checks that the server-side push endpoint is enabled",
   assert.match(notifications, /eq\("company_id", companyId\)[\s\S]*?eq\("user_id", userId\)[\s\S]*?eq\("endpoint", subscription\.endpoint\)/);
   assert.match(notifications, /serverSubscription\?\.enabled === true \? "registered" : "not_registered"/);
 });
+
+test("push activation renews a stale browser endpoint disabled on the server", () => {
+  const notifications = source("src/pages/Notifications.tsx");
+  assert.match(notifications, /serverSubscription\?\.enabled !== true[\s\S]*?subscription\.unsubscribe\(\)/);
+  assert.match(notifications, /if \(!subscription\)[\s\S]*?registration\.pushManager\.subscribe/);
+});
