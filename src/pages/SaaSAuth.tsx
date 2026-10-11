@@ -76,7 +76,7 @@ export default function SaaSAuth() {
     if (credentialEmail && credentialPassword) {
       try {
         await rememberOfflineSaaSCredential({
-          authUserId: ctx.authUserId,
+          ...ctx,
           user: { ...ctx.user, email: credentialEmail.trim().toLowerCase() }
         }, credentialPassword);
       } catch (offlineCredentialError) {
