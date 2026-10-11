@@ -13,12 +13,12 @@ Se revisó el árbol del repositorio (541 rutas en la rama de auditoría), se ej
 2. **Registro nuevo y acceso offline.** El login guardaba el verificador offline antes de que una cuenta nueva tuviera empresa y almacén. Ese verificador quedaba ligado al contexto incompleto, así que el primer acceso offline tras terminar onboarding podía fallar. Ahora la credencial queda temporalmente solo en memoria y se vincula al contexto completo tras crear una empresa activa; nunca se conserva la contraseña en `localStorage` o `sessionStorage`.
 3. **Almacenamiento local lleno o bloqueado.** Un fallo al guardar el alcance local podía convertir un inicio de sesión online válido en un error de acceso. Se hizo best-effort: la sesión validada por Supabase sigue funcionando aunque el navegador no pueda guardar la caché.
 4. **Cambio de contraseña.** Tras recuperar o cambiar una contraseña, podía seguir existiendo el verificador creado con la contraseña anterior. El flujo de recuperación ahora lo invalida; el usuario debe volver a iniciar sesión online con la nueva contraseña para activar el acceso offline en ese dispositivo.
-5. **Estado push poco fiable.** La pantalla solo miraba la suscripción del navegador. El navegador puede conservar una suscripción cuyo endpoint esté deshabilitado en el servidor. La comprobación ahora consulta también la fila del usuario, empresa y endpoint en `push_subscriptions` y no afirma que esté registrado en el servidor si está deshabilitado o falta.
+5. **Estado push poco fiable.** La pantalla solo miraba la suscripción del navegador. El navegador puede conservar una suscripción cuyo endpoint esté deshabilitado en el servidor. La comprobación ahora consulta también la fila del usuario, empresa y endpoint en `push_subscriptions` y no afirma que esté registrado en el servidor si está deshabilitado o falta. Al activarlo, si el endpoint local ya no está habilitado, la interfaz intenta retirar la suscripción antigua y crear una nueva en lugar de reactivar a ciegas un endpoint vencido.
 
 ## Validaciones de código
 
 - `npm run lint`: PASS.
-- `npm run test:unit`: 42/42 PASS, incluyendo login offline, rechazo de credenciales erróneas o contexto alterado, ciclo de onboarding, reinicio de contraseña, detección de errores de red, cobertura de los 48 tipos de la cola, orden de callbacks Realtime, estado push y unicidad de migraciones.
+- `npm run test:unit`: 43/43 PASS, incluyendo login offline, rechazo de credenciales erróneas o contexto alterado, ciclo de onboarding, reinicio de contraseña, detección de errores de red, cobertura de los 48 tipos de la cola, orden de callbacks Realtime, estado push y unicidad de migraciones.
 - `npm run audit:architecture:strict`: PASS; deja advertencias de mantenibilidad por `src/pages/POS.tsx` (3926 líneas) y `src/pages/Reports.tsx` (3588 líneas).
 - `npm run test:integrity`: PASS.
 - `npm run build`: PASS.
