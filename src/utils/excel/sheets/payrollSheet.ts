@@ -28,9 +28,12 @@ export function generatePayrollSheet(data: ExcelExportData): any[][] {
 
   cashSessions.filter(s => s.status === 'closed').forEach(session => {
     const st = settlementMap.get(session.id);
-    const sessionTx = transactions.filter(t => 
+    const sessionTx = transactions.filter(t =>
       t.branchId === session.branchId &&
-      t.sessionId === session.id
+      t.sessionId === session.id &&
+      t.status === 'completed' &&
+      !t.deletedAt &&
+      !String(t.notes || '').startsWith('AJUSTE_')
     );
     const sessionTotalSales = sessionTx.reduce((sum, tx) => sum + (tx.total || 0), 0);
 
