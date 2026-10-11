@@ -23,13 +23,15 @@ const GLOBAL_TABLES = new Set([
   'warehouses', 'categories', 'products', 'product_variants', 'product_barcodes',
   'product_kit_components', 'employees', 'employee_warehouse_access', 'currencies'
 ]);
+// Only subscribe to tenant-owned tables with company_id. Child tables without
+// that column are refreshed through their parent (sales, transfers, audits, etc.);
+// listening without a tenant filter could leak another company's row metadata.
 const OP_TABLES = new Set([
-  'stock_balances', 'variant_stock_balances', 'stock_movements', 'sales', 'sale_items',
+  'stock_balances', 'variant_stock_balances', 'stock_movements', 'sales',
   'payments', 'cash_registers', 'cash_sessions', 'cash_movements', 'transfers',
-  'transfer_items', 'sales_returns', 'sales_return_items', 'warranties',
-  'purchase_orders', 'purchase_items', 'quotes', 'quote_items', 'inventory_audits',
-  'inventory_audit_items', 'bank_accounts', 'bank_transactions', 'employee_time_shifts',
-  'payroll_runs', 'payroll_items'
+  'sales_returns', 'warranties', 'purchase_orders', 'quotes', 'inventory_audits',
+  'bank_accounts', 'bank_transactions', 'employee_time_shifts', 'payroll_runs',
+  'payroll_items'
 ]);
 
 async function getTenantState() {
