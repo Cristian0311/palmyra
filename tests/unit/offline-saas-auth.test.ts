@@ -3,7 +3,12 @@ import assert from "node:assert/strict";
 import type { SaaSContext } from "../../src/services/saas";
 import { cacheSaaSContext, getCachedSaaSContext } from "../../src/services/offlineAuthContext";
 import { getPalmyraLocalScope } from "../../src/services/localScope";
-import { rememberOfflineSaaSCredential, verifyOfflineSaaSCredential } from "../../src/services/offlineSaaSAuth";
+import {
+  consumePendingOfflineCredential,
+  rememberOfflineSaaSCredential,
+  rememberPendingOfflineCredential,
+  verifyOfflineSaaSCredential
+} from "../../src/services/offlineSaaSAuth";
 
 class MemoryStorage {
   private values = new Map<string, string>();
@@ -103,6 +108,58 @@ test("offline SaaS login refuses a cached context for a suspended company", asyn
     cacheSaaSContext(context);
     await rememberOfflineSaaSCredential(context, "Another-Test-Passphrase-421!");
     assert.equal(await verifyOfflineSaaSCredential("suspended@example.test", "Another-Test-Passphrase-421!"), null);
+  } finally {
+    if (originalStorage) Object.defineProperty(globalThis, "localStorage", originalStorage);
+    else delete (globalThis as any).localStorage;
+  }
+});
+
+
+test("signup credential is rebound to the first company only after onboarding succeeds", async () => {
+  const originalStorage = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  const storage = new MemoryStorage();
+  Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
+  try {
+    const context = {
+      authUserId: "new-company-owner",
+      user: {
+        id: "new-company-owner",
+        name: "New Owner",
+        email: "new-owner@example.test",
+        role: "admin",
+        baseSalary: 0,
+        compensationType: "fixed_product",
+        salesPercentage: 0,
+        permissions: ["pos.access", "cash.open", "cash.close"],
+        isActive: true,
+        warehouseId: "new-warehouse",
+        allowedWarehouseIds: ["new-warehouse"],
+        branchId: "new-warehouse",
+        allowedBranches: ["new-warehouse"]
+      },
+      companyId: "new-company-id",
+      company: {
+        id: "new-company-id",
+        name: "New Company",
+        slug: "new-company",
+        account_status: "active",
+        default_currency_code: "CUP"
+      },
+      membershipStatus: "active",
+      isOwner: true,
+      deviceActive: true,
+      roleKey: "admin",
+      warehouseIds: ["new-warehouse"],
+      subscription: null
+    } as unknown as SaaSContext;
+
+    rememberPendingOfflineCredential("new-owner@example.test", "New-Owner-Pass-77!");
+    assert.equal(storage.length, 0, "pending password must remain memory-only until onboarding finishes");
+    assert.equal(await consumePendingOfflineCredential(context), true);
+
+    const restored = await verifyOfflineSaaSCredential("new-owner@example.test", "New-Owner-Pass-77!");
+    assert.equal(restored?.companyId, "new-company-id");
+    assert.equal(restored?.warehouseIds[0], "new-warehouse");
   } finally {
     if (originalStorage) Object.defineProperty(globalThis, "localStorage", originalStorage);
     else delete (globalThis as any).localStorage;

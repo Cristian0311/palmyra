@@ -9,7 +9,12 @@ import {
   signUpSaaSAccount,
   updateSaaSPassword
 } from "../services/saas";
-import { rememberOfflineSaaSCredential, verifyOfflineSaaSCredential } from "../services/offlineSaaSAuth";
+import {
+  forgetOfflineSaaSCredential,
+  rememberOfflineSaaSCredential,
+  rememberPendingOfflineCredential,
+  verifyOfflineSaaSCredential
+} from "../services/offlineSaaSAuth";
 import { isBrowserOffline, isTransientNetworkError } from "../services/offlineNetwork";
 
 type Mode = "signin" | "signup" | "reset" | "recovery";
@@ -75,17 +80,29 @@ export default function SaaSAuth() {
     // this same browser after the company context has been cached once.
     if (credentialEmail && credentialPassword) {
       try {
-        await rememberOfflineSaaSCredential({
+        const normalizedCredentialContext = {
           ...ctx,
           user: { ...ctx.user, email: credentialEmail.trim().toLowerCase() }
-        }, credentialPassword);
+        };
+        if (ctx.companyId && ctx.company?.account_status === "active" &&
+            ctx.membershipStatus === "active" && ctx.warehouseIds.length &&
+            ctx.deviceActive && ctx.user.isActive !== false) {
+          await rememberOfflineSaaSCredential(normalizedCredentialContext, credentialPassword);
+        } else if (!ctx.companyId) {
+          // The sign-up screen appears before first-company onboarding. Keep the
+          // credential only in module memory so onboarding can bind it to the
+          // final company/warehouse security scope after creation.
+          rememberPendingOfflineCredential(credentialEmail, credentialPassword);
+        }
       } catch (offlineCredentialError) {
         console.warn("[PALMYRA] No se pudo preparar el acceso offline en este dispositivo.", offlineCredentialError);
       }
     }
 
     if (!ctx.companyId) {
-      window.location.replace(ctx.membershipStatus && ctx.membershipStatus !== "active" ? "/account-status" : "/onboarding");
+      // Keep navigation inside React so the short-lived, memory-only signup
+      // credential survives the move into first-company onboarding.
+      navigate(ctx.membershipStatus && ctx.membershipStatus !== "active" ? "/account-status" : "/onboarding", { replace: true });
       return;
     }
     if (ctx.company?.account_status === "pending_payment" || ctx.company?.account_status === "suspended" || ctx.membershipStatus !== "active" || !ctx.deviceActive) {
@@ -114,10 +131,23 @@ export default function SaaSAuth() {
         if (password !== confirmPassword) throw new Error("Las contraseñas no coinciden.");
         const { error: updateError } = await updateSaaSPassword(password);
         if (updateError) throw updateError;
+        // A password change invalidates the old device-side verifier. The user
+        // must next authenticate online with the new password to re-enable
+        // offline login on this device.
+        try {
+          const supabase = getSupabase();
+          // getSession reads the current recovery session locally; using getUser
+          // here would depend on a second network round-trip after the password
+          // has already changed successfully.
+          const { data: authData } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+          if (authData.session?.user?.id) forgetOfflineSaaSCredential(authData.session.user.id);
+        } catch (offlineCredentialError) {
+          console.warn("[PALMYRA] No se pudo invalidar la credencial offline anterior.", offlineCredentialError);
+        }
         setMode("signin");
         setPassword("");
         setConfirmPassword("");
-        setMessage("Contraseña actualizada correctamente.");
+        setMessage("Contraseña actualizada. Inicia sesión con conexión usando la nueva contraseña para volver a habilitar el acceso sin conexión en este dispositivo.");
         window.history.replaceState({}, "", "/auth");
         return;
       }

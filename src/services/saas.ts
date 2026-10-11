@@ -366,7 +366,14 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
   };
 
   cacheSaaSContext(context);
-  setPalmyraLocalScope(authUser.id, companyId, false);
+  // Local storage is an offline enhancement, not a prerequisite for online
+  // authentication. Quota/private-mode failures must never invalidate a
+  // cloud-verified session or prevent the user from entering the CRM.
+  try {
+    setPalmyraLocalScope(authUser.id, companyId, false);
+  } catch (storageError) {
+    console.warn('[PALMYRA] No se pudo guardar el alcance de la sesión local; la sesión online sigue siendo válida.', storageError);
+  }
   return context;
   } catch (error) {
     const scope = getPalmyraLocalScope();
