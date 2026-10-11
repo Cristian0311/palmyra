@@ -18,7 +18,8 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PALMYRA_PLANS, type PlanCode } from "../config/saas";
-import { createCompanyOnboarding } from "../services/saas";
+import { createCompanyOnboarding, loadSaaSContext } from "../services/saas";
+import { consumePendingOfflineCredential } from "../services/offlineSaaSAuth";
 import { registerCurrentDevice } from "../services/device";
 import { getSupabase } from "../lib/supabase";
 import { goToWhatsAppPayment } from "../utils/whatsapp";
@@ -345,6 +346,19 @@ export default function SaaSOnboarding() {
         // El dispositivo se puede registrar de nuevo durante la hidratación de App.
         // No bloqueamos la entrada al CRM por una carrera transitoria del registro.
         console.warn("[PALMYRA] No se pudo registrar el dispositivo inicial:", deviceError);
+      }
+
+      // The signup form ran before the company existed, so its offline credential
+      // was held only in module memory. Bind it to the canonical company,
+      // warehouse, permissions and active-account status now that onboarding
+      // has committed. Failure is non-fatal: online onboarding must still finish.
+      try {
+        const context = await loadSaaSContext(true);
+        if (context?.companyId === result.company_id) {
+          await consumePendingOfflineCredential(context);
+        }
+      } catch (offlineSetupError) {
+        console.warn("[PALMYRA] No se pudo completar la preparación del acceso offline tras onboarding:", offlineSetupError);
       }
 
       // El RPC devolvió los identificadores: la creación ya está confirmada.
