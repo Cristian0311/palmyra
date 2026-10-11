@@ -1,6 +1,7 @@
 import { getSupabase } from '../lib/supabase';
 import { getCachedSaaSContext } from './offlineAuthContext';
 import { getPalmyraLocalScope } from './localScope';
+import { isBrowserOffline, isTransientNetworkError } from './offlineNetwork';
 
 export interface ActiveTenant {
   companyId: string;
@@ -10,37 +11,47 @@ export interface ActiveTenant {
 
 let cached: ActiveTenant | null = null;
 
+function readCachedTenant(expectedUserId?: string | null): ActiveTenant | null {
+  const scope = getPalmyraLocalScope();
+  if (!scope?.userId || !scope.companyId) return null;
+  if (expectedUserId && scope.userId !== expectedUserId) return null;
+  const context = getCachedSaaSContext(scope.userId);
+  if (!context || context.authUserId !== scope.userId || context.companyId !== scope.companyId) return null;
+  if (!context.companyId) return null;
+  return {
+    companyId: context.companyId,
+    authUserId: context.authUserId,
+    defaultCurrencyCode: context.company?.default_currency_code || 'USD'
+  };
+}
+
 export function clearActiveTenant() {
   cached = null;
 }
 
 export async function getActiveTenant(forceRefresh = false): Promise<ActiveTenant> {
   const supabase = getSupabase();
-  if (!supabase) throw new Error('Supabase no está configurado.');
+  if (!supabase) {
+    const localTenant = readCachedTenant();
+    if (isBrowserOffline() && localTenant) return (cached = localTenant);
+    throw new Error('Supabase no está configurado.');
+  }
 
   let authUserId: string | null = null;
-  let offlineContext: ReturnType<typeof getCachedSaaSContext> = null;
+  let authRequestError: unknown = null;
   try {
     const { data: authData, error: authError } = await supabase.auth.getUser();
     if (!authError && authData.user) authUserId = authData.user.id;
-  } catch {}
+    else authRequestError = authError;
+  } catch (error) {
+    authRequestError = error;
+  }
 
-  if (!authUserId && typeof navigator !== 'undefined' && !navigator.onLine) {
+  if (!authUserId && (isBrowserOffline() || isTransientNetworkError(authRequestError))) {
     // Offline: usar exclusivamente la empresa/usuario que figura como alcance
     // activo. Nunca elegir "la caché más reciente" entre varias empresas.
-    try {
-      const scope = getPalmyraLocalScope();
-      if (scope?.userId) offlineContext = getCachedSaaSContext(scope.userId);
-    } catch {}
-    if (!offlineContext || !offlineContext.companyId || !offlineContext.authUserId) {
-      throw new Error('No existe una sesión local válida para trabajar sin conexión.');
-    }
-    cached = {
-      companyId: offlineContext.companyId,
-      authUserId: offlineContext.authUserId,
-      defaultCurrencyCode: offlineContext.company?.default_currency_code || 'USD'
-    };
-    return cached;
+    const localTenant = readCachedTenant();
+    if (localTenant) return (cached = localTenant);
   }
 
   if (!authUserId) throw new Error('Debes iniciar sesión para acceder a la empresa.');
@@ -56,7 +67,13 @@ export async function getActiveTenant(forceRefresh = false): Promise<ActiveTenan
     .select('active_company_id')
     .eq('id', authDataUserId)
     .maybeSingle();
-  if (profileError) throw profileError;
+  if (profileError) {
+    if (isBrowserOffline() || isTransientNetworkError(profileError)) {
+      const localTenant = readCachedTenant(authDataUserId);
+      if (localTenant) return (cached = localTenant);
+    }
+    throw profileError;
+  }
 
   let companyId = profile?.active_company_id || null;
   if (!companyId) {
@@ -68,7 +85,13 @@ export async function getActiveTenant(forceRefresh = false): Promise<ActiveTenan
       .order('joined_at', { ascending: true })
       .limit(1)
       .maybeSingle();
-    if (membershipError) throw membershipError;
+    if (membershipError) {
+      if (isBrowserOffline() || isTransientNetworkError(membershipError)) {
+        const localTenant = readCachedTenant(authDataUserId);
+        if (localTenant) return (cached = localTenant);
+      }
+      throw membershipError;
+    }
     companyId = membership?.company_id || null;
   }
 
@@ -79,7 +102,13 @@ export async function getActiveTenant(forceRefresh = false): Promise<ActiveTenan
     .select('id,default_currency_code')
     .eq('id', companyId)
     .maybeSingle();
-  if (companyError) throw companyError;
+  if (companyError) {
+    if (isBrowserOffline() || isTransientNetworkError(companyError)) {
+      const localTenant = readCachedTenant(authDataUserId);
+      if (localTenant) return (cached = localTenant);
+    }
+    throw companyError;
+  }
   if (!company) throw new Error('La empresa activa no existe.');
 
   cached = {
