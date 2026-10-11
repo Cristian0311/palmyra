@@ -100,7 +100,9 @@ export default function SaaSAuth() {
     }
 
     if (!ctx.companyId) {
-      window.location.replace(ctx.membershipStatus && ctx.membershipStatus !== "active" ? "/account-status" : "/onboarding");
+      // Keep navigation inside React so the short-lived, memory-only signup
+      // credential survives the move into first-company onboarding.
+      navigate(ctx.membershipStatus && ctx.membershipStatus !== "active" ? "/account-status" : "/onboarding", { replace: true });
       return;
     }
     if (ctx.company?.account_status === "pending_payment" || ctx.company?.account_status === "suspended" || ctx.membershipStatus !== "active" || !ctx.deviceActive) {
