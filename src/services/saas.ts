@@ -94,7 +94,7 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
   const localScopeAtStart = getPalmyraLocalScope();
   const supabase = getSupabase();
   if (!supabase) {
-    const cached = isBrowserOffline() && localScopeAtStart?.userId
+    const cached = (isBrowserOffline() || localScopeAtStart?.offlineSession === true) && localScopeAtStart?.userId
       ? getCachedSaaSContext(localScopeAtStart.userId)
       : null;
     return cached;
@@ -125,7 +125,7 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     authRequestError = error;
   }
 
-  if (!authUser && (isBrowserOffline() || isTransientNetworkError(authRequestError))) {
+  if (!authUser && (isBrowserOffline() || localScopeAtStart?.offlineSession === true || isTransientNetworkError(authRequestError))) {
     const cachedUserId = localScopeAtStart?.userId || null;
     const cached = cachedUserId ? getCachedSaaSContext(cachedUserId) : null;
     if (cached) return cached;
@@ -145,7 +145,7 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
     supabase.from('profiles').select('full_name,phone,active_company_id').eq('id', authUser.id).maybeSingle(),
     supabase.from('company_memberships').select('company_id,is_owner,status,joined_at').eq('user_id', authUser.id).eq('status','active').order('joined_at',{ascending:true}).limit(10)
   ]);
-  if ((profileError || membershipError) && (isBrowserOffline() || isTransientNetworkError(profileError || membershipError))) {
+  if ((profileError || membershipError) && (isBrowserOffline() || localScopeAtStart?.offlineSession === true || isTransientNetworkError(profileError || membershipError))) {
     const cached = getCachedSaaSContext(authUser.id);
     if (cached) return cached;
   }
@@ -202,7 +202,7 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
   ]);
 
   if (companyError || userRoleError || locationsError || employeeError || subscriptionError || pendingPlanRequestError) {
-    if (isBrowserOffline() || isTransientNetworkError(companyError || userRoleError || locationsError || employeeError || subscriptionError || pendingPlanRequestError)) {
+    if (isBrowserOffline() || localScopeAtStart?.offlineSession === true || isTransientNetworkError(companyError || userRoleError || locationsError || employeeError || subscriptionError || pendingPlanRequestError)) {
       const cached = getCachedSaaSContext(authUser.id);
       if (cached) return cached;
     }
@@ -353,13 +353,13 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
   };
 
   cacheSaaSContext(context);
-  setPalmyraLocalScope(authUser.id, companyId);
+  setPalmyraLocalScope(authUser.id, companyId, false);
   return context;
   } catch (error) {
     const scope = getPalmyraLocalScope();
     const userId = fallbackUserId || scope?.userId || null;
     const cached = userId ? getCachedSaaSContext(userId) : null;
-    if (cached && (isBrowserOffline() || isTransientNetworkError(error))) {
+    if (cached && (isBrowserOffline() || localScopeAtStart?.offlineSession === true || isTransientNetworkError(error))) {
       // Keep the last known-good company, role and warehouse scope while the
       // network is unavailable; never replace it with a partial response.
       return cached;
