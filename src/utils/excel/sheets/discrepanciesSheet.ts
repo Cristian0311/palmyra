@@ -31,9 +31,12 @@ export function generateDiscrepanciesSheet(data: ExcelExportData): any[][] {
     if (details.length === 0 && session.status === 'closed' && session.closingBalances && session.closingBalances.length > 0) {
       const openDate = new Date(session.openedAt).getTime();
       const closeDate = session.closedAt ? new Date(session.closedAt).getTime() : Date.now();
-      const sessionTx = (transactions || []).filter(t => 
-        t.branchId === session.branchId && 
-        t.sessionId === session.id
+      const sessionTx = (transactions || []).filter(t =>
+        t.branchId === session.branchId &&
+        t.sessionId === session.id &&
+        t.status === 'completed' &&
+        !t.deletedAt &&
+        !String(t.notes || '').startsWith('AJUSTE_')
       );
 
       const expected: { currencyCode: string; method: 'cash' | 'transfer'; amount: number }[] = [];
