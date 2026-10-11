@@ -2,7 +2,7 @@ import type { SaaSContext } from "./saas";
 import { getCachedSaaSContext } from "./offlineAuthContext";
 import { setPalmyraLocalScope } from "./localScope";
 
-const PREFIX = "palmyra:offline-saas-credential:v1:";
+const PREFIX = "palmyra:offline-saas-credential:v2:";
 const PBKDF2_ITERATIONS = 120_000;
 
 type OfflineCredential = {
@@ -10,7 +10,8 @@ type OfflineCredential = {
   email: string;
   salt: string;
   verifier: string;
-  version: 1;
+  contextVerifier: string;
+  version: 2;
   savedAt: string;
 };
 
@@ -32,10 +33,6 @@ function randomSalt(): Uint8Array {
   return salt;
 }
 
-function toHex(bytes: Uint8Array): string {
-  return bytesToHex(bytes);
-}
-
 function fromHex(value: string): Uint8Array {
   if (!/^(?:[0-9a-f]{2})+$/i.test(value)) throw new Error("Invalid salt.");
   const result = new Uint8Array(value.length / 2);
@@ -43,46 +40,92 @@ function fromHex(value: string): Uint8Array {
   return result;
 }
 
-async function deriveVerifier(userId: string, email: string, password: string, saltHex: string): Promise<string> {
+async function deriveVerifier(
+  userId: string,
+  email: string,
+  secret: string,
+  saltHex: string,
+  purpose: "credential" | "context"
+): Promise<string> {
   if (typeof crypto === "undefined" || !crypto.subtle) {
     throw new Error("Este navegador no dispone de criptografía segura para el acceso offline.");
   }
   const key = await crypto.subtle.importKey(
     "raw",
-    new TextEncoder().encode(password),
+    new TextEncoder().encode(secret),
     "PBKDF2",
     false,
     ["deriveBits"]
   );
+  const domainSalt = new TextEncoder().encode("PALMYRA:v2:" + purpose + ":" + userId + ":" + normalizeEmail(email));
   const bits = await crypto.subtle.deriveBits({
     name: "PBKDF2",
-    salt: new Uint8Array([
-      ...fromHex(saltHex),
-      ...new TextEncoder().encode("PALMYRA:" + userId + ":" + normalizeEmail(email))
-    ]),
+    salt: new Uint8Array([...fromHex(saltHex), ...domainSalt]),
     iterations: PBKDF2_ITERATIONS,
     hash: "SHA-256"
   }, key, 256);
   return bytesToHex(new Uint8Array(bits));
 }
 
-/** Store only a salted password verifier. The password itself is never persisted. */
+function stableSerialize(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
+  if (Array.isArray(value)) return "[" + value.map(stableSerialize).join(",") + "]";
+  const record = value as Record<string, unknown>;
+  return "{" + Object.keys(record).sort().map(key => JSON.stringify(key) + ":" + stableSerialize(record[key])).join(",") + "}";
+}
+
+function normalizedArray(values: unknown): string[] {
+  return Array.isArray(values) ? values.map(value => String(value)).sort() : [];
+}
+
+/**
+ * Bind the verifier to the cached company and permission scope. localStorage is
+ * user-editable, so a valid password alone must not authorize a modified cached
+ * role, company, warehouse allowlist or suspended-account status.
+ */
+function contextFingerprint(context: SaaSContext): string {
+  const user = context.user as unknown as Record<string, unknown>;
+  const userSnapshot = {
+    ...user,
+    permissions: normalizedArray(user.permissions),
+    allowedWarehouseIds: normalizedArray(user.allowedWarehouseIds),
+    allowedBranches: normalizedArray(user.allowedBranches),
+  };
+  const snapshot = {
+    authUserId: context.authUserId,
+    user: userSnapshot,
+    companyId: context.companyId,
+    company: context.company,
+    membershipStatus: context.membershipStatus,
+    isOwner: context.isOwner,
+    deviceActive: context.deviceActive,
+    roleKey: context.roleKey,
+    warehouseIds: normalizedArray(context.warehouseIds),
+    subscription: context.subscription
+  };
+  return stableSerialize(snapshot);
+}
+
+/** Store a salted password verifier and a verifier for the cached security scope.
+ * The raw password is never persisted. */
 export async function rememberOfflineSaaSCredential(
-  context: Pick<SaaSContext, "authUserId" | "user">,
+  context: SaaSContext,
   password: string
 ): Promise<void> {
   const userId = String(context?.authUserId || "").trim();
   const email = normalizeEmail(context?.user?.email || "");
   if (!userId || !email || !password) return;
 
-  const salt = toHex(randomSalt());
-  const verifier = await deriveVerifier(userId, email, password, salt);
+  const salt = bytesToHex(randomSalt());
+  const verifier = await deriveVerifier(userId, email, password, salt, "credential");
+  const contextVerifier = await deriveVerifier(userId, email, contextFingerprint(context), salt, "context");
   const record: OfflineCredential = {
     userId,
     email,
     salt,
     verifier,
-    version: 1,
+    contextVerifier,
+    version: 2,
     savedAt: new Date().toISOString()
   };
   localStorage.setItem(credentialKey(userId), JSON.stringify(record));
@@ -108,7 +151,8 @@ export async function verifyOfflineSaaSCredential(
       if (!key?.startsWith(PREFIX)) continue;
       try {
         const record = JSON.parse(localStorage.getItem(key) || "null") as OfflineCredential | null;
-        if (record?.version === 1 && record.userId && normalizeEmail(record.email) === email && record.salt && record.verifier) {
+        if (record?.version === 2 && record.userId && normalizeEmail(record.email) === email &&
+            record.salt && record.verifier && record.contextVerifier) {
           candidates.push(record);
         }
       } catch {
@@ -121,7 +165,7 @@ export async function verifyOfflineSaaSCredential(
 
   for (const candidate of candidates) {
     try {
-      const verifier = await deriveVerifier(candidate.userId, candidate.email, password, candidate.salt);
+      const verifier = await deriveVerifier(candidate.userId, candidate.email, password, candidate.salt, "credential");
       if (verifier.length !== candidate.verifier.length) continue;
       let mismatch = 0;
       for (let i = 0; i < verifier.length; i += 1) mismatch |= verifier.charCodeAt(i) ^ candidate.verifier.charCodeAt(i);
@@ -133,6 +177,20 @@ export async function verifyOfflineSaaSCredential(
       if (context.membershipStatus && context.membershipStatus !== "active") continue;
       if (context.company.account_status === "suspended" || context.company.account_status === "pending_payment") continue;
       if (context.deviceActive === false) continue;
+
+      const currentContextVerifier = await deriveVerifier(
+        candidate.userId,
+        candidate.email,
+        contextFingerprint(context),
+        candidate.salt,
+        "context"
+      );
+      if (currentContextVerifier.length !== candidate.contextVerifier.length) continue;
+      let contextMismatch = 0;
+      for (let i = 0; i < currentContextVerifier.length; i += 1) {
+        contextMismatch |= currentContextVerifier.charCodeAt(i) ^ candidate.contextVerifier.charCodeAt(i);
+      }
+      if (contextMismatch !== 0) continue;
 
       // Rehydrate the exact company/user scope before the offline queue starts.
       setPalmyraLocalScope(context.authUserId, context.companyId, true);
