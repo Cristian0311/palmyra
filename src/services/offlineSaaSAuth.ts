@@ -5,6 +5,30 @@ import { setPalmyraLocalScope } from "./localScope";
 const PREFIX = "palmyra:offline-saas-credential:v2:";
 const PBKDF2_ITERATIONS = 120_000;
 
+// The sign-up flow temporarily holds the credential only in this module's
+// memory while the newly created account is configuring its first company.
+// It is never written to localStorage/sessionStorage and expires quickly.
+let pendingOfflineCredential: { email: string; password: string; createdAt: number } | null = null;
+const PENDING_CREDENTIAL_TTL_MS = 10 * 60_000;
+
+export function rememberPendingOfflineCredential(email: string, password: string): void {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!normalizedEmail || !password) return;
+  pendingOfflineCredential = { email: normalizedEmail, password, createdAt: Date.now() };
+}
+
+export async function consumePendingOfflineCredential(context: SaaSContext): Promise<boolean> {
+  const pending = pendingOfflineCredential;
+  pendingOfflineCredential = null;
+  if (!pending || Date.now() - pending.createdAt > PENDING_CREDENTIAL_TTL_MS) return false;
+  if (pending.email !== String(context?.user?.email || "").trim().toLowerCase()) return false;
+  if (!context?.companyId || context.company?.account_status !== "active" ||
+      context.membershipStatus !== "active" || !context.warehouseIds?.length ||
+      context.deviceActive === false || context.user.isActive === false) return false;
+  await rememberOfflineSaaSCredential(context, pending.password);
+  return true;
+}
+
 type OfflineCredential = {
   userId: string;
   email: string;
