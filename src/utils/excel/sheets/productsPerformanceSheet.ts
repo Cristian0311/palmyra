@@ -6,6 +6,9 @@ export function generateProductsPerformanceSheet(data: ExcelExportData): any[][]
   const salesMap = new Map<string, { qty: number, totalRevenue: number }>();
 
   transactions.forEach(tx => {
+    // Match the revenue KPIs: voided, refunded, pending and audit-adjustment
+    // records are not completed product sales and must not inflate performance.
+    if (tx.status !== 'completed' || tx.deletedAt || String(tx.notes || '').startsWith('AJUSTE_')) return;
     tx.items.forEach(item => {
       const prodId = typeof item.product === 'string' ? item.product : item.product?.id;
       if (!prodId) return;
