@@ -24,7 +24,9 @@ export function generateItemsSoldDetailSheet(data: ExcelExportData): any[][] {
       'Margen Bruto Ganancia (' + baseCurrency.code + ')',
       '% Margen Ganancia',
       'Número de Serie',
-      'Código de Garantía'
+      'Código de Garantía',
+      'Total Factura (' + baseCurrency.code + ')',
+      'Diferencia Factura - Detalle (' + baseCurrency.code + ')'
     ]
   ];
 
@@ -37,6 +39,18 @@ export function generateItemsSoldDetailSheet(data: ExcelExportData): any[][] {
     const tDate = new Date(t.date);
     const dateStr = tDate.toLocaleDateString('es-CU');
     const timeStr = tDate.toLocaleTimeString('es-CU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const ticketDetailTotal = (t.items || []).reduce((sum, line) => {
+      const lineProductId = typeof line.product === 'string' ? line.product : line.product?.id;
+      const lineCatalogProduct = products.find(p => p.id === lineProductId);
+      const linePrice = Number(line.price ?? (typeof line.product === 'object' ? line.product.price : lineCatalogProduct?.price) ?? 0) || 0;
+      const storedTotal = line.total;
+      const actualLineTotal = typeof storedTotal === 'number' && Number.isFinite(storedTotal)
+        ? storedTotal
+        : linePrice * (Number(line.quantity) || 0);
+      return sum + actualLineTotal;
+    }, 0);
+    const invoiceTotal = Number(t.total) || 0;
+    const invoiceDetailDifference = invoiceTotal - ticketDetailTotal;
 
     t.items.forEach(item => {
       const prodId = typeof item.product === 'string' ? item.product : item.product?.id;
@@ -77,7 +91,9 @@ export function generateItemsSoldDetailSheet(data: ExcelExportData): any[][] {
         Number(grossMargin.toFixed(2)),
         Number((marginPct * 100).toFixed(1)),
         item.serialNumber || 'N/A',
-        item.warrantyCode || 'Sin garantía'
+        item.warrantyCode || 'Sin garantía',
+        Number(invoiceTotal.toFixed(2)),
+        Number(invoiceDetailDifference.toFixed(2))
       ]);
     });
   });
