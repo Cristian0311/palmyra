@@ -255,6 +255,18 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
           // Los rechazos de negocio deben permanecer como rechazo; los errores
           // de transporte se manejan en el catch para dejar el cierre localmente
           // protegido y pendiente de sincronización.
+          const rejection = String(res.error || '').toLowerCase();
+          if (res.errorCode && (
+            rejection.includes('permission_denied') ||
+            rejection.includes('company_access_denied') ||
+            rejection.includes('location_access_denied') ||
+            rejection.includes('cash_session_not_found') ||
+            rejection.includes('cash_session_not_open')
+          )) {
+            removeFromOfflineQueueByAction('cash_session', actionId);
+            get().addNotification(String(res.error || 'No se pudo cerrar el turno'), 'error');
+            return false;
+          }
           if (res.errorCode) return false;
           throw new Error(res.error || 'No se pudo cerrar el turno');
         }

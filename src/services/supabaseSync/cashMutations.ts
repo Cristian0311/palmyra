@@ -182,7 +182,7 @@ export async function deleteCashMovementFromSupabase(params:{id:string;sessionId
 export async function pushCashSessionMetadataToSupabase(session:CashRegisterSession):Promise<boolean>{
   try{
     const supabase=await onlineClient();
-    const {companyId}=await getActiveTenant();
+    const {companyId}=await getActiveTenant(true);
     const metadata={
       closingBalances:session.closingBalances||[],
       expectedBalance:Number.isFinite(Number(session.expectedBalance))?Number(session.expectedBalance):null,

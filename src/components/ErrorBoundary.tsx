@@ -1,5 +1,5 @@
 import React, { ErrorInfo, ReactNode } from "react";
-import { AlertTriangle, RefreshCw, Trash2 } from "lucide-react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 
 interface Props {
   children: ReactNode;
@@ -20,33 +20,47 @@ export class ErrorBoundary extends React.Component<Props, State> {
     return { hasError: true, error };
   }
 
+  public override componentDidMount() {
+    // React Error Boundaries no capturan errores fuera del render (por ejemplo,
+    // fallos globales de ejecución o promesas rechazadas sin manejar). Mostrar
+    // una pantalla recuperable evita dejar la ventana aparentemente en blanco.
+    window.addEventListener("error", this.handleWindowError);
+    window.addEventListener("unhandledrejection", this.handleUnhandledRejection);
+  }
+
+  public override componentWillUnmount() {
+    window.removeEventListener("error", this.handleWindowError);
+    window.removeEventListener("unhandledrejection", this.handleUnhandledRejection);
+  }
+
   public override componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error in component tree:", error, errorInfo);
   }
+
+  private handleWindowError = (event: ErrorEvent) => {
+    console.error("[PALMYRA] Error global de ejecución:", event.error || event.message);
+    this.setState((state) => state.hasError ? null : {
+      hasError: true,
+      error: event.error instanceof Error ? event.error : new Error(event.message || "Error inesperado de ejecución"),
+    });
+  };
+
+  private handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+    console.error("[PALMYRA] Promesa sin manejar:", event.reason);
+    const reason = event.reason;
+    this.setState((state) => state.hasError ? null : {
+      hasError: true,
+      error: reason instanceof Error ? reason : new Error(String(reason || "Operación inesperada")),
+    });
+  };
 
   private handleReload = () => {
     window.location.reload();
   };
 
   private handleHardReset = () => {
-    try {
-      const protectedKeys = new Set(['pos_offline_sync_queue', 'mare_sales_backup_v1', 'mare_supabase_url', 'mare_supabase_anon_key']);
-      for (let i = localStorage.length - 1; i >= 0; i--) {
-        const key = localStorage.key(i);
-        if (key && !protectedKeys.has(key)) localStorage.removeItem(key);
-      }
-      sessionStorage.clear();
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(registrations => {
-          for (const registration of registrations) {
-            registration.unregister();
-          }
-        });
-      }
-    } catch (e) {
-      console.error("Error clearing storage:", e);
-    }
-    window.location.href = "/";
+    // La recuperación nunca debe borrar ventas, la cola offline ni la sesión.
+    window.location.reload();
   };
 
   public override render() {
@@ -86,8 +100,8 @@ export class ErrorBoundary extends React.Component<Props, State> {
                 onClick={this.handleHardReset}
                 className="w-full py-2.5 bg-slate-700/60 hover:bg-rose-950/40 text-slate-300 hover:text-rose-300 border border-slate-600/50 hover:border-rose-800 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 active:scale-95"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                Limpiar Caché Local y Reparar
+                <RefreshCw className="w-3.5 h-3.5" />
+                Reiniciar sin borrar datos
               </button>
             </div>
           </div>
