@@ -60,11 +60,19 @@ function warnNetworkOnly(message: string, error: unknown) {
   }
 }
 
+function isManualOfflineSyncEnabled(): boolean {
+  return useStore.getState().storeConfig?.manualOfflineSync === true;
+}
+
 async function refresh(force = false): Promise<void> {
   if (isBrowserOffline() || isSyncInProgress) return;
 
   try {
     if (getOfflineQueueCount() > 0) {
+      // Respect the explicit manual-sync preference even when a Realtime
+      // event, focus or reconnect causes a background refresh. A user-triggered
+      // force sync is the only path allowed to bypass this preference.
+      if (!force && isManualOfflineSyncEnabled()) return;
       isSyncInProgress = true;
       let remaining = getOfflineQueueCount();
       try {
