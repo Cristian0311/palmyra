@@ -100,8 +100,8 @@ export class ErrorBoundary extends React.Component<Props, State> {
                 onClick={this.handleHardReset}
                 className="w-full py-2.5 bg-slate-700/60 hover:bg-rose-950/40 text-slate-300 hover:text-rose-300 border border-slate-600/50 hover:border-rose-800 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all flex items-center justify-center gap-2 active:scale-95"
               >
-                <Trash2 className="w-3.5 h-3.5" />
-                Limpiar Caché Local y Reparar
+                <RefreshCw className="w-3.5 h-3.5" />
+                Reiniciar sin borrar datos
               </button>
             </div>
           </div>
