@@ -134,8 +134,11 @@ export default function SaaSAuth() {
         // offline login on this device.
         try {
           const supabase = getSupabase();
-          const { data: authData } = supabase ? await supabase.auth.getUser() : { data: { user: null } };
-          if (authData.user?.id) forgetOfflineSaaSCredential(authData.user.id);
+          // getSession reads the current recovery session locally; using getUser
+          // here would depend on a second network round-trip after the password
+          // has already changed successfully.
+          const { data: authData } = supabase ? await supabase.auth.getSession() : { data: { session: null } };
+          if (authData.session?.user?.id) forgetOfflineSaaSCredential(authData.session.user.id);
         } catch (offlineCredentialError) {
           console.warn("[PALMYRA] No se pudo invalidar la credencial offline anterior.", offlineCredentialError);
         }
