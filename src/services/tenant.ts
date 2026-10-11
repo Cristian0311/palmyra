@@ -33,7 +33,7 @@ export async function getActiveTenant(forceRefresh = false): Promise<ActiveTenan
   const supabase = getSupabase();
   if (!supabase) {
     const localTenant = readCachedTenant();
-    if (isBrowserOffline() && localTenant) return (cached = localTenant);
+    if ((isBrowserOffline() || getPalmyraLocalScope()?.offlineSession === true) && localTenant) return (cached = localTenant);
     throw new Error('Supabase no está configurado.');
   }
 
