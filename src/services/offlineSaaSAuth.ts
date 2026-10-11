@@ -1,5 +1,5 @@
 import type { SaaSContext } from "./saas";
-import { getCachedSaaSContext } from "./offlineAuthContext";
+import { cacheSaaSContext, getCachedSaaSContext } from "./offlineAuthContext";
 import { setPalmyraLocalScope } from "./localScope";
 
 const PREFIX = "palmyra:offline-saas-credential:v2:";
@@ -117,8 +117,17 @@ export async function rememberOfflineSaaSCredential(
   if (!userId || !email || !password) return;
 
   const salt = bytesToHex(randomSalt());
+  // Ensure the snapshot used by the verifier is exactly the one that is cached.
+  const normalizedContext = { ...context, user: { ...context.user, email } };
+  cacheSaaSContext(normalizedContext);
   const verifier = await deriveVerifier(userId, email, password, salt, "credential");
-  const contextVerifier = await deriveVerifier(userId, email, contextFingerprint(context), salt, "context");
+  const contextVerifier = await deriveVerifier(
+    userId,
+    email,
+    password + "\u0000" + contextFingerprint(normalizedContext),
+    salt,
+    "context"
+  );
   const record: OfflineCredential = {
     userId,
     email,
@@ -181,7 +190,7 @@ export async function verifyOfflineSaaSCredential(
       const currentContextVerifier = await deriveVerifier(
         candidate.userId,
         candidate.email,
-        contextFingerprint(context),
+        password + "\u0000" + contextFingerprint(context),
         candidate.salt,
         "context"
       );
