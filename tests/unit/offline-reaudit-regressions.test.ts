@@ -31,7 +31,7 @@ test("the new-company signup flow binds the pending offline verifier after onboa
 test("password reset invalidates the older offline password verifier", () => {
   const auth = source("src/pages/SaaSAuth.tsx");
   const offlineAuth = source("src/services/offlineSaaSAuth.ts");
-  assert.ok(auth.includes("forgetOfflineSaaSCredential(authData.session?.user?.id)"));
+  assert.ok(auth.includes("forgetOfflineSaaSCredential(authData.session.user.id)"));
   assert.match(offlineAuth, /export function forgetOfflineSaaSCredential/);
 });
 
