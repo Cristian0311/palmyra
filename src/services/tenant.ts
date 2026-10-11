@@ -47,7 +47,7 @@ export async function getActiveTenant(forceRefresh = false): Promise<ActiveTenan
     authRequestError = error;
   }
 
-  if (!authUserId && (isBrowserOffline() || isTransientNetworkError(authRequestError))) {
+  if (!authUserId && (isBrowserOffline() || getPalmyraLocalScope()?.offlineSession === true || isTransientNetworkError(authRequestError))) {
     // Offline: usar exclusivamente la empresa/usuario que figura como alcance
     // activo. Nunca elegir "la caché más reciente" entre varias empresas.
     const localTenant = readCachedTenant();
@@ -68,7 +68,7 @@ export async function getActiveTenant(forceRefresh = false): Promise<ActiveTenan
     .eq('id', authDataUserId)
     .maybeSingle();
   if (profileError) {
-    if (isBrowserOffline() || isTransientNetworkError(profileError)) {
+    if (isBrowserOffline() || getPalmyraLocalScope()?.offlineSession === true || isTransientNetworkError(profileError)) {
       const localTenant = readCachedTenant(authDataUserId);
       if (localTenant) return (cached = localTenant);
     }
@@ -86,7 +86,7 @@ export async function getActiveTenant(forceRefresh = false): Promise<ActiveTenan
       .limit(1)
       .maybeSingle();
     if (membershipError) {
-      if (isBrowserOffline() || isTransientNetworkError(membershipError)) {
+      if (isBrowserOffline() || getPalmyraLocalScope()?.offlineSession === true || isTransientNetworkError(membershipError)) {
         const localTenant = readCachedTenant(authDataUserId);
         if (localTenant) return (cached = localTenant);
       }
@@ -103,7 +103,7 @@ export async function getActiveTenant(forceRefresh = false): Promise<ActiveTenan
     .eq('id', companyId)
     .maybeSingle();
   if (companyError) {
-    if (isBrowserOffline() || isTransientNetworkError(companyError)) {
+    if (isBrowserOffline() || getPalmyraLocalScope()?.offlineSession === true || isTransientNetworkError(companyError)) {
       const localTenant = readCachedTenant(authDataUserId);
       if (localTenant) return (cached = localTenant);
     }
