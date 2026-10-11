@@ -9,7 +9,11 @@ import {
   signUpSaaSAccount,
   updateSaaSPassword
 } from "../services/saas";
-import { rememberOfflineSaaSCredential, verifyOfflineSaaSCredential } from "../services/offlineSaaSAuth";
+import {
+  rememberOfflineSaaSCredential,
+  rememberPendingOfflineCredential,
+  verifyOfflineSaaSCredential
+} from "../services/offlineSaaSAuth";
 import { isBrowserOffline, isTransientNetworkError } from "../services/offlineNetwork";
 
 type Mode = "signin" | "signup" | "reset" | "recovery";
@@ -75,10 +79,20 @@ export default function SaaSAuth() {
     // this same browser after the company context has been cached once.
     if (credentialEmail && credentialPassword) {
       try {
-        await rememberOfflineSaaSCredential({
+        const normalizedCredentialContext = {
           ...ctx,
           user: { ...ctx.user, email: credentialEmail.trim().toLowerCase() }
-        }, credentialPassword);
+        };
+        if (ctx.companyId && ctx.company?.account_status === "active" &&
+            ctx.membershipStatus === "active" && ctx.warehouseIds.length &&
+            ctx.deviceActive && ctx.user.isActive !== false) {
+          await rememberOfflineSaaSCredential(normalizedCredentialContext, credentialPassword);
+        } else if (!ctx.companyId) {
+          // The sign-up screen appears before first-company onboarding. Keep the
+          // credential only in module memory so onboarding can bind it to the
+          // final company/warehouse security scope after creation.
+          rememberPendingOfflineCredential(credentialEmail, credentialPassword);
+        }
       } catch (offlineCredentialError) {
         console.warn("[PALMYRA] No se pudo preparar el acceso offline en este dispositivo.", offlineCredentialError);
       }
