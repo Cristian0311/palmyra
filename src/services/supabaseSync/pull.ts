@@ -261,6 +261,21 @@ async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string
       exchangeRate: Number(p.exchange_rate) || 1,
       bankCardId: undefined
     }));
+    // Migrated sales retain the original POS payload in metadata so fields that
+    // do not have first-class columns (notably change/vuelto) survive a reload.
+    const legacyTransaction = s.metadata?.legacy_transaction && typeof s.metadata.legacy_transaction === 'object'
+      ? s.metadata.legacy_transaction
+      : {};
+    const rawChangePayments = Array.isArray(legacyTransaction.change_payments)
+      ? legacyTransaction.change_payments
+      : [];
+    const changePayments = rawChangePayments.map((cp:any) => ({
+      method: 'cash' as const,
+      amount: Number(cp.amount) || 0,
+      currencyCode: (cp.currencyCode || cp.currency_code || defaultCurrencyCode) as Transaction['payments'][number]['currencyCode'],
+      exchangeRate: Number(cp.exchangeRate ?? cp.exchange_rate) || 1,
+    })).filter((cp:any) => cp.amount > 0);
+    const changeGiven = Number(legacyTransaction.change_given ?? s.metadata?.change_given) || 0;
     const userId = s.employee_id || s.seller_user_id || '';
     return {
       id: s.metadata?.ticket_id || s.id,
@@ -275,6 +290,8 @@ async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string
       discount: 0,
       total: Number(s.total) || 0,
       payments,
+      changeGiven,
+      changePayments: changePayments.length ? changePayments : undefined,
       items: itemRows.map((it:any,i:number)=>normalizeSaleItem(it,productMap,variantMap,s.id,i)),
       status: s.status === 'refunded' ? 'refunded' : 'completed',
       customerId: s.customer_id || undefined,
