@@ -64,6 +64,38 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
     return { processed: 0, failed: 0, remaining: getOfflineQueueCount(), conflicts: getOfflineConflictCount(), errors: [{ type: 'network', actionId: 'connectivity', message: reachability.message || 'Supabase no está accesible todavía.' }] };
   }
 
+  // Connectivity alone is not authorization. Never replay the durable queue
+  // under the public/anonymous role when the local offline session has no valid
+  // Supabase user token; keep every operation queued until a real session returns.
+  try {
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError || !authData.user) {
+      return {
+        processed: 0,
+        failed: 0,
+        remaining: getOfflineQueueCount(),
+        conflicts: getOfflineConflictCount(),
+        errors: [{
+          type: 'auth',
+          actionId: 'session',
+          message: 'La sesión local sigue abierta, pero todavía no hay una sesión de nube válida. Inicia sesión con conexión para sincronizar; las operaciones offline se conservarán.'
+        }]
+      };
+    }
+  } catch {
+    return {
+      processed: 0,
+      failed: 0,
+      remaining: getOfflineQueueCount(),
+      conflicts: getOfflineConflictCount(),
+      errors: [{
+        type: 'auth',
+        actionId: 'session',
+        message: 'No se pudo verificar la sesión remota. Las operaciones offline se conservarán y se reintentará al recuperar la autenticación.'
+      }]
+    };
+  }
+
   // Reanima conflictos creados por fallos de infraestructura que ya fueron
   // corregidos en Supabase. No se elimina ninguna operación: solo vuelve a
   // estado pending para que el replay normal la procese con las nuevas reglas.
