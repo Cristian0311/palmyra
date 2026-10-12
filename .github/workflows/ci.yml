@@ -50,3 +50,6 @@ jobs:
       - name: Production build
         run: npm run build
 
+      - name: PWA offline build smoke
+        run: npm run test:pwa:offline
+
