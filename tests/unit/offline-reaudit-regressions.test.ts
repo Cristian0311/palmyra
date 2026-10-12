@@ -44,6 +44,9 @@ test("notification status checks that the server-side push endpoint is enabled",
 
 test("push activation renews a stale browser endpoint disabled on the server", () => {
   const notifications = source("src/pages/Notifications.tsx");
-  assert.match(notifications, /serverSubscription\?\.enabled !== true[\s\S]*?subscription\.unsubscribe\(\)/);
+  assert.match(notifications, /serverSubscription\?\.enabled !== true[\s\S]*?await subscription\.unsubscribe\(\)/);
+  assert.match(notifications, /await subscription\.unsubscribe\(\)[\s\S]*?subscription = null/);
   assert.match(notifications, /if \(!subscription\)[\s\S]*?registration\.pushManager\.subscribe/);
+  assert.match(notifications, /catch \(unsubscribeError\)[\s\S]*?throw new Error\("No se pudo renovar la suscripción push antigua/);
+  assert.match(notifications, /if \(serverCheckError\)[\s\S]*?throw new Error\("No se pudo comprobar el estado de la suscripción push/);
 });

@@ -14,7 +14,8 @@
     "audit:architecture": "node scripts/architecture-audit.mjs",
     "audit:architecture:strict": "node scripts/architecture-audit.mjs --strict",
     "test:unit": "tsx --test tests/unit/*.test.ts",
-    "test:integrity": "node scripts/integrity-smoke.mjs"
+    "test:integrity": "node scripts/integrity-smoke.mjs",
+    "test:pwa:offline": "node scripts/pwa-offline-smoke.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
