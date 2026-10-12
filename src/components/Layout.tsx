@@ -428,7 +428,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             const error = item?.lastError || (
               item?.status === 'conflict'
                 ? 'Operación en conflicto: requiere revisión.'
-                : 'Sin error registrado; probablemente bloqueada por una dependencia pendiente.'
+                : 'Esta operación sigue pendiente, pero no tiene una causa registrada. Reintenta la sincronización y revisa el Monitor de Logs.'
             );
             return `${item?.type || 'operación'} · ${item?.actionId || item?.id || 'sin-id'}${status}${retry}: ${error}`;
           });

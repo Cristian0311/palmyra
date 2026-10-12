@@ -421,7 +421,7 @@ export default function ExchangeRate() {
         <div className="min-w-0 rounded-2xl border border-base bg-secondary p-4 shadow-sm sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-[.16em] text-violet-700">Historial local</p>
+              <p className="text-[10px] font-black uppercase tracking-[.16em] text-violet-700">Historial permanente en Supabase</p>
               <h2 className="mt-1 text-base font-extrabold text-primary">{selectedRate.name} <span className="font-semibold text-muted">/ CUP</span></h2>
               <p className="mt-0.5 text-xs text-muted">{selectedRate.country}</p>
             </div>
@@ -471,7 +471,7 @@ export default function ExchangeRate() {
 
       <div className="flex items-start gap-2 rounded-xl border border-base bg-secondary px-3 py-2.5 text-[10px] leading-4 text-muted">
         <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-violet-700" />
-        <p><strong className="text-primary">Nota:</strong> tasas referenciales de elTOQUE, no oficiales ni garantía de una operación. Los datos de compra/venta no se calculan si la fuente no los publica. El histórico se conserva en este navegador y no modifica precios, costos ni operaciones del POS.</p>
+        <p><strong className="text-primary">Nota:</strong> tasas referenciales de elTOQUE, no oficiales ni garantía de una operación. Los datos de compra/venta no se calculan si la fuente no los publica. El histórico principal se conserva en Supabase y se recupera al iniciar sesión, incluso después de borrar la caché. Los puntos antiguos importados se mantienen privados por usuario y no modifican precios, costos ni operaciones del POS.</p>
       </div>
 
     </div>
