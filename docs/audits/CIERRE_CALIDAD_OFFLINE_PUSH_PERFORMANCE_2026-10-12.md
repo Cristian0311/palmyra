@@ -48,3 +48,11 @@ Las ventanas de caja, turno, descuadres y componentes de Reportes se trasladaron
 
 1. Registrar de nuevo push desde el navegador de cada móvil y enviar la notificación de prueba; se requiere el permiso del usuario en el dispositivo.
 2. Prueba completa de turno/venta offline y reconexión con la cuenta de la empresa. No se declara aprobada solo por las pruebas de shell y unitarias.
+
+
+## Reauditoría adicional de tasas de cambio
+
+- La gráfica de mercado usa `get_exchange_rate_history` de Supabase. En producción se verificaron 91 puntos en 6 códigos desde `2026-10-11 17:00 UTC` hasta `2026-10-12 01:10 UTC`; la RPC devuelve los puntos sin depender del `localStorage`.
+- La tabla de tasas operativas por empresa `exchange_rates` estaba vacía. Se encontró que el código usa `upsert(..., onConflict: 'id')`, pero la base concedía `INSERT` sin `UPDATE` a `authenticated`, aunque sí existía una política RLS de actualización. Se añadió la migración `20261012012500_fix_exchange_rate_upsert_privileges.sql` para conceder `UPDATE` conservando el control RLS `settings.manage`.
+- Se corrigió el replay de `currency_rate`: ya no reencola la misma operación desde dentro del worker, el error real se conserva en `lastError` y el monitor no atribuye sin prueba una falta de detalle a dependencias pendientes.
+- La migración debe aplicarse en Supabase y después hay que volver a sincronizar las tasas EUR/USD pendientes en el dispositivo para confirmar que `exchange_rates` recibe los valores de esa empresa.

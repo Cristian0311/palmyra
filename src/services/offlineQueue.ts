@@ -335,6 +335,21 @@ export function enqueueOfflineItem(type: OfflineActionType, data: any, actionId?
   return persistence;
 }
 
+export async function setOfflineQueueItemLastError(type: OfflineActionType, actionId: string, message: string): Promise<void> {
+  await waitForOfflineQueueReady();
+  const index = memoryQueue.findIndex(item => item.type === type && item.actionId === actionId);
+  if (index < 0) return;
+  const updated = {
+    ...memoryQueue[index],
+    lastError: String(message || 'Error no especificado').slice(0, 2000),
+    // Keep the operation retryable. This is diagnostic metadata, not a terminal rejection.
+    status: memoryQueue[index].status === 'conflict' ? 'conflict' as const : 'pending' as const,
+  };
+  memoryQueue[index] = updated;
+  emitQueueEvent();
+  await persistQueueItem(updated);
+}
+
 export function removeFromOfflineQueue(id: string): void {
   removedDuringQueueProcess.add(id);
   memoryQueue = memoryQueue.filter(item => item.id !== id);

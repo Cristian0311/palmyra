@@ -1,6 +1,6 @@
 import { salePayload } from './salePayload';
 import { getSupabase } from '../../lib/supabase';
-import { enqueueOfflineItem } from '../offlineQueue';
+import { enqueueOfflineItem, setOfflineQueueItemLastError } from '../offlineQueue';
 import { getActiveTenant, getEmployeeForIdentity } from '../tenant';
 import { callAdjustInventoryRPC, callProcessBankTransactionRPC } from './rpc';
 export { pushCashMovementToSupabase, deleteCashMovementFromSupabase, pushCashSessionMetadataToSupabase } from './cashMutations';
@@ -259,7 +259,7 @@ export async function pushInventoryTransferToSupabase(transfer:InventoryTransfer
 export async function pushWarrantyToSupabase(warranty:Warranty){
   try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {data:saleItems,error:se}=await supabase.from('sale_items').select('id').eq('sale_id',warranty.transactionId).eq('product_id',warranty.productId).limit(1);if(se)throw se;const {error}=await supabase.from('warranties').upsert({id:warranty.id,company_id:companyId,sale_item_id:saleItems?.[0]?.id||null,code:warranty.id,starts_at:warranty.purchaseDate,expires_at:warranty.expiryDate,status:warranty.status,notes:warranty.productName},{onConflict:'id'});if(error)throw error;return true;}catch(e:any){await queue('warranty',warranty,warranty.id);return false;}
 }
-export async function pushCurrencyToSupabase(currency:Currency){
+export async function pushCurrencyToSupabase(currency:Currency, options?: { queueOnFailure?: boolean }){
   try {
     const supabase = await onlineClient();
     const { companyId, authUserId } = await getActiveTenant();
@@ -281,7 +281,21 @@ export async function pushCurrencyToSupabase(currency:Currency){
     if (error) throw error;
     return true;
   } catch (e:any) {
-    await queue('currency_rate', currency, 'currency-rate:' + currency.code);
+    const code = String(e?.code || '').trim();
+    const message = String(e?.message || e || 'Error desconocido al guardar la tasa de cambio');
+    const hint = String(e?.hint || '');
+    const details = String(e?.details || '');
+    const diagnostic = new Error(
+      `No se pudo guardar la tasa ${currency.code} en Supabase.${code ? ` [${code}]` : ''} ${message}${details ? ` · ${details}` : ''}${hint ? ` · ${hint}` : ''}`
+    );
+    (diagnostic as any).code = code;
+    (diagnostic as any).hint = hint;
+    console.warn('[PALMYRA] currency rate sync failed', { code, message, hint, details, currency: currency.code });
+    if (options?.queueOnFailure === false) throw diagnostic;
+
+    const actionId = 'currency-rate:' + currency.code;
+    await queue('currency_rate', currency, actionId);
+    await setOfflineQueueItemLastError('currency_rate', actionId, diagnostic.message);
     return false;
   }
 }

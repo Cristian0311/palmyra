@@ -538,13 +538,13 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       return true;
     }
     case 'currency_rate': {
-      const ok = await pushCurrencyToSupabase(data as any);
-      if (!ok) throw new Error('No se pudo sincronizar la tasa de cambio pendiente.');
+      const ok = await pushCurrencyToSupabase(data as any, { queueOnFailure: false });
+      if (!ok) throw new Error(`No se pudo sincronizar la tasa ${String((data as any)?.code || '')} pendiente.`);
       return true;
     }
     case 'currency': {
-      const ok = await pushCurrencyToSupabase(data as any);
-      if (!ok) throw new Error('No se pudo sincronizar la tasa de cambio pendiente.');
+      const ok = await pushCurrencyToSupabase(data as any, { queueOnFailure: false });
+      if (!ok) throw new Error(`No se pudo sincronizar la tasa ${String((data as any)?.code || '')} pendiente.`);
       return true;
     }
     case 'warranty': {
