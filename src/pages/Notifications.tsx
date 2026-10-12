@@ -357,15 +357,26 @@ export default function Notifications() {
           .eq("endpoint", subscription.endpoint)
           .maybeSingle();
 
+        if (serverCheckError) {
+          // Do not re-enable a potentially expired endpoint if the server state
+          // cannot be verified. The user can safely retry when connectivity is back.
+          throw new Error("No se pudo comprobar el estado de la suscripción push. Revisa la conexión y vuelve a intentarlo.");
+        }
+
         // If the server has no active row for this browser endpoint, it may
         // have expired (HTTP 404/410). Remove the stale browser subscription
         // and obtain a fresh endpoint rather than re-enabling the dead one.
-        if (!serverCheckError && serverSubscription?.enabled !== true) {
+        if (serverSubscription?.enabled !== true) {
           try {
-            const unsubscribed = await subscription.unsubscribe();
-            if (unsubscribed) subscription = null;
+            await subscription.unsubscribe();
+            // Do not reuse this endpoint, even if the browser reports that the
+            // unsubscribe operation was already completed. Always request a
+            // fresh subscription rather than re-enabling an endpoint the server
+            // previously disabled after a provider 404/410 response.
+            subscription = null;
           } catch (unsubscribeError) {
             console.warn("[PALMYRA] No se pudo retirar la suscripción push antigua:", unsubscribeError);
+            throw new Error("No se pudo renovar la suscripción push antigua. En los permisos del navegador, elimina la suscripción de PALMYRA y vuelve a activarla.");
           }
         }
       }
