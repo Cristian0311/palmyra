@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { ReactNode, BarChart3, Sparkles } from "lucide-react";
+import { BarChart3, Sparkles } from "lucide-react";
 
 export function formatDate(value?: string | null) {
   if (!value) return "—";

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { AlertCircle, ArrowUpRight, Building2, Check, CreditCard, RefreshCw, ShieldCheck } from "lucide-react";
 import type { PlatformSnapshot } from "../platformAdminApi";
-import { Button, EmptyPanel, StatCard, formatDate, isToday } from "../shared";
+import { Button, EmptyPanel, StatCard, formatDate, isToday, statusLabel } from "../shared";
 
 export default function Overview({ snapshot, onRefresh }: { snapshot: PlatformSnapshot; onRefresh: () => Promise<void> }) {
   const metrics = useMemo(() => {

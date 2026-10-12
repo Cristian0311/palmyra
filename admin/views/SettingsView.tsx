@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { FormEvent, Settings2, Phone, Mail, Save, ExternalLink } from "lucide-react";
+import { Settings2, Phone, Mail, Save, ExternalLink } from "lucide-react";
 import { loadSupportSettings, saveSupportSettings, type PlatformSupportSettings } from "../platformAdminApi";
 import { Button, FileTextIcon } from "../shared";
 
