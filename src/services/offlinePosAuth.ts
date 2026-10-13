@@ -4,6 +4,8 @@ const STORAGE_PREFIX = "palmyra:offline-pos-credential:v2:";
 const LEGACY_STORAGE_PREFIX = "palmyra:offline-pos-credential:v1:";
 const PBKDF2_ITERATIONS = 310_000;
 const MAX_CREDENTIAL_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+const SYNC_RETRY_WINDOW_MS = 30_000;
+const lastSyncAttempt = new Map<string, number>();
 
 type OfflinePosCredential = {
   version: 2;
@@ -130,13 +132,17 @@ export async function syncOfflinePosCredentials(companyId: string): Promise<{ sy
   const cleanCompanyId = String(companyId || "").trim();
   if (!cleanCompanyId || typeof localStorage === "undefined" ||
       (typeof navigator !== "undefined" && !navigator.onLine)) return { synced: 0, skipped: 0 };
+  const lastAttempt = lastSyncAttempt.get(cleanCompanyId) || 0;
+  if (Date.now() - lastAttempt < SYNC_RETRY_WINDOW_MS) return { synced: 0, skipped: 0 };
+  lastSyncAttempt.set(cleanCompanyId, Date.now());
   const supabase = getSupabase();
-  if (!supabase) return { synced: 0, skipped: 0 };
+  if (!supabase) { lastSyncAttempt.delete(cleanCompanyId); return { synced: 0, skipped: 0 }; }
 
   const { data, error } = await supabase.rpc("palmyra_get_offline_pos_verifiers", {
     p_company_id: cleanCompanyId
   });
   if (error) {
+    lastSyncAttempt.delete(cleanCompanyId);
     console.info("[PALMYRA] No fue posible descargar los verificadores POS para trabajo offline.", error.message);
     return { synced: 0, skipped: 0 };
   }
