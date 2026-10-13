@@ -92,6 +92,15 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
     case 'employee_delete': {
       const employeeId = String(data?.employeeId || '');
       if (!employeeId) throw new PermanentSyncError('Eliminación offline de empleado sin ID.');
+      // A previous attempt may have committed just before the connection dropped.
+      // Treat a missing row as an idempotent success rather than retrying forever.
+      const { data: employee, error: lookupError } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('id', employeeId)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+      if (!employee) return true;
       const { error } = await supabase.rpc('delete_company_employee', { p_employee_id: employeeId });
       if (error) throw error;
       return true;
