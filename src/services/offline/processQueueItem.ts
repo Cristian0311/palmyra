@@ -62,6 +62,30 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       }
       return true;
     }
+    case 'employee_status': {
+      const d = data || {};
+      if (!d.employeeId || typeof d.active !== 'boolean') throw new PermanentSyncError('Cambio offline de estado de empleado incompleto.');
+      const { error } = await supabase.rpc('set_company_employee_status', {
+        p_employee_id: d.employeeId,
+        p_active: d.active
+      });
+      if (error) throw error;
+      return true;
+    }
+    case 'employee_delete': {
+      const employeeId = String(data?.employeeId || '');
+      if (!employeeId) throw new PermanentSyncError('Eliminación offline de empleado sin ID.');
+      const { error } = await supabase.rpc('delete_company_employee', { p_employee_id: employeeId });
+      if (error) throw error;
+      return true;
+    }
+    case 'invitation_revoke': {
+      const invitationId = String(data?.invitationId || '');
+      if (!invitationId) throw new PermanentSyncError('Revocación offline de invitación sin ID.');
+      const { error } = await supabase.rpc('revoke_company_invitation', { p_invitation_id: invitationId });
+      if (error) throw error;
+      return true;
+    }
     case 'employee_update': {
       const d = data || {};
       if (!d.companyId || !d.employeeId || !d.fullName || !d.employeeCode || !d.roleId || !Array.isArray(d.warehouseIds) || !d.warehouseIds.length) {
