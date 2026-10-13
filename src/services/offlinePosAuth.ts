@@ -149,6 +149,7 @@ export async function syncOfflinePosCredentials(companyId: string): Promise<{ sy
 
   let synced = 0;
   let skipped = 0;
+  const allowedSubjects = new Set<string>();
   const records = Array.isArray(data) ? data as RemoteOfflinePosVerifier[] : [];
   for (const row of records) {
     const subjectId = String(row?.subject_id || "").trim();
@@ -165,12 +166,27 @@ export async function syncOfflinePosCredentials(companyId: string): Promise<{ sy
     const record: OfflinePosCredential = {
       version: 2, salt, verifier, iterations, savedAt: timestamp
     };
+    allowedSubjects.add(subjectId);
     try {
       localStorage.setItem(key(cleanCompanyId, subjectId), JSON.stringify(record));
       try { localStorage.removeItem(legacyKey(cleanCompanyId, subjectId)); } catch {}
       synced += 1;
     } catch {
       skipped += 1;
+    }
+  }
+  // A successful server snapshot also revokes local verifiers for employees
+  // removed, deactivated, or no longer provisioned for offline access.
+  const companyPrefix = STORAGE_PREFIX + encodeURIComponent(cleanCompanyId) + ":";
+  const localKeys: string[] = [];
+  for (let i = 0; i < localStorage.length; i += 1) {
+    const localKey = localStorage.key(i);
+    if (localKey?.startsWith(companyPrefix)) localKeys.push(localKey);
+  }
+  for (const localKey of localKeys) {
+    const subjectId = decodeURIComponent(localKey.slice(companyPrefix.length));
+    if (!allowedSubjects.has(subjectId)) {
+      try { localStorage.removeItem(localKey); } catch {}
     }
   }
   return { synced, skipped };
