@@ -79,6 +79,23 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       }
       return true;
     }
+    case 'team_compensation_settings': {
+      const d = data || {};
+      if (!d.companyId || !['fixed_product', 'sales_percent'].includes(String(d.mode))) {
+        throw new PermanentSyncError('Configuración offline de compensación incompleta.');
+      }
+      const rate = Math.max(0, Math.min(100, Number(d.percentRate) || 0));
+      const { error } = await supabase.rpc('upsert_compensation_settings', {
+        p_company_id: d.companyId,
+        p_mode: d.mode,
+        p_percent_rate: d.mode === 'sales_percent' ? rate : 0,
+        p_fixed_amount: 0,
+        p_worker_count: 1,
+        p_active: true
+      });
+      if (error) throw error;
+      return true;
+    }
     case 'employee_status': {
       const d = data || {};
       if (!d.employeeId || typeof d.active !== 'boolean') throw new PermanentSyncError('Cambio offline de estado de empleado incompleto.');
