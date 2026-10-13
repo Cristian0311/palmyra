@@ -27,7 +27,20 @@ import { enqueueOfflineItem } from "../services/offlineQueue";
 import "./team.css";
 
 const TEAM_CACHE_PREFIX = "palmyra-team-cache-v1:";
+const TEAM_COMP_CACHE_PREFIX = "palmyra-team-compensation-cache-v1:";
 function teamCacheKey(companyId: string) { return TEAM_CACHE_PREFIX + companyId; }
+function teamCompensationCacheKey(companyId: string) { return TEAM_COMP_CACHE_PREFIX + companyId; }
+function readTeamCompensationCache(companyId?: string | null): CompanyCompensationSettings | null {
+  if (!companyId || typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(teamCompensationCacheKey(companyId));
+    return raw ? JSON.parse(raw) as CompanyCompensationSettings : null;
+  } catch { return null; }
+}
+function writeTeamCompensationCache(companyId: string, settings: CompanyCompensationSettings) {
+  if (typeof localStorage === "undefined") return;
+  try { localStorage.setItem(teamCompensationCacheKey(companyId), JSON.stringify(settings)); } catch {}
+}
 function readTeamCache(companyId?: string | null): TeamSnapshot | null {
   if (!companyId || typeof localStorage === "undefined") return null;
   try { const raw = localStorage.getItem(teamCacheKey(companyId)); return raw ? JSON.parse(raw) as TeamSnapshot : null; } catch { return null; }
@@ -96,15 +109,37 @@ export default function Team() {
     setLoading(true);
     setError("");
     const offline = typeof navigator !== "undefined" && !navigator.onLine;
-    const cached = readTeamCache(snapshot?.companyId || context?.companyId);
-    if (offline && cached) { setSnapshot(cached); setLoading(false); return; }
+    let knownContext = context;
+    if (offline && !knownContext) {
+      try {
+        knownContext = await loadSaaSContext();
+        if (knownContext) setContext(knownContext);
+      } catch {}
+    }
+    const companyId = snapshot?.companyId || knownContext?.companyId || context?.companyId;
+    const cached = readTeamCache(companyId);
+    if (offline && cached) {
+      setSnapshot(cached);
+      const cachedCompensation = readTeamCompensationCache(cached.companyId);
+      if (cachedCompensation) setCompensationSettings(cachedCompensation);
+      setLoading(false);
+      return;
+    }
     try {
       const [nextContext, nextSnapshot] = await Promise.all([loadSaaSContext(), loadTeamSnapshot()]);
       if (!nextSnapshot) throw new Error("No se recibió el estado del equipo.");
       setContext(nextContext);
       setSnapshot(nextSnapshot);
       writeTeamCache(nextSnapshot);
-      try { setCompensationSettings(await loadCompensationSettings(nextSnapshot.companyId)); } catch (e) { console.warn("[PALMYRA] No se pudo cargar compensación global", e); }
+      try {
+        const loadedCompensation = await loadCompensationSettings(nextSnapshot.companyId);
+        setCompensationSettings(loadedCompensation);
+        writeTeamCompensationCache(nextSnapshot.companyId, loadedCompensation);
+      } catch (e) {
+        const cachedCompensation = readTeamCompensationCache(nextSnapshot.companyId);
+        if (cachedCompensation) setCompensationSettings(cachedCompensation);
+        console.warn("[PALMYRA] No se pudo cargar compensación global", e);
+      }
       if (!form.roleId) {
         const employeeRole = (nextSnapshot.roles || []).find(role => role.key === "employee") || (nextSnapshot.roles || []).find(role => role.key !== "admin");
         if (employeeRole) setForm(prev => ({ ...prev, roleId: employeeRole.id }));
@@ -116,6 +151,8 @@ export default function Team() {
       const fallback = readTeamCache(snapshot?.companyId || context?.companyId);
       if (fallback) {
         setSnapshot(fallback);
+        const cachedCompensation = readTeamCompensationCache(fallback.companyId);
+        if (cachedCompensation) setCompensationSettings(cachedCompensation);
         setError(typeof navigator !== "undefined" && !navigator.onLine ? "Mostrando el último estado guardado. Los cambios nuevos se sincronizarán al recuperar conexión." : "No se pudo actualizar desde la nube; se conserva el último estado local.");
       } else setError(e?.message || "No se pudo cargar el equipo.");
     } finally {
@@ -728,12 +765,44 @@ export default function Team() {
                       if (!snapshot?.companyId) return;
                       setSavingCompensation(true); setError(""); setMessage("");
                       try {
-                        await saveCompensationSettings({ companyId: snapshot.companyId, mode: compensationSettings.mode, percentRate: compensationSettings.mode === 'sales_percent' ? Number(compensationSettings.percentRate) || 0 : 0 });
+                        const nextRate = compensationSettings.mode === 'sales_percent' ? Number(compensationSettings.percentRate) || 0 : 0;
+                        const nextType = compensationSettings.mode === 'sales_percent' ? 'sales_percentage' : 'fixed_product';
+                        const store = useStore.getState();
+                        const offline = typeof navigator !== "undefined" && !navigator.onLine;
+                        if (offline) {
+                          const nextSettings = {
+                            ...compensationSettings,
+                            percentRate: nextRate,
+                            fixedAmount: 0,
+                            active: true
+                          };
+                          await enqueueOfflineItem("team_compensation_settings", {
+                            companyId: snapshot.companyId,
+                            mode: compensationSettings.mode,
+                            percentRate: nextRate
+                          }, "team-compensation:" + snapshot.companyId);
+                          setCompensationSettings(nextSettings);
+                          writeTeamCompensationCache(snapshot.companyId, nextSettings);
+                          store.users.forEach(user => store.updateUser(user.id, {
+                            compensationType: nextType,
+                            salesPercentage: nextRate,
+                            commissionRate: nextRate,
+                            ...(nextType === 'sales_percentage' ? { baseSalary: 0 } : {})
+                          }));
+                          if (store.currentUser) {
+                            store.updateUser(store.currentUser.id, {
+                              compensationType: nextType,
+                              salesPercentage: nextRate,
+                              commissionRate: nextRate,
+                              ...(nextType === 'sales_percentage' ? { baseSalary: 0 } : {})
+                            });
+                          }
+                          addNotification("Configuración de pago guardada offline; se sincronizará al volver Internet.", "success");
+                          return;
+                        }
+                        await saveCompensationSettings({ companyId: snapshot.companyId, mode: compensationSettings.mode, percentRate: nextRate });
                         // Sincronizar inmediatamente la modalidad global con el estado local del POS.
                         // Así Caja/POS/Reportes no siguen usando una configuración antigua persistida.
-                        const nextType = compensationSettings.mode === 'sales_percent' ? 'sales_percentage' : 'fixed_product';
-                        const nextRate = compensationSettings.mode === 'sales_percent' ? Number(compensationSettings.percentRate) || 0 : 0;
-                        const store = useStore.getState();
                         store.users.forEach(user => store.updateUser(user.id, {
                           compensationType: nextType,
                           salesPercentage: nextRate,
@@ -748,6 +817,7 @@ export default function Team() {
                             ...(nextType === 'sales_percentage' ? { baseSalary: 0 } : {})
                           });
                         }
+                        writeTeamCompensationCache(snapshot.companyId, { ...compensationSettings, percentRate: nextRate, fixedAmount: 0, active: true });
                         await refresh();
                         addNotification(compensationSettings.mode === "sales_percent" ? "Compensación global guardada." : "Compensación CUP fijo por producto guardada.", "success");
                       } catch (e: any) {
