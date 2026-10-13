@@ -36,3 +36,9 @@ test("new and queued employee POS passwords provision local and server verifiers
   assert.match(queue, /rememberOfflinePosCredential\(String\(d\.companyId\), String\(d\.localEmployeeId\)/);
   assert.match(queue, /rememberOfflinePosCredential\(String\(d\.companyId\), String\(d\.employeeId\)/);
 });
+
+test("inventory adjustment allows an exact zero regardless of minimum-stock alert threshold", () => {
+  const migration = source("supabase/migrations/20261013230000_fix_zero_inventory_quantity.sql");
+  assert.match(migration, /v_next:=greatest\(0::numeric,v_current\+p_delta\);/);
+  assert.doesNotMatch(migration, /v_next:=greatest\(p_min_quantity,v_current\+p_delta\);/);
+});
