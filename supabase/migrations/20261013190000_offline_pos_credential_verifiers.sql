@@ -56,35 +56,50 @@ begin
     raise exception 'invalid_offline_verifier_format';
   end if;
 
-  -- Validate the plaintext supplied transiently by the just-authenticated client
-  -- against the current server credential before accepting its PBKDF2 verifier.
-  select cm.pos_password_hash into v_hash
-  from public.company_memberships cm
-  where cm.company_id=p_company_id and cm.user_id=p_subject_id
-    and cm.is_owner=true and cm.status='active';
-  if v_hash is not null then
-    v_valid := v_hash = extensions.crypt(trim(p_password), v_hash);
-  else
-    select e.* into v_employee
-    from public.employees e
-    where e.company_id=p_company_id and e.active=true
-      and (e.id=p_subject_id or e.user_id=p_subject_id)
-    order by (e.id=p_subject_id) desc
-    limit 1;
+  -- Validate the supplied password against the canonical current credential.
+  -- Owners/admin web accounts use auth.users; standalone POS workers use the
+  -- private employee credential hash. No stored hash is returned to the client.
+  select e.* into v_employee
+  from public.employees e
+  where e.company_id=p_company_id and e.active=true
+    and (e.id=p_subject_id or e.user_id=p_subject_id)
+  order by (e.id=p_subject_id) desc
+  limit 1;
 
-    if found and v_employee.user_id is not null then
+  if found then
+    if v_employee.user_id is not null then
       select u.encrypted_password into v_hash
       from auth.users u where u.id=v_employee.user_id;
       if v_hash is not null then
         v_valid := v_hash = extensions.crypt(trim(p_password), v_hash);
       end if;
-    elsif found then
+    else
       select c.password_hash into v_hash
       from private.employee_pos_credentials c
       where c.employee_id=v_employee.id;
       if v_hash is not null then
         v_valid := v_hash = extensions.crypt(trim(p_password), v_hash);
       end if;
+    end if;
+  elsif exists (
+    select 1
+    from public.company_memberships cm
+    where cm.company_id=p_company_id and cm.user_id=p_subject_id
+      and cm.status='active'
+      and (
+        cm.is_owner=true
+        or exists (
+          select 1 from public.user_roles ur
+          join public.roles r on r.id=ur.role_id
+          where ur.company_id=cm.company_id and ur.user_id=cm.user_id
+            and r.key='admin'
+        )
+      )
+  ) then
+    select u.encrypted_password into v_hash
+    from auth.users u where u.id=p_subject_id;
+    if v_hash is not null then
+      v_valid := v_hash = extensions.crypt(trim(p_password), v_hash);
     end if;
   end if;
 
@@ -184,26 +199,35 @@ after insert or update of password_hash or delete
 on private.employee_pos_credentials
 for each row execute function private.invalidate_employee_offline_pos_verifier();
 
-create or replace function private.invalidate_owner_offline_pos_verifier()
+create or replace function private.invalidate_auth_user_offline_pos_verifiers()
 returns trigger
 language plpgsql
 security definer
 set search_path to 'public','private','pg_temp'
 as $$
 begin
-  if old.pos_password_hash is distinct from new.pos_password_hash then
-    delete from private.employee_pos_offline_verifiers
-    where company_id=new.company_id and subject_id=new.user_id;
+  if old.encrypted_password is distinct from new.encrypted_password then
+    delete from private.employee_pos_offline_verifiers v
+    where v.subject_id=new.id
+       or exists (
+         select 1 from public.employees e
+         where e.company_id=v.company_id and e.user_id=new.id
+           and v.subject_id in (e.id,e.user_id)
+       )
+       or exists (
+         select 1 from public.company_memberships cm
+         where cm.company_id=v.company_id and cm.user_id=new.id
+           and cm.is_owner=true
+       );
   end if;
   return new;
 end;
 $$;
 
-drop trigger if exists invalidate_owner_offline_pos_verifier
-  on public.company_memberships;
-create trigger invalidate_owner_offline_pos_verifier
-after update of pos_password_hash on public.company_memberships
-for each row execute function private.invalidate_owner_offline_pos_verifier();
+drop trigger if exists invalidate_auth_user_offline_pos_verifiers on auth.users;
+create trigger invalidate_auth_user_offline_pos_verifiers
+after update of encrypted_password on auth.users
+for each row execute function private.invalidate_auth_user_offline_pos_verifiers();
 
 create or replace function private.invalidate_employee_offline_pos_access()
 returns trigger
