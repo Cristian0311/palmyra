@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AtSign, BriefcaseBusiness, Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, Edit3, Hash, Info, Link2, LockKeyhole, Mail, MapPin, MoreHorizontal, Plus, RefreshCw, ShieldCheck, UserRound, UserX, WalletCards, Warehouse, X, Shield, Save } from "lucide-react";
+import { AtSign, BriefcaseBusiness, Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, Edit3, Eye, EyeOff, Hash, Info, Link2, LockKeyhole, Mail, MapPin, MoreHorizontal, Plus, RefreshCw, ShieldCheck, UserRound, UserX, WalletCards, Warehouse, X, Shield, Save } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useStore } from "../store/useStore";
 import { loadSaaSContext } from "../services/saas";
@@ -27,7 +27,20 @@ import { enqueueOfflineItem } from "../services/offlineQueue";
 import "./team.css";
 
 const TEAM_CACHE_PREFIX = "palmyra-team-cache-v1:";
+const TEAM_COMP_CACHE_PREFIX = "palmyra-team-compensation-cache-v1:";
 function teamCacheKey(companyId: string) { return TEAM_CACHE_PREFIX + companyId; }
+function teamCompensationCacheKey(companyId: string) { return TEAM_COMP_CACHE_PREFIX + companyId; }
+function readTeamCompensationCache(companyId?: string | null): CompanyCompensationSettings | null {
+  if (!companyId || typeof localStorage === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(teamCompensationCacheKey(companyId));
+    return raw ? JSON.parse(raw) as CompanyCompensationSettings : null;
+  } catch { return null; }
+}
+function writeTeamCompensationCache(companyId: string, settings: CompanyCompensationSettings) {
+  if (typeof localStorage === "undefined") return;
+  try { localStorage.setItem(teamCompensationCacheKey(companyId), JSON.stringify(settings)); } catch {}
+}
 function readTeamCache(companyId?: string | null): TeamSnapshot | null {
   if (!companyId || typeof localStorage === "undefined") return null;
   try { const raw = localStorage.getItem(teamCacheKey(companyId)); return raw ? JSON.parse(raw) as TeamSnapshot : null; } catch { return null; }
@@ -75,6 +88,7 @@ export default function Team() {
   const [roleFormStep, setRoleFormStep] = useState<1 | 2>(1);
   const [compensationSettings, setCompensationSettings] = useState<CompanyCompensationSettings>({ mode: 'fixed_product', percentRate: 0, fixedAmount: 0, workerCount: 1, active: true });
   const [savingCompensation, setSavingCompensation] = useState(false);
+  const [showPosPassword, setShowPosPassword] = useState(false);
 
   const canManageRoles = currentUser?.permissions?.includes("roles.manage") || currentUser?.role === "admin";
   const canUseCustomRoles = context?.subscription?.planCode !== "starter";
@@ -95,15 +109,37 @@ export default function Team() {
     setLoading(true);
     setError("");
     const offline = typeof navigator !== "undefined" && !navigator.onLine;
-    const cached = readTeamCache(snapshot?.companyId || context?.companyId);
-    if (offline && cached) { setSnapshot(cached); setLoading(false); return; }
+    let knownContext = context;
+    if (offline && !knownContext) {
+      try {
+        knownContext = await loadSaaSContext();
+        if (knownContext) setContext(knownContext);
+      } catch {}
+    }
+    const companyId = snapshot?.companyId || knownContext?.companyId || context?.companyId;
+    const cached = readTeamCache(companyId);
+    if (offline && cached) {
+      setSnapshot(cached);
+      const cachedCompensation = readTeamCompensationCache(cached.companyId);
+      if (cachedCompensation) setCompensationSettings(cachedCompensation);
+      setLoading(false);
+      return;
+    }
     try {
       const [nextContext, nextSnapshot] = await Promise.all([loadSaaSContext(), loadTeamSnapshot()]);
       if (!nextSnapshot) throw new Error("No se recibió el estado del equipo.");
       setContext(nextContext);
       setSnapshot(nextSnapshot);
       writeTeamCache(nextSnapshot);
-      try { setCompensationSettings(await loadCompensationSettings(nextSnapshot.companyId)); } catch (e) { console.warn("[PALMYRA] No se pudo cargar compensación global", e); }
+      try {
+        const loadedCompensation = await loadCompensationSettings(nextSnapshot.companyId);
+        setCompensationSettings(loadedCompensation);
+        writeTeamCompensationCache(nextSnapshot.companyId, loadedCompensation);
+      } catch (e) {
+        const cachedCompensation = readTeamCompensationCache(nextSnapshot.companyId);
+        if (cachedCompensation) setCompensationSettings(cachedCompensation);
+        console.warn("[PALMYRA] No se pudo cargar compensación global", e);
+      }
       if (!form.roleId) {
         const employeeRole = (nextSnapshot.roles || []).find(role => role.key === "employee") || (nextSnapshot.roles || []).find(role => role.key !== "admin");
         if (employeeRole) setForm(prev => ({ ...prev, roleId: employeeRole.id }));
@@ -115,6 +151,8 @@ export default function Team() {
       const fallback = readTeamCache(snapshot?.companyId || context?.companyId);
       if (fallback) {
         setSnapshot(fallback);
+        const cachedCompensation = readTeamCompensationCache(fallback.companyId);
+        if (cachedCompensation) setCompensationSettings(cachedCompensation);
         setError(typeof navigator !== "undefined" && !navigator.onLine ? "Mostrando el último estado guardado. Los cambios nuevos se sincronizarán al recuperar conexión." : "No se pudo actualizar desde la nube; se conserva el último estado local.");
       } else setError(e?.message || "No se pudo cargar el equipo.");
     } finally {
@@ -149,6 +187,7 @@ export default function Team() {
   const resetForm = () => {
     setEditing(null);
     setInviteLink(null);
+    setShowPosPassword(false);
     setForm({
       fullName: "",
       employeeCode: "",
@@ -212,6 +251,42 @@ export default function Team() {
     if (!canUseCustomRoles) return setError("Los roles personalizados están disponibles desde el plan Caravana.");
     if (roleForm.name.trim().length < 2) return setError("Escribe el nombre del rol.");
     if (roleForm.key.trim().length < 2) return setError("Escribe una clave para el rol.");
+    const offline = typeof navigator !== "undefined" && !navigator.onLine;
+    if (offline) {
+      try {
+        const roleId = editingRole?.id || generateId();
+        const role: TeamRole = {
+          id: roleId,
+          key: roleForm.key.trim().toLowerCase(),
+          name: roleForm.name.trim(),
+          description: roleForm.description.trim(),
+          is_system: false,
+          company_id: snapshot.companyId,
+          permission_keys: [...roleForm.permissionKeys]
+        };
+        await enqueueOfflineItem("team_role_upsert", {
+          companyId: snapshot.companyId,
+          roleId,
+          key: role.key,
+          name: role.name,
+          description: role.description || "",
+          permissionKeys: [...roleForm.permissionKeys]
+        }, "team-role:" + roleId);
+        const nextSnapshot: TeamSnapshot = {
+          ...snapshot,
+          roles: editingRole
+            ? snapshot.roles.map(item => item.id === roleId ? role : item)
+            : [role, ...snapshot.roles]
+        };
+        setSnapshot(nextSnapshot);
+        writeTeamCache(nextSnapshot);
+        setShowRoleForm(false);
+        addNotification(editingRole ? "Cambios del rol guardados offline; se sincronizarán al volver Internet." : "Rol guardado offline; se sincronizará al volver Internet.", "success");
+      } catch (e: any) {
+        setError(e?.message || "No se pudo guardar el rol offline.");
+      }
+      return;
+    }
     setBusy(true);
     setError("");
     try {
@@ -244,6 +319,7 @@ export default function Team() {
   const openEdit = (employee: TeamEmployee) => {
     setEditing(employee);
     setInviteLink(null);
+    setShowPosPassword(false);
     setMessage("");
     setError("");
     setForm({
@@ -253,7 +329,7 @@ export default function Team() {
       roleId: employee.role_id,
       warehouseIds: [...employee.warehouse_ids],
       email: employee.login_email || employee.pending_invitation?.email || "",
-      sendInvite: !employee.user_id,
+      sendInvite: Boolean(employee.user_id || employee.pending_invitation),
       posPassword: "",
     });
     setFormStep(1);
@@ -281,11 +357,12 @@ export default function Team() {
     if (!form.employeeCode.trim()) return setError("Escribe un código de empleado.");
     if (!form.roleId) return setError("Selecciona un rol.");
     if (!form.warehouseIds.length) return setError("Selecciona al menos un almacén.");
-    if (form.sendInvite && !form.email.trim()) return setError("Escribe el correo del trabajador para crear su acceso web.");
-    if (!form.sendInvite && !editing && form.posPassword.trim().length < 6) {
-      return setError("Define una contraseña de al menos 6 caracteres para usar este empleado en el POS.");
+    if (form.sendInvite && !editing?.user_id && !form.email.trim()) return setError("Escribe el correo del trabajador para crear su acceso web.");
+    const needsNewPosPassword = !form.sendInvite && (!editing || Boolean(editing.user_id || editing.pending_invitation));
+    if (needsNewPosPassword && form.posPassword.trim().length < 6) {
+      return setError("Define una contraseña POS nueva de al menos 6 caracteres para retirar el acceso web.");
     }
-    if (!form.sendInvite && editing && form.posPassword.trim().length > 0 && form.posPassword.trim().length < 6) {
+    if (!form.sendInvite && !needsNewPosPassword && form.posPassword.trim().length > 0 && form.posPassword.trim().length < 6) {
       return setError("La nueva contraseña del POS debe tener al menos 6 caracteres.");
     }
 
@@ -315,6 +392,67 @@ export default function Team() {
       return;
     }
 
+    // Edición offline: actualizar la vista local y dejar el cambio durable en
+    // cola. Al volver Internet, el handler aplica los cambios y el modo de acceso
+    // real mediante las RPC protegidas.
+    if (editing && offline) {
+      try {
+        const role = snapshot.roles.find(item => item.id === form.roleId);
+        const now = new Date().toISOString();
+        const normalizedEmail = form.email.trim().toLowerCase() || editing.login_email || "";
+        const pendingInvitation: TeamEmployee["pending_invitation"] =
+          form.sendInvite && !editing.user_id
+            ? {
+                id: editing.pending_invitation?.id || editing.id + "-invite-offline",
+                email: normalizedEmail,
+                status: "pending_offline",
+                expires_at: new Date(Date.now() + 7 * 86400000).toISOString(),
+                created_at: editing.pending_invitation?.created_at || now
+              }
+            : form.sendInvite ? (editing.pending_invitation || null) : null;
+        const nextEmployee: TeamEmployee = {
+          ...editing,
+          employee_code: form.employeeCode.trim(),
+          full_name: form.fullName.trim(),
+          login_email: normalizedEmail || null,
+          base_salary: Number(form.baseSalary) || 0,
+          role_id: form.roleId,
+          role_name: role?.name || editing.role_name || "Empleado",
+          role_key: role?.key || editing.role_key || "employee",
+          warehouse_ids: [...form.warehouseIds],
+          default_warehouse_id: form.warehouseIds[0] || null,
+          user_id: form.sendInvite ? (editing.user_id || null) : null,
+          pending_invitation: pendingInvitation
+        };
+        await enqueueOfflineItem("employee_update", {
+          companyId: snapshot.companyId,
+          employeeId: editing.id,
+          employeeUserId: editing.user_id || null,
+          employeeCode: form.employeeCode.trim(),
+          fullName: form.fullName.trim(),
+          baseSalary: Number(form.baseSalary) || 0,
+          roleId: form.roleId,
+          warehouseIds: [...form.warehouseIds],
+          sendInvite: form.sendInvite,
+          email: normalizedEmail,
+          posPassword: form.sendInvite ? undefined : (form.posPassword.trim() || undefined)
+        }, "employee-update:" + editing.id + ":" + generateId("OFF"));
+        const nextSnapshot: TeamSnapshot = {
+          ...snapshot,
+          employees: snapshot.employees.map(item => item.id === editing.id ? nextEmployee : item)
+        };
+        setSnapshot(nextSnapshot);
+        writeTeamCache(nextSnapshot);
+        setMessage("Cambios guardados en este dispositivo. Se sincronizarán cuando vuelva Internet.");
+        setShowForm(false);
+        setFormStep(1);
+        addNotification("Cambios del trabajador guardados offline y puestos en cola para sincronización.", "success");
+      } catch (e: any) {
+        setError(e?.message || "No se pudieron guardar los cambios offline.");
+      }
+      return;
+    }
+
     setBusy(true);
     try {
       if (editing) {
@@ -339,6 +477,7 @@ export default function Team() {
             warehouseIds: form.warehouseIds,
             posPassword: form.posPassword.trim() || undefined
           });
+          setEditing(previous => previous ? { ...previous, user_id: null, pending_invitation: null } : previous);
         }
 
         if (form.sendInvite && !editing.user_id) {
@@ -351,6 +490,18 @@ export default function Team() {
           });
           const link = `${window.location.origin}/invite?token=${encodeURIComponent(invite.token)}`;
           setInviteLink(link);
+          setEditing(previous => previous ? {
+            ...previous,
+            user_id: null,
+            login_email: form.email.trim().toLowerCase(),
+            pending_invitation: {
+              id: invite.id,
+              email: form.email.trim().toLowerCase(),
+              status: "pending",
+              expires_at: invite.expires_at,
+              created_at: new Date().toISOString()
+            }
+          } : previous);
           setMessage(invite.email_sent ? "Empleado actualizado y correo de invitación reenviado." : "Empleado actualizado. Se generó un enlace nuevo para compartir.");
         } else {
           setMessage("Empleado actualizado.");
@@ -394,6 +545,23 @@ export default function Team() {
 
   const changeStatus = async (employee: TeamEmployee) => {
     setMenuId(null);
+    const offline = typeof navigator !== "undefined" && !navigator.onLine;
+    if (offline) {
+      try {
+        const active = !employee.active;
+        const nextSnapshot = {
+          ...snapshot!,
+          employees: snapshot!.employees.map(item => item.id === employee.id ? { ...item, active } : item)
+        };
+        await enqueueOfflineItem("employee_status", { employeeId: employee.id, active }, "employee-status:" + employee.id + ":" + active + ":" + generateId("OFF"));
+        setSnapshot(nextSnapshot);
+        writeTeamCache(nextSnapshot);
+        addNotification(active ? "Empleado reactivado offline; se sincronizará al volver Internet." : "Empleado desactivado offline; se revocará el acceso al sincronizar.", "success");
+      } catch (e: any) {
+        addNotification(e?.message || "No se pudo guardar el cambio offline.", "error");
+      }
+      return;
+    }
     setBusy(true);
     try {
       await setEmployeeStatus(employee.id, !employee.active);
@@ -412,8 +580,26 @@ export default function Team() {
       `Eliminar a ${employee.full_name}? Esta acción eliminará su acceso a la empresa, invitaciones, credenciales POS y configuraciones personales. Las ventas y sesiones históricas conservarán el empleado como referencia cuando la base de datos lo permita.`
     );
     if (!confirmed) return;
-    setBusy(true);
     setError("");
+    const offline = typeof navigator !== "undefined" && !navigator.onLine;
+    if (offline) {
+      try {
+        await enqueueOfflineItem("employee_delete", { employeeId: employee.id }, "employee-delete:" + employee.id);
+        const nextSnapshot = {
+          ...snapshot!,
+          employees: snapshot!.employees.filter(item => item.id !== employee.id)
+        };
+        setSnapshot(nextSnapshot);
+        writeTeamCache(nextSnapshot);
+        addNotification("Eliminación guardada offline; se completará al volver Internet.", "success");
+      } catch (e: any) {
+        const message = e?.message || "No se pudo guardar la eliminación offline.";
+        addNotification(message, "error");
+        setError(message);
+      }
+      return;
+    }
+    setBusy(true);
     try {
       await deleteCompanyEmployee(employee.id);
       await refresh();
@@ -430,6 +616,23 @@ export default function Team() {
   const revokeInvite = async (employee: TeamEmployee) => {
     setMenuId(null);
     if (!employee.pending_invitation) return;
+    const offline = typeof navigator !== "undefined" && !navigator.onLine;
+    if (offline) {
+      try {
+        const invitationId = employee.pending_invitation.id;
+        await enqueueOfflineItem("invitation_revoke", { companyId: snapshot!.companyId, employeeId: employee.id }, "invitation-revoke:" + employee.id + ":" + generateId("OFF"));
+        const nextSnapshot = {
+          ...snapshot!,
+          employees: snapshot!.employees.map(item => item.id === employee.id ? { ...item, pending_invitation: null } : item)
+        };
+        setSnapshot(nextSnapshot);
+        writeTeamCache(nextSnapshot);
+        addNotification("Revocación guardada offline; se aplicará al volver Internet.", "success");
+      } catch (e: any) {
+        addNotification(e?.message || "No se pudo guardar la revocación offline.", "error");
+      }
+      return;
+    }
     setBusy(true);
     try {
       await revokeEmployeeInvitation(employee.pending_invitation.id);
@@ -598,12 +801,44 @@ export default function Team() {
                       if (!snapshot?.companyId) return;
                       setSavingCompensation(true); setError(""); setMessage("");
                       try {
-                        await saveCompensationSettings({ companyId: snapshot.companyId, mode: compensationSettings.mode, percentRate: compensationSettings.mode === 'sales_percent' ? Number(compensationSettings.percentRate) || 0 : 0 });
+                        const nextRate = compensationSettings.mode === 'sales_percent' ? Number(compensationSettings.percentRate) || 0 : 0;
+                        const nextType = compensationSettings.mode === 'sales_percent' ? 'sales_percentage' : 'fixed_product';
+                        const store = useStore.getState();
+                        const offline = typeof navigator !== "undefined" && !navigator.onLine;
+                        if (offline) {
+                          const nextSettings = {
+                            ...compensationSettings,
+                            percentRate: nextRate,
+                            fixedAmount: 0,
+                            active: true
+                          };
+                          await enqueueOfflineItem("team_compensation_settings", {
+                            companyId: snapshot.companyId,
+                            mode: compensationSettings.mode,
+                            percentRate: nextRate
+                          }, "team-compensation:" + snapshot.companyId);
+                          setCompensationSettings(nextSettings);
+                          writeTeamCompensationCache(snapshot.companyId, nextSettings);
+                          store.users.forEach(user => store.updateUser(user.id, {
+                            compensationType: nextType,
+                            salesPercentage: nextRate,
+                            commissionRate: nextRate,
+                            ...(nextType === 'sales_percentage' ? { baseSalary: 0 } : {})
+                          }));
+                          if (store.currentUser) {
+                            store.updateUser(store.currentUser.id, {
+                              compensationType: nextType,
+                              salesPercentage: nextRate,
+                              commissionRate: nextRate,
+                              ...(nextType === 'sales_percentage' ? { baseSalary: 0 } : {})
+                            });
+                          }
+                          addNotification("Configuración de pago guardada offline; se sincronizará al volver Internet.", "success");
+                          return;
+                        }
+                        await saveCompensationSettings({ companyId: snapshot.companyId, mode: compensationSettings.mode, percentRate: nextRate });
                         // Sincronizar inmediatamente la modalidad global con el estado local del POS.
                         // Así Caja/POS/Reportes no siguen usando una configuración antigua persistida.
-                        const nextType = compensationSettings.mode === 'sales_percent' ? 'sales_percentage' : 'fixed_product';
-                        const nextRate = compensationSettings.mode === 'sales_percent' ? Number(compensationSettings.percentRate) || 0 : 0;
-                        const store = useStore.getState();
                         store.users.forEach(user => store.updateUser(user.id, {
                           compensationType: nextType,
                           salesPercentage: nextRate,
@@ -618,6 +853,7 @@ export default function Team() {
                             ...(nextType === 'sales_percentage' ? { baseSalary: 0 } : {})
                           });
                         }
+                        writeTeamCompensationCache(snapshot.companyId, { ...compensationSettings, percentRate: nextRate, fixedAmount: 0, active: true });
                         await refresh();
                         addNotification(compensationSettings.mode === "sales_percent" ? "Compensación global guardada." : "Compensación CUP fijo por producto guardada.", "success");
                       } catch (e: any) {
@@ -671,7 +907,7 @@ export default function Team() {
                     {employee.pending_invitation && employee.active && <em className="pending">Invitación pendiente</em>}
                   </div>
                   <div className="team-employee-contact">
-                    <span><Mail className="w-3 h-3" />{employee.login_email || employee.pending_invitation?.email || "Sin acceso web"}</span>
+                    <span><Mail className="w-3 h-3" />{employee.user_id || employee.pending_invitation ? (employee.login_email || employee.pending_invitation?.email || "Cuenta web") : "Sin acceso web"}</span>
                     <span><MapPin className="w-3 h-3" />{warehouseNames.length ? warehouseNames.join(", ") : "Sin almacén"}</span>
                   </div>
                   <div className="relative shrink-0">
@@ -780,7 +1016,7 @@ export default function Team() {
                 </div>
               </section>
               <section className={cn("team-form-section team-access-section", form.sendInvite && "is-enabled", formStep !== 3 && "team-form-hidden")} data-section="employee-access" aria-hidden={formStep !== 3}>
-                <div className="team-form-section-head"><div className="team-form-section-icon"><Link2 className="w-4 h-4" /></div><div className="min-w-0"><h3>Acceso al sistema</h3><p>Elige si tendrá cuenta web o solo contraseña para operar en el POS.</p></div><label className="team-switch ml-auto shrink-0"><input type="checkbox" checked={form.sendInvite} onChange={e => setForm({...form, sendInvite:e.target.checked, posPassword: e.target.checked ? "" : form.posPassword})} disabled={busy || Boolean(editing?.user_id)} className="sr-only" /><span className="team-switch-track"><span className="team-switch-thumb" /></span></label></div>
+                <div className="team-form-section-head"><div className="team-form-section-icon"><Link2 className="w-4 h-4" /></div><div className="min-w-0"><h3>Acceso al sistema</h3><p>Elige si tendrá cuenta web o solo contraseña para operar en el POS.</p></div><label className="team-switch ml-auto shrink-0"><input type="checkbox" checked={form.sendInvite} onChange={e => { setForm({...form, sendInvite:e.target.checked, posPassword: e.target.checked ? "" : form.posPassword}); setShowPosPassword(false); }} disabled={busy} className="sr-only" /><span className="team-switch-track"><span className="team-switch-thumb" /></span></label></div>
 
                 {form.sendInvite ? (
                   <div className="team-access-card">
@@ -791,8 +1027,8 @@ export default function Team() {
                 ) : (
                   <div className="team-access-card">
                     <div className="flex items-start gap-3"><div className="team-access-icon"><LockKeyhole className="w-4 h-4" /></div><div className="min-w-0 flex-1"><p className="text-xs font-black text-primary">Solo acceso al POS</p><p className="text-[10px] sm:text-[11px] text-muted leading-5 mt-0.5">Este trabajador no tendrá cuenta web. Define aquí una contraseña que quedará protegida y se usará para seleccionar y reanudar su turno en el POS.</p></div></div>
-                    <label className="team-field-wrap mt-3"><span className="team-field-label">{editing ? "Nueva contraseña del POS" : "Contraseña del POS"} <b>{editing ? "" : "*"}</b></span><span className="team-field"><span className="team-field-icon"><LockKeyhole className="w-4 h-4" /></span><input type="password" value={form.posPassword} onChange={e => setForm({...form,posPassword:e.target.value})} disabled={busy} className="team-field-input" placeholder={editing ? "Dejar vacío para conservar la actual" : "Mínimo 6 caracteres"} autoComplete="new-password" /></span></label>
-                    <div className="team-access-off"><Info className="w-4 h-4 shrink-0" />La contraseña se guarda protegida en Supabase; nunca se muestra en la lista de empleados.</div>
+                    <label className="team-field-wrap mt-3"><span className="team-field-label">{editing ? "Nueva contraseña del POS" : "Contraseña del POS"} <b>{!editing || editing.user_id || editing.pending_invitation ? "*" : ""}</b></span><span className="team-field"><span className="team-field-icon"><LockKeyhole className="w-4 h-4" /></span><input type={showPosPassword ? "text" : "password"} value={form.posPassword} onChange={e => setForm({...form,posPassword:e.target.value})} disabled={busy} className="team-field-input" placeholder={editing && !editing.user_id && !editing.pending_invitation ? "Vacío = conservar la contraseña actual" : editing ? "Define una contraseña POS nueva" : "Mínimo 6 caracteres"} autoComplete="new-password" /><button type="button" onClick={() => setShowPosPassword(value => !value)} disabled={busy} aria-label={showPosPassword ? "Ocultar contraseña" : "Mostrar contraseña"} className="px-2 mr-1 text-muted hover:text-primary" title={showPosPassword ? "Ocultar contraseña" : "Mostrar contraseña"}>{showPosPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button></span></label>
+                    <div className="team-access-off"><Info className="w-4 h-4 shrink-0" />{editing && !editing.user_id && !editing.pending_invitation ? "La contraseña actual no se puede recuperar porque se guarda como hash seguro. Déjalo vacío para conservarla o escribe una nueva; el icono del ojo permite verla mientras escribes." : "Define una contraseña POS nueva. Puedes verla con el icono del ojo mientras la escribes; PALMYRA guarda únicamente su hash protegido."}</div>
                   </div>
                 )}
               </section>

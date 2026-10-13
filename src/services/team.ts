@@ -105,6 +105,7 @@ function throwRpcError(error: any): never {
     invalid_employee_code: "El código del trabajador no es válido.",
     invalid_salary: "El salario base no es válido.",
     employee_id_conflict: "No se pudo actualizar ese empleado porque pertenece a otra empresa.",
+    employee_web_access_owner_cannot_be_disabled: "No se puede retirar el acceso web de la cuenta propietaria de la empresa.",
     invitation_not_found: "No se encontró la invitación del trabajador.",
     invitation_already_accepted: "La invitación del trabajador ya fue aceptada.",
     invitation_revoked: "La invitación del trabajador fue revocada.",

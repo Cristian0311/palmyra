@@ -355,7 +355,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
     pushTransactionToSupabase(updated).catch(() => {});
   },
 
-  cancelSession: async (sessionId: string, reason = 'Cancelación de turno', password?: string) => {
+  cancelSession: async (sessionId: string, reason = 'Cancelación de turno') => {
     const state = get();
     const session = state.cashSessions.find(s => s.id === sessionId);
     if (!session) return false;
@@ -366,20 +366,20 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
 
     const userId = state.currentUser?.id || 'system';
     const cancelledAt = new Date().toISOString();
-    // La cancelación se confirma primero en Supabase. Nunca marcamos un turno
-    // como cancelado localmente si la respuesta del servidor es incierta: así
-    // un timeout no convierte una operación sin contraseña en una cancelación.
+
+    // La sesión autenticada y el permiso cash.close se validan en Supabase.
+    // No se requiere una contraseña adicional del empleado para esta acción.
     if (typeof navigator === 'undefined' || !navigator.onLine) {
       get().addNotification(
         'Conexión necesaria para cancelar el turno',
         'warning',
-        'La contraseña se valida contra el empleado que abrió la caja. Conéctate a Internet para confirmar la cancelación de forma segura.'
+        'Conéctate a Internet para que PALMYRA confirme la cancelación con los permisos de tu empresa.'
       );
       return false;
     }
 
     try {
-      const res = await callCancelSessionRPC(sessionId, userId, reason, password);
+      const res = await callCancelSessionRPC(sessionId, userId, reason);
       if (!res.success) {
         get().addNotification(res.error || 'No se pudo cancelar el turno.', 'error');
         return false;
@@ -415,25 +415,10 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
       get().addNotification(
         'No se pudo confirmar la cancelación',
         'warning',
-        'El turno permanece abierto. Vuelve a intentarlo con conexión estable; PALMYRA no lo cancelará sin validación.'
+        'El turno permanece abierto. Vuelve a intentarlo con una conexión estable.'
       );
       return false;
     }
-
-    // La cancelación de caja requiere validación contra el empleado que abrió
-    // el turno. No permitimos cancelaciones offline porque el dispositivo no
-    // conserva la contraseña en el estado persistido y no debemos aceptar una
-    // credencial que no pueda validar el servidor.
-    if (typeof navigator === 'undefined' || !navigator.onLine) {
-      get().addNotification(
-        'Conexión necesaria para cancelar el turno',
-        'warning',
-        'La contraseña se valida contra el empleado que abrió la caja. Conéctate a Internet para confirmar la cancelación de forma segura.'
-      );
-      return false;
-    }
-
-    return false;
   },
 
   createReturn: (returnItem) => {

@@ -39,24 +39,172 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
   switch (type) {
     case 'employee_create': {
       const d = data || {};
-      if (!d.companyId || !d.fullName || !d.employeeCode || !d.roleId || !Array.isArray(d.warehouseIds) || !d.warehouseIds.length) throw new PermanentSyncError('Trabajador offline incompleto.');
+      if (!d.companyId || !d.localEmployeeId || !d.fullName || !d.employeeCode || !d.roleId || !Array.isArray(d.warehouseIds) || !d.warehouseIds.length) {
+        throw new PermanentSyncError('Trabajador offline incompleto.');
+      }
+      // Keep the UUID created on the offline device as the canonical employee ID.
+      // Later queued actions (status, edit, delete) can then safely target the same row.
+      const { error: employeeError } = await supabase.rpc('create_employee_pos_secure', {
+        p_company_id: d.companyId,
+        p_employee_id: d.localEmployeeId,
+        p_employee_code: d.employeeCode,
+        p_full_name: d.fullName,
+        p_base_salary: Number(d.baseSalary) || 0,
+        p_role_id: d.roleId,
+        p_warehouse_ids: d.warehouseIds,
+        p_pos_password: d.sendInvite ? null : (String(d.posPassword || '').trim() || null)
+      });
+      if (employeeError) throw employeeError;
+
       if (d.sendInvite) {
-        const { data: invite, error } = await supabase.rpc('create_employee_with_invitation', {
-          p_company_id: d.companyId, p_employee_code: d.employeeCode, p_full_name: d.fullName, p_base_salary: Number(d.baseSalary) || 0,
-          p_role_id: d.roleId, p_warehouse_ids: d.warehouseIds, p_email: String(d.email || '').trim().toLowerCase()
+        const { data: invitation, error } = await supabase.rpc('create_company_invitation', {
+          p_company_id: d.companyId,
+          p_employee_id: d.localEmployeeId,
+          p_email: String(d.email || '').trim().toLowerCase(),
+          p_role_id: d.roleId,
+          p_warehouse_ids: d.warehouseIds
         });
         if (error) throw error;
-        const invitation = invite as any;
-        if (invitation?.token && d.email) {
+        const invite = invitation as any;
+        if (invite?.token && d.email) {
           const { error: mailError } = await supabase.functions.invoke('send-company-invitation', { body: {
-            companyId: d.companyId, employeeId: invitation.employee_id, email: invitation.email || String(d.email).trim().toLowerCase(), name: d.fullName, token: invitation.token
+            companyId: d.companyId,
+            employeeId: d.localEmployeeId,
+            email: invite.email || String(d.email).trim().toLowerCase(),
+            name: d.fullName,
+            token: invite.token
           }});
           if (mailError) console.warn('[offlineSync] Trabajador creado pero la invitación no pudo enviarse:', mailError);
         }
+      }
+      return true;
+    }
+    case 'team_role_upsert': {
+      const d = data || {};
+      if (!d.companyId || !d.roleId || !d.key || !d.name || !Array.isArray(d.permissionKeys)) {
+        throw new PermanentSyncError('Rol offline incompleto.');
+      }
+      const { error } = await supabase.rpc('upsert_company_role', {
+        p_company_id: d.companyId,
+        p_role_id: d.roleId,
+        p_key: d.key,
+        p_name: d.name,
+        p_description: d.description || '',
+        p_permission_keys: d.permissionKeys
+      });
+      if (error) throw error;
+      return true;
+    }
+    case 'team_compensation_settings': {
+      const d = data || {};
+      if (!d.companyId || !['fixed_product', 'sales_percent'].includes(String(d.mode))) {
+        throw new PermanentSyncError('Configuración offline de compensación incompleta.');
+      }
+      const rate = Math.max(0, Math.min(100, Number(d.percentRate) || 0));
+      const { error } = await supabase.rpc('upsert_compensation_settings', {
+        p_company_id: d.companyId,
+        p_mode: d.mode,
+        p_percent_rate: d.mode === 'sales_percent' ? rate : 0,
+        p_fixed_amount: 0,
+        p_worker_count: 1,
+        p_active: true
+      });
+      if (error) throw error;
+      return true;
+    }
+    case 'employee_status': {
+      const d = data || {};
+      if (!d.employeeId || typeof d.active !== 'boolean') throw new PermanentSyncError('Cambio offline de estado de empleado incompleto.');
+      const { error } = await supabase.rpc('set_company_employee_status', {
+        p_employee_id: d.employeeId,
+        p_active: d.active
+      });
+      if (error) throw error;
+      return true;
+    }
+    case 'employee_delete': {
+      const employeeId = String(data?.employeeId || '');
+      if (!employeeId) throw new PermanentSyncError('Eliminación offline de empleado sin ID.');
+      // A previous attempt may have committed just before the connection dropped.
+      // Treat a missing row as an idempotent success rather than retrying forever.
+      const { data: employee, error: lookupError } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('id', employeeId)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+      if (!employee) return true;
+      const { error } = await supabase.rpc('delete_company_employee', { p_employee_id: employeeId });
+      if (error) throw error;
+      return true;
+    }
+    case 'invitation_revoke': {
+      const companyId = String(data?.companyId || '');
+      const employeeId = String(data?.employeeId || '');
+      if (!companyId || !employeeId) throw new PermanentSyncError('Revocación offline de invitación sin empresa o empleado.');
+      const { data: pendingInvite, error: lookupError } = await supabase
+        .from('company_invitations')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('employee_id', employeeId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+      if (!pendingInvite?.id) return true; // It may already have been revoked by a queued access-mode change.
+      const { error } = await supabase.rpc('revoke_company_invitation', { p_invitation_id: pendingInvite.id });
+      if (error) throw error;
+      return true;
+    }
+    case 'employee_update': {
+      const d = data || {};
+      if (!d.companyId || !d.employeeId || !d.fullName || !d.employeeCode || !d.roleId || !Array.isArray(d.warehouseIds) || !d.warehouseIds.length) {
+        throw new PermanentSyncError('Actualización offline del trabajador incompleta.');
+      }
+      if (d.sendInvite) {
+        const { error: updateError } = await supabase.rpc('create_employee_pos_secure', {
+          p_company_id: d.companyId,
+          p_employee_id: d.employeeId,
+          p_employee_code: d.employeeCode,
+          p_full_name: d.fullName,
+          p_base_salary: Number(d.baseSalary) || 0,
+          p_role_id: d.roleId,
+          p_warehouse_ids: d.warehouseIds,
+          p_pos_password: null
+        });
+        if (updateError) throw updateError;
+
+        if (!d.employeeUserId) {
+          const { data: invite, error: inviteError } = await supabase.rpc('create_company_invitation', {
+            p_company_id: d.companyId,
+            p_employee_id: d.employeeId,
+            p_email: String(d.email || '').trim().toLowerCase(),
+            p_role_id: d.roleId,
+            p_warehouse_ids: d.warehouseIds
+          });
+          if (inviteError) throw inviteError;
+          if ((invite as any)?.token && d.email) {
+            const { error: mailError } = await supabase.functions.invoke('send-company-invitation', { body: {
+              companyId: d.companyId,
+              employeeId: d.employeeId,
+              email: (invite as any).email || String(d.email).trim().toLowerCase(),
+              name: d.fullName,
+              token: (invite as any).token
+            }});
+            if (mailError) console.warn('[offlineSync] Trabajador actualizado pero la invitación no pudo enviarse:', mailError);
+          }
+        }
       } else {
         const { error } = await supabase.rpc('create_employee_pos_secure', {
-          p_company_id: d.companyId, p_employee_code: d.employeeCode, p_full_name: d.fullName, p_base_salary: Number(d.baseSalary) || 0,
-          p_role_id: d.roleId, p_warehouse_ids: d.warehouseIds, p_pos_password: String(d.posPassword || '').trim() || null
+          p_company_id: d.companyId,
+          p_employee_id: d.employeeId,
+          p_employee_code: d.employeeCode,
+          p_full_name: d.fullName,
+          p_base_salary: Number(d.baseSalary) || 0,
+          p_role_id: d.roleId,
+          p_warehouse_ids: d.warehouseIds,
+          p_pos_password: String(d.posPassword || '').trim() || null
         });
         if (error) throw error;
       }

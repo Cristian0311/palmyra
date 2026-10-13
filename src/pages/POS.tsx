@@ -547,58 +547,24 @@ export default function POS() {
   const [deductFromSalary, setDeductFromSalary] = useState(false);
 
   const [showCancelShiftModal, setShowCancelShiftModal] = useState(false);
-  const [cancelShiftPassword, setCancelShiftPassword] = useState("");
   const [isCancellingShift, setIsCancellingShift] = useState(false);
 
   const handleCancelShift = async () => {
     if (!currentSession || isCancellingShift) return;
 
-    // La autorización pertenece SIEMPRE al empleado que abrió el turno.
-    const worker = users.find(u =>
-      u.id === currentSession.userId ||
-      (u.name && currentSession.workerName && u.name.toLowerCase() === currentSession.workerName.toLowerCase())
-    );
-    const targetUser = worker;
-    if (!targetUser?.id) {
-      setPosError("No se pudo identificar al empleado que abrió este turno.");
-      setTimeout(() => setPosError(""), 3000);
-      return;
-    }
-
-    let authorized = false;
-    try {
-      const { companyId } = await getActiveTenant();
-      if (!navigator.onLine) {
-        authorized = await verifyOfflinePosCredential(companyId, targetUser.id, cancelShiftPassword);
-      } else {
-        try {
-          authorized = await verifyEmployeePosAccessPassword(companyId, targetUser.id, cancelShiftPassword);
-        } catch {
-          authorized = await verifyOfflinePosCredential(companyId, targetUser.id, cancelShiftPassword);
-        }
-      }
-    } catch {
-      authorized = false;
-    }
-
-    if (!authorized) {
-      setPosError(`Debes ingresar la contraseña del trabajador que inició el turno (${worker?.name || 'trabajador'}).`);
-      setTimeout(() => setPosError(""), 3000);
-      return;
-    }
-
+    // La sesión autenticada y el permiso cash.close se validan en el servidor.
+    // La cancelación no solicita una segunda contraseña al trabajador.
     setIsCancellingShift(true);
     setPosError("");
     try {
       const sessionId = currentSession.id;
-      const ok = await useStore.getState().cancelSession(sessionId, 'Cancelación de turno', cancelShiftPassword);
+      const ok = await useStore.getState().cancelSession(sessionId, 'Cancelación de turno');
       if (!ok) {
         setPosError("No se pudo cancelar el turno. La operación no fue confirmada; el turno sigue abierto.");
         return;
       }
 
       setShowCancelShiftModal(false);
-      setCancelShiftPassword("");
       setShowCashManagementModal(false);
       setShowDiscrepancyModal(false);
       setClosingBalances({});
@@ -612,11 +578,7 @@ export default function POS() {
       setActiveSessionId(null);
       clearCart();
 
-      setPosSuccess(
-        isOnline
-          ? "Turno cancelado correctamente. Regresando al selector de empleado."
-          : "Turno cancelado localmente. La cancelación quedó guardada y se sincronizará al recuperar la conexión."
-      );
+      setPosSuccess("Turno cancelado correctamente. Regresando al selector de empleado.");
       setTimeout(() => setPosSuccess(""), 3500);
     } catch (err: any) {
       console.error("[POS] Error cancelando turno:", err);
@@ -625,12 +587,6 @@ export default function POS() {
       setIsCancellingShift(false);
     }
   };
-
-;
-
-;
-
-;
 
   const baseCurrency = getBaseCurrency();
   const productById = React.useMemo(() => new Map((products || []).map(product => [product.id, product])), [products]);
@@ -2342,13 +2298,10 @@ export default function POS() {
 
       <POSCancelShiftModal
         open={showCancelShiftModal}
-        password={cancelShiftPassword}
-        setPassword={setCancelShiftPassword}
         isCancelling={isCancellingShift}
         onCancel={handleCancelShift}
         onClose={() => {
           setShowCancelShiftModal(false);
-          setCancelShiftPassword("");
         }}
       />
 
