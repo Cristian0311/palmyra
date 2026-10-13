@@ -6,8 +6,8 @@ begin;
 create table if not exists private.employee_pos_offline_verifiers (
   company_id uuid not null,
   subject_id uuid not null,
-  salt text not null check (salt ~ '^(?:[0-9a-f]{2}){16}$'),
-  verifier text not null check (verifier ~ '^(?:[0-9a-f]{2}){32}$'),
+  salt text not null check (salt ~ '^[0-9a-f]{32}$'),
+  verifier text not null check (verifier ~ '^[0-9a-f]{64}$'),
   iterations integer not null check (iterations between 100000 and 1000000),
   updated_at timestamptz not null default timezone('utc', now()),
   primary key (company_id, subject_id)
@@ -51,7 +51,7 @@ begin
   end if;
 
   if p_password is null or trim(p_password)='' then raise exception 'invalid_offline_credential'; end if;
-  if p_salt !~ '^(?:[0-9a-f]{2}){16}$' or p_verifier !~ '^(?:[0-9a-f]{2}){32}$'
+  if p_salt !~ '^[0-9a-f]{32}$' or p_verifier !~ '^[0-9a-f]{64}$'
      or p_iterations < 100000 or p_iterations > 1000000 then
     raise exception 'invalid_offline_verifier_format';
   end if;
@@ -151,7 +151,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path to 'public','private','pg_temp'
-as $
+as $$
 declare
   v_employee_id uuid;
   v_employee public.employees%rowtype;
@@ -175,7 +175,7 @@ begin
   if tg_op = 'DELETE' then return old; end if;
   return new;
 end;
-$;
+$$;
 
 drop trigger if exists invalidate_employee_offline_pos_verifier
   on private.employee_pos_credentials;
@@ -189,7 +189,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path to 'public','private','pg_temp'
-as $
+as $$
 begin
   if old.pos_password_hash is distinct from new.pos_password_hash then
     delete from private.employee_pos_offline_verifiers
@@ -197,7 +197,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 
 drop trigger if exists invalidate_owner_offline_pos_verifier
   on public.company_memberships;
@@ -210,7 +210,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path to 'public','private','pg_temp'
-as $
+as $$
 begin
   if tg_op = 'DELETE' then
     delete from private.employee_pos_offline_verifiers
@@ -226,7 +226,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 
 drop trigger if exists invalidate_employee_offline_pos_access
   on public.employees;
