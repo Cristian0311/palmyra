@@ -1,4 +1,5 @@
 import { getSupabase } from "../lib/supabase";
+import { compare as compareBcrypt } from "bcryptjs";
 
 const STORAGE_PREFIX = "palmyra:offline-pos-credential:v2:";
 const LEGACY_STORAGE_PREFIX = "palmyra:offline-pos-credential:v1:";
@@ -7,18 +8,28 @@ const MAX_CREDENTIAL_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const SYNC_RETRY_WINDOW_MS = 30_000;
 const lastSyncAttempt = new Map<string, number>();
 
-type OfflinePosCredential = {
-  version: 2;
-  salt: string;
-  verifier: string;
-  iterations: number;
-  savedAt: number;
-};
+type OfflinePosCredential =
+  | {
+      version: 2;
+      kind?: "pbkdf2";
+      salt: string;
+      verifier: string;
+      iterations: number;
+      savedAt: number;
+    }
+  | {
+      version: 3;
+      kind: "bcrypt";
+      hash: string;
+      savedAt: number;
+    };
 
 type RemoteOfflinePosVerifier = {
+  kind?: "pbkdf2" | "bcrypt";
   subject_id?: string;
   salt?: string;
   verifier?: string;
+  bcrypt_hash?: string;
   iterations?: number;
   updated_at?: string;
 };
@@ -154,18 +165,56 @@ export async function syncOfflinePosCredentials(companyId: string): Promise<{ sy
   const records = Array.isArray(data) ? data as RemoteOfflinePosVerifier[] : [];
   for (const row of records) {
     const subjectId = String(row?.subject_id || "").trim();
+    const timestamp = row?.updated_at ? new Date(row.updated_at).getTime() : 0;
+    if (!subjectId || !Number.isFinite(timestamp) || timestamp <= 0) {
+      skipped += 1;
+      continue;
+    }
+
+    // Older POS-only employees already have a server-side bcrypt hash, but no
+    // PBKDF2 verifier yet. Download only that one-way PIN hash for employees
+    // without web accounts; never download auth.users password hashes.
+    if (row.kind === "bcrypt") {
+      const hash = String(row.bcrypt_hash || "");
+      if (!/^\\$2[aby]\\$\\d{2}\\$[./A-Za-z0-9]{53}$/.test(hash)) {
+        skipped += 1;
+        continue;
+      }
+      const record: OfflinePosCredential = {
+        version: 3,
+        kind: "bcrypt",
+        hash,
+        // Start the local offline window at successful sync, not at the date
+        // the employee originally chose the PIN.
+        savedAt: Date.now()
+      };
+      allowedSubjects.add(subjectId);
+      try {
+        localStorage.setItem(key(cleanCompanyId, subjectId), JSON.stringify(record));
+        try { localStorage.removeItem(legacyKey(cleanCompanyId, subjectId)); } catch {}
+        synced += 1;
+      } catch {
+        skipped += 1;
+      }
+      continue;
+    }
+
     const salt = String(row?.salt || "");
     const verifier = String(row?.verifier || "");
     const iterations = Number(row?.iterations) || PBKDF2_ITERATIONS;
-    const timestamp = row?.updated_at ? new Date(row.updated_at).getTime() : 0;
-    if (!subjectId || !/^(?:[0-9a-f]{2}){16}$/i.test(salt) ||
+    if (!/^(?:[0-9a-f]{2}){16}$/i.test(salt) ||
         !/^(?:[0-9a-f]{2}){32}$/i.test(verifier) ||
-        iterations < 100_000 || iterations > 1_000_000 || !isFresh(timestamp)) {
+        iterations < 100_000 || iterations > 1_000_000) {
       skipped += 1;
       continue;
     }
     const record: OfflinePosCredential = {
-      version: 2, salt, verifier, iterations, savedAt: timestamp
+      version: 2,
+      kind: "pbkdf2",
+      salt,
+      verifier,
+      iterations,
+      savedAt: Date.now()
     };
     allowedSubjects.add(subjectId);
     try {
@@ -192,7 +241,7 @@ export async function syncOfflinePosCredentials(companyId: string): Promise<{ sy
       try {
         const recentRaw = localStorage.getItem(localKey);
         const recent = recentRaw ? JSON.parse(recentRaw) as Partial<OfflinePosCredential> : null;
-        if (recent?.version === 2 && Number(recent.savedAt) >= syncStartedAt) continue;
+        if ((recent?.version === 2 || recent?.version === 3) && Number(recent.savedAt) >= syncStartedAt) continue;
         localStorage.removeItem(localKey);
       } catch { try { localStorage.removeItem(localKey); } catch {} }
     }
@@ -210,6 +259,11 @@ export async function verifyOfflinePosCredential(companyId: string, userId: stri
     const raw = localStorage.getItem(key(cleanCompanyId, cleanUserId));
     if (raw) {
       const stored = JSON.parse(raw) as Partial<OfflinePosCredential>;
+      if (stored.version === 3 && stored.kind === "bcrypt" && stored.hash &&
+          /^\\$2[aby]\\$\\d{2}\\$[./A-Za-z0-9]{53}$/.test(stored.hash) &&
+          isFresh(Number(stored.savedAt))) {
+        return await compareBcrypt(cleanPassword, stored.hash);
+      }
       if (stored.version === 2 && stored.salt && stored.verifier &&
           Number(stored.iterations) >= 100_000 && Number(stored.iterations) <= 1_000_000 &&
           isFresh(Number(stored.savedAt))) {
