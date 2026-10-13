@@ -21,6 +21,12 @@ test("Team edits are persisted offline and replayed through an explicit queue ha
   assert.match(types, /'employee_update'/);
   assert.match(queue, /case 'employee_update'/);
   assert.match(queue, /create_company_invitation/);
+  assert.match(types, /'employee_status'/);
+  assert.match(types, /'employee_delete'/);
+  assert.match(types, /'invitation_revoke'/);
+  assert.match(queue, /case 'employee_status'/);
+  assert.match(queue, /case 'employee_delete'/);
+  assert.match(queue, /case 'invitation_revoke'/);
 });
 
 test("POS shift-cancellation modal has only cancel and accept actions, with no password field", () => {
