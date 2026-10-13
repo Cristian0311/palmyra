@@ -143,6 +143,97 @@ begin
 end;
 $$;
 
+-- Invalidate synchronized offline credentials immediately when a stored POS
+-- PIN or owner POS password is changed. The client then provisions the new
+-- verifier only after validating the new credential successfully.
+create or replace function private.invalidate_employee_offline_pos_verifier()
+returns trigger
+language plpgsql
+security definer
+set search_path to 'public','private','pg_temp'
+as $
+declare
+  v_employee_id uuid;
+  v_employee public.employees%rowtype;
+begin
+  if tg_op = 'DELETE' then
+    v_employee_id := old.employee_id;
+  else
+    v_employee_id := new.employee_id;
+  end if;
+
+  select * into v_employee
+  from public.employees
+  where id = v_employee_id;
+
+  if found then
+    delete from private.employee_pos_offline_verifiers
+    where company_id=v_employee.company_id
+      and subject_id in (v_employee.id, v_employee.user_id);
+  end if;
+
+  if tg_op = 'DELETE' then return old; end if;
+  return new;
+end;
+$;
+
+drop trigger if exists invalidate_employee_offline_pos_verifier
+  on private.employee_pos_credentials;
+create trigger invalidate_employee_offline_pos_verifier
+after insert or update of password_hash or delete
+on private.employee_pos_credentials
+for each row execute function private.invalidate_employee_offline_pos_verifier();
+
+create or replace function private.invalidate_owner_offline_pos_verifier()
+returns trigger
+language plpgsql
+security definer
+set search_path to 'public','private','pg_temp'
+as $
+begin
+  if old.pos_password_hash is distinct from new.pos_password_hash then
+    delete from private.employee_pos_offline_verifiers
+    where company_id=new.company_id and subject_id=new.user_id;
+  end if;
+  return new;
+end;
+$;
+
+drop trigger if exists invalidate_owner_offline_pos_verifier
+  on public.company_memberships;
+create trigger invalidate_owner_offline_pos_verifier
+after update of pos_password_hash on public.company_memberships
+for each row execute function private.invalidate_owner_offline_pos_verifier();
+
+create or replace function private.invalidate_employee_offline_pos_access()
+returns trigger
+language plpgsql
+security definer
+set search_path to 'public','private','pg_temp'
+as $
+begin
+  if tg_op = 'DELETE' then
+    delete from private.employee_pos_offline_verifiers
+    where company_id=old.company_id
+      and subject_id in (old.id, old.user_id);
+    return old;
+  end if;
+
+  if old.active is distinct from new.active or old.user_id is distinct from new.user_id then
+    delete from private.employee_pos_offline_verifiers
+    where company_id=old.company_id
+      and subject_id in (old.id, old.user_id, new.id, new.user_id);
+  end if;
+  return new;
+end;
+$;
+
+drop trigger if exists invalidate_employee_offline_pos_access
+  on public.employees;
+create trigger invalidate_employee_offline_pos_access
+after update of active, user_id or delete on public.employees
+for each row execute function private.invalidate_employee_offline_pos_access();
+
 revoke all on function public.palmyra_store_offline_pos_verifier(uuid,uuid,text,text,text,integer) from public, anon;
 revoke all on function public.palmyra_get_offline_pos_verifiers(uuid) from public, anon;
 grant execute on function public.palmyra_store_offline_pos_verifier(uuid,uuid,text,text,text,integer) to authenticated;
