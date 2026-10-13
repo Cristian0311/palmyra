@@ -366,6 +366,13 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
   };
 
   cacheSaaSContext(context);
+  // Before the company is taken offline, preload the authorized POS verifiers
+  // that have been provisioned. This is best-effort and never blocks normal login.
+  if (!isBrowserOffline() && permissions.includes("employees.manage")) {
+    void syncOfflinePosCredentials(companyId).catch((offlinePosError) => {
+      console.info("[PALMYRA] El precargado de credenciales POS offline se reintentará.", offlinePosError);
+    });
+  }
   // Local storage is an offline enhancement, not a prerequisite for online
   // authentication. Quota/private-mode failures must never invalidate a
   // cloud-verified session or prevent the user from entering the CRM.
