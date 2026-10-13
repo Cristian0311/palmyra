@@ -41,7 +41,7 @@ begin
     'on conflict(id) do update set
     employee_id=excluded.employee_id,',
     'on conflict(payroll_run_id,employee_id) do update set
-    id=public.payroll_items.id,
+    id=payroll_items.id,
     employee_id=excluded.employee_id,'
   );
   v_fixed := replace(
