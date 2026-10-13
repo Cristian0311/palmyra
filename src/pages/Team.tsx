@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AtSign, BriefcaseBusiness, Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, Edit3, Hash, Info, Link2, LockKeyhole, Mail, MapPin, MoreHorizontal, Plus, RefreshCw, ShieldCheck, UserRound, UserX, WalletCards, Warehouse, X, Shield, Save } from "lucide-react";
+import { AtSign, BriefcaseBusiness, Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, Edit3, Eye, EyeOff, Hash, Info, Link2, LockKeyhole, Mail, MapPin, MoreHorizontal, Plus, RefreshCw, ShieldCheck, UserRound, UserX, WalletCards, Warehouse, X, Shield, Save } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useStore } from "../store/useStore";
 import { loadSaaSContext } from "../services/saas";
@@ -75,6 +75,7 @@ export default function Team() {
   const [roleFormStep, setRoleFormStep] = useState<1 | 2>(1);
   const [compensationSettings, setCompensationSettings] = useState<CompanyCompensationSettings>({ mode: 'fixed_product', percentRate: 0, fixedAmount: 0, workerCount: 1, active: true });
   const [savingCompensation, setSavingCompensation] = useState(false);
+  const [showPosPassword, setShowPosPassword] = useState(false);
 
   const canManageRoles = currentUser?.permissions?.includes("roles.manage") || currentUser?.role === "admin";
   const canUseCustomRoles = context?.subscription?.planCode !== "starter";
@@ -149,6 +150,7 @@ export default function Team() {
   const resetForm = () => {
     setEditing(null);
     setInviteLink(null);
+    setShowPosPassword(false);
     setForm({
       fullName: "",
       employeeCode: "",
@@ -244,6 +246,7 @@ export default function Team() {
   const openEdit = (employee: TeamEmployee) => {
     setEditing(employee);
     setInviteLink(null);
+    setShowPosPassword(false);
     setMessage("");
     setError("");
     setForm({
@@ -253,7 +256,7 @@ export default function Team() {
       roleId: employee.role_id,
       warehouseIds: [...employee.warehouse_ids],
       email: employee.login_email || employee.pending_invitation?.email || "",
-      sendInvite: !employee.user_id,
+      sendInvite: Boolean(employee.user_id || employee.pending_invitation),
       posPassword: "",
     });
     setFormStep(1);
@@ -281,11 +284,12 @@ export default function Team() {
     if (!form.employeeCode.trim()) return setError("Escribe un código de empleado.");
     if (!form.roleId) return setError("Selecciona un rol.");
     if (!form.warehouseIds.length) return setError("Selecciona al menos un almacén.");
-    if (form.sendInvite && !form.email.trim()) return setError("Escribe el correo del trabajador para crear su acceso web.");
-    if (!form.sendInvite && !editing && form.posPassword.trim().length < 6) {
-      return setError("Define una contraseña de al menos 6 caracteres para usar este empleado en el POS.");
+    if (form.sendInvite && !editing?.user_id && !form.email.trim()) return setError("Escribe el correo del trabajador para crear su acceso web.");
+    const needsNewPosPassword = !form.sendInvite && (!editing || Boolean(editing.user_id || editing.pending_invitation));
+    if (needsNewPosPassword && form.posPassword.trim().length < 6) {
+      return setError("Define una contraseña POS nueva de al menos 6 caracteres para retirar el acceso web.");
     }
-    if (!form.sendInvite && editing && form.posPassword.trim().length > 0 && form.posPassword.trim().length < 6) {
+    if (!form.sendInvite && !needsNewPosPassword && form.posPassword.trim().length > 0 && form.posPassword.trim().length < 6) {
       return setError("La nueva contraseña del POS debe tener al menos 6 caracteres.");
     }
 
@@ -312,6 +316,67 @@ export default function Team() {
       setMessage("Trabajador guardado en este dispositivo. Se creará en la nube automáticamente al recuperar Internet.");
       setShowForm(false); setFormStep(1);
       addNotification("Trabajador guardado offline y puesto en cola para sincronización.", "success");
+      return;
+    }
+
+    // Edición offline: actualizar la vista local y dejar el cambio durable en
+    // cola. Al volver Internet, el handler aplica los cambios y el modo de acceso
+    // real mediante las RPC protegidas.
+    if (editing && offline) {
+      try {
+        const role = snapshot.roles.find(item => item.id === form.roleId);
+        const now = new Date().toISOString();
+        const normalizedEmail = form.email.trim().toLowerCase() || editing.login_email || "";
+        const pendingInvitation: TeamEmployee["pending_invitation"] =
+          form.sendInvite && !editing.user_id
+            ? {
+                id: editing.pending_invitation?.id || editing.id + "-invite-offline",
+                email: normalizedEmail,
+                status: "pending_offline",
+                expires_at: new Date(Date.now() + 7 * 86400000).toISOString(),
+                created_at: editing.pending_invitation?.created_at || now
+              }
+            : form.sendInvite ? (editing.pending_invitation || null) : null;
+        const nextEmployee: TeamEmployee = {
+          ...editing,
+          employee_code: form.employeeCode.trim(),
+          full_name: form.fullName.trim(),
+          login_email: normalizedEmail || null,
+          base_salary: Number(form.baseSalary) || 0,
+          role_id: form.roleId,
+          role_name: role?.name || editing.role_name || "Empleado",
+          role_key: role?.key || editing.role_key || "employee",
+          warehouse_ids: [...form.warehouseIds],
+          default_warehouse_id: form.warehouseIds[0] || null,
+          user_id: form.sendInvite ? (editing.user_id || null) : null,
+          pending_invitation: pendingInvitation
+        };
+        await enqueueOfflineItem("employee_update", {
+          companyId: snapshot.companyId,
+          employeeId: editing.id,
+          employeeUserId: editing.user_id || null,
+          employeeCode: form.employeeCode.trim(),
+          fullName: form.fullName.trim(),
+          baseSalary: Number(form.baseSalary) || 0,
+          roleId: form.roleId,
+          warehouseIds: [...form.warehouseIds],
+          sendInvite: form.sendInvite,
+          email: normalizedEmail,
+          posPassword: form.sendInvite ? undefined : (form.posPassword.trim() || undefined)
+        }, "employee-update:" + editing.id + ":" + generateId("OFF"));
+        const nextSnapshot: TeamSnapshot = {
+          ...snapshot,
+          employees: snapshot.employees.map(item => item.id === editing.id ? nextEmployee : item)
+        };
+        setSnapshot(nextSnapshot);
+        writeTeamCache(nextSnapshot);
+        setMessage("Cambios guardados en este dispositivo. Se sincronizarán cuando vuelva Internet.");
+        setShowForm(false);
+        setFormStep(1);
+        addNotification("Cambios del trabajador guardados offline y puestos en cola para sincronización.", "success");
+      } catch (e: any) {
+        setError(e?.message || "No se pudieron guardar los cambios offline.");
+      }
       return;
     }
 
@@ -671,7 +736,7 @@ export default function Team() {
                     {employee.pending_invitation && employee.active && <em className="pending">Invitación pendiente</em>}
                   </div>
                   <div className="team-employee-contact">
-                    <span><Mail className="w-3 h-3" />{employee.login_email || employee.pending_invitation?.email || "Sin acceso web"}</span>
+                    <span><Mail className="w-3 h-3" />{employee.user_id || employee.pending_invitation ? (employee.login_email || employee.pending_invitation?.email || "Cuenta web") : "Sin acceso web"}</span>
                     <span><MapPin className="w-3 h-3" />{warehouseNames.length ? warehouseNames.join(", ") : "Sin almacén"}</span>
                   </div>
                   <div className="relative shrink-0">
@@ -780,7 +845,7 @@ export default function Team() {
                 </div>
               </section>
               <section className={cn("team-form-section team-access-section", form.sendInvite && "is-enabled", formStep !== 3 && "team-form-hidden")} data-section="employee-access" aria-hidden={formStep !== 3}>
-                <div className="team-form-section-head"><div className="team-form-section-icon"><Link2 className="w-4 h-4" /></div><div className="min-w-0"><h3>Acceso al sistema</h3><p>Elige si tendrá cuenta web o solo contraseña para operar en el POS.</p></div><label className="team-switch ml-auto shrink-0"><input type="checkbox" checked={form.sendInvite} onChange={e => setForm({...form, sendInvite:e.target.checked, posPassword: e.target.checked ? "" : form.posPassword})} disabled={busy || Boolean(editing?.user_id)} className="sr-only" /><span className="team-switch-track"><span className="team-switch-thumb" /></span></label></div>
+                <div className="team-form-section-head"><div className="team-form-section-icon"><Link2 className="w-4 h-4" /></div><div className="min-w-0"><h3>Acceso al sistema</h3><p>Elige si tendrá cuenta web o solo contraseña para operar en el POS.</p></div><label className="team-switch ml-auto shrink-0"><input type="checkbox" checked={form.sendInvite} onChange={e => { setForm({...form, sendInvite:e.target.checked, posPassword: e.target.checked ? "" : form.posPassword}); setShowPosPassword(false); }} disabled={busy} className="sr-only" /><span className="team-switch-track"><span className="team-switch-thumb" /></span></label></div>
 
                 {form.sendInvite ? (
                   <div className="team-access-card">
@@ -791,8 +856,8 @@ export default function Team() {
                 ) : (
                   <div className="team-access-card">
                     <div className="flex items-start gap-3"><div className="team-access-icon"><LockKeyhole className="w-4 h-4" /></div><div className="min-w-0 flex-1"><p className="text-xs font-black text-primary">Solo acceso al POS</p><p className="text-[10px] sm:text-[11px] text-muted leading-5 mt-0.5">Este trabajador no tendrá cuenta web. Define aquí una contraseña que quedará protegida y se usará para seleccionar y reanudar su turno en el POS.</p></div></div>
-                    <label className="team-field-wrap mt-3"><span className="team-field-label">{editing ? "Nueva contraseña del POS" : "Contraseña del POS"} <b>{editing ? "" : "*"}</b></span><span className="team-field"><span className="team-field-icon"><LockKeyhole className="w-4 h-4" /></span><input type="password" value={form.posPassword} onChange={e => setForm({...form,posPassword:e.target.value})} disabled={busy} className="team-field-input" placeholder={editing ? "Dejar vacío para conservar la actual" : "Mínimo 6 caracteres"} autoComplete="new-password" /></span></label>
-                    <div className="team-access-off"><Info className="w-4 h-4 shrink-0" />La contraseña se guarda protegida en Supabase; nunca se muestra en la lista de empleados.</div>
+                    <label className="team-field-wrap mt-3"><span className="team-field-label">{editing ? "Nueva contraseña del POS" : "Contraseña del POS"} <b>{!editing || editing.user_id || editing.pending_invitation ? "*" : ""}</b></span><span className="team-field"><span className="team-field-icon"><LockKeyhole className="w-4 h-4" /></span><input type={showPosPassword ? "text" : "password"} value={form.posPassword} onChange={e => setForm({...form,posPassword:e.target.value})} disabled={busy} className="team-field-input" placeholder={editing && !editing.user_id && !editing.pending_invitation ? "Vacío = conservar la contraseña actual" : editing ? "Define una contraseña POS nueva" : "Mínimo 6 caracteres"} autoComplete="new-password" /><button type="button" onClick={() => setShowPosPassword(value => !value)} disabled={busy} aria-label={showPosPassword ? "Ocultar contraseña" : "Mostrar contraseña"} className="px-2 mr-1 text-muted hover:text-primary" title={showPosPassword ? "Ocultar contraseña" : "Mostrar contraseña"}>{showPosPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button></span></label>
+                    <div className="team-access-off"><Info className="w-4 h-4 shrink-0" />{editing && !editing.user_id && !editing.pending_invitation ? "La contraseña actual no se puede recuperar porque se guarda como hash seguro. Déjalo vacío para conservarla o escribe una nueva; el icono del ojo permite verla mientras escribes." : "Define una contraseña POS nueva. Puedes verla con el icono del ojo mientras la escribes; PALMYRA guarda únicamente su hash protegido."}</div>
                   </div>
                 )}
               </section>
