@@ -97,9 +97,21 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       return true;
     }
     case 'invitation_revoke': {
-      const invitationId = String(data?.invitationId || '');
-      if (!invitationId) throw new PermanentSyncError('Revocación offline de invitación sin ID.');
-      const { error } = await supabase.rpc('revoke_company_invitation', { p_invitation_id: invitationId });
+      const companyId = String(data?.companyId || '');
+      const employeeId = String(data?.employeeId || '');
+      if (!companyId || !employeeId) throw new PermanentSyncError('Revocación offline de invitación sin empresa o empleado.');
+      const { data: pendingInvite, error: lookupError } = await supabase
+        .from('company_invitations')
+        .select('id')
+        .eq('company_id', companyId)
+        .eq('employee_id', employeeId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+      if (!pendingInvite?.id) return true; // It may already have been revoked by a queued access-mode change.
+      const { error } = await supabase.rpc('revoke_company_invitation', { p_invitation_id: pendingInvite.id });
       if (error) throw error;
       return true;
     }
