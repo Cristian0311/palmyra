@@ -134,7 +134,8 @@ export async function syncOfflinePosCredentials(companyId: string): Promise<{ sy
       (typeof navigator !== "undefined" && !navigator.onLine)) return { synced: 0, skipped: 0 };
   const lastAttempt = lastSyncAttempt.get(cleanCompanyId) || 0;
   if (Date.now() - lastAttempt < SYNC_RETRY_WINDOW_MS) return { synced: 0, skipped: 0 };
-  lastSyncAttempt.set(cleanCompanyId, Date.now());
+  const syncStartedAt = Date.now();
+  lastSyncAttempt.set(cleanCompanyId, syncStartedAt);
   const supabase = getSupabase();
   if (!supabase) { lastSyncAttempt.delete(cleanCompanyId); return { synced: 0, skipped: 0 }; }
 
@@ -186,7 +187,14 @@ export async function syncOfflinePosCredentials(companyId: string): Promise<{ sy
   for (const localKey of localKeys) {
     const subjectId = decodeURIComponent(localKey.slice(companyPrefix.length));
     if (!allowedSubjects.has(subjectId)) {
-      try { localStorage.removeItem(localKey); } catch {}
+      // Preserve a credential entered online while this snapshot was in flight;
+      // its server write may have committed just after the snapshot was read.
+      try {
+        const recentRaw = localStorage.getItem(localKey);
+        const recent = recentRaw ? JSON.parse(recentRaw) as Partial<OfflinePosCredential> : null;
+        if (recent?.version === 2 && Number(recent.savedAt) >= syncStartedAt) continue;
+        localStorage.removeItem(localKey);
+      } catch { try { localStorage.removeItem(localKey); } catch {} }
     }
   }
   return { synced, skipped };
