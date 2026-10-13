@@ -25,6 +25,10 @@ test("Team edits are persisted offline and replayed through an explicit queue ha
   assert.match(types, /'employee_status'/);
   assert.match(types, /'employee_delete'/);
   assert.match(types, /'invitation_revoke'/);
+  assert.match(types, /'team_compensation_settings'/);
+  assert.match(queue, /case 'team_compensation_settings'/);
+  assert.match(team, /TEAM_COMP_CACHE_PREFIX/);
+  assert.match(team, /loadSaaSContext\(\)/);
   assert.match(queue, /case 'employee_status'/);
   assert.match(queue, /case 'employee_delete'/);
   assert.match(queue, /case 'invitation_revoke'/);
