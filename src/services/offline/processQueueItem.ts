@@ -30,6 +30,7 @@ import { getActiveTenant } from '../tenant';
 import { reconcileBankCanonical } from './reconcileBank';
 import { replaceWarehouseInventory, replaceWarehousesInventory } from './reconcileInventory';
 import { reconcileSupplierReceiveCanonical } from './reconcileSupplierReceive';
+import { rememberOfflinePosCredential } from "../offlinePosAuth";
 class PermanentSyncError extends Error {
   permanent = true;
 }
@@ -55,6 +56,10 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         p_pos_password: d.sendInvite ? null : (String(d.posPassword || '').trim() || null)
       });
       if (employeeError) throw employeeError;
+
+      if (!d.sendInvite && String(d.posPassword || "").trim()) {
+        await rememberOfflinePosCredential(String(d.companyId), String(d.localEmployeeId), String(d.posPassword).trim());
+      }
 
       if (d.sendInvite) {
         const { data: invitation, error } = await supabase.rpc('create_company_invitation', {
@@ -207,6 +212,9 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
           p_pos_password: String(d.posPassword || '').trim() || null
         });
         if (error) throw error;
+        if (String(d.posPassword || "").trim()) {
+          await rememberOfflinePosCredential(String(d.companyId), String(d.employeeId), String(d.posPassword).trim());
+        }
       }
       return true;
     }

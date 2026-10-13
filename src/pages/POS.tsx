@@ -1279,7 +1279,7 @@ export default function POS() {
         const validLocal = await verifyOfflinePosCredential(companyId, workerToAssign.id, enteredPassword);
         if (!validLocal) {
           setPosError(
-            `No se pudo validar offline la contraseña de ${workerToAssign.name || 'empleado'}. Conéctate una vez desde este dispositivo para habilitar el acceso offline.`
+            `No hay un verificador offline preparado para ${workerToAssign.name || 'empleado'}. Conecta este dispositivo y valida su clave POS una vez; PALMYRA guardará un verificador seguro para los próximos accesos sin red.`
           );
           return;
         }
@@ -1311,7 +1311,7 @@ export default function POS() {
           const validLocal = await verifyOfflinePosCredential(companyId, workerToAssign.id, enteredPassword);
           if (!validLocal) {
             console.error("[POS] No se pudo validar la contraseña del empleado:", error);
-            setPosError("No se pudo validar la contraseña del empleado. Conecta este dispositivo una vez para habilitar el acceso offline.");
+            setPosError("No se pudo validar la contraseña del empleado. Si la conexión está caída, este dispositivo aún no tiene un verificador offline para esa clave. Conecta el móvil y valida la clave una vez para sincronizarla de forma segura.");
             return;
           }
         }

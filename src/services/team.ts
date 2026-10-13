@@ -1,5 +1,6 @@
 import { getSupabase } from "../lib/supabase";
 import { loadSaaSContext } from "./saas";
+import { rememberOfflinePosCredential } from "./offlinePosAuth";
 
 export interface TeamRole {
   id: string;
@@ -241,6 +242,12 @@ export async function createEmployeePosSecure(input: {
     p_pos_password: input.posPassword?.trim() || null
   });
   if (error) throwRpcError(error);
+  const employeeId = String((data as any)?.id || input.employeeId || "");
+  if (input.posPassword?.trim() && employeeId) {
+    await rememberOfflinePosCredential(input.companyId, employeeId, input.posPassword.trim()).catch((cacheError) => {
+      console.warn("[PALMYRA] El trabajador se guardó, pero no se pudo preparar su credencial offline en este dispositivo.", cacheError);
+    });
+  }
   return data as { id: string };
 }
 
