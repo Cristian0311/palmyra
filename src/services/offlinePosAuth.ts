@@ -24,6 +24,8 @@ type OfflinePosCredential =
       savedAt: number;
     };
 
+type Pbkdf2OfflinePosCredential = Extract<OfflinePosCredential, { version: 2 }>;
+
 type RemoteOfflinePosVerifier = {
   kind?: "pbkdf2" | "bcrypt";
   subject_id?: string;
@@ -91,13 +93,13 @@ function isFresh(savedAt: number): boolean {
   return Number.isFinite(savedAt) && savedAt > 0 && Date.now() - savedAt <= MAX_CREDENTIAL_AGE_MS;
 }
 
-async function createCredential(companyId: string, userId: string, password: string, savedAt = Date.now()): Promise<OfflinePosCredential> {
+async function createCredential(companyId: string, userId: string, password: string, savedAt = Date.now()): Promise<Pbkdf2OfflinePosCredential> {
   const salt = makeSalt();
   const verifier = await deriveVerifier(companyId, userId, password, salt);
   return { version: 2, salt, verifier, iterations: PBKDF2_ITERATIONS, savedAt };
 }
 
-async function pushVerifierToServer(companyId: string, userId: string, password: string, credential: OfflinePosCredential): Promise<void> {
+async function pushVerifierToServer(companyId: string, userId: string, password: string, credential: Pbkdf2OfflinePosCredential): Promise<void> {
   if (typeof navigator !== "undefined" && !navigator.onLine) return;
   const supabase = getSupabase();
   if (!supabase) return;
