@@ -151,7 +151,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path to 'public','private','pg_temp'
-as $
+as $$
 declare
   v_employee_id uuid;
   v_employee public.employees%rowtype;
@@ -175,7 +175,7 @@ begin
   if tg_op = 'DELETE' then return old; end if;
   return new;
 end;
-$;
+$$;
 
 drop trigger if exists invalidate_employee_offline_pos_verifier
   on private.employee_pos_credentials;
@@ -189,7 +189,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path to 'public','private','pg_temp'
-as $
+as $$
 begin
   if old.pos_password_hash is distinct from new.pos_password_hash then
     delete from private.employee_pos_offline_verifiers
@@ -197,7 +197,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 
 drop trigger if exists invalidate_owner_offline_pos_verifier
   on public.company_memberships;
@@ -210,7 +210,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path to 'public','private','pg_temp'
-as $
+as $$
 begin
   if tg_op = 'DELETE' then
     delete from private.employee_pos_offline_verifiers
@@ -226,7 +226,7 @@ begin
   end if;
   return new;
 end;
-$;
+$$;
 
 drop trigger if exists invalidate_employee_offline_pos_access
   on public.employees;
