@@ -62,6 +62,59 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       }
       return true;
     }
+    case 'employee_update': {
+      const d = data || {};
+      if (!d.companyId || !d.employeeId || !d.fullName || !d.employeeCode || !d.roleId || !Array.isArray(d.warehouseIds) || !d.warehouseIds.length) {
+        throw new PermanentSyncError('Actualización offline del trabajador incompleta.');
+      }
+      if (d.sendInvite) {
+        const { error: updateError } = await supabase.rpc('create_employee_pos_secure', {
+          p_company_id: d.companyId,
+          p_employee_id: d.employeeId,
+          p_employee_code: d.employeeCode,
+          p_full_name: d.fullName,
+          p_base_salary: Number(d.baseSalary) || 0,
+          p_role_id: d.roleId,
+          p_warehouse_ids: d.warehouseIds,
+          p_pos_password: null
+        });
+        if (updateError) throw updateError;
+
+        if (!d.employeeUserId) {
+          const { data: invite, error: inviteError } = await supabase.rpc('create_company_invitation', {
+            p_company_id: d.companyId,
+            p_employee_id: d.employeeId,
+            p_email: String(d.email || '').trim().toLowerCase(),
+            p_role_id: d.roleId,
+            p_warehouse_ids: d.warehouseIds
+          });
+          if (inviteError) throw inviteError;
+          if ((invite as any)?.token && d.email) {
+            const { error: mailError } = await supabase.functions.invoke('send-company-invitation', { body: {
+              companyId: d.companyId,
+              employeeId: d.employeeId,
+              email: (invite as any).email || String(d.email).trim().toLowerCase(),
+              name: d.fullName,
+              token: (invite as any).token
+            }});
+            if (mailError) console.warn('[offlineSync] Trabajador actualizado pero la invitación no pudo enviarse:', mailError);
+          }
+        }
+      } else {
+        const { error } = await supabase.rpc('create_employee_pos_secure', {
+          p_company_id: d.companyId,
+          p_employee_id: d.employeeId,
+          p_employee_code: d.employeeCode,
+          p_full_name: d.fullName,
+          p_base_salary: Number(d.baseSalary) || 0,
+          p_role_id: d.roleId,
+          p_warehouse_ids: d.warehouseIds,
+          p_pos_password: String(d.posPassword || '').trim() || null
+        });
+        if (error) throw error;
+      }
+      return true;
+    }
     case 'cash_movement': {
       const movement = data as {
         id:string; sessionId:string; type:'income'|'expense'; amount:number; currencyCode:string; description?:string
