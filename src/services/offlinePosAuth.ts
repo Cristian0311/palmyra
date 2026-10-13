@@ -84,7 +84,7 @@ async function createCredential(companyId: string, userId: string, password: str
   return { version: 2, salt, verifier, iterations: PBKDF2_ITERATIONS, savedAt };
 }
 
-async function pushVerifierToServer(companyId: string, userId: string, credential: OfflinePosCredential): Promise<void> {
+async function pushVerifierToServer(companyId: string, userId: string, password: string, credential: OfflinePosCredential): Promise<void> {
   if (typeof navigator !== "undefined" && !navigator.onLine) return;
   const supabase = getSupabase();
   if (!supabase) return;
@@ -92,6 +92,7 @@ async function pushVerifierToServer(companyId: string, userId: string, credentia
     const { error } = await supabase.rpc("palmyra_store_offline_pos_verifier", {
       p_company_id: companyId,
       p_subject_id: userId,
+      p_password: password,
       p_salt: credential.salt,
       p_verifier: credential.verifier,
       p_iterations: credential.iterations
@@ -121,7 +122,7 @@ export async function rememberOfflinePosCredential(companyId: string, userId: st
   const credential = await createCredential(cleanCompanyId, cleanUserId, cleanPassword);
   localStorage.setItem(key(cleanCompanyId, cleanUserId), JSON.stringify(credential));
   try { localStorage.removeItem(legacyKey(cleanCompanyId, cleanUserId)); } catch {}
-  await pushVerifierToServer(cleanCompanyId, cleanUserId, credential);
+  await pushVerifierToServer(cleanCompanyId, cleanUserId, cleanPassword, credential);
 }
 
 /** Pull the safe, client-verifiable employee POS records provisioned for a company. */
