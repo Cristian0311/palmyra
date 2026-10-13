@@ -36,7 +36,14 @@ begin
     from public.employees e
     where e.id = p_employee_id and e.company_id = p_company_id
     for update;
-    if not found then raise exception 'employee_not_found'; end if;
+    if not found then
+      -- Allow a client-generated UUID for a newly created offline employee.
+      -- Never hijack an ID that already exists in another company.
+      if exists (select 1 from public.employees e where e.id = p_employee_id) then
+        raise exception 'employee_not_found';
+      end if;
+      v_linked_user := null;
+    end if;
     if p_pos_password is not null and trim(p_pos_password) <> ''
        and v_linked_user is not null
        and exists (
