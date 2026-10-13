@@ -659,8 +659,61 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       return true;
     }
     case 'category': {
-      const ok = await pushCategoryToSupabase(data as any);
-      if (!ok) throw new Error('No se pudo sincronizar la categoría pendiente.');
+      const category = data as any;
+      const { companyId } = await getActiveTenant();
+      const categoryId = String(category?.id || '');
+      const categoryName = String(category?.name || '').trim();
+      if (!categoryId || !categoryName) throw new PermanentSyncError('Categoría offline incompleta.');
+
+      // Categories are unique by both id and (company_id, name). If a prior
+      // failed attempt or a legacy inactive category already owns this name,
+      // reuse its canonical ID instead of endlessly retrying a duplicate insert.
+      const { data: byId, error: idError } = await supabase
+        .from('categories').select('id,name').eq('company_id', companyId).eq('id', categoryId).maybeSingle();
+      if (idError) throw idError;
+      if (byId?.id) {
+        const { error } = await supabase.from('categories')
+          .update({ name: categoryName, parent_id: null, active: true, updated_at: new Date().toISOString() })
+          .eq('company_id', companyId).eq('id', categoryId);
+        if (error) throw error;
+        return true;
+      }
+
+      const { data: byName, error: nameError } = await supabase
+        .from('categories').select('id,name').eq('company_id', companyId).eq('name', categoryName).maybeSingle();
+      if (nameError) throw nameError;
+      if (!byName?.id) {
+        const { error } = await supabase.from('categories').insert({
+          id: categoryId, company_id: companyId, name: categoryName, parent_id: null, active: true
+        });
+        if (error) throw error;
+        return true;
+      }
+
+      const canonicalId = String(byName.id);
+      const { error: activateError } = await supabase.from('categories')
+        .update({ active: true, updated_at: new Date().toISOString() })
+        .eq('company_id', companyId).eq('id', canonicalId);
+      if (activateError) throw activateError;
+
+      // Keep product records and pending product writes pointing at the
+      // canonical category ID; otherwise product creation fails with a foreign
+      // key even after the category itself was successfully recovered.
+      useStore.setState(state => ({
+        categories: (state.categories || []).map((entry: any) =>
+          String(entry.id) === categoryId ? { ...entry, id: canonicalId, isActive: true } : entry
+        ),
+        products: (state.products || []).map((entry: any) =>
+          String(entry.categoryId || '') === categoryId ? { ...entry, categoryId: canonicalId } : entry
+        )
+      }));
+      const queued = getOfflineQueue().map((entry: any) =>
+        entry.type === 'product' && String(entry.data?.categoryId || '') === categoryId
+          ? { ...entry, data: { ...entry.data, categoryId: canonicalId } }
+          : entry
+      );
+      setOfflineQueueMemory(queued);
+      await persistOfflineQueueSnapshot(queued);
       return true;
     }
     case 'product_delete': {
