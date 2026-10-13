@@ -404,6 +404,7 @@ export default function Team() {
             warehouseIds: form.warehouseIds,
             posPassword: form.posPassword.trim() || undefined
           });
+          setEditing(previous => previous ? { ...previous, user_id: null, pending_invitation: null } : previous);
         }
 
         if (form.sendInvite && !editing.user_id) {
@@ -416,6 +417,18 @@ export default function Team() {
           });
           const link = `${window.location.origin}/invite?token=${encodeURIComponent(invite.token)}`;
           setInviteLink(link);
+          setEditing(previous => previous ? {
+            ...previous,
+            user_id: null,
+            login_email: form.email.trim().toLowerCase(),
+            pending_invitation: {
+              id: invite.id,
+              email: form.email.trim().toLowerCase(),
+              status: "pending",
+              expires_at: invite.expires_at,
+              created_at: new Date().toISOString()
+            }
+          } : previous);
           setMessage(invite.email_sent ? "Empleado actualizado y correo de invitación reenviado." : "Empleado actualizado. Se generó un enlace nuevo para compartir.");
         } else {
           setMessage("Empleado actualizado.");
