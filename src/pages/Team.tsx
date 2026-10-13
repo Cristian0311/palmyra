@@ -547,7 +547,7 @@ export default function Team() {
     if (offline) {
       try {
         const invitationId = employee.pending_invitation.id;
-        await enqueueOfflineItem("invitation_revoke", { invitationId }, "invitation-revoke:" + invitationId);
+        await enqueueOfflineItem("invitation_revoke", { companyId: snapshot!.companyId, employeeId: employee.id }, "invitation-revoke:" + employee.id + ":" + generateId("OFF"));
         const nextSnapshot = {
           ...snapshot!,
           employees: snapshot!.employees.map(item => item.id === employee.id ? { ...item, pending_invitation: null } : item)
