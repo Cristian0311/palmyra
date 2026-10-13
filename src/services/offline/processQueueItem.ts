@@ -79,6 +79,22 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       }
       return true;
     }
+    case 'team_role_upsert': {
+      const d = data || {};
+      if (!d.companyId || !d.roleId || !d.key || !d.name || !Array.isArray(d.permissionKeys)) {
+        throw new PermanentSyncError('Rol offline incompleto.');
+      }
+      const { error } = await supabase.rpc('upsert_company_role', {
+        p_company_id: d.companyId,
+        p_role_id: d.roleId,
+        p_key: d.key,
+        p_name: d.name,
+        p_description: d.description || '',
+        p_permission_keys: d.permissionKeys
+      });
+      if (error) throw error;
+      return true;
+    }
     case 'team_compensation_settings': {
       const d = data || {};
       if (!d.companyId || !['fixed_product', 'sales_percent'].includes(String(d.mode))) {
