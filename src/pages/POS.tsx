@@ -586,13 +586,7 @@ export default function POS() {
     } finally {
       setIsCancellingShift(false);
     }
-  };;
-
-;
-
-;
-
-;
+  };
 
   const baseCurrency = getBaseCurrency();
   const productById = React.useMemo(() => new Map((products || []).map(product => [product.id, product])), [products]);
