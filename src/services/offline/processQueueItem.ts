@@ -39,26 +39,43 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
   switch (type) {
     case 'employee_create': {
       const d = data || {};
-      if (!d.companyId || !d.fullName || !d.employeeCode || !d.roleId || !Array.isArray(d.warehouseIds) || !d.warehouseIds.length) throw new PermanentSyncError('Trabajador offline incompleto.');
+      if (!d.companyId || !d.localEmployeeId || !d.fullName || !d.employeeCode || !d.roleId || !Array.isArray(d.warehouseIds) || !d.warehouseIds.length) {
+        throw new PermanentSyncError('Trabajador offline incompleto.');
+      }
+      // Keep the UUID created on the offline device as the canonical employee ID.
+      // Later queued actions (status, edit, delete) can then safely target the same row.
+      const { error: employeeError } = await supabase.rpc('create_employee_pos_secure', {
+        p_company_id: d.companyId,
+        p_employee_id: d.localEmployeeId,
+        p_employee_code: d.employeeCode,
+        p_full_name: d.fullName,
+        p_base_salary: Number(d.baseSalary) || 0,
+        p_role_id: d.roleId,
+        p_warehouse_ids: d.warehouseIds,
+        p_pos_password: d.sendInvite ? null : (String(d.posPassword || '').trim() || null)
+      });
+      if (employeeError) throw employeeError;
+
       if (d.sendInvite) {
-        const { data: invite, error } = await supabase.rpc('create_employee_with_invitation', {
-          p_company_id: d.companyId, p_employee_code: d.employeeCode, p_full_name: d.fullName, p_base_salary: Number(d.baseSalary) || 0,
-          p_role_id: d.roleId, p_warehouse_ids: d.warehouseIds, p_email: String(d.email || '').trim().toLowerCase()
+        const { data: invitation, error } = await supabase.rpc('create_company_invitation', {
+          p_company_id: d.companyId,
+          p_employee_id: d.localEmployeeId,
+          p_email: String(d.email || '').trim().toLowerCase(),
+          p_role_id: d.roleId,
+          p_warehouse_ids: d.warehouseIds
         });
         if (error) throw error;
-        const invitation = invite as any;
-        if (invitation?.token && d.email) {
+        const invite = invitation as any;
+        if (invite?.token && d.email) {
           const { error: mailError } = await supabase.functions.invoke('send-company-invitation', { body: {
-            companyId: d.companyId, employeeId: invitation.employee_id, email: invitation.email || String(d.email).trim().toLowerCase(), name: d.fullName, token: invitation.token
+            companyId: d.companyId,
+            employeeId: d.localEmployeeId,
+            email: invite.email || String(d.email).trim().toLowerCase(),
+            name: d.fullName,
+            token: invite.token
           }});
           if (mailError) console.warn('[offlineSync] Trabajador creado pero la invitación no pudo enviarse:', mailError);
         }
-      } else {
-        const { error } = await supabase.rpc('create_employee_pos_secure', {
-          p_company_id: d.companyId, p_employee_code: d.employeeCode, p_full_name: d.fullName, p_base_salary: Number(d.baseSalary) || 0,
-          p_role_id: d.roleId, p_warehouse_ids: d.warehouseIds, p_pos_password: String(d.posPassword || '').trim() || null
-        });
-        if (error) throw error;
       }
       return true;
     }
