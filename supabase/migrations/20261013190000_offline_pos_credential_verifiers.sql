@@ -6,8 +6,8 @@ begin;
 create table if not exists private.employee_pos_offline_verifiers (
   company_id uuid not null,
   subject_id uuid not null,
-  salt text not null check (salt ~ '^(?:[0-9a-f]{2}){16}$'),
-  verifier text not null check (verifier ~ '^(?:[0-9a-f]{2}){32}$'),
+  salt text not null check (salt ~ '^[0-9a-f]{32}$'),
+  verifier text not null check (verifier ~ '^[0-9a-f]{64}$'),
   iterations integer not null check (iterations between 100000 and 1000000),
   updated_at timestamptz not null default timezone('utc', now()),
   primary key (company_id, subject_id)
@@ -51,7 +51,7 @@ begin
   end if;
 
   if p_password is null or trim(p_password)='' then raise exception 'invalid_offline_credential'; end if;
-  if p_salt !~ '^(?:[0-9a-f]{2}){16}$' or p_verifier !~ '^(?:[0-9a-f]{2}){32}$'
+  if p_salt !~ '^[0-9a-f]{32}$' or p_verifier !~ '^[0-9a-f]{64}$'
      or p_iterations < 100000 or p_iterations > 1000000 then
     raise exception 'invalid_offline_verifier_format';
   end if;
