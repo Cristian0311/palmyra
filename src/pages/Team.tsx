@@ -459,6 +459,23 @@ export default function Team() {
 
   const changeStatus = async (employee: TeamEmployee) => {
     setMenuId(null);
+    const offline = typeof navigator !== "undefined" && !navigator.onLine;
+    if (offline) {
+      try {
+        const active = !employee.active;
+        const nextSnapshot = {
+          ...snapshot!,
+          employees: snapshot!.employees.map(item => item.id === employee.id ? { ...item, active } : item)
+        };
+        await enqueueOfflineItem("employee_status", { employeeId: employee.id, active }, "employee-status:" + employee.id + ":" + active + ":" + generateId("OFF"));
+        setSnapshot(nextSnapshot);
+        writeTeamCache(nextSnapshot);
+        addNotification(active ? "Empleado reactivado offline; se sincronizará al volver Internet." : "Empleado desactivado offline; se revocará el acceso al sincronizar.", "success");
+      } catch (e: any) {
+        addNotification(e?.message || "No se pudo guardar el cambio offline.", "error");
+      }
+      return;
+    }
     setBusy(true);
     try {
       await setEmployeeStatus(employee.id, !employee.active);
@@ -477,8 +494,26 @@ export default function Team() {
       `Eliminar a ${employee.full_name}? Esta acción eliminará su acceso a la empresa, invitaciones, credenciales POS y configuraciones personales. Las ventas y sesiones históricas conservarán el empleado como referencia cuando la base de datos lo permita.`
     );
     if (!confirmed) return;
-    setBusy(true);
     setError("");
+    const offline = typeof navigator !== "undefined" && !navigator.onLine;
+    if (offline) {
+      try {
+        await enqueueOfflineItem("employee_delete", { employeeId: employee.id }, "employee-delete:" + employee.id);
+        const nextSnapshot = {
+          ...snapshot!,
+          employees: snapshot!.employees.filter(item => item.id !== employee.id)
+        };
+        setSnapshot(nextSnapshot);
+        writeTeamCache(nextSnapshot);
+        addNotification("Eliminación guardada offline; se completará al volver Internet.", "success");
+      } catch (e: any) {
+        const message = e?.message || "No se pudo guardar la eliminación offline.";
+        addNotification(message, "error");
+        setError(message);
+      }
+      return;
+    }
+    setBusy(true);
     try {
       await deleteCompanyEmployee(employee.id);
       await refresh();
@@ -495,6 +530,23 @@ export default function Team() {
   const revokeInvite = async (employee: TeamEmployee) => {
     setMenuId(null);
     if (!employee.pending_invitation) return;
+    const offline = typeof navigator !== "undefined" && !navigator.onLine;
+    if (offline) {
+      try {
+        const invitationId = employee.pending_invitation.id;
+        await enqueueOfflineItem("invitation_revoke", { invitationId }, "invitation-revoke:" + invitationId);
+        const nextSnapshot = {
+          ...snapshot!,
+          employees: snapshot!.employees.map(item => item.id === employee.id ? { ...item, pending_invitation: null } : item)
+        };
+        setSnapshot(nextSnapshot);
+        writeTeamCache(nextSnapshot);
+        addNotification("Revocación guardada offline; se aplicará al volver Internet.", "success");
+      } catch (e: any) {
+        addNotification(e?.message || "No se pudo guardar la revocación offline.", "error");
+      }
+      return;
+    }
     setBusy(true);
     try {
       await revokeEmployeeInvitation(employee.pending_invitation.id);
