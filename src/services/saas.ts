@@ -5,6 +5,7 @@ import { setPalmyraLocalScope, clearPalmyraLocalScope, getPalmyraLocalScope } fr
 import { clearActiveTenant } from './tenant';
 import { cacheSaaSContext, clearCachedSaaSContext, getCachedSaaSContext } from './offlineAuthContext';
 import { forgetOfflineSaaSCredential } from './offlineSaaSAuth';
+import { syncOfflinePosCredentials } from './offlinePosAuth';
 import { isBrowserOffline, isTransientNetworkError } from './offlineNetwork';
 
 export interface SaaSContext {
