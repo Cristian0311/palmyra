@@ -251,6 +251,42 @@ export default function Team() {
     if (!canUseCustomRoles) return setError("Los roles personalizados están disponibles desde el plan Caravana.");
     if (roleForm.name.trim().length < 2) return setError("Escribe el nombre del rol.");
     if (roleForm.key.trim().length < 2) return setError("Escribe una clave para el rol.");
+    const offline = typeof navigator !== "undefined" && !navigator.onLine;
+    if (offline) {
+      try {
+        const roleId = editingRole?.id || generateId();
+        const role: TeamRole = {
+          id: roleId,
+          key: roleForm.key.trim().toLowerCase(),
+          name: roleForm.name.trim(),
+          description: roleForm.description.trim(),
+          is_system: false,
+          company_id: snapshot.companyId,
+          permission_keys: [...roleForm.permissionKeys]
+        };
+        await enqueueOfflineItem("team_role_upsert", {
+          companyId: snapshot.companyId,
+          roleId,
+          key: role.key,
+          name: role.name,
+          description: role.description || "",
+          permissionKeys: [...roleForm.permissionKeys]
+        }, "team-role:" + roleId);
+        const nextSnapshot: TeamSnapshot = {
+          ...snapshot,
+          roles: editingRole
+            ? snapshot.roles.map(item => item.id === roleId ? role : item)
+            : [role, ...snapshot.roles]
+        };
+        setSnapshot(nextSnapshot);
+        writeTeamCache(nextSnapshot);
+        setShowRoleForm(false);
+        addNotification(editingRole ? "Cambios del rol guardados offline; se sincronizarán al volver Internet." : "Rol guardado offline; se sincronizará al volver Internet.", "success");
+      } catch (e: any) {
+        setError(e?.message || "No se pudo guardar el rol offline.");
+      }
+      return;
+    }
     setBusy(true);
     setError("");
     try {
