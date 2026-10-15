@@ -3,7 +3,9 @@ import { getSupabase } from "../lib/supabase";
 const STORAGE_PREFIX = "palmyra:offline-pos-credential:v2:";
 const LEGACY_STORAGE_PREFIX = "palmyra:offline-pos-credential:v1:";
 const PBKDF2_ITERATIONS = 310_000;
-// Offline PIN verifiers are durable device credentials. App updates and routine\n// server snapshots must never expire/delete them; only an explicit password\n// overwrite or an authorized account revocation flow may replace/remove one.
+// Offline PIN verifiers are durable device credentials. App updates and routine
+// server snapshots must never expire/delete them; only an explicit password
+// overwrite or an authorized account revocation flow may replace/remove one.
 const SYNC_RETRY_WINDOW_MS = 30_000;
 const lastSyncAttempt = new Map<string, number>();
 
