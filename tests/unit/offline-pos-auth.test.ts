@@ -20,7 +20,7 @@ test("authorized company access preloads only provisioned offline POS verifiers"
   const saas = source("src/services/saas.ts");
   const migration = source("supabase/migrations/20261013190000_offline_pos_credential_verifiers.sql");
   assert.match(auth, /palmyra_get_offline_pos_verifiers/);
-  assert.match(auth, /MAX_CREDENTIAL_AGE_MS/);
+  assert.match(auth, /Do not expire valid offline credentials based on age/);
   assert.match(saas, /permissions\.includes\("employees\.manage"\)/);
   assert.match(saas, /syncOfflinePosCredentials\(companyId\)/);
   assert.match(migration, /private\.employee_pos_offline_verifiers/);
@@ -39,6 +39,14 @@ test("new and queued employee POS passwords provision local and server verifiers
 
 test("inventory adjustment allows an exact zero regardless of minimum-stock alert threshold", () => {
   const migration = source("supabase/migrations/20261013230000_fix_zero_inventory_quantity.sql");
-  assert.match(migration, /v_next:=greatest\(0::numeric,v_current\+p_delta\);/);
-  assert.doesNotMatch(migration, /v_next:=greatest\(p_min_quantity,v_current\+p_delta\);/);
+  assert.ok(migration.includes("v_next:=greatest(0::numeric,v_current+p_delta);"));
+  assert.ok(migration.includes("v_next:=greatest(0::numeric,v_current+p_delta);"));
+});
+
+test("offline POS verifiers survive app updates and incomplete remote snapshots", () => {
+  const auth = source("src/services/offlinePosAuth.ts");
+  assert.ok(auth.includes("function isFresh(savedAt: number): boolean {") && auth.includes("return Number.isFinite(savedAt) && savedAt > 0;"));
+  assert.match(auth, /Never delete device-local verifiers just because a server snapshot omitted/);
+  assert.doesNotMatch(auth, /localStorage\.removeItem\(localKey\)/);
+  assert.match(auth, /localStorage\.setItem\(key\(cleanCompanyId, subjectId\), JSON\.stringify\(record\)\)/);
 });

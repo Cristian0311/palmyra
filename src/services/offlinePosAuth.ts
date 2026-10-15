@@ -3,7 +3,9 @@ import { getSupabase } from "../lib/supabase";
 const STORAGE_PREFIX = "palmyra:offline-pos-credential:v2:";
 const LEGACY_STORAGE_PREFIX = "palmyra:offline-pos-credential:v1:";
 const PBKDF2_ITERATIONS = 310_000;
-const MAX_CREDENTIAL_AGE_MS = 30 * 24 * 60 * 60 * 1000;
+// Offline PIN verifiers are durable device credentials. App updates and routine
+// server snapshots must never expire/delete them; only an explicit password
+// overwrite or an authorized account revocation flow may replace/remove one.
 const SYNC_RETRY_WINDOW_MS = 30_000;
 const lastSyncAttempt = new Map<string, number>();
 
@@ -77,7 +79,8 @@ function equalHex(a: string, b: string): boolean {
 }
 
 function isFresh(savedAt: number): boolean {
-  return Number.isFinite(savedAt) && savedAt > 0 && Date.now() - savedAt <= MAX_CREDENTIAL_AGE_MS;
+  // Do not expire valid offline credentials based on age.
+  return Number.isFinite(savedAt) && savedAt > 0;
 }
 
 async function createCredential(companyId: string, userId: string, password: string, savedAt = Date.now()): Promise<OfflinePosCredential> {
@@ -176,27 +179,11 @@ export async function syncOfflinePosCredentials(companyId: string): Promise<{ sy
       skipped += 1;
     }
   }
-  // A successful server snapshot also revokes local verifiers for employees
-  // removed, deactivated, or no longer provisioned for offline access.
-  const companyPrefix = STORAGE_PREFIX + encodeURIComponent(cleanCompanyId) + ":";
-  const localKeys: string[] = [];
-  for (let i = 0; i < localStorage.length; i += 1) {
-    const localKey = localStorage.key(i);
-    if (localKey?.startsWith(companyPrefix)) localKeys.push(localKey);
-  }
-  for (const localKey of localKeys) {
-    const subjectId = decodeURIComponent(localKey.slice(companyPrefix.length));
-    if (!allowedSubjects.has(subjectId)) {
-      // Preserve a credential entered online while this snapshot was in flight;
-      // its server write may have committed just after the snapshot was read.
-      try {
-        const recentRaw = localStorage.getItem(localKey);
-        const recent = recentRaw ? JSON.parse(recentRaw) as Partial<OfflinePosCredential> : null;
-        if (recent?.version === 2 && Number(recent.savedAt) >= syncStartedAt) continue;
-        localStorage.removeItem(localKey);
-      } catch { try { localStorage.removeItem(localKey); } catch {} }
-    }
-  }
+  // Never delete device-local verifiers just because a server snapshot omitted
+  // them. Older deployments, role/permission changes, transient RPC results or
+  // legacy employee IDs can produce incomplete snapshots; deleting here made
+  // offline POS access disappear after a refresh/update. Existing credentials
+  // are overwritten only when the server explicitly returns a valid newer row.
   return { synced, skipped };
 }
 
