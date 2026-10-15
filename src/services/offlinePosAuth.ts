@@ -78,7 +78,10 @@ function equalHex(a: string, b: string): boolean {
   return mismatch === 0;
 }
 
-function isFresh(savedAt: number): boolean {\n  // Do not expire valid offline credentials based on age.\n  return Number.isFinite(savedAt) && savedAt > 0;\n}
+function isFresh(savedAt: number): boolean {
+  // Do not expire valid offline credentials based on age.
+  return Number.isFinite(savedAt) && savedAt > 0;
+}
 
 async function createCredential(companyId: string, userId: string, password: string, savedAt = Date.now()): Promise<OfflinePosCredential> {
   const salt = makeSalt();
