@@ -544,6 +544,14 @@ export default function Reports() {
       return;
     }
 
+    // La actualización en cascada todavía no dispone de una operación durable
+    // de cola para sincronizar todos los registros relacionados sin conexión.
+    // Bloquear el guardado offline evita aparentar una sincronización que no existe.
+    if (!navigator.onLine) {
+      addNotification('Para cambiar la fecha del turno y sincronizar sus ventas relacionadas, conecta el dispositivo a Internet antes de guardar.', 'warning');
+      return;
+    }
+
     setIsUpdatingSessionDate(true);
     try {
       const updated = await store.updateCashSessionDateCascade(editingSessionDateId, newSessionDate);
@@ -552,12 +560,7 @@ export default function Reports() {
         return;
       }
       await flushLocalStateStorage();
-      addNotification(
-        navigator.onLine
-          ? 'Fecha del turno actualizada. La sincronización con el servidor se ha intentado.'
-          : 'Fecha actualizada localmente. La sincronización queda pendiente al recuperar conexión.',
-        'success'
-      );
+      addNotification('Fecha del turno actualizada.', 'success');
       setEditingSessionDateId(null);
       setNewSessionDate('');
     } catch (error) {
