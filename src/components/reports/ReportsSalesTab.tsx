@@ -50,7 +50,10 @@ export function ReportsSalesTab({
   onPrintShiftTicket,
   onOpenTransactionDetail,
   onVoidTransaction,
+  onHideTransactionReport,
 }: Props) {
+  const orderedSessions = [...sessions].sort((a, b) => new Date(b.closingDate || b.closedAt || b.openedAt).getTime() - new Date(a.closingDate || a.closedAt || a.openedAt).getTime());
+  const orderedTransactions = [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
       <div className="bg-secondary rounded-2xl shadow-sm border border-base p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
