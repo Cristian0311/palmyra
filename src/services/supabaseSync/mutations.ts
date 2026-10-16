@@ -92,7 +92,9 @@ export async function pushProductToSupabase(product:Product, options?: { queueOn
 async function resolveVariantId(supabase:any,companyId:string,productId:string,variantLabel?:string){
   if(!variantLabel?.trim())return null;
   const {data,error}=await supabase.from('product_variants').select('id').eq('company_id',companyId).eq('product_id',productId).eq('name',variantLabel.trim()).eq('active',true).maybeSingle();
-  if(error)throw error;return data?.id||null;
+  if(error)throw error;
+  if(!data?.id)throw new Error(`No se encontró la variante activa "${variantLabel.trim()}" para este producto. No se modificó el inventario.`);
+  return data.id;
 }
 
 export async function applyInventoryAdjustmentToSupabase(params:{operationId:string;productId:string;branchId:string;variantLabel?:string;delta:number;minQuantity?:number;userId?:string;movementType?:string}): Promise<{success:true;conflict:false;data:{quantity:number};error?:string}|{success:false;conflict?:boolean;error:string;data?:never}>{
@@ -248,11 +250,33 @@ export async function pushCustomerToSupabase(customer:Customer):Promise<{success
 }
 export async function deleteCustomerFromSupabase(id:string):Promise<boolean>{try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {error}=await supabase.from('customers').update({active:false}).eq('id',id).eq('company_id',companyId);if(error)throw error;return true;}catch{return false;}}
 
+async function deriveTransferVariantOperationId(baseOperationId:string,variantLabel:string,index:number){
+  const seed=new TextEncoder().encode(`${baseOperationId}:variant:${index}:${String(variantLabel||'')}`);
+  const digest=await crypto.subtle.digest('SHA-256',seed);
+  const bytes=new Uint8Array(digest).slice(0,16);
+  bytes[6]=(bytes[6]&0x0f)|0x50;
+  bytes[8]=(bytes[8]&0x3f)|0x80;
+  return Array.from(bytes).map((b,i)=>[4,6,8,10].includes(i)?'-'+b.toString(16).padStart(2,'0'):b.toString(16).padStart(2,'0')).join('');
+}
+
 export async function pushInventoryTransferToSupabase(transfer:InventoryTransfer){
   try{
     const supabase=await onlineClient();const {companyId}=await getActiveTenant();
-    if(Array.isArray(transfer.variants)&&transfer.variants.length){for(const v of transfer.variants){const opId=crypto.randomUUID();const vid=await resolveVariantId(supabase,companyId,transfer.productId,v.variantLabel);const {error}=await supabase.rpc('palmyra_transfer_inventory',{p_operation_id:opId,p_company_id:companyId,p_from_warehouse_id:transfer.fromBranchId,p_to_warehouse_id:transfer.toBranchId,p_product_id:transfer.productId,p_variant_id:vid,p_quantity:Number(v.quantity)||0,p_notes:transfer.productName||''});if(error)throw error;}return true;}
-    const vid=await resolveVariantId(supabase,companyId,transfer.productId,transfer.variantLabel);const {error}=await supabase.rpc('palmyra_transfer_inventory',{p_operation_id:transfer.operationId||transfer.id,p_company_id:companyId,p_from_warehouse_id:transfer.fromBranchId,p_to_warehouse_id:transfer.toBranchId,p_product_id:transfer.productId,p_variant_id:vid,p_quantity:Number(transfer.quantity)||0,p_notes:transfer.productName||''});if(error)throw error;return true;
+    if(Array.isArray(transfer.variants)&&transfer.variants.length){
+      const baseOperationId=String(transfer.operationId||transfer.id);
+      for(let index=0;index<transfer.variants.length;index++){
+        const v=transfer.variants[index];
+        const opId=transfer.variants.length===1?baseOperationId:await deriveTransferVariantOperationId(baseOperationId,v.variantLabel,index);
+        const vid=await resolveVariantId(supabase,companyId,transfer.productId,v.variantLabel);
+        const {error}=await supabase.rpc('palmyra_transfer_inventory',{p_operation_id:opId,p_company_id:companyId,p_from_warehouse_id:transfer.fromBranchId,p_to_warehouse_id:transfer.toBranchId,p_product_id:transfer.productId,p_variant_id:vid,p_quantity:Number(v.quantity)||0,p_notes:transfer.productName||''});
+        if(error)throw error;
+      }
+      return true;
+    }
+    const vid=await resolveVariantId(supabase,companyId,transfer.productId,transfer.variantLabel);
+    const {error}=await supabase.rpc('palmyra_transfer_inventory',{p_operation_id:transfer.operationId||transfer.id,p_company_id:companyId,p_from_warehouse_id:transfer.fromBranchId,p_to_warehouse_id:transfer.toBranchId,p_product_id:transfer.productId,p_variant_id:vid,p_quantity:Number(transfer.quantity)||0,p_notes:transfer.productName||''});
+    if(error)throw error;
+    return true;
   }catch(e:any){await queue('transfer',transfer,transfer.id);return false;}
 }
 
