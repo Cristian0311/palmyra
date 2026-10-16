@@ -64,7 +64,15 @@ export function ReportsSalesTab({
   const sortedSessions = useMemo(() => {
     if (!sortState || sortState.scope !== "sessions") return sessions;
     const value = (session: CashRegisterSession): string | number => {
-      const txs = transactions.filter(tx => tx.sessionId === session.id && !tx.deletedAt);
+      const sessionOpenMs = new Date(session.openedAt).getTime();
+      const sessionCloseMs = session.closedAt ? new Date(session.closedAt).getTime() : Infinity;
+      const txs = transactions.filter(tx => {
+        if (tx.deletedAt) return false;
+        if (tx.sessionId === session.id) return true;
+        if (tx.sessionId || tx.status !== "completed" || tx.branchId !== session.branchId) return false;
+        const txTime = new Date(tx.date).getTime();
+        return Number.isFinite(txTime) && txTime >= sessionOpenMs && txTime <= sessionCloseMs;
+      });
       const payrollItem = payroll.find(item => item.sessionId === session.id);
       switch (sortState.key) {
         case "turn": {
@@ -188,11 +196,15 @@ export function ReportsSalesTab({
               </thead>
               <tbody className="divide-y divide-base">
                 {sortedSessions.map((session, idx) => {
-                  const sessionTx = transactions.filter(
-                    (transaction) =>
-                      transaction.sessionId === session.id &&
-                      !transaction.deletedAt
-                  );
+                  const sessionOpenMs = new Date(session.openedAt).getTime();
+                  const sessionCloseMs = session.closedAt ? new Date(session.closedAt).getTime() : Infinity;
+                  const sessionTx = transactions.filter((transaction) => {
+                    if (transaction.deletedAt) return false;
+                    if (transaction.sessionId === session.id) return true;
+                    if (transaction.sessionId || transaction.status !== "completed" || transaction.branchId !== session.branchId) return false;
+                    const transactionTime = new Date(transaction.date).getTime();
+                    return Number.isFinite(transactionTime) && transactionTime >= sessionOpenMs && transactionTime <= sessionCloseMs;
+                  });
                   const totalSalesInSession = sessionTx.reduce(
                     (sum, transaction) => sum + (transaction.total || 0),
                     0
