@@ -22,7 +22,7 @@ const GLOBAL_MS = 15000;
 
 const GLOBAL_TABLES = new Set([
   'warehouses', 'categories', 'products', 'product_variants', 'product_barcodes',
-  'product_kit_components', 'employees', 'employee_warehouse_access', 'currencies'
+  'product_kit_components', 'employees', 'employee_warehouse_access', 'currencies', 'exchange_rates'
 ]);
 // Only subscribe to tenant-owned tables with company_id. Child tables without
 // that column are refreshed through their parent (sales, transfers, audits, etc.);
