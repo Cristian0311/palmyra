@@ -531,6 +531,42 @@ export default function Reports() {
   const printPayrollItem = printSession ? payrollList.find(p => p.sessionId === printSession.id) : null;
   const printBranch = printSession ? branches.find(b => b.id === printSession.branchId) : null;
 
+  const handleSaveSessionDate = useCallback(async () => {
+    if (!editingSessionDateId || !/^\\d{4}-\\d{2}-\\d{2}$/.test(newSessionDate)) {
+      addNotification('Selecciona una fecha válida para el turno.', 'warning');
+      return;
+    }
+
+    const [year, month, day] = newSessionDate.split('-').map(Number);
+    const candidate = new Date(year, month - 1, day);
+    if (candidate.getFullYear() !== year || candidate.getMonth() !== month - 1 || candidate.getDate() !== day) {
+      addNotification('La fecha seleccionada no es válida.', 'warning');
+      return;
+    }
+
+    setIsUpdatingSessionDate(true);
+    try {
+      const updated = await store.updateCashSessionDateCascade(editingSessionDateId, newSessionDate);
+      if (!updated) {
+        addNotification('No se pudo actualizar la fecha del turno. Comprueba que el turno siga existiendo.', 'error');
+        return;
+      }
+      await flushLocalStateStorage();
+      addNotification(
+        navigator.onLine
+          ? 'Fecha del turno actualizada. La sincronización con el servidor se ha intentado.'
+          : 'Fecha actualizada localmente. La sincronización queda pendiente al recuperar conexión.',
+        'success'
+      );
+      setEditingSessionDateId(null);
+      setNewSessionDate('');
+    } catch (error) {
+      addNotification(error instanceof Error ? error.message : 'Error al actualizar la fecha del turno.', 'error');
+    } finally {
+      setIsUpdatingSessionDate(false);
+    }
+  }, [editingSessionDateId, newSessionDate, addNotification, store.updateCashSessionDateCascade]);
+
   return (
     <div className="reportes-page space-y-3 sm:space-y-4 animate-in fade-in duration-300 w-full min-w-0 max-w-[1400px] mx-auto pb-12 overflow-x-hidden">
       {showExcelGate && !canExcelExport && (
@@ -1335,7 +1371,7 @@ export default function Reports() {
                         <button
                           onClick={() => {
                             setEditingSessionDateId(session.id);
-                            setNewSessionDate(new Date(session.openedAt).toISOString().split('T')[0]);
+                            setNewSessionDate(getLocalDateYMD(session.openedAt));
                           }}
                           title="Editar Fecha del Turno (Cascada)"
                           className="h-7 w-7 p-0 inline-flex items-center justify-center bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 dark:text-amber-400 rounded-lg transition-all active:scale-95 border border-amber-200 dark:border-amber-800/40 cursor-pointer shadow-2xs"
@@ -2407,6 +2443,40 @@ export default function Reports() {
             onCancel={() => setAddItemToShiftModal(null)}
           />
         </Suspense>
+      )}
+      {/* Modal: Editar fecha del turno */}
+      {editingSessionDateId && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-950/60 p-4" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget && !isUpdatingSessionDate) setEditingSessionDateId(null);
+        }}>
+          <section className="w-full max-w-md rounded-2xl border border-base bg-secondary p-5 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="edit-session-date-title">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h3 id="edit-session-date-title" className="text-sm font-black text-primary">Editar fecha del turno</h3>
+                <p className="mt-1 text-xs text-muted">Se ajustará la fecha del turno y de los registros relacionados que gestione la actualización en cascada.</p>
+              </div>
+              <button type="button" onClick={() => setEditingSessionDateId(null)} disabled={isUpdatingSessionDate} className="rounded-lg p-2 text-muted hover:bg-subtle disabled:opacity-50" aria-label="Cerrar">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <label htmlFor="reports-session-date" className="mb-1 block text-xs font-bold text-primary">Nueva fecha</label>
+            <input
+              id="reports-session-date"
+              type="date"
+              value={newSessionDate}
+              onChange={(event) => setNewSessionDate(event.target.value)}
+              disabled={isUpdatingSessionDate}
+              className="w-full rounded-xl border border-base bg-primary px-3 py-2 text-sm text-primary"
+            />
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setEditingSessionDateId(null)} disabled={isUpdatingSessionDate} className="rounded-xl border border-base px-4 py-2 text-xs font-bold text-secondary disabled:opacity-50">Cancelar</button>
+              <button type="button" onClick={() => void handleSaveSessionDate()} disabled={isUpdatingSessionDate || !newSessionDate} className="inline-flex items-center gap-2 rounded-xl bg-amber-600 px-4 py-2 text-xs font-black text-white disabled:opacity-50">
+                {isUpdatingSessionDate ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                {isUpdatingSessionDate ? 'Guardando…' : 'Guardar fecha'}
+              </button>
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );
