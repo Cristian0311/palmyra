@@ -89,6 +89,7 @@ export default function Team() {
   const [compensationSettings, setCompensationSettings] = useState<CompanyCompensationSettings>({ mode: 'fixed_product', percentRate: 0, fixedAmount: 0, workerCount: 1, active: true });
   const [savingCompensation, setSavingCompensation] = useState(false);
   const [showPosPassword, setShowPosPassword] = useState(false);
+  const [posPasswordsDisabled, setPosPasswordsDisabled] = useState(false);
 
   const canManageRoles = currentUser?.permissions?.includes("roles.manage") || currentUser?.role === "admin";
   const canUseCustomRoles = context?.subscription?.planCode !== "starter";
@@ -161,6 +162,19 @@ export default function Team() {
   };
 
   useEffect(() => { void refresh(); }, []);
+
+  useEffect(() => {
+    const companyId = snapshot?.companyId || context?.companyId;
+    if (!companyId) return;
+    try { setPosPasswordsDisabled(localStorage.getItem(`palmyra:pos-passwords-disabled:${companyId}`) === "true"); } catch {}
+  }, [snapshot?.companyId, context?.companyId]);
+
+  const setPosPasswordRequirement = (disabled: boolean) => {
+    if (currentUser?.role !== "admin" || !snapshot?.companyId) return;
+    try { localStorage.setItem(`palmyra:pos-passwords-disabled:${snapshot.companyId}`, String(disabled)); } catch {}
+    setPosPasswordsDisabled(disabled);
+    addNotification(disabled ? "Se desactivó la solicitud de contraseñas POS en este dispositivo." : "Se reactivó la solicitud de contraseñas POS en este dispositivo.", "success");
+  };
 
   useEffect(() => {
     const onQueueChange = () => {
@@ -690,6 +704,18 @@ export default function Team() {
           <Plus className="w-4 h-4" /> Agregar trabajador
         </button>
       </header>
+
+      {currentUser?.role === "admin" && snapshot?.companyId && (
+        <section className="bg-secondary border border-amber-300 dark:border-amber-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-black text-primary">Contraseñas del POS</h2>
+            <p className="text-xs text-muted mt-1">Permite abrir turnos sin introducir la contraseña de cada empleado en este dispositivo. Es un ajuste local y no se sincroniza con otros dispositivos.</p>
+          </div>
+          <button type="button" onClick={() => setPosPasswordRequirement(!posPasswordsDisabled)} className={cn("h-10 px-4 rounded-xl font-black text-[10px] uppercase tracking-wider", posPasswordsDisabled ? "bg-amber-600 text-white" : "bg-slate-900 text-white")}>
+            {posPasswordsDisabled ? "Contraseñas desactivadas" : "Desactivar contraseñas POS"}
+          </button>
+        </section>
+      )}
 
       <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-secondary border border-base rounded-2xl p-4">

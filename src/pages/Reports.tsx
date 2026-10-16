@@ -189,6 +189,15 @@ export default function Reports() {
 
   const [activeTab, setActiveTab] = useState<'sales' | 'payroll' | 'sessions' | 'discrepancies' | 'movements' | 'transfers'>('sales');
   const [salesViewMode, setSalesViewMode] = useState<'by_shift' | 'all_tickets'>('by_shift');
+  const [hiddenReportIds, setHiddenReportIds] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem("palmyra:hidden-sales-report-ids:v1") || "[]"); } catch { return []; }
+  });
+  const hideTransactionReport = (transaction: Transaction) => {
+    const next = Array.from(new Set([...hiddenReportIds, transaction.id]));
+    setHiddenReportIds(next);
+    try { localStorage.setItem("palmyra:hidden-sales-report-ids:v1", JSON.stringify(next)); } catch {}
+    addNotification("Reporte ocultado. La venta original y el inventario no se modificaron.", "success");
+  };
   const [transferFromFilter, setTransferFromFilter] = useState<string>('all');
   const [transferToFilter, setTransferToFilter] = useState<string>('all');
   const [transferSearch, setTransferSearch] = useState<string>('');
@@ -1013,6 +1022,7 @@ export default function Reports() {
           onPrintShiftTicket={handlePrintShiftTicket}
           onOpenTransactionDetail={setSelectedDirectTxModal}
           onVoidTransaction={handleVoidTransaction}
+          onHideTransactionReport={hideTransactionReport}
         />
       )}
 

@@ -5,6 +5,7 @@ import {
   FileSpreadsheet,
   Printer,
   Trash2,
+  EyeOff,
   TrendingUp,
   Users,
 } from "lucide-react";
@@ -31,6 +32,7 @@ type Props = {
   onPrintShiftTicket: (sessionId: string) => void;
   onOpenTransactionDetail: (transaction: Transaction) => void;
   onVoidTransaction: (transaction: Transaction) => void | Promise<void>;
+  onHideTransactionReport: (transaction: Transaction) => void;
 };
 
 export function ReportsSalesTab({
@@ -48,7 +50,10 @@ export function ReportsSalesTab({
   onPrintShiftTicket,
   onOpenTransactionDetail,
   onVoidTransaction,
+  onHideTransactionReport,
 }: Props) {
+  const orderedSessions = [...sessions].sort((a, b) => new Date(b.closingDate || b.closedAt || b.openedAt).getTime() - new Date(a.closingDate || a.closedAt || a.openedAt).getTime());
+  const orderedTransactions = [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
       <div className="bg-secondary rounded-2xl shadow-sm border border-base p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -119,7 +124,7 @@ export function ReportsSalesTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-base">
-                {sessions.map((session, idx) => {
+                {orderedSessions.map((session, idx) => {
                   const sessionTx = transactions.filter(
                     (transaction) =>
                       transaction.sessionId === session.id &&
@@ -306,7 +311,7 @@ export function ReportsSalesTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-base">
-                {transactions.map((tx) => {
+                {orderedTransactions.map((tx) => {
                   const branchName =
                     branches.find((branch) => branch.id === tx.branchId)?.name ||
                     "Sucursal";
