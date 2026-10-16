@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import {
   AlertCircle,
   CheckCircle,
@@ -49,6 +50,73 @@ export function ReportsSalesTab({
   onOpenTransactionDetail,
   onVoidTransaction,
 }: Props) {
+  const [sortState, setSortState] = useState<{ scope: "sessions" | "transactions"; key: string; direction: "asc" | "desc" } | null>(null);
+
+  const toggleSort = (scope: "sessions" | "transactions", key: string) => {
+    setSortState(current => current?.scope === scope && current.key === key
+      ? { scope, key, direction: current.direction === "asc" ? "desc" : "asc" }
+      : { scope, key, direction: "asc" });
+  };
+
+  const sortIndicator = (scope: "sessions" | "transactions", key: string) =>
+    sortState?.scope === scope && sortState.key === key ? (sortState.direction === "asc" ? " ↑" : " ↓") : " ↕";
+
+  const sortedSessions = useMemo(() => {
+    if (!sortState || sortState.scope !== "sessions") return sessions;
+    const value = (session: CashRegisterSession): string | number => {
+      const txs = transactions.filter(tx => tx.sessionId === session.id && !tx.deletedAt);
+      const payrollItem = payroll.find(item => item.sessionId === session.id);
+      switch (sortState.key) {
+        case "turn": {
+          const turn = sessionTurnMap.get(session.id);
+          const numeric = Number(String(turn ?? "").replace(/[^0-9.-]/g, ""));
+          return Number.isFinite(numeric) && String(turn ?? "").match(/\d/) ? numeric : String(turn ?? session.id).toLocaleLowerCase();
+        }
+        case "status": return session.status;
+        case "date": return new Date(session.closingDate || session.closedAt || session.openedAt || 0).getTime() || 0;
+        case "worker": return (session.workerName || users.find(user => user.id === session.userId)?.name || "").toLocaleLowerCase();
+        case "branch": return (branches.find(branch => branch.id === session.branchId)?.name || "").toLocaleLowerCase();
+        case "products": return txs.reduce((sum, tx) => sum + (tx.items || []).reduce((n, item) => n + (Number(item.quantity) || 0), 0), 0);
+        case "total": return txs.reduce((sum, tx) => sum + (Number(tx.total) || 0), 0);
+        case "salary": return Number(payrollItem?.totalSalary) || 0;
+        default: return 0;
+      }
+    };
+    return [...sessions].sort((a, b) => {
+      const av = value(a), bv = value(b);
+      const compared = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv), "es", { numeric: true, sensitivity: "base" });
+      return (sortState.direction === "asc" ? compared : -compared) || a.id.localeCompare(b.id);
+    });
+  }, [sessions, transactions, payroll, users, branches, sessionTurnMap, sortState]);
+
+  const sortedTransactions = useMemo(() => {
+    if (!sortState || sortState.scope !== "transactions") return transactions;
+    const value = (tx: Transaction): string | number => {
+      const worker = users.find(user => user.id === tx.userId);
+      switch (sortState.key) {
+        case "ticket": return (tx.ticketNumber || tx.id).toLocaleLowerCase();
+        case "type": return tx.status;
+        case "date": return new Date(tx.date || 0).getTime() || 0;
+        case "worker": return (tx.cashierName || worker?.name || "").toLocaleLowerCase();
+        case "branch": return (branches.find(branch => branch.id === tx.branchId)?.name || "").toLocaleLowerCase();
+        case "items": return (tx.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+        case "total": return Number(tx.total) || 0;
+        default: return 0;
+      }
+    };
+    return [...transactions].sort((a, b) => {
+      const av = value(a), bv = value(b);
+      const compared = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv), "es", { numeric: true, sensitivity: "base" });
+      return (sortState.direction === "asc" ? compared : -compared) || a.id.localeCompare(b.id);
+    });
+  }, [transactions, users, branches, sortState]);
+
+  const sortableHeader = (label: string, scope: "sessions" | "transactions", key: string, align = "") => (
+    <button type="button" onClick={() => toggleSort(scope, key)} className={cn("inline-flex items-center gap-1 cursor-pointer hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-rose-500", align)} aria-label={`Ordenar por ${label}`}>
+      {label}<span aria-hidden="true">{sortIndicator(scope, key)}</span>
+    </button>
+  );
+
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
       <div className="bg-secondary rounded-2xl shadow-sm border border-base p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -108,18 +176,18 @@ export function ReportsSalesTab({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-subtle border-b border-base text-[8px] font-black text-muted uppercase tracking-[0.15em]">
-                  <th className="px-3 py-2.5">Turno</th>
-                  <th className="px-3 py-2.5 text-center">Estado</th>
-                  <th className="px-3 py-2.5">Fecha y Hora</th>
-                  <th className="px-3 py-2.5">Vendedor / Sucursal</th>
-                  <th className="px-3 py-2.5 text-center">Productos</th>
-                  <th className="px-3 py-2.5 text-right">Venta Total</th>
-                  <th className="px-3 py-2.5 text-right">Salario Liquidado</th>
+                  <th className="px-3 py-2.5">{sortableHeader("Turno", "sessions", "turn")}</th>
+                  <th className="px-3 py-2.5 text-center">{sortableHeader("Estado", "sessions", "status")}</th>
+                  <th className="px-3 py-2.5">{sortableHeader("Fecha y Hora", "sessions", "date")}</th>
+                  <th className="px-3 py-2.5">{sortableHeader("Vendedor / Sucursal", "sessions", "worker")}</th>
+                  <th className="px-3 py-2.5 text-center">{sortableHeader("Productos", "sessions", "products")}</th>
+                  <th className="px-3 py-2.5 text-right">{sortableHeader("Venta Total", "sessions", "total", "justify-end")}</th>
+                  <th className="px-3 py-2.5 text-right">{sortableHeader("Salario Liquidado", "sessions", "salary", "justify-end")}</th>
                   <th className="px-3 py-2.5 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-base">
-                {sessions.map((session, idx) => {
+                {sortedSessions.map((session, idx) => {
                   const sessionTx = transactions.filter(
                     (transaction) =>
                       transaction.sessionId === session.id &&
@@ -295,18 +363,18 @@ export function ReportsSalesTab({
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="bg-subtle border-b border-base text-[8px] font-black text-muted uppercase tracking-[0.15em]">
-                  <th className="px-3 py-2.5">Ticket / Vale</th>
-                  <th className="px-3 py-2.5">Tipo Venta</th>
-                  <th className="px-3 py-2.5">Fecha y Hora</th>
-                  <th className="px-3 py-2.5">Vendedor / Cajero</th>
-                  <th className="px-3 py-2.5">Sucursal / Almacén</th>
-                  <th className="px-3 py-2.5">Artículos</th>
-                  <th className="px-3 py-2.5 text-right">Total</th>
+                  <th className="px-3 py-2.5">{sortableHeader("Ticket / Vale", "transactions", "ticket")}</th>
+                  <th className="px-3 py-2.5">{sortableHeader("Tipo Venta", "transactions", "type")}</th>
+                  <th className="px-3 py-2.5">{sortableHeader("Fecha y Hora", "transactions", "date")}</th>
+                  <th className="px-3 py-2.5">{sortableHeader("Vendedor / Cajero", "transactions", "worker")}</th>
+                  <th className="px-3 py-2.5">{sortableHeader("Sucursal / Almacén", "transactions", "branch")}</th>
+                  <th className="px-3 py-2.5">{sortableHeader("Artículos", "transactions", "items")}</th>
+                  <th className="px-3 py-2.5 text-right">{sortableHeader("Total", "transactions", "total", "justify-end")}</th>
                   <th className="px-3 py-2.5 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-base">
-                {transactions.map((tx) => {
+                {sortedTransactions.map((tx) => {
                   const branchName =
                     branches.find((branch) => branch.id === tx.branchId)?.name ||
                     "Sucursal";
