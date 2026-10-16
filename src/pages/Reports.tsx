@@ -121,7 +121,6 @@ export default function Reports() {
     branchById,
     bankCardById,
     userByName,
-    transactionsBySession,
     baseCurrency,
     totalSales,
     allMovements,
