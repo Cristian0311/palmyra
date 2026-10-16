@@ -19,13 +19,17 @@ export function calculateExpectedSessionBalances(
     },
   ];
 
-  const sessionTxs = transactions.filter(
-    transaction =>
-      transaction.status === 'completed' &&
-      !transaction.deletedAt &&
-      !String(transaction.notes || '').startsWith('AJUSTE_') &&
-      transaction.sessionId === session.id,
-  );
+  const sessionOpenedAt = new Date(session.openedAt || 0).getTime();
+  const sessionClosedAt = session.closedAt ? new Date(session.closedAt).getTime() : Number.POSITIVE_INFINITY;
+  const sessionTxs = transactions.filter(transaction => {
+    if (transaction.status !== 'completed' || transaction.deletedAt || String(transaction.notes || '').startsWith('AJUSTE_')) return false;
+    if (transaction.sessionId) return transaction.sessionId === session.id;
+    // Legacy/imported tickets may not have a sessionId. Count them only when
+    // they belong to this warehouse and fall inside this turn's time interval.
+    const transactionAt = new Date(transaction.date).getTime();
+    return transaction.branchId === session.branchId && Number.isFinite(transactionAt) &&
+      transactionAt >= sessionOpenedAt && transactionAt <= sessionClosedAt;
+  });
 
   const expectedMap = new Map<string, Payment>();
   const addExpected = (payment: Payment, amountDelta?: number) => {

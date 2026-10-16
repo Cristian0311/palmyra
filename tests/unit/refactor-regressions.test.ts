@@ -53,6 +53,7 @@ test('perfect-session calculation preserves payments, change and cash movements'
     branchId: 'w1',
     sessionId: 's1',
     date: '2026-10-05T11:00:00Z',
+    status: 'completed',
     total: 130,
     items: [],
     payments: [{ currencyCode: 'CUP', method: 'cash', amount: 100 }],

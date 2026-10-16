@@ -6,6 +6,8 @@ import {
   HelpCircle, Edit3, Save, FileText, CheckCircle, Minus
 } from "lucide-react";
 
+import { getCompletedTransactionsForSession } from '../modules/reports/utils/reportSessionCalculations';
+
 type ModalProps = Record<string, any>;
 
 export default function ReportsCloseSessionModal(props: ModalProps) {
@@ -52,12 +54,7 @@ export default function ReportsCloseSessionModal(props: ModalProps) {
                   <span className="font-black text-primary">{formatMoney(sessionToCloseModal.openingBalance)}</span>
                 </div>
                 {(() => {
-                  const sessionTxs = transactions.filter(t => 
-                    t.sessionId === sessionToCloseModal.id || (
-                      t.branchId === sessionToCloseModal.branchId &&
-                      new Date(t.date).getTime() >= new Date(sessionToCloseModal.openedAt).getTime()
-                    )
-                  );
+                  const sessionTxs = getCompletedTransactionsForSession(sessionToCloseModal, transactions);
                   const totalSales = sessionTxs.reduce((sum, tx) => sum + (tx.total || 0), 0);
                   return (
                     <div className="flex justify-between border-t border-base/60 pt-2 font-black text-rose-600 dark:text-rose-400">
