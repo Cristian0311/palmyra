@@ -323,6 +323,20 @@ export async function callGetCompensationSettingsRPC(){
   }catch(e:any){return errorResult(e);}
 }
 
+export async function callUpdateCashSessionBusinessDateRPC(sessionId:string, newOpenedAt:string) {
+  try {
+    const { companyId } = await getActiveTenant(true);
+    const data = await rpc('palmyra_update_cash_session_business_date', {
+      p_session_id: sessionId,
+      p_company_id: companyId,
+      p_new_opened_at: newOpenedAt
+    });
+    return { success: true as const, error: undefined, errorCode: undefined, data };
+  } catch (e:any) {
+    return errorResult(e);
+  }
+}
+
 export async function callCloseSessionRPC(sessionId:string,closingBalances:any[],closedAt:string,notes:string,settlement:SalarySettlement,expectedCash?:number){
   try{
     const {companyId}=await getActiveTenant(true);
