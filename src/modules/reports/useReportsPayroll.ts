@@ -105,7 +105,6 @@ export function useReportsPayroll(params: {
             if (companyCompensation.mode === 'sales_percent') {
               return sellerSum + (Math.max(0, Number(tx.total) || 0) * companyCompensation.percentRate / 100) / splitFactor;
             }
-            const products = Array.from(productById.values());
             return sellerSum + (tx.items || []).reduce((itemSum, item) => {
               const productSnapshot = typeof item.product === 'string' ? undefined : item.product;
               const productId = typeof item.product === 'string' ? item.product : item.product?.id;
