@@ -34,12 +34,17 @@ export default function POSSalarySummaryModal(props: ModalProps) {
             {/* Scrollable Body */}
             <div className="flex-1 overflow-y-auto custom-scrollbar p-3.5 sm:p-5 space-y-3 text-left">
               {(() => {
-                const sessionTransactions = activeTransactions.filter(t => 
-                  t.branchId === lastClosedSession.branchId && 
-                  t.sessionId === lastClosedSession.id
-                );
+                const sessionOpenMs = new Date(lastClosedSession.openedAt).getTime();
+                const sessionCloseMs = lastClosedSession.closedAt ? new Date(lastClosedSession.closedAt).getTime() : Infinity;
+                const sessionTransactions = activeTransactions.filter(t => {
+                  if (t.deletedAt || t.status !== 'completed' || String(t.notes || '').startsWith('AJUSTE_')) return false;
+                  if (t.sessionId === lastClosedSession.id) return true;
+                  if (t.sessionId || t.branchId !== lastClosedSession.branchId) return false;
+                  const txTime = new Date(t.date).getTime();
+                  return Number.isFinite(txTime) && txTime >= sessionOpenMs && txTime <= sessionCloseMs;
+                });
 
-                const employee = users.find(u => u.id === lastClosedSession.userId || u.name === lastClosedSession.workerName) || users.find(u => u.name?.toLowerCase() === lastClosedSession.workerName?.toLowerCase()) || users.find(u => u.role === 'employee') || currentUser;
+                const employee = users.find(u => u.id === lastClosedSession.userId || u.name === lastClosedSession.workerName) || users.find(u => u.name?.toLowerCase() === lastClosedSession.workerName?.toLowerCase()) || (currentUser?.id === lastClosedSession.userId ? currentUser : undefined);
                 const settlement = salarySettlements.find(s => s.sessionId === lastClosedSession.id);
                 const deduction = settlement?.discrepancyDeduction || 0;
                 const fallbackCommissions = sessionTransactions.reduce((sum, tx) => {
@@ -49,15 +54,17 @@ export default function POSSalarySummaryModal(props: ModalProps) {
                     if (sellerId !== lastClosedSession.userId && !(lastClosedSession.workingEmployeeIds || []).includes(sellerId)) return sellerSum;
                     if (companyCompensation.mode === 'sales_percent') return sellerSum + (Math.max(0, Number(tx.total) || 0) * companyCompensation.percentRate / 100) / splitFactor;
                     return sellerSum + (tx.items || []).reduce((itemSum, item) => {
+                      const productSnapshot = typeof item.product === 'string' ? undefined : item.product;
                       const productId = typeof item.product === 'string' ? item.product : item.product?.id;
                       const product = productId ? products.find(p => p.id === productId) : undefined;
-                      return itemSum + (Math.max(0, Number(product?.commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) / splitFactor;
+                      const commissionValue = product?.commissionValue ?? productSnapshot?.commissionValue ?? (item as any).product_snapshot?.commissionValue ?? (item as any).commissionValue ?? 0;
+                      return itemSum + (Math.max(0, Number(commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) / splitFactor;
                     }, 0);
                   }, 0);
                 }, 0);
                 const baseSalary = settlement?.baseSalary ?? (companyCompensation.mode === 'sales_percent' ? 0 : Math.max(0, Number(employee?.baseSalary ?? currentUser?.baseSalary) || 0));
                 const commissions = settlement?.commissions ?? fallbackCommissions;
-                const totalSalary = settlement?.total ?? ((baseSalary + commissions) - deduction);
+                const totalSalary = settlement?.total ?? Math.max(0, (baseSalary + commissions) - deduction);
                 
                 const totalSales = sessionTransactions.reduce((sum, tx) => sum + (tx.total || 0), 0);
                 const totalItems = sessionTransactions.reduce((sum, tx) => sum + (tx.items || []).reduce((s, i) => s + (i.quantity || 0), 0), 0);

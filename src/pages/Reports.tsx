@@ -121,7 +121,6 @@ export default function Reports() {
     branchById,
     bankCardById,
     userByName,
-    transactionsBySession,
     baseCurrency,
     totalSales,
     allMovements,
@@ -355,7 +354,7 @@ export default function Reports() {
   const { payrollList, filteredPayrollList, aggregatedPayrollByWorker } = useReportsPayroll({
     closedSessions,
     salarySettlements,
-    transactionsBySession,
+    transactions,
     userById,
     userByName,
     productById,

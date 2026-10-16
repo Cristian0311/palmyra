@@ -761,18 +761,30 @@ export default function POSCashManagementModal(props: ModalProps) {
                         const sessionUser = users.find(u => u.id === currentSession?.userId ||
                           (u.name && currentSession?.workerName && u.name.toLowerCase() === currentSession.workerName.toLowerCase())) || currentUser;
                         if (!sessionUser) return null;
-                        const sessionTx = activeTransactions.filter(t => t.sessionId === currentSession?.id && !t.deletedAt && t.status === 'completed');
+                        const sessionOpenMs = new Date(currentSession.openedAt).getTime();
+                        const sessionCloseMs = currentSession.closedAt ? new Date(currentSession.closedAt).getTime() : Infinity;
+                        const sessionTx = activeTransactions.filter(t => {
+                          if (t.deletedAt || t.status !== 'completed' || String(t.notes || '').startsWith('AJUSTE_')) return false;
+                          if (t.sessionId === currentSession.id) return true;
+                          if (t.sessionId || t.branchId !== currentSession.branchId) return false;
+                          const txTime = new Date(t.date).getTime();
+                          return Number.isFinite(txTime) && txTime >= sessionOpenMs && txTime <= sessionCloseMs;
+                        });
                         const commissions = sessionTx.reduce((sum, tx) => {
                           const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
-                          if (!sellers.includes(sessionUser.id)) return sum;
                           const splitFactor = Math.max(1, sellers.length);
-                          if (companyCompensation.mode === 'sales_percent') {
-                            return sum + (Math.max(0, Number(tx.total) || 0) * companyCompensation.percentRate / 100) / splitFactor;
-                          }
-                          return sum + (tx.items || []).reduce((itemSum, item) => {
-                            const productId = typeof item.product === 'string' ? item.product : item.product?.id;
-                            const product = productId ? products.find(p => p.id === productId) : undefined;
-                            return itemSum + (Math.max(0, Number(product?.commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) / splitFactor;
+                          return sum + sellers.reduce((sellerSum, sellerId) => {
+                            if (sellerId !== sessionUser.id && !(currentSession.workingEmployeeIds || []).includes(sellerId)) return sellerSum;
+                            if (companyCompensation.mode === 'sales_percent') {
+                              return sellerSum + (Math.max(0, Number(tx.total) || 0) * companyCompensation.percentRate / 100) / splitFactor;
+                            }
+                            return sellerSum + (tx.items || []).reduce((itemSum, item) => {
+                              const productSnapshot = typeof item.product === 'string' ? undefined : item.product;
+                              const productId = typeof item.product === 'string' ? item.product : item.product?.id;
+                              const product = productId ? products.find(p => p.id === productId) : undefined;
+                              const commissionValue = product?.commissionValue ?? productSnapshot?.commissionValue ?? (item as any).product_snapshot?.commissionValue ?? (item as any).commissionValue ?? 0;
+                              return itemSum + (Math.max(0, Number(commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) / splitFactor;
+                            }, 0);
                           }, 0);
                         }, 0);
                         const baseSalary = companyCompensation.mode === 'sales_percent' ? 0 : Math.max(0, Number(sessionUser.baseSalary) || 0);

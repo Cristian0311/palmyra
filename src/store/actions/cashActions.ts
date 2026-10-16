@@ -165,10 +165,20 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
     // Nunca cerrar remotamente mientras exista una venta/liquidación de este
     // turno todavía pendiente en la cola durable. En offline el cierre sí se
     // puede encolar, y el motor lo ordenará después de las ventas.
-    const pendingSessionTransactions = getOfflineQueue().filter(item =>
-      item.type === 'transaction' &&
-      item.data?.sessionId === sessionId
-    );
+    const sessionOpenTime = new Date(session.openedAt).getTime();
+    const closingTime = new Date(finalClosingDate).getTime();
+    const pendingSessionTransactions = getOfflineQueue().filter(item => {
+      if (item.type !== 'transaction') return false;
+      const transaction = item.data || {};
+      if (transaction.sessionId === sessionId) return true;
+      if (transaction.sessionId) return false;
+      const transactionTime = new Date(transaction.date).getTime();
+      const transactionBranch = transaction.branchId || transaction.warehouseId;
+      return transactionBranch === session.branchId &&
+        Number.isFinite(transactionTime) &&
+        transactionTime >= sessionOpenTime &&
+        transactionTime <= closingTime;
+    });
     if (pendingSessionTransactions.length > 0 && typeof navigator !== 'undefined' && navigator.onLine) {
       get().addNotification(
         'No se puede cerrar todavía: hay ' + pendingSessionTransactions.length + ' venta(s) del turno pendientes de sincronizar.',
@@ -184,8 +194,8 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       (t.sessionId
         ? t.sessionId === session.id
         : (t.branchId === session.branchId &&
-           new Date(t.date).getTime() >= new Date(session.openedAt).getTime() &&
-           (!session.closedAt || new Date(t.date).getTime() <= new Date(session.closedAt).getTime())))
+           new Date(t.date).getTime() >= sessionOpenTime &&
+           new Date(t.date).getTime() <= closingTime))
     );
     const user = get().users.find(u => u.id === session.userId || u.name?.toLowerCase() === (workerName || session.workerName)?.toLowerCase());
 
@@ -210,9 +220,11 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
           return sellerSum + (Math.max(0, Number(tx.total) || 0) * compensationRate / 100) / splitFactor;
         }
         return sellerSum + (tx.items || []).reduce((itemSum, item) => {
+          const productSnapshot = typeof item.product === 'string' ? undefined : item.product;
           const productId = typeof item.product === 'string' ? item.product : item.product?.id;
           const product = productId ? (get().products || []).find(p => p.id === productId) : undefined;
-          return itemSum + (Math.max(0, Number(product?.commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) / splitFactor;
+          const commissionValue = product?.commissionValue ?? productSnapshot?.commissionValue ?? (item as any).product_snapshot?.commissionValue ?? (item as any).commissionValue ?? 0;
+          return itemSum + (Math.max(0, Number(commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) / splitFactor;
         }, 0);
       }, 0);
     }, 0);
@@ -230,7 +242,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       date: finalClosingDate,
       status: 'pending'
     };
-    const expectedCashBase = calculateExpectedCashBase(session, sessionTxs, get().currencies || []);
+    const expectedCashBase = calculateExpectedCashBase({ ...session, closedAt: finalClosingDate }, sessionTxs, get().currencies || []);
     const updatedSession = {
       ...session,
       expectedBalance: expectedCashBase,
@@ -647,9 +659,11 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
           return sellerSum + (Math.max(0, Number(tx.total) || 0) * compensationRate / 100) / splitFactor;
         }
         return sellerSum + (tx.items || []).reduce((itemSum, item) => {
+          const productSnapshot = typeof item.product === 'string' ? undefined : item.product;
           const productId = typeof item.product === 'string' ? item.product : item.product?.id;
           const product = productId ? (get().products || []).find(p => p.id === productId) : undefined;
-          return itemSum + (Math.max(0, Number(product?.commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) / splitFactor;
+          const commissionValue = product?.commissionValue ?? productSnapshot?.commissionValue ?? (item as any).product_snapshot?.commissionValue ?? (item as any).commissionValue ?? 0;
+          return itemSum + (Math.max(0, Number(commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) / splitFactor;
         }, 0);
       }, 0);
     }, 0);
