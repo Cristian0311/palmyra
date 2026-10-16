@@ -1320,7 +1320,8 @@ export default function POS() {
         }
       }
 
-      } else {\n        console.info('[POS] El administrador habilitó acceso sin contraseña en este dispositivo.');
+      } else {
+        console.info('[POS] El administrador habilitó acceso sin contraseña en este dispositivo.');
       }
 
       // Primero actualizamos los turnos de esta sucursal. Esto evita que un turno
