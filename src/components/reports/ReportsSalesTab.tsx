@@ -31,7 +31,8 @@ type Props = {
   onOpenSessionDetail: (sessionId: string) => void;
   onPrintShiftTicket: (sessionId: string) => void;
   onOpenTransactionDetail: (transaction: Transaction) => void;
-  onVoidTransaction: (transaction: Transaction) => void | Promise<void>;\n  onHideTransactionReport: (transaction: Transaction) => void;
+  onVoidTransaction: (transaction: Transaction) => void | Promise<void>;
+  onHideTransactionReport: (transaction: Transaction) => void;
 };
 
 export function ReportsSalesTab({
