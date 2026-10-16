@@ -1259,6 +1259,9 @@ export default function POS() {
       }
 
       const enteredPassword = (sessionPassword || '').trim();
+      const { companyId } = await getActiveTenant();
+      const skipPosPassword = currentUser?.role === 'admin' && localStorage.getItem(`palmyra:pos-passwords-disabled:${companyId}`) === 'true';
+      if (!skipPosPassword) {
 
       if (!enteredPassword) {
         setPosError(
@@ -1317,7 +1320,7 @@ export default function POS() {
         }
       }
 
-      // Primero actualizamos los turnos de esta sucursal. Esto evita que un turno
+      } else {\n        console.info('[POS] El administrador habilitó acceso sin contraseña en este dispositivo.');\n      }\n\n      // Primero actualizamos los turnos de esta sucursal. Esto evita que un turno
       // recién creado en otra vista/terminal provoque un segundo intento falso.
       if (navigator.onLine) {
         try {
