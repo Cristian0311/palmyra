@@ -6,6 +6,7 @@ import {
   FileSpreadsheet,
   Printer,
   Trash2,
+  EyeOff,
   TrendingUp,
   Users,
 } from "lucide-react";
@@ -32,6 +33,9 @@ type Props = {
   onPrintShiftTicket: (sessionId: string) => void;
   onOpenTransactionDetail: (transaction: Transaction) => void;
   onVoidTransaction: (transaction: Transaction) => void | Promise<void>;
+  hiddenReportIds: string[];
+  onHideTransactionReport: (transaction: Transaction) => void;
+  onRestoreTransactionReport: (transaction: Transaction) => void;
 };
 
 export function ReportsSalesTab({
@@ -49,8 +53,12 @@ export function ReportsSalesTab({
   onPrintShiftTicket,
   onOpenTransactionDetail,
   onVoidTransaction,
+  hiddenReportIds,
+  onHideTransactionReport,
+  onRestoreTransactionReport,
 }: Props) {
   const [sortState, setSortState] = useState<{ scope: "sessions" | "transactions"; key: string; direction: "asc" | "desc" } | null>(null);
+  const [showHiddenReports, setShowHiddenReports] = useState(false);
 
   const toggleSort = (scope: "sessions" | "transactions", key: string) => {
     setSortState(current => current?.scope === scope && current.key === key
@@ -119,6 +127,12 @@ export function ReportsSalesTab({
     });
   }, [transactions, users, branches, sortState]);
 
+  const hiddenCount = transactions.filter(tx => hiddenReportIds.includes(tx.id)).length;
+  const displayedTransactions = useMemo(
+    () => sortedTransactions.filter(tx => hiddenReportIds.includes(tx.id) === showHiddenReports),
+    [sortedTransactions, hiddenReportIds, showHiddenReports]
+  );
+
   const sortableHeader = (label: string, scope: "sessions" | "transactions", key: string, align = "") => (
     <button type="button" onClick={() => toggleSort(scope, key)} className={cn("inline-flex items-center gap-1 cursor-pointer hover:text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-rose-500", align)} aria-label={`Ordenar por ${label}`}>
       {label}<span aria-hidden="true">{sortIndicator(scope, key)}</span>
@@ -139,6 +153,15 @@ export function ReportsSalesTab({
         </div>
 
         <div className="flex items-center gap-1.5 bg-subtle p-1 rounded-xl border border-base shrink-0">
+          <button
+            type="button"
+            onClick={() => setShowHiddenReports(value => !value)}
+            className="px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 text-secondary hover:text-primary cursor-pointer"
+            title={showHiddenReports ? "Volver a los tickets visibles" : "Mostrar tickets ocultos de los reportes"}
+          >
+            <EyeOff className="w-3.5 h-3.5" />
+            <span>{showHiddenReports ? "Volver a visibles" : "Ocultos (" + hiddenCount + ")"}</span>
+          </button>
           <button
             type="button"
             onClick={() => setSalesViewMode("by_shift")}
@@ -164,7 +187,7 @@ export function ReportsSalesTab({
             )}
           >
             <FileSpreadsheet className="w-3.5 h-3.5" />
-            <span>Todos los Tickets ({transactions.length})</span>
+            <span>{showHiddenReports ? "Tickets ocultos" : "Todos los Tickets"} ({displayedTransactions.length})</span>
           </button>
         </div>
       </div>
@@ -386,7 +409,7 @@ export function ReportsSalesTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-base">
-                {sortedTransactions.map((tx) => {
+                {displayedTransactions.map((tx) => {
                   const branchName =
                     branches.find((branch) => branch.id === tx.branchId)?.name ||
                     "Sucursal";
@@ -482,6 +505,25 @@ export function ReportsSalesTab({
                           >
                             <Printer className="w-3.5 h-3.5" />
                           </button>
+                          {showHiddenReports ? (
+                            <button
+                              type="button"
+                              onClick={() => onRestoreTransactionReport(tx)}
+                              title="Restaurar en reportes (no modifica la venta)"
+                              className="h-7 px-2 inline-flex items-center justify-center gap-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-[9px] font-black uppercase border border-emerald-200 active:scale-95 cursor-pointer"
+                            >
+                              Restaurar
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => onHideTransactionReport(tx)}
+                              title="Quitar de esta lista sin anular ni borrar la venta"
+                              className="h-7 w-7 p-0 inline-flex items-center justify-center bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-lg transition-all border border-amber-200 active:scale-95 cursor-pointer shadow-2xs"
+                            >
+                              <EyeOff className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button
                             onClick={() => void onVoidTransaction(tx)}
                             title="Anular Venta"
@@ -495,7 +537,7 @@ export function ReportsSalesTab({
                   );
                 })}
 
-                {transactions.length === 0 && (
+                {displayedTransactions.length === 0 && (
                   <tr>
                     <td
                       colSpan={8}
