@@ -95,9 +95,8 @@ export function useReportsPayroll(params: {
 
       let commissions = existing?.commissions || 0;
       if (!existing) {
-        const sellerIds = new Set<string>();
-        sessionTx.forEach(tx => (tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId]).forEach(id => sellerIds.add(id)));
-        commissions = Array.from(sellerIds).reduce((sum, sellerId) => {
+        const eligibleSellerIds = new Set<string>([session.userId, ...(session.workingEmployeeIds || [])].filter(Boolean));
+        commissions = Array.from(eligibleSellerIds).reduce((sum, sellerId) => {
           return sum + sessionTx.reduce((sellerSum, tx) => {
             const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
             if (!sellers.includes(sellerId)) return sellerSum;
