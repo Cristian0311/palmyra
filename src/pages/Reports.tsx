@@ -533,7 +533,7 @@ export default function Reports() {
   const printBranch = printSession ? branches.find(b => b.id === printSession.branchId) : null;
 
   const handleSaveSessionDate = useCallback(async () => {
-    if (!editingSessionDateId || !/^\\d{4}-\\d{2}-\\d{2}$/.test(newSessionDate)) {
+    if (!editingSessionDateId || !/^\d{4}-\d{2}-\d{2}$/.test(newSessionDate)) {
       addNotification('Selecciona una fecha válida para el turno.', 'warning');
       return;
     }
