@@ -175,6 +175,7 @@ const updateSW = registerSW({
       if (document.visibilityState === 'visible') void checkForFreshWorker();
     };
     window.addEventListener('focus', checkForFreshWorker);
+    window.addEventListener('online', checkForFreshWorker);
     document.addEventListener('visibilitychange', handleVisibility);
 
     (registration as ServiceWorkerRegistration & { __palmyraCleanup?: () => void }).__palmyraCleanup = () => {
@@ -183,6 +184,7 @@ const updateSW = registerSW({
         swCheckTimer = null;
       }
       window.removeEventListener('focus', checkForFreshWorker);
+      window.removeEventListener('online', checkForFreshWorker);
       document.removeEventListener('visibilitychange', handleVisibility);
     };
   },

@@ -44,14 +44,23 @@ export function calculateExpectedSessionBalances(
   addExpected(expected[0]);
 
   sessionTxs.forEach(transaction => {
-    (transaction.payments || [])
-      .filter(payment => payment.method === 'cash')
-      .forEach(payment => addExpected(payment));
+    // Cierre y Cuadre Perfecto deben incluir cada medio de cobro por separado.
+    // Antes solo se agregaba cash, por lo que las transferencias se quedaban en
+    // cero y el cierre las marcaba como descuadre aunque estuvieran cobradas.
+    (transaction.payments || []).forEach(payment => {
+      const method = (payment.method as string) === 'transfer' || (payment.method as string) === 'bank_transfer'
+        ? 'transfer'
+        : 'cash';
+      addExpected({ ...payment, method } as Payment);
+    });
 
     if (transaction.changePayments?.length) {
-      transaction.changePayments
-        .filter(change => change.method === 'cash')
-        .forEach(change => addExpected(change, -change.amount));
+      transaction.changePayments.forEach(change => {
+        const method = (change.method as string) === 'transfer' || (change.method as string) === 'bank_transfer'
+          ? 'transfer'
+          : 'cash';
+        addExpected({ ...change, method } as Payment, -Number(change.amount || 0));
+      });
     } else if (transaction.changeGiven && transaction.changeGiven > 0) {
       addExpected(
         {

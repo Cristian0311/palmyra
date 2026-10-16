@@ -72,6 +72,9 @@ export function normalizeSaleItem(
   const lineTotal = rawLineTotal !== null && rawLineTotal !== undefined && rawLineTotal !== '' && Number.isFinite(Number(rawLineTotal))
     ? Number(rawLineTotal)
     : (Number(raw.unit_price) || 0) * (Number(raw.quantity) || 0);
+  const unitPrice = raw.unit_price !== null && raw.unit_price !== undefined && raw.unit_price !== '' && Number.isFinite(Number(raw.unit_price))
+    ? Number(raw.unit_price)
+    : Number(product?.price) || 0;
   const variantLabel = raw.variant_id ? (variantMap.get(raw.variant_id) || undefined) : undefined;
   const resolvedProduct = product || {
     id: productId,
@@ -79,7 +82,7 @@ export function normalizeSaleItem(
     sku: '',
     barcode: '',
     costPrice: 0,
-    price: Number(raw.unit_price) || 0,
+    price: unitPrice,
     margin: 0,
     categoryId: '',
     color: 'bg-rose-50 text-rose-700',
@@ -88,9 +91,9 @@ export function normalizeSaleItem(
 
   return {
     id: raw.id || `${saleId}-item-${index}`,
-    product: { ...resolvedProduct, price: Number(raw.unit_price) || resolvedProduct.price },
+    product: { ...resolvedProduct, price: unitPrice },
     quantity: Number(raw.quantity) || 0,
-    price: Number(raw.unit_price) || 0,
+    price: unitPrice,
     total: lineTotal,
     serialNumber: raw.serial_number || undefined,
     variantLabel,

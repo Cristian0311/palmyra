@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { CartItem, Currency, BankCard } from '../../../types';
 import { createPaymentMath, isCupLikeCurrency } from '../utils/paymentMath';
+import { getCartLineSubtotal } from '../utils/checkoutUtils';
 
 export type POSPaymentLine = {
   id: string;
@@ -18,10 +19,7 @@ type UsePOSPaymentsArgs = {
 };
 
 export function usePOSPayments({ cart, currencies, baseCurrency, bankCards }: UsePOSPaymentsArgs) {
-  const subtotalBase = cart.reduce((sum, item) => {
-    const price = typeof (item.product as any) === 'object' && item.product !== null ? (item.product.price ?? item.price ?? 0) : (item.price ?? 0);
-    return sum + (price * item.quantity);
-  }, 0);
+  const subtotalBase = cart.reduce((sum, item) => sum + getCartLineSubtotal(item), 0);
   const taxBase = 0; // Configurable tax if needed
   const rawTotalBase = subtotalBase + taxBase;
   const isCupBase = baseCurrency.code === 'CUP' || baseCurrency.code === 'MN';

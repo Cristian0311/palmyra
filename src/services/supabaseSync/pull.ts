@@ -7,7 +7,7 @@ import type {
   Warranty, ReturnItem, InventoryTransfer,
   TimeShift, Quote, BankTransaction, SupplierOrder, InventoryAudit, SalarySettlement, Supplier,
 } from '../../types';
-import { fetchAllRows, type SyncResult } from './core';
+import type { SyncResult } from './core';
 import { loadSaaSContext } from '../saas';
 import { loadReturnsWarrantiesQuotesTimePayroll } from './pull/loadOperationalExtras';
 import { mapBranch, mapProduct, mapUser, normalizeSaleItem } from './pull/mappers';
@@ -220,14 +220,23 @@ async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string
   const paymentRows: any[] = [];
   for (let i = 0; i < ids.length; i += 400) {
     const batch = ids.slice(i, i + 400);
-    const [itemsRes, paymentsRes] = await Promise.all([
-      supabase.from('sale_items').select('*').in('sale_id', batch),
-      supabase.from('payments').select('*').in('sale_id', batch),
-    ]);
-    if (itemsRes.error) throw itemsRes.error;
-    if (paymentsRes.error) throw paymentsRes.error;
-    itemRows.push(...(itemsRes.data || []));
-    paymentRows.push(...(paymentsRes.data || []));
+    // A batch can still contain >1,000 sale lines/payments. Paginate child
+    // tables too or a ticket with many items can be silently truncated by the
+    // PostgREST row cap even though the parent sales were loaded successfully.
+    for (let from = 0; ; from += 500) {
+      const {data,error}=await supabase.from('sale_items').select('*').in('sale_id',batch).order('id',{ascending:true}).range(from,from+499);
+      if(error) throw error;
+      if(!data?.length) break;
+      itemRows.push(...data);
+      if(data.length<500) break;
+    }
+    for (let from = 0; ; from += 500) {
+      const {data,error}=await supabase.from('payments').select('*').in('sale_id',batch).order('id',{ascending:true}).range(from,from+499);
+      if(error) throw error;
+      if(!data?.length) break;
+      paymentRows.push(...data);
+      if(data.length<500) break;
+    }
   }
   const barcodeRes = await supabase.from('product_barcodes').select('product_id,barcode').eq('company_id', tenant.companyId).eq('active', true);
   const productMap = new Map<string,Product>();
@@ -255,7 +264,8 @@ async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string
     const itemRows = itemsBySale.get(s.id) || [];
     const pRows = paymentsBySale.get(s.id) || [];
     const payments = pRows.map((p:any) => ({
-      method: p.method || 'cash',
+      // The database uses bank_transfer; the UI/domain model uses transfer.
+      method: p.method === 'bank_transfer' ? 'transfer' : (p.method || 'cash'),
       amount: Number(p.amount) || 0,
       currencyCode: p.currency_code || s.currency_code || defaultCurrencyCode,
       exchangeRate: Number(p.exchange_rate) || 1,
@@ -491,28 +501,58 @@ export async function pullOpenCashSessionsFromSupabase() {
 async function loadTransfers(branchId?: string) {
   const tenant=await getActiveTenant();
   const supabase=getSupabase()!;
-  let q=supabase.from('transfers').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(500);
-  if(branchId) q=q.or(`origin_warehouse_id.eq.${branchId},destination_warehouse_id.eq.${branchId}`);
-  const {data,error}=await q;if(error)throw error;
-  const ids=(data||[]).map((t:any)=>t.id);
+  // Inventory-transfer reports use the full tenant history, not just the last
+  // 500 parent operations. Page it explicitly so older warehouse movements do
+  // not disappear from Reports after a business grows.
+  const data: any[] = [];
+  const pageSize = 500;
+  for (let from = 0; ; from += pageSize) {
+    let q=supabase.from('transfers').select('*').eq('company_id',tenant.companyId)
+      .order('created_at',{ascending:false}).range(from,from+pageSize-1);
+    if(branchId) q=q.or(`origin_warehouse_id.eq.${branchId},destination_warehouse_id.eq.${branchId}`);
+    const {data:page,error}=await q;
+    if(error) throw error;
+    if(!page?.length) break;
+    data.push(...page);
+    if(page.length<pageSize) break;
+  }
+  const ids=data.map((t:any)=>t.id);
   if(!ids.length)return [] as InventoryTransfer[];
-  const [itemsRes,productsRes,warehousesRes]=await Promise.all([
-    supabase.from('transfer_items').select('*').in('transfer_id',ids),
+  const itemRows: any[] = [];
+  for (let i = 0; i < ids.length; i += 400) {
+    const batch = ids.slice(i, i + 400);
+    for (let from = 0; ; from += 500) {
+      const {data:page,error}=await supabase.from('transfer_items').select('*').in('transfer_id',batch).order('id',{ascending:true}).range(from,from+499);
+      if(error) throw error;
+      if(!page?.length) break;
+      itemRows.push(...page);
+      if(page.length<500) break;
+    }
+  }
+  const [productsRes,warehousesRes,variantsRes]=await Promise.all([
     supabase.from('products').select('id,name').eq('company_id',tenant.companyId),
-    supabase.from('warehouses').select('id,name').eq('company_id',tenant.companyId)
+    supabase.from('warehouses').select('id,name').eq('company_id',tenant.companyId),
+    supabase.from('product_variants').select('id,name').eq('company_id',tenant.companyId)
   ]);
-  if(itemsRes.error)throw itemsRes.error;if(productsRes.error)throw productsRes.error;if(warehousesRes.error)throw warehousesRes.error;
+  if(productsRes.error)throw productsRes.error;if(warehousesRes.error)throw warehousesRes.error;if(variantsRes.error)throw variantsRes.error;
   const pMap=new Map<string,string>((productsRes.data||[]).map((p:any)=>[p.id,p.name]));
   const wMap=new Map<string,string>((warehousesRes.data||[]).map((w:any)=>[w.id,w.name]));
+  const vMap=new Map<string,string>((variantsRes.data||[]).map((v:any)=>[v.id,v.name]));
+  const itemsByTransfer = new Map<string, any[]>();
+  for (const item of itemRows) {
+    const list = itemsByTransfer.get(item.transfer_id) || [];
+    list.push(item);
+    itemsByTransfer.set(item.transfer_id, list);
+  }
   const rows:InventoryTransfer[]=[];
   for(const t of data||[]){
-    const tis=(itemsRes.data||[]).filter((i:any)=>i.transfer_id===t.id);
+    const tis=itemsByTransfer.get(t.id)||[];
     for(const i of tis){
       rows.push({
         id:i.id,operationId:t.id,productId:i.product_id,productName:pMap.get(i.product_id)||'Producto',
         fromBranchId:t.origin_warehouse_id,fromBranchName:wMap.get(t.origin_warehouse_id)||'Origen',
         toBranchId:t.destination_warehouse_id,toBranchName:wMap.get(t.destination_warehouse_id)||'Destino',
-        variantLabel:i.variant_id||undefined,quantity:Number(i.quantity)||0,variants:[],
+        variantLabel:vMap.get(i.variant_id)||undefined,quantity:Number(i.quantity)||0,variants:[],
         date:t.created_at,userId:t.created_by||'',status:t.status||'completed'
       });
     }
@@ -528,13 +568,28 @@ async function loadCustomers() {
 }
 async function loadBanks() {
   const tenant=await getActiveTenant(); const supabase=getSupabase()!;
-  const [a,t]=await Promise.all([
-    supabase.from('bank_accounts').select('*').eq('company_id',tenant.companyId).eq('active',true).order('created_at',{ascending:false}),    supabase.from('bank_transactions').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(1000)
-  ]);
-  if(a.error)throw a.error;if(t.error)throw t.error;
+  const bankAccounts: any[] = [];
+  const bankTransactions: any[] = [];
+  const pageSize = 500;
+  for (let from = 0; ; from += pageSize) {
+    const {data,error}=await supabase.from('bank_accounts').select('*').eq('company_id',tenant.companyId)
+      .eq('active',true).order('created_at',{ascending:false}).range(from,from+pageSize-1);
+    if(error) throw error;
+    if(!data?.length) break;
+    bankAccounts.push(...data);
+    if(data.length<pageSize) break;
+  }
+  for (let from = 0; ; from += pageSize) {
+    const {data,error}=await supabase.from('bank_transactions').select('*').eq('company_id',tenant.companyId)
+      .order('created_at',{ascending:false}).range(from,from+pageSize-1);
+    if(error) throw error;
+    if(!data?.length) break;
+    bankTransactions.push(...data);
+    if(data.length<pageSize) break;
+  }
   return {
-    bankCards:(a.data||[]).map((x:any):BankCard=>({id:x.id,name:x.name,bank:x.bank_name,bankName:x.bank_name,cardHolder:'',lastFour:x.last_four,lastFourDigits:x.last_four,balance:Number(x.balance)||0,currency:x.currency_code||'USD',isActive:x.active!==false})),
-    bankTransactions:(t.data||[]).map((x:any):BankTransaction=>({
+    bankCards:bankAccounts.map((x:any):BankCard=>({id:x.id,name:x.name,bank:x.bank_name,bankName:x.bank_name,cardHolder:'',lastFour:x.last_four,lastFourDigits:x.last_four,balance:Number(x.balance)||0,currency:x.currency_code||'USD',isActive:x.active!==false})),
+    bankTransactions:bankTransactions.map((x:any):BankTransaction=>({
       id:x.id,
       cardId:x.bank_account_id,
       // Supabase stores the canonical ledger values credit/debit/transfer.
@@ -587,7 +642,9 @@ async function loadAllData(branchId?:string) {
   const catalog=await loadCatalog();
   const [inventory,transactions,cashSessions,transfers,customers,banks,extras,suppliersOrders]=await Promise.all([
     loadInventory(),
-    loadSales(undefined,5000),
+    // Reports must have the full sale history. A fixed 5,000-ticket ceiling silently
+    // drops older product quantities/revenue even while those tickets remain in Supabase.
+    loadSales(undefined,0),
     loadCashSessions(),
     loadTransfers(),
     loadCustomers(),

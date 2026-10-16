@@ -811,8 +811,23 @@ Responde ESTRICTAMENTE con un objeto JSON:
       res.setHeader('Expires', '0');
       next();
     });
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, {
+      setHeaders(res, filePath) {
+        // Never pin the HTML shell or version metadata: stale HTML can refer to
+        // hashed JavaScript chunks removed by a newer deploy. Keep those entry
+        // points revalidated and let the service worker manage offline assets.
+        const fileName = path.basename(filePath);
+        if (['index.html', 'version.json', 'sw.js', 'registerSW.js', 'manifest.webmanifest'].includes(fileName) || fileName.startsWith('workbox-')) {
+          res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+          res.setHeader('Pragma', 'no-cache');
+          res.setHeader('Expires', '0');
+        }
+      },
+    }));
     app.get('*', (req, res) => {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
