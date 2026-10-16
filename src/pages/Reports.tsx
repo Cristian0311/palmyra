@@ -1296,10 +1296,10 @@ export default function Reports() {
                       </div>
                     </td>
                     <td className="px-3 py-2 text-[10px] font-bold text-slate-600 whitespace-nowrap">
-                      {new Date(session.openedAt).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      {new Date(session.openedAt).toLocaleString('es-CU', { timeZone: 'America/Havana', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
                     </td>
                     <td className="px-3 py-2 text-[10px] font-bold text-slate-600 whitespace-nowrap">
-                      {session.closedAt ? new Date(session.closedAt).toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
+                      {session.closedAt ? new Date(session.closedAt).toLocaleString('es-CU', { timeZone: 'America/Havana', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
                     </td>
                     <td className="px-3 py-2 font-black text-slate-900 text-[10px] whitespace-nowrap">
                       {formatMoney(session.openingBalance)}
