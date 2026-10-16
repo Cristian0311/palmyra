@@ -65,11 +65,11 @@ begin
   set created_at = s.created_at + v_delta,
       cash_session_id = p_session_id
   where s.company_id = p_company_id
-    and s.warehouse_id = v_session.warehouse_id
     and (
       s.cash_session_id = p_session_id
       or (
-        s.cash_session_id is null
+        s.warehouse_id = v_session.warehouse_id
+        and s.cash_session_id is null
         and s.created_at >= v_session.opened_at
         and (v_session.closed_at is null or s.created_at <= v_session.closed_at)
       )
