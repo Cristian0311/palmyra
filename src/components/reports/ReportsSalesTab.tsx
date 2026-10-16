@@ -4,7 +4,7 @@ import {
   Eye,
   FileSpreadsheet,
   Printer,
-  Trash2,
+  Trash2,\n  EyeOff,
   TrendingUp,
   Users,
 } from "lucide-react";
