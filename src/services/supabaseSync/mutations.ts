@@ -269,7 +269,7 @@ export async function pushCurrencyToSupabase(currency:Currency, options?: { queu
     if (currency.code === baseCode) return true;
     const rate = Number(currency.rateToBase);
     if (!Number.isFinite(rate) || rate <= 0) throw new Error('La tasa de cambio debe ser mayor que 0.');
-    const seed = new TextEncoder().encode(`currency-rate:${companyId}:${currency.code}:${rate}`);
+    const seed = new TextEncoder().encode(`currency-rate:${companyId}:${currency.code}`);
     const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', seed)).slice(0, 16);
     digest[6] = (digest[6] & 0x0f) | 0x50;
     digest[8] = (digest[8] & 0x3f) | 0x80;

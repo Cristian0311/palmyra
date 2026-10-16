@@ -16,7 +16,7 @@ import {
   callStartInventoryAuditRPC, callSaveInventoryAuditCountRPC, callRequestInventoryAuditRecountRPC, callApproveInventoryAuditRPC,
   callBankInternalTransferRPC, callDeleteBankInternalTransferRPC, callDeleteBankTransactionRPC, callDeleteBankCardRPC, callProcessBankTransactionRPC,
   setBankCardBalanceToSupabase, pullBranchInventoryFromSupabase,
-  pushCashSessionToSupabase, deleteProductFromSupabase,
+  pushCashSessionToSupabase, deleteProductFromSupabase, pullTransferHistoryFromSupabase,
   pushBranchToSupabase, deleteBranchFromSupabase, pushCategoryToSupabase, deleteCategoryFromSupabase, deleteSupplierFromSupabase, deleteUserFromSupabase,
   pushProductToSupabase, pushUserToSupabase, pushWarrantyToSupabase, pushTimeShiftToSupabase, deleteBankCardFromSupabase,
   pushQuoteToSupabase, pushBankCardToSupabase, pushReturnToSupabase,
@@ -571,13 +571,25 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       if (!res.success) throw new Error(res.error || 'No se pudo sincronizar la transferencia de inventario.');
       const results = await Promise.all([
         pullBranchInventoryFromSupabase(data.fromBranchId),
-        pullBranchInventoryFromSupabase(data.toBranchId)
+        pullBranchInventoryFromSupabase(data.toBranchId),
+        pullTransferHistoryFromSupabase()
       ]);
-      if (results.some(x => !x.success)) throw new Error('Transferencia confirmada, pero no se pudo reconciliar el inventario.');
+      if (!results[0].success || !results[1].success || !results[2].success) {
+        throw new Error('Transferencia confirmada, pero no se pudo reconciliar el inventario y el historial. Se conservará en cola para verificarlo.');
+      }
       replaceWarehousesInventory(
         [data.fromBranchId, data.toBranchId],
         [...(results[0].inventory || []), ...(results[1].inventory || [])]
       );
+      useStore.setState(state => {
+        const remote = results[2].transfers || [];
+        const operationId = String(data.operationId || item.actionId || '').replace(/^transfer:/, '');
+        const pendingOther = (state.transfers || []).filter((t: any) =>
+          String(t.operationId || t.id) !== operationId && t.status === 'pending' &&
+          !remote.some((r: any) => String(r.operationId || r.id) === String(t.operationId || t.id))
+        );
+        return { transfers: [...pendingOther, ...remote] };
+      });
       return true;
     }
     case 'transfer_bulk': {
@@ -585,13 +597,25 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       if (!res.success) throw new Error(res.error || 'No se pudo sincronizar el traslado múltiple.');
       const results = await Promise.all([
         pullBranchInventoryFromSupabase(data.fromBranchId),
-        pullBranchInventoryFromSupabase(data.toBranchId)
+        pullBranchInventoryFromSupabase(data.toBranchId),
+        pullTransferHistoryFromSupabase()
       ]);
-      if (results.some(x => !x.success)) throw new Error('Traslado confirmado, pero no se pudo reconciliar el inventario.');
+      if (!results[0].success || !results[1].success || !results[2].success) {
+        throw new Error('Traslado confirmado, pero no se pudo reconciliar el inventario y el historial. Se conservará en cola para verificarlo.');
+      }
       replaceWarehousesInventory(
         [data.fromBranchId, data.toBranchId],
         [...(results[0].inventory || []), ...(results[1].inventory || [])]
       );
+      useStore.setState(state => {
+        const remote = results[2].transfers || [];
+        const queuedOperationIds = new Set((data.items || []).map((entry: any) => String(entry.operationId || '')));
+        const pendingOther = (state.transfers || []).filter((t: any) =>
+          !queuedOperationIds.has(String(t.operationId || t.id)) && t.status === 'pending' &&
+          !remote.some((r: any) => String(r.operationId || r.id) === String(t.operationId || t.id))
+        );
+        return { transfers: [...pendingOther, ...remote] };
+      });
       return true;
     }
     case 'supplier_receive': {
