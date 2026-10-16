@@ -4,7 +4,8 @@
 create or replace function public.palmyra_update_cash_session_business_date(
   p_session_id uuid,
   p_company_id uuid,
-  p_new_opened_at timestamptz
+  p_new_opened_at timestamptz,
+  p_new_business_date date
 )
 returns jsonb
 language plpgsql
@@ -18,11 +19,12 @@ declare
   v_sales_updated integer := 0;
   v_movements_updated integer := 0;
   v_warranties_updated integer := 0;
+  v_payroll_runs_updated integer := 0;
 begin
   if v_user is null then
     raise exception 'authentication_required';
   end if;
-  if p_session_id is null or p_company_id is null or p_new_opened_at is null then
+  if p_session_id is null or p_company_id is null or p_new_opened_at is null or p_new_business_date is null then
     raise exception 'invalid_cash_session_date';
   end if;
   if not private.has_company_access(p_company_id) then
@@ -50,7 +52,7 @@ begin
   if v_delta = interval '0 seconds' then
     return jsonb_build_object(
       'success', true, 'id', p_session_id, 'sales_updated', 0,
-      'cash_movements_updated', 0, 'warranties_updated', 0, 'already_current', true
+      'cash_movements_updated', 0, 'warranties_updated', 0, 'payroll_runs_updated', 0, 'already_current', true
     );
   end if;
 
@@ -94,15 +96,31 @@ begin
     );
   get diagnostics v_warranties_updated = row_count;
 
+  -- Salary settlements are stored as payroll_items whose details.session_id
+  -- identifies the cash shift. Keep their one-day payroll period aligned.
+  update public.payroll_runs pr
+  set period_start = p_new_business_date,
+      period_end = p_new_business_date,
+      updated_at = timezone('utc', now())
+  where pr.company_id = p_company_id
+    and pr.id in (
+      select distinct pi.payroll_run_id
+      from public.payroll_items pi
+      where pi.company_id = p_company_id
+        and pi.details->>'session_id' = p_session_id::text
+    );
+  get diagnostics v_payroll_runs_updated = row_count;
+
   return jsonb_build_object(
     'success', true, 'id', p_session_id,
     'delta_seconds', extract(epoch from v_delta),
     'sales_updated', v_sales_updated,
     'cash_movements_updated', v_movements_updated,
-    'warranties_updated', v_warranties_updated
+    'warranties_updated', v_warranties_updated,
+    'payroll_runs_updated', v_payroll_runs_updated
   );
 end;
 $function$;
 
-revoke all on function public.palmyra_update_cash_session_business_date(uuid, uuid, timestamptz) from public, anon;
+revoke all on function public.palmyra_update_cash_session_business_date(uuid, uuid, timestamptz, date) from public, anon;
 grant execute on function public.palmyra_update_cash_session_business_date(uuid, uuid, timestamptz) to authenticated;
