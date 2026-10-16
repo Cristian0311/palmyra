@@ -380,9 +380,23 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
     const deltaMs = new Date(newOpenedAt).getTime() - oldOpenMs;
     if (!Number.isFinite(deltaMs)) return false;
 
+    // Include canonical remote sale IDs as well as legacy offline sales. Some older
+    // tickets have a server timestamp outside the local shift window even though
+    // the local ticket is linked to this shift; matching only by time leaves them unchanged.
+    const oldCloseTime = session.closedAt ? new Date(session.closedAt).getTime() : Infinity;
+    const linkedTransactions = (state.transactions || []).filter(tx => {
+      if (tx.deletedAt) return false;
+      if (tx.sessionId) return tx.sessionId === session.id;
+      const txTime = new Date(tx.date).getTime();
+      return tx.branchId === session.branchId && Number.isFinite(txTime) && txTime >= oldOpenMs && txTime <= oldCloseTime;
+    });
+    const remoteSaleIds = Array.from(new Set(linkedTransactions
+      .map(tx => tx.remoteId || tx.id)
+      .filter(id => typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))));
+
     // Do not call the sale-registration RPC for a date correction: it cannot
     // update created_at for an existing sale and may only report idempotent replay.
-    const remote = await callUpdateCashSessionBusinessDateRPC(sessionId, newOpenedAt, newDateYMD);
+    const remote = await callUpdateCashSessionBusinessDateRPC(sessionId, newOpenedAt, newDateYMD, remoteSaleIds);
     if (!remote.success) {
       get().addNotification(remote.error || 'Supabase no confirmó el cambio de fecha. No se modificaron los datos locales.', 'error');
       return false;
@@ -405,16 +419,14 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       }))
     };
 
-    const oldCloseTime = session.closedAt ? new Date(session.closedAt).getTime() : Infinity;
     const affectedTxIds = new Set<string>();
     const updatedTransactions = (state.transactions || []).map(tx => {
       const txTime = new Date(tx.date).getTime();
-      const isLinked = tx.sessionId === session.id || (
-        tx.branchId === session.branchId &&
-        Number.isFinite(txTime) &&
-        txTime >= oldOpenMs &&
-        txTime <= oldCloseTime
-      );
+      // If a ticket already points at a different session, never steal it just
+      // because its timestamp happens to overlap this shift's range.
+      const isLinked = tx.sessionId
+        ? tx.sessionId === session.id
+        : (tx.branchId === session.branchId && Number.isFinite(txTime) && txTime >= oldOpenMs && txTime <= oldCloseTime);
       if (!isLinked) return tx;
       affectedTxIds.add(tx.id);
       return { ...tx, sessionId: session.id, date: shiftByDelta(tx.date) || tx.date };
