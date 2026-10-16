@@ -210,9 +210,11 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
           return sellerSum + (Math.max(0, Number(tx.total) || 0) * compensationRate / 100) / splitFactor;
         }
         return sellerSum + (tx.items || []).reduce((itemSum, item) => {
+          const productSnapshot = typeof item.product === 'string' ? undefined : item.product;
           const productId = typeof item.product === 'string' ? item.product : item.product?.id;
           const product = productId ? (get().products || []).find(p => p.id === productId) : undefined;
-          return itemSum + (Math.max(0, Number(product?.commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) / splitFactor;
+          const commissionValue = product?.commissionValue ?? productSnapshot?.commissionValue ?? (item as any).product_snapshot?.commissionValue ?? (item as any).commissionValue ?? 0;
+          return itemSum + (Math.max(0, Number(commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) / splitFactor;
         }, 0);
       }, 0);
     }, 0);
@@ -647,9 +649,11 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
           return sellerSum + (Math.max(0, Number(tx.total) || 0) * compensationRate / 100) / splitFactor;
         }
         return sellerSum + (tx.items || []).reduce((itemSum, item) => {
+          const productSnapshot = typeof item.product === 'string' ? undefined : item.product;
           const productId = typeof item.product === 'string' ? item.product : item.product?.id;
           const product = productId ? (get().products || []).find(p => p.id === productId) : undefined;
-          return itemSum + (Math.max(0, Number(product?.commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) / splitFactor;
+          const commissionValue = product?.commissionValue ?? productSnapshot?.commissionValue ?? (item as any).product_snapshot?.commissionValue ?? (item as any).commissionValue ?? 0;
+          return itemSum + (Math.max(0, Number(commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) / splitFactor;
         }, 0);
       }, 0);
     }, 0);
