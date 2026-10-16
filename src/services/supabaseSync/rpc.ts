@@ -323,13 +323,14 @@ export async function callGetCompensationSettingsRPC(){
   }catch(e:any){return errorResult(e);}
 }
 
-export async function callUpdateCashSessionBusinessDateRPC(sessionId:string, newOpenedAt:string) {
+export async function callUpdateCashSessionBusinessDateRPC(sessionId:string, newOpenedAt:string, businessDate:string) {
   try {
     const { companyId } = await getActiveTenant(true);
     const data = await rpc('palmyra_update_cash_session_business_date', {
       p_session_id: sessionId,
       p_company_id: companyId,
-      p_new_opened_at: newOpenedAt
+      p_new_opened_at: newOpenedAt,
+      p_new_business_date: businessDate
     });
     return { success: true as const, error: undefined, errorCode: undefined, data };
   } catch (e:any) {
