@@ -66,7 +66,11 @@ begin
       cash_session_id = p_session_id
   where s.company_id = p_company_id
     and (
-      s.id = any(coalesce(p_sale_ids, '{}'::uuid[]))
+      (
+        s.id = any(coalesce(p_sale_ids, '{}'::uuid[]))
+        and s.warehouse_id = v_session.warehouse_id
+        and (s.cash_session_id is null or s.cash_session_id = p_session_id)
+      )
       or s.cash_session_id = p_session_id
       or (
         s.warehouse_id = v_session.warehouse_id
