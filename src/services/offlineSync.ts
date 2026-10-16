@@ -209,10 +209,23 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
             // del turno que esté encolada. No dependemos del reloj local porque una
             // operación puede reintentarse horas después y recibir un timestamp nuevo.
             for (const candidate of queueAtStart) {
+              const candidateData = candidate.data || {};
+              const candidateTransactionTime = new Date(candidateData.date).getTime();
+              const sessionOpenTime = new Date(data.openedAt).getTime();
+              const sessionCloseTime = data.closedAt ? new Date(data.closedAt).getTime() : Infinity;
+              const legacyUnlinkedSaleBelongsToSession =
+                candidate.type === 'transaction' &&
+                !candidateData.sessionId &&
+                (candidateData.branchId || candidateData.warehouseId) === data.branchId &&
+                Number.isFinite(candidateTransactionTime) &&
+                Number.isFinite(sessionOpenTime) &&
+                candidateTransactionTime >= sessionOpenTime &&
+                candidateTransactionTime <= sessionCloseTime;
               if (
-                (candidate.type === 'transaction' && candidate.data?.sessionId === data.id) ||
-                (candidate.type === 'cash_movement' && candidate.data?.sessionId === data.id) ||
-                (candidate.type === 'cash_movement_delete' && candidate.data?.sessionId === data.id)
+                (candidate.type === 'transaction' &&
+                  (candidateData.sessionId === data.id || legacyUnlinkedSaleBelongsToSession)) ||
+                (candidate.type === 'cash_movement' && candidateData.sessionId === data.id) ||
+                (candidate.type === 'cash_movement_delete' && candidateData.sessionId === data.id)
               ) add(candidate);
             }
           }
