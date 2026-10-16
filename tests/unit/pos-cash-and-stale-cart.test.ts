@@ -3,7 +3,7 @@ import test from 'node:test';
 import { readFileSync } from 'node:fs';
 
 import { calculateExpectedSessionBalances } from '../../src/modules/pos/utils/cashMath';
-import { calculatePerfectSessionBalances } from '../../src/modules/reports/utils/reportSessionCalculations';
+import { calculatePerfectSessionBalances, getCompletedTransactionsForSession } from '../../src/modules/reports/utils/reportSessionCalculations';
 import { getLocalDateYMD } from '../../src/hooks/useReportsAnalytics';
 import { getCartLineSubtotal, getCartLineUnitPrice } from '../../src/modules/pos/utils/checkoutUtils';
 
@@ -95,4 +95,37 @@ test('full synchronization does not silently cap sales, inventory transfers, or 
   assert.match(pull, /from\('transfers'\)[\s\S]*?\.range\(from,from\+pageSize-1\)/, 'transfer parents should be paginated rather than capped at 500');
   assert.match(pull, /from\('bank_transactions'\)[\s\S]*?\.range\(from,from\+pageSize-1\)/, 'bank ledger should be paginated rather than capped at 1,000');
   assert.match(pull, /from\('sale_items'\)[\s\S]*?\.range\(from,from\+499\)/, 'sale item rows should be paginated');
+});
+
+
+test('Cuadre Perfecto includes legacy sales without sessionId only inside the turn window', () => {
+  const session = {
+    id: 'session-current', branchId: 'warehouse-1', openedAt: '2026-10-15T10:00:00.000Z',
+    closedAt: '2026-10-15T12:00:00.000Z', openingBalance: 10, status: 'closed', userId: 'employee-1', movements: [],
+  } as any;
+  const transactions = [
+    { id: 'legacy-in-window', branchId: 'warehouse-1', date: '2026-10-15T11:00:00.000Z', total: 25, status: 'completed', payments: [{ currencyCode: 'CUP', amount: 25, method: 'cash' }] },
+    { id: 'legacy-after-close', branchId: 'warehouse-1', date: '2026-10-15T13:00:00.000Z', total: 50, status: 'completed', payments: [{ currencyCode: 'CUP', amount: 50, method: 'cash' }] },
+    { id: 'assigned-other-turn', sessionId: 'session-old', branchId: 'warehouse-1', date: '2026-10-15T11:00:00.000Z', total: 100, status: 'completed', payments: [{ currencyCode: 'CUP', amount: 100, method: 'cash' }] },
+    { id: 'voided-sale', sessionId: 'session-current', branchId: 'warehouse-1', date: '2026-10-15T11:00:00.000Z', total: 200, status: 'voided', payments: [{ currencyCode: 'CUP', amount: 200, method: 'cash' }] },
+    { id: 'deleted-sale', sessionId: 'session-current', branchId: 'warehouse-1', date: '2026-10-15T11:00:00.000Z', total: 300, status: 'completed', deletedAt: '2026-10-15T11:30:00.000Z', payments: [{ currencyCode: 'CUP', amount: 300, method: 'cash' }] },
+    { id: 'adjustment', sessionId: 'session-current', branchId: 'warehouse-1', date: '2026-10-15T11:00:00.000Z', total: 400, status: 'completed', notes: 'AJUSTE_MANUAL', payments: [{ currencyCode: 'CUP', amount: 400, method: 'cash' }] },
+  ] as any;
+
+  assert.deepEqual(getCompletedTransactionsForSession(session, transactions).map(tx => tx.id), ['legacy-in-window']);
+  const balances = calculatePerfectSessionBalances(session, { baseCurrencyCode: 'CUP', currencies, transactions });
+  assert.equal(balances.find(line => line.currencyCode === 'CUP' && line.method === 'cash')?.amount, 35);
+});
+
+test('POS expected balance includes legacy completed sales in the active turn window', () => {
+  const session = {
+    id: 'session-current', branchId: 'warehouse-1', openedAt: '2026-10-15T10:00:00.000Z',
+    openingBalance: 10, status: 'open', userId: 'employee-1', movements: [],
+  } as any;
+  const transactions = [{
+    id: 'legacy-sale', branchId: 'warehouse-1', date: '2026-10-15T11:00:00.000Z', status: 'completed',
+    payments: [{ currencyCode: 'CUP', amount: 25, exchangeRate: 1, method: 'cash' }],
+  }] as any;
+  const balances = calculateExpectedSessionBalances(session, transactions, 'warehouse-1', currencies[0], currencies);
+  assert.equal(balances.find(line => line.currencyCode === 'CUP' && line.method === 'cash')?.amount, 35);
 });

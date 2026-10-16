@@ -57,6 +57,27 @@ export function buildDetailedMovements(
   });
 }
 
+/**
+ * Select only completed, non-voided sales belonging to this turn.
+ * Legacy tickets without a sessionId are matched by warehouse and the turn's
+ * open/close interval; tickets explicitly assigned to another turn never leak
+ * into this report, even when their timestamp overlaps.
+ */
+export function getCompletedTransactionsForSession(
+  session: CashRegisterSession,
+  transactions: Transaction[],
+): Transaction[] {
+  const openedAt = new Date(session.openedAt || 0).getTime();
+  const closedAt = session.closedAt ? new Date(session.closedAt).getTime() : Number.POSITIVE_INFINITY;
+  return transactions.filter(transaction => {
+    if (transaction.status !== 'completed' || transaction.deletedAt || String(transaction.notes || '').startsWith('AJUSTE_')) return false;
+    if (transaction.sessionId) return transaction.sessionId === session.id;
+    const transactionAt = new Date(transaction.date).getTime();
+    return transaction.branchId === session.branchId && Number.isFinite(transactionAt) &&
+      transactionAt >= openedAt && transactionAt <= closedAt;
+  });
+}
+
 export function calculatePerfectSessionBalances(
   session: CashRegisterSession,
   deps: { baseCurrencyCode: string; currencies: Currency[]; transactions: Transaction[] },
@@ -66,15 +87,7 @@ export function calculatePerfectSessionBalances(
     { currencyCode: baseCurrencyCode, method: 'cash', amount: session.openingBalance || 0 },
   ];
 
-  const sessionTxs = transactions.filter(t =>
-    t.sessionId
-      ? t.sessionId === session.id
-      : (
-          t.branchId === session.branchId &&
-          new Date(t.date).getTime() >= new Date(session.openedAt).getTime() &&
-          (!session.closedAt || new Date(t.date).getTime() <= new Date(session.closedAt).getTime())
-        )
-  );
+  const sessionTxs = getCompletedTransactionsForSession(session, transactions);
 
   sessionTxs.forEach(tx => {
     (tx.payments || []).forEach(p => {
