@@ -9,7 +9,7 @@ import {
   pushSupplierToSupabase, deleteSupplierFromSupabase, pushSupplierOrderToSupabase, pushCustomerToSupabase,
   applyInventoryAdjustmentToSupabase, reconcileInventoryToSupabase,
   pushReceiptConfigToSupabase, pushStoreConfigToSupabase, deleteTransactionFromSupabase, deleteCustomerFromSupabase, callReserveNCFRangeRPC, callTransferInventoryBulkRPC,
-  deleteBankTransactionFromSupabase, clearSelectedDataFromSupabase, callOpenSessionRPCWithId, callProcessTransactionRPC, callVoidTransactionRPC, callCompleteReturnRPC, callTransferInventoryRPC, callReceiveSupplierOrderRPC, callStartInventoryAuditRPC, callSaveInventoryAuditCountRPC, callRequestInventoryAuditRecountRPC, callApproveInventoryAuditRPC, callCompleteInventoryAuditRPC, callCloseSessionRPC, pushCashSessionMetadataToSupabase, pushSalarySettlementToSupabase, hasPayrollEmployeeForSettlement, callCancelSessionRPC, callDeleteBankInternalTransferRPC, callDeleteBankTransactionRPC, callDeleteBankCardRPC, callProcessBankTransactionRPC
+  deleteBankTransactionFromSupabase, clearSelectedDataFromSupabase, callOpenSessionRPCWithId, callProcessTransactionRPC, callVoidTransactionRPC, callCompleteReturnRPC, callTransferInventoryRPC, callReceiveSupplierOrderRPC, callStartInventoryAuditRPC, callSaveInventoryAuditCountRPC, callRequestInventoryAuditRecountRPC, callApproveInventoryAuditRPC, callCompleteInventoryAuditRPC, callCloseSessionRPC, pushCashSessionMetadataToSupabase, pushSalarySettlementToSupabase, hasPayrollEmployeeForSettlement, callCancelSessionRPC, callDeleteBankInternalTransferRPC, callDeleteBankTransactionRPC, callDeleteBankCardRPC, callProcessBankTransactionRPC, callUpdateCashSessionBusinessDateRPC
 } from '../../services/supabaseSync';
 import { getSupabaseCredentials } from '../../lib/supabase';
 import { getActiveTenant } from '../../services/tenant';
@@ -344,136 +344,88 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
     })();
   },
   updateCashSessionDateCascade: async (sessionId, newDateYMD) => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      get().addNotification('Conecta el dispositivo a Internet para cambiar la fecha y sincronizar todos los registros relacionados.', 'warning');
+      return false;
+    }
+
+    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(newDateYMD || ''))) return false;
+    const [year, month, day] = newDateYMD.split('-').map(Number);
+    const candidate = new Date(year, month - 1, day);
+    if (candidate.getFullYear() !== year || candidate.getMonth() !== month - 1 || candidate.getDate() !== day) return false;
+
     const state = get();
     const session = (state.cashSessions || []).find(s => s.id === sessionId);
-    if (!session || !newDateYMD) return false;
+    if (!session?.openedAt) return false;
 
-    // Helper to shift ISO string to target YYYY-MM-DD date
-    const shiftDate = (isoStr: string | null | undefined): string => {
-      if (!isoStr) return '';
-      try {
-        const d = new Date(isoStr);
-        if (isNaN(d.getTime())) return `${newDateYMD}T12:00:00.000Z`;
-        const [year, month, day] = newDateYMD.split('-').map(Number);
-        const updated = new Date(d);
-        updated.setFullYear(year, month - 1, day);
-        return updated.toISOString();
-      } catch {
-        return `${newDateYMD}T12:00:00.000Z`;
-      }
+    // Keep the opening clock time in the device's local timezone, then use the
+    // exact same delta on the server and in IndexedDB-backed application state.
+    const oldOpenMs = new Date(session.openedAt).getTime();
+    if (!Number.isFinite(oldOpenMs)) return false;
+    const opened = new Date(session.openedAt);
+    opened.setFullYear(year, month - 1, day);
+    const newOpenedAt = opened.toISOString();
+    const deltaMs = new Date(newOpenedAt).getTime() - oldOpenMs;
+    if (!Number.isFinite(deltaMs)) return false;
+
+    // Do not call the sale-registration RPC for a date correction: it cannot
+    // update created_at for an existing sale and may only report idempotent replay.
+    const remote = await callUpdateCashSessionBusinessDateRPC(sessionId, newOpenedAt);
+    if (!remote.success) {
+      get().addNotification(remote.error || 'Supabase no confirmó el cambio de fecha. No se modificaron los datos locales.', 'error');
+      return false;
+    }
+
+    const shiftByDelta = (value: string | null | undefined): string | undefined => {
+      if (!value) return undefined;
+      const time = new Date(value).getTime();
+      return Number.isFinite(time) ? new Date(time + deltaMs).toISOString() : undefined;
     };
-
-    const newOpenedAt = shiftDate(session.openedAt);
-    const newClosedAt = session.closedAt ? shiftDate(session.closedAt) : undefined;
-    const newClosingDate = session.closingDate ? shiftDate(session.closingDate) : undefined;
-
-    // Shift movements date
-    const updatedMovements = (session.movements || []).map(m => ({
-      ...m,
-      date: shiftDate(m.date)
-    }));
 
     const updatedSession: CashRegisterSession = {
       ...session,
       openedAt: newOpenedAt,
-      closedAt: newClosedAt,
-      closingDate: newClosingDate,
-      movements: updatedMovements
+      closedAt: shiftByDelta(session.closedAt),
+      closingDate: shiftByDelta(session.closingDate),
+      movements: (session.movements || []).map(m => ({
+        ...m,
+        date: shiftByDelta(m.date) || m.date
+      }))
     };
 
-    // Find affected transactions
-    const oldOpenTime = new Date(session.openedAt).getTime();
     const oldCloseTime = session.closedAt ? new Date(session.closedAt).getTime() : Infinity;
-
     const affectedTxIds = new Set<string>();
     const updatedTransactions = (state.transactions || []).map(tx => {
+      const txTime = new Date(tx.date).getTime();
       const isLinked = tx.sessionId === session.id || (
         tx.branchId === session.branchId &&
-        new Date(tx.date).getTime() >= oldOpenTime &&
-        new Date(tx.date).getTime() <= oldCloseTime
+        Number.isFinite(txTime) &&
+        txTime >= oldOpenMs &&
+        txTime <= oldCloseTime
       );
-      if (isLinked) {
-        affectedTxIds.add(tx.id);
-        return {
-          ...tx,
-          sessionId: session.id, // Enforce sessionId linkage
-          date: shiftDate(tx.date)
-        };
-      }
-      return tx;
+      if (!isLinked) return tx;
+      affectedTxIds.add(tx.id);
+      return { ...tx, sessionId: session.id, date: shiftByDelta(tx.date) || tx.date };
     });
 
-    // Update bank transactions linked to these transactions
-    const updatedBankTransactions = (state.bankTransactions || []).map(bt => {
-      if (bt.transactionId && affectedTxIds.has(bt.transactionId)) {
-        return {
-          ...bt,
-          date: shiftDate(bt.date)
-        };
-      }
-      return bt;
-    });
+    const updatedSalarySettlements = (state.salarySettlements || []).map(st =>
+      st.sessionId === session.id
+        ? { ...st, date: updatedSession.closedAt || updatedSession.openedAt }
+        : st
+    );
+    const updatedWarranties = (state.warranties || []).map(w =>
+      affectedTxIds.has(w.transactionId)
+        ? { ...w, purchaseDate: shiftByDelta(w.purchaseDate) || w.purchaseDate }
+        : w
+    );
 
-    // Update salary settlements linked to this session
-    const updatedSalarySettlements = (state.salarySettlements || []).map(st => {
-      if (st.sessionId === session.id) {
-        return {
-          ...st,
-          date: newClosingDate || newOpenedAt
-        };
-      }
-      return st;
-    });
-
-    // Update warranties linked to these transactions
-    const updatedWarranties = (state.warranties || []).map(w => {
-      if (affectedTxIds.has(w.transactionId)) {
-        return {
-          ...w,
-          purchaseDate: shiftDate(w.purchaseDate)
-        };
-      }
-      return w;
-    });
-
-    // Update returns linked to these transactions
-    const updatedReturns = (state.returns || []).map(ret => {
-      if (affectedTxIds.has(ret.transactionId)) {
-        return {
-          ...ret,
-          date: shiftDate(ret.date)
-        };
-      }
-      return ret;
-    });
-
-    // Update local state atomically
     set({
       cashSessions: (state.cashSessions || []).map(s => s.id === sessionId ? updatedSession : s),
       transactions: updatedTransactions,
-      bankTransactions: updatedBankTransactions,
       salarySettlements: updatedSalarySettlements,
-      warranties: updatedWarranties,
-      returns: updatedReturns
+      warranties: updatedWarranties
     });
-
-    // Sync updates to Supabase in background
-    try {
-      await pushCashSessionToSupabase(updatedSession);
-      for (const tx of updatedTransactions) {
-        if (affectedTxIds.has(tx.id)) {
-          await pushTransactionToSupabase(tx);
-        }
-      }
-      for (const bt of updatedBankTransactions) {
-        if (bt.transactionId && affectedTxIds.has(bt.transactionId)) {
-          await pushBankTransactionToSupabase(bt);
-        }
-      }
-    } catch (e) {
-      console.warn("Cascaded date update Supabase sync error:", e);
-    }
-
+    await flushLocalStateStorage();
     return true;
   },
   joinOpenSession: (sessionId, userId, workerName) => {
