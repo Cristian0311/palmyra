@@ -273,7 +273,7 @@ export async function callTransferInventoryRPC(params:{operationId:string;batchI
     return {success:true as const,error:undefined,errorCode:undefined,data:{success:true}};
   }catch(e:any){return errorResult(e);}
 }
-async function resolveVariantId(productId:string,label?:string){const supabase=getSupabase()!;const {companyId}=await getActiveTenant();if(!label?.trim())return null;const {data,error}=await supabase.from('product_variants').select('id').eq('company_id',companyId).eq('product_id',productId).eq('name',label.trim()).eq('active',true).maybeSingle();if(error)throw error;return data?.id||null;}
+async function resolveVariantId(productId:string,label?:string){const supabase=getSupabase()!;const {companyId}=await getActiveTenant();if(!label?.trim())return null;const {data,error}=await supabase.from('product_variants').select('id').eq('company_id',companyId).eq('product_id',productId).eq('name',label.trim()).eq('active',true).maybeSingle();if(error)throw error;if(!data?.id)throw new Error(`No se encontró la variante activa "${label.trim()}" para este producto. No se modificó el inventario.`);return data.id;}
 export async function callTransferInventoryBulkRPC(params:{batchId:string;fromBranchId:string;toBranchId:string;items:{operationId:string;productId:string;variants:{variantLabel:string;quantity:number}[]}[];userId:string}){
   try{
     for(const item of params.items){
