@@ -1260,7 +1260,7 @@ export default function POS() {
 
       const enteredPassword = (sessionPassword || '').trim();
       const { companyId } = await getActiveTenant();
-      const skipPosPassword = currentUser?.role === 'admin' && localStorage.getItem(`palmyra:pos-passwords-disabled:${companyId}`) === 'true';
+      const skipPosPassword = localStorage.getItem(`palmyra:pos-passwords-disabled:${companyId}`) === 'true';
       if (!skipPosPassword) {
 
       if (!enteredPassword) {
