@@ -46,7 +46,7 @@ export default function ReportsCloseSessionModal(props: ModalProps) {
                 </div>
                 <div className="flex justify-between">
                   <span className="text-muted font-bold">Apertura:</span>
-                  <span className="font-mono text-primary">{new Date(sessionToCloseModal.openedAt).toLocaleString('es-CU')}</span>
+                  <span className="font-mono text-primary">{new Date(sessionToCloseModal.openedAt).toLocaleString('es-CU', { timeZone: 'America/Havana' })}</span>
                 </div>
                 <div className="flex justify-between">                  <span className="text-muted font-bold">Fondo Inicial:</span>
                   <span className="font-black text-primary">{formatMoney(sessionToCloseModal.openingBalance)}</span>
@@ -161,9 +161,7 @@ export default function ReportsCloseSessionModal(props: ModalProps) {
                     if (sessionClosingDateInput) {
                       const parts = sessionClosingDateInput.split('-');
                       if (parts.length === 3) {
-                        const d = new Date();
-                        d.setFullYear(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
-                        finalClosingDate = d.toISOString();
+                        finalClosingDate = new Date(`${sessionClosingDateInput}T12:00:00-04:00`).toISOString();
                       }
                     }
 
