@@ -194,8 +194,8 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       (t.sessionId
         ? t.sessionId === session.id
         : (t.branchId === session.branchId &&
-           new Date(t.date).getTime() >= new Date(session.openedAt).getTime() &&
-           (!session.closedAt || new Date(t.date).getTime() <= new Date(session.closedAt).getTime())))
+           new Date(t.date).getTime() >= sessionOpenTime &&
+           new Date(t.date).getTime() <= closingTime))
     );
     const user = get().users.find(u => u.id === session.userId || u.name?.toLowerCase() === (workerName || session.workerName)?.toLowerCase());
 
@@ -242,7 +242,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       date: finalClosingDate,
       status: 'pending'
     };
-    const expectedCashBase = calculateExpectedCashBase(session, sessionTxs, get().currencies || []);
+    const expectedCashBase = calculateExpectedCashBase({ ...session, closedAt: finalClosingDate }, sessionTxs, get().currencies || []);
     const updatedSession = {
       ...session,
       expectedBalance: expectedCashBase,
