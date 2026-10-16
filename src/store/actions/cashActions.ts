@@ -349,7 +349,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       return false;
     }
 
-    if (!/^\\d{4}-\\d{2}-\\d{2}$/.test(String(newDateYMD || ''))) return false;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(newDateYMD || ''))) return false;
     const [year, month, day] = newDateYMD.split('-').map(Number);
     const candidate = new Date(year, month - 1, day);
     if (candidate.getFullYear() !== year || candidate.getMonth() !== month - 1 || candidate.getDate() !== day) return false;
