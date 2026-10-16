@@ -123,4 +123,4 @@ end;
 $function$;
 
 revoke all on function public.palmyra_update_cash_session_business_date(uuid, uuid, timestamptz, date) from public, anon;
-grant execute on function public.palmyra_update_cash_session_business_date(uuid, uuid, timestamptz) to authenticated;
+grant execute on function public.palmyra_update_cash_session_business_date(uuid, uuid, timestamptz, date) to authenticated;
