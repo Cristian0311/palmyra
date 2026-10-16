@@ -22,6 +22,7 @@ import { cn } from "../lib/utils";
 import { InfoTooltip } from "../components/InfoTooltip";
 import MultiCurrencyTotal from "../components/reports/MultiCurrencyTotal";
 import { getLocalDateYMD } from "../utils/dateUtils";
+import { flushLocalStateStorage } from "../services/localStateStorage";
 import { useReportsContext } from "../modules/reports/useReportsContext";
 import { useReportsPayroll } from "../modules/reports/useReportsPayroll";
 import { useReportsSessions } from "../modules/reports/useReportsSessions";
