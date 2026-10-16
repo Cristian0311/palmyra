@@ -370,7 +370,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
 
     // Do not call the sale-registration RPC for a date correction: it cannot
     // update created_at for an existing sale and may only report idempotent replay.
-    const remote = await callUpdateCashSessionBusinessDateRPC(sessionId, newOpenedAt);
+    const remote = await callUpdateCashSessionBusinessDateRPC(sessionId, newOpenedAt, newDateYMD);
     if (!remote.success) {
       get().addNotification(remote.error || 'Supabase no confirmó el cambio de fecha. No se modificaron los datos locales.', 'error');
       return false;
