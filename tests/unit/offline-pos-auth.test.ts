@@ -32,7 +32,7 @@ test("authorized company access preloads only provisioned offline POS verifiers"
 test("new and queued employee POS passwords provision local and server verifiers after sync", () => {
   const team = source("src/services/team.ts");
   const queue = source("src/services/offline/processQueueItem.ts");
-  assert.match(team, /rememberOfflinePosCredential\(input\.companyId, employeeId, input\.posPassword\.trim\(\)\)/);
+  assert.match(team, /cacheEmployeePosPassword\(input\.companyId, employeeId, input\.posPassword\.trim\(\)\)/);
   assert.match(queue, /rememberOfflinePosCredential\(String\(d\.companyId\), String\(d\.localEmployeeId\)/);
   assert.match(queue, /rememberOfflinePosCredential\(String\(d\.companyId\), String\(d\.employeeId\)/);
 });

@@ -218,6 +218,22 @@ export async function loadTeamSnapshot(): Promise<TeamSnapshot> {
   };
 }
 
+async function cacheEmployeePosPassword(companyId: string, employeeId: string, password: string) {
+  const supabase = getSupabase();
+  if (!supabase || !companyId || !employeeId || !password) return;
+  const { data, error } = await supabase
+    .from("employees")
+    .select("id,user_id")
+    .eq("company_id", companyId)
+    .eq("id", employeeId)
+    .maybeSingle();
+  if (error) throw error;
+  const ids = Array.from(new Set([data?.id, data?.user_id].filter((id): id is string => !!id)));
+  for (const id of ids) {
+    await rememberOfflinePosCredential(companyId, id, password);
+  }
+}
+
 export async function createEmployeePosSecure(input: {
   companyId: string;
   employeeId?: string;
@@ -244,7 +260,7 @@ export async function createEmployeePosSecure(input: {
   if (error) throwRpcError(error);
   const employeeId = String((data as any)?.id || input.employeeId || "");
   if (input.posPassword?.trim() && employeeId) {
-    await rememberOfflinePosCredential(input.companyId, employeeId, input.posPassword.trim()).catch((cacheError) => {
+    await cacheEmployeePosPassword(input.companyId, employeeId, input.posPassword.trim()).catch((cacheError) => {
       console.warn("[PALMYRA] El trabajador se guardó, pero no se pudo preparar su credencial offline en este dispositivo.", cacheError);
     });
   }
