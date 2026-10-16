@@ -321,7 +321,6 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
           const saleMap = new Map<string, any>((persistedSales || []).map((s: any) => [s.id, s]));
 
           const processedPercentageSales = new Set<string>();
-          const processedFixedSellerLines = new Set<string>();
           for (const saleItem of itemsRes.data || []) {
             const product = productMap.get(saleItem.product_id);
             const sale = saleMap.get(saleItem.sale_id);
@@ -358,11 +357,10 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
                 processedPercentageSales.add(sale.id);
               }
             } else {
-              const lineKey = `${sale.id}:${saleItem.sale_id}:${saleItem.product_id}`;
-              if (!processedFixedSellerLines.has(lineKey)) {
-                commissions += ((Number(product.commission_fixed) || 0) * quantity) / splitFactor;
-                processedFixedSellerLines.add(lineKey);
-              }
+              // Each sale_items row is a separate quantity-bearing line. Do not
+              // deduplicate by product ID: the same product can appear in
+              // multiple lines (including different variants) in one sale.
+              commissions += ((Number(product.commission_fixed) || 0) * quantity) / splitFactor;
             }
           }
         }
