@@ -1021,7 +1021,8 @@ export default function Reports() {
           onOpenSessionDetail={setExpandedSession}
           onPrintShiftTicket={handlePrintShiftTicket}
           onOpenTransactionDetail={setSelectedDirectTxModal}
-          onVoidTransaction={handleVoidTransaction}\n          onHideTransactionReport={hideTransactionReport}
+          onVoidTransaction={handleVoidTransaction}
+          onHideTransactionReport={hideTransactionReport}
         />
       )}
 
