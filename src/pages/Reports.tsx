@@ -2,7 +2,7 @@ import { useReportsExport } from '../modules/reports/hooks/useReportsExport';
 import { useShallow } from 'zustand/react/shallow';
 import React, { lazy, Suspense, useCallback, useState, useMemo, useRef, useEffect } from "react";
 import { 
-  TrendingUp, DollarSign, Calendar, Calculator, Package, User, Users, Eye,
+  TrendingUp, DollarSign, Calendar, Calculator, Package, User, Users, Eye, EyeOff,
   X, ArrowDownRight, ArrowUpRight, ArrowLeftRight, ArrowRight, History, Download, Printer, CheckCircle2, 
   Clock, AlertCircle, AlertTriangle, FileSpreadsheet, ChevronDown, Check, Plus, Search,
   BarChart3, Brain, ListChecks, ShieldAlert, Loader2, Trash2,
@@ -189,6 +189,24 @@ export default function Reports() {
 
   const [activeTab, setActiveTab] = useState<'sales' | 'payroll' | 'sessions' | 'discrepancies' | 'movements' | 'transfers'>('sales');
   const [salesViewMode, setSalesViewMode] = useState<'by_shift' | 'all_tickets'>('by_shift');
+  const [hiddenReportIds, setHiddenReportIds] = useState<string[]>(() => {
+    try {
+      const value = JSON.parse(localStorage.getItem('palmyra:hidden-sales-report-ids:v2') || '[]');
+      return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [];
+    } catch { return []; }
+  });
+  const hideTransactionReport = useCallback((transaction: Transaction) => {
+    const next = Array.from(new Set([...hiddenReportIds, transaction.id]));
+    setHiddenReportIds(next);
+    try { localStorage.setItem('palmyra:hidden-sales-report-ids:v2', JSON.stringify(next)); } catch {}
+    addNotification('Ticket ocultado de la lista de reportes. La venta, el cobro y el inventario permanecen intactos.', 'success');
+  }, [hiddenReportIds, addNotification]);
+  const restoreTransactionReport = useCallback((transaction: Transaction) => {
+    const next = hiddenReportIds.filter(id => id !== transaction.id);
+    setHiddenReportIds(next);
+    try { localStorage.setItem('palmyra:hidden-sales-report-ids:v2', JSON.stringify(next)); } catch {}
+    addNotification('Ticket restaurado en la lista de reportes. La venta original no fue modificada.', 'success');
+  }, [hiddenReportIds, addNotification]);
   const [transferFromFilter, setTransferFromFilter] = useState<string>('all');
   const [transferToFilter, setTransferToFilter] = useState<string>('all');
   const [transferSearch, setTransferSearch] = useState<string>('');
@@ -1052,6 +1070,9 @@ export default function Reports() {
           onPrintShiftTicket={handlePrintShiftTicket}
           onOpenTransactionDetail={setSelectedDirectTxModal}
           onVoidTransaction={handleVoidTransaction}
+          hiddenReportIds={hiddenReportIds}
+          onHideTransactionReport={hideTransactionReport}
+          onRestoreTransactionReport={restoreTransactionReport}
         />
       )}
 
