@@ -165,10 +165,20 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
     // Nunca cerrar remotamente mientras exista una venta/liquidación de este
     // turno todavía pendiente en la cola durable. En offline el cierre sí se
     // puede encolar, y el motor lo ordenará después de las ventas.
-    const pendingSessionTransactions = getOfflineQueue().filter(item =>
-      item.type === 'transaction' &&
-      item.data?.sessionId === sessionId
-    );
+    const sessionOpenTime = new Date(session.openedAt).getTime();
+    const closingTime = new Date(finalClosingDate).getTime();
+    const pendingSessionTransactions = getOfflineQueue().filter(item => {
+      if (item.type !== 'transaction') return false;
+      const transaction = item.data || {};
+      if (transaction.sessionId === sessionId) return true;
+      if (transaction.sessionId) return false;
+      const transactionTime = new Date(transaction.date).getTime();
+      const transactionBranch = transaction.branchId || transaction.warehouseId;
+      return transactionBranch === session.branchId &&
+        Number.isFinite(transactionTime) &&
+        transactionTime >= sessionOpenTime &&
+        transactionTime <= closingTime;
+    });
     if (pendingSessionTransactions.length > 0 && typeof navigator !== 'undefined' && navigator.onLine) {
       get().addNotification(
         'No se puede cerrar todavía: hay ' + pendingSessionTransactions.length + ' venta(s) del turno pendientes de sincronizar.',
