@@ -30,7 +30,7 @@ type Props = {
   onOpenSessionDetail: (sessionId: string) => void;
   onPrintShiftTicket: (sessionId: string) => void;
   onOpenTransactionDetail: (transaction: Transaction) => void;
-  onVoidTransaction: (transaction: Transaction) => void | Promise<void>;
+  onVoidTransaction: (transaction: Transaction) => void | Promise<void>;\n  onHideTransactionReport: (transaction: Transaction) => void;
 };
 
 export function ReportsSalesTab({
@@ -119,7 +119,7 @@ export function ReportsSalesTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-base">
-                {sessions.map((session, idx) => {
+                {orderedSessions.map((session, idx) => {
                   const sessionTx = transactions.filter(
                     (transaction) =>
                       transaction.sessionId === session.id &&
@@ -306,7 +306,7 @@ export function ReportsSalesTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-base">
-                {transactions.map((tx) => {
+                {orderedTransactions.map((tx) => {
                   const branchName =
                     branches.find((branch) => branch.id === tx.branchId)?.name ||
                     "Sucursal";
