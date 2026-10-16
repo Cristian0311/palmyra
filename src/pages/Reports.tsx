@@ -196,21 +196,17 @@ export default function Reports() {
     } catch { return []; }
   });
   const hideTransactionReport = useCallback((transaction: Transaction) => {
-    setHiddenReportIds(current => {
-      const next = Array.from(new Set([...current, transaction.id]));
-      try { localStorage.setItem('palmyra:hidden-sales-report-ids:v2', JSON.stringify(next)); } catch {}
-      return next;
-    });
+    const next = Array.from(new Set([...hiddenReportIds, transaction.id]));
+    setHiddenReportIds(next);
+    try { localStorage.setItem('palmyra:hidden-sales-report-ids:v2', JSON.stringify(next)); } catch {}
     addNotification('Ticket ocultado de la lista de reportes. La venta, el cobro y el inventario permanecen intactos.', 'success');
-  }, [addNotification]);
+  }, [hiddenReportIds, addNotification]);
   const restoreTransactionReport = useCallback((transaction: Transaction) => {
-    setHiddenReportIds(current => {
-      const next = current.filter(id => id !== transaction.id);
-      try { localStorage.setItem('palmyra:hidden-sales-report-ids:v2', JSON.stringify(next)); } catch {}
-      return next;
-    });
+    const next = hiddenReportIds.filter(id => id !== transaction.id);
+    setHiddenReportIds(next);
+    try { localStorage.setItem('palmyra:hidden-sales-report-ids:v2', JSON.stringify(next)); } catch {}
     addNotification('Ticket restaurado en la lista de reportes. La venta original no fue modificada.', 'success');
-  }, [addNotification]);
+  }, [hiddenReportIds, addNotification]);
   const [transferFromFilter, setTransferFromFilter] = useState<string>('all');
   const [transferToFilter, setTransferToFilter] = useState<string>('all');
   const [transferSearch, setTransferSearch] = useState<string>('');
