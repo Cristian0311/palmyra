@@ -40,7 +40,7 @@ type AggregatedPayrollRow = {
 export function useReportsPayroll(params: {
   closedSessions: CashRegisterSession[];
   salarySettlements: SalarySettlement[];
-  transactionsBySession: Map<string, Transaction[]>;
+  transactions: Transaction[];
   userById: Map<string, User>;
   userByName: Map<string, User>;
   productById: Map<string, Product>;
@@ -53,7 +53,7 @@ export function useReportsPayroll(params: {
   const {
     closedSessions,
     salarySettlements,
-    transactionsBySession,
+    transactions,
     userById,
     userByName,
     productById,
@@ -72,9 +72,15 @@ export function useReportsPayroll(params: {
       const turnLabel = sessionTurnMap.get(session.id) || session.id;
       // Payroll must never count voided/refunded/pending tickets as completed sales.
       // Reports can contain a broader transaction cache than the active POS.
-      const sessionTx = (transactionsBySession.get(session.id) || []).filter(
-        tx => tx.status === 'completed' && !tx.deletedAt && !String(tx.notes || '').startsWith('AJUSTE_')
-      );
+      const sessionOpenMs = new Date(session.openedAt).getTime();
+      const sessionCloseMs = session.closedAt ? new Date(session.closedAt).getTime() : Infinity;
+      const sessionTx = transactions.filter(tx => {
+        if (tx.status !== 'completed' || tx.deletedAt || String(tx.notes || '').startsWith('AJUSTE_')) return false;
+        if (tx.sessionId === session.id) return true;
+        if (tx.sessionId || tx.branchId !== session.branchId) return false;
+        const txTime = new Date(tx.date).getTime();
+        return Number.isFinite(txTime) && txTime >= sessionOpenMs && txTime <= sessionCloseMs;
+      });
       const totalSales = sessionTx.reduce((sum, tx) => sum + Math.max(0, Number(tx.total) || 0), 0);
       const totalItems = sessionTx.reduce(
         (sum, tx) => sum + (tx.items || []).reduce((itemsSum, item) => itemsSum + Math.max(0, Number(item.quantity) || 0), 0),
@@ -101,9 +107,11 @@ export function useReportsPayroll(params: {
             }
             const products = Array.from(productById.values());
             return sellerSum + (tx.items || []).reduce((itemSum, item) => {
+              const productSnapshot = typeof item.product === 'string' ? undefined : item.product;
               const productId = typeof item.product === 'string' ? item.product : item.product?.id;
-              const product = products.find(p => p.id === productId);
-              return itemSum + (Math.max(0, Number(product?.commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) / splitFactor;
+              const product = productById.get(productId || '');
+              const commissionValue = product?.commissionValue ?? productSnapshot?.commissionValue ?? (item as any).product_snapshot?.commissionValue ?? (item as any).commissionValue ?? 0;
+              return itemSum + (Math.max(0, Number(commissionValue) || 0) * Math.max(0, Number(item.quantity) || 0)) / splitFactor;
             }, 0);
           }, 0);
         }, 0);
@@ -136,7 +144,7 @@ export function useReportsPayroll(params: {
   }, [
     closedSessions,
     salarySettlements,
-    transactionsBySession,
+    transactions,
     userById,
     userByName,
     productById,
@@ -150,11 +158,18 @@ export function useReportsPayroll(params: {
         if (selectedBranchFilter !== 'all' && item.branchId !== selectedBranchFilter) return false;
 
         const dateObj = new Date(item.date);
+        const localDateYMD = (value: Date) => {
+          if (!Number.isFinite(value.getTime())) return '';
+          const year = value.getFullYear();
+          const month = String(value.getMonth() + 1).padStart(2, '0');
+          const day = String(value.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        };
         if (selectedFilterDate) {
-          return dateObj.toISOString().split('T')[0] === selectedFilterDate;
+          return localDateYMD(dateObj) === selectedFilterDate;
         }
         if (sessionFilter === 'today') {
-          return dateObj.toLocaleDateString() === new Date().toLocaleDateString();
+          return localDateYMD(dateObj) === localDateYMD(new Date());
         }
         return true;
       }),
