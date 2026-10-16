@@ -2017,7 +2017,15 @@ export default function POS() {
               cart.map(item => {
                 const prodObj = typeof (item.product as any) === 'object' && item.product !== null ? item.product : (products.find(p => p.id === (item.product as any)) || null);
                 const prodName = (prodObj?.name || (typeof (item.product as any) === 'string' ? (item.product as any) : 'Producto')) as string;
-                const prodPrice = prodObj?.price ?? item.price ?? 0;
+                // A cart row keeps the price captured when it was added. The
+                // product catalog may refresh in the background while the sale
+                // is open, so it must not silently change the current ticket.
+                const prodPrice = Number.isFinite(Number(item.price)) && Number(item.price) >= 0
+                  ? Number(item.price)
+                  : (Number(prodObj?.price) || 0);
+                const displayedLineTotal = Number.isFinite(Number(item.total)) && Number(item.total) >= 0
+                  ? Number(item.total)
+                  : prodPrice * item.quantity;
                 const prodImg = prodObj?.image || '';
                 const prodColor = prodObj?.color || '';
                 const prodId = (prodObj?.id || (typeof (item.product as any) === 'string' ? (item.product as any) : '')) as string;
@@ -2050,7 +2058,7 @@ export default function POS() {
                           <p className="text-[8px] font-semibold text-muted">{formatMoney(prodPrice, baseCurrency.symbol)} / u.</p>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
-                          <span className="text-[9px] sm:text-[10px] font-black text-primary font-mono">{formatMoney(prodPrice * item.quantity, baseCurrency.symbol)}</span>
+                          <span className="text-[9px] sm:text-[10px] font-black text-primary font-mono">{formatMoney(displayedLineTotal, baseCurrency.symbol)}</span>
                           <button
                             type="button"
                             onClick={() => updateCartQty(item.id, -item.quantity)}

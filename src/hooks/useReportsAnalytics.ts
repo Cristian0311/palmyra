@@ -7,10 +7,14 @@ export function getLocalDateYMD(dStr: string | null | undefined): string {
   if (!dStr) return '';
   const d = new Date(dStr);
   if (isNaN(d.getTime())) return '';
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+  // Reports are operationally dated in Cuba, irrespective of the device
+  // timezone. Otherwise two devices viewing the same ticket can place it on
+  // different dates (notably near midnight and around DST changes).
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Havana', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(d);
+  const part = (type: string) => parts.find(item => item.type === type)?.value || '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
 export function useReportsAnalytics(params: {
@@ -72,7 +76,8 @@ export function useReportsAnalytics(params: {
     const data: Record<number, number> = {};
     for (let i = 0; i < 24; i++) data[i] = 0;
     validSalesTransactions.forEach(tx => {
-      const hour = new Date(tx.date).getHours();
+      const hourText = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Havana', hour: 'numeric', hour12: false }).format(new Date(tx.date));
+      const hour = Number(hourText) % 24;
       data[hour] += tx.total;
     });
     return Object.entries(data).map(([hour, total]) => ({

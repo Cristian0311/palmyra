@@ -1,4 +1,25 @@
-import type { Currency, Payment, Transaction } from '../../../types';
+import type { CartItem, Currency, Payment, Transaction } from '../../../types';
+
+
+/**
+ * The cart line price is the sale's price snapshot. The Product object can be
+ * stale after an offline catalog refresh; using product.price first can make
+ * the checkout total differ from the line total sent to Supabase.
+ */
+export function getCartLineUnitPrice(item: Pick<CartItem, 'product' | 'price'>): number {
+  const capturedPrice = Number(item.price);
+  if (Number.isFinite(capturedPrice) && capturedPrice >= 0) return capturedPrice;
+
+  const productPrice = Number(item.product?.price);
+  return Number.isFinite(productPrice) && productPrice >= 0 ? productPrice : 0;
+}
+
+/** Use the same recorded line total that the sale RPC persists. */
+export function getCartLineSubtotal(item: Pick<CartItem, 'product' | 'price' | 'quantity' | 'total'>): number {
+  const recordedTotal = Number(item.total);
+  if (Number.isFinite(recordedTotal) && recordedTotal >= 0) return recordedTotal;
+  return getCartLineUnitPrice(item) * Math.max(0, Number(item.quantity) || 0);
+}
 
 export type CheckoutPaymentLine = {
   code: string;

@@ -78,16 +78,18 @@ export function calculatePerfectSessionBalances(
 
   sessionTxs.forEach(tx => {
     (tx.payments || []).forEach(p => {
-      const ex = expected.find(item => item.currencyCode === p.currencyCode && item.method === p.method);
+      const method = (p.method as string) === 'bank_transfer' ? 'transfer' : p.method;
+      const ex = expected.find(item => item.currencyCode === p.currencyCode && item.method === method);
       if (ex) ex.amount += p.amount;
-      else expected.push({ currencyCode: p.currencyCode, method: p.method as 'cash' | 'transfer', amount: p.amount });
+      else expected.push({ currencyCode: p.currencyCode, method: method as 'cash' | 'transfer', amount: p.amount });
     });
 
     if (tx.changePayments && tx.changePayments.length > 0) {
       tx.changePayments.forEach(cp => {
-        const ex = expected.find(item => item.currencyCode === cp.currencyCode && item.method === cp.method);
+        const method = (cp.method as string) === 'bank_transfer' ? 'transfer' : cp.method;
+        const ex = expected.find(item => item.currencyCode === cp.currencyCode && item.method === method);
         if (ex) ex.amount -= cp.amount;
-        else expected.push({ currencyCode: cp.currencyCode, method: cp.method as 'cash' | 'transfer', amount: -cp.amount });
+        else expected.push({ currencyCode: cp.currencyCode, method: method as 'cash' | 'transfer', amount: -cp.amount });
       });
     } else if (tx.changeGiven && tx.changeGiven > 0) {
       const ex = expected.find(item => item.currencyCode === baseCurrencyCode && item.method === 'cash');

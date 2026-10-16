@@ -159,7 +159,9 @@ export async function callProcessTransactionRPC(tx:Transaction){
         product_barcode:prod?.barcode||null,
         quantity:Number(item.quantity)||0,
         price:Number(item.price??prod?.price)||0,
-        total:Number(item.total)||((Number(item.price??prod?.price)||0)*(Number(item.quantity)||0)),
+        total:Number.isFinite(Number(item.total)) && Number(item.total) >= 0
+          ? Number(item.total)
+          : ((Number(item.price??prod?.price)||0)*(Number(item.quantity)||0)),
         variant_label:item.variantLabel||null,
         variant_id:null,
         serial_number:item.serialNumber||null,

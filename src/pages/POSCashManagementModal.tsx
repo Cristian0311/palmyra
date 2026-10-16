@@ -848,17 +848,22 @@ export default function POSCashManagementModal(props: ModalProps) {
 
                     <div className="space-y-2">
                       <h4 className="text-[10px] font-black text-slate-900 uppercase tracking-widest border-b border-slate-100 pb-2">Transferencias</h4>
-                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                        <label className="block text-[8px] font-black text-blue-600 uppercase tracking-widest mb-1">Transf. CUP</label>
-                        <input 
-                          type="number" 
-                          min="0" step="0.01"
-                          value={closingBalances['CUP-transfer'] || ''}
-                          onFocus={(e) => e.target.select()}
-                          onChange={(e) => setClosingBalances({ ...closingBalances, 'CUP-transfer': parseFloat(e.target.value) || 0 })}
-                          className="w-full bg-transparent border-none focus:ring-0 outline-none font-black text-slate-900 text-sm p-0"
-                          placeholder="0.00"
-                        />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {Array.from(new Set(['CUP', ...expectedBalances.filter(line => line.method === 'transfer').map(line => line.currencyCode)]))
+                          .map(code => (
+                            <div key={code} className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                              <label className="block text-[8px] font-black text-blue-600 uppercase tracking-widest mb-1">Transf. {code}</label>
+                              <input
+                                type="number"
+                                min="0" step="0.01"
+                                value={closingBalances[code + '-transfer'] || ''}
+                                onFocus={(e) => e.target.select()}
+                                onChange={(e) => setClosingBalances({ ...closingBalances, [code + '-transfer']: parseFloat(e.target.value) || 0 })}
+                                className="w-full bg-transparent border-none focus:ring-0 outline-none font-black text-slate-900 text-sm p-0"
+                                placeholder="0.00"
+                              />
+                            </div>
+                          ))}
                       </div>
                     </div>
 
