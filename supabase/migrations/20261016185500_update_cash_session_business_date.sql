@@ -108,6 +108,15 @@ begin
       from public.payroll_items pi
       where pi.company_id = p_company_id
         and pi.details->>'session_id' = p_session_id::text
+    )
+    -- A payroll run may aggregate several shifts. Never move the entire run's
+    -- period because only one of its shifts had its business date corrected.
+    and not exists (
+      select 1
+      from public.payroll_items other_item
+      where other_item.company_id = p_company_id
+        and other_item.payroll_run_id = pr.id
+        and other_item.details->>'session_id' is distinct from p_session_id::text
     );
   get diagnostics v_payroll_runs_updated = row_count;
 
