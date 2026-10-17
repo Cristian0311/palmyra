@@ -152,7 +152,6 @@ export function useReportsSessions(params: {
     selectedFilterDate,
     sessionFilter,
     userById,
-    userByName,
     sortSessionsByTurn,
   ]);
 
