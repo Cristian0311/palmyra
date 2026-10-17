@@ -2,6 +2,43 @@ import type { Product, Transaction, User, CashRegisterSession } from '../types';
 
 export type CompensationType = 'fixed_product' | 'sales_percentage';
 
+/**
+ * Resolve the worker assigned to a cash session without confusing that worker
+ * with the authenticated account that opened the register.
+ *
+ * employeeId is the strongest key because legacy POS employees may not have a
+ * linked Supabase auth user. workerName comes next for older cached sessions;
+ * userId is the last fallback and must not override an explicit worker.
+ */
+export function findSessionEmployeeUser(
+  session: Pick<CashRegisterSession, 'employeeId' | 'userId' | 'workerName'>,
+  users: User[],
+  preferredWorkerName?: string,
+): User | undefined {
+  const employeeId = String(session.employeeId || '').trim();
+  if (employeeId) {
+    const employee = users.find(user => user.employeeId === employeeId || user.id === employeeId);
+    if (employee) return employee;
+  }
+
+  const ignoredLabels = new Set(['admin', 'administrador', 'empleado', 'vendedor']);
+  const candidateNames = [session.workerName, preferredWorkerName]
+    .map(name => String(name || '').trim().toLocaleLowerCase())
+    .filter((name, index, values) => name && !ignoredLabels.has(name) && values.indexOf(name) === index);
+
+  for (const name of candidateNames) {
+    const employee = users.find(user => String(user.name || '').trim().toLocaleLowerCase() === name);
+    if (employee) return employee;
+  }
+
+  // If a database employee identity is available but the local employee cache
+  // cannot resolve it, never substitute the account that happened to open POS.
+  if (employeeId) return undefined;
+
+  const sessionUserId = String(session.userId || '').trim();
+  return users.find(user => user.id === sessionUserId || user.employeeId === sessionUserId);
+}
+
 export function getCompensationType(employee?: User | null): CompensationType {
   return employee?.compensationType === 'sales_percentage' ? 'sales_percentage' : 'fixed_product';
 }

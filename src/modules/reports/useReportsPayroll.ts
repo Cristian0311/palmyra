@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { matchesReportDateFilter } from './utils/reportDateFilter';
+import { findSessionEmployeeUser } from '../../services/employeeCompensation';
 import type {
   CashRegisterSession,
   Product,
@@ -56,7 +57,6 @@ export function useReportsPayroll(params: {
     salarySettlements,
     transactions,
     userById,
-    userByName,
     productById,
     sessionTurnMap,
     selectedBranchFilter,
@@ -68,6 +68,7 @@ export function useReportsPayroll(params: {
   const payrollList = useMemo<PayrollRow[]>(() => {
     const settlementMap = new Map<string, SalarySettlement>();
     salarySettlements.forEach(settlement => settlementMap.set(settlement.sessionId, settlement));
+    const allUsers = Array.from(userById.values());
 
     return closedSessions.map(session => {
       const turnLabel = sessionTurnMap.get(session.id) || session.id;
@@ -89,14 +90,12 @@ export function useReportsPayroll(params: {
       );
 
       const existing = settlementMap.get(session.id);
-      const emp =
-        userById.get(session.userId) ||
-        (session.workerName ? userByName.get(session.workerName.trim().toLowerCase()) : undefined);
-      const workerName = session.workerName || existing?.userName || emp?.name || 'Vendedor';
+      const emp = findSessionEmployeeUser(session, allUsers, existing?.userName);
+      const workerName = emp?.name || session.workerName || existing?.userName || 'Vendedor';
 
       let commissions = existing?.commissions || 0;
       if (!existing) {
-        const eligibleSellerIds = new Set<string>([session.userId, ...(session.workingEmployeeIds || [])].filter(Boolean));
+        const eligibleSellerIds = new Set<string>([session.userId, session.employeeId || '', ...(session.workingEmployeeIds || [])].filter(Boolean));
         commissions = Array.from(eligibleSellerIds).reduce((sum, sellerId) => {
           return sum + sessionTx.reduce((sellerSum, tx) => {
             const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
@@ -128,7 +127,7 @@ export function useReportsPayroll(params: {
         turnLabel,
         date,
         workerName,
-        userId: session.userId,
+        userId: emp?.id || session.employeeId || session.userId,
         branchId: session.branchId,
         baseSalary,
         commissions,
@@ -145,7 +144,6 @@ export function useReportsPayroll(params: {
     salarySettlements,
     transactions,
     userById,
-    userByName,
     productById,
     sessionTurnMap,
     companyCompensation,

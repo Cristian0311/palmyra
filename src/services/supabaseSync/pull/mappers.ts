@@ -43,6 +43,7 @@ export function mapUser(e: any, locations: any[], _admin?: any): User {
 
   return {
     id: e.user_id || e.id,
+    employeeId: e.id,
     name: e.full_name,
     email: '',
     password: '',

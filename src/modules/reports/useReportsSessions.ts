@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import type { CashRegisterSession, Transaction, User } from '../../types';
 import { getLocalDateYMD } from '../../utils/dateUtils';
+import { findSessionEmployeeUser } from '../../services/employeeCompensation';
 
 export function buildSessionTurnMap(
   sessions: CashRegisterSession[],
@@ -32,7 +33,6 @@ export function useReportsSessions(params: {
     cashSessions,
     transactions,
     userById,
-    userByName,
     statusFilter,
     selectedBranchFilter,
     selectedWorkerFilter,
@@ -122,14 +122,12 @@ export function useReportsSessions(params: {
         if (selectedBranchFilter !== 'all' && session.branchId !== selectedBranchFilter) return false;
 
         if (selectedWorkerFilter !== 'all') {
-          const employee =
-            userById.get(session.userId) ||
-            (session.workerName
-              ? userByName.get(session.workerName.trim().toLowerCase())
-              : undefined);
+          const employee = findSessionEmployeeUser(session, Array.from(userById.values()));
           if (
             employee?.id !== selectedWorkerFilter &&
+            employee?.employeeId !== selectedWorkerFilter &&
             session.userId !== selectedWorkerFilter &&
+            session.employeeId !== selectedWorkerFilter &&
             session.workerName !== selectedWorkerFilter
           ) {
             return false;
@@ -154,7 +152,6 @@ export function useReportsSessions(params: {
     selectedFilterDate,
     sessionFilter,
     userById,
-    userByName,
     sortSessionsByTurn,
   ]);
 

@@ -29,6 +29,7 @@ import { pullOpenCashSessionsFromSupabase } from "../services/supabaseSync";
 import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
 import { aggregateTransferPayments, buildTransactionTicketId, finalizeCheckoutPayments } from '../modules/pos/utils/checkoutUtils';
 import { rememberOfflinePosCredential, verifyOfflinePosCredential, rememberOfflinePosResumeGrant, verifyOfflinePosResumeGrant } from "../services/offlinePosAuth";
+import { findSessionEmployeeUser } from "../services/employeeCompensation";
 const POSStartupScreen = lazy(() => import("./POSStartupScreen"));
 const CheckoutModal = lazy(() => import("../components/pos/CheckoutModal"));
 
@@ -480,11 +481,7 @@ export default function POS() {
     (workerAssignedWarehouseIds.length === 1 ? workerAssignedWarehouseIds[0] : null);
 
   const currentSessionWorker = currentSession
-    ? (users || []).find(u =>
-        u.id === currentSession.userId ||
-        (!!u.name && !!currentSession.workerName &&
-         u.name.trim().toLowerCase() === currentSession.workerName.trim().toLowerCase())
-      ) || null
+    ? findSessionEmployeeUser(currentSession, users || []) || null
     : null;
 
   useEffect(() => {
@@ -1377,6 +1374,7 @@ export default function POS() {
         openingBalance: val,
         openingAmount: val,
         status: "open",
+        employeeId: workerToAssign.employeeId || undefined,
         userId: workerId,
         workerName,
         // La identidad operativa es exclusivamente el trabajador autenticado.

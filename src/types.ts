@@ -194,8 +194,10 @@ export interface CashRegisterSession {
   closingBalances?: Payment[];
   expectedBalance?: number;
   status: 'open' | 'closed' | 'cancelled';
-  userId: string; // The user who opened it
-  workerName?: string; // Custom name for the shift (e.g., worker name)
+  /** Canonical public.employees.id for the worker assigned to this shift. */
+  employeeId?: string;
+  userId: string; // Worker/app identity; not necessarily the account that opened the session
+  workerName?: string; // Display name of the assigned worker
   workingEmployeeIds?: string[]; // IDs of employees working this session
   movements?: CashMovement[];
   closingDate?: string;
@@ -244,6 +246,8 @@ export interface CashMovement {
 
 export interface User {
   id: string;
+  /** Canonical public.employees.id; id itself may be the linked auth user id. */
+  employeeId?: string;
   name: string;
   email: string;
   role: 'admin' | 'employee';

@@ -382,7 +382,8 @@ async function loadCashSessions(branchId?: string) {
     openingBalance:Number(s.opening_amount)||0,
     openingAmount:Number(s.opening_amount)||0,
     status:s.status || 'open',
-    userId:employeeUserMap.get(s.employee_id) || s.opened_by || s.employee_id || '',
+    employeeId:s.employee_id || undefined,
+    userId:employeeUserMap.get(s.employee_id) || s.employee_id || s.opened_by || '',
     workerName:(s.metadata?.workerName || employeeMap.get(s.employee_id) || profileMap.get(s.opened_by)) || undefined,
     workingEmployeeIds:Array.isArray(s.metadata?.workingEmployeeIds) && s.metadata.workingEmployeeIds.length
       ? s.metadata.workingEmployeeIds
@@ -464,9 +465,10 @@ export async function pullOpenCashSessionsFromSupabase() {
       openingBalance: Number(row.opening_amount) || 0,
       openingAmount: Number(row.opening_amount) || 0,
       status: row.status || 'open',
-      userId: row.user_id || row.opened_by || '',
+      employeeId: row.employee_id || undefined,
+      userId: row.user_id || row.employee_id || row.opened_by || '',
       workerName: row.worker_name || 'Administrador',
-      workingEmployeeIds: Array.isArray(row.working_employee_ids) ? row.working_employee_ids : [row.user_id || row.opened_by].filter(Boolean),
+      workingEmployeeIds: Array.isArray(row.working_employee_ids) ? row.working_employee_ids : [row.user_id || row.employee_id || row.opened_by].filter(Boolean),
       movements: (movementsBySession.get(String(row.id)) || []).map((m: any) => ({
         id: m.id,
         sessionId: row.id,
