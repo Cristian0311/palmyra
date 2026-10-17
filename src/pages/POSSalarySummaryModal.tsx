@@ -45,7 +45,7 @@ export default function POSSalarySummaryModal(props: ModalProps) {
                   return Number.isFinite(txTime) && txTime >= sessionOpenMs && txTime <= sessionCloseMs;
                 });
 
-                const employee = findSessionEmployeeUser(lastClosedSession, users, lastClosedSession.workerName) || (currentUser?.id === lastClosedSession.userId ? currentUser : undefined);
+                const employee = findSessionEmployeeUser(lastClosedSession, users, lastClosedSession.workerName) || (!lastClosedSession.employeeId && currentUser?.id === lastClosedSession.userId ? currentUser : undefined);
                 const settlement = salarySettlements.find(s => s.sessionId === lastClosedSession.id);
                 const deduction = settlement?.discrepancyDeduction || 0;
                 const fallbackCommissions = sessionTransactions.reduce((sum, tx) => {
@@ -63,7 +63,7 @@ export default function POSSalarySummaryModal(props: ModalProps) {
                     }, 0);
                   }, 0);
                 }, 0);
-                const baseSalary = settlement?.baseSalary ?? (companyCompensation.mode === 'sales_percent' ? 0 : Math.max(0, Number(employee?.baseSalary ?? currentUser?.baseSalary) || 0));
+                const baseSalary = settlement?.baseSalary ?? (companyCompensation.mode === 'sales_percent' ? 0 : Math.max(0, Number(employee?.baseSalary) || 0));
                 const commissions = settlement?.commissions ?? fallbackCommissions;
                 const totalSalary = settlement?.total ?? Math.max(0, (baseSalary + commissions) - deduction);
                 
