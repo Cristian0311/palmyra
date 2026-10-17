@@ -39,6 +39,27 @@ export function findSessionEmployeeUser(
   return users.find(user => user.id === sessionUserId || user.employeeId === sessionUserId);
 }
 
+/**
+ * Choose the employee identity to persist on a sale. A transaction may carry the
+ * shared authenticated account id when its local session cache is stale; in
+ * that case the canonical session employee id is the correct fallback.
+ */
+export function resolveSaleEmployeeAttributionId(
+  transactionUserId: string | null | undefined,
+  authUserId: string | null | undefined,
+  sessionEmployeeId: string | null | undefined,
+): string | undefined {
+  const transactionId = String(transactionUserId || '').trim();
+  const authId = String(authUserId || '').trim();
+  const sessionId = String(sessionEmployeeId || '').trim();
+
+  if (sessionId && (!transactionId || (authId && transactionId === authId))) {
+    return sessionId;
+  }
+
+  return transactionId || authId || undefined;
+}
+
 export function getCompensationType(employee?: User | null): CompensationType {
   return employee?.compensationType === 'sales_percentage' ? 'sales_percentage' : 'fixed_product';
 }
