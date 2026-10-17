@@ -33,3 +33,10 @@ test('invalid timestamps cannot match date-specific filters', () => {
   assert.equal(matchesReportDateFilter('not-a-date', '', 'today', now), false);
   assert.equal(matchesReportDateFilter('not-a-date', '', 'yesterday', now), false);
 });
+
+test('date-input calendar values are not shifted by timezone parsing', () => {
+  assert.equal(
+    matchesReportDateFilter('2026-10-16', '2026-10-16', 'custom', new Date('2026-10-16T02:00:00.000Z')),
+    true,
+  );
+});
