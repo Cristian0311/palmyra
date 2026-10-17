@@ -31,6 +31,10 @@ export function findSessionEmployeeUser(
     if (employee) return employee;
   }
 
+  // If a database employee identity is available but the local employee cache
+  // cannot resolve it, never substitute the account that happened to open POS.
+  if (employeeId) return undefined;
+
   const sessionUserId = String(session.userId || '').trim();
   return users.find(user => user.id === sessionUserId || user.employeeId === sessionUserId);
 }
