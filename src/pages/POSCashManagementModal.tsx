@@ -759,7 +759,7 @@ export default function POSCashManagementModal(props: ModalProps) {
 
                       {/* Salary Calculation Card */}
                       {(() => {
-                        const sessionUser = findSessionEmployeeUser(currentSession, users, sessionWorkerName) || currentUser;
+                        const sessionUser = findSessionEmployeeUser(currentSession, users, sessionWorkerName);
                         if (!sessionUser) return null;
                         const sessionOpenMs = new Date(currentSession.openedAt).getTime();
                         const sessionCloseMs = currentSession.closedAt ? new Date(currentSession.closedAt).getTime() : Infinity;
