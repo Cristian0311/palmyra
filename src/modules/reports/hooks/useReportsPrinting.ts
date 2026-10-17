@@ -1,6 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react';
 import type { CashRegisterSession, InventoryTransfer, Product, Transaction, User } from '../../../types';
 import { printThermalReceipt, format58mmLine } from '../../../lib/escpos';
+import { findSessionEmployeeUser } from '../../../services/employeeCompensation';
 import type { SessionDiscrepancyInfo } from '../utils/getSessionDiscrepancyInfo';
 import {
   buildCashMovementReceiptLines,
@@ -65,7 +66,7 @@ export function useReportsPrinting(deps: {
       const branch = branches.find(b => b.id === session.branchId);
       const payrollItem = payrollList.find(p => p.sessionId === session.id);
       const sequentialTurn = sessionTurnMap.get(session.id) || session.id;
-      const workerName = session.workerName || users.find(u => u.id === session.userId)?.name || 'Vendedor';
+      const workerName = findSessionEmployeeUser(session, users)?.name || session.workerName || 'Vendedor';
       const sessionTx = transactions.filter(t => t.branchId === session.branchId && t.sessionId === session.id);
       const lines = buildShiftReceiptLines(session, {
         branchName: branch?.name || 'Sucursal Principal',
@@ -101,7 +102,7 @@ export function useReportsPrinting(deps: {
     try {
       const branch = branches.find(b => b.id === session.branchId);
       const sequentialTurn = sessionTurnMap.get(session.id) || session.id;
-      const workerName = session.workerName || users.find(u => u.id === session.userId)?.name || 'Cajero';
+      const workerName = findSessionEmployeeUser(session, users)?.name || session.workerName || 'Cajero';
       const lines = buildDiscrepancyReceiptLines(session, info, {
         branchName: branch?.name || 'Sucursal Principal',
         sequentialTurn,
