@@ -8,7 +8,7 @@ function toReportDateYMD(value: string | Date | null | undefined): string {
   }
   // Date-input values are calendar dates, not UTC instants; preserve them
   // literally so they do not shift to the previous day in negative offsets.
-  if (typeof value === 'string' && /^\\d{4}-\\d{2}-\\d{2}$/.test(value)) return value;
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   return getLocalDateYMD(value);
 }
 
