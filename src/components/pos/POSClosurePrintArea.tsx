@@ -1,4 +1,5 @@
 import type { CashRegisterSession, Currency, Product, ReceiptConfig, Transaction, User, SalarySettlement } from "../../types";
+import { findSessionEmployeeUser } from "../../services/employeeCompensation";
 
 type Props = {
   session: CashRegisterSession | null;
@@ -65,16 +66,13 @@ export function POSClosurePrintArea({
     0
   );
 
-  const employee =
-    users.find((user) => user.id === session.userId || user.name === session.workerName) ||
-    users.find((user) => user.name?.toLowerCase() === session.workerName?.toLowerCase()) ||
-    users.find((user) => user.role === "employee") ||
-    currentUser;
+  const employee = findSessionEmployeeUser(session, users) ||
+    (!session.employeeId && currentUser?.id === session.userId ? currentUser : undefined);
 
   const commissions = sessionTransactions.reduce((sum, transaction) => {
     const sellers = transaction.sellerEmployeeIds?.length ? transaction.sellerEmployeeIds : [transaction.userId];
     const splitFactor = Math.max(1, sellers.length);
-    if (!sellers.includes(session.userId) && !sellers.includes(employee?.id || '')) return sum;
+    if (!sellers.includes(session.userId) && !sellers.includes(session.employeeId || '') && !sellers.includes(employee?.id || '')) return sum;
     if (companyCompensation.mode === 'sales_percent') {
       return sum + (Math.max(0, Number(transaction.total) || 0) * companyCompensation.percentRate / 100) / splitFactor;
     }
