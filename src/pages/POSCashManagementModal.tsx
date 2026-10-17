@@ -4,6 +4,7 @@ import { useStore } from "../store/useStore";
 import { Product, Payment, Transaction, CashRegisterSession } from "../types";
 import { formatMoney } from "../modules/pos/utils/paymentMath";
 import { CashMovementTicket } from "../components/cash/CashMovementTicket";
+import { findSessionEmployeeUser } from "../services/employeeCompensation";
 
 type ModalProps = Record<string, any>;
 
@@ -758,8 +759,7 @@ export default function POSCashManagementModal(props: ModalProps) {
 
                       {/* Salary Calculation Card */}
                       {(() => {
-                        const sessionUser = users.find(u => u.id === currentSession?.userId ||
-                          (u.name && currentSession?.workerName && u.name.toLowerCase() === currentSession.workerName.toLowerCase())) || currentUser;
+                        const sessionUser = findSessionEmployeeUser(currentSession, users, sessionWorkerName) || currentUser;
                         if (!sessionUser) return null;
                         const sessionOpenMs = new Date(currentSession.openedAt).getTime();
                         const sessionCloseMs = currentSession.closedAt ? new Date(currentSession.closedAt).getTime() : Infinity;
@@ -774,7 +774,7 @@ export default function POSCashManagementModal(props: ModalProps) {
                           const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
                           const splitFactor = Math.max(1, sellers.length);
                           return sum + sellers.reduce((sellerSum, sellerId) => {
-                            if (sellerId !== sessionUser.id && !(currentSession.workingEmployeeIds || []).includes(sellerId)) return sellerSum;
+                            if (sellerId !== sessionUser.id && sellerId !== currentSession.employeeId && !(currentSession.workingEmployeeIds || []).includes(sellerId)) return sellerSum;
                             if (companyCompensation.mode === 'sales_percent') {
                               return sellerSum + (Math.max(0, Number(tx.total) || 0) * companyCompensation.percentRate / 100) / splitFactor;
                             }
