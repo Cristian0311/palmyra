@@ -1,6 +1,7 @@
 import { getSupabase } from '../../lib/supabase';
 import { getActiveTenant, getEmployeeForIdentity } from '../tenant';
 import type { CashRegisterSession, Transaction, SalarySettlement, InventoryTransfer } from '../../types';
+import { resolveSaleEmployeeAttributionId } from '../employeeCompensation';
 
 export type RpcFailure = { success: false; error: string; errorCode?: string; data?: any; conflict?: boolean };
 export type RpcSuccess<T = any> = { success: true; data: T; error?: string; errorCode?: string };
@@ -178,6 +179,22 @@ export async function callProcessTransactionRPC(tx:Transaction){
       reference:p.reference||null
     }));
 
+    // Some old/offline sessions carry the shared auth account as transaction.userId.
+    // When that happens, resolve the canonical employee on the existing cash session
+    // before recording the sale so sales.employee_id is not left null.
+    let sessionEmployeeId: string | undefined;
+    if (tx.sessionId && (!tx.userId || tx.userId === authUserId)) {
+      const { data: sessionIdentity, error: sessionIdentityError } = await supabase
+        .from('cash_sessions')
+        .select('employee_id')
+        .eq('id', tx.sessionId)
+        .eq('company_id', companyId)
+        .maybeSingle();
+      if (sessionIdentityError) throw sessionIdentityError;
+      sessionEmployeeId = sessionIdentity?.employee_id || undefined;
+    }
+    const saleEmployeeId = resolveSaleEmployeeAttributionId(tx.userId, authUserId, sessionEmployeeId);
+
     // Older queued tickets used PALMYRA-TK... as their local id.
     const remoteSaleId = isUuid(tx.remoteId) ? tx.remoteId : (isUuid(tx.id) ? tx.id : crypto.randomUUID());
     const data=await rpc('palmyra_record_sale',{
@@ -185,7 +202,7 @@ export async function callProcessTransactionRPC(tx:Transaction){
       p_company_id:companyId,
       p_warehouse_id:tx.branchId,
       p_cash_session_id:tx.sessionId||null,
-      p_user_id:tx.userId||authUserId,
+      p_user_id:saleEmployeeId,
       p_total:Number(tx.total)||0,
       p_currency_code:defaultCurrencyCode || 'CUP',
       p_notes:tx.notes||'',

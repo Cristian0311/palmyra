@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { findSessionEmployeeUser } from '../../src/services/employeeCompensation';
+import { findSessionEmployeeUser, resolveSaleEmployeeAttributionId } from '../../src/services/employeeCompensation';
 import type { User } from '../../src/types';
 
 function user(overrides: Partial<User> & Pick<User, 'id' | 'name' | 'baseSalary'>): User {
@@ -60,4 +60,32 @@ test('generic worker labels do not override the fallback account identity', () =
   }, [owner]);
 
   assert.equal(resolved, owner);
+});
+
+test('sale attribution uses the assigned session employee when a stale transaction carries the shared auth id', () => {
+  assert.equal(
+    resolveSaleEmployeeAttributionId('owner-auth-id', 'owner-auth-id', 'employee-veronica-pk'),
+    'employee-veronica-pk',
+  );
+});
+
+test('sale attribution keeps a transaction-specific employee when it differs from the auth account', () => {
+  assert.equal(
+    resolveSaleEmployeeAttributionId('employee-elier-id', 'owner-auth-id', 'employee-veronica-pk'),
+    'employee-elier-id',
+  );
+});
+
+test('sale attribution falls back to the session employee when transaction user is missing', () => {
+  assert.equal(
+    resolveSaleEmployeeAttributionId(undefined, 'owner-auth-id', 'employee-veronica-pk'),
+    'employee-veronica-pk',
+  );
+});
+
+test('sale attribution remains backward-compatible when the session has no employee', () => {
+  assert.equal(
+    resolveSaleEmployeeAttributionId(undefined, 'owner-auth-id', undefined),
+    'owner-auth-id',
+  );
 });
