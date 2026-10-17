@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { matchesReportDateFilter } from './utils/reportDateFilter';
 import type {
   CashRegisterSession,
   Product,
@@ -155,20 +156,7 @@ export function useReportsPayroll(params: {
       payrollList.filter(item => {
         if (selectedBranchFilter !== 'all' && item.branchId !== selectedBranchFilter) return false;
 
-        const dateObj = new Date(item.date);
-        const localDateYMD = (value: Date) => {
-          if (!Number.isFinite(value.getTime())) return '';
-          const year = value.getFullYear();
-          const month = String(value.getMonth() + 1).padStart(2, '0');
-          const day = String(value.getDate()).padStart(2, '0');
-          return `${year}-${month}-${day}`;
-        };
-        if (selectedFilterDate) {
-          return localDateYMD(dateObj) === selectedFilterDate;
-        }
-        if (sessionFilter === 'today') {
-          return localDateYMD(dateObj) === localDateYMD(new Date());
-        }
+        if (!matchesReportDateFilter(item.date, selectedFilterDate, sessionFilter)) return false;
         return true;
       }),
     [payrollList, selectedBranchFilter, selectedFilterDate, sessionFilter]
