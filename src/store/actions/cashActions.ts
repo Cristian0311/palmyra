@@ -24,6 +24,7 @@ import { buildLocalVoidTransactionPatch } from '../utils/localVoidTransaction';
 import { buildLocalCompletedSalePatch } from '../utils/localCompletedSale';
 import { replaceRemoteRecords } from '../utils/replaceRemoteRecords';
 import { calculateExpectedCashBase } from '../../services/cash/expectedCash';
+import { findSessionEmployeeUser } from '../../services/employeeCompensation';
 import { removeFromOfflineQueueByAction, removeFromOfflineQueueByTransactionId } from '../../services/offlineQueue/outboxUtils';
 import {
   getNcfDeviceId,
@@ -197,7 +198,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
            new Date(t.date).getTime() >= sessionOpenTime &&
            new Date(t.date).getTime() <= closingTime))
     );
-    const user = get().users.find(u => u.id === session.userId || u.name?.toLowerCase() === (workerName || session.workerName)?.toLowerCase());
+    const user = findSessionEmployeeUser(session, get().users, workerName);
 
     let compensation = compensationOverride || null;
     if (!compensation && typeof navigator !== 'undefined' && navigator.onLine) {
@@ -215,7 +216,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
       const splitFactor = Math.max(1, sellers.length);
       return sum + sellers.reduce((sellerSum, sellerId) => {
-        if (sellerId !== session.userId && !(session.workingEmployeeIds || []).includes(sellerId)) return sellerSum;
+        if (sellerId !== session.userId && sellerId !== session.employeeId && !(session.workingEmployeeIds || []).includes(sellerId)) return sellerSum;
         if (compensationMode === 'sales_percent') {
           return sellerSum + (Math.max(0, Number(tx.total) || 0) * compensationRate / 100) / splitFactor;
         }
@@ -602,7 +603,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
           new Date(t.date).getTime() >= new Date(session.openedAt).getTime() &&
           new Date(t.date).getTime() <= new Date(finalClosingDate).getTime()))
     );
-    const user = get().users.find(u => u.id === session.userId || u.name?.toLowerCase() === session.workerName?.toLowerCase());
+    const user = findSessionEmployeeUser(session, get().users);
     let compensation = null;
     if (navigator.onLine) {
       try {
@@ -618,7 +619,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
       const splitFactor = Math.max(1, sellers.length);
       return sum + sellers.reduce((sellerSum, sellerId) => {
-        if (sellerId !== session.userId && !(session.workingEmployeeIds || []).includes(sellerId)) return sellerSum;
+        if (sellerId !== session.userId && sellerId !== session.employeeId && !(session.workingEmployeeIds || []).includes(sellerId)) return sellerSum;
         if (compensationMode === 'sales_percent') {
           return sellerSum + (Math.max(0, Number(tx.total) || 0) * compensationRate / 100) / splitFactor;
         }
