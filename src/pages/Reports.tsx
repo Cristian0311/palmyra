@@ -23,6 +23,7 @@ import { InfoTooltip } from "../components/InfoTooltip";
 import MultiCurrencyTotal from "../components/reports/MultiCurrencyTotal";
 import { getLocalDateYMD } from "../utils/dateUtils";
 import { matchesReportDateFilter } from '../modules/reports/utils/reportDateFilter';
+import { findSessionEmployeeUser } from '../services/employeeCompensation';
 import { flushLocalStateStorage } from "../services/localStateStorage";
 import { useReportsContext } from "../modules/reports/useReportsContext";
 import { useReportsPayroll } from "../modules/reports/useReportsPayroll";
@@ -1344,7 +1345,7 @@ export default function Reports() {
                     <td className="px-3 py-2 whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[11px] font-black text-slate-900 uppercase">
-                          {session.workerName || users.find(u => u.id === session.userId)?.name || session.userId}
+                          {findSessionEmployeeUser(session, users)?.name || session.workerName || session.userId}
                         </span>
                         <span className="text-[8px] font-bold text-slate-400 uppercase bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200/50">
                           {branches.find(b => b.id === session.branchId)?.name}
@@ -1546,7 +1547,7 @@ export default function Reports() {
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           <div className="flex items-center gap-1.5">
                             <span className="text-[11px] font-black text-primary uppercase">
-                              {session.workerName || users.find(u => u.id === session.userId)?.name || 'Vendedor'}
+                              {findSessionEmployeeUser(session, users)?.name || session.workerName || 'Vendedor'}
                             </span>
                             <span className="text-[8px] font-bold text-muted uppercase bg-subtle px-1.5 py-0.5 rounded border border-base">
                               {branch?.name}
@@ -2161,7 +2162,7 @@ export default function Reports() {
                         <span className="text-[10px] font-black text-rose-700 dark:text-rose-300 uppercase bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-rose-200 dark:border-rose-900">
                           {sequentialTurn}
                         </span>                        <span className="text-[9px] font-bold text-muted uppercase">
-                          {session.workerName || users.find(u => u.id === session.userId)?.name || 'Vendedor'}
+                          {findSessionEmployeeUser(session, users)?.name || session.workerName || 'Vendedor'}
                         </span>
                       </div>
                     </div>
@@ -2289,7 +2290,7 @@ export default function Reports() {
                             setManualItemProductSearch("");
                             setManualItemQuantity(1);
                             setManualItemPrice(0);
-                            setManualItemWorkerId(session.userId || "");
+                            setManualItemWorkerId(findSessionEmployeeUser(session, users)?.id || session.userId || "");
                             setManualItemPaymentMethod('cash');
                             setManualItemCurrencyCode('CUP');
                             setAddItemToShiftModal(session);
