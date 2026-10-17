@@ -1,5 +1,6 @@
 import { Search, Wifi, WifiOff, RefreshCw, Plus, Minus, CreditCard, Receipt, Trash2, ShoppingCart, ShieldCheck, DollarSign, Banknote, QrCode, ArrowLeftRight, UserPlus, X, Lock, Unlock, Camera, AlertCircle, TrendingUp, Wallet, MessageSquare, Mail, HelpCircle, Calculator, ArrowRight, Package, User, RotateCcw, Printer, Bluetooth, Usb, Smartphone, Send, Copy, Check, CheckCircle, Share2, Store, ChevronDown, ChevronUp, Filter } from "lucide-react";
 import { formatMoney } from "../modules/pos/utils/paymentMath";
+import { findSessionEmployeeUser } from "../services/employeeCompensation";
 
 type ModalProps = Record<string, any>;
 
@@ -44,14 +45,14 @@ export default function POSSalarySummaryModal(props: ModalProps) {
                   return Number.isFinite(txTime) && txTime >= sessionOpenMs && txTime <= sessionCloseMs;
                 });
 
-                const employee = users.find(u => u.id === lastClosedSession.userId || u.name === lastClosedSession.workerName) || users.find(u => u.name?.toLowerCase() === lastClosedSession.workerName?.toLowerCase()) || (currentUser?.id === lastClosedSession.userId ? currentUser : undefined);
+                const employee = findSessionEmployeeUser(lastClosedSession, users, lastClosedSession.workerName) || (currentUser?.id === lastClosedSession.userId ? currentUser : undefined);
                 const settlement = salarySettlements.find(s => s.sessionId === lastClosedSession.id);
                 const deduction = settlement?.discrepancyDeduction || 0;
                 const fallbackCommissions = sessionTransactions.reduce((sum, tx) => {
                   const sellers = tx.sellerEmployeeIds?.length ? tx.sellerEmployeeIds : [tx.userId];
                   const splitFactor = Math.max(1, sellers.length);
                   return sum + sellers.reduce((sellerSum, sellerId) => {
-                    if (sellerId !== lastClosedSession.userId && !(lastClosedSession.workingEmployeeIds || []).includes(sellerId)) return sellerSum;
+                    if (sellerId !== lastClosedSession.userId && sellerId !== lastClosedSession.employeeId && !(lastClosedSession.workingEmployeeIds || []).includes(sellerId)) return sellerSum;
                     if (companyCompensation.mode === 'sales_percent') return sellerSum + (Math.max(0, Number(tx.total) || 0) * companyCompensation.percentRate / 100) / splitFactor;
                     return sellerSum + (tx.items || []).reduce((itemSum, item) => {
                       const productSnapshot = typeof item.product === 'string' ? undefined : item.product;
