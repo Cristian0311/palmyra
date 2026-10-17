@@ -22,6 +22,7 @@ import { cn } from "../lib/utils";
 import { InfoTooltip } from "../components/InfoTooltip";
 import MultiCurrencyTotal from "../components/reports/MultiCurrencyTotal";
 import { getLocalDateYMD } from "../utils/dateUtils";
+import { matchesReportDateFilter } from '../modules/reports/utils/reportDateFilter';
 import { flushLocalStateStorage } from "../services/localStateStorage";
 import { useReportsContext } from "../modules/reports/useReportsContext";
 import { useReportsPayroll } from "../modules/reports/useReportsPayroll";
@@ -436,12 +437,11 @@ export default function Reports() {
       if (selectedBranchFilter !== 'all' && session.branchId !== selectedBranchFilter) {
         return false;
       }
-      const dateObj = new Date(session.closingDate || session.closedAt || session.openedAt);
-      if (selectedFilterDate) {
-        if (dateObj.toISOString().split('T')[0] !== selectedFilterDate) return false;
-      } else if (sessionFilter === 'today') {
-        if (dateObj.toLocaleDateString() !== new Date().toLocaleDateString()) return false;
-      }
+      if (!matchesReportDateFilter(
+        session.closingDate || session.closedAt || session.openedAt,
+        selectedFilterDate,
+        sessionFilter,
+      )) return false;
 
       if (discrepancyTypeFilter === 'shortage') {
         return info.totalShortageBase > 0;
@@ -469,12 +469,7 @@ export default function Reports() {
       if (selectedBranchFilter !== 'all' && m.branchId !== selectedBranchFilter) {
         return false;
       }
-      const dateObj = new Date(m.date);
-      if (selectedFilterDate) {
-        if (dateObj.toISOString().split('T')[0] !== selectedFilterDate) return false;
-      } else if (sessionFilter === 'today') {
-        if (dateObj.toLocaleDateString() !== new Date().toLocaleDateString()) return false;
-      }
+      if (!matchesReportDateFilter(m.date, selectedFilterDate, sessionFilter)) return false;
 
       if (movementTypeFilter !== 'all' && m.type !== movementTypeFilter) {
         return false;
@@ -539,6 +534,7 @@ export default function Reports() {
     let dateFilterLabel = 'Todo el historial';
     if (selectedFilterDate) dateFilterLabel = `Fecha específica: ${selectedFilterDate}`;
     else if (sessionFilter === 'today') dateFilterLabel = `Hoy: ${new Date().toLocaleDateString('es-CU')}`;
+    else if (sessionFilter === 'yesterday') { const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1); dateFilterLabel = `Ayer: ${yesterday.toLocaleDateString('es-CU')}`; }
     return { businessName: receiptConfig?.businessName || 'PALMYRA', transactions, cashSessions, salarySettlements, products, categories, currencies, branches, users, customers, bankTransactions, bankCards, inventory, transfers, returns, warranties, baseCurrency, dateFilterLabel };
   };
 
