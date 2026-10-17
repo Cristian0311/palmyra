@@ -105,6 +105,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
             openingBalance: Number(res.data.opening_balance || res.data.opening_amount) || 0,
             openingAmount: Number(res.data.opening_amount || res.data.opening_balance) || 0,
             turnNumber: Number(res.data.turn_number) || undefined,
+            employeeId: session.employeeId || res.data.employee_id || undefined,
             userId: session.userId,
             branchId: session.branchId,
             workerName: session.workerName,
