@@ -120,6 +120,19 @@ export default function SaaSAuth() {
       window.location.replace("/account-status");
       return;
     }
+    // Finish best-effort prefetch before navigating away. The server returns
+    // the full employee verifier set only to managers; standard POS users get
+    // only their own verifier to avoid enabling offline impersonation.
+    if (ctx.companyId && ctx.user.isActive !== false &&
+        (ctx.isOwner || ctx.roleKey === "admin" ||
+         ctx.user.permissions?.includes("pos.access") ||
+         ctx.user.permissions?.includes("employees.manage"))) {
+      try {
+        await syncOfflinePosCredentials(ctx.companyId);
+      } catch (offlinePosError) {
+        console.info("[PALMYRA] La precarga POS offline se reintentará cuando haya conexión.", offlinePosError);
+      }
+    }
     window.location.replace("/");
   };
 
@@ -204,20 +217,7 @@ export default function SaaSAuth() {
         try {
           const offlineContext = await verifyOfflineSaaSCredential(email, password);
           if (offlineContext) {
-            // Finish the best-effort offline POS prefetch before redirecting. The
-    // server returns all employee verifiers only to managers; other POS users
-    // receive only their own credential so cached data cannot grant impersonation.
-    if (ctx.companyId && ctx.user.isActive !== false &&
-        (ctx.isOwner || ctx.roleKey === "admin" ||
-         ctx.user.permissions?.includes("pos.access") ||
-         ctx.user.permissions?.includes("employees.manage"))) {
-      try {
-        await syncOfflinePosCredentials(ctx.companyId);
-      } catch (offlinePosError) {
-        console.info("[PALMYRA] La precarga POS offline se reintentará cuando haya conexión.", offlinePosError);
-      }
-    }
-    window.location.replace("/");
+            window.location.replace("/");
             return;
           }
         } catch (offlineError) {
