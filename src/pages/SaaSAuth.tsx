@@ -16,6 +16,7 @@ import {
   verifyOfflineSaaSCredential
 } from "../services/offlineSaaSAuth";
 import { isBrowserOffline, isTransientNetworkError } from "../services/offlineNetwork";
+import { rememberOfflinePosCredential, syncOfflinePosCredentials } from "../services/offlinePosAuth";
 
 type Mode = "signin" | "signup" | "reset" | "recovery";
 
@@ -88,6 +89,16 @@ export default function SaaSAuth() {
             ctx.membershipStatus === "active" && ctx.warehouseIds.length &&
             ctx.deviceActive && ctx.user.isActive !== false) {
           await rememberOfflineSaaSCredential(normalizedCredentialContext, credentialPassword);
+          // The owner/admin uses the same account password for POS. Seed a
+          // device-local POS verifier as part of this successful online login.
+          // Employee PINs are never inferred from a web-account password.
+          if (ctx.isOwner || ctx.roleKey === "admin") {
+            try {
+              await rememberOfflinePosCredential(ctx.companyId, ctx.authUserId, credentialPassword);
+            } catch (posCredentialError) {
+              console.info("[PALMYRA] No se pudo preparar el acceso offline del administrador al POS.", posCredentialError);
+            }
+          }
         } else if (!ctx.companyId) {
           // The sign-up screen appears before first-company onboarding. Keep the
           // credential only in module memory so onboarding can bind it to the
@@ -193,7 +204,20 @@ export default function SaaSAuth() {
         try {
           const offlineContext = await verifyOfflineSaaSCredential(email, password);
           if (offlineContext) {
-            window.location.replace("/");
+            // Finish the best-effort offline POS prefetch before redirecting. The
+    // server returns all employee verifiers only to managers; other POS users
+    // receive only their own credential so cached data cannot grant impersonation.
+    if (ctx.companyId && ctx.user.isActive !== false &&
+        (ctx.isOwner || ctx.roleKey === "admin" ||
+         ctx.user.permissions?.includes("pos.access") ||
+         ctx.user.permissions?.includes("employees.manage"))) {
+      try {
+        await syncOfflinePosCredentials(ctx.companyId);
+      } catch (offlinePosError) {
+        console.info("[PALMYRA] La precarga POS offline se reintentará cuando haya conexión.", offlinePosError);
+      }
+    }
+    window.location.replace("/");
             return;
           }
         } catch (offlineError) {
