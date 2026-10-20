@@ -24,8 +24,8 @@ begin
     raise exception 'company_access_denied';
   end if;
 
-  v_can_manage := private.has_permission(p_company_id,'employees.manage');
-  v_can_pos := private.has_permission(p_company_id,'pos.access');
+  v_can_manage := private.has_permission(p_company_id, 'employees.manage');
+  v_can_pos := private.has_permission(p_company_id, 'pos.access');
   if not coalesce(v_can_manage,false) and not coalesce(v_can_pos,false) then
     raise exception 'permission_denied';
   end if;
