@@ -131,7 +131,7 @@ export async function rememberOfflinePosCredential(companyId: string, userId: st
 }
 
 /** Pull the safe, client-verifiable employee POS records provisioned for a company. */
-export async function syncOfflinePosCredentials(companyId: string): Promise<{ synced: number; skipped: number }> {
+async function syncOfflinePosCredentialsOnce(companyId: string): Promise<{ synced: number; skipped: number }> {
   const cleanCompanyId = String(companyId || "").trim();
   if (!cleanCompanyId || typeof localStorage === "undefined" ||
       (typeof navigator !== "undefined" && !navigator.onLine)) return { synced: 0, skipped: 0 };
@@ -185,6 +185,29 @@ export async function syncOfflinePosCredentials(companyId: string): Promise<{ sy
   // offline POS access disappear after a refresh/update. Existing credentials
   // are overwritten only when the server explicitly returns a valid newer row.
   return { synced, skipped };
+}
+
+const activeSyncs = new Map<string, Promise<{ synced: number; skipped: number }>>();
+
+/**
+ * Coalesce concurrent auth/bootstrap prefetches. A second caller waits for the
+ * active pull instead of being told "0 synced" by the retry throttle while the
+ * first pull is still running.
+ */
+export function syncOfflinePosCredentials(companyId: string): Promise<{ synced: number; skipped: number }> {
+  const cleanCompanyId = String(companyId || "").trim();
+  if (!cleanCompanyId || typeof localStorage === "undefined" ||
+      (typeof navigator !== "undefined" && !navigator.onLine)) {
+    return Promise.resolve({ synced: 0, skipped: 0 });
+  }
+  const active = activeSyncs.get(cleanCompanyId);
+  if (active) return active;
+
+  const task = syncOfflinePosCredentialsOnce(cleanCompanyId);
+  activeSyncs.set(cleanCompanyId, task);
+  return task.finally(() => {
+    if (activeSyncs.get(cleanCompanyId) === task) activeSyncs.delete(cleanCompanyId);
+  });
 }
 
 export async function verifyOfflinePosCredential(companyId: string, userId: string, password: string): Promise<boolean> {

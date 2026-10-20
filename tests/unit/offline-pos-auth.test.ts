@@ -15,18 +15,24 @@ test("offline POS credentials use PBKDF2 verifier records and never persist plai
   assert.doesNotMatch(auth, /localStorage\.setItem\([^\n]*cleanPassword/);
 });
 
-test("authorized company access preloads only provisioned offline POS verifiers", () => {
+test("authorized POS users preload scoped offline verifiers after online authentication", () => {
   const auth = source("src/services/offlinePosAuth.ts");
   const saas = source("src/services/saas.ts");
-  const migration = source("supabase/migrations/20261013190000_offline_pos_credential_verifiers.sql");
+  const legacyMigration = source("supabase/migrations/20261013190000_offline_pos_credential_verifiers.sql");
+  const syncMigration = source("supabase/migrations/20261020170000_allow_pos_access_offline_credential_sync.sql");
   assert.match(auth, /palmyra_get_offline_pos_verifiers/);
   assert.match(auth, /Do not expire valid offline credentials based on age/);
+  assert.match(auth, /activeSyncs/);
   assert.match(saas, /permissions\.includes\("employees\.manage"\)/);
+  assert.match(saas, /permissions\.includes\("pos\.access"\)/);
   assert.match(saas, /syncOfflinePosCredentials\(companyId\)/);
-  assert.match(migration, /private\.employee_pos_offline_verifiers/);
-  assert.match(migration, /private\.has_permission\(p_company_id, 'employees\.manage'\)/);
-  assert.match(migration, /offline_credential_does_not_match_server/);
-  assert.match(migration, /revoke all on table private\.employee_pos_offline_verifiers from public, anon, authenticated/i);
+  assert.match(legacyMigration, /private\.employee_pos_offline_verifiers/);
+  assert.match(legacyMigration, /private\.has_permission\(p_company_id, 'employees\.manage'\)/);
+  assert.match(legacyMigration, /offline_credential_does_not_match_server/);
+  assert.match(legacyMigration, /revoke all on table private\.employee_pos_offline_verifiers from public, anon, authenticated/i);
+  assert.match(syncMigration, /private\.has_permission\(p_company_id, 'pos\.access'\)/);
+  assert.match(syncMigration, /private\.has_permission\(p_company_id, 'employees\.manage'\)/);
+  assert.match(syncMigration, /auth\.jwt\(\)->>'email'/);
 });
 
 test("new and queued employee POS passwords provision local and server verifiers after sync", () => {

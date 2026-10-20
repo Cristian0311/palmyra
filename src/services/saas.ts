@@ -369,7 +369,7 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
   cacheSaaSContext(context);
   // Before the company is taken offline, preload the authorized POS verifiers
   // that have been provisioned. This is best-effort and never blocks normal login.
-  if (!isBrowserOffline() && permissions.includes("employees.manage")) {
+  if (!isBrowserOffline() && (permissions.includes("employees.manage") || permissions.includes("pos.access"))) {
     void syncOfflinePosCredentials(companyId).catch((offlinePosError) => {
       console.info("[PALMYRA] El precargado de credenciales POS offline se reintentará.", offlinePosError);
     });
