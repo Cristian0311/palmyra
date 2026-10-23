@@ -713,7 +713,24 @@ export default function Transfers() {
                             >
                               <Minus className="w-4 h-4" />
                             </button>
-                            <span className="text-xs font-black w-8 text-center text-indigo-600">{item.quantity}</span>
+                            <input
+                              type="number"
+                              inputMode="numeric"
+                              min={1}
+                              max={stock}
+                              value={item.quantity}
+                              aria-label={`Cantidad a transferir de ${product?.name || 'producto'}`}
+                              onFocus={(event) => event.currentTarget.select()}
+                              onChange={(event) => {
+                                if (event.currentTarget.value === '' || stock <= 0) return;
+                                const requested = Math.floor(Number(event.currentTarget.value));
+                                if (!Number.isFinite(requested)) return;
+                                setBulkTransferItems(prev => prev.map((candidate, idx) => idx === index
+                                  ? { ...candidate, quantity: Math.max(1, Math.min(stock, requested)) }
+                                  : candidate));
+                              }}
+                              className="w-12 text-xs font-black text-center text-indigo-600 bg-transparent border border-transparent focus:border-indigo-300 rounded outline-none"
+                            />
                             <button 
                               onClick={() => setBulkTransferItems(prev => prev.map((i, idx) => idx === index ? { ...i, quantity: Math.min(stock, i.quantity + 1) } : i))}
                               className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"

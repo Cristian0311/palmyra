@@ -1,4 +1,4 @@
-import { Printer, Trash2, TrendingUp, X } from "lucide-react";
+import { CalendarDays, Printer, Trash2, TrendingUp, X } from "lucide-react";
 import { cn } from "../../lib/utils";
 import type { Product, Transaction, User } from "../../types";
 
@@ -12,6 +12,7 @@ type Props = {
   onClose: () => void;
   onPrintShiftTicket: (sessionId: string) => void;
   onVoidTransaction: (transaction: Transaction) => void | Promise<void>;
+  onEditDate: (transaction: Transaction) => void;
 };
 
 export function ReportsTransactionDetailModal({
@@ -24,6 +25,7 @@ export function ReportsTransactionDetailModal({
   onClose,
   onPrintShiftTicket,
   onVoidTransaction,
+  onEditDate,
 }: Props) {
   if (!transaction) return null;
 
@@ -212,7 +214,7 @@ export function ReportsTransactionDetailModal({
             </span>
           </div>
 
-          <div className="flex items-center gap-2 pt-2">
+          <div className="flex flex-wrap items-center gap-2 pt-2">
             <button
               onClick={() => {
                 if (transaction.sessionId) {
@@ -223,6 +225,15 @@ export function ReportsTransactionDetailModal({
             >
               <Printer className="w-4 h-4" />
               Imprimir
+            </button>
+            <button
+              type="button"
+              onClick={() => onEditDate(transaction)}
+              className="flex-1 min-w-[115px] py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-amber-200"
+              title="Cambiar la fecha de esta venta y del turno asociado"
+            >
+              <CalendarDays className="w-4 h-4" />
+              Editar fecha
             </button>
             <button
               onClick={() => void onVoidTransaction(transaction)}

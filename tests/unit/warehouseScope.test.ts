@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   getAuthorizedWarehouseIds,
+  getSingleAuthorizedWarehouseId,
   getWarehouseId,
   hasWarehouseAccess,
 } from "../../src/modules/warehouse/warehouseScope";
@@ -27,6 +28,13 @@ test("explicit canonical or legacy allowlists are authoritative", () => {
     }),
     ["w3", "w4"]
   );
+});
+
+test("a single authorized warehouse locks the POS selector but multiple warehouses do not", () => {
+  assert.equal(getSingleAuthorizedWarehouseId({ branchId: "b1" }), "b1");
+  assert.equal(getSingleAuthorizedWarehouseId({ branchId: "b1", allowedWarehouseIds: ["w1", "w2"] }), null);
+  assert.equal(getSingleAuthorizedWarehouseId({ allowedBranches: ["w2", "w1", "w2"] }), null);
+  assert.equal(getSingleAuthorizedWarehouseId({ allowedWarehouseIds: [] }), null);
 });
 
 test("warehouse access remains compatible with legacy single assignment", () => {

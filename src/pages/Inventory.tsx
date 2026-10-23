@@ -4,7 +4,7 @@ import { buildInventoryCsv } from '../modules/inventory/utils/buildInventoryCsv'
 import { resizeProductImage } from '../modules/inventory/utils/resizeProductImage';
 import { useShallow } from 'zustand/react/shallow';
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowLeftRight, PackagePlus, AlertCircle, Search, ShieldCheck, X, DollarSign, Trash2, Edit, History, Package, PackageCheck, TrendingUp, Filter, Download, Plus, ArrowRightLeft, LayoutGrid, List, Settings2, Tag, Building2, Save, RefreshCw, Minus, ChevronDown, ChevronRight, Check } from "lucide-react";
+import { ArrowLeftRight, PackagePlus, AlertCircle, Search, ShieldCheck, X, DollarSign, Trash2, Edit, History, Package, PackageCheck, TrendingUp, Filter, Download, Plus, ArrowRightLeft, LayoutGrid, List, Settings2, Tag, Building2, Save, RefreshCw, Minus, ChevronDown, ChevronUp, ChevronRight, Check } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { cn, generateId } from "../lib/utils";
 import { Product, Category } from "../types";
@@ -37,6 +37,53 @@ export default function Inventory() {
   const getBranchDisplayName = (b: { id: string; name: string }) => {
     const assignedUser = (users || []).find(u => getWarehouseId(u) === b.id);
     return assignedUser ? `${b.name} (${assignedUser.name})` : b.name;
+  };
+
+  // Preferred card order is local to this set of warehouses and works offline.
+  const warehouseOrderStorageKey = useMemo(
+    () => `palmyra-stock-manager-warehouse-order-v1:${(branches || []).map(branch => branch.id).filter(Boolean).sort().join('|')}`,
+    [branches]
+  );
+  const [warehouseCardOrder, setWarehouseCardOrder] = useState<string[]>([]);
+  const [warehouseOrderLoadedKey, setWarehouseOrderLoadedKey] = useState('');
+  useEffect(() => {
+    const knownIds = new Set((branches || []).map(branch => branch.id));
+    try {
+      const raw = typeof window !== 'undefined' ? window.localStorage.getItem(warehouseOrderStorageKey) : null;
+      const saved: unknown = raw ? JSON.parse(raw) : [];
+      setWarehouseCardOrder(Array.isArray(saved)
+        ? saved.filter((id): id is string => typeof id === 'string' && knownIds.has(id))
+        : []);
+    } catch {
+      setWarehouseCardOrder([]);
+    }
+    setWarehouseOrderLoadedKey(warehouseOrderStorageKey);
+  }, [warehouseOrderStorageKey, branches]);
+  useEffect(() => {
+    if (warehouseOrderLoadedKey !== warehouseOrderStorageKey) return;
+    try {
+      const validIds = new Set((branches || []).map(branch => branch.id));
+      window.localStorage.setItem(warehouseOrderStorageKey, JSON.stringify(warehouseCardOrder.filter(id => validIds.has(id))));
+    } catch {
+      // Card arrangement is a local display preference; inventory editing must still work if storage is unavailable.
+    }
+  }, [branches, warehouseCardOrder, warehouseOrderLoadedKey, warehouseOrderStorageKey]);
+  const orderedBranches = useMemo(() => {
+    const branchIds = new Set((branches || []).map(branch => branch.id));
+    const orderedIds = [
+      ...warehouseCardOrder.filter(id => branchIds.has(id)),
+      ...(branches || []).map(branch => branch.id).filter(id => !warehouseCardOrder.includes(id)),
+    ];
+    const byId = new Map((branches || []).map(branch => [branch.id, branch]));
+    return orderedIds.map(id => byId.get(id)).filter(Boolean) as typeof branches;
+  }, [branches, warehouseCardOrder]);
+  const moveWarehouseCard = (branchId: string, delta: number) => {
+    const order = orderedBranches.map(branch => branch.id);
+    const index = order.indexOf(branchId);
+    const targetIndex = Math.max(0, Math.min(order.length - 1, index + delta));
+    if (index < 0 || index === targetIndex) return;
+    [order[index], order[targetIndex]] = [order[targetIndex], order[index]];
+    setWarehouseCardOrder(order);
   };
 
   const [searchQuery, setSearchQuery] = useState("");
@@ -1515,8 +1562,11 @@ export default function Inventory() {
             </div>
             
             <div className="p-4 overflow-y-auto custom-scrollbar flex-1 min-h-0 bg-white dark:bg-slate-900 stock-manage-scroll" style={{ WebkitOverflowScrolling: "touch", overscrollBehavior: "contain" }}>
+              <div className="mb-2 flex items-center justify-between gap-2 text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                <span>Arrastra las tarjetas para ordenarlas o usa las flechas en cada almacén.</span>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {branches.map(branch => {
+                {orderedBranches.map((branch, branchIndex) => {
                   const hasVariants =
                     (managingStockProduct.availableSizes || []).length > 0 ||
                     (managingStockProduct.availableColors || []).length > 0;
@@ -1537,15 +1587,45 @@ export default function Inventory() {
                   }, 0);
 
                   return (
-                    <div key={branch.id} className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2.5 flex flex-col justify-between">
+                    <div
+                      key={branch.id}
+                      draggable={orderedBranches.length > 1}
+                      onDragStart={(event) => {
+                        event.dataTransfer.effectAllowed = 'move';
+                        event.dataTransfer.setData('text/plain', branch.id);
+                      }}
+                      onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        const draggedId = event.dataTransfer.getData('text/plain');
+                        if (!draggedId || draggedId === branch.id) return;
+                        const order = orderedBranches.map(candidate => candidate.id);
+                        const fromIndex = order.indexOf(draggedId);
+                        const toIndex = order.indexOf(branch.id);
+                        if (fromIndex < 0 || toIndex < 0) return;
+                        order.splice(fromIndex, 1);
+                        order.splice(toIndex, 0, draggedId);
+                        setWarehouseCardOrder(order);
+                      }}
+                      className="bg-slate-50 dark:bg-slate-800/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2.5 flex flex-col justify-between cursor-move"
+                      title="Arrastra para cambiar la posición del almacén"
+                    >
                       <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-slate-200 dark:border-slate-700/60">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <Building2 className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
                           <p className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight truncate">{getBranchDisplayName(branch)}</p>
                         </div>
-                        <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 shrink-0 border border-indigo-200/50 dark:border-indigo-800/50">
-                          {totalInBranch} uds
-                        </span>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button type="button" onClick={(event) => { event.stopPropagation(); moveWarehouseCard(branch.id, -1); }} disabled={branchIndex === 0} aria-label={`Mover ${branch.name} antes`} title="Mover antes" className="w-6 h-6 rounded-md border border-base bg-primary text-secondary hover:text-indigo-600 disabled:opacity-30 disabled:cursor-not-allowed">
+                            <ChevronUp className="w-3 h-3 mx-auto" />
+                          </button>
+                          <button type="button" onClick={(event) => { event.stopPropagation(); moveWarehouseCard(branch.id, 1); }} disabled={branchIndex === orderedBranches.length - 1} aria-label={`Mover ${branch.name} después`} title="Mover después" className="w-6 h-6 rounded-md border border-base bg-primary text-secondary hover:text-indigo-600 disabled:opacity-30 disabled:cursor-not-allowed">
+                            <ChevronDown className="w-3 h-3 mx-auto" />
+                          </button>
+                          <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/50">
+                            {totalInBranch} uds
+                          </span>
+                        </div>
                       </div>
                       
                       <div className="space-y-1.5 flex-1">
