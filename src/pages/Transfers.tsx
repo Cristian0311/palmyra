@@ -51,6 +51,7 @@ export default function Transfers() {
 
   const [activeTab, setActiveTab] = useState<'history' | 'new'>('history');
   const [bulkTransferItems, setBulkTransferItems] = useState<{ productId: string, quantity: number, variant?: string }[]>([]);
+  const [bulkTransferQuantityDrafts, setBulkTransferQuantityDrafts] = useState<Record<number, string>>({});
   const [bulkTransferSourceId, setBulkTransferSourceId] = useState(currentBranchId || (branches[0]?.id || ''));
   const [bulkTransferTargetId, setBulkTransferTargetId] = useState("");
   const [transferSearch, setTransferSearch] = useState("");
@@ -718,17 +719,24 @@ export default function Transfers() {
                               inputMode="numeric"
                               min={1}
                               max={stock}
-                              value={item.quantity}
+                              value={bulkTransferQuantityDrafts[index] ?? String(item.quantity)}
                               aria-label={`Cantidad a transferir de ${product?.name || 'producto'}`}
-                              onFocus={(event) => event.currentTarget.select()}
-                              onChange={(event) => {
-                                if (event.currentTarget.value === '' || stock <= 0) return;
-                                const requested = Math.floor(Number(event.currentTarget.value));
+                              onFocus={(event) => {
+                                setBulkTransferQuantityDrafts(prev => ({ ...prev, [index]: String(item.quantity) }));
+                                event.currentTarget.select();
+                              }}
+                              onChange={(event) => setBulkTransferQuantityDrafts(prev => ({ ...prev, [index]: event.currentTarget.value }))}
+                              onBlur={() => {
+                                const raw = bulkTransferQuantityDrafts[index];
+                                setBulkTransferQuantityDrafts(prev => { const next = { ...prev }; delete next[index]; return next; });
+                                if (raw === undefined || !raw.trim() || stock <= 0) return;
+                                const requested = Math.floor(Number(raw));
                                 if (!Number.isFinite(requested)) return;
                                 setBulkTransferItems(prev => prev.map((candidate, idx) => idx === index
                                   ? { ...candidate, quantity: Math.max(1, Math.min(stock, requested)) }
                                   : candidate));
                               }}
+                              onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }}
                               className="w-12 text-xs font-black text-center text-indigo-600 bg-transparent border border-transparent focus:border-indigo-300 rounded outline-none"
                             />
                             <button 
