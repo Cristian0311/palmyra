@@ -42,6 +42,13 @@ export function getAuthorizedWarehouseIds(
   return id ? [id] : [];
 }
 
+export function getSingleAuthorizedWarehouseId(
+  record: WarehouseScopedRecord | null | undefined
+): string | null {
+  const ids = getAuthorizedWarehouseIds(record);
+  return ids.length === 1 ? ids[0] : null;
+}
+
 export function hasWarehouseAccess(
   record: WarehouseScopedRecord | null | undefined,
   warehouseId: string

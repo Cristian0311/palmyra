@@ -24,7 +24,7 @@ import { CashMovementTicket } from "../components/cash/CashMovementTicket";
 import { POSAddCustomerModal } from "../components/pos/POSAddCustomerModal";
 import { POSCancelShiftModal } from "../components/pos/POSCancelShiftModal";
 import { POSClosurePrintArea } from "../components/pos/POSClosurePrintArea";
-import { getAuthorizedWarehouseIds, getWarehouseId } from "../modules/warehouse/warehouseScope";
+import { getAuthorizedWarehouseIds, getSingleAuthorizedWarehouseId, getWarehouseId } from "../modules/warehouse/warehouseScope";
 import { pullOpenCashSessionsFromSupabase } from "../services/supabaseSync";
 import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
 import { aggregateTransferPayments, buildTransactionTicketId, finalizeCheckoutPayments } from '../modules/pos/utils/checkoutUtils';
@@ -477,8 +477,7 @@ export default function POS() {
     [detectedWorker]
   );
   const workerAssignedBranchId =
-    getWarehouseId(detectedWorker) ||
-    (workerAssignedWarehouseIds.length === 1 ? workerAssignedWarehouseIds[0] : null);
+    workerAssignedWarehouseIds.length === 1 ? workerAssignedWarehouseIds[0] : null;
 
   const currentSessionWorker = currentSession
     ? findSessionEmployeeUser(currentSession, users || []) || null
@@ -1017,8 +1016,7 @@ export default function POS() {
     // Defensa en profundidad: una cuenta PALMYRA nunca puede vender usando un
     // turno o almacén que pertenezca a otra identidad/sucursal.
     if (currentUser?.role !== 'admin' && currentUser?.id) {
-      const assignedBranchId = currentUser.branchId ||
-        (getAuthorizedWarehouseIds(currentUser).length === 1 ? getAuthorizedWarehouseIds(currentUser)[0] : null);
+      const assignedBranchId = getSingleAuthorizedWarehouseId(currentUser);
       const ownsSession = currentSession.userId === currentUser.id ||
         currentSession.workingEmployeeIds?.includes(currentUser.id);
       const ownsBranch = !assignedBranchId || currentSession.branchId === assignedBranchId;
@@ -2076,7 +2074,28 @@ export default function POS() {
                           >
                             <Minus className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                           </button>
-                          <span className="w-5 text-center text-[10px] font-black text-primary font-mono">{item.quantity}</span>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            max={Math.max(item.quantity, getProductStock(prodId, item.variantLabel) - Math.max(0, getCartQuantity(prodId, item.variantLabel) - item.quantity))}
+                            value={item.quantity}
+                            disabled={prodHasSerial}
+                            aria-label={`Cantidad de ${prodObj?.name || 'producto'}`}
+                            onFocus={(event) => event.currentTarget.select()}
+                            onChange={(event) => {
+                              if (prodHasSerial || event.currentTarget.value === '') return;
+                              const requested = Math.floor(Number(event.currentTarget.value));
+                              if (!Number.isFinite(requested)) return;
+                              const availableStock = Math.max(0, getProductStock(prodId, item.variantLabel));
+                              const otherCartQuantity = Math.max(0, getCartQuantity(prodId, item.variantLabel) - item.quantity);
+                              const maxQuantity = Math.max(item.quantity, availableStock - otherCartQuantity);
+                              const nextQuantity = Math.max(1, Math.min(requested, maxQuantity));
+                              setPosError(requested > maxQuantity ? 'La cantidad supera el stock disponible.' : '');
+                              updateCartQty(item.id, nextQuantity - item.quantity);
+                            }}
+                            className="w-10 text-center text-[10px] font-black text-primary font-mono bg-transparent border border-transparent focus:border-indigo-400 focus:bg-primary rounded outline-none"
+                          />
                           <button 
                             onClick={() => {
                               if (getCartQuantity(prodId, item.variantLabel) >= getProductStock(prodId, item.variantLabel)) {

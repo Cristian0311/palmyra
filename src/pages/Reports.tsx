@@ -166,6 +166,23 @@ export default function Reports() {
   const updateSalarySettlement = store.updateSalarySettlement;
   const updateCashSession = store.updateCashSession;
   const receiptConfig = store.receiptConfig;
+  const handleEditTransactionDate = (transaction: import('../types').Transaction) => {
+    const session = transaction.sessionId
+      ? cashSessions.find(candidate => candidate.id === transaction.sessionId)
+      : undefined;
+    if (!session) {
+      addNotification('Esta venta no tiene un turno de caja vinculado; no se puede mover su fecha de forma segura desde el detalle.', 'warning');
+      return;
+    }
+    if (!navigator.onLine) {
+      addNotification('Conecta el dispositivo a Internet para cambiar la fecha y sincronizar el turno y sus ventas relacionadas.', 'warning');
+      return;
+    }
+    setSelectedDirectTxModal(null);
+    setEditingSessionDateId(session.id);
+    setNewSessionDate(getLocalDateYMD(session.openedAt));
+  };
+
   const handleVoidTransaction = async (transaction: import('../types').Transaction) => {
     const confirmed = window.confirm(
       `¿Anular la venta ${transaction.id}? Se repondrá el inventario y la operación quedará registrada como anulada.`,
@@ -2108,6 +2125,7 @@ export default function Reports() {
         onClose={() => setSelectedDirectTxModal(null)}
         onPrintShiftTicket={handlePrintShiftTicket}
         onVoidTransaction={handleVoidTransaction}
+        onEditDate={handleEditTransactionDate}
       />
 
       {/* Modal: Detalle de Transferencia entre Sucursales */}
