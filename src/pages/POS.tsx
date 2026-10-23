@@ -2089,7 +2089,10 @@ export default function POS() {
                               setQuantityDrafts(prev => ({ ...prev, [item.id]: String(item.quantity) }));
                               event.currentTarget.select();
                             }}
-                            onChange={(event) => setQuantityDrafts(prev => ({ ...prev, [item.id]: event.currentTarget.value }))}
+                            onChange={(event) => {
+                              const value = event.currentTarget.value;
+                              setQuantityDrafts(prev => ({ ...prev, [item.id]: value }));
+                            }}
                             onBlur={() => {
                               const raw = quantityDrafts[item.id];
                               if (raw === undefined) return;

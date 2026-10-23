@@ -725,7 +725,10 @@ export default function Transfers() {
                                 setBulkTransferQuantityDrafts(prev => ({ ...prev, [index]: String(item.quantity) }));
                                 event.currentTarget.select();
                               }}
-                              onChange={(event) => setBulkTransferQuantityDrafts(prev => ({ ...prev, [index]: event.currentTarget.value }))}
+                              onChange={(event) => {
+                                const value = event.currentTarget.value;
+                                setBulkTransferQuantityDrafts(prev => ({ ...prev, [index]: value }));
+                              }}
                               onBlur={() => {
                                 const raw = bulkTransferQuantityDrafts[index];
                                 setBulkTransferQuantityDrafts(prev => { const next = { ...prev }; delete next[index]; return next; });
