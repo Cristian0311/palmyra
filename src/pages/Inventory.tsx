@@ -994,7 +994,52 @@ export default function Inventory() {
           </div>
 
           <div className="inventory-bulk-scroll flex-1 min-h-0 overflow-y-auto overflow-x-auto overscroll-contain touch-pan-y">
-            <table className="w-full text-left border-collapse min-w-[700px]">
+            {/* Mobile-first cards: the desktop table's 700px minimum width hid fields off-screen on phones. */}
+            <div className="grid grid-cols-1 gap-3 p-3 md:hidden">
+              {bulkVisibleProducts.map(product => {
+                const rowKey = `${product.id}:::global`;
+                const changes = bulkChanges[rowKey] || {};
+                return (
+                  <article key={product.id} className="rounded-2xl border border-base bg-primary p-3 shadow-sm min-w-0">
+                    <div className="flex items-start gap-3 mb-3">
+                      <div className={cn("w-10 h-10 shrink-0 rounded-xl flex items-center justify-center text-sm font-bold", product.color || 'bg-slate-100')}>
+                        {product.name.charAt(0)}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <h3 className="text-sm font-black text-primary leading-snug break-words">{product.name}</h3>
+                        <p className="mt-1 text-[10px] font-bold text-muted break-words">{categoryById.get(product.categoryId)?.name || 'Sin Categoría'} · {product.sku || 'SIN SKU'}</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <label className="block min-w-0">
+                        <span className="mb-1.5 block text-[10px] font-black text-secondary uppercase">Precio de venta ({baseCurrency.symbol})</span>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          value={changes.price !== undefined ? changes.price : product.price}
+                          onChange={(e) => handleBulkChange(rowKey, 'price', parseFloat(e.target.value) || 0)}
+                          className={cn("w-full min-w-0 px-3 py-3 bg-primary border rounded-xl text-base font-black outline-none focus:ring-2 focus:ring-indigo-500", changes.price !== undefined ? "border-amber-500 ring-1 ring-amber-500" : "border-base")}
+                        />
+                      </label>
+                      <label className="block min-w-0">
+                        <span className="mb-1.5 block text-[10px] font-black text-secondary uppercase">Salario / comisión (CUP)</span>
+                        <input
+                          type="number"
+                          inputMode="decimal"
+                          value={changes.commissionValue !== undefined ? changes.commissionValue : (product.commissionValue || 0)}
+                          onChange={(e) => handleBulkChange(rowKey, 'commissionValue', parseFloat(e.target.value) || 0)}
+                          className={cn("w-full min-w-0 px-3 py-3 bg-primary border rounded-xl text-base font-black outline-none focus:ring-2 focus:ring-indigo-500", changes.commissionValue !== undefined ? "border-amber-500 ring-1 ring-amber-500" : "border-base")}
+                        />
+                      </label>
+                    </div>
+                  </article>
+                );
+              })}
+              {bulkVisibleProducts.length === 0 && (
+                <div className="py-12 text-center text-sm font-bold text-muted">No hay productos que coincidan con la búsqueda.</div>
+              )}
+            </div>
+            <table className="hidden md:table w-full text-left border-collapse min-w-[700px]">
               <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800 border-b border-base">
                 <tr>
                   <th className="px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest">Producto</th>
