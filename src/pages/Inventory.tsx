@@ -16,6 +16,7 @@ import { RestockAlerts } from "../components/RestockAlerts";
 import { useBarcodeScanner } from "../hooks/useBarcodeScanner";
 import * as XLSX from 'xlsx';
 import { loadSaaSContext } from '../services/saas';
+import { pushProductToSupabase } from '../services/supabaseSync';
 import { canUsePlanFeature } from '../services/planAccess';
 import PlanFeatureGate from '../components/PlanFeatureGate';
 import "./team.css";
@@ -308,6 +309,44 @@ export default function Inventory() {
   const [batchPriceAdjust, setBatchPriceAdjust] = useState({ type: 'percentage' as 'percentage' | 'fixed', value: 0, direction: 'increase' as 'increase' | 'decrease' });
   const [bulkChanges, setBulkChanges] = useState<Record<string, { costPrice?: number, price?: number, quantity?: number, commissionValue?: number }>>({});
   const [isSavingBulk, setIsSavingBulk] = useState(false);
+  const [bulkPriceSort, setBulkPriceSort] = useState<'none' | 'asc' | 'desc'>('none');
+  const bulkDraftStorageKey = useMemo(
+    () => `palmyra-inventory-bulk-draft-v1:${(branches || []).map(branch => branch.id).filter(Boolean).sort().join('|') || 'default'}`,
+    [branches]
+  );
+  const [bulkDraftLoadedKey, setBulkDraftLoadedKey] = useState('');
+  useEffect(() => {
+    try {
+      const raw = window.localStorage.getItem(bulkDraftStorageKey);
+      const saved = raw ? JSON.parse(raw) : {};
+      setBulkChanges(saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {});
+    } catch {
+      setBulkChanges({});
+    }
+    setBulkDraftLoadedKey(bulkDraftStorageKey);
+  }, [bulkDraftStorageKey]);
+  useEffect(() => {
+    if (bulkDraftLoadedKey !== bulkDraftStorageKey) return;
+    try {
+      if (Object.keys(bulkChanges).length) window.localStorage.setItem(bulkDraftStorageKey, JSON.stringify(bulkChanges));
+      else window.localStorage.removeItem(bulkDraftStorageKey);
+    } catch {
+      // The in-memory draft remains available if browser storage is blocked or full.
+    }
+  }, [bulkChanges, bulkDraftLoadedKey, bulkDraftStorageKey]);
+  const bulkVisibleProducts = useMemo(() => {
+    const query = debouncedSearchQuery.trim().toLowerCase();
+    const filtered = (products || []).filter(product => !query ||
+      product.name.toLowerCase().includes(query) ||
+      product.sku?.toLowerCase().includes(query) ||
+      product.barcode?.toLowerCase().includes(query)
+    );
+    if (bulkPriceSort === 'none') return filtered;
+    return [...filtered].sort((a, b) => {
+      const delta = Number(a.price || 0) - Number(b.price || 0);
+      return bulkPriceSort === 'asc' ? delta : -delta;
+    });
+  }, [products, debouncedSearchQuery, bulkPriceSort]);
   const [bulkBranchId, setBulkBranchId] = useState<string>(branches[0]?.id || "");
 
   const [transferSubTab, setTransferSubTab] = useState<'history' | 'new'>('history');
@@ -350,30 +389,40 @@ export default function Inventory() {
   };
 
   const saveBulkChanges = async () => {
+    if (isSavingBulk || Object.keys(bulkChanges).length === 0) return;
     setIsSavingBulk(true);
     try {
       const productUpdates: Record<string, { costPrice?: number, price?: number, commissionValue?: number }> = {};
-      
       for (const [id, changes] of Object.entries(bulkChanges)) {
         const [prodId] = id.split(':::');
-        
-        if (changes.price !== undefined || changes.commissionValue !== undefined) {
+        if (changes.price !== undefined || changes.costPrice !== undefined || changes.commissionValue !== undefined) {
           productUpdates[prodId] = {
             ...productUpdates[prodId],
             ...(changes.price !== undefined ? { price: changes.price } : {}),
+            ...(changes.costPrice !== undefined ? { costPrice: changes.costPrice } : {}),
             ...(changes.commissionValue !== undefined ? { commissionValue: changes.commissionValue } : {})
           };
         }
       }
 
+      // Save each full product and await server confirmation before discarding any draft.
+      // If one write fails, the entire draft remains in state and localStorage for retry.
       for (const [prodId, updates] of Object.entries(productUpdates)) {
-        updateProduct(prodId, updates);
+        const current = useStore.getState().products.find(product => product.id === prodId);
+        if (!current) throw new Error(`No se encontró el producto ${prodId}; el borrador se conserva.`);
+        const updated = { ...current, ...updates };
+        if (updates.price !== undefined || updates.costPrice !== undefined) {
+          updated.margin = Math.max(0, Number(updated.price || 0) - Number(updated.costPrice || 0));
+        }
+        await pushProductToSupabase(updated, { queueOnTransientFailure: false });
+        useStore.setState(state => ({ products: state.products.map(product => product.id === prodId ? updated : product) }));
       }
 
       setBulkChanges({});
-      addNotification("Cambios masivos guardados con éxito", 'success');
+      addNotification(`Cambios masivos guardados y confirmados: ${Object.keys(productUpdates).length} productos.`, 'success');
     } catch (err) {
-      addNotification("Error al guardar cambios masivos", 'error');
+      console.error('[PALMYRA] bulk inventory save failed; draft preserved', err);
+      addNotification('No se confirmaron todos los cambios. El borrador se conservó; corrige el error y vuelve a Guardar.', 'error');
     } finally {
       setIsSavingBulk(false);
     }
@@ -914,6 +963,14 @@ export default function Inventory() {
                 <h2 className="text-sm font-black text-primary uppercase tracking-tight">Edición Masiva</h2>
                 <p className="text-[10px] font-bold text-muted uppercase">Actualiza precios y salarios por producto rápidamente</p>
               </div>
+              <label className="flex items-center gap-2 text-[10px] font-black uppercase text-secondary">
+                Ordenar precio
+                <select value={bulkPriceSort} onChange={event => setBulkPriceSort(event.target.value as 'none' | 'asc' | 'desc')} className="rounded-lg border border-base bg-primary px-2 py-2 text-[10px] font-bold text-primary">
+                  <option value="none">Orden original</option>
+                  <option value="asc">Menor a mayor</option>
+                  <option value="desc">Mayor a menor</option>
+                </select>
+              </label>
             </div>
 
             <div className="flex items-center gap-2 w-full sm:w-auto">
@@ -947,15 +1004,7 @@ export default function Inventory() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-base">
-                {(debouncedSearchQuery.trim()
-                  ? products.filter(p => {
-                      const q = debouncedSearchQuery.trim().toLowerCase();
-                      return p.name.toLowerCase().includes(q) ||
-                        p.sku?.toLowerCase().includes(q) ||
-                        p.barcode?.toLowerCase().includes(q);
-                    })
-                  : products
-                ).map(product => {
+                {bulkVisibleProducts.map(product => {
                   const rowKey = `${product.id}:::global`;
                   const changes = bulkChanges[rowKey] || {};
                   
