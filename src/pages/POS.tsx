@@ -411,6 +411,9 @@ export default function POS() {
 
   const [posError, setPosError] = useState("");
   const [posSuccess, setPosSuccess] = useState("");
+  // Keep the user's in-progress edit separate from the committed cart quantity,
+  // so clearing "31" to type "12" does not immediately restore the old value.
+  const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({});
   const [openingAmount, setOpeningAmount] = useState("");
   const [sessionWorkerName, setSessionWorkerName] = useState("");
   const [sessionWorkerId, setSessionWorkerId] = useState("");
@@ -2079,21 +2082,32 @@ export default function POS() {
                             inputMode="numeric"
                             min={1}
                             max={Math.max(item.quantity, getProductStock(prodId, item.variantLabel) - Math.max(0, getCartQuantity(prodId, item.variantLabel) - item.quantity))}
-                            value={item.quantity}
+                            value={quantityDrafts[item.id] ?? String(item.quantity)}
                             disabled={prodHasSerial}
                             aria-label={`Cantidad de ${prodObj?.name || 'producto'}`}
-                            onFocus={(event) => event.currentTarget.select()}
+                            onFocus={(event) => {
+                              setQuantityDrafts(prev => ({ ...prev, [item.id]: String(item.quantity) }));
+                              event.currentTarget.select();
+                            }}
                             onChange={(event) => {
-                              if (prodHasSerial || event.currentTarget.value === '') return;
-                              const requested = Math.floor(Number(event.currentTarget.value));
+                              const value = event.currentTarget.value;
+                              setQuantityDrafts(prev => ({ ...prev, [item.id]: value }));
+                            }}
+                            onBlur={() => {
+                              const raw = quantityDrafts[item.id];
+                              if (raw === undefined) return;
+                              setQuantityDrafts(prev => { const next = { ...prev }; delete next[item.id]; return next; });
+                              if (!raw.trim()) return;
+                              const requested = Math.floor(Number(raw));
                               if (!Number.isFinite(requested)) return;
                               const availableStock = Math.max(0, getProductStock(prodId, item.variantLabel));
                               const otherCartQuantity = Math.max(0, getCartQuantity(prodId, item.variantLabel) - item.quantity);
-                              const maxQuantity = Math.max(item.quantity, availableStock - otherCartQuantity);
+                              const maxQuantity = Math.max(1, availableStock - otherCartQuantity);
                               const nextQuantity = Math.max(1, Math.min(requested, maxQuantity));
                               setPosError(requested > maxQuantity ? 'La cantidad supera el stock disponible.' : '');
-                              updateCartQty(item.id, nextQuantity - item.quantity);
+                              if (nextQuantity !== item.quantity) updateCartQty(item.id, nextQuantity - item.quantity);
                             }}
+                            onKeyDown={(event) => { if (event.key === 'Enter') event.currentTarget.blur(); }}
                             className="w-10 text-center text-[10px] font-black text-primary font-mono bg-transparent border border-transparent focus:border-indigo-400 focus:bg-primary rounded outline-none"
                           />
                           <button 

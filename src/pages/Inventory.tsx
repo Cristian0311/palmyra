@@ -1711,11 +1711,11 @@ export default function Inventory() {
                           <p className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight truncate">{getBranchDisplayName(branch)}</p>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
-                          <button type="button" onClick={(event) => { event.stopPropagation(); moveWarehouseCard(branch.id, -1); }} disabled={branchIndex === 0} aria-label={`Mover ${branch.name} antes`} title="Mover antes" className="w-6 h-6 rounded-md border border-base bg-primary text-secondary hover:text-indigo-600 disabled:opacity-30 disabled:cursor-not-allowed">
-                            <ChevronUp className="w-3 h-3 mx-auto" />
+                          <button type="button" onClick={(event) => { event.stopPropagation(); moveWarehouseCard(branch.id, -1); }} disabled={branchIndex === 0} aria-label={`Subir ${branch.name}`} title="Subir almacén" className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-indigo-700 bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 disabled:opacity-35 disabled:cursor-not-allowed shrink-0">
+                            <ChevronUp className="w-4 h-4" strokeWidth={3} />
                           </button>
-                          <button type="button" onClick={(event) => { event.stopPropagation(); moveWarehouseCard(branch.id, 1); }} disabled={branchIndex === orderedBranches.length - 1} aria-label={`Mover ${branch.name} después`} title="Mover después" className="w-6 h-6 rounded-md border border-base bg-primary text-secondary hover:text-indigo-600 disabled:opacity-30 disabled:cursor-not-allowed">
-                            <ChevronDown className="w-3 h-3 mx-auto" />
+                          <button type="button" onClick={(event) => { event.stopPropagation(); moveWarehouseCard(branch.id, 1); }} disabled={branchIndex === orderedBranches.length - 1} aria-label={`Bajar ${branch.name}`} title="Bajar almacén" className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-indigo-700 bg-indigo-600 text-white shadow-sm hover:bg-indigo-700 disabled:opacity-35 disabled:cursor-not-allowed shrink-0">
+                            <ChevronDown className="w-4 h-4" strokeWidth={3} />
                           </button>
                           <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/50">
                             {totalInBranch} uds
