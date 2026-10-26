@@ -307,7 +307,7 @@ export default function Inventory() {
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
   const [categoryFormData, setCategoryFormData] = useState({ name: "", department: "" });
   const [batchPriceAdjust, setBatchPriceAdjust] = useState({ type: 'percentage' as 'percentage' | 'fixed', value: 0, direction: 'increase' as 'increase' | 'decrease' });
-  const [bulkChanges, setBulkChanges] = useState<Record<string, { costPrice?: number, price?: number, quantity?: number, commissionValue?: number }>>({});
+  const [bulkChanges, setBulkChanges] = useState<Record<string, { name?: string, costPrice?: number, price?: number, quantity?: number, commissionValue?: number }>>({});
   const [isSavingBulk, setIsSavingBulk] = useState(false);
   const [bulkPriceSort, setBulkPriceSort] = useState<'none' | 'asc' | 'desc'>('none');
   const bulkDraftStorageKey = useMemo(
@@ -392,12 +392,13 @@ export default function Inventory() {
     if (isSavingBulk || Object.keys(bulkChanges).length === 0) return;
     setIsSavingBulk(true);
     try {
-      const productUpdates: Record<string, { costPrice?: number, price?: number, commissionValue?: number }> = {};
+      const productUpdates: Record<string, { name?: string, costPrice?: number, price?: number, commissionValue?: number }> = {};
       for (const [id, changes] of Object.entries(bulkChanges)) {
         const [prodId] = id.split(':::');
-        if (changes.price !== undefined || changes.costPrice !== undefined || changes.commissionValue !== undefined) {
+        if (changes.name !== undefined || changes.price !== undefined || changes.costPrice !== undefined || changes.commissionValue !== undefined) {
           productUpdates[prodId] = {
             ...productUpdates[prodId],
+            ...(changes.name !== undefined ? { name: changes.name.trim() } : {}),
             ...(changes.price !== undefined ? { price: changes.price } : {}),
             ...(changes.costPrice !== undefined ? { costPrice: changes.costPrice } : {}),
             ...(changes.commissionValue !== undefined ? { commissionValue: changes.commissionValue } : {})
@@ -1006,7 +1007,7 @@ export default function Inventory() {
                         {product.name.charAt(0)}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <h3 className="text-sm font-black text-primary leading-snug break-words">{product.name}</h3>
+                        <input type="text" aria-label={`Nombre del producto ${product.name}`} value={changes.name !== undefined ? changes.name : product.name} onChange={(e) => handleBulkChange(rowKey, 'name', e.target.value)} placeholder="Nombre del producto" className={cn("w-full min-w-0 px-3 py-2 bg-primary border rounded-xl text-sm font-black outline-none focus:ring-2 focus:ring-indigo-500", changes.name !== undefined ? "border-amber-500 ring-1 ring-amber-500" : "border-base")} />
                         <p className="mt-1 text-[10px] font-bold text-muted break-words">{categoryById.get(product.categoryId)?.name || 'Sin Categoría'} · {product.sku || 'SIN SKU'}</p>
                       </div>
                     </div>
@@ -1061,7 +1062,7 @@ export default function Inventory() {
                             {product.name.charAt(0)}
                           </div>
                           <div>
-                            <div className="text-[11px] font-black text-primary uppercase leading-tight">{product.name}</div>
+                            <input type="text" aria-label={`Nombre del producto ${product.name}`} value={changes.name !== undefined ? changes.name : product.name} onChange={(e) => handleBulkChange(rowKey, 'name', e.target.value)} className={cn("w-full min-w-[180px] px-2 py-2 bg-primary border rounded-lg text-[11px] font-black uppercase outline-none focus:ring-2 focus:ring-indigo-500", changes.name !== undefined ? "border-amber-500 ring-1 ring-amber-500" : "border-base")} />
                             <div className="text-[8px] font-bold text-muted uppercase tracking-tighter">
                               {categoryById.get(product.categoryId)?.name || 'Sin Categoría'}
                             </div>
