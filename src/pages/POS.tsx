@@ -1661,15 +1661,29 @@ export default function POS() {
       }
     }
 
-    // Reanudar no convierte la cuenta que inició sesión en el trabajador del turno.
-    // La identidad operativa sigue siendo targetSession.userId.
+    // Si el empleado autenticado ya forma parte de este turno, reflejar su
+    // identidad como operador activo sin cambiar al propietario original (userId).
+    // joinOpenSession conserva el historial del turno y persiste la lista de
+    // empleados que trabajaron en él.
+    const joiningAsExistingWorker = Boolean(
+      currentUser?.role !== 'admin' &&
+      currentUser?.id &&
+      targetSession.workingEmployeeIds?.includes(currentUser.id)
+    );
+    if (joiningAsExistingWorker && currentUser?.id) {
+      joinOpenSession(targetSession.id, currentUser.id, currentUser.name || targetUser.name || 'Empleado');
+    }
+
     setActiveSessionId(targetSession.id);
-    setSessionWorkerName(targetUser.name || targetSession.workerName || "");
+    const activeWorkerName = joiningAsExistingWorker
+      ? (currentUser?.name || targetUser.name || targetSession.workerName || "")
+      : (targetUser.name || targetSession.workerName || "");
+    setSessionWorkerName(activeWorkerName);
     setSessionPassword("");
     setCurrentBranch(targetSession.branchId);
     setJoiningSessionId(null);
     setPosError("");
-    setPosSuccess(`Turno de ${targetSession.workerName || 'Empleado'} reanudado correctamente.`);
+    setPosSuccess(`Turno reanudado correctamente por ${activeWorkerName || 'Empleado'}.`);
     setTimeout(() => setPosSuccess(""), 3000);
   };
 
