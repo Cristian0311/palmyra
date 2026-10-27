@@ -87,3 +87,19 @@ test("transient offline queue failures back off exponentially while retaining du
   assert.match(sync, /Math\.min\(15 \* 60_000, 30_000 \* \(2 \*\* Math\.min\(5, item\.retryCount - 1\)\)\)/);
   assert.match(sync, /item\.status === 'failed' && Number\(item\.nextRetryAt \|\| 0\) > Date\.now\(\)/);
 });
+
+test("offline employee credentials never expire merely because time passed", () => {
+  const auth = source("src/services/offlinePosAuth.ts");
+  assert.match(auth, /function isFresh\(savedAt: number\): boolean\s*\{\s*\/\/ Do not expire valid offline credentials based on age\.\s*return Number\.isFinite\(savedAt\) && savedAt > 0;/);
+  assert.doesNotMatch(auth, /savedAt\s*\+\s*\d+\s*\*\s*24\s*\*\s*60\s*\*\s*60/);
+});
+
+test("PWA updates wait for user confirmation instead of swapping the app shell mid-render", () => {
+  const vite = source("vite.config.ts");
+  const main = source("src/main.tsx");
+  assert.match(vite, /registerType: 'prompt'/);
+  assert.match(vite, /skipWaiting: false/);
+  assert.match(main, /registration\.waiting \|\| registration\.installing/);
+  assert.match(main, /worker\.postMessage\(\{ type: 'SKIP_WAITING' \}\)/);
+  assert.match(main, /worker\.state !== 'activated'/);
+});
