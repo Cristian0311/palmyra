@@ -313,7 +313,7 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
     if (!ready.length) {
       // Cycle protection: preserve deterministic FIFO rather than deadlocking
       // the entire queue forever because of a malformed dependency graph.
-      const fallback = queueAtStart.filter(x => pending.has(x.id)).sort((a,b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id));
+      const fallback = queueAtStart.filter(x => pending.has(x.id)).sort((a,b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')) || String(a.id || '').localeCompare(String(b.id || '')));
       sorted.push(...fallback); break;
     }
     for (const item of ready) { sorted.push(item); pending.delete(item.id); }
@@ -426,7 +426,7 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
     }
   }
 
-  const finalQueue = Array.from(finalById.values()).sort((a,b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id));
+  const finalQueue = Array.from(finalById.values()).sort((a,b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')) || String(a.id || '').localeCompare(String(b.id || '')));
   for (const item of sorted) clearOfflineQueueRemovalMark(item.id);
   // Reconciliamos contra el estado final, no contra la instantánea inicial.
   // Esto evita que un enqueue concurrente sea borrado por el commit de la cola.
