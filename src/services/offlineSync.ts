@@ -394,7 +394,7 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
       if (permanent) permanentDependencyIds.add(item.id);
       remainingFromRun.push(item);
       errors.push({ type: item.type, actionId: item.actionId, message: item.lastError, retryCount: item.retryCount });
-      addSyncLog({ level:'error', source:'offline_queue', title:`Error al procesar item (${item.type})`, details:item.lastError, entityType:item.type, actionId:item.actionId, retryAttempt:item.retryCount, retryInMs: permanent ? undefined : retryDelayMs });
+      addSyncLog({ level:'error', source:'offline_queue', title:`Error al procesar item (${item.type})`, details: permanent ? item.lastError : `${item.lastError} — próximo reintento en ${Math.round(retryDelayMs / 1000)} s`, entityType:item.type, actionId:item.actionId, retryAttempt:item.retryCount });
       // No detener toda la cola por un fallo transitorio. Solo quedan
       // bloqueados los elementos que dependan de esta operación mediante
       // failedDependencyIds; los demás turnos/ventas pueden continuar. Esto evita
