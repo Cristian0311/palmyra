@@ -1,6 +1,8 @@
 import type { SaaSContext } from "./saas";
 
 const PREFIX = "palmyra_offline_auth_context_v1";
+// Cached SaaS authorization is a bounded offline grace period, not a permanent grant.
+const OFFLINE_CONTEXT_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 function key(userId: string) {
   return PREFIX + "__" + userId;
@@ -35,7 +37,13 @@ export function getCachedSaaSContext(userId: string): SaaSContext | null {
     const raw = localStorage.getItem(key(userId));
     if (!raw) return null;
     const parsed = JSON.parse(raw);
-    return isValidContext(parsed) ? parsed : null;
+    if (!isValidContext(parsed)) return null;
+    const cachedAt = Date.parse(String((parsed as any).cachedAt || ''));
+    if (!Number.isFinite(cachedAt) || Date.now() - cachedAt > OFFLINE_CONTEXT_MAX_AGE_MS || cachedAt > Date.now() + 5 * 60 * 1000) {
+      localStorage.removeItem(key(userId));
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }
