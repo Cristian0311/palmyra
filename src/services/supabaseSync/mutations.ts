@@ -2,7 +2,7 @@ import { salePayload } from './salePayload';
 import { getSupabase } from '../../lib/supabase';
 import { enqueueOfflineItem, setOfflineQueueItemLastError } from '../offlineQueue';
 import { getActiveTenant, getEmployeeForIdentity } from '../tenant';
-import { callAdjustInventoryRPC, callProcessBankTransactionRPC } from './rpc';
+import { callAdjustInventoryRPC, callProcessBankTransactionRPC, stableLegacySaleUuid } from './rpc';
 export { pushCashMovementToSupabase, deleteCashMovementFromSupabase, pushCashSessionMetadataToSupabase } from './cashMutations';
 export type ResetSection =
   | 'inventory' | 'reports' | 'catalog' | 'customers' | 'suppliers'
@@ -343,7 +343,7 @@ export async function pushReturnToSupabase(item:ReturnItem):Promise<boolean>{
       // Legacy DEV-... IDs are not UUIDs. Map them deterministically so retries
       // and the subsequent completion RPC target the same server return.
       const remoteReturnId = await stableOfflineEntityUuid(companyId, 'return', String(item.id || 'legacy-return'));
-      const {data,error}=await supabase.rpc('palmyra_create_return',{p_return_id:remoteReturnId,p_company_id:companyId,p_sale_id:item.transactionId,p_product_id:item.productId,p_quantity:Number(item.quantity)||0,p_reason:item.reason||'',p_amount:Number(item.refundAmount)||0,p_type:item.type||'refund'});
+      const {data,error}=await supabase.rpc('palmyra_create_return',{p_return_id:remoteReturnId,p_company_id:companyId,p_sale_id:(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(item.transactionId || '')) ? item.transactionId : await stableLegacySaleUuid(companyId, String(item.transactionId || 'legacy-sale'))),p_product_id:item.productId,p_quantity:Number(item.quantity)||0,p_reason:item.reason||'',p_amount:Number(item.refundAmount)||0,p_type:item.type||'refund'});
       if(error)throw error;
       return Boolean(data?.success);
     }
