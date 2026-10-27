@@ -76,8 +76,8 @@ test("offline POS sync removes credentials only when the server explicitly revok
   assert.match(auth, /row\?\.revoked === true/);
   assert.match(auth, /Never delete device-local verifiers just because a server snapshot omitted/);
   assert.match(migration, /employee_pos_offline_credential_revocations/);
-  assert.match(migration, /'revoked', true/);
-  assert.match(migration, /'revoked', false/);
+  assert.match(migration, /true as revoked/);
+  assert.match(migration, /false as revoked/);
 });
 
 test("transient offline queue failures back off exponentially while retaining durable operations", () => {
