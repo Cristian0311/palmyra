@@ -56,3 +56,16 @@ test("offline POS verifiers survive app updates and incomplete remote snapshots"
   assert.doesNotMatch(auth, /localStorage\.removeItem\(localKey\)/);
   assert.match(auth, /localStorage\.setItem\(key\(cleanCompanyId, subjectId\), JSON\.stringify\(record\)\)/);
 });
+
+test("team-wide offline POS login allows POS operators to preload active employee verifiers without alias corruption", () => {
+  const migration = source("supabase/migrations/20261027100000_allow_pos_team_offline_auth.sql");
+  const auth = source("src/services/offlinePosAuth.ts");
+  assert.match(migration, /private\.has_permission\(p_company_id, 'pos\.access'\)/);
+  assert.match(migration, /private\.has_permission\(p_company_id, 'employees\.manage'\)/);
+  assert.match(migration, /e\.active = true/);
+  assert.match(migration, /'subject_id', v\.subject_id/);
+  assert.doesNotMatch(migration, /cross join lateral/i);
+  assert.match(auth, /PBKDF2_ITERATIONS = 310_000/);
+  assert.match(auth, /recordOfflineCredentialFailure/);
+  assert.match(auth, /isOfflineCredentialBlocked/);
+});
