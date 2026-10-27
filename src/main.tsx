@@ -203,52 +203,86 @@ const applyPalmyraUpdate = async () => {
 
     const registration = await navigator.serviceWorker?.getRegistration();
     if (!registration) {
-      try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
+      // No service worker (for example, a browser that blocks it): reload once.
       window.location.reload();
       return;
     }
 
+    // Explicitly check for a new worker. With registerType:'prompt', a newly
+    // installed worker stays waiting until this user-confirmed action.
     await registration.update().catch(() => {});
-    const waiting = registration.waiting;
-    if (waiting) {
-      waiting.postMessage({ type: 'SKIP_WAITING' });
-    } else if (registration.installing) {
+    let worker = registration.waiting || registration.installing;
+
+    if (worker && worker.state !== 'installed' && worker.state !== 'activated') {
       await new Promise<void>((resolve) => {
-        const installing = registration.installing!;
-        const finish = () => { installing.removeEventListener('statechange', onState); resolve(); };
-        const onState = () => {
-          if (installing.state === 'installed') finish();
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          worker?.removeEventListener('statechange', onState);
+          resolve();
         };
-        installing.addEventListener('statechange', onState);
-        window.setTimeout(finish, 5000);
+        const onState = () => {
+          if (worker && ['installed', 'activated', 'redundant'].includes(worker.state)) finish();
+        };
+        worker!.addEventListener('statechange', onState);
+        window.setTimeout(finish, 12_000);
       });
-      registration.waiting?.postMessage({ type: 'SKIP_WAITING' });
     }
 
-    // Never wait forever for the SW/controller event. If the browser does not
-    // expose it, a normal reload still gets the newest HTML and assets.
-    await new Promise<void>((resolve) => {
-      let settled = false;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        navigator.serviceWorker.removeEventListener('controllerchange', finish);
-        resolve();
-      };
-      navigator.serviceWorker.addEventListener('controllerchange', finish, { once: true });
-      window.setTimeout(finish, 3500);
-    });
+    worker = registration.waiting || (registration.installing?.state === 'installed' ? registration.installing : null);
+    if (worker && worker.state !== 'activated') {
+      const controllerChanged = new Promise<void>((resolve) => {
+        let done = false;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          navigator.serviceWorker.removeEventListener('controllerchange', finish);
+          resolve();
+        };
+        navigator.serviceWorker.addEventListener('controllerchange', finish, { once: true });
+        window.setTimeout(finish, 8_000);
+      });
+      worker.postMessage({ type: 'SKIP_WAITING' });
+      await controllerChanged;
+      // Do not navigate while the worker is still activating.
+      if (worker.state === 'activating' || worker.state === 'installed' || worker.state === 'installing') {
+        await new Promise<void>((resolve) => {
+          let done = false;
+          const finish = () => {
+            if (done) return;
+            done = true;
+            worker?.removeEventListener('statechange', onState);
+            resolve();
+          };
+          const onState = () => { if (worker?.state === 'activated' || worker?.state === 'redundant') finish(); };
+          worker!.addEventListener('statechange', onState);
+          window.setTimeout(finish, 4_000);
+        });
+      }
+    }
 
+    // Only update the local build marker when the server confirms the current
+    // version. If it cannot be checked, keep the update notice for next launch.
+    let serverBuildId = '';
     try {
-      const response = await fetch('/version.json?ts=' + Date.now(), { cache: 'no-store' });
+      const response = await fetch('/version.json?ts=' + Date.now(), {
+        cache: 'no-store',
+        headers: { 'cache-control': 'no-cache', pragma: 'no-cache' },
+      });
       if (response.ok) {
         const payload = await response.json() as { buildId?: string };
-        if (payload?.buildId) localStorage.setItem(PALMYRA_BUILD_ID_KEY, String(payload.buildId));
+        serverBuildId = String(payload?.buildId || '');
       }
     } catch {}
 
-    try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
-    try { sessionStorage.removeItem(PALMYRA_UPDATE_APPLY_KEY); } catch {}
+    if (serverBuildId) {
+      try { localStorage.setItem(PALMYRA_BUILD_ID_KEY, serverBuildId); } catch {}
+      try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
+      try { sessionStorage.removeItem(PALMYRA_UPDATE_APPLY_KEY); } catch {}
+    }
+    // The browser now has a stable worker state; reload to mount the matching
+    // HTML/chunks. Do not clear pending-update state if version confirmation failed.
     window.location.reload();
   } catch (error) {
     console.warn('[PALMYRA] No se pudo aplicar la actualización:', error);
