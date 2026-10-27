@@ -10,7 +10,7 @@ export default defineConfig(() => {
       react(), 
       tailwindcss(),
       VitePWA({
-        registerType: 'autoUpdate',
+        registerType: 'prompt',
         includeAssets: ['favicon.svg', 'icon.png', 'pwa-192.svg', 'pwa-512.svg'],
         devOptions: {
           enabled: true
@@ -55,7 +55,9 @@ export default defineConfig(() => {
           // Keep the new worker waiting so registerType:'prompt' can
           // notify Layout through onNeedRefresh and show the update bubble.
           clientsClaim: true,
-          skipWaiting: true,
+          // Keep the new worker waiting until the user applies the update. This avoids
+          // switching the app shell mid-render and leaving a blank screen.
+          skipWaiting: false,
           // Supabase is the source of truth. Never let Workbox cache REST
           // responses or make a reconnect replay a stale API response.
           // Los chunks de las rutas deben quedar precacheados. Excluirlos
