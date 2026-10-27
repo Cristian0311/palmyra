@@ -3,11 +3,10 @@ import { getSupabase } from "../lib/supabase";
 const STORAGE_PREFIX = "palmyra:offline-pos-credential:v2:";
 const LEGACY_STORAGE_PREFIX = "palmyra:offline-pos-credential:v1:";
 const PBKDF2_ITERATIONS = 310_000;
-// Offline PIN verifiers are device credentials with a bounded grace period.
-// Remote revocations cannot reach a fully disconnected device immediately.
+// Offline PIN verifiers are durable device credentials. App updates and routine
+// server snapshots must never expire/delete them; only an explicit password
+// overwrite or an authorized account revocation flow may replace/remove one.
 const SYNC_RETRY_WINDOW_MS = 30_000;
-// Bound the exposure window for credentials after an employee is revoked remotely.
-const OFFLINE_CREDENTIAL_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const lastSyncAttempt = new Map<string, number>();
 
 type OfflinePosCredential = {
@@ -80,9 +79,8 @@ function equalHex(a: string, b: string): boolean {
 }
 
 function isFresh(savedAt: number): boolean {
-  return Number.isFinite(savedAt) && savedAt > 0 &&
-    savedAt <= Date.now() + 5 * 60 * 1000 &&
-    Date.now() - savedAt <= OFFLINE_CREDENTIAL_MAX_AGE_MS;
+  // Do not expire valid offline credentials based on age.
+  return Number.isFinite(savedAt) && savedAt > 0;
 }
 
 async function createCredential(companyId: string, userId: string, password: string, savedAt = Date.now()): Promise<OfflinePosCredential> {
@@ -165,13 +163,12 @@ async function syncOfflinePosCredentialsOnce(companyId: string): Promise<{ synce
     const timestamp = row?.updated_at ? new Date(row.updated_at).getTime() : 0;
     if (!subjectId || !/^(?:[0-9a-f]{2}){16}$/i.test(salt) ||
         !/^(?:[0-9a-f]{2}){32}$/i.test(verifier) ||
-        iterations < 100_000 || iterations > 1_000_000 ||
-        !Number.isFinite(timestamp) || timestamp <= 0 || timestamp > Date.now() + 5 * 60 * 1000) {
+        iterations < 100_000 || iterations > 1_000_000 || !isFresh(timestamp)) {
       skipped += 1;
       continue;
     }
     const record: OfflinePosCredential = {
-      version: 2, salt, verifier, iterations, savedAt: Date.now()
+      version: 2, salt, verifier, iterations, savedAt: timestamp
     };
     allowedSubjects.add(subjectId);
     try {
