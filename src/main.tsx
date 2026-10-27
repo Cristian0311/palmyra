@@ -246,7 +246,7 @@ const applyPalmyraUpdate = async () => {
       worker.postMessage({ type: 'SKIP_WAITING' });
       await controllerChanged;
       // Do not navigate while the worker is still activating.
-      if (worker.state !== 'activated') {
+      if (worker.state === 'activating' || worker.state === 'installed' || worker.state === 'installing') {
         await new Promise<void>((resolve) => {
           let done = false;
           const finish = () => {
