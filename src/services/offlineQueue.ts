@@ -142,7 +142,7 @@ async function migrateLegacyQueue(): Promise<void> {
   for (const item of memoryQueue) mergeCandidate(item);
   memoryQueue = Array.from(merged.values())
     .filter(item => !tombstones.has(String(item.id)))
-    .sort((a,b) => a.timestamp.localeCompare(b.timestamp));
+    .sort((a,b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
   try {
     await idbReplaceAll(DB_NAME, Boolean(activeScopeKey), memoryQueue);
     if (legacyRaw) localStorage.removeItem(STORAGE_KEY);
