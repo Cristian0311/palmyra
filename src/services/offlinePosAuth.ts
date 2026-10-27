@@ -165,12 +165,13 @@ async function syncOfflinePosCredentialsOnce(companyId: string): Promise<{ synce
     const timestamp = row?.updated_at ? new Date(row.updated_at).getTime() : 0;
     if (!subjectId || !/^(?:[0-9a-f]{2}){16}$/i.test(salt) ||
         !/^(?:[0-9a-f]{2}){32}$/i.test(verifier) ||
-        iterations < 100_000 || iterations > 1_000_000 || !isFresh(timestamp)) {
+        iterations < 100_000 || iterations > 1_000_000 ||
+        !Number.isFinite(timestamp) || timestamp <= 0 || timestamp > Date.now() + 5 * 60 * 1000) {
       skipped += 1;
       continue;
     }
     const record: OfflinePosCredential = {
-      version: 2, salt, verifier, iterations, savedAt: timestamp
+      version: 2, salt, verifier, iterations, savedAt: Date.now()
     };
     allowedSubjects.add(subjectId);
     try {
