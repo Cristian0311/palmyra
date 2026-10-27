@@ -71,6 +71,7 @@ type OfflinePosCredential = {
 
 type RemoteOfflinePosVerifier = {
   subject_id?: string;
+  revoked?: boolean;
   salt?: string;
   verifier?: string;
   iterations?: number;
@@ -206,10 +207,21 @@ async function syncOfflinePosCredentialsOnce(companyId: string): Promise<{ synce
 
   let synced = 0;
   let skipped = 0;
-  const allowedSubjects = new Set<string>();
   const records = Array.isArray(data) ? data as RemoteOfflinePosVerifier[] : [];
   for (const row of records) {
     const subjectId = String(row?.subject_id || "").trim();
+    if (!subjectId) { skipped += 1; continue; }
+    if (row?.revoked === true) {
+      // Only explicit server revocation tombstones remove cached credentials.
+      // A partial or empty snapshot never deletes long-term offline access.
+      try {
+        localStorage.removeItem(key(cleanCompanyId, subjectId));
+        localStorage.removeItem(legacyKey(cleanCompanyId, subjectId));
+        clearOfflineCredentialFailures(cleanCompanyId, subjectId);
+        synced += 1;
+      } catch { skipped += 1; }
+      continue;
+    }
     const salt = String(row?.salt || "");
     const verifier = String(row?.verifier || "");
     const iterations = Number(row?.iterations) || PBKDF2_ITERATIONS;
@@ -223,7 +235,6 @@ async function syncOfflinePosCredentialsOnce(companyId: string): Promise<{ synce
     const record: OfflinePosCredential = {
       version: 2, salt, verifier, iterations, savedAt: timestamp
     };
-    allowedSubjects.add(subjectId);
     try {
       localStorage.setItem(key(cleanCompanyId, subjectId), JSON.stringify(record));
       try { localStorage.removeItem(legacyKey(cleanCompanyId, subjectId)); } catch {}
@@ -311,6 +322,7 @@ export function forgetOfflinePosCredential(companyId: string, userId: string): v
   try {
     localStorage.removeItem(key(String(companyId || ""), String(userId || "")));
     localStorage.removeItem(legacyKey(String(companyId || ""), String(userId || "")));
+    clearOfflineCredentialFailures(String(companyId || ""), String(userId || ""));
   } catch {}
 }
 
