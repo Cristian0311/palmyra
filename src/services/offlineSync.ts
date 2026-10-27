@@ -131,6 +131,7 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
   if (!queueAtStart.length) return { processed: 0, failed: 0, remaining: 0, conflicts: getOfflineConflictCount(), errors: [] };
 
   isProcessingQueue = true;
+  try {
   // Procesamos una instantánea estable. Las operaciones que entren mientras
   // sincronizamos se reconcilian al final y nunca se pierden por reemplazar
   // memoryQueue con una instantánea vieja.
@@ -308,7 +309,7 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
   while (pending.size) {
     const ready = queueAtStart
       .filter(x => pending.has(x.id) && dependencies(x).every(d => !pending.has(d.id)))
-      .sort((a,b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id));
+      .sort((a,b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')) || String(a.id || '').localeCompare(String(b.id || '')));
     if (!ready.length) {
       // Cycle protection: preserve deterministic FIFO rather than deadlocking
       // the entire queue forever because of a malformed dependency graph.
@@ -345,7 +346,7 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
     if (itemDependencies.some(d => failedDependencyIds.has(d.id))) {
       // Un padre falló transitoriamente: el hijo queda pendiente, pero no se
       // convierte en conflicto porque podrá reintentarse cuando el padre vuelva.
-      remainingFromRun.push({ ...item, status: 'failed', lastError: 'Pendiente por una dependencia que falló temporalmente.' });
+      remainingFromRun.push({ ...item, status: 'failed', lastError: `${item.lastError ? item.lastError + ' — ' : ''}Pendiente por una dependencia que falló temporalmente.`.slice(0, 2000) });
       continue;
     }
     item.status = 'processing';
@@ -450,8 +451,10 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
     return { processed, failed, remaining: getOfflineQueueCount(), conflicts: getOfflineConflictCount(), errors };
   }
 
-  isProcessingQueue = false;
   return { processed, failed, remaining: finalQueue.filter(item => item.status !== 'conflict').length, conflicts: finalQueue.filter(item => item.status === 'conflict').length, errors };
+  } finally {
+    isProcessingQueue = false;
+  }
 }
 
 function isManualOfflineSyncEnabled(): boolean {
