@@ -19,7 +19,7 @@ import {
   pushCashSessionToSupabase, deleteProductFromSupabase, pullTransferHistoryFromSupabase,
   pushBranchToSupabase, deleteBranchFromSupabase, pushCategoryToSupabase, deleteCategoryFromSupabase, deleteSupplierFromSupabase, deleteUserFromSupabase,
   pushProductToSupabase, pushUserToSupabase, pushWarrantyToSupabase, pushTimeShiftToSupabase, deleteBankCardFromSupabase,
-  pushQuoteToSupabase, pushBankCardToSupabase, pushReturnToSupabase,
+  pushQuoteToSupabase, pushBankCardToSupabase, pushReturnToSupabase, stableOfflineEntityUuid,
   pushSupplierToSupabase, pushSupplierOrderToSupabase, pushInventoryAuditToSupabase,
   pushSalarySettlementToSupabase, hasPayrollEmployeeForSettlement, pushInventoryToSupabase, pushCurrencyToSupabase,
   pushCashMovementToSupabase, deleteCashMovementFromSupabase, pushCashSessionMetadataToSupabase,
@@ -1008,7 +1008,10 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       return true;
     }
     case 'return_complete': {
-      const res = await callCompleteReturnRPC(data.id, data.userId);
+      const { companyId } = await getActiveTenant();
+      const localReturnId = String(data.remoteId || data.remote_id || data.id || '');
+      const remoteReturnId = await stableOfflineEntityUuid(companyId, 'return', localReturnId);
+      const res = await callCompleteReturnRPC(remoteReturnId, data.userId);
       if (!res.success) {
         const code = String(res.errorCode || '');
         if (['P0001','23503','23505','42501','22003','22P02','IDEMPOTENCY_CONFLICT'].includes(code)) {
@@ -1020,7 +1023,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       const { data: persistedReturn, error: returnReadError } = await supabase
         .from('sales_returns')
         .select('id,status,sale_id')
-        .eq('id', data.id)
+        .eq('id', remoteReturnId)
         .maybeSingle();
       if (returnReadError) throw returnReadError;
       if (!persistedReturn || persistedReturn.status !== 'completed') {
