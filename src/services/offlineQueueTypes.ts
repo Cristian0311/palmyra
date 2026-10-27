@@ -21,5 +21,7 @@ export interface OfflineQueueItem {
   retryCount: number;
   status?: 'pending' | 'processing' | 'failed' | 'conflict';
   lastError?: string;
+  /** Earliest automatic retry time after a transient sync failure. */
+  nextRetryAt?: number;
   deviceId?: string;
 }

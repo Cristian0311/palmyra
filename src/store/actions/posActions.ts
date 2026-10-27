@@ -422,7 +422,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
   },
 
   createReturn: (returnItem) => {
-    const newReturn = { ...returnItem, id: returnItem.id || generateReadableId('DEV', get().returns.length) };
+    const newReturn = { ...returnItem, id: returnItem.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(returnItem.id) ? returnItem.id : crypto.randomUUID() };
     set((state) => ({
       returns: [newReturn, ...state.returns.filter(r => r.id !== newReturn.id)]
     }));

@@ -7,7 +7,59 @@ const PBKDF2_ITERATIONS = 310_000;
 // server snapshots must never expire/delete them; only an explicit password
 // overwrite or an authorized account revocation flow may replace/remove one.
 const SYNC_RETRY_WINDOW_MS = 30_000;
+// Persistent client-side throttling raises the cost of casual offline PIN guessing.
+// It is a defense-in-depth measure, not a security boundary against an attacker
+// who can edit/erase this browser's storage or modify the client application.
+const FAILED_ATTEMPTS_PREFIX = "palmyra:offline-pos-failed-attempts:v1:";
 const lastSyncAttempt = new Map<string, number>();
+
+type OfflineAttemptState = { attempts: number; blockedUntil: number; updatedAt: number };
+
+function attemptKey(companyId: string, userId: string): string {
+  return FAILED_ATTEMPTS_PREFIX + encodeURIComponent(companyId) + ":" + encodeURIComponent(userId);
+}
+
+function readAttemptState(companyId: string, userId: string): OfflineAttemptState {
+  try {
+    const raw = localStorage.getItem(attemptKey(companyId, userId));
+    if (!raw) return { attempts: 0, blockedUntil: 0, updatedAt: 0 };
+    const parsed = JSON.parse(raw);
+    const updatedAt = Number(parsed?.updatedAt) || 0;
+    if (!Number.isFinite(updatedAt) || Date.now() - updatedAt > 60 * 60 * 1000) {
+      localStorage.removeItem(attemptKey(companyId, userId));
+      return { attempts: 0, blockedUntil: 0, updatedAt: 0 };
+    }
+    return {
+      attempts: Math.max(0, Math.floor(Number(parsed?.attempts) || 0)),
+      blockedUntil: Math.max(0, Number(parsed?.blockedUntil) || 0),
+      updatedAt
+    };
+  } catch {
+    return { attempts: 0, blockedUntil: 0, updatedAt: 0 };
+  }
+}
+
+function recordOfflineCredentialFailure(companyId: string, userId: string): void {
+  try {
+    const previous = readAttemptState(companyId, userId);
+    const attempts = previous.attempts + 1;
+    // 5 failures: 30s; then 1m, 2m, 4m, capped at 5m.
+    const delay = attempts < 5 ? 0 : Math.min(5 * 60_000, 30_000 * (2 ** (attempts - 5)));
+    localStorage.setItem(attemptKey(companyId, userId), JSON.stringify({
+      attempts,
+      blockedUntil: Date.now() + delay,
+      updatedAt: Date.now()
+    }));
+  } catch {}
+}
+
+function clearOfflineCredentialFailures(companyId: string, userId: string): void {
+  try { localStorage.removeItem(attemptKey(companyId, userId)); } catch {}
+}
+
+function isOfflineCredentialBlocked(companyId: string, userId: string): boolean {
+  return readAttemptState(companyId, userId).blockedUntil > Date.now();
+}
 
 type OfflinePosCredential = {
   version: 2;
@@ -19,6 +71,7 @@ type OfflinePosCredential = {
 
 type RemoteOfflinePosVerifier = {
   subject_id?: string;
+  revoked?: boolean;
   salt?: string;
   verifier?: string;
   iterations?: number;
@@ -105,10 +158,10 @@ async function pushVerifierToServer(companyId: string, userId: string, password:
     if (error) {
       // Non-manager employees cannot publish a verifier for the whole team. A
       // successful local verifier still permits this device to work offline.
-      console.info("[PALMYRA] El verificador POS quedó solo en este dispositivo.", error.message);
+      console.warn("[PALMYRA] El verificador POS quedó solo en este dispositivo; el acceso offline en otros equipos no está respaldado.", error.message);
     }
   } catch (error) {
-    console.info("[PALMYRA] No se pudo sincronizar el verificador POS; se conserva localmente.", error);
+    console.warn("[PALMYRA] No se pudo sincronizar el verificador POS; el acceso offline solo está guardado en este dispositivo.", error);
   }
 }
 
@@ -126,6 +179,7 @@ export async function rememberOfflinePosCredential(companyId: string, userId: st
 
   const credential = await createCredential(cleanCompanyId, cleanUserId, cleanPassword);
   localStorage.setItem(key(cleanCompanyId, cleanUserId), JSON.stringify(credential));
+  clearOfflineCredentialFailures(cleanCompanyId, cleanUserId);
   try { localStorage.removeItem(legacyKey(cleanCompanyId, cleanUserId)); } catch {}
   await pushVerifierToServer(cleanCompanyId, cleanUserId, cleanPassword, credential);
 }
@@ -147,16 +201,27 @@ async function syncOfflinePosCredentialsOnce(companyId: string): Promise<{ synce
   });
   if (error) {
     lastSyncAttempt.delete(cleanCompanyId);
-    console.info("[PALMYRA] No fue posible descargar los verificadores POS para trabajo offline.", error.message);
+    console.warn("[PALMYRA] No fue posible descargar los verificadores POS para trabajo offline; este dispositivo podría no tener credenciales actualizadas.", error.message);
     return { synced: 0, skipped: 0 };
   }
 
   let synced = 0;
   let skipped = 0;
-  const allowedSubjects = new Set<string>();
   const records = Array.isArray(data) ? data as RemoteOfflinePosVerifier[] : [];
   for (const row of records) {
     const subjectId = String(row?.subject_id || "").trim();
+    if (!subjectId) { skipped += 1; continue; }
+    if (row?.revoked === true) {
+      // Only explicit server revocation tombstones remove cached credentials.
+      // A partial or empty snapshot never deletes long-term offline access.
+      try {
+        localStorage.removeItem(key(cleanCompanyId, subjectId));
+        localStorage.removeItem(legacyKey(cleanCompanyId, subjectId));
+        clearOfflineCredentialFailures(cleanCompanyId, subjectId);
+        synced += 1;
+      } catch { skipped += 1; }
+      continue;
+    }
     const salt = String(row?.salt || "");
     const verifier = String(row?.verifier || "");
     const iterations = Number(row?.iterations) || PBKDF2_ITERATIONS;
@@ -170,7 +235,6 @@ async function syncOfflinePosCredentialsOnce(companyId: string): Promise<{ synce
     const record: OfflinePosCredential = {
       version: 2, salt, verifier, iterations, savedAt: timestamp
     };
-    allowedSubjects.add(subjectId);
     try {
       localStorage.setItem(key(cleanCompanyId, subjectId), JSON.stringify(record));
       try { localStorage.removeItem(legacyKey(cleanCompanyId, subjectId)); } catch {}
@@ -215,6 +279,7 @@ export async function verifyOfflinePosCredential(companyId: string, userId: stri
   const cleanUserId = String(userId || "").trim();
   const cleanPassword = String(password || "");
   if (!cleanCompanyId || !cleanUserId || !cleanPassword || typeof localStorage === "undefined") return false;
+  if (isOfflineCredentialBlocked(cleanCompanyId, cleanUserId)) return false;
 
   try {
     const raw = localStorage.getItem(key(cleanCompanyId, cleanUserId));
@@ -226,7 +291,10 @@ export async function verifyOfflinePosCredential(companyId: string, userId: stri
         const verifier = await deriveVerifier(
           cleanCompanyId, cleanUserId, cleanPassword, stored.salt, Number(stored.iterations)
         );
-        return equalHex(verifier, stored.verifier);
+        const matches = equalHex(verifier, stored.verifier);
+        if (matches) clearOfflineCredentialFailures(cleanCompanyId, cleanUserId);
+        else recordOfflineCredentialFailure(cleanCompanyId, cleanUserId);
+        return matches;
       }
       // Expired or malformed records must not authorize a POS session.
       localStorage.removeItem(key(cleanCompanyId, cleanUserId));
@@ -239,7 +307,10 @@ export async function verifyOfflinePosCredential(companyId: string, userId: stri
     const legacy = JSON.parse(oldRaw);
     if (!legacy?.salt || !legacy?.verifier) return false;
     const legacyVerifier = await legacyDigest(cleanUserId + ":" + legacy.salt + ":" + cleanPassword);
-    if (!equalHex(legacyVerifier, String(legacy.verifier))) return false;
+    if (!equalHex(legacyVerifier, String(legacy.verifier))) {
+      recordOfflineCredentialFailure(cleanCompanyId, cleanUserId);
+      return false;
+    }
     await rememberOfflinePosCredential(cleanCompanyId, cleanUserId, cleanPassword);
     return true;
   } catch {
@@ -251,6 +322,7 @@ export function forgetOfflinePosCredential(companyId: string, userId: string): v
   try {
     localStorage.removeItem(key(String(companyId || ""), String(userId || "")));
     localStorage.removeItem(legacyKey(String(companyId || ""), String(userId || "")));
+    clearOfflineCredentialFailures(String(companyId || ""), String(userId || ""));
   } catch {}
 }
 

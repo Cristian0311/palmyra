@@ -24,6 +24,18 @@ function isUuid(value: unknown): value is string {
   return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+// Deterministic UUID for legacy local ticket IDs. The same ticket always
+// maps to the same server primary key, including after a timeout/lost response.
+export async function stableLegacySaleUuid(companyId: string, localId: string): Promise<string> {
+  const source = new TextEncoder().encode('palmyra-legacy-sale-v1:' + companyId + ':' + localId);
+  const digest = await crypto.subtle.digest('SHA-256', source);
+  const bytes = Array.from(new Uint8Array(digest).slice(0, 16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hex.slice(0,8)+'-'+hex.slice(8,12)+'-'+hex.slice(12,16)+'-'+hex.slice(16,20)+'-'+hex.slice(20);
+}
+
 export async function logAuditEvent(entry:{userId?:string;action:string;entityType:string;entityId?:string;oldData?:any;newData?:any;meta?:any}){
   try { const supabase=getSupabase(); if(!supabase)return; const {companyId,authUserId}=await getActiveTenant(); await supabase.from('audit_logs').insert({id:crypto.randomUUID(),company_id:companyId,user_id:entry.userId||authUserId,action:entry.action,entity_type:entry.entityType,entity_id:entry.entityId||null,before_data:entry.oldData||null,after_data:entry.newData||null,metadata:entry.meta||null}); } catch(e){ console.warn('[PALMYRA] audit log failed',e); }
 }
@@ -195,8 +207,11 @@ export async function callProcessTransactionRPC(tx:Transaction){
     }
     const saleEmployeeId = resolveSaleEmployeeAttributionId(tx.userId, authUserId, sessionEmployeeId);
 
-    // Older queued tickets used PALMYRA-TK... as their local id.
-    const remoteSaleId = isUuid(tx.remoteId) ? tx.remoteId : (isUuid(tx.id) ? tx.id : crypto.randomUUID());
+    // Older queued tickets used PALMYRA-TK... as their local id. Derive a
+    // stable UUID from that legacy ID so a lost RPC response cannot create a
+    // second sale on retry. New tickets continue using their persisted remoteId.
+    const remoteSaleId = isUuid(tx.remoteId) ? tx.remoteId : (isUuid(tx.id) ? tx.id : await stableLegacySaleUuid(companyId, String(tx.id || tx.ticketNumber || 'unknown')));
+
     const data=await rpc('palmyra_record_sale',{
       p_sale_id:remoteSaleId,
       p_company_id:companyId,

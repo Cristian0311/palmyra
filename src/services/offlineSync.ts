@@ -131,6 +131,7 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
   if (!queueAtStart.length) return { processed: 0, failed: 0, remaining: 0, conflicts: getOfflineConflictCount(), errors: [] };
 
   isProcessingQueue = true;
+  try {
   // Procesamos una instantánea estable. Las operaciones que entren mientras
   // sincronizamos se reconcilian al final y nunca se pierden por reemplazar
   // memoryQueue con una instantánea vieja.
@@ -308,11 +309,11 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
   while (pending.size) {
     const ready = queueAtStart
       .filter(x => pending.has(x.id) && dependencies(x).every(d => !pending.has(d.id)))
-      .sort((a,b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id));
+      .sort((a,b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')) || String(a.id || '').localeCompare(String(b.id || '')));
     if (!ready.length) {
       // Cycle protection: preserve deterministic FIFO rather than deadlocking
       // the entire queue forever because of a malformed dependency graph.
-      const fallback = queueAtStart.filter(x => pending.has(x.id)).sort((a,b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id));
+      const fallback = queueAtStart.filter(x => pending.has(x.id)).sort((a,b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')) || String(a.id || '').localeCompare(String(b.id || '')));
       sorted.push(...fallback); break;
     }
     for (const item of ready) { sorted.push(item); pending.delete(item.id); }
@@ -342,10 +343,23 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
       errors.push({ type: item.type, actionId: item.actionId, message: blockedMessage, retryCount: conflictItem.retryCount });
       continue;
     }
+    if (item.status === 'failed' && Number(item.nextRetryAt || 0) > Date.now()) {
+      // Respect persisted exponential backoff and keep descendants blocked.
+      remainingFromRun.push(item);
+      failedDependencyIds.add(item.id);
+      continue;
+    }
     if (itemDependencies.some(d => failedDependencyIds.has(d.id))) {
-      // Un padre falló transitoriamente: el hijo queda pendiente, pero no se
-      // convierte en conflicto porque podrá reintentarse cuando el padre vuelva.
-      remainingFromRun.push({ ...item, status: 'failed', lastError: 'Pendiente por una dependencia que falló temporalmente.' });
+      const existingError = String(item.lastError || '');
+      const dependencyNote = 'Pendiente por una dependencia que falló temporalmente.';
+      remainingFromRun.push({
+        ...item,
+        status: 'failed',
+        lastError: existingError.includes(dependencyNote)
+          ? existingError
+          : (existingError ? existingError + ' — ' : '') + dependencyNote
+      });
+      failedDependencyIds.add(item.id);
       continue;
     }
     item.status = 'processing';
@@ -357,6 +371,8 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
     } catch (err:any) {
       failed++;
       item.retryCount = (item.retryCount || 0) + 1;
+      const retryDelayMs = Math.min(15 * 60_000, 30_000 * (2 ** Math.min(5, item.retryCount - 1)));
+      item.nextRetryAt = Date.now() + retryDelayMs;
       const code = err?.code ? ` [${err.code}]` : '';
       const status = err?.status || err?.statusCode ? ` HTTP ${err?.status || err?.statusCode}` : '';
       const detail = err?.details ? ` — ${typeof err.details === 'string' ? err.details : JSON.stringify(err.details)}` : '';
@@ -373,11 +389,12 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
       // Una tablet puede permanecer offline muchas horas o días; el elemento
       // queda pendiente hasta una confirmación real o un rechazo explícitamente permanente.
       item.status = permanent ? 'conflict' : 'failed';
+      if (permanent) item.nextRetryAt = undefined;
       failedDependencyIds.add(item.id);
       if (permanent) permanentDependencyIds.add(item.id);
       remainingFromRun.push(item);
       errors.push({ type: item.type, actionId: item.actionId, message: item.lastError, retryCount: item.retryCount });
-      addSyncLog({ level:'error', source:'offline_queue', title:`Error al procesar item (${item.type})`, details:item.lastError, entityType:item.type, actionId:item.actionId, retryAttempt:item.retryCount, maxRetries:8 });
+      addSyncLog({ level:'error', source:'offline_queue', title:`Error al procesar item (${item.type})`, details: permanent ? item.lastError : `${item.lastError} — próximo reintento en ${Math.round(retryDelayMs / 1000)} s`, entityType:item.type, actionId:item.actionId, retryAttempt:item.retryCount });
       // No detener toda la cola por un fallo transitorio. Solo quedan
       // bloqueados los elementos que dependan de esta operación mediante
       // failedDependencyIds; los demás turnos/ventas pueden continuar. Esto evita
@@ -418,14 +435,14 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
     if (changedDuringRun) {
       // Es una versión más reciente de la operación; no puede considerarse
       // completada por la versión antigua que estaba en vuelo.
-      finalById.set(id, { ...current, status: 'pending' });
+      finalById.set(id, { ...current, status: 'pending', nextRetryAt: undefined });
     } else if (!handledIds.has(id)) {
       // La operación sigue pendiente porque esta ejecución no llegó a confirmarla.
       finalById.set(id, current);
     }
   }
 
-  const finalQueue = Array.from(finalById.values()).sort((a,b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id));
+  const finalQueue = Array.from(finalById.values()).sort((a,b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')) || String(a.id || '').localeCompare(String(b.id || '')));
   for (const item of sorted) clearOfflineQueueRemovalMark(item.id);
   // Reconciliamos contra el estado final, no contra la instantánea inicial.
   // Esto evita que un enqueue concurrente sea borrado por el commit de la cola.
@@ -450,8 +467,10 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
     return { processed, failed, remaining: getOfflineQueueCount(), conflicts: getOfflineConflictCount(), errors };
   }
 
-  isProcessingQueue = false;
   return { processed, failed, remaining: finalQueue.filter(item => item.status !== 'conflict').length, conflicts: finalQueue.filter(item => item.status === 'conflict').length, errors };
+  } finally {
+    isProcessingQueue = false;
+  }
 }
 
 function isManualOfflineSyncEnabled(): boolean {

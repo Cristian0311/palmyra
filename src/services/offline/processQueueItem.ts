@@ -19,7 +19,7 @@ import {
   pushCashSessionToSupabase, deleteProductFromSupabase, pullTransferHistoryFromSupabase,
   pushBranchToSupabase, deleteBranchFromSupabase, pushCategoryToSupabase, deleteCategoryFromSupabase, deleteSupplierFromSupabase, deleteUserFromSupabase,
   pushProductToSupabase, pushUserToSupabase, pushWarrantyToSupabase, pushTimeShiftToSupabase, deleteBankCardFromSupabase,
-  pushQuoteToSupabase, pushBankCardToSupabase, pushReturnToSupabase,
+  pushQuoteToSupabase, pushBankCardToSupabase, pushReturnToSupabase, stableOfflineEntityUuid, stableLegacySaleUuid,
   pushSupplierToSupabase, pushSupplierOrderToSupabase, pushInventoryAuditToSupabase,
   pushSalarySettlementToSupabase, hasPayrollEmployeeForSettlement, pushInventoryToSupabase, pushCurrencyToSupabase,
   pushCashMovementToSupabase, deleteCashMovementFromSupabase, pushCashSessionMetadataToSupabase,
@@ -31,6 +31,15 @@ import { reconcileBankCanonical } from './reconcileBank';
 import { replaceWarehouseInventory, replaceWarehousesInventory } from './reconcileInventory';
 import { reconcileSupplierReceiveCanonical } from './reconcileSupplierReceive';
 import { rememberOfflinePosCredential } from "../offlinePosAuth";
+const PERMANENT_SYNC_SQL_CODES = new Set([
+  'P0001', '23503', '23505', '42501', '22003', '22P02', '23514', '42883', '22007',
+  'IDEMPOTENCY_CONFLICT'
+]);
+
+function isPermanentSyncSqlCode(code: unknown): boolean {
+  return PERMANENT_SYNC_SQL_CODES.has(String(code || ''));
+}
+
 class PermanentSyncError extends Error {
   permanent = true;
 }
@@ -822,7 +831,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         const res = await callDeleteBankTransactionRPC(d.id);
         if (!res.success) {
           const code = String(res.errorCode || '');
-          if (['P0001','23503','23505','42501','22003','22P02','23514'].includes(code)) {
+          if (isPermanentSyncSqlCode(code)) {
             await reconcileBankCanonical();
             throw new PermanentSyncError(res.error || 'No se pudo eliminar el movimiento bancario');
           }
@@ -847,7 +856,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       const res = await callProcessBankTransactionRPC(d);
       if (!res.success) {
         const code = String(res.errorCode || '');
-        if (['P0001','23503','23505','42501','22003','22P02'].includes(code)) {
+        if (isPermanentSyncSqlCode(code)) {
           await reconcileBankCanonical();
           throw new PermanentSyncError(res.error || 'No se pudo sincronizar el movimiento bancario');
         }
@@ -980,10 +989,15 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       return true;
     }
     case 'void_transaction': {
-      const res = await callVoidTransactionRPC(data.id, data.userId, data.reason || 'Anulación de venta');
+      const { companyId } = await getActiveTenant();
+      const localSaleId = String(data.remoteId || data.remote_id || data.id || '');
+      const remoteSaleId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(localSaleId)
+        ? localSaleId
+        : await stableLegacySaleUuid(companyId, localSaleId);
+      const res = await callVoidTransactionRPC(remoteSaleId, data.userId, data.reason || 'Anulación de venta');
       if (!res.success) {
         const code = String(res.errorCode || '');
-        if (['P0001','23503','23505','42501','22003','22P02','IDEMPOTENCY_CONFLICT'].includes(code)) {
+        if (isPermanentSyncSqlCode(code)) {
           throw new PermanentSyncError(res.error || 'La anulación de la venta fue rechazada permanentemente.');
         }
         throw new Error(res.error || 'No se pudo anular la venta');
@@ -992,7 +1006,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       const { data: persistedVoid, error: voidReadError } = await supabase
         .from('sales')
         .select('id,status,warehouse_id')
-        .eq('id', data.id)
+        .eq('id', remoteSaleId)
         .maybeSingle();
       if (voidReadError) throw voidReadError;
       if (!persistedVoid || !['voided','refunded'].includes(persistedVoid.status)) {
@@ -1007,10 +1021,13 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       return true;
     }
     case 'return_complete': {
-      const res = await callCompleteReturnRPC(data.id, data.userId);
+      const { companyId } = await getActiveTenant();
+      const localReturnId = String(data.remoteId || data.remote_id || data.id || '');
+      const remoteReturnId = await stableOfflineEntityUuid(companyId, 'return', localReturnId);
+      const res = await callCompleteReturnRPC(remoteReturnId, data.userId);
       if (!res.success) {
         const code = String(res.errorCode || '');
-        if (['P0001','23503','23505','42501','22003','22P02','IDEMPOTENCY_CONFLICT'].includes(code)) {
+        if (isPermanentSyncSqlCode(code)) {
           throw new PermanentSyncError(res.error || 'La devolución fue rechazada permanentemente.');
         }
         throw new Error(res.error || 'No se pudo completar la devolución');
@@ -1019,7 +1036,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       const { data: persistedReturn, error: returnReadError } = await supabase
         .from('sales_returns')
         .select('id,status,sale_id')
-        .eq('id', data.id)
+        .eq('id', remoteReturnId)
         .maybeSingle();
       if (returnReadError) throw returnReadError;
       if (!persistedReturn || persistedReturn.status !== 'completed') {
