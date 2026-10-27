@@ -19,7 +19,7 @@ import {
   pushCashSessionToSupabase, deleteProductFromSupabase, pullTransferHistoryFromSupabase,
   pushBranchToSupabase, deleteBranchFromSupabase, pushCategoryToSupabase, deleteCategoryFromSupabase, deleteSupplierFromSupabase, deleteUserFromSupabase,
   pushProductToSupabase, pushUserToSupabase, pushWarrantyToSupabase, pushTimeShiftToSupabase, deleteBankCardFromSupabase,
-  pushQuoteToSupabase, pushBankCardToSupabase, pushReturnToSupabase, stableOfflineEntityUuid,
+  pushQuoteToSupabase, pushBankCardToSupabase, pushReturnToSupabase, stableOfflineEntityUuid, stableLegacySaleUuid,
   pushSupplierToSupabase, pushSupplierOrderToSupabase, pushInventoryAuditToSupabase,
   pushSalarySettlementToSupabase, hasPayrollEmployeeForSettlement, pushInventoryToSupabase, pushCurrencyToSupabase,
   pushCashMovementToSupabase, deleteCashMovementFromSupabase, pushCashSessionMetadataToSupabase,
@@ -980,7 +980,11 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       return true;
     }
     case 'void_transaction': {
-      const remoteSaleId = String(data.remoteId || data.remote_id || data.id || '');
+      const { companyId } = await getActiveTenant();
+      const localSaleId = String(data.remoteId || data.remote_id || data.id || '');
+      const remoteSaleId = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(localSaleId)
+        ? localSaleId
+        : await stableLegacySaleUuid(companyId, localSaleId);
       const res = await callVoidTransactionRPC(remoteSaleId, data.userId, data.reason || 'Anulación de venta');
       if (!res.success) {
         const code = String(res.errorCode || '');
