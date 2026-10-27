@@ -22,6 +22,18 @@ async function onlineClient() {
 }
 const queue=async(type:any,data:any,id:string)=>{await enqueueOfflineItem(type,data,id);};
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export async function stableOfflineEntityUuid(companyId: string, entityType: string, localId: string): Promise<string> {
+  if (UUID_RE.test(localId)) return localId;
+  const digest = await crypto.subtle.digest('SHA-256',
+    new TextEncoder().encode(`palmyra-offline-entity-v1:${companyId}:${entityType}:${localId}`));
+  const bytes = Array.from(new Uint8Array(digest).slice(0, 16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hex.slice(0,8)+'-'+hex.slice(8,12)+'-'+hex.slice(12,16)+'-'+hex.slice(16,20)+'-'+hex.slice(20);
+}
+
 export async function pushProductToSupabase(product:Product, options?: { queueOnTransientFailure?: boolean }){
   try{
     const supabase=await onlineClient();
@@ -328,7 +340,10 @@ export async function pushReturnToSupabase(item:ReturnItem):Promise<boolean>{
   try{
     const supabase=await onlineClient();const {companyId}=await getActiveTenant();
     if(item.status==='pending' || item.status==='approved'){
-      const {data,error}=await supabase.rpc('palmyra_create_return',{p_return_id:item.id,p_company_id:companyId,p_sale_id:item.transactionId,p_product_id:item.productId,p_quantity:Number(item.quantity)||0,p_reason:item.reason||'',p_amount:Number(item.refundAmount)||0,p_type:item.type||'refund'});
+      // Legacy DEV-... IDs are not UUIDs. Map them deterministically so retries
+      // and the subsequent completion RPC target the same server return.
+      const remoteReturnId = await stableOfflineEntityUuid(companyId, 'return', String(item.id || 'legacy-return'));
+      const {data,error}=await supabase.rpc('palmyra_create_return',{p_return_id:remoteReturnId,p_company_id:companyId,p_sale_id:item.transactionId,p_product_id:item.productId,p_quantity:Number(item.quantity)||0,p_reason:item.reason||'',p_amount:Number(item.refundAmount)||0,p_type:item.type||'refund'});
       if(error)throw error;
       return Boolean(data?.success);
     }
