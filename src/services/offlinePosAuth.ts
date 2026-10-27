@@ -7,6 +7,8 @@ const PBKDF2_ITERATIONS = 310_000;
 // server snapshots must never expire/delete them; only an explicit password
 // overwrite or an authorized account revocation flow may replace/remove one.
 const SYNC_RETRY_WINDOW_MS = 30_000;
+// Bound the exposure window for credentials after an employee is revoked remotely.
+const OFFLINE_CREDENTIAL_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 const lastSyncAttempt = new Map<string, number>();
 
 type OfflinePosCredential = {
@@ -79,8 +81,9 @@ function equalHex(a: string, b: string): boolean {
 }
 
 function isFresh(savedAt: number): boolean {
-  // Do not expire valid offline credentials based on age.
-  return Number.isFinite(savedAt) && savedAt > 0;
+  return Number.isFinite(savedAt) && savedAt > 0 &&
+    savedAt <= Date.now() + 5 * 60 * 1000 &&
+    Date.now() - savedAt <= OFFLINE_CREDENTIAL_MAX_AGE_MS;
 }
 
 async function createCredential(companyId: string, userId: string, password: string, savedAt = Date.now()): Promise<OfflinePosCredential> {
@@ -105,10 +108,10 @@ async function pushVerifierToServer(companyId: string, userId: string, password:
     if (error) {
       // Non-manager employees cannot publish a verifier for the whole team. A
       // successful local verifier still permits this device to work offline.
-      console.info("[PALMYRA] El verificador POS quedó solo en este dispositivo.", error.message);
+      console.warn("[PALMYRA] El verificador POS quedó solo en este dispositivo; el acceso offline en otros equipos no está respaldado.", error.message);
     }
   } catch (error) {
-    console.info("[PALMYRA] No se pudo sincronizar el verificador POS; se conserva localmente.", error);
+    console.warn("[PALMYRA] No se pudo sincronizar el verificador POS; el acceso offline solo está guardado en este dispositivo.", error);
   }
 }
 
@@ -147,7 +150,7 @@ async function syncOfflinePosCredentialsOnce(companyId: string): Promise<{ synce
   });
   if (error) {
     lastSyncAttempt.delete(cleanCompanyId);
-    console.info("[PALMYRA] No fue posible descargar los verificadores POS para trabajo offline.", error.message);
+    console.warn("[PALMYRA] No fue posible descargar los verificadores POS para trabajo offline; este dispositivo podría no tener credenciales actualizadas.", error.message);
     return { synced: 0, skipped: 0 };
   }
 
