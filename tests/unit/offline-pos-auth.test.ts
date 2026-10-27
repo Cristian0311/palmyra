@@ -69,3 +69,21 @@ test("team-wide offline POS login allows POS operators to preload active employe
   assert.match(auth, /recordOfflineCredentialFailure/);
   assert.match(auth, /isOfflineCredentialBlocked/);
 });
+
+test("offline POS sync removes credentials only when the server explicitly revokes them", () => {
+  const auth = source("src/services/offlinePosAuth.ts");
+  const migration = source("supabase/migrations/20261027110000_propagate_offline_pos_credential_revocations.sql");
+  assert.match(auth, /row\?\.revoked === true/);
+  assert.match(auth, /Never delete device-local verifiers just because a server snapshot omitted/);
+  assert.match(migration, /employee_pos_offline_credential_revocations/);
+  assert.match(migration, /'revoked', true/);
+  assert.match(migration, /'revoked', false/);
+});
+
+test("transient offline queue failures back off exponentially while retaining durable operations", () => {
+  const sync = source("src/services/offlineSync.ts");
+  const types = source("src/services/offlineQueueTypes.ts");
+  assert.match(types, /nextRetryAt\?: number/);
+  assert.match(sync, /Math\.min\(15 \* 60_000, 30_000 \* \(2 \*\* Math\.min\(5, item\.retryCount - 1\)\)\)/);
+  assert.match(sync, /item\.status === 'failed' && Number\(item\.nextRetryAt \|\| 0\) > Date\.now\(\)/);
+});
