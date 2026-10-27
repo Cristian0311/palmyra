@@ -363,26 +363,23 @@ export default function Inventory() {
     }
   }, [branches, bulkBranchId]);
 
-  const handleBulkChange = (id: string, field: 'costPrice' | 'price' | 'quantity' | 'commissionValue', value: number) => {
-    const [prodId, branchId] = id.split(':::');
-    
+  const handleBulkChange = (id: string, field: 'name' | 'costPrice' | 'price' | 'quantity' | 'commissionValue', value: string | number) => {
+    const [prodId] = id.split(':::');
+    const normalizedValue = field === 'name' ? String(value) : Number(value);
+    const applyField = (key: string, prev: typeof bulkChanges) => ({
+      ...(prev[key] || {}),
+      [field]: normalizedValue
+    }) as { name?: string; costPrice?: number; price?: number; quantity?: number; commissionValue?: number };
+
     setBulkChanges(prev => {
       const next = { ...prev };
-      
       if (field === 'quantity') {
-        // Quantity is branch-specific
-        next[id] = { ...(next[id] || {}), [field]: value };
+        // Quantity is branch-specific; all other fields are product-global.
+        next[id] = applyField(id, prev);
       } else {
-        // Price/Cost/Commission are global for the product. Update ALL rows for this product.
         const productRows = Object.keys(next).filter(key => key.startsWith(`${prodId}:::`));
-        
-        if (productRows.length === 0) {
-          next[id] = { ...(next[id] || {}), [field]: value };
-        } else {
-          productRows.forEach(key => {
-            next[key] = { ...(next[key] || {}), [field]: value };
-          });
-        }
+        if (productRows.length === 0) next[id] = applyField(id, prev);
+        else productRows.forEach(key => { next[key] = applyField(key, prev); });
       }
       return next;
     });
