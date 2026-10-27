@@ -121,10 +121,25 @@ async function migrateLegacyQueue(): Promise<void> {
   // Merge every source instead of choosing one. This prevents an enqueue that
   // happens during startup from being overwritten by the migration itself.
   const merged = new Map<string, OfflineQueueItem>();
-  for (const item of [...(Array.isArray(existing) ? existing : []), ...(Array.isArray(legacy) ? legacy : []), ...memoryQueue]) {
+  const mergeCandidate = (item: OfflineQueueItem) => {
     const normalized = { ...item, deviceId: item.deviceId || getDeviceId() };
-    merged.set(`${normalized.type}:${normalized.actionId}`, normalized);
-  }
+    const mergeKey = `${normalized.type}:${normalized.actionId}`;
+    const previous = merged.get(mergeKey);
+    if (!previous) { merged.set(mergeKey, normalized); return; }
+    const previousTime = Date.parse(String(previous.timestamp || '')) || 0;
+    const candidateTime = Date.parse(String(normalized.timestamp || '')) || 0;
+    // Prefer the freshest version; when timestamps tie, retain the more advanced
+    // state and higher retry count rather than resetting a durable operation.
+    const rank = (x: OfflineQueueItem) => x.status === 'conflict' ? 4 : x.status === 'processing' ? 3 : x.status === 'failed' ? 2 : 1;
+    if (candidateTime > previousTime ||
+        (candidateTime === previousTime && (rank(normalized) > rank(previous) ||
+          (rank(normalized) === rank(previous) && Number(normalized.retryCount || 0) > Number(previous.retryCount || 0))))) {
+      merged.set(mergeKey, normalized);
+    }
+  };
+  for (const item of (Array.isArray(existing) ? existing : [])) mergeCandidate(item);
+  for (const item of (Array.isArray(legacy) ? legacy : [])) mergeCandidate(item);
+  for (const item of memoryQueue) mergeCandidate(item);
   memoryQueue = Array.from(merged.values())
     .filter(item => !tombstones.has(String(item.id)))
     .sort((a,b) => a.timestamp.localeCompare(b.timestamp));
@@ -160,7 +175,19 @@ export async function setOfflineQueueScope(): Promise<void> {
   persistenceError = null;
   resetOfflineQueueDbCache();
 
-  queueInitPromise = migrateLegacyQueue();
+  queueInitPromise = migrateLegacyQueue().catch(async (error) => {
+    persistenceError = error instanceof Error ? error : new Error(String(error));
+    console.error('[offlineSync] Error inicializando cola offline; se conserva el estado disponible:', error);
+    if (!queueReady) {
+      try {
+        const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed)) memoryQueue = parsed;
+      } catch {}
+      queueReady = true;
+      emitQueueEvent();
+    }
+  });
   await queueInitPromise;
 }
 
@@ -190,29 +217,6 @@ export function getOfflineQueue(): OfflineQueueItem[] {
  */
 export async function waitForOfflineQueueReady(): Promise<void> {
   if (queueInitPromise) await queueInitPromise;
-}
-
-function persistQueueSnapshot(queue: OfflineQueueItem[]): void {
-  memoryQueue = [...queue];
-  emitQueueEvent();
-  const snapshot = [...memoryQueue];
-  // El snapshot completo se usa solo durante la migración/recuperación.
-  // Las operaciones normales usan put/delete incrementales para no reescribir
-  // miles de operaciones cada vez que entra una venta nueva.
-  persistenceChain = persistenceChain.then(async () => {
-    if (!queueReady && queueInitPromise) await queueInitPromise;
-    if (typeof indexedDB !== 'undefined') {
-      await idbReplaceAll(DB_NAME, Boolean(activeScopeKey), snapshot);
-      return;
-    }
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot)); } catch (e) {
-      console.error('[offlineSync] Error al guardar cola offline:', e);
-    }
-  }).catch(async e => {
-    persistenceError = e instanceof Error ? e : new Error(String(e));
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot)); } catch { /* se conserva en memoria y se reporta al sincronizador */ }
-    console.error('[offlineSync] Error persistiendo cola:', e);
-  });
 }
 
 function persistQueueItem(item: OfflineQueueItem): Promise<void> {
@@ -350,12 +354,12 @@ export async function setOfflineQueueItemLastError(type: OfflineActionType, acti
   await persistQueueItem(updated);
 }
 
-export function removeFromOfflineQueue(id: string): void {
+export async function removeFromOfflineQueue(id: string): Promise<void> {
   removedDuringQueueProcess.add(id);
   memoryQueue = memoryQueue.filter(item => item.id !== id);
   addQueueTombstone(id);
   emitQueueEvent();
-  persistQueueDelete(id);
+  await persistQueueDelete(id);
 }
 
 export function clearOfflineQueue(): void {
