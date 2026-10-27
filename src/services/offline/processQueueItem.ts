@@ -822,7 +822,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         const res = await callDeleteBankTransactionRPC(d.id);
         if (!res.success) {
           const code = String(res.errorCode || '');
-          if (['P0001','23503','23505','42501','22003','22P02','23514'].includes(code)) {
+          if (['P0001','23503','23505','42501','22003','22P02','23514','42883','22007'].includes(code)) {
             await reconcileBankCanonical();
             throw new PermanentSyncError(res.error || 'No se pudo eliminar el movimiento bancario');
           }
@@ -988,7 +988,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       const res = await callVoidTransactionRPC(remoteSaleId, data.userId, data.reason || 'Anulación de venta');
       if (!res.success) {
         const code = String(res.errorCode || '');
-        if (['P0001','23503','23505','42501','22003','22P02','23514','42883','22007','IDEMPOTENCY_CONFLICT'].includes(code)) {
+        if (['P0001','23503','23505','42501','22003','22P02','23514','42883','22007','42883','22007','IDEMPOTENCY_CONFLICT'].includes(code)) {
           throw new PermanentSyncError(res.error || 'La anulación de la venta fue rechazada permanentemente.');
         }
         throw new Error(res.error || 'No se pudo anular la venta');
@@ -1018,7 +1018,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       const res = await callCompleteReturnRPC(remoteReturnId, data.userId);
       if (!res.success) {
         const code = String(res.errorCode || '');
-        if (['P0001','23503','23505','42501','22003','22P02','IDEMPOTENCY_CONFLICT'].includes(code)) {
+        if (['P0001','23503','23505','42501','22003','22P02','23514','42883','22007','IDEMPOTENCY_CONFLICT'].includes(code)) {
           throw new PermanentSyncError(res.error || 'La devolución fue rechazada permanentemente.');
         }
         throw new Error(res.error || 'No se pudo completar la devolución');
