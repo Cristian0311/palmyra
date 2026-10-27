@@ -100,6 +100,7 @@ test("PWA updates wait for user confirmation instead of swapping the app shell m
   assert.match(vite, /registerType: 'prompt'/);
   assert.match(vite, /skipWaiting: false/);
   assert.match(main, /registration\.waiting \|\| registration\.installing/);
-  assert.match(main, /worker\.postMessage\(\{ type: 'SKIP_WAITING' \}\)/);
-  assert.match(main, /worker\.state !== 'activated'/);
+  assert.match(main, /await updateSW\(true\)/);
+  assert.match(main, /library-supported activation path/);
+  assert.doesNotMatch(main, /worker\.postMessage\(\{ type: 'SKIP_WAITING' \}\)/);
 });

@@ -203,22 +203,23 @@ const applyPalmyraUpdate = async () => {
 
     const registration = await navigator.serviceWorker?.getRegistration();
     if (!registration) {
-      // No service worker (for example, a browser that blocks it): reload once.
+      // If service workers are unavailable, refresh only once as a fallback.
       window.location.reload();
       return;
     }
 
-    // Explicitly check for a new worker. With registerType:'prompt', a newly
-    // installed worker stays waiting until this user-confirmed action.
+    // Ask the browser to fetch the newest worker, then let vite-plugin-pwa
+    // coordinate SKIP_WAITING/controllerchange/reload. Do not race a manual
+    // reload against worker activation: that race can leave the app shell blank.
     await registration.update().catch(() => {});
     let worker = registration.waiting || registration.installing;
 
     if (worker && worker.state !== 'installed' && worker.state !== 'activated') {
       await new Promise<void>((resolve) => {
-        let done = false;
+        let settled = false;
         const finish = () => {
-          if (done) return;
-          done = true;
+          if (settled) return;
+          settled = true;
           worker?.removeEventListener('statechange', onState);
           resolve();
         };
@@ -226,44 +227,21 @@ const applyPalmyraUpdate = async () => {
           if (worker && ['installed', 'activated', 'redundant'].includes(worker.state)) finish();
         };
         worker!.addEventListener('statechange', onState);
-        window.setTimeout(finish, 12_000);
+        window.setTimeout(finish, 15_000);
       });
     }
 
     worker = registration.waiting || (registration.installing?.state === 'installed' ? registration.installing : null);
     if (worker && worker.state !== 'activated') {
-      const controllerChanged = new Promise<void>((resolve) => {
-        let done = false;
-        const finish = () => {
-          if (done) return;
-          done = true;
-          navigator.serviceWorker.removeEventListener('controllerchange', finish);
-          resolve();
-        };
-        navigator.serviceWorker.addEventListener('controllerchange', finish, { once: true });
-        window.setTimeout(finish, 8_000);
-      });
-      worker.postMessage({ type: 'SKIP_WAITING' });
-      await controllerChanged;
-      // Do not navigate while the worker is still activating.
-      if (worker.state === 'activating' || worker.state === 'installed' || worker.state === 'installing') {
-        await new Promise<void>((resolve) => {
-          let done = false;
-          const finish = () => {
-            if (done) return;
-            done = true;
-            worker?.removeEventListener('statechange', onState);
-            resolve();
-          };
-          const onState = () => { if (worker?.state === 'activated' || worker?.state === 'redundant') finish(); };
-          worker!.addEventListener('statechange', onState);
-          window.setTimeout(finish, 4_000);
-        });
-      }
+      // updateSW(true) is the library-supported activation path and performs
+      // the reload only when the new worker takes control of the page.
+      await updateSW(true);
+      return;
     }
 
-    // Only update the local build marker when the server confirms the current
-    // version. If it cannot be checked, keep the update notice for next launch.
+    // A version marker can be stale even when there is no waiting worker.
+    // Reload only if the server confirms a different build, otherwise safely
+    // dismiss the stale notice and leave the running app intact.
     let serverBuildId = '';
     try {
       const response = await fetch('/version.json?ts=' + Date.now(), {
@@ -276,14 +254,18 @@ const applyPalmyraUpdate = async () => {
       }
     } catch {}
 
-    if (serverBuildId) {
+    const localBuildId = localStorage.getItem(PALMYRA_BUILD_ID_KEY);
+    if (serverBuildId && localBuildId && serverBuildId !== localBuildId) {
       try { localStorage.setItem(PALMYRA_BUILD_ID_KEY, serverBuildId); } catch {}
       try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
       try { sessionStorage.removeItem(PALMYRA_UPDATE_APPLY_KEY); } catch {}
+      window.location.reload();
+      return;
     }
-    // The browser now has a stable worker state; reload to mount the matching
-    // HTML/chunks. Do not clear pending-update state if version confirmation failed.
-    window.location.reload();
+
+    try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
+    try { sessionStorage.removeItem(PALMYRA_UPDATE_APPLY_KEY); } catch {}
+    window.dispatchEvent(new CustomEvent('palmyra:update-available'));
   } catch (error) {
     console.warn('[PALMYRA] No se pudo aplicar la actualización:', error);
     try { localStorage.setItem(PALMYRA_UPDATE_AVAILABLE_KEY, '1'); } catch {}
