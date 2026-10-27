@@ -26,7 +26,7 @@ function isUuid(value: unknown): value is string {
 
 // Deterministic UUID for legacy local ticket IDs. The same ticket always
 // maps to the same server primary key, including after a timeout/lost response.
-async function stableLegacySaleUuid(companyId: string, localId: string): Promise<string> {
+export async function stableLegacySaleUuid(companyId: string, localId: string): Promise<string> {
   const source = new TextEncoder().encode('palmyra-legacy-sale-v1:' + companyId + ':' + localId);
   const digest = await crypto.subtle.digest('SHA-256', source);
   const bytes = Array.from(new Uint8Array(digest).slice(0, 16));
