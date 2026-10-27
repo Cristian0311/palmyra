@@ -980,10 +980,11 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       return true;
     }
     case 'void_transaction': {
-      const res = await callVoidTransactionRPC(data.id, data.userId, data.reason || 'Anulación de venta');
+      const remoteSaleId = String(data.remoteId || data.remote_id || data.id || '');
+      const res = await callVoidTransactionRPC(remoteSaleId, data.userId, data.reason || 'Anulación de venta');
       if (!res.success) {
         const code = String(res.errorCode || '');
-        if (['P0001','23503','23505','42501','22003','22P02','IDEMPOTENCY_CONFLICT'].includes(code)) {
+        if (['P0001','23503','23505','42501','22003','22P02','23514','42883','22007','IDEMPOTENCY_CONFLICT'].includes(code)) {
           throw new PermanentSyncError(res.error || 'La anulación de la venta fue rechazada permanentemente.');
         }
         throw new Error(res.error || 'No se pudo anular la venta');
@@ -992,7 +993,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       const { data: persistedVoid, error: voidReadError } = await supabase
         .from('sales')
         .select('id,status,warehouse_id')
-        .eq('id', data.id)
+        .eq('id', remoteSaleId)
         .maybeSingle();
       if (voidReadError) throw voidReadError;
       if (!persistedVoid || !['voided','refunded'].includes(persistedVoid.status)) {
