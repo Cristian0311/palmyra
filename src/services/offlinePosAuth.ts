@@ -7,7 +7,59 @@ const PBKDF2_ITERATIONS = 310_000;
 // server snapshots must never expire/delete them; only an explicit password
 // overwrite or an authorized account revocation flow may replace/remove one.
 const SYNC_RETRY_WINDOW_MS = 30_000;
+// Persistent client-side throttling raises the cost of casual offline PIN guessing.
+// It is a defense-in-depth measure, not a security boundary against an attacker
+// who can edit/erase this browser's storage or modify the client application.
+const FAILED_ATTEMPTS_PREFIX = "palmyra:offline-pos-failed-attempts:v1:";
 const lastSyncAttempt = new Map<string, number>();
+
+type OfflineAttemptState = { attempts: number; blockedUntil: number; updatedAt: number };
+
+function attemptKey(companyId: string, userId: string): string {
+  return FAILED_ATTEMPTS_PREFIX + encodeURIComponent(companyId) + ":" + encodeURIComponent(userId);
+}
+
+function readAttemptState(companyId: string, userId: string): OfflineAttemptState {
+  try {
+    const raw = localStorage.getItem(attemptKey(companyId, userId));
+    if (!raw) return { attempts: 0, blockedUntil: 0, updatedAt: 0 };
+    const parsed = JSON.parse(raw);
+    const updatedAt = Number(parsed?.updatedAt) || 0;
+    if (!Number.isFinite(updatedAt) || Date.now() - updatedAt > 60 * 60 * 1000) {
+      localStorage.removeItem(attemptKey(companyId, userId));
+      return { attempts: 0, blockedUntil: 0, updatedAt: 0 };
+    }
+    return {
+      attempts: Math.max(0, Math.floor(Number(parsed?.attempts) || 0)),
+      blockedUntil: Math.max(0, Number(parsed?.blockedUntil) || 0),
+      updatedAt
+    };
+  } catch {
+    return { attempts: 0, blockedUntil: 0, updatedAt: 0 };
+  }
+}
+
+function recordOfflineCredentialFailure(companyId: string, userId: string): void {
+  try {
+    const previous = readAttemptState(companyId, userId);
+    const attempts = previous.attempts + 1;
+    // 5 failures: 30s; then 1m, 2m, 4m, capped at 5m.
+    const delay = attempts < 5 ? 0 : Math.min(5 * 60_000, 30_000 * (2 ** (attempts - 5)));
+    localStorage.setItem(attemptKey(companyId, userId), JSON.stringify({
+      attempts,
+      blockedUntil: Date.now() + delay,
+      updatedAt: Date.now()
+    }));
+  } catch {}
+}
+
+function clearOfflineCredentialFailures(companyId: string, userId: string): void {
+  try { localStorage.removeItem(attemptKey(companyId, userId)); } catch {}
+}
+
+function isOfflineCredentialBlocked(companyId: string, userId: string): boolean {
+  return readAttemptState(companyId, userId).blockedUntil > Date.now();
+}
 
 type OfflinePosCredential = {
   version: 2;
@@ -126,6 +178,7 @@ export async function rememberOfflinePosCredential(companyId: string, userId: st
 
   const credential = await createCredential(cleanCompanyId, cleanUserId, cleanPassword);
   localStorage.setItem(key(cleanCompanyId, cleanUserId), JSON.stringify(credential));
+  clearOfflineCredentialFailures(cleanCompanyId, cleanUserId);
   try { localStorage.removeItem(legacyKey(cleanCompanyId, cleanUserId)); } catch {}
   await pushVerifierToServer(cleanCompanyId, cleanUserId, cleanPassword, credential);
 }
@@ -215,6 +268,7 @@ export async function verifyOfflinePosCredential(companyId: string, userId: stri
   const cleanUserId = String(userId || "").trim();
   const cleanPassword = String(password || "");
   if (!cleanCompanyId || !cleanUserId || !cleanPassword || typeof localStorage === "undefined") return false;
+  if (isOfflineCredentialBlocked(cleanCompanyId, cleanUserId)) return false;
 
   try {
     const raw = localStorage.getItem(key(cleanCompanyId, cleanUserId));
@@ -226,7 +280,10 @@ export async function verifyOfflinePosCredential(companyId: string, userId: stri
         const verifier = await deriveVerifier(
           cleanCompanyId, cleanUserId, cleanPassword, stored.salt, Number(stored.iterations)
         );
-        return equalHex(verifier, stored.verifier);
+        const matches = equalHex(verifier, stored.verifier);
+        if (matches) clearOfflineCredentialFailures(cleanCompanyId, cleanUserId);
+        else recordOfflineCredentialFailure(cleanCompanyId, cleanUserId);
+        return matches;
       }
       // Expired or malformed records must not authorize a POS session.
       localStorage.removeItem(key(cleanCompanyId, cleanUserId));
@@ -239,7 +296,10 @@ export async function verifyOfflinePosCredential(companyId: string, userId: stri
     const legacy = JSON.parse(oldRaw);
     if (!legacy?.salt || !legacy?.verifier) return false;
     const legacyVerifier = await legacyDigest(cleanUserId + ":" + legacy.salt + ":" + cleanPassword);
-    if (!equalHex(legacyVerifier, String(legacy.verifier))) return false;
+    if (!equalHex(legacyVerifier, String(legacy.verifier))) {
+      recordOfflineCredentialFailure(cleanCompanyId, cleanUserId);
+      return false;
+    }
     await rememberOfflinePosCredential(cleanCompanyId, cleanUserId, cleanPassword);
     return true;
   } catch {
