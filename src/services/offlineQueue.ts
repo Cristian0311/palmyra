@@ -194,7 +194,17 @@ export async function setOfflineQueueScope(): Promise<void> {
 // Hydrate once at module load. Synchronous readers use the memory snapshot.
 // Writers wait for this migration so a first offline operation cannot be lost
 // when the legacy localStorage queue is being imported.
-queueInitPromise = migrateLegacyQueue();
+queueInitPromise = migrateLegacyQueue().catch(async (error) => {
+  persistenceError = error instanceof Error ? error : new Error(String(error));
+  console.error('[offlineSync] Error inicializando cola offline; se conserva el respaldo disponible:', error);
+  try {
+    const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(STORAGE_KEY) : null;
+    const parsed = raw ? JSON.parse(raw) : [];
+    if (Array.isArray(parsed)) memoryQueue = parsed.filter(item => item && item.id && item.type && item.actionId);
+  } catch {}
+  queueReady = true;
+  emitQueueEvent();
+});
 
 function emitQueueEvent() {
   if (typeof window !== 'undefined') {
