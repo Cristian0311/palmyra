@@ -15,7 +15,8 @@ import { initKeyboardViewport } from "./services/keyboardViewport";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { getDevicePerformanceTier, scheduleIdleTask } from "./utils/devicePerformance";
 import { flushLocalStateStorage } from "./services/localStateStorage";
-import { setPalmyraLocalScope, clearPalmyraLocalScope } from "./services/localScope";
+import { setPalmyraLocalScope, clearPalmyraLocalScope, getPalmyraLocalScope } from "./services/localScope";
+import { getCachedSaaSContext } from "./services/offlineAuthContext";
 import { registerCurrentDevice } from "./services/device";
 import { touchCurrentDevice } from "./services/security";
 
@@ -97,7 +98,10 @@ export default function App() {
 
     for (let attempt = 0; attempt < 4; attempt += 1) {
       try {
-        const ctx = await loadSaaSContext(attempt > 0);
+        const ctx = await Promise.race([
+          loadSaaSContext(attempt > 0),
+          new Promise<never>((_, reject) => window.setTimeout(() => reject(new Error("Tiempo de espera agotado verificando la conexión. Se intentará abrir la sesión local.")), 5000))
+        ]);
 
         if (!ctx) {
           const supabase = getSupabase();
@@ -175,6 +179,27 @@ export default function App() {
       } catch (error) {
         lastError = error;
         console.warn(`[PALMYRA] Fallo de hidratación (${attempt + 1}/4):`, error);
+
+        // El indicador navigator.onLine no es fiable: Android puede informar
+        // conexión aunque el router no tenga salida a Internet. Si la sesión
+        // cloud tarda o falla, abrir el último contexto SaaS verificado y
+        // mantener la operación local; la sincronización se reanudará online.
+        const localScope = getPalmyraLocalScope();
+        const cachedContext = localScope?.userId ? getCachedSaaSContext(localScope.userId) : null;
+        if (cachedContext?.companyId && cachedContext.warehouseIds?.[0]) {
+          try {
+            await useStore.persist.rehydrate();
+            useStore.setState({
+              currentUser: cachedContext.user,
+              currentBranchId: cachedContext.warehouseIds[0],
+            });
+            setAccessState("ready");
+            console.info("[PALMYRA] Sesión local verificada: se abrió el espacio offline.");
+            return;
+          } catch (cacheError) {
+            console.warn("[PALMYRA] No se pudo hidratar el espacio local cacheado:", cacheError);
+          }
+        }
         if (attempt < 3) {
           await new Promise((resolve) => window.setTimeout(resolve, 350 * (attempt + 1)));
         }
