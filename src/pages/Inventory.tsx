@@ -719,18 +719,41 @@ export default function Inventory() {
     let totalStock = 0;
     let totalCostValue = 0;
     let totalSaleValue = 0;
+    let totalEmployeeSalary = 0;
+
+    const activeEmployees = (users || []).filter(user => user.isActive !== false);
+    const employeeCount = activeEmployees.length;
 
     for (const product of targetProducts) {
-      totalStock += product.totalStock;
-      totalCostValue += product.costPrice * product.totalStock;
-      totalSaleValue += product.price * product.totalStock;
+      const quantity = Math.max(0, Number(product.totalStock) || 0);
+      const unitCost = Math.max(0, Number(product.costPrice) || 0);
+      const unitSale = Math.max(0, Number(product.price) || 0);
+      totalStock += quantity;
+      totalCostValue += unitCost * quantity;
+      totalSaleValue += unitSale * quantity;
+
+      // Estimate the salary/commission attributable to one unit using the
+      // active workforce's compensation rules. Fixed-product employees use
+      // the product's configured CUP commission; percentage employees use
+      // their own configured rate against this product's sale price.
+      const unitSalary = employeeCount > 0
+        ? activeEmployees.reduce((sum, employee) => {
+            const compensationType = employee.compensationType || 'fixed_product';
+            if (compensationType === 'sales_percentage') {
+              const rate = Math.max(0, Math.min(100, Number(employee.salesPercentage ?? employee.commissionRate) || 0));
+              return sum + (unitSale * rate / 100);
+            }
+            return sum + Math.max(0, Number(product.commissionValue) || 0);
+          }, 0) / employeeCount
+        : 0;
+      totalEmployeeSalary += unitSalary * quantity;
     }
 
-    const totalProfit = totalSaleValue - totalCostValue;
+    const totalProfit = totalSaleValue - totalEmployeeSalary - totalCostValue;
     const lowStockCount = inventoryData.full.filter(p => p.isLowStock).length;
 
     return { totalProducts, totalStock, lowStockCount, totalCostValue, totalSaleValue, totalProfit };
-  }, [inventory, products, inventoryData.full, selectedBranch]);
+  }, [inventory, products, inventoryData.full, selectedBranch, users]);
 
   return (
     <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500 h-full flex flex-col min-h-0">
@@ -804,7 +827,7 @@ export default function Inventory() {
           <div className="mt-0.5"><MultiCurrencyDisplay amount={stats.totalSaleValue} /></div>
         </div>
         <div className="bg-indigo-50/70 dark:bg-indigo-950/40 p-1.5 sm:p-2 rounded-xl border border-indigo-100 dark:border-indigo-900/40 shadow-xs flex flex-col justify-between">
-          <span className="text-[7px] sm:text-[7.5px] font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-wider">Ganancia</span>
+          <span className="text-[7px] sm:text-[7.5px] font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-wider">Ganancia real</span>
           <div className="mt-0.5"><MultiCurrencyDisplay amount={stats.totalProfit} /></div>
         </div>
         <div className="col-span-2 sm:col-span-1 bg-secondary p-1.5 sm:p-2 rounded-xl border border-base shadow-xs flex flex-col justify-between">
