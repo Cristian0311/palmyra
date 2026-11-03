@@ -575,15 +575,20 @@ export function ReportsSalesTab({
             </button>
             <button
               type="button"
+              disabled={pendingRemoval.status === "partial_refund"}
               onClick={() => {
                 const selected = pendingRemoval;
                 setPendingRemoval(null);
                 void onVoidTransaction(selected);
               }}
-              className="w-full text-left p-3 rounded-xl border border-rose-300 bg-rose-50 dark:bg-rose-950/20 hover:bg-rose-100 dark:hover:bg-rose-950/40"
+              className="w-full text-left p-3 rounded-xl border border-rose-300 bg-rose-50 dark:bg-rose-950/20 hover:bg-rose-100 dark:hover:bg-rose-950/40 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span className="block text-xs font-black text-rose-800 dark:text-rose-300">Eliminar reporte y afectar la venta y productos</span>
-              <span className="block text-[11px] text-rose-800/80 dark:text-rose-200/80 mt-1">Anula esta venta y solicita la reposición de sus productos. Esta acción no elimina todo el turno ni liquida automáticamente nómina o comisiones.</span>
+              <span className="block text-[11px] text-rose-800/80 dark:text-rose-200/80 mt-1">
+                {pendingRemoval.status === "partial_refund"
+                  ? "Bloqueado: esta venta tiene una devolución parcial. Debe conciliarse primero para evitar reponer productos dos veces."
+                  : "Anula esta venta individual y solicita la reposición de sus productos. No elimina el turno completo ni liquida automáticamente nómina o comisiones."}
+              </span>
             </button>
             <p className="text-[10px] text-muted">La anulación requiere conexión para confirmar la operación en el servidor. Si el dispositivo está offline, se conservará en la cola de sincronización.</p>
             <div className="flex justify-end">
