@@ -143,6 +143,8 @@ export interface Transaction {
   deleteReason?: string;
   /** Local marker: sale exists on this terminal and still requires durable/offline confirmation. */
   offlinePending?: boolean;
+  /** Server-persisted report visibility; does not alter the underlying sale. */
+  reportHidden?: boolean;
 }
 
 export interface ReturnItem {

@@ -38,6 +38,7 @@ import { loadSaaSContext } from "../services/saas";
 import { getActiveTenant } from "../services/tenant";
 import { loadCompensationSettings } from "../services/team";
 import { printThermalReceipt, format58mmLine } from "../lib/escpos";
+import { setSaleReportHidden } from "../services/supabaseSync/mutations";
 
 const AddItemToShiftModal = lazy(() => import("../components/reports/AddItemToShiftModal"));
 const ReportsCharts = lazy(() => import("../components/reports/ReportsCharts"));
@@ -208,24 +209,32 @@ export default function Reports() {
 
   const [activeTab, setActiveTab] = useState<'sales' | 'payroll' | 'sessions' | 'discrepancies' | 'movements' | 'transfers'>('sales');
   const [salesViewMode, setSalesViewMode] = useState<'by_shift' | 'all_tickets'>('by_shift');
-  const [hiddenReportIds, setHiddenReportIds] = useState<string[]>(() => {
+  const [hiddenReportIds, setHiddenReportIds] = useState<string[]>(() =>
+    transactions.filter(transaction => transaction.reportHidden).map(transaction => transaction.id)
+  );
+  useEffect(() => {
+    setHiddenReportIds(transactions.filter(transaction => transaction.reportHidden).map(transaction => transaction.id));
+  }, [transactions]);
+  const hideTransactionReport = useCallback(async (transaction: Transaction) => {
+    const saleId = transaction.remoteId || transaction.id;
     try {
-      const value = JSON.parse(localStorage.getItem('palmyra:hidden-sales-report-ids:v2') || '[]');
-      return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [];
-    } catch { return []; }
-  });
-  const hideTransactionReport = useCallback((transaction: Transaction) => {
-    const next = Array.from(new Set([...hiddenReportIds, transaction.id]));
-    setHiddenReportIds(next);
-    try { localStorage.setItem('palmyra:hidden-sales-report-ids:v2', JSON.stringify(next)); } catch {}
-    addNotification('Ticket ocultado de la lista de reportes. La venta, el cobro y el inventario permanecen intactos.', 'success');
-  }, [hiddenReportIds, addNotification]);
-  const restoreTransactionReport = useCallback((transaction: Transaction) => {
-    const next = hiddenReportIds.filter(id => id !== transaction.id);
-    setHiddenReportIds(next);
-    try { localStorage.setItem('palmyra:hidden-sales-report-ids:v2', JSON.stringify(next)); } catch {}
-    addNotification('Ticket restaurado en la lista de reportes. La venta original no fue modificada.', 'success');
-  }, [hiddenReportIds, addNotification]);
+      await setSaleReportHidden(saleId, true);
+      setHiddenReportIds(current => current.includes(transaction.id) ? current : [...current, transaction.id]);
+      addNotification('Reporte ocultado en el servidor. La venta, el cobro y el inventario permanecen intactos.', 'success');
+    } catch (error: any) {
+      addNotification(error?.message || 'No se pudo ocultar el reporte. No se modificó la venta.', 'warning');
+    }
+  }, [addNotification]);
+  const restoreTransactionReport = useCallback(async (transaction: Transaction) => {
+    const saleId = transaction.remoteId || transaction.id;
+    try {
+      await setSaleReportHidden(saleId, false);
+      setHiddenReportIds(current => current.filter(id => id !== transaction.id));
+      addNotification('Reporte restaurado desde el servidor. La venta original no fue modificada.', 'success');
+    } catch (error: any) {
+      addNotification(error?.message || 'No se pudo restaurar el reporte.', 'warning');
+    }
+  }, [addNotification]);
   const [transferFromFilter, setTransferFromFilter] = useState<string>('all');
   const [transferToFilter, setTransferToFilter] = useState<string>('all');
   const [transferSearch, setTransferSearch] = useState<string>('');

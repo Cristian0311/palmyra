@@ -200,6 +200,18 @@ export async function pushInventoryToSupabase(level:InventoryLevel){
   }
 }
 
+export async function setSaleReportHidden(saleId: string, hidden: boolean): Promise<void> {
+  const supabase = await onlineClient();
+  const { companyId } = await getActiveTenant();
+  const { data, error } = await supabase.rpc('palmyra_set_sale_report_hidden', {
+    p_sale_id: saleId,
+    p_company_id: companyId,
+    p_hidden: hidden,
+  });
+  if (error) throw error;
+  if (data?.success !== true) throw new Error('No se pudo actualizar la visibilidad del reporte.');
+}
+
 export async function pushTransactionToSupabase(tx:Transaction):Promise<boolean>{
   try{const supabase=await onlineClient();const {companyId,authUserId}=await getActiveTenant();const {data,error}=await supabase.rpc('palmyra_record_sale',salePayload(tx,companyId,authUserId));if(error)throw error;if(data?.success===false)throw new Error(data?.message||'La venta fue rechazada.');return true;}
   catch(e:any){await queue('transaction',tx,tx.id);return false;}
