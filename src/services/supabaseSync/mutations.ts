@@ -162,10 +162,42 @@ export async function reconcileInventoryToSupabase(params:{operationId:string;pr
 }
 
 export async function pushInventoryToSupabase(level:InventoryLevel){
+  // Stock balances are intentionally read-only for authenticated clients.
+  // All mutations must pass through the company/warehouse-authorized,
+  // idempotent RPC rather than a direct PostgREST upsert.
+  const operationId = String((level as any).__syncOperationId || crypto.randomUUID());
+  const queuedLevel = { ...(level as any), __syncOperationId: operationId };
   try{
-    const supabase=await onlineClient();const {companyId}=await getActiveTenant();const vid=await resolveVariantId(supabase,companyId,level.productId,level.variantLabel);const table=vid?'variant_stock_balances':'stock_balances';const conflictTarget=vid?'company_id,warehouse_id,product_id,variant_id':'warehouse_id,product_id';
-    const {error}=await supabase.from(table).upsert({company_id:companyId,warehouse_id:level.branchId,product_id:level.productId,variant_id:vid,quantity:Math.max(0,Number(level.quantity)||0),updated_at:new Date().toISOString()},{onConflict:conflictTarget});if(error)throw error;return true;
-  }catch(e:any){await queue('inventory',level,level.productId+'_'+level.branchId+'_'+(level.variantLabel||''));return false;}
+    const supabase=await onlineClient();
+    const {companyId}=await getActiveTenant();
+    const vid=await resolveVariantId(supabase,companyId,level.productId,level.variantLabel);
+    const table=vid?'variant_stock_balances':'stock_balances';
+    let query=supabase.from(table).select('quantity')
+      .eq('company_id',companyId)
+      .eq('warehouse_id',level.branchId)
+      .eq('product_id',level.productId);
+    if(vid) query=query.eq('variant_id',vid);
+    const {data:currentRow,error:readError}=await query.maybeSingle();
+    if(readError) throw readError;
+    const currentQuantity=Math.max(0,Number(currentRow?.quantity)||0);
+    const targetQuantity=Math.max(0,Number(level.quantity)||0);
+    const result=await callAdjustInventoryRPC({
+      operationId,
+      companyId,
+      warehouseId:level.branchId,
+      productId:level.productId,
+      variantId:vid,
+      delta:targetQuantity-currentQuantity,
+      expectedQuantity:currentQuantity,
+      minQuantity:Math.max(0,Number((level as any).minQuantity)||0),
+      notes:'Sincronización de existencia desde dispositivo'
+    });
+    if(!result.success) throw Object.assign(new Error(result.error||'No se pudo actualizar la existencia.'),{code:result.errorCode});
+    return true;
+  }catch(e:any){
+    await queue('inventory',queuedLevel,level.productId+'_'+level.branchId+'_'+(level.variantLabel||''));
+    return false;
+  }
 }
 
 export async function pushTransactionToSupabase(tx:Transaction):Promise<boolean>{
