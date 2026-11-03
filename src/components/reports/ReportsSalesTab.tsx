@@ -59,6 +59,7 @@ export function ReportsSalesTab({
 }: Props) {
   const [sortState, setSortState] = useState<{ scope: "sessions" | "transactions"; key: string; direction: "asc" | "desc" } | null>(null);
   const [showHiddenReports, setShowHiddenReports] = useState(false);
+  const [pendingRemoval, setPendingRemoval] = useState<Transaction | null>(null);
 
   const toggleSort = (scope: "sessions" | "transactions", key: string) => {
     setSortState(current => current?.scope === scope && current.key === key
@@ -525,8 +526,9 @@ export function ReportsSalesTab({
                             </button>
                           )}
                           <button
-                            onClick={() => void onVoidTransaction(tx)}
-                            title="Anular Venta"
+                            type="button"
+                            onClick={() => setPendingRemoval(tx)}
+                            title="Opciones para eliminar el reporte o anular la venta"
                             className="h-7 w-7 p-0 inline-flex items-center justify-center bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg transition-all border border-rose-200 active:scale-95 cursor-pointer shadow-2xs"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -549,6 +551,44 @@ export function ReportsSalesTab({
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {pendingRemoval && (
+        <div className="fixed inset-0 z-[120] bg-black/60 backdrop-blur-sm flex items-center justify-center p-3" role="dialog" aria-modal="true" aria-labelledby="report-removal-title">
+          <div className="w-full max-w-md bg-secondary border border-base rounded-2xl shadow-2xl p-5 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 id="report-removal-title" className="text-sm font-black text-primary">Eliminar reporte</h3>
+                <p className="text-xs text-muted mt-1">Ticket {pendingRemoval.id}</p>
+              </div>
+              <button type="button" onClick={() => setPendingRemoval(null)} className="text-muted hover:text-primary p-1" aria-label="Cerrar">✕</button>
+            </div>
+            <button
+              type="button"
+              onClick={() => { onHideTransactionReport(pendingRemoval); setPendingRemoval(null); }}
+              className="w-full text-left p-3 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-950/20 hover:bg-amber-100 dark:hover:bg-amber-950/40"
+            >
+              <span className="block text-xs font-black text-amber-800 dark:text-amber-300">Eliminar reporte sin afectar la venta y productos</span>
+              <span className="block text-[11px] text-amber-800/80 dark:text-amber-200/80 mt-1">Solo lo oculta de esta lista. No anula el cobro ni modifica el inventario.</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const selected = pendingRemoval;
+                setPendingRemoval(null);
+                void onVoidTransaction(selected);
+              }}
+              className="w-full text-left p-3 rounded-xl border border-rose-300 bg-rose-50 dark:bg-rose-950/20 hover:bg-rose-100 dark:hover:bg-rose-950/40"
+            >
+              <span className="block text-xs font-black text-rose-800 dark:text-rose-300">Eliminar reporte y afectar la venta y productos</span>
+              <span className="block text-[11px] text-rose-800/80 dark:text-rose-200/80 mt-1">Anula esta venta y solicita la reposición de sus productos. Esta acción no elimina todo el turno ni liquida automáticamente nómina o comisiones.</span>
+            </button>
+            <p className="text-[10px] text-muted">La anulación requiere conexión para confirmar la operación en el servidor. Si el dispositivo está offline, se conservará en la cola de sincronización.</p>
+            <div className="flex justify-end">
+              <button type="button" onClick={() => setPendingRemoval(null)} className="px-4 py-2 rounded-lg text-xs font-bold border border-base hover:bg-subtle">Cancelar</button>
+            </div>
           </div>
         </div>
       )}
