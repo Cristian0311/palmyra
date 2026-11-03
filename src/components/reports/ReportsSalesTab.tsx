@@ -590,7 +590,7 @@ export function ReportsSalesTab({
                   : "Anula esta venta individual y solicita la reposición de sus productos. No elimina el turno completo ni liquida automáticamente nómina o comisiones."}
               </span>
             </button>
-            <p className="text-[10px] text-muted">La anulación requiere conexión para confirmar la operación en el servidor. Si el dispositivo está offline, se conservará en la cola de sincronización.</p>
+            <p className="text-[10px] text-muted">La anulación y el ocultamiento requieren conexión para confirmarse en el servidor. Si estás offline, no se enviará ni se guardará en la cola; vuelve a intentarlo cuando recuperes conexión.</p>
             <div className="flex justify-end">
               <button type="button" onClick={() => setPendingRemoval(null)} className="px-4 py-2 rounded-lg text-xs font-bold border border-base hover:bg-subtle">Cancelar</button>
             </div>
