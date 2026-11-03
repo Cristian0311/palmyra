@@ -83,13 +83,13 @@ export async function signOutSaaSAccount() {
     if (userId) userIds.add(userId);
   } catch {}
 
-  // Logging out must also revoke the local offline verifier/context for this
-  // account, otherwise it could be reopened offline without signing in again.
+  // Logout is device-local: one phone must never revoke the other phones' cloud sessions.
+  // The offline verifier/context is also cleared only from this device.
   for (const userId of userIds) {
     clearCachedSaaSContext(userId);
     forgetOfflineSaaSCredential(userId);
   }
-  try { await supabase.auth.signOut(); } catch (error) {
+  try { await supabase.auth.signOut({ scope: 'local' }); } catch (error) {
     console.warn("[PALMYRA] Cierre de sesión remoto no disponible; se limpia la sesión local.", error);
   }
   clearPalmyraLocalScope();
