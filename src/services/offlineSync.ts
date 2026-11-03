@@ -68,8 +68,29 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
   // under the public/anonymous role when the local offline session has no valid
   // Supabase user token; keep every operation queued until a real session returns.
   try {
-    const { data: authData, error: authError } = await supabase.auth.getUser();
-    if (authError || !authData.user) {
+    // Each device owns an independent Supabase Auth session. Try to refresh
+    // this device's persisted refresh token before pausing the queue; never
+    // sign out globally or invalidate sessions on the user's other phones.
+    let authData: any = null;
+    let authError: any = null;
+    const currentSession = await supabase.auth.getSession();
+    if (currentSession.error) authError = currentSession.error;
+    else if (currentSession.data.session) {
+      const verified = await supabase.auth.getUser();
+      authData = verified.data;
+      authError = verified.error;
+      if (authError || !authData?.user) {
+        const refreshed = await supabase.auth.refreshSession();
+        if (!refreshed.error && refreshed.data.session) {
+          const reverified = await supabase.auth.getUser();
+          authData = reverified.data;
+          authError = reverified.error;
+        } else {
+          authError = refreshed.error || authError;
+        }
+      }
+    }
+    if (authError || !authData?.user) {
       return {
         processed: 0,
         failed: 0,
@@ -78,7 +99,9 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
         errors: [{
           type: 'auth',
           actionId: 'session',
-          message: 'La sesión local sigue abierta, pero todavía no hay una sesión de nube válida. Inicia sesión con conexión para sincronizar; las operaciones offline se conservarán.'
+          message: currentSession.data.session
+            ? 'La sesión de este dispositivo no pudo renovarse. Vuelve a iniciar sesión aquí; las operaciones pendientes se conservarán. Los demás móviles no se cerrarán.'
+            : 'Este dispositivo no tiene una sesión de nube guardada. Inicia sesión con conexión en este móvil; las operaciones pendientes se conservarán.'
         }]
       };
     }
