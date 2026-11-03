@@ -309,11 +309,12 @@ async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string
       changeGiven,
       changePayments: changePayments.length ? changePayments : undefined,
       items: itemRows.map((it:any,i:number)=>normalizeSaleItem(it,productMap,variantMap,s.id,i)),
-      status: s.status === 'refunded' ? 'refunded' : 'completed',
+      status: s.status === 'refunded' ? 'refunded' : s.status === 'partial_refund' ? 'partial_refund' : 'completed',
       customerId: s.customer_id || undefined,
       sessionId: s.cash_session_id || undefined,
       notes: s.notes || '',
       paymentMethod: payments[0]?.method || 'cash',
+      reportHidden: s.metadata?.report_visibility?.hidden === true,
       sellerEmployeeIds: Array.isArray(s.metadata?.sellerEmployeeIds)
         ? s.metadata.sellerEmployeeIds.map((id:any) => String(id)).filter(Boolean)
         : undefined,
