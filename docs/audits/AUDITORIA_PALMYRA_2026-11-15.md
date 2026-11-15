@@ -113,5 +113,65 @@ Sin referencias en `src/`, `tests/` ni `scripts/` (verificado con `git grep`):
 - Generar `database.types.ts` (`supabase gen types typescript`) y tipar el cliente.
 - Quitar la clave publicable embebida como *fallback* en `src/lib/supabase.ts`.
 - Endurecer la RPC de visibilidad: exigir permiso de anulación, no solo `reports.view`.
-- Añadir la migración de índice `notification_reads (company_id)` si se filtran avisos
-  por empresa sin usuario.
+- Añadir un índice específico en `notification_reads (company_id)` solo si en el futuro
+  se filtran avisos por empresa sin usuario (hoy el índice `(user_id, company_id)` cubre
+  el patrón real de consulta).
+
+## 9. Correcciones aplicadas en la base de datos (2026-11-15)
+
+Aplicadas en producción con migraciones rastreadas y rollback disponible. **Ningún dato
+fue eliminado**: los valores anteriores quedan copiados en `metadata`.
+
+**Migración `audit_fix_cash_session_chronology_and_legacy_cleanup`**
+
+1. Constraint `cash_sessions_chronology_chk`: `closed_at >= opened_at` (validado sobre 78
+   turnos). Impide que vuelva a existir un turno cerrado antes de abrirse.
+2. Reparación de los **21 turnos** con fechas invertidas: se desplazó `closed_at` el mínimo
+   número de días necesario (desfase real medido: −24 h, −48 h, −72 h, −96 h). El valor
+   original queda en `metadata.chronology_repair.previous_closed_at`. Las ventas no se
+   tocaron, por lo que los reportes de ventas por día no cambian.
+3. Restos de MARÉ fuera del esquema expuesto: `legacy_pos_migration_staging` (1.898 filas),
+   `legacy_pos_migration_map` (1.901), `mare_pre_migration_backup_20261010` (168) se
+   movieron a `legacy_archive` conservando todos los datos.
+4. Eliminado el índice redundante `idx_cash_sessions_cash_sessions_company_id_fkey`
+   (`company_id` ya está cubierto por tres índices compuestos).
+
+**Migración `audit_recompute_expected_cash_for_migrated_sessions`**
+
+5. **15 turnos cerrados** migrados desde MARÉ tenían `expected_cash = 0` con ventas en
+   efectivo. Se recalculó con datos ya almacenados (apertura + cobros en efectivo +
+   movimientos) y se recalculó `difference`. Originales en
+   `metadata.financial_repair.previous_expected_cash` / `.previous_difference`.
+
+Resultado: 0 turnos con fechas invertidas, 0 turnos cerrados con esperado nulo salvo los
+que no tuvieron efectivo, y 78/78 turnos con cronología válida.
+
+## 10. Verificación del modo offline
+
+Comprobaciones ejecutadas:
+
+| Comprobación | Resultado |
+|---|---|
+| `scripts/pwa-offline-smoke.mjs` (build real de producción) | **8/8** |
+| Precache del shell completo | 78 entradas |
+| Supabase REST/Auth/Storage/Functions | `NetworkOnly` (nunca se sirve una respuesta vieja) |
+| Rutas críticas precacheadas (POS, caja, reportes, discrepancias, cierre) | sí |
+| Suite de pruebas offline (`offline-coverage`, `offline-network`, `offline-pos-auth`, `offline-reaudit-regressions`, `offline-saas-auth`, `team-access-offline-regressions`, `syncMerges`) | todas en verde |
+| Total de pruebas unitarias | **82/82** |
+
+Diseño verificado en código:
+
+- Cola durable en IndexedDB por *scope* (empresa/usuario), con migración desde
+  `localStorage`, fusión de fuentes y tombstones para no resucitar operaciones borradas.
+- Si IndexedDB falla, la cola **no se sobrescribe**: se conserva en memoria y se respalda
+  en `localStorage`.
+- Reintentos con backoff exponencial persistido (`nextRetryAt`, 30 s → máx. 15 min),
+  distinción entre error transitorio y permanente, y bloqueo de operaciones dependientes.
+- Idempotencia por identificador de operación estable (`source_operation_id` único por
+  empresa), por lo que un replay tras un timeout no duplica ventas ni movimientos.
+- `navigator.onLine` no se usa solo: `isTransientNetworkError` detecta fallos de transporte
+  aunque el navegador diga que hay conexión.
+
+Limitación declarada: la prueba en dispositivo físico (cortar Wi-Fi en el POS real) no
+puede ejecutarse desde este entorno; queda cubierta por el build + los tests anteriores.
+

@@ -371,6 +371,15 @@ export async function callGetCompensationSettingsRPC(){
 
 export async function callUpdateCashSessionBusinessDateRPC(sessionId:string, newOpenedAt:string, businessDate:string, saleIds:string[] = []) {
   try {
+    // A shift cannot start in the future: moving opened_at ahead of now produced
+    // sessions whose closed_at ended up before opened_at (21 historical rows).
+    const openedMs = Date.parse(newOpenedAt);
+    if (!Number.isFinite(openedMs)) {
+      return { success:false as const, error:'La fecha de apertura del turno no es válida.', errorCode:'INVALID_CASH_SESSION_DATE', data:undefined };
+    }
+    if (openedMs > Date.now() + 60_000) {
+      return { success:false as const, error:'No se puede mover un turno a una fecha/hora futura.', errorCode:'FUTURE_CASH_SESSION_DATE', data:undefined };
+    }
     const { companyId } = await getActiveTenant(true);
     const data = await rpc('palmyra_update_cash_session_business_date_v2', {
       p_session_id: sessionId,

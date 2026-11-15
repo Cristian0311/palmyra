@@ -31,7 +31,7 @@ import { useReportsSessions } from "../modules/reports/useReportsSessions";
 import { useReportsAnalytics } from "../hooks/useReportsAnalytics";
 import type { ExcelExportData } from "../utils/excelExport";
 import { pullPosBootstrapFromSupabase } from "../services/supabaseSync/pull";
-import { callSetSaleReportHiddenRPC } from "../services/supabaseSync/rpc";
+import { useReportVisibility } from "../modules/reports/hooks/useReportVisibility";
 import { getOfflineQueueCount } from "../services/offlineQueue";
 import PlanFeatureGate from "../components/PlanFeatureGate";
 import { canUsePlanFeature } from "../services/planAccess";
@@ -209,61 +209,10 @@ export default function Reports() {
 
   const [activeTab, setActiveTab] = useState<'sales' | 'payroll' | 'sessions' | 'discrepancies' | 'movements' | 'transfers'>('sales');
   const [salesViewMode, setSalesViewMode] = useState<'by_shift' | 'all_tickets'>('by_shift');
-  // Reports visibility is server-authoritative (sales.metadata.report_visibility).
-  // The local list keeps the UI responsive offline and mirrors the last known state.
-  const [hiddenReportIds, setHiddenReportIds] = useState<string[]>(() => {
-    try {
-      const value = JSON.parse(localStorage.getItem('palmyra:hidden-sales-report-ids:v2') || '[]');
-      return Array.isArray(value) ? value.filter((id): id is string => typeof id === 'string') : [];
-    } catch { return []; }
-  });
-
-  const writeHiddenReportIds = useCallback((ids: string[]) => {
-    try { localStorage.setItem('palmyra:hidden-sales-report-ids:v2', JSON.stringify(ids)); } catch {}
-    setHiddenReportIds(ids);
-  }, []);
-
-  // Keep local cache in sync with what came from Supabase: add tickets hidden on
-  // another device and drop tickets explicitly restored elsewhere.
-  useEffect(() => {
-    const hiddenRemote = transactions.filter(tx => tx.reportHidden).map(tx => tx.id);
-    const restoredRemote = transactions.filter(tx => !tx.reportHidden && tx.reportHiddenAt).map(tx => tx.id);
-    if (!hiddenRemote.length && !restoredRemote.length) return;
-    setHiddenReportIds(prev => {
-      const next = Array.from(new Set([...prev, ...hiddenRemote])).filter(id => !restoredRemote.includes(id));
-      const changed = next.length !== prev.length || next.some((id, index) => id !== prev[index]);
-      if (!changed) return prev;
-      try { localStorage.setItem('palmyra:hidden-sales-report-ids:v2', JSON.stringify(next)); } catch {}
-      return next;
-    });
-  }, [transactions]);
-
-  const pushReportVisibility = useCallback(async (transaction: Transaction, hidden: boolean) => {
-    const result = await callSetSaleReportHiddenRPC(transaction.remoteId || transaction.id, hidden);
-    return result;
-  }, []);
-
-  const hideTransactionReport = useCallback(async (transaction: Transaction) => {
-    writeHiddenReportIds(Array.from(new Set([...hiddenReportIds, transaction.id])));
-    const result = await pushReportVisibility(transaction, true);
-    addNotification(
-      result.success
-        ? 'Ticket ocultado de la lista de reportes en todos los dispositivos. La venta, el cobro y el inventario permanecen intactos.'
-        : `Ticket ocultado solo en este dispositivo. ${result.error || 'No se pudo guardar en la nube.'} La venta sigue intacta.`,
-      result.success ? 'success' : 'warning',
-    );
-  }, [hiddenReportIds, addNotification, writeHiddenReportIds, pushReportVisibility]);
-
-  const restoreTransactionReport = useCallback(async (transaction: Transaction) => {
-    writeHiddenReportIds(hiddenReportIds.filter(id => id !== transaction.id));
-    const result = await pushReportVisibility(transaction, false);
-    addNotification(
-      result.success
-        ? 'Ticket restaurado en la lista de reportes. La venta original no fue modificada.'
-        : `Ticket restaurado solo en este dispositivo. ${result.error || 'No se pudo guardar en la nube.'}`,
-      result.success ? 'success' : 'warning',
-    );
-  }, [hiddenReportIds, addNotification, writeHiddenReportIds, pushReportVisibility]);
+  // Reports visibility lives in modules/reports/hooks/useReportVisibility:
+  // Supabase (sales.metadata.report_visibility) is the source of truth and the
+  // local list only mirrors the last known state for offline use.
+  const { hiddenReportIds, hideTransactionReport, restoreTransactionReport } = useReportVisibility(transactions, addNotification);
   const [transferFromFilter, setTransferFromFilter] = useState<string>('all');
   const [transferToFilter, setTransferToFilter] = useState<string>('all');
   const [transferSearch, setTransferSearch] = useState<string>('');
