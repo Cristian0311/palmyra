@@ -83,7 +83,32 @@ Sin referencias en `src/`, `tests/` ni `scripts/` (verificado con `git grep`):
    (`sales_quote_idx` / `sales_quote_id_fk_idx`,
    `idx_cash_sessions_cash_sessions_company_id_fkey` / `cash_sessions_company_status_idx`).
 
-## 5. Pendiente recomendado (no aplicado)
+## 6. Errores visuales corregidos
+
+1. **105 estados `hover:` inertes.** Las utilidades `.bg-secondary`, `.bg-subtle`,
+   `.bg-primary`, `.text-primary`, `.text-muted`, `.border-base` están escritas a mano en
+   `@layer base` de `src/index.css`, y Tailwind v4 no genera variantes (`hover:`) para
+   clases personalizadas. Por eso `hover:bg-subtle` (47 usos), `hover:bg-secondary` (12),
+   `hover:bg-primary` (5) y `hover:text-primary` (41) no producían ningún cambio visual.
+   Se añadió un bloque `@layer utilities` con esas variantes (verificado en el CSS
+   compilado de producción).
+2. **Insignia y estado del botón «Ocultos».** En la pestaña Ventas, el botón no indicaba
+   cuándo se estaba viendo la lista de tickets ocultos; ahora se resalta en ámbar y cada
+   fila oculta muestra la insignia «Oculto».
+
+## 7. Errores visuales detectados y no modificados (requieren tu decisión)
+
+- `src/pages/Quotes.tsx`: página huérfana (no enrutada). Al no tener acceso visual al
+  navegador no se validó su diseño.
+- Tablas anchas (`Reports.tsx` 2.522 líneas, `Inventory.tsx`, `POS.tsx`) usan `overflow-x-auto`
+  pero no fijan `min-width`, por lo que en móviles las columnas se comprimen en lugar de
+  desplazarse.
+- `colSpan` fijos en tablas (8 columnas en reportes) son correctos hoy, pero frágiles si se
+  añade o quita una columna.
+- No se detectaron `dark:` sobre utilidades personalizadas (0 casos), por lo que el tema
+  oscuro no depende de variantes inexistentes.
+
+## 8. Pendiente recomendado (no aplicado)
 
 - Generar `database.types.ts` (`supabase gen types typescript`) y tipar el cliente.
 - Quitar la clave publicable embebida como *fallback* en `src/lib/supabase.ts`.

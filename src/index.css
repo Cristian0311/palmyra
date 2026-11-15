@@ -1011,3 +1011,22 @@ html.pos-keyboard-open .pos-page .animate-in,html.pos-keyboard-open .pos-page [c
 }
 
 @media(max-width:767px){.tutorial-section-grid{grid-template-columns:1fr!important}.tutorial-section-grid>*{width:100%;min-width:0}.tutorial-card-body{overflow:hidden}.tutorial-card-body .space-y-2\.5{min-width:0}.tutorial-card-body .space-y-2\.5>div{min-width:0}.tutorial-card-body p{overflow-wrap:anywhere}}
+
+/* Tailwind v4 no genera variantes (hover:, focus:, etc.) para las utilidades
+   personalizadas declaradas a mano en @layer base. Sin estas reglas los usos de
+   hover:bg-subtle (47), hover:bg-secondary (12), hover:bg-primary (5) y
+   hover:text-primary (41) no producían ningún cambio visual en botones y filas. */
+@layer utilities {
+  @media (hover: hover) {
+    .hover\:bg-primary:hover { background-color: var(--bg-primary); }
+    .hover\:bg-secondary:hover { background-color: var(--bg-secondary); }
+    .hover\:bg-elevated:hover { background-color: var(--bg-elevated); }
+    .hover\:bg-subtle:hover { background-color: var(--bg-subtle); }
+    .hover\:text-primary:hover { color: var(--text-primary); }
+    .hover\:text-secondary:hover { color: var(--text-secondary); }
+    .hover\:text-muted:hover { color: var(--text-muted); }
+    .hover\:border-base:hover { border-color: var(--border-base); }
+    .hover\:border-subtle:hover { border-color: var(--border-subtle); }
+  }
+}
+
