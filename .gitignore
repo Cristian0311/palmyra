@@ -14,3 +14,14 @@ dev-dist/
 fixrender/
 # Temporary local artifacts
 temp.txt
+# Generated at build time by scripts/write-version.mjs
+public/version.json
+# Local validation logs
+npm-install.log
+npm-install.err
+tsc.log
+tsc.err
+tests.log
+tests.err
+build.log
+build.err
