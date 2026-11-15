@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+﻿import { useMemo, useState } from "react";
 import {
   AlertCircle,
   CheckCircle,
@@ -67,7 +67,7 @@ export function ReportsSalesTab({
   };
 
   const sortIndicator = (scope: "sessions" | "transactions", key: string) =>
-    sortState?.scope === scope && sortState.key === key ? (sortState.direction === "asc" ? " ↑" : " ↓") : " ↕";
+    sortState?.scope === scope && sortState.key === key ? (sortState.direction === "asc" ? " â†‘" : " â†“") : " â†•";
 
   const sortedSessions = useMemo(() => {
     if (!sortState || sortState.scope !== "sessions") return sessions;
@@ -209,7 +209,7 @@ export function ReportsSalesTab({
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full min-w-[900px] text-left border-collapse">
               <thead>
                 <tr className="bg-subtle border-b border-base text-[8px] font-black text-muted uppercase tracking-[0.15em]">
                   <th className="px-3 py-2.5">{sortableHeader("Turno", "sessions", "turn")}</th>
@@ -362,7 +362,7 @@ export function ReportsSalesTab({
                           </button>
                           <button
                             onClick={() => onPrintShiftTicket(session.id)}
-                            title="Imprimir Comprobante Térmico"
+                            title="Imprimir Comprobante TÃ©rmico"
                             className="h-7 w-7 p-0 inline-flex items-center justify-center bg-subtle text-primary rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 transition-all active:scale-95 border border-base cursor-pointer shadow-2xs"
                           >
                             <Printer className="w-3.5 h-3.5" />
@@ -400,15 +400,15 @@ export function ReportsSalesTab({
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+            <table className="w-full min-w-[900px] text-left border-collapse">
               <thead>
                 <tr className="bg-subtle border-b border-base text-[8px] font-black text-muted uppercase tracking-[0.15em]">
                   <th className="px-3 py-2.5">{sortableHeader("Ticket / Vale", "transactions", "ticket")}</th>
                   <th className="px-3 py-2.5">{sortableHeader("Tipo Venta", "transactions", "type")}</th>
                   <th className="px-3 py-2.5">{sortableHeader("Fecha y Hora", "transactions", "date")}</th>
                   <th className="px-3 py-2.5">{sortableHeader("Vendedor / Cajero", "transactions", "worker")}</th>
-                  <th className="px-3 py-2.5">{sortableHeader("Sucursal / Almacén", "transactions", "branch")}</th>
-                  <th className="px-3 py-2.5">{sortableHeader("Artículos", "transactions", "items")}</th>
+                  <th className="px-3 py-2.5">{sortableHeader("Sucursal / AlmacÃ©n", "transactions", "branch")}</th>
+                  <th className="px-3 py-2.5">{sortableHeader("ArtÃ­culos", "transactions", "items")}</th>
                   <th className="px-3 py-2.5 text-right">{sortableHeader("Total", "transactions", "total", "justify-end")}</th>
                   <th className="px-3 py-2.5 text-center">Acciones</th>
                 </tr>
@@ -513,7 +513,7 @@ export function ReportsSalesTab({
                             onClick={() => {
                               if (tx.sessionId) onPrintShiftTicket(tx.sessionId);
                             }}
-                            title="Imprimir Ticket Térmico"
+                            title="Imprimir Ticket TÃ©rmico"
                             className="h-7 w-7 p-0 inline-flex items-center justify-center bg-subtle text-primary rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 transition-all border border-base active:scale-95 cursor-pointer shadow-2xs"
                           >
                             <Printer className="w-3.5 h-3.5" />

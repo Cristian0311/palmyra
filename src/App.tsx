@@ -27,6 +27,7 @@ const Inventory = lazy(() => import("./pages/Inventory"));
 const Returns = lazy(() => import("./pages/Returns"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Customers = lazy(() => import("./pages/Customers"));
+const Quotes = lazy(() => import("./pages/Quotes"));
 const Transfers = lazy(() => import("./pages/Transfers"));
 const Reports = lazy(() => import("./pages/Reports"));
 const SaaSAuth = lazy(() => import("./pages/SaaSAuth"));
@@ -457,6 +458,7 @@ export default function App() {
                     <Route path="/banks" element={can("settings.manage") ? <Banks /> : <Navigate to="/pos" replace />} />
                     <Route path="/returns" element={can("pos.access") ? <Returns /> : <Navigate to="/pos" replace />} />
                     <Route path="/customers" element={can("customers.manage") ? <Customers /> : <Navigate to="/pos" replace />} />
+<Route path="/quotes" element={can("pos.access") ? <Quotes /> : <Navigate to="/pos" replace />} />
                     <Route path="/reports" element={can("reports.view") ? <Reports /> : <Navigate to="/pos" replace />} />
                     <Route path="/settings" element={can("settings.manage") ? <Settings /> : <Navigate to="/pos" replace />} />
                     <Route path="/team" element={can("employees.manage") ? <Team /> : <Navigate to="/pos" replace />} />

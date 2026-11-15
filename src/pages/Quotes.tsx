@@ -1,165 +1,211 @@
-import React, { useState } from 'react';
-import { FileText, Search, Plus, Filter, FileCheck, CheckCircle2, Copy, HelpCircle } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { CheckCircle2, Copy, FileText, Plus, Search } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
 import { formatMoney } from '../lib/utils';
-import { useNavigate } from 'react-router-dom';
 import { InfoTooltip } from '../components/InfoTooltip';
 
-export default function Quotes() {
-  const { quotes, currentUser, customers, getBaseCurrency } = useStore();
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'converted' | 'expired'>('all');
-  const navigate = useNavigate();
+type QuoteStatus = 'pending' | 'converted' | 'expired';
 
+const STATUS_LABEL: Record<QuoteStatus, string> = {
+  pending: 'Pendiente',
+  converted: 'Convertida',
+  expired: 'Expirada',
+};
+
+const STATUS_CLASS: Record<QuoteStatus, string> = {
+  pending: 'bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-900/50',
+  converted: 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/50',
+  expired: 'bg-subtle text-muted border-base',
+};
+
+const FILTERS: Array<{ id: 'all' | QuoteStatus; label: string }> = [
+  { id: 'all', label: 'Todas' },
+  { id: 'pending', label: 'Pendientes' },
+  { id: 'converted', label: 'Convertidas' },
+  { id: 'expired', label: 'Expiradas' },
+];
+
+export default function Quotes() {
+  const { quotes, customers, getBaseCurrency } = useStore();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | QuoteStatus>('all');
+  const navigate = useNavigate();
   const baseCurrency = getBaseCurrency();
 
-  const filteredQuotes = quotes.filter(quote => {
-    const customer = customers.find(c => c.id === quote.customerId);
-    const matchesSearch = 
-      quote.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (customer?.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    
-    const matchesStatus = statusFilter === 'all' || quote.status === statusFilter;
+  const filteredQuotes = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return (quotes || [])
+      .filter(quote => {
+        const customer = customers.find(c => c.id === quote.customerId);
+        const matchesSearch = !term
+          || String(quote.id).toLowerCase().includes(term)
+          || (customer?.name || '').toLowerCase().includes(term);
+        const matchesStatus = statusFilter === 'all' || quote.status === statusFilter;
+        return matchesSearch && matchesStatus;
+      })
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [quotes, customers, searchTerm, statusFilter]);
 
-    return matchesSearch && matchesStatus;
-  }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-  const handleConvertToSale = (quote: any) => {
-    navigate(`/pos?loadQuote=${quote.id}`);
+  const handleConvertToSale = (quoteId: string) => {
+    navigate(`/pos?loadQuote=${quoteId}`);
   };
 
   return (
-    <div className="flex-1 bg-slate-50 overflow-auto p-4 sm:p-8">
-      <div className="max-w-7xl mx-auto space-y-6">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                <FileText className="w-8 h-8 text-indigo-600" />
-                Cotizaciones
-              </h1>
-              <InfoTooltip text="Crea y gestiona presupuestos para tus clientes. Las cotizaciones pueden convertirse en ventas reales desde el Punto de Venta." position="bottom" />
-            </div>
-          
-          <button 
-            onClick={() => navigate('/pos?mode=quote')}
-            className="bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-bold text-sm hover:bg-indigo-700 transition-colors flex items-center gap-2 shadow-lg shadow-indigo-100"
-          >
-            <Plus className="w-5 h-5" />
-            Nueva Cotización
-          </button>
+    <div className="space-y-4 animate-in fade-in duration-200">
+      <div className="bg-secondary rounded-2xl shadow-sm border border-base p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h3 className="text-xs font-black text-primary uppercase tracking-wider flex items-center gap-2">
+            <FileText className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+            Cotizaciones y Presupuestos
+            <InfoTooltip text="Crea y gestiona presupuestos para tus clientes. Las cotizaciones se convierten en ventas reales desde el Punto de Venta." />
+          </h3>
+          <p className="text-[8px] font-bold text-muted uppercase tracking-widest mt-0.5">
+            Presupuestos pendientes, convertidos y vencidos
+          </p>
         </div>
 
-        {/* Filters */}
-        <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col sm:flex-row gap-4">
-          <div className="flex-1 relative">
-            <Search className="w-5 h-5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Buscar por ID o cliente..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all text-sm"
-            />
-          </div>
-          
-          <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0 hide-scrollbar">
-            {['all', 'pending', 'converted', 'expired'].map((status) => (
-              <button
-                key={status}
-                onClick={() => setStatusFilter(status as any)}
-                className={`px-4 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition-colors ${
-                  statusFilter === status 
-                    ? 'bg-slate-900 text-white' 
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                {status === 'all' ? 'Todas' : 
-                 status === 'pending' ? 'Pendientes' : 
-                 status === 'converted' ? 'Convertidas' : 'Expiradas'}
-              </button>
-            ))}
-          </div>
+        <button
+          type="button"
+          onClick={() => navigate('/pos?mode=quote')}
+          className="h-9 px-3.5 inline-flex items-center justify-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 shadow-sm cursor-pointer shrink-0"
+        >
+          <Plus className="w-4 h-4" />
+          Nueva Cotización
+        </button>
+      </div>
+
+      <div className="bg-secondary rounded-2xl shadow-sm border border-base p-3.5 flex flex-col sm:flex-row gap-3">
+        <div className="flex-1 relative">
+          <Search className="w-4 h-4 text-muted absolute left-3 top-1/2 -translate-y-1/2" />
+          <input
+            type="search"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            placeholder="Buscar por ID o cliente…"
+            aria-label="Buscar cotizaciones"
+            className="w-full h-9 pl-9 pr-3 bg-subtle border border-base rounded-xl text-[11px] font-bold text-primary placeholder:text-muted focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition-all"
+          />
         </div>
 
-        {/* Quote List */}
-        <div className="bg-white border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-100">
-                  <th className="p-4 text-xs font-black text-slate-500 uppercase tracking-wider">Cotización</th>
-                  <th className="p-4 text-xs font-black text-slate-500 uppercase tracking-wider">Cliente</th>
-                  <th className="p-4 text-xs font-black text-slate-500 uppercase tracking-wider">Fecha</th>
-                  <th className="p-4 text-xs font-black text-slate-500 uppercase tracking-wider">Estado</th>
-                  <th className="p-4 text-xs font-black text-slate-500 uppercase tracking-wider text-right">Total</th>
-                  <th className="p-4 text-xs font-black text-slate-500 uppercase tracking-wider text-right">Acciones</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredQuotes.map((quote) => {
-                  const customer = customers.find(c => c.id === quote.customerId);
-                  return (
-                    <tr key={quote.id} className="hover:bg-slate-50 transition-colors group">
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center text-slate-500">
-                            <FileText className="w-5 h-5" />
-                          </div>
-                          <div>
-                            <p className="font-bold text-slate-900 text-sm">{quote.id.slice(0, 8).toUpperCase()}</p>
-                            <p className="text-xs text-slate-500">{quote.items.length} artículos</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <p className="text-sm font-medium text-slate-900">{customer?.name || 'Consumidor Final'}</p>
-                      </td>
-                      <td className="p-4">
-                        <p className="text-sm text-slate-600">
-                          {new Date(quote.date).toLocaleDateString()}
-                        </p>
-                      </td>
-                      <td className="p-4">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold ${
-                          quote.status === 'pending' ? 'bg-yellow-100 text-yellow-700' :
-                          quote.status === 'converted' ? 'bg-green-100 text-green-700' :
-                          'bg-slate-100 text-slate-700'
-                        }`}>
-                          {quote.status === 'pending' && 'Pendiente'}
-                          {quote.status === 'converted' && 'Convertida'}
-                          {quote.status === 'expired' && 'Expirada'}
+        <div className="flex gap-1.5 overflow-x-auto pb-1 sm:pb-0 shrink-0">
+          {FILTERS.map((filter) => (
+            <button
+              key={filter.id}
+              type="button"
+              onClick={() => setStatusFilter(filter.id)}
+              aria-pressed={statusFilter === filter.id}
+              className={
+                statusFilter === filter.id
+                  ? 'px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider whitespace-nowrap bg-rose-600 text-white shadow-xs cursor-pointer'
+                  : 'px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider whitespace-nowrap text-secondary hover:text-primary hover:bg-subtle border border-transparent cursor-pointer'
+              }
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="bg-secondary rounded-2xl shadow-sm border border-base overflow-hidden">
+        <div className="p-3 border-b border-base flex items-center justify-between bg-subtle/50">
+          <span className="text-[9px] font-black text-primary uppercase tracking-wider">Listado de Cotizaciones</span>
+          <span className="text-[9px] font-bold text-muted">{filteredQuotes.length} registros</span>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[860px] text-left border-collapse">
+            <thead>
+              <tr className="bg-subtle border-b border-base text-[8px] font-black text-muted uppercase tracking-[0.15em]">
+                <th className="px-3 py-2.5">Cotización</th>
+                <th className="px-3 py-2.5">Cliente</th>
+                <th className="px-3 py-2.5">Fecha</th>
+                <th className="px-3 py-2.5 text-center">Estado</th>
+                <th className="px-3 py-2.5 text-right">Total</th>
+                <th className="px-3 py-2.5 text-center">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-base">
+              {filteredQuotes.map((quote) => {
+                const customer = customers.find(c => c.id === quote.customerId);
+                const status = (quote.status || 'pending') as QuoteStatus;
+                return (
+                  <tr key={quote.id} className="hover:bg-subtle transition-colors">
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <div className="flex items-center gap-2">
+                        <span className="w-8 h-8 rounded-lg bg-subtle border border-base flex items-center justify-center text-secondary shrink-0">
+                          <FileText className="w-4 h-4" />
                         </span>
-                      </td>
-                      <td className="p-4 text-right">
-                        <p className="text-sm font-black text-slate-900">
-                          {formatMoney(quote.total, baseCurrency.symbol)}
-                        </p>
-                      </td>
-                      <td className="p-4 text-right">
-                        <button 
-                          onClick={() => handleConvertToSale(quote)}
-                          className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors"
-                          title="Cargar en TPV"
-                        >
-                          <Copy className="w-5 h-5" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
+                        <div>
+                          <p className="text-[11px] font-black font-mono text-primary tracking-wider">
+                            {String(quote.id).slice(0, 8).toUpperCase()}
+                          </p>
+                          <p className="text-[8px] font-bold text-muted uppercase">
+                            {(quote.items || []).length} artículos
+                          </p>
+                        </div>
+                      </div>
+                    </td>
 
-                {filteredQuotes.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="p-12 text-center text-slate-500">
-                      No se encontraron cotizaciones.
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <span className="text-[11px] font-black text-primary uppercase">
+                        {customer?.name || 'Consumidor Final'}
+                      </span>
+                    </td>
+
+                    <td className="px-3 py-2 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-primary">
+                        <span>{new Date(quote.date).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                        <span className="text-[9px] font-mono text-muted">
+                          {new Date(quote.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    </td>
+
+                    <td className="px-3 py-2 text-center whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border ${STATUS_CLASS[status]}`}>
+                        {STATUS_LABEL[status]}
+                      </span>
+                    </td>
+
+                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                      <span className="text-xs font-black text-primary">{formatMoney(quote.total, baseCurrency.symbol)}</span>
+                    </td>
+
+                    <td className="px-3 py-2 text-center whitespace-nowrap">
+                      <button
+                        type="button"
+                        onClick={() => handleConvertToSale(quote.id)}
+                        title="Cargar esta cotización en el Punto de Venta"
+                        aria-label="Cargar cotización en el Punto de Venta"
+                        className="h-7 px-2.5 inline-flex items-center justify-center gap-1 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/80 text-rose-700 dark:text-rose-300 text-[9px] font-black uppercase rounded-lg border border-rose-200 dark:border-rose-900/50 transition-all active:scale-95 cursor-pointer"
+                      >
+                        <Copy className="w-3 h-3" />
+                        <span>Al TPV</span>
+                      </button>
                     </td>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                );
+              })}
 
+              {filteredQuotes.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-6 py-12 text-center">
+                    <div className="flex flex-col items-center gap-2">
+                      <CheckCircle2 className="w-8 h-8 text-muted opacity-60" />
+                      <p className="text-[10px] font-black text-secondary uppercase tracking-wider">
+                        No hay cotizaciones para este filtro
+                      </p>
+                      <p className="text-[9px] font-bold text-muted">
+                        Crea una nueva cotización o cambia el filtro de estado.
+                      </p>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
