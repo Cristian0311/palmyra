@@ -40,6 +40,20 @@ export async function logAuditEvent(entry:{userId?:string;action:string;entityTy
   try { const supabase=getSupabase(); if(!supabase)return; const {companyId,authUserId}=await getActiveTenant(); await supabase.from('audit_logs').insert({id:crypto.randomUUID(),company_id:companyId,user_id:entry.userId||authUserId,action:entry.action,entity_type:entry.entityType,entity_id:entry.entityId||null,before_data:entry.oldData||null,after_data:entry.newData||null,metadata:entry.meta||null}); } catch(e){ console.warn('[PALMYRA] audit log failed',e); }
 }
 
+// Reports visibility: hides/unhides a completed sale inside the reports list.
+// It never voids the sale, its payments or its inventory movements; the flag is
+// stored in sales.metadata.report_visibility by the RPC.
+export async function callSetSaleReportHiddenRPC(saleId:string, hidden:boolean){
+  try{
+    if(!isUuid(saleId)){
+      return {success:false as const,error:'El ticket todavía no tiene un identificador de venta válido en Supabase.',errorCode:'INVALID_SALE_ID',data:undefined};
+    }
+    const {companyId}=await getActiveTenant(true);
+    const data=await rpc('palmyra_set_sale_report_hidden',{p_sale_id:saleId,p_company_id:companyId,p_hidden:hidden});
+    return {success:true as const,error:undefined,errorCode:undefined,data};
+  }catch(e:any){return errorResult(e);}
+}
+
 async function rpc(name:string,args:any){
   const supabase=getSupabase(); if(!supabase)throw new Error('Supabase no configurado');
   const {data,error}=await supabase.rpc(name,args); if(error)throw error; if(data&&data.success===false) { const e:any=new Error(data.message||data.error||'Operación rechazada'); e.code=data.code||data.error_code; throw e; } return data;

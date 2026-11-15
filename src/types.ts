@@ -143,6 +143,14 @@ export interface Transaction {
   deleteReason?: string;
   /** Local marker: sale exists on this terminal and still requires durable/offline confirmation. */
   offlinePending?: boolean;
+  /**
+   * Reports visibility only. A hidden ticket is excluded from the reports list
+   * without voiding the sale, the payments or the stock movements.
+   * Persisted server-side in `sales.metadata.report_visibility`.
+   */
+  reportHidden?: boolean;
+  /** ISO timestamp of the last report visibility change (server clock). */
+  reportHiddenAt?: string;
 }
 
 export interface ReturnItem {

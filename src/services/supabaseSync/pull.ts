@@ -317,6 +317,12 @@ async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string
       sellerEmployeeIds: Array.isArray(s.metadata?.sellerEmployeeIds)
         ? s.metadata.sellerEmployeeIds.map((id:any) => String(id)).filter(Boolean)
         : undefined,
+      // Reports visibility is stored in metadata so hiding a ticket never
+      // mutates the sale, its payments or the inventory.
+      reportHidden: Boolean(s.metadata?.report_visibility?.hidden),
+      reportHiddenAt: typeof s.metadata?.report_visibility?.updated_at === 'string'
+        ? s.metadata.report_visibility.updated_at
+        : undefined,
     } as Transaction;
   });
 }

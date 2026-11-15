@@ -1,3 +1,0 @@
--- DEPRECATED: OmniSync now has one canonical schema migration.
--- Apply SUPABASE_MIGRATION.sql instead of this file.
--- Kept only as a marker to prevent schema drift.

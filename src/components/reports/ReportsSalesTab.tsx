@@ -34,8 +34,8 @@ type Props = {
   onOpenTransactionDetail: (transaction: Transaction) => void;
   onVoidTransaction: (transaction: Transaction) => void | Promise<void>;
   hiddenReportIds: string[];
-  onHideTransactionReport: (transaction: Transaction) => void;
-  onRestoreTransactionReport: (transaction: Transaction) => void;
+  onHideTransactionReport: (transaction: Transaction) => void | Promise<void>;
+  onRestoreTransactionReport: (transaction: Transaction) => void | Promise<void>;
 };
 
 export function ReportsSalesTab({
@@ -156,7 +156,12 @@ export function ReportsSalesTab({
           <button
             type="button"
             onClick={() => setShowHiddenReports(value => !value)}
-            className="px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 text-secondary hover:text-primary cursor-pointer"
+            className={cn(
+              "px-2.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer border",
+              showHiddenReports
+                ? "bg-amber-500 text-white border-amber-600 shadow-xs"
+                : "text-secondary hover:text-primary border-transparent"
+            )}
             title={showHiddenReports ? "Volver a los tickets visibles" : "Mostrar tickets ocultos de los reportes"}
           >
             <EyeOff className="w-3.5 h-3.5" />
@@ -433,6 +438,14 @@ export function ReportsSalesTab({
                         >
                           {tx.id}
                         </span>
+                        {hiddenReportIds.includes(tx.id) && (
+                          <span
+                            className="ml-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900/60"
+                            title="Oculto de la lista de reportes. La venta, el cobro y el inventario siguen intactos."
+                          >
+                            <EyeOff className="w-2.5 h-2.5" /> Oculto
+                          </span>
+                        )}
                       </td>
 
                       <td className="px-3 py-2 whitespace-nowrap">
