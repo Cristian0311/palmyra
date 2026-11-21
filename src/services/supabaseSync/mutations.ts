@@ -388,8 +388,23 @@ export async function pushTimeShiftToSupabase(shift:TimeShift){
 }
 
 export async function pushQuoteToSupabase(quote:Quote){
-  try{const supabase=await onlineClient();const {companyId,authUserId}=await getActiveTenant();const {error}=await supabase.from('quotes').upsert({id:quote.id,company_id:companyId,quote_number:quote.id,customer_id:quote.customerId||null,warehouse_id:quote.branchId,currency_code:'USD',status:quote.status,total:Number(quote.total)||0,valid_until:null,notes:quote.notes||null,created_by:authUserId},{onConflict:'id'});if(error)throw error;const {error:de}=await supabase.from('quote_items').delete().eq('quote_id',quote.id);if(de)throw de;if(quote.items?.length){const {error:ie}=await supabase.from('quote_items').insert(quote.items.map(i=>({id:crypto.randomUUID(),quote_id:quote.id,product_id:typeof i.product==='string'?i.product:i.product.id,quantity:Number(i.quantity)||0,unit_price:Number(i.price)||0,discount:0,tax:0,line_total:Number(i.total)||0})));if(ie)throw ie;}return true;}catch(e:any){await queue('quote',quote,quote.id);return false;}
+  try{const supabase=await onlineClient();const {companyId,authUserId}=await getActiveTenant();const {error}=await supabase.from('quotes').upsert({id:quote.id,company_id:companyId,quote_number:quote.id,customer_id:quote.customerId||null,warehouse_id:quote.branchId,currency_code:quote.currencyCode||'USD',status:quote.status,total:Number(quote.total)||0,valid_until:quote.validUntil||null,notes:quote.notes||null,created_by:authUserId},{onConflict:'id'});if(error)throw error;const {error:de}=await supabase.from('quote_items').delete().eq('quote_id',quote.id);if(de)throw de;if(quote.items?.length){const {error:ie}=await supabase.from('quote_items').insert(quote.items.map(i=>({id:crypto.randomUUID(),quote_id:quote.id,product_id:typeof i.product==='string'?i.product:i.product.id,quantity:Number(i.quantity)||0,unit_price:Number(i.price)||0,discount:0,tax:0,line_total:Number(i.total)||0})));if(ie)throw ie;}return true;}catch(e:any){await queue('quote',quote,quote.id);return false;}
 }
+
+export async function deleteQuoteFromSupabase(id:string):Promise<boolean>{
+  try{
+    const supabase=await onlineClient();
+    const {companyId}=await getActiveTenant();
+    const {error:itemsError}=await supabase.from('quote_items').delete().eq('quote_id',id);
+    if(itemsError)throw itemsError;
+    const {error}=await supabase.from('quotes').delete().eq('id',id).eq('company_id',companyId);
+    if(error)throw error;
+    return true;
+  }catch{
+    return false;
+  }
+}
+
 
 export async function pushBankTransactionToSupabase(tx:BankTransaction){
   try{
@@ -607,6 +622,7 @@ export async function clearSelectedDataFromSupabase(sections:ResetSection[]):Pro
     if(has('bank')){await supabase.from('bank_transactions').delete().eq('company_id',companyId);await supabase.from('bank_accounts').update({active:false}).eq('company_id',companyId);}
     if(has('users'))await supabase.from('employees').update({active:false}).eq('company_id',companyId);
     if(has('branches'))await supabase.from('warehouses').update({active:false}).eq('company_id',companyId);
+    if(has('quotes')){const {error}=await supabase.from('quotes').delete().eq('company_id',companyId);if(error)failed.push('quotes: '+error.message);}
     return {success:failed.length===0,failed};
   }catch(e:any){return {success:false,failed:[e?.message||String(e)]};}
 }

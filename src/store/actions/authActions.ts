@@ -142,6 +142,7 @@ export function createAuthActions(set: StoreSet, get: StoreGet): any {
       patch.salarySettlements = []; patch.inventoryAudits = []; patch.bankTransactions = [];
       patch.timeShifts = []; patch.notifications = [];
     }
+    if (selected.has('catalog')) { patch.products = []; patch.categories = []; patch.inventory = []; }
     if (selected.has('customers')) patch.customers = [];
     if (selected.has('suppliers') || selected.has('purchases')) {
       if (selected.has('suppliers')) patch.suppliers = [];
@@ -149,13 +150,18 @@ export function createAuthActions(set: StoreSet, get: StoreGet): any {
     }
     if (selected.has('cash')) { patch.cashSessions = []; patch.salarySettlements = []; }
     if (selected.has('bank')) { patch.bankCards = []; patch.bankTransactions = []; }
-    if (selected.has('users')) { patch.users = [INITIAL_USERS[0]]; patch.currentUser = null; }
+    // Conservar solo al administrador con sesión: INITIAL_USERS está vacío y
+    // asignar su primer elemento dejaba users = [undefined].
+    if (selected.has('users')) {
+      const currentAdmin = get().currentUser;
+      patch.users = currentAdmin ? [currentAdmin] : [];
+    }
     if (selected.has('branches')) { patch.branches = []; patch.currentBranchId = ''; }
     if (selected.has('quotes')) { patch.quotes = []; patch.pendingOrders = []; }
     if (selected.has('settings')) {
       patch.currencies = INITIAL_CURRENCIES;
       patch.fiscalConfigs = INITIAL_FISCAL_CONFIGS;
-      patch.storeConfig = { storeName: 'Mi Tienda POS', address: 'Calle Principal 123', phone: '+53 51234567', receiptNotes: '¡Gracias por su compra!', darkMode: false, manualOfflineSync: false };
+      patch.storeConfig = { storeName: 'PALMYRA', address: 'Calle Principal 123', phone: '+53 51234567', receiptNotes: '¡Gracias por su compra!', darkMode: false, manualOfflineSync: false };
     }
 
     patch.cart = []; patch.currentCustomerId = undefined; patch.activeSessionId = null;
@@ -164,7 +170,7 @@ export function createAuthActions(set: StoreSet, get: StoreGet): any {
     // Forzar la escritura diferida antes de devolver el control. Esto evita
     // que una recarga inmediata restaure el snapshot anterior desde IndexedDB.
     try { await flushLocalStateStorage(); } catch {}
-    return;
+    return { success: true, failed: [] };
   },
   clearReportsHistory: async () => {
     // Primero se confirma la limpieza remota. Nunca debemos vaciar el estado

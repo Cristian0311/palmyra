@@ -20,6 +20,7 @@ import { getOfflineQueue, enqueueOfflineItem, removeFromOfflineQueue, waitForOff
 import { normalizeSemanticText, areSemanticallyEqual } from '../utils/textUtils';
 import { localStateStorage, clearLocalStateStorage, flushLocalStateStorage } from '../services/localStateStorage';
 import { getPalmyraScopedStorageKey } from '../services/localScope';
+import { isCloudBusinessSyncAllowed } from '../services/localPlanMode';
 import { setCanonicalInventoryQuantity, validateTransferStock } from './utils/inventoryTransforms';
 import { buildLocalVoidTransactionPatch } from './utils/localVoidTransaction';
 import { buildLocalCompletedSalePatch } from './utils/localCompletedSale';
@@ -167,7 +168,7 @@ export const useStore = create<AppState>()(
         normalizeSemanticText(b.name) === normName
       );
       if (isDuplicate) {
-        console.warn(`[MARÉ] Intento de agregar sucursal duplicada bloqueado: "${branch.name}"`);
+        console.warn(`[Palmyra] Intento de agregar sucursal duplicada bloqueado: "${branch.name}"`);
         return state;
       }
 
@@ -188,7 +189,7 @@ export const useStore = create<AppState>()(
         const normName = normalizeSemanticText(branch.name);
         const nameCollision = state.branches.some(b => b.id !== id && normalizeSemanticText(b.name) === normName);
         if (nameCollision) {
-          console.warn(`[MARÉ] No se puede renombrar: ya existe otra sucursal con el nombre "${branch.name}"`);
+          console.warn(`[Palmyra] No se puede renombrar: ya existe otra sucursal con el nombre "${branch.name}"`);
           return state;
         }
       }
@@ -210,7 +211,7 @@ export const useStore = create<AppState>()(
     const hasTx = (get().transactions || []).some(t => t.branchId === id);
     const hasSessions = (get().cashSessions || []).some(s => s.branchId === id);
     if (hasInventory || hasTx || hasSessions) {
-      console.warn(`[MARÉ] Bloqueada eliminación de sucursal ${id} porque tiene relaciones activas (inventario, ventas o turnos).`);
+      console.warn(`[Palmyra] Bloqueada eliminación de sucursal ${id} porque tiene relaciones activas (inventario, ventas o turnos).`);
       return;
     }
 
@@ -260,6 +261,14 @@ export const useStore = create<AppState>()(
     if (updated) pushCategoryToSupabase(updated);
   },
   deleteCategory: (id) => {
+    const productsInUse = (get().products || []).filter(p => p.categoryId === id).length;
+    if (productsInUse > 0) {
+      get().addNotification(
+        `No se puede eliminar la categoría: ${productsInUse} producto${productsInUse === 1 ? '' : 's'} la usa${productsInUse === 1 ? '' : 'n'}. Reasígnalos a otra categoría primero.`,
+        'warning'
+      );
+      return;
+    }
     set((state) => ({ categories: state.categories.filter(c => c.id !== id) }));
     const actionId = 'category-delete:' + id;
     const queueDeletion = () => enqueueOfflineItem('category_delete', { id }, actionId)
@@ -290,6 +299,9 @@ export const useStore = create<AppState>()(
       return { customers: [...(state.customers || []), customer] };
     });
     if (!added) return false;
+    // Plan Gratis: el cliente vive solo en este dispositivo; no se intenta subir
+    // ni se revierte el alta local ante un rechazo de la nube.
+    if (!isCloudBusinessSyncAllowed()) return true;
 
     const result = await pushCustomerToSupabase(customer);
     if (!result.success && !result.pending) {
@@ -308,6 +320,8 @@ export const useStore = create<AppState>()(
       customers: state.customers.map(c => c.id === id ? updated : c)
     }));
 
+    if (!isCloudBusinessSyncAllowed()) return true;
+
     const result = await pushCustomerToSupabase(updated);
     if (!result.success && !result.pending) {
       if (previous) {
@@ -323,7 +337,7 @@ export const useStore = create<AppState>()(
       customers: state.customers.filter(c => c.id !== id),
       currentCustomerId: state.currentCustomerId === id ? undefined : state.currentCustomerId
     }));
-    if (navigator.onLine) {
+    if (navigator.onLine && isCloudBusinessSyncAllowed()) {
       deleteCustomerFromSupabase(id).then((ok) => {
         if (!ok) enqueueOfflineItem('customer_delete', { id }, `customer-delete:${id}`);
       }).catch(() => enqueueOfflineItem('customer_delete', { id }, `customer-delete:${id}`));

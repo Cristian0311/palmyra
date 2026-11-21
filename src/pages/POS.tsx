@@ -30,6 +30,8 @@ import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath"
 import { aggregateTransferPayments, buildTransactionTicketId, finalizeCheckoutPayments } from '../modules/pos/utils/checkoutUtils';
 import { rememberOfflinePosCredential, verifyOfflinePosCredential, rememberOfflinePosResumeGrant, verifyOfflinePosResumeGrant } from "../services/offlinePosAuth";
 import { findSessionEmployeeUser } from "../services/employeeCompensation";
+import { usePendingQuote, setPendingQuoteId } from "../modules/pos/hooks/usePendingQuote";
+import PendingQuoteBanner from "../components/pos/PendingQuoteBanner";
 const POSStartupScreen = lazy(() => import("./POSStartupScreen"));
 const CheckoutModal = lazy(() => import("../components/pos/CheckoutModal"));
 
@@ -179,7 +181,12 @@ export default function POS() {
   const [closingBalances, setClosingBalances] = useState<{ [key: string]: number }>({});
   const [showDiscrepancyModal, setShowDiscrepancyModal] = useState(false);
   const [finalBalancesToClose, setFinalBalancesToClose] = useState<Payment[]>([]);
-  const [movementData, setMovementData] = useState({ type: 'expense' as 'income' | 'expense', amount: '', currencyCode: 'CUP', description: '' });
+  const [movementData, setMovementData] = useState(() => ({
+    type: 'expense' as 'income' | 'expense',
+    amount: '',
+    currencyCode: useStore.getState().getBaseCurrency?.().code || 'CUP',
+    description: '',
+  }));
 
   const [showAddCustomerModal, setShowAddCustomerModal] = useState(false);
   const [showCameraScanner, setShowCameraScanner] = useState(false);
@@ -414,6 +421,52 @@ export default function POS() {
   const [openingAmount, setOpeningAmount] = useState("");
   const [sessionWorkerName, setSessionWorkerName] = useState("");
   const [sessionWorkerId, setSessionWorkerId] = useState("");
+  const pendingQuote = usePendingQuote();
+  const pendingQuoteCustomerName = useMemo(() => {
+    const customerId = pendingQuote.quote?.customerId;
+    if (!customerId) return undefined;
+    return (customers || []).find(customer => customer.id === customerId)?.name;
+  }, [pendingQuote.quote?.customerId, customers]);
+  const cancelPendingQuote = useCallback(() => {
+    pendingQuote.cancel();
+    setPosError("");
+    setPosSuccess("Cotización descartada. El ticket quedó vacío y la cotización sigue disponible en Cotizaciones.");
+    setTimeout(() => setPosSuccess(""), 4000);
+  }, [pendingQuote.cancel]);
+
+  const quoteImportRef = useRef(false);
+  useEffect(() => {
+    if (quoteImportRef.current) return;
+    quoteImportRef.current = true;
+    const loadQuoteId = queryParams.get('loadQuote');
+    if (!loadQuoteId) return;
+    const cleanUrl = () => {
+      try { window.history.replaceState({}, '', window.location.pathname); } catch { /* ignore */ }
+    };
+    const state = useStore.getState();
+    const quote = state.quotes.find(q => q.id === loadQuoteId);
+    if (!quote) {
+      setPosError('La cotización solicitada no está disponible en este dispositivo.');
+      cleanUrl();
+      return;
+    }
+    if ((state.cart || []).length > 0) {
+      setPosError('Hay productos en el carrito. Vacíalo antes de cargar una cotización.');
+      cleanUrl();
+      return;
+    }
+    const items = (quote.items || []).filter(item => item.product);
+    if (!items.length) {
+      setPosError('La cotización no tiene productos para cargar.');
+      cleanUrl();
+      return;
+    }
+    useStore.setState({ cart: items, currentCustomerId: quote.customerId });
+    setPendingQuoteId(quote.id);
+    setPosSuccess('Cotización cargada. Abre caja si hace falta y revisa el ticket antes de cobrar.');
+    setTimeout(() => setPosSuccess(''), 4000);
+    cleanUrl();
+  }, [queryParams]);
   // La identidad del trabajador debe reconstruirse desde la sesión persistida
   // después de cambiar de módulo, recargar la página o rehidratar Zustand.
   useEffect(() => {
@@ -574,8 +627,8 @@ export default function POS() {
       setActiveSessionId(null);
       clearCart();
 
-      setPosSuccess("Turno cancelado correctamente. Regresando al selector de empleado.");
-      setTimeout(() => setPosSuccess(""), 3500);
+      setPosSuccess("Turno eliminado por completo. Ya no queda ningún registro de este turno.");
+      setTimeout(() => setPosSuccess(""), 4000);
     } catch (err: any) {
       console.error("[POS] Error cancelando turno:", err);
       setPosError(err?.message || "No se pudo cancelar el turno. El turno permanece abierto.");
@@ -901,8 +954,11 @@ export default function POS() {
       date: new Date().toISOString()
     });
 
-    addNotification(`Movimiento de ${movementData.type === 'income' ? 'entrada' : 'salida'} registrado: ${formatMoney(amt, movementData.currencyCode)}`, 'success');
-    setMovementData({ type: 'expense', amount: '', currencyCode: 'CUP', description: '' });
+    const movementSymbol = currencies.find(c => c.code === movementData.currencyCode)?.symbol || movementData.currencyCode;
+    addNotification(`Movimiento de ${movementData.type === 'income' ? 'entrada' : 'salida'} registrado: ${formatMoney(amt, movementSymbol)}`, 'success');
+    // Keep the type and currency so registering several egresos in a row stays
+    // fast; only the amount and description are cleared.
+    setMovementData(prev => ({ ...prev, amount: '', description: '' }));
   };
 
   // Barcode scanner moved lower
@@ -1130,6 +1186,17 @@ export default function POS() {
       setTimeout(() => setPosError(''), 5000);
       return;
     }
+
+    // Si la venta nació de una cotización, se marca como convertida solo ahora
+    // que el cobro quedó confirmado.
+    try {
+      let completedQuoteId: string | null = null;
+      try { completedQuoteId = localStorage.getItem('palmyra_pending_quote_id'); } catch { completedQuoteId = null; }
+      if (completedQuoteId) {
+        useStore.getState().updateQuote(completedQuoteId, { status: 'converted' });
+        setPendingQuoteId(null);
+      }
+    } catch { /* storage unavailable */ }
 
     // Register bank movements only after the sale is confirmed.
     // Aggregate multiple transfer lines hitting the same bank account into one
@@ -1717,7 +1784,7 @@ export default function POS() {
       )}
       {!currentSession && (
         <Suspense fallback={null}>
-          <POSStartupScreen {...{ activeCashSessions, allowedBranches, baseCurrency, branches, currencies, currentSession, currentUser, detectedWorker, employeePickerOpen, employeePickerRef, employeePickerSearch, handleJoinExistingSession, handleOpenSession, handlePrintClosureThermal, isBranchLocked, isOnline, isOpeningSession, isRefreshingOpenSessions, joiningSessionId, joiningSessionPassword, lastClosedSession, logout, navigate, openSessionForWorker, openSessionsForResume, openingAmount, posError, posSuccess, refreshOpenSessions, sessionBranchId, sessionPassword, sessionWorkerName, setEmployeePickerOpen, setEmployeePickerSearch, setJoiningSessionId, setJoiningSessionPassword, setOpeningAmount, setPosError, setPosSuccess, setSessionBranchId, setSessionPassword, setSessionWorkerId, setSessionWorkerName, setShowOpenSessionsModal, setShowOpenShiftModal, showOpenSessionsModal, showOpenShiftModal, users }} />
+          <POSStartupScreen {...{ activeCashSessions, allowedBranches, baseCurrency, branches, currencies, currentSession, currentUser, detectedWorker, employeePickerOpen, employeePickerRef, employeePickerSearch, handleJoinExistingSession, handleOpenSession, handlePrintClosureThermal, isBranchLocked, isOnline, isOpeningSession, isRefreshingOpenSessions, joiningSessionId, joiningSessionPassword, lastClosedSession, logout, navigate, openSessionForWorker, openSessionsForResume, openingAmount, pendingQuoteBanner: pendingQuote.quote ? <PendingQuoteBanner quote={pendingQuote.quote} customerName={pendingQuoteCustomerName} currencySymbol={baseCurrency.symbol} onCancel={cancelPendingQuote} onOpenQuotes={() => navigate('/quotes')} variant="startup" /> : null, posError, posSuccess, refreshOpenSessions, sessionBranchId, sessionPassword, sessionWorkerName, setEmployeePickerOpen, setEmployeePickerSearch, setJoiningSessionId, setJoiningSessionPassword, setOpeningAmount, setPosError, setPosSuccess, setSessionBranchId, setSessionPassword, setSessionWorkerId, setSessionWorkerName, setShowOpenSessionsModal, setShowOpenShiftModal, showOpenSessionsModal, showOpenShiftModal, users }} />
         </Suspense>
       )}
 
@@ -1752,7 +1819,6 @@ export default function POS() {
             onRemovePaymentLine={removePaymentLine}
             onUpdatePaymentLine={updatePaymentLine}
             onSetActivePaymentLine={setActivePaymentLineId}
-            lockedPaymentMethod={paymentLines[0]?.method || 'cash'}
             onAutoFillRemaining={autoFillRemaining}
             onSplitUsdPayment={splitUsdPayment}
             onHandleCheckout={handleCheckout}
@@ -1978,6 +2044,17 @@ export default function POS() {
               </button>
             </div>
           </div>
+
+          {pendingQuote.quote && (
+            <PendingQuoteBanner
+              quote={pendingQuote.quote}
+              customerName={pendingQuoteCustomerName}
+              currencySymbol={baseCurrency.symbol}
+              onCancel={cancelPendingQuote}
+              onOpenQuotes={() => navigate('/quotes')}
+              variant="cart"
+            />
+          )}
 
           {/* Customer Selector */}
           <div className="p-2.5 bg-secondary border-b border-base flex gap-1.5">

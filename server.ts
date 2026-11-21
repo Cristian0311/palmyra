@@ -1,16 +1,46 @@
 import express from 'express';
 import path from 'path';
+import os from 'os';
 import fs from 'fs/promises';
-import sharp from 'sharp';
-import { createServer as createViteServer } from 'vite';
-import { GoogleGenAI } from '@google/genai';
+import { existsSync } from 'fs';
 import dotenv from 'dotenv';
+import { createExchangeRateProvider } from './src/services/exchangeRateProvider';
 
 dotenv.config();
+
+// `npm run dev` ejecuta server.ts como ESM (package.json type: module), donde
+// __dirname no existe; el bundle de producción es CJS y sí lo define.
+const moduleDir = typeof __dirname === 'string' ? __dirname : process.cwd();
+
+// release/ se ignora en git para no inflar el repositorio, así que el servidor
+// desplegado (Render) no tiene los binarios: si no hay artefacto local, redirige
+// a los assets de nombre estable publicados en GitHub Releases.
+const GITHUB_RELEASES_LATEST = 'https://github.com/Cristian0311/palmyra/releases/latest/download';
+const DOWNLOAD_FALLBACKS = {
+  windows: process.env.PALMYRA_WINDOWS_DOWNLOAD_URL || `${GITHUB_RELEASES_LATEST}/PALMYRA-POS-Setup.exe`,
+  android: process.env.PALMYRA_ANDROID_DOWNLOAD_URL || `${GITHUB_RELEASES_LATEST}/PALMYRA-Android.apk`,
+};
+
+// Carga diferida: la app de escritorio empaqueta un único server.cjs y la IA
+// solo debe inicializarse cuando el endpoint la necesita realmente.
+async function createGoogleGenAIClient(apiKey: string) {
+  const { GoogleGenAI } = await import('@google/genai');
+  return new GoogleGenAI({
+    apiKey,
+    httpOptions: {
+      headers: {
+        'User-Agent': 'aistudio-build',
+      }
+    }
+  });
+}
 
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 10000;
+  // La app de escritorio fija HOST=127.0.0.1 para no exponer el POS a la red
+  // local; los despliegues en servidor mantienen 0.0.0.0.
+  const HOST = process.env.HOST || '0.0.0.0';
 
   app.use(express.json({ limit: '15mb' }));
 
@@ -37,19 +67,23 @@ async function startServer() {
     return { allowed: true, remaining: limit - current.count, retryAfter: 0 };
   };
 
-  const requireAuthenticatedRequest = async (req: any, res: any, next: any) => {
+  const verifyAccessToken = async (req: any): Promise<{ ok: boolean; user?: any }> => {
     const authHeader = String(req.headers.authorization || '');
     const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
     const supabaseUrl = process.env.SUPABASE_URL || 'https://hmcvujyqloyjdvngpdxz.supabase.co';
     const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
-    if (!accessToken || !supabaseAnonKey) return res.status(401).json({ success: false, error: 'Se requiere una sesión autenticada.' });
-
+    if (!accessToken || !supabaseAnonKey) return { ok: false };
     const userResponse = await fetch(supabaseUrl + '/auth/v1/user', {
       headers: { apikey: supabaseAnonKey, Authorization: 'Bearer ' + accessToken }
     }).catch(() => null);
-    if (!userResponse?.ok) return res.status(401).json({ success: false, error: 'Sesión no válida o expirada.' });
+    if (!userResponse?.ok) return { ok: false };
+    return { ok: true, user: await userResponse.json().catch(() => null) };
+  };
 
-    const user = await userResponse.json().catch(() => null);
+  const requireAuthenticatedRequest = async (req: any, res: any, next: any) => {
+    const { ok, user } = await verifyAccessToken(req);
+    if (!ok) return res.status(401).json({ success: false, error: 'Sesión no válida o expirada.' });
+
     const userId = String(user?.id || 'unknown');
     const limit = consumeRateLimit('ai:' + userId, 30, 60_000);
     res.setHeader('X-RateLimit-Remaining', String(limit.remaining));
@@ -74,15 +108,22 @@ async function startServer() {
   // AI routes are authenticated and rate-limited to prevent quota abuse.
   app.use('/api/ai-', requireAuthenticatedRequest);
 
-  // Single, crisp PNG version of the official PALMYRA master logo for
-  // email clients such as Gmail. The vector source lives in public/ and is
-  // rendered server-side so email never depends on SVG support.
+  // PNG version of the official PALMYRA logo for email clients such as Gmail.
+  // The PNG is generated at build time (public/palmyra-email-logo-v2.png), so
+  // the packaged desktop server nunca necesita el módulo nativo sharp; solo se
+  // usa como respaldo si el archivo no estuviera disponible.
   let palmyraEmailLogoBuffer: Buffer | null = null;
   app.get('/palmyra-email-logo-v2.png', async (_req, res) => {
     try {
       if (!palmyraEmailLogoBuffer) {
-        const svgPath = path.join(process.cwd(), 'public', 'palmyra-brand-master.svg');
-        const svg = await fs.readFile(svgPath);
+        const baseDirs = [moduleDir, path.join(moduleDir, '..', 'public'), path.join(process.cwd(), 'public')];
+        for (const dir of baseDirs) {
+          try { palmyraEmailLogoBuffer = await fs.readFile(path.join(dir, 'palmyra-email-logo-v2.png')); break; } catch { /* siguiente ruta */ }
+        }
+      }
+      if (!palmyraEmailLogoBuffer) {
+        const { default: sharp } = await import('sharp');
+        const svg = await fs.readFile(path.join(moduleDir, '..', 'public', 'palmyra-logo-exact.svg'));
         palmyraEmailLogoBuffer = await sharp(svg)
           .resize({ width: 1200, withoutEnlargement: true })
           .png()
@@ -362,57 +403,184 @@ async function startServer() {
     }
   });
 
-  // Informational exchange-rate proxy. The elTOQUE token never reaches the browser.
-  // Cache for five minutes to avoid spending the provider's quota on page refreshes.
-  let elToqueCache: { expiresAt: number; body: any } | null = null;
+  const exchangeRates = createExchangeRateProvider();
   app.get('/api/exchange-rates', rateLimitExchange, async (_req, res) => {
+    const result = await exchangeRates(process.env.ELTOQUE_API_TOKEN || '');
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(result.status).json(result.body);
+  });
+
+  // --- Red local: presencia de equipos y nombres ----------------------------
+  // El registro vive en memoria y solo persiste nombres; las IP y el último
+  // contacto se reconstruyen con cada heartbeat.
+  const lanDataDir = process.env.PALMYRA_DATA_DIR || path.join(os.homedir(), '.palmyra');
+  const lanConfigPath = path.join(lanDataDir, 'palmyra-lan.json');
+  const lanDevicesPath = path.join(lanDataDir, 'lan-devices.json');
+  const lanDesktopManaged = Boolean(process.env.PALMYRA_DATA_DIR);
+
+  const readJsonFile = async <T,>(file: string): Promise<T | null> => {
+    try { return JSON.parse(await fs.readFile(file, 'utf8')) as T; } catch { return null; }
+  };
+  const writeJsonFile = async (file: string, value: unknown) => {
     try {
-      if (elToqueCache && elToqueCache.expiresAt > Date.now()) {
-        res.setHeader('Cache-Control', 'private, max-age=60');
-        return res.json(elToqueCache.body);
-      }
-      const token = process.env.ELTOQUE_API_TOKEN || '';
-      if (!token) {
-        return res.status(503).json({
-          configured: false,
-          source: 'elTOQUE API',
-          error: 'La fuente de tasas todavía no está configurada en el servidor.'
-        });
-      }
-      // Without date parameters elTOQUE returns the latest rolling 24-hour window.
-      // Its API rejects intervals greater than 24 hours.
-      const response = await fetch('https://tasas.eltoque.com/v1/trmi', {
-        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(10000)
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        return res.status(response.status).json({
-          configured: true,
-          source: 'elTOQUE API',
-          error: payload?.error || `elTOQUE respondió HTTP ${response.status}`
-        });
-      }
-      const body = {
-        configured: true,
-        source: 'elTOQUE API',
-        capturedAt: new Date().toISOString(),
-        informationalOnly: true,
-        data: payload
-      };
-      elToqueCache = { expiresAt: Date.now() + 5 * 60 * 1000, body };
-      res.setHeader('Cache-Control', 'private, max-age=60');
-      return res.json(body);
-    } catch (error: any) {
-      console.error('[PALMYRA] exchange rates:', error?.name || 'request_failed');
-      return res.status(502).json({
-        configured: true,
-        source: 'elTOQUE API',
-        error: error?.name === 'TimeoutError'
-          ? 'La consulta a elTOQUE tardó demasiado. Intenta nuevamente.'
-          : 'No se pudo consultar elTOQUE en este momento.'
-      });
+      await fs.mkdir(lanDataDir, { recursive: true });
+      await fs.writeFile(file, JSON.stringify(value, null, 2));
+    } catch (error) {
+      console.warn('[PALMYRA] No se pudo guardar la configuración de red local:', error);
     }
+  };
+
+  type LanRecord = {
+    id: string;
+    name: string;
+    kind: 'desktop' | 'mobile' | 'tablet' | 'browser';
+    warehouseName: string | null;
+    ip: string;
+    firstSeen: string;
+    lastSeen: string;
+  };
+
+  const lanBound = HOST !== '127.0.0.1' && HOST !== 'localhost';
+  const lanConfig = (await readJsonFile<{ enabled?: boolean }>(lanConfigPath)) || {};
+  // En escritorio el interruptor manda; en desarrollo el enlace depende del host.
+  let lanDesired = lanDesktopManaged ? lanConfig.enabled === true : lanBound;
+  const lanDevices = new Map<string, LanRecord>();
+  const savedLanDevices = await readJsonFile<LanRecord[]>(lanDevicesPath);
+  for (const record of Array.isArray(savedLanDevices) ? savedLanDevices : []) {
+    if (!record?.id || !record?.name) continue;
+    lanDevices.set(record.id, {
+      ...record,
+      lastSeen: Number.isFinite(Date.parse(record.lastSeen || '')) ? record.lastSeen : new Date(0).toISOString(),
+      firstSeen: record.firstSeen || new Date().toISOString(),
+      ip: ''
+    });
+  }
+
+  const persistLanDevices = () => {
+    lastLanPersistAt = Date.now();
+    const records = [...lanDevices.values()].map(({ id, name, kind, warehouseName, firstSeen, lastSeen }) => ({ id, name, kind, warehouseName, firstSeen, lastSeen, ip: '' }));
+    void writeJsonFile(lanDevicesPath, records.slice(-200));
+  };
+  let lastLanPersistAt = 0;
+
+  const lanAddresses = () => {
+    const addresses: string[] = [];
+    for (const entries of Object.values(os.networkInterfaces())) {
+      for (const entry of entries || []) {
+        if (entry && entry.family === 'IPv4' && !entry.internal) addresses.push(entry.address);
+      }
+    }
+    return addresses;
+  };
+  const lanStatus = () => {
+    const addresses = lanBound ? lanAddresses() : [];
+    return {
+      enabled: lanBound,
+      desired: lanDesired,
+      desktop: lanDesktopManaged,
+      host: HOST,
+      port: PORT,
+      addresses,
+      url: lanBound && addresses[0] ? `http://${addresses[0]}:${PORT}` : null,
+      requiresRestart: lanDesktopManaged && lanDesired !== lanBound
+    };
+  };
+  const lanSnapshot = () => {
+    const now = Date.now();
+    const weekAgo = now - 7 * 86400000;
+    const devices = [...lanDevices.values()]
+      .filter(device => Date.parse(device.lastSeen || '') > weekAgo)
+      .map(device => ({
+        id: device.id,
+        name: device.name,
+        ip: device.ip,
+        kind: device.kind,
+        firstSeen: device.firstSeen,
+        lastSeen: device.lastSeen,
+        online: now - Date.parse(device.lastSeen || '') < 90_000,
+        warehouseName: device.warehouseName
+      }))
+      .sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name, 'es'));
+    return { devices, status: lanStatus(), serverNow: new Date(now).toISOString() };
+  };
+
+  const cleanLanText = (value: unknown, max = 60) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
+  const cleanLanIp = (value: unknown) => String(value || '').replace(/^::ffff:/, '');
+  const requireLanAdmin = async (req: any, res: any, next: any) => {
+    const { ok } = await verifyAccessToken(req);
+    if (!ok) return res.status(401).json({ error: 'Se requiere una sesión autenticada para administrar la red local.' });
+    return next();
+  };
+
+  app.get('/api/lan/status', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(lanStatus());
+  });
+
+  app.post('/api/lan/presence', (req: any, res) => {
+    const key = 'lan-presence:' + (req.ip || req.socket?.remoteAddress || 'unknown');
+    if (!consumeRateLimit(key, 240, 60_000).allowed) return res.status(429).json({ error: 'Demasiados latidos de presencia.' });
+    const id = cleanLanText(req.body?.id, 64);
+    if (!id) return res.status(400).json({ error: 'Falta el identificador del equipo.' });
+    const now = new Date().toISOString();
+    const existing = lanDevices.get(id);
+    const kind = ['desktop', 'mobile', 'tablet', 'browser'].includes(req.body?.kind) ? req.body.kind as LanRecord['kind'] : 'browser';
+    lanDevices.set(id, {
+      id,
+      name: existing?.name || cleanLanText(req.body?.name) || `Equipo ${id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase()}`,
+      kind,
+      warehouseName: cleanLanText(req.body?.warehouseName, 80) || null,
+      ip: cleanLanIp(req.ip || req.socket?.remoteAddress),
+      firstSeen: existing?.firstSeen || now,
+      lastSeen: now
+    });
+    if (!existing) {
+      if (lanDevices.size > 200) {
+        const oldest = [...lanDevices.values()].sort((a, b) => Date.parse(a.lastSeen) - Date.parse(b.lastSeen))[0];
+        if (oldest) lanDevices.delete(oldest.id);
+      }
+      persistLanDevices();
+    } else if (Date.now() - lastLanPersistAt > 60_000) {
+      // Mantiene el último contacto en disco sin escribir en cada latido.
+      persistLanDevices();
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ ok: true });
+  });
+
+  app.get('/api/lan/devices', requireLanAdmin, (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(lanSnapshot());
+  });
+
+  app.patch('/api/lan/devices/:id', requireLanAdmin, (req: any, res) => {
+    const id = String(req.params.id || '');
+    const device = lanDevices.get(id);
+    if (!device) return res.status(404).json({ error: 'Ese equipo ya no está registrado.' });
+    const name = cleanLanText(req.body?.name);
+    if (!name) return res.status(400).json({ error: 'El nombre no puede quedar vacío.' });
+    lanDevices.set(id, { ...device, name });
+    persistLanDevices();
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json(lanSnapshot());
+  });
+
+  app.delete('/api/lan/devices/:id', requireLanAdmin, (req: any, res) => {
+    lanDevices.delete(String(req.params.id || ''));
+    persistLanDevices();
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json(lanSnapshot());
+  });
+
+  app.put('/api/lan/settings', requireLanAdmin, async (req: any, res) => {
+    if (!lanDesktopManaged) {
+      return res.status(409).json({ error: 'El acceso LAN se administra desde el servidor donde está instalado PALMYRA.' });
+    }
+    const enabled = req.body?.enabled === true;
+    lanDesired = enabled;
+    await writeJsonFile(lanConfigPath, { enabled });
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json({ status: lanStatus() });
   });
 
   // AI Financial & Operational Report Analyzer
@@ -437,14 +605,7 @@ async function startServer() {
 
       if (apiKey && apiKey !== 'MY_GEMINI_API_KEY' && apiKey.trim().length > 10) {
         try {
-          const ai = new GoogleGenAI({
-            apiKey,
-            httpOptions: {
-              headers: {
-                'User-Agent': 'aistudio-build',
-              }
-            }
-          });
+          const ai = await createGoogleGenAIClient(apiKey);
           const prompt = `Analiza los siguientes datos financieros y operativos del negocio "${businessName}" (Filtro: ${dateFilterLabel}, Moneda base: ${baseCurrencyCode} ${baseCurrencySymbol}).
           
 DATOS FINANCIEROS:
@@ -629,14 +790,7 @@ Genera un informe ejecutivo de auditoría contable y operativa con recomendacion
         });
       }
 
-      const ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
-          }
-        }
-      });
+      const ai = await createGoogleGenAIClient(apiKey);
       
       const sessionSummary = transactions.map((t: any) => ({
         id: t.id,
@@ -754,14 +908,7 @@ Responde ESTRICTAMENTE con un objeto JSON:
         });
       }
 
-      const ai = new GoogleGenAI({
-        apiKey,
-        httpOptions: {
-          headers: {
-            'User-Agent': 'aistudio-build',
-          }
-        }
-      });
+      const ai = await createGoogleGenAIClient(apiKey);
       const prompt = `
         Eres un analista de negocios experto para una tienda minorista llamada PALMYRA.
         Analiza los siguientes datos de hoy y proporciona un resumen ejecutivo MUY breve (máximo 3 oraciones) y 2 recomendaciones tácticas.
@@ -792,15 +939,102 @@ Responde ESTRICTAMENTE con un objeto JSON:
     }
   });
 
-  // Vite middleware in dev mode
-  if (process.env.NODE_ENV !== 'production') {
+  // Descarga del instalador de escritorio para la landing. Sirve el setup más
+  // reciente de release/ sin duplicar ~80 MB dentro de dist en cada compilación.
+  app.get('/download/windows', async (_req, res) => {
+    try {
+      const releaseDirs = [
+        process.env.PALMYRA_DESKTOP_RELEASE_DIR,
+        path.join(process.cwd(), 'release'),
+        path.join(moduleDir, '..', 'release'),
+      ].filter((dir): dir is string => Boolean(dir));
+
+      let installer = '';
+      let newest = 0;
+      for (const dir of releaseDirs) {
+        if (!existsSync(dir)) continue;
+        for (const entry of await fs.readdir(dir)) {
+          if (!/^PALMYRA-POS-.+-Setup\.exe$/i.test(entry)) continue;
+          const fullPath = path.join(dir, entry);
+          const stats = await fs.stat(fullPath);
+          if (stats.mtimeMs > newest) {
+            newest = stats.mtimeMs;
+            installer = fullPath;
+          }
+        }
+      }
+
+      if (!installer) {
+        res.redirect(302, DOWNLOAD_FALLBACKS.windows);
+        return;
+      }
+      res.download(installer, path.basename(installer));
+    } catch (error: any) {
+      console.error('[Download] No se pudo servir el instalador:', error?.message || error);
+      res.status(500).json({ error: 'No se pudo preparar la descarga del instalador.' });
+    }
+  });
+
+  // Descarga del APK de Android publicado en release/ (el más reciente).
+  app.get('/download/android', async (_req, res) => {
+    try {
+      const releaseDirs = [
+        process.env.PALMYRA_ANDROID_RELEASE_DIR,
+        path.join(process.cwd(), 'release'),
+        path.join(moduleDir, '..', 'release'),
+      ].filter((dir): dir is string => Boolean(dir));
+
+      let apk = '';
+      let newest = 0;
+      for (const dir of releaseDirs) {
+        if (!existsSync(dir)) continue;
+        for (const entry of await fs.readdir(dir)) {
+          if (!/^PALMYRA.*\.apk$/i.test(entry)) continue;
+          const fullPath = path.join(dir, entry);
+          const stats = await fs.stat(fullPath);
+          if (stats.mtimeMs > newest) {
+            newest = stats.mtimeMs;
+            apk = fullPath;
+          }
+        }
+      }
+
+      if (!apk) {
+        res.redirect(302, DOWNLOAD_FALLBACKS.android);
+        return;
+      }
+      res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+      res.setHeader('Content-Disposition', `attachment; filename="${path.basename(apk)}"`);
+      res.sendFile(apk);
+    } catch (error: any) {
+      console.error('[Download] No se pudo servir el APK:', error?.message || error);
+      res.status(500).json({ error: 'No se pudo preparar la descarga de la app móvil.' });
+    }
+  });
+
+  // Vite middleware in dev mode. Importado dinámicamente para que el servidor
+  // de producción empaquetado no cargue (ni requiera) Vite.
+  // `npm start` no define NODE_ENV: si dist/ ya está compilado servimos esos
+  // estáticos en lugar de arrancar Vite en modo middleware.
+  const hasBuiltClient =
+    existsSync(path.join(moduleDir, 'index.html')) &&
+    existsSync(path.join(moduleDir, 'assets'));
+  const serveBuiltClient =
+    process.env.NODE_ENV === 'production' ||
+    (process.env.NODE_ENV !== 'development' && hasBuiltClient);
+
+  if (!serveBuiltClient) {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
+    // server.cjs se empaqueta dentro de dist/, así que moduleDir es la carpeta
+    // de estáticos tanto en Render como en la app de escritorio instalada.
+    // process.cwd() no es fiable ahí (Electron puede arrancar con otro cwd).
+    const distPath = moduleDir;
 
     // Never let the browser/CDN pin the service-worker entrypoint. The SW is
     // responsible for updating the cached application bundle; stale sw.js can
@@ -832,8 +1066,16 @@ Responde ESTRICTAMENTE con un objeto JSON:
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[PALMYRA API] Server running on http://0.0.0.0:${PORT}`);
+  const httpServer = app.listen(PORT, HOST, () => {
+    console.log(`[PALMYRA API] Server running on http://${HOST}:${PORT}`);
+  });
+  httpServer.on('error', (error: NodeJS.ErrnoException) => {
+    // Un puerto ocupado era invisible en la app de escritorio: quedaba una
+    // ventana sin contenido. Dejamos el motivo explícito en consola/log.
+    console.error(`[PALMYRA API] No se pudo abrir el puerto ${PORT}:`, error.message);
+    if (error.code === 'EADDRINUSE') {
+      console.error(`[PALMYRA API] El puerto ${PORT} ya está en uso por otro proceso.`);
+    }
   });
 }
 

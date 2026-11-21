@@ -34,6 +34,7 @@ type AggregatedPayrollRow = {
   totalSales: number;
   totalBaseSalary: number;
   totalCommissions: number;
+  totalDeductions: number;
   totalSalary: number;
   pendingSalary: number;
   paidSalary: number;
@@ -48,6 +49,7 @@ export function useReportsPayroll(params: {
   productById: Map<string, Product>;
   sessionTurnMap: Map<string, string>;
   selectedBranchFilter: string;
+  selectedWorkerFilter?: string;
   selectedFilterDate: string;
   sessionFilter: 'all' | 'today' | 'yesterday' | 'custom';
   companyCompensation?: { mode: 'fixed_product' | 'sales_percent'; percentRate: number };
@@ -60,6 +62,7 @@ export function useReportsPayroll(params: {
     productById,
     sessionTurnMap,
     selectedBranchFilter,
+    selectedWorkerFilter = 'all',
     selectedFilterDate,
     sessionFilter,
     companyCompensation = { mode: 'fixed_product', percentRate: 0 },
@@ -116,7 +119,7 @@ export function useReportsPayroll(params: {
       }
 
       const baseSalary = existing?.baseSalary ?? (companyCompensation.mode === 'sales_percent' ? 0 : Math.max(0, Number(emp?.baseSalary) || 0));
-      const discrepancyDeduction = Math.max(0, Number(existing?.discrepancyDeduction) || 0);
+      const discrepancyDeduction = Math.max(0, Number(existing?.discrepancyDeduction) || 0, Number(session.discrepancyDeductionApplied) || 0);
       const totalSalary = Math.max(0, baseSalary + commissions - discrepancyDeduction);
       const status = existing?.status === 'paid' ? 'paid' : 'pending';
       const date = existing?.date || session.closingDate || session.closedAt || session.openedAt;
@@ -153,11 +156,12 @@ export function useReportsPayroll(params: {
     () =>
       payrollList.filter(item => {
         if (selectedBranchFilter !== 'all' && item.branchId !== selectedBranchFilter) return false;
+        if (selectedWorkerFilter !== 'all' && item.userId !== selectedWorkerFilter) return false;
 
         if (!matchesReportDateFilter(item.date, selectedFilterDate, sessionFilter)) return false;
         return true;
       }),
-    [payrollList, selectedBranchFilter, selectedFilterDate, sessionFilter]
+    [payrollList, selectedBranchFilter, selectedWorkerFilter, selectedFilterDate, sessionFilter]
   );
 
   const aggregatedPayrollByWorker = useMemo<AggregatedPayrollRow[]>(() => {
@@ -173,6 +177,7 @@ export function useReportsPayroll(params: {
           totalSales: 0,
           totalBaseSalary: 0,
           totalCommissions: 0,
+          totalDeductions: 0,
           totalSalary: 0,
           pendingSalary: 0,
           paidSalary: 0,
@@ -184,6 +189,7 @@ export function useReportsPayroll(params: {
       aggregate.totalSales += item.totalSales;
       aggregate.totalBaseSalary += item.baseSalary;
       aggregate.totalCommissions += item.commissions;
+      aggregate.totalDeductions += item.discrepancyDeduction;
       aggregate.totalSalary += item.totalSalary;
       if (item.status === 'paid') aggregate.paidSalary += item.totalSalary;
       else aggregate.pendingSalary += item.totalSalary;

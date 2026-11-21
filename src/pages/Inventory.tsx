@@ -1,5 +1,6 @@
 import { buildInventoryViewData } from '../modules/inventory/utils/buildInventoryViewData';
-import { getWarehouseId } from "../modules/warehouse/warehouseScope";
+import { getWarehouseId, getAuthorizedWarehouseIds } from "../modules/warehouse/warehouseScope";
+import { isLowStockQuantity } from "../modules/inventory/utils/lowStock";
 import { buildInventoryCsv } from '../modules/inventory/utils/buildInventoryCsv';
 import { resizeProductImage } from '../modules/inventory/utils/resizeProductImage';
 import { useShallow } from 'zustand/react/shallow';
@@ -7,9 +8,8 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ArrowLeftRight, PackagePlus, AlertCircle, Search, ShieldCheck, X, DollarSign, Trash2, Edit, History, Package, PackageCheck, TrendingUp, Filter, Download, Plus, ArrowRightLeft, LayoutGrid, List, Settings2, Tag, Building2, Save, RefreshCw, Minus, ChevronDown, ChevronUp, ChevronRight, Check } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { cn, generateId } from "../lib/utils";
-import { Product, Category } from "../types";
+import { Product, Category, User } from "../types";
 import { InfoTooltip } from "../components/InfoTooltip";
-import { TransferHistory } from "../components/TransferHistory";
 import { PrintLabels } from "../components/PrintLabels";
 import { ABCAnalysis } from "../components/ABCAnalysis";
 import { RestockAlerts } from "../components/RestockAlerts";
@@ -21,14 +21,41 @@ import { canUsePlanFeature } from '../services/planAccess';
 import PlanFeatureGate from '../components/PlanFeatureGate';
 import "./team.css";
 
+function estimateUnitSalary(product: Pick<Product, "price" | "commissionValue">, employees: User[]) {
+  if (!employees.length) return 0;
+  const sale = Math.max(0, Number(product.price) || 0);
+  const fixed = Math.max(0, Number(product.commissionValue) || 0);
+  const average = employees.reduce((sum, employee) => {
+    const type = employee.compensationType || "fixed_product";
+    if (type === "sales_percentage") {
+      const rate = Math.max(0, Math.min(100, Number(employee.salesPercentage ?? employee.commissionRate) || 0));
+      return sum + (sale * rate / 100);
+    }
+    return sum + fixed;
+  }, 0) / employees.length;
+  return average;
+}
+
 export default function Inventory() {
   const { 
     products, inventory, branches, addProduct, updateProduct, 
-    transferInventory, setInventoryQuantity, deleteProduct, deleteCategory,
-    transfers, categories, batchDeleteProducts, batchUpdateProducts, getBaseCurrency, currencies,
-    currentBranchId, addNotification, users
-  } = useStore(useShallow((state) => ({ products: state.products, inventory: state.inventory, branches: state.branches, addProduct: state.addProduct, updateProduct: state.updateProduct, transferInventory: state.transferInventory, setInventoryQuantity: state.setInventoryQuantity, deleteProduct: state.deleteProduct, deleteCategory: state.deleteCategory, transfers: state.transfers, categories: state.categories, batchDeleteProducts: state.batchDeleteProducts, batchUpdateProducts: state.batchUpdateProducts, getBaseCurrency: state.getBaseCurrency, currencies: state.currencies, currentBranchId: state.currentBranchId, addNotification: state.addNotification, users: state.users })));
+    setInventoryQuantity, deleteProduct, deleteCategory,
+    categories, batchDeleteProducts, batchUpdateProducts, getBaseCurrency, currencies,
+    currentBranchId, addNotification, users, currentUser
+  } = useStore(useShallow((state) => ({ products: state.products, inventory: state.inventory, branches: state.branches, addProduct: state.addProduct, updateProduct: state.updateProduct, setInventoryQuantity: state.setInventoryQuantity, deleteProduct: state.deleteProduct, deleteCategory: state.deleteCategory, categories: state.categories, batchDeleteProducts: state.batchDeleteProducts, batchUpdateProducts: state.batchUpdateProducts, getBaseCurrency: state.getBaseCurrency, currencies: state.currencies, currentBranchId: state.currentBranchId, addNotification: state.addNotification, users: state.users, currentUser: state.currentUser })));
   const baseCurrency = getBaseCurrency();
+
+  // Un empleado solo opera sobre sus almacenes autorizados; el administrador ve todos.
+  const authorizedBranchIds = useMemo(
+    () => currentUser?.role === 'admin' ? [] : getAuthorizedWarehouseIds(currentUser),
+    [currentUser]
+  );
+  const isBranchRestricted = currentUser?.role !== 'admin' && authorizedBranchIds.length > 0;
+  const allowedBranches = useMemo(
+    () => isBranchRestricted ? (branches || []).filter(branch => authorizedBranchIds.includes(branch.id)) : (branches || []),
+    [branches, isBranchRestricted, authorizedBranchIds]
+  );
+
   const hasFixedProductEmployees = (users || []).some(user => user.isActive !== false && (user.compensationType || 'fixed_product') === 'fixed_product');
   const categoryById = useMemo(
     () => new Map((categories || []).map(category => [category.id, category])),
@@ -70,14 +97,14 @@ export default function Inventory() {
     }
   }, [branches, warehouseCardOrder, warehouseOrderLoadedKey, warehouseOrderStorageKey]);
   const orderedBranches = useMemo(() => {
-    const branchIds = new Set((branches || []).map(branch => branch.id));
+    const branchIds = new Set(allowedBranches.map(branch => branch.id));
     const orderedIds = [
       ...warehouseCardOrder.filter(id => branchIds.has(id)),
-      ...(branches || []).map(branch => branch.id).filter(id => !warehouseCardOrder.includes(id)),
+      ...allowedBranches.map(branch => branch.id).filter(id => !warehouseCardOrder.includes(id)),
     ];
-    const byId = new Map((branches || []).map(branch => [branch.id, branch]));
+    const byId = new Map(allowedBranches.map(branch => [branch.id, branch]));
     return orderedIds.map(id => byId.get(id)).filter(Boolean) as typeof branches;
-  }, [branches, warehouseCardOrder]);
+  }, [allowedBranches, warehouseCardOrder]);
   const moveWarehouseCard = (branchId: string, delta: number) => {
     const order = orderedBranches.map(branch => branch.id);
     const index = order.indexOf(branchId);
@@ -102,33 +129,30 @@ export default function Inventory() {
     setSearchQuery(barcode);
   });
   const [selectedBranch, setSelectedBranch] = useState("all");
+
+  React.useEffect(() => {
+    if (!isBranchRestricted) return;
+    const allowedIds = new Set(allowedBranches.map(branch => branch.id));
+    if (selectedBranch === 'all' || !allowedIds.has(selectedBranch)) {
+      setSelectedBranch(allowedBranches[0]?.id || 'all');
+    }
+  }, [isBranchRestricted, allowedBranches, selectedBranch]);
+
+  const [pendingDelete, setPendingDelete] = useState<{ kind: 'product' | 'category'; id: string; name: string } | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [managingStockProduct, setManagingStockProduct] = useState<Product | null>(null);
-  const [transferQuantity, setTransferQuantity] = useState<number>(0);
-  const [targetBranchId, setTargetBranchId] = useState<string>("");
-  const [transferVariant, setTransferVariant] = useState<string>("");
-
-  const handleTransfer = async (productId: string, fromBranchId: string) => {
-    if (!targetBranchId || transferQuantity <= 0) {
-      addNotification("Selecciona una sucursal destino y una cantidad válida.", 'warning');
-      return;
-    }
-    
-    const success = await transferInventory(productId, fromBranchId, targetBranchId, transferQuantity, transferVariant);
-    if (success) {
-      addNotification("Transferencia completada con éxito.", 'success');
-      setTransferQuantity(0);
-      setTargetBranchId("");
-    } else {
-      addNotification("Error al realizar la transferencia. Verifica el stock disponible.", 'error');
-    }
-  };
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [stockFilter, setStockFilter] = useState<'all' | 'in_stock' | 'low' | 'out'>('all');
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
-  const [activeTab, setActiveTab] = useState<'products' | 'transfers' | 'labels' | 'abc' | 'restock' | 'bulk' | 'excel'>('products');
+  const [activeTab, setActiveTab] = useState<'products' | 'labels' | 'abc' | 'restock' | 'bulk' | 'excel'>('products');
+
+  // La selección masiva solo es válida para la vista actual: si cambian los
+  // filtros, aplicar acciones a filas ocultas sería una acción invisible.
+  React.useEffect(() => {
+    setSelectedItems([]);
+  }, [debouncedSearchQuery, selectedBranch, selectedCategory, stockFilter, activeTab]);
   const [planCode, setPlanCode] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
@@ -349,13 +373,6 @@ export default function Inventory() {
   }, [products, debouncedSearchQuery, bulkPriceSort]);
   const [bulkBranchId, setBulkBranchId] = useState<string>(branches[0]?.id || "");
 
-  const [transferSubTab, setTransferSubTab] = useState<'history' | 'new'>('history');
-  const [bulkTransferItems, setBulkTransferItems] = useState<{ productId: string, quantity: number, variant?: string }[]>([]);
-  const [bulkTransferSourceId, setBulkTransferSourceId] = useState(currentBranchId);
-  const [bulkTransferTargetId, setBulkTransferTargetId] = useState("");
-  const [transferSearch, setTransferSearch] = useState("");
-  const [isExecutingTransfer, setIsExecutingTransfer] = useState(false);
-
   // Auto-select first branch when they load
   React.useEffect(() => {
     if (!bulkBranchId && branches.length > 0) {
@@ -403,8 +420,9 @@ export default function Inventory() {
         }
       }
 
-      // Save each full product and await server confirmation before discarding any draft.
-      // If one write fails, the entire draft remains in state and localStorage for retry.
+      // Offline-first: la edición se aplica localmente y, si la red falla, queda
+      // encolada. Un error permanente conserva el borrador completo.
+      let queued = 0;
       for (const [prodId, updates] of Object.entries(productUpdates)) {
         const current = useStore.getState().products.find(product => product.id === prodId);
         if (!current) throw new Error(`No se encontró el producto ${prodId}; el borrador se conserva.`);
@@ -412,12 +430,17 @@ export default function Inventory() {
         if (updates.price !== undefined || updates.costPrice !== undefined) {
           updated.margin = Math.max(0, Number(updated.price || 0) - Number(updated.costPrice || 0));
         }
-        await pushProductToSupabase(updated, { queueOnTransientFailure: false });
+        const confirmed = await pushProductToSupabase(updated);
+        if (!confirmed) queued += 1;
         useStore.setState(state => ({ products: state.products.map(product => product.id === prodId ? updated : product) }));
       }
 
       setBulkChanges({});
-      addNotification(`Cambios masivos guardados y confirmados: ${Object.keys(productUpdates).length} productos.`, 'success');
+      if (queued > 0) {
+        addNotification(`${Object.keys(productUpdates).length - queued} productos confirmados; ${queued} quedaron pendientes de sincronizar.`, 'info');
+      } else {
+        addNotification(`Cambios masivos guardados y confirmados: ${Object.keys(productUpdates).length} productos.`, 'success');
+      }
     } catch (err) {
       console.error('[PALMYRA] bulk inventory save failed; draft preserved', err);
       addNotification('No se confirmaron todos los cambios. El borrador se conservó; corrige el error y vuelve a Guardar.', 'error');
@@ -563,6 +586,12 @@ export default function Inventory() {
       setActiveFormTab(activeFormTab === 'general' ? 'variants' : 'extra');
       return;
     }
+    // El stock se indexa por una sola etiqueta de variante. Tallas y colores a
+    // la vez generarían existencias "fantasma" que el POS no puede descontar.
+    if ((formData.availableSizes || []).length > 0 && (formData.availableColors || []).length > 0) {
+      addNotification("Usa un solo tipo de variante: tallas o colores, no ambos. Así el stock y el POS coinciden exactamente.", 'error');
+      return;
+    }
     if (editingProduct) {
       updateProduct(editingProduct.id, {
         ...formData,
@@ -575,7 +604,8 @@ export default function Inventory() {
         id: generateId('PRD'),
         commissionValue: hasFixedProductEmployees ? Number(formData.commissionValue || 0) : 0,
       };
-      addProduct(newProduct);
+      const created = addProduct(newProduct);
+      if (created === false) return;
     }
     setShowAddModal(false);
     setEditingProduct(null);
@@ -704,25 +734,33 @@ export default function Inventory() {
     );
   };
 
+  // Los indicadores reflejan la sucursal activa, no la búsqueda ni los filtros
+  // de la tabla: buscar un producto no debe alterar las cifras globales.
   const stats = useMemo(() => {
     const totalsByProduct = new Map<string, number>();
+    const lowStockProductIds = new Set<string>();
+    const productById = new Map((products || []).map(product => [product.id, product]));
     for (const level of inventory || []) {
       if (selectedBranch !== 'all' && level.branchId !== selectedBranch) continue;
       totalsByProduct.set(level.productId, (totalsByProduct.get(level.productId) || 0) + level.quantity);
+      const product = productById.get(level.productId);
+      if (product && isLowStockQuantity(level.quantity, product, level.minQuantity)) lowStockProductIds.add(level.productId);
     }
 
-    const targetProducts = selectedBranch === 'all'
-      ? products.map(product => ({ ...product, totalStock: totalsByProduct.get(product.id) || 0 }))
-      : inventoryData.full;
+    const targetProducts = (products || []).map(product => ({
+      ...product,
+      totalStock: totalsByProduct.get(product.id) || 0
+    }));
 
     const totalProducts = targetProducts.length;
     let totalStock = 0;
     let totalCostValue = 0;
     let totalSaleValue = 0;
     let totalEmployeeSalary = 0;
+    const netProfitByProduct = new Map<string, number>();
+    const unitProfitByProduct = new Map<string, number>();
 
     const activeEmployees = (users || []).filter(user => user.isActive !== false);
-    const employeeCount = activeEmployees.length;
 
     for (const product of targetProducts) {
       const quantity = Math.max(0, Number(product.totalStock) || 0);
@@ -732,28 +770,19 @@ export default function Inventory() {
       totalCostValue += unitCost * quantity;
       totalSaleValue += unitSale * quantity;
 
-      // Estimate the salary/commission attributable to one unit using the
-      // active workforce's compensation rules. Fixed-product employees use
-      // the product's configured CUP commission; percentage employees use
-      // their own configured rate against this product's sale price.
-      const unitSalary = employeeCount > 0
-        ? activeEmployees.reduce((sum, employee) => {
-            const compensationType = employee.compensationType || 'fixed_product';
-            if (compensationType === 'sales_percentage') {
-              const rate = Math.max(0, Math.min(100, Number(employee.salesPercentage ?? employee.commissionRate) || 0));
-              return sum + (unitSale * rate / 100);
-            }
-            return sum + Math.max(0, Number(product.commissionValue) || 0);
-          }, 0) / employeeCount
-        : 0;
+      // Ganancia neta real por unidad: venta − costo − salario/comisión del
+      // personal. Es la misma regla que usa el total de la tarjeta superior.
+      const unitSalary = Math.max(0, estimateUnitSalary(product, activeEmployees));
+      const unitProfit = unitSale - unitCost - unitSalary;
       totalEmployeeSalary += unitSalary * quantity;
+      unitProfitByProduct.set(product.id, unitProfit);
+      netProfitByProduct.set(product.id, unitProfit * quantity);
     }
 
     const totalProfit = totalSaleValue - totalEmployeeSalary - totalCostValue;
-    const lowStockCount = inventoryData.full.filter(p => p.isLowStock).length;
 
-    return { totalProducts, totalStock, lowStockCount, totalCostValue, totalSaleValue, totalProfit };
-  }, [inventory, products, inventoryData.full, selectedBranch, users]);
+    return { totalProducts, totalStock, lowStockCount: lowStockProductIds.size, totalCostValue, totalSaleValue, totalProfit, netProfitByProduct, unitProfitByProduct };
+  }, [inventory, products, selectedBranch, users]);
 
   return (
     <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500 h-full flex flex-col min-h-0">
@@ -828,7 +857,9 @@ export default function Inventory() {
         </div>
         <div className="bg-indigo-50/70 dark:bg-indigo-950/40 p-1.5 sm:p-2 rounded-xl border border-indigo-100 dark:border-indigo-900/40 shadow-xs flex flex-col justify-between">
           <span className="text-[7px] sm:text-[7.5px] font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-wider">Ganancia real</span>
-          <div className="mt-0.5"><MultiCurrencyDisplay amount={stats.totalProfit} /></div>
+          <div className="mt-0.5" title="Ganancia real = Σ stock × (precio de venta − costo − salario/comisión por producto). No descuenta gastos fijos.">
+            <MultiCurrencyDisplay amount={stats.totalProfit} />
+          </div>
         </div>
         <div className="col-span-2 sm:col-span-1 bg-secondary p-1.5 sm:p-2 rounded-xl border border-base shadow-xs flex flex-col justify-between">
           <span className="text-[7px] sm:text-[7.5px] font-black uppercase text-rose-500 tracking-wider">Bajo Stock</span>
@@ -862,8 +893,8 @@ export default function Inventory() {
                 className="w-full pl-6 pr-7 h-8 bg-subtle border border-base text-primary rounded-lg text-[9px] sm:text-[9px] font-bold outline-none hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
                 title="Filtrar por sucursal"
               >
-                <option value="all">Sucursal</option>
-                {branches.map(b => (
+                {!isBranchRestricted && <option value="all">Sucursal</option>}
+                {allowedBranches.map(b => (
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>
@@ -1231,7 +1262,30 @@ export default function Inventory() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-[10px] font-black text-primary whitespace-nowrap">{formatMoney(item.price)}</div>
-                      <div className="text-[8px] text-emerald-600 dark:text-emerald-400 font-black whitespace-nowrap">GAN: {formatMoney(item.margin)}</div>
+                      {(() => {
+                        const unitProfit = stats.unitProfitByProduct.get(item.id) ?? 0;
+                        const unitCost = Number(item.costPrice) || 0;
+                        const unitSalary = Math.max(0, (Number(item.price) || 0) - unitCost - unitProfit);
+                        return (
+                          <>
+                            <div
+                              className={cn(
+                                "text-[8px] font-black whitespace-nowrap",
+                                unitProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
+                              )}
+                              title={`Ganancia por unidad = venta ${formatMoney(Number(item.price) || 0)} − costo ${formatMoney(unitCost)} − salario/comisión ${formatMoney(unitSalary)}`}
+                            >
+                              Ganancia/u: {formatMoney(unitProfit)}
+                            </div>
+                            <div
+                              className="text-[7px] font-bold text-muted whitespace-nowrap"
+                              title={`Ganancia de todo el stock: ${item.totalStock} ${item.unit || 'uds'} × ${formatMoney(unitProfit)}`}
+                            >
+                              Total stock: {formatMoney(stats.netProfitByProduct.get(item.id) || 0)}
+                            </div>
+                          </>
+                        );
+                      })()}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
@@ -1281,7 +1335,7 @@ export default function Inventory() {
                           <Edit className="w-3.5 h-3.5" />
                         </button>
                         <button 
-                          onClick={() => window.confirm("¿Eliminar este producto permanentemente?\n\nSe eliminará del inventario y catálogo. Los registros históricos que no dependan del producto se conservarán cuando sea posible.") && deleteProduct(item.id)}
+                          onClick={() => setPendingDelete({ kind: 'product', id: item.id, name: item.name })}
                           className="text-muted hover:text-rose-600 transition-colors p-1.5 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/50 border border-base shadow-sm"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -1581,20 +1635,21 @@ export default function Inventory() {
                       <div className="inventory-variant-group">
                         <div className="inventory-variant-head"><label className="inventory-product-label">Tallas</label><span>{(formData.availableSizes || []).length}</span></div>
                         <div className="inventory-product-action-row">
-                          <input value={newSize} onChange={e=>setNewSize(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();const value=newSize.trim();if(!value)return;setFormData(prev=>({...prev,availableSizes:Array.from(new Set([...(prev.availableSizes||[]),value]))}));setNewSize('');}}} className="inventory-product-input" placeholder="Ej. M, 40, 42" />
-                          <button type="button" onClick={()=>{const value=newSize.trim();if(!value)return;setFormData(prev=>({...prev,availableSizes:Array.from(new Set([...(prev.availableSizes||[]),value]))}));setNewSize('');}} className="inventory-product-small-button">Agregar</button>
+                          <input value={newSize} disabled={(formData.availableColors||[]).length>0} onChange={e=>setNewSize(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();const value=newSize.trim();if(!value)return;setFormData(prev=>({...prev,availableSizes:Array.from(new Set([...(prev.availableSizes||[]),value]))}));setNewSize('');}}} className="inventory-product-input" placeholder={(formData.availableColors||[]).length>0?"No disponible con colores":"Ej. M, 40, 42"} />
+                          <button type="button" disabled={(formData.availableColors||[]).length>0} onClick={()=>{const value=newSize.trim();if(!value)return;setFormData(prev=>({...prev,availableSizes:Array.from(new Set([...(prev.availableSizes||[]),value]))}));setNewSize('');}} className="inventory-product-small-button">Agregar</button>
                         </div>
                         <div className="inventory-variant-tags">{(formData.availableSizes||[]).map(size=><button type="button" key={size} onClick={()=>setFormData(prev=>({...prev,availableSizes:(prev.availableSizes||[]).filter(x=>x!==size)}))} className="inventory-variant-tag inventory-variant-tag-indigo">{size}<span>×</span></button>)}</div>
                       </div>
                       <div className="inventory-variant-group">
                         <div className="inventory-variant-head"><label className="inventory-product-label">Colores</label><span>{(formData.availableColors || []).length}</span></div>
                         <div className="inventory-product-action-row">
-                          <input value={newColor} onChange={e=>setNewColor(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();const value=newColor.trim();if(!value)return;setFormData(prev=>({...prev,availableColors:Array.from(new Set([...(prev.availableColors||[]),value]))}));setNewColor('');}}} className="inventory-product-input" placeholder="Ej. Negro, Rojo" />
-                          <button type="button" onClick={()=>{const value=newColor.trim();if(!value)return;setFormData(prev=>({...prev,availableColors:Array.from(new Set([...(prev.availableColors||[]),value]))}));setNewColor('');}} className="inventory-product-small-button">Agregar</button>
+                          <input value={newColor} disabled={(formData.availableSizes||[]).length>0} onChange={e=>setNewColor(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();const value=newColor.trim();if(!value)return;setFormData(prev=>({...prev,availableColors:Array.from(new Set([...(prev.availableColors||[]),value]))}));setNewColor('');}}} className="inventory-product-input" placeholder={(formData.availableSizes||[]).length>0?"No disponible con tallas":"Ej. Negro, Rojo"} />
+                          <button type="button" disabled={(formData.availableSizes||[]).length>0} onClick={()=>{const value=newColor.trim();if(!value)return;setFormData(prev=>({...prev,availableColors:Array.from(new Set([...(prev.availableColors||[]),value]))}));setNewColor('');}} className="inventory-product-small-button">Agregar</button>
                         </div>
                         <div className="inventory-variant-tags">{(formData.availableColors||[]).map(color=><button type="button" key={color} onClick={()=>setFormData(prev=>({...prev,availableColors:(prev.availableColors||[]).filter(x=>x!==color)}))} className="inventory-variant-tag inventory-variant-tag-violet">{color}<span>×</span></button>)}</div>
                       </div>
                     </div>
+                    <div className="inventory-step-note"><b>Una sola dimensión:</b> usa tallas <i>o</i> colores. Cada etiqueta tendrá su propio stock y el POS descontará exactamente esa variante.</div>
                     {(formData.availableSizes?.length||formData.availableColors?.length)?<div className="inventory-step-note"><b>Producto con variantes:</b> no habrá stock base. Después de guardar, asigna la cantidad de cada variante desde Gestionar stock.</div>:null}
                   </div>
                 )}
@@ -1797,7 +1852,7 @@ export default function Inventory() {
             
             <div className="px-4 py-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60 flex items-center justify-between gap-3">
               <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
-                Almacenes: <strong className="text-slate-900 dark:text-slate-100 font-bold">{branches.length}</strong>
+                Almacenes: <strong className="text-slate-900 dark:text-slate-100 font-bold">{allowedBranches.length}</strong>
               </span>
               <button 
                 onClick={() => { commitAllStockDrafts(); setManagingStockProduct(null); }} 
@@ -1946,12 +2001,50 @@ export default function Inventory() {
                       <div className="inventory-category-item-info"><div className="inventory-category-item-icon"><Tag className="w-3.5 h-3.5" /></div><div className="min-w-0"><p>{cat.name}</p><span>{cat.department}</span></div></div>
                       <div className="inventory-category-item-actions">
                         <button type="button" onClick={()=>{setEditingCategory(cat);setCategoryFormData({name:cat.name,department:cat.department});}} title="Editar"><Edit className="w-3.5 h-3.5" /></button>
-                        <button type="button" onClick={()=>window.confirm("¿Eliminar categoría?")&&deleteCategory(cat.id)} title="Eliminar"><Trash2 className="w-3.5 h-3.5" /></button>
+                        <button type="button" onClick={()=>setPendingDelete({kind:'category',id:cat.id,name:cat.name})} title="Eliminar"><Trash2 className="w-3.5 h-3.5" /></button>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {pendingDelete && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 p-4" role="dialog" aria-modal="true" aria-labelledby="inventory-delete-title">
+          <div className="w-full max-w-md rounded-2xl border border-base bg-secondary p-5 shadow-xl animate-in zoom-in-95">
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 id="inventory-delete-title" className="text-base font-bold text-primary">
+                  {pendingDelete.kind === 'product' ? 'Eliminar producto' : 'Eliminar categoría'}
+                </h3>
+                <p className="mt-1 text-sm text-secondary">
+                  {pendingDelete.kind === 'product'
+                    ? <>«{pendingDelete.name}» saldrá del catálogo y del inventario. Las ventas históricas se conservan. Esta acción no se puede deshacer.</>
+                    : <>«{pendingDelete.name}» se quitará del catálogo. Solo puedes eliminarla si ningún producto la está usando.</>}
+                </p>
+              </div>
+            </div>
+            <div className="mt-5 flex gap-2">
+              <button type="button" onClick={() => setPendingDelete(null)} className="min-h-10 flex-1 rounded-xl border border-base bg-primary text-sm font-bold text-secondary hover:bg-subtle">
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (pendingDelete.kind === 'product') deleteProduct(pendingDelete.id);
+                  else deleteCategory(pendingDelete.id);
+                  setPendingDelete(null);
+                }}
+                className="min-h-10 flex-1 rounded-xl bg-rose-600 text-sm font-bold text-white hover:bg-rose-700"
+              >
+                Eliminar
+              </button>
             </div>
           </div>
         </div>

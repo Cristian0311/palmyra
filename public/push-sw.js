@@ -7,8 +7,8 @@ self.addEventListener('push', (event) => {
   const title = payload.title || 'PALMYRA · ¡Ey, jefe!';
   const options = {
     body: payload.body || 'Hay novedades esperándote. Entra a PALMYRA y échales un ojo. 😂',
-    icon: '/pwa-192.svg',
-    badge: '/pwa-192.svg',
+    icon: '/pwa-192.png',
+    badge: '/pwa-192.png',
     tag: payload.tag || payload.notification_id || 'palmyra-notification',
     renotify: Boolean(payload.renotify),
     data: { url: payload.url || '/notifications', notification_id: payload.notification_id || null },

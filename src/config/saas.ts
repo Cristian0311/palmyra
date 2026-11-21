@@ -1,4 +1,35 @@
-export type PlanCode = 'starter' | 'growth' | 'pro';
+export type PlanCode = 'free' | 'starter' | 'growth' | 'pro';
+export type PaidPlanCode = Exclude<PlanCode, 'free'>;
+export const BILLING_MONTHS = [1, 3, 6, 12] as const;
+export type BillingMonths = typeof BILLING_MONTHS[number];
+export const ACQUISITION_PAYMENTS = [
+  { code: 'cup_cash', label: 'Efectivo en CUP', currency: 'CUP', detail: 'Importe en CUP acordado con PALMYRA antes del pago.' },
+  { code: 'cup_bank_transfer', label: 'Transferencia bancaria en CUP', currency: 'CUP', detail: 'Datos bancarios e importe confirmados por PALMYRA.' },
+  { code: 'usd_cash', label: 'Efectivo en USD', currency: 'USD', detail: 'Entrega coordinada en Cuba y confirmación manual.' },
+] as const;
+export type AcquisitionPaymentMethod = typeof ACQUISITION_PAYMENTS[number]['code'];
+export const isAcquisitionPaymentMethod = (value: unknown): value is AcquisitionPaymentMethod =>
+  ACQUISITION_PAYMENTS.some((method) => method.code === value);
+export const isBillingMonths = (value: number): value is BillingMonths =>
+  BILLING_MONTHS.some((months) => months === value);
+
+// Gratis does not expire and has no renewal date; every plan syncs to the cloud.
+export const isPermanentPlan = (code?: string | null): boolean => code?.trim().toLowerCase() === 'free';
+
+// Preview only. The locked approval RPC is authoritative; UTC calendar months clamp month-end.
+export function renewalPeriod(expiry: string | null | undefined, approvedAt: string, months: BillingMonths) {
+  if (!isBillingMonths(months)) throw new Error('invalid_billing_months');
+  const approval = new Date(approvedAt);
+  const expires = expiry ? new Date(expiry) : approval;
+  if (!Number.isFinite(approval.getTime()) || !Number.isFinite(expires.getTime())) throw new Error('invalid_date');
+  const start = new Date(Math.max(approval.getTime(), expires.getTime()));
+  const end = new Date(start);
+  end.setUTCDate(1);
+  end.setUTCMonth(end.getUTCMonth() + months);
+  const lastDay = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() + 1, 0)).getUTCDate();
+  end.setUTCDate(Math.min(start.getUTCDate(), lastDay));
+  return { start: start.toISOString(), end: end.toISOString() };
+}
 
 export interface SaaSPlan {
   code: PlanCode;
@@ -16,6 +47,19 @@ export interface SaaSPlan {
 
 export const PALMYRA_PLANS: SaaSPlan[] = [
   {
+    code: 'free',
+    name: 'Gratis',
+    price: 0,
+    priceCurrency: 'USD',
+    warehouses: 1,
+    employees: 1,
+    products: 25,
+    reports: 'Reportes básicos',
+    support: 'Ayuda de autoservicio',
+    description: 'Sin vencimiento. Operación básica con respaldo comercial en la nube incluido.',
+    features: ['1 almacén', '1 empleado + propietario', '25 tipos de productos/SKUs', 'Punto de venta básico', 'Caja en efectivo', 'Inventario básico', 'Reportes básicos', 'Modo offline', 'Respaldo comercial en la nube']
+  },
+  {
     code: 'starter',
     name: 'Oasis',
     price: 10,
@@ -32,9 +76,10 @@ export const PALMYRA_PLANS: SaaSPlan[] = [
       '50 tipos de productos/SKUs',
       'Punto de venta',
       'Inventario y caja',
-      'Clientes y proveedores',
+      'Equipo con roles',
       'Reportes básicos',
-      'Modo offline'
+      'Modo offline',
+      'Respaldo comercial en la nube'
     ]
   },
   {
@@ -60,7 +105,8 @@ export const PALMYRA_PLANS: SaaSPlan[] = [
       'Transferencias entre almacenes',
       'Reportes avanzados',
       'Equipo con roles',
-      'Operación multi-almacén'
+      'Operación multi-almacén',
+      'Respaldo comercial en la nube'
     ]
   },
   {
@@ -88,7 +134,8 @@ export const PALMYRA_PLANS: SaaSPlan[] = [
       'Equipo con roles',
       'Operación multi-almacén',
       'Analítica avanzada',
-      'Soporte prioritario'
+      'Soporte prioritario',
+      'Respaldo comercial en la nube'
     ]
   }
 ];

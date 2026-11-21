@@ -1,5 +1,5 @@
 import React from 'react';
-import { Printer, Receipt, MessageSquare, X } from 'lucide-react';
+import { Printer, Receipt, MessageSquare, X, Banknote, CreditCard } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import type { Currency, Product, Transaction } from '../types';
 
@@ -63,7 +63,7 @@ export default function POSReceiptModal({
       <div className="flex-1 overflow-y-auto custom-scrollbar p-3.5 sm:p-5 text-xs text-center print:p-2 print:overflow-visible space-y-2" id="print-area">
         <div>
           <h2 className="text-base sm:text-lg font-black uppercase tracking-tight text-slate-900 dark:text-white print:text-black">
-            {useStore.getState().receiptConfig.businessName || 'MARÉ'}
+            {useStore.getState().receiptConfig.businessName || 'PALMYRA'}
           </h2>
           {useStore.getState().receiptConfig.showAddress && (
             <p className="text-slate-500 dark:text-slate-400 text-[9px] sm:text-[10px] mt-0.5 leading-snug print:text-black">
@@ -194,8 +194,11 @@ export default function POSReceiptModal({
           </div>
           {(showReceiptModal.payments || []).map((p, i) => (
             <div key={i} className="text-[9px] sm:text-[10px] flex justify-between items-center text-slate-700 dark:text-slate-300 print:text-black px-1.5 py-0.5 rounded bg-slate-50 dark:bg-slate-800/30">
-              <span className="font-medium">
-                {p.method === 'cash' ? '💵 Efectivo' : '💳 Transferencia'} ({p.currencyCode})
+              <span className="inline-flex items-center gap-1 font-medium">
+                {p.method === 'cash'
+                  ? <Banknote className="h-3 w-3 shrink-0 print:hidden" aria-hidden="true" />
+                  : <CreditCard className="h-3 w-3 shrink-0 print:hidden" aria-hidden="true" />}
+                {p.method === 'cash' ? 'Efectivo' : 'Transferencia'} ({p.currencyCode})
               </span>
               <span className="font-mono font-black">
                 {formatMoney(p.amount, currencies.find(c => c.code === p.currencyCode)?.symbol || '')}

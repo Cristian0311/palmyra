@@ -17,6 +17,7 @@ import { getOfflineQueue, enqueueOfflineItem, removeFromOfflineQueue, waitForOff
 import { normalizeSemanticText, areSemanticallyEqual } from '../../utils/textUtils';
 import { localStateStorage, clearLocalStateStorage, flushLocalStateStorage } from '../../services/localStateStorage';
 import { getPalmyraScopedStorageKey } from '../../services/localScope';
+import { isCloudBusinessSyncAllowed } from '../../services/localPlanMode';
 import { setCanonicalInventoryQuantity, validateTransferStock } from '../utils/inventoryTransforms';
 import { buildLocalVoidTransactionPatch } from '../utils/localVoidTransaction';
 import { buildLocalCompletedSalePatch } from '../utils/localCompletedSale';
@@ -52,19 +53,19 @@ export function createOperationsActions(set: StoreSet, get: StoreGet): any {
   addSupplier: (s) => {
     const newSupplier = { ...s, products: s.products || [] };
     set(state => ({ suppliers: [...state.suppliers, newSupplier] }));
-    pushSupplierToSupabase(newSupplier).catch(() => {});
+    if (isCloudBusinessSyncAllowed()) pushSupplierToSupabase(newSupplier).catch(() => {});
   },
   updateSupplier: (id, s) => {
     set(state => ({ suppliers: state.suppliers.map(x => x.id === id ? { ...x, ...s } : x) }));
     const updated = get().suppliers.find(x => x.id === id);
-    if (updated) pushSupplierToSupabase(updated).catch(() => {});
+    if (updated && isCloudBusinessSyncAllowed()) pushSupplierToSupabase(updated).catch(() => {});
   },
   deleteSupplier: (id) => {
     set(state => ({ suppliers: state.suppliers.filter(x => x.id !== id) }));
     const actionId = 'supplier-delete:' + id;
     const queueDeletion = () => enqueueOfflineItem('supplier_delete', { id }, actionId)
       .catch((error) => console.warn('[PALMYRA] No se pudo guardar la eliminación de proveedor en la cola:', error));
-    if (typeof navigator !== 'undefined' && navigator.onLine) {
+    if (typeof navigator !== 'undefined' && navigator.onLine && isCloudBusinessSyncAllowed()) {
       deleteSupplierFromSupabase(id).then((ok) => {
         if (!ok) queueDeletion();
       }).catch(() => queueDeletion());
@@ -260,39 +261,88 @@ export function createOperationsActions(set: StoreSet, get: StoreGet): any {
   approveInventoryAudit: async (id, notes) => {
     const audit = get().inventoryAudits.find(a => a.id === id);
     if (!audit) return { success: false, error: 'Auditoría no encontrada.' };
+    if (audit.reviewStatus === 'approved') return { success: true };
     if (audit.reviewStatus !== 'pending_approval') return { success: false, error: 'El conteo aún no está pendiente de aprobación.' };
-    if (!navigator.onLine) return { success: false, error: 'La aprobación del ajuste físico requiere conexión para validar que el inventario no haya cambiado.' };
 
     const userId = get().currentUser?.id || 'system';
     const actionId = 'audit-approve:' + id;
-    await enqueueOfflineItem('audit_approve', { id, userId, notes }, actionId);
-    try {
-      const res = await callApproveInventoryAuditRPC(id, userId, notes);
-      if (!res.success) throw new Error(res.error || 'No se pudo aprobar la auditoría');
-      removeFromOfflineQueueByAction('audit_approve', actionId);
-      const adjustments = Array.isArray(res.data?.adjustments) ? res.data.adjustments : [];
+    const branchId = audit.branchId;
+    const postedAt = new Date().toISOString();
+
+    // Los ajustes se derivan del conteo: counted - expected por producto/variante.
+    // Las líneas sin conteo (null) no se tocan.
+    const diffs = (audit.items || [])
+      .filter((it: any) => it && it.counted !== null && it.counted !== undefined && Number.isFinite(Number(it.counted)))
+      .map((it: any) => ({
+        productId: it.productId,
+        variantLabel: it.variantLabel || '',
+        counted: Math.max(0, Number(it.counted) || 0),
+        delta: Math.max(0, Number(it.counted) || 0) - (Number(it.expected) || 0),
+        minQuantity: typeof it.minQuantity === 'number' ? it.minQuantity : undefined
+      }));
+
+    const alreadyPosted = Boolean(audit.adjustmentPostedAt);
+    if (!alreadyPosted) {
       set(state => {
-        const auditNow = state.inventoryAudits.find(a => a.id === id);
-        let inventory = [...state.inventory];
-        for (const adj of adjustments) {
-          const idx = inventory.findIndex(i => i.productId === adj.productId && i.branchId === audit?.branchId && (i.variantLabel || '') === (adj.variantLabel || ''));
-          if (idx >= 0) inventory[idx] = { ...inventory[idx], quantity: Math.max(0, Number(inventory[idx].quantity || 0) + Number(adj.delta || 0)) };
+        const inventory = [...state.inventory];
+        for (const d of diffs) {
+          if (d.delta === 0) continue;
+          const idx = inventory.findIndex(i => i.productId === d.productId && i.branchId === branchId && (i.variantLabel || '') === d.variantLabel);
+          if (idx >= 0) {
+            inventory[idx] = { ...inventory[idx], quantity: Math.max(0, Number(inventory[idx].quantity || 0) + d.delta) };
+          } else if (d.counted > 0) {
+            inventory.push({ id: crypto.randomUUID(), productId: d.productId, branchId, quantity: d.counted, minQuantity: d.minQuantity ?? 5, variantLabel: d.variantLabel });
+          }
         }
         return {
           inventory,
           inventoryAudits: state.inventoryAudits.map(a => a.id === id
-            ? { ...a, status: 'completed' as const, reviewStatus: 'approved', reviewedBy: userId, reviewedAt: new Date().toISOString(), adjustmentPostedAt: new Date().toISOString(), notes: notes || a.notes,
-              items: Array.isArray(res.data?.items) ? res.data.items : a.items }
+            ? { ...a, status: 'completed' as const, reviewStatus: 'approved', reviewedBy: userId, reviewedAt: postedAt, adjustmentPostedAt: postedAt, notes: notes || a.notes }
             : a)
         };
       });
-      return { success: true };
-    } catch (err: any) {
-      // La aprobación queda protegida en la cola durable hasta recibir confirmación.
-      // Nunca se elimina una aprobación que Supabase no haya confirmado.
-      console.warn('[approveInventoryAudit] Aprobación no confirmada; queda durable:', err);
-      return { success: false, error: err?.message || 'No se pudo aprobar la auditoría. La operación quedó pendiente de sincronización.' };
     }
+
+    await enqueueOfflineItem('audit_approve', { id, userId, notes }, actionId)
+      .catch(() => undefined);
+
+    // La RPC de aprobación solo cambia el estado remoto; el stock se publica
+    // por variante con la RPC idempotente de ajuste.
+    let queuedAdjustments = 0;
+    for (const d of diffs) {
+      if (d.delta === 0) continue;
+      const result = await applyInventoryAdjustmentToSupabase({
+        operationId: `audit-approve:${id}:${d.productId}:${d.variantLabel || 'base'}`,
+        productId: d.productId,
+        branchId,
+        variantLabel: d.variantLabel || undefined,
+        delta: d.delta,
+        minQuantity: d.minQuantity,
+        userId,
+        movementType: 'Ajuste por auditoría física'
+      });
+      if (!result.success) queuedAdjustments += 1;
+    }
+
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      try {
+        const res = await callApproveInventoryAuditRPC(id, userId, notes);
+        if (!res.success) throw new Error(res.error || 'No se pudo aprobar la auditoría');
+        removeFromOfflineQueueByAction('audit_approve', actionId);
+        if (queuedAdjustments > 0) {
+          get().addNotification('Auditoría aprobada; el ajuste de stock quedó pendiente de sincronizar.', 'info');
+        }
+        return { success: true };
+      } catch (err: any) {
+        // La aprobación queda protegida en la cola durable hasta recibir confirmación.
+        console.warn('[approveInventoryAudit] Aprobación no confirmada; queda durable:', err);
+        get().addNotification('Auditoría aprobada localmente; queda pendiente de sincronizar con la nube.', 'info');
+        return { success: true, pending: true };
+      }
+    }
+
+    get().addNotification('Auditoría aprobada offline; el ajuste de stock se sincronizará al reconectar.', 'info');
+    return { success: true, pending: true };
   },
   };
 }

@@ -1,7 +1,6 @@
 ﻿import { useMemo, useState } from "react";
 import {
   AlertCircle,
-  CheckCircle,
   Eye,
   FileSpreadsheet,
   Printer,
@@ -28,7 +27,6 @@ type Props = {
   salesViewMode: "by_shift" | "all_tickets";
   setSalesViewMode: (mode: "by_shift" | "all_tickets") => void;
   formatMoney: (amount: number, code?: string) => string;
-  onRequestCloseSession: (session: CashRegisterSession) => void;
   onOpenSessionDetail: (sessionId: string) => void;
   onPrintShiftTicket: (sessionId: string) => void;
   onOpenTransactionDetail: (transaction: Transaction) => void;
@@ -48,7 +46,6 @@ export function ReportsSalesTab({
   salesViewMode,
   setSalesViewMode,
   formatMoney,
-  onRequestCloseSession,
   onOpenSessionDetail,
   onPrintShiftTicket,
   onOpenTransactionDetail,
@@ -67,7 +64,7 @@ export function ReportsSalesTab({
   };
 
   const sortIndicator = (scope: "sessions" | "transactions", key: string) =>
-    sortState?.scope === scope && sortState.key === key ? (sortState.direction === "asc" ? " â†‘" : " â†“") : " â†•";
+    sortState?.scope === scope && sortState.key === key ? (sortState.direction === "asc" ? " ↑" : " ↓") : " ⇅";
 
   const sortedSessions = useMemo(() => {
     if (!sortState || sortState.scope !== "sessions") return sessions;
@@ -131,6 +128,58 @@ export function ReportsSalesTab({
   const displayedTransactions = useMemo(
     () => sortedTransactions.filter(tx => hiddenReportIds.includes(tx.id) === showHiddenReports),
     [sortedTransactions, hiddenReportIds, showHiddenReports]
+  );
+
+  const sessionRows = useMemo(
+    () =>
+      sortedSessions.map((session) => {
+        const sessionOpenMs = new Date(session.openedAt).getTime();
+        const sessionCloseMs = session.closedAt ? new Date(session.closedAt).getTime() : Infinity;
+        const sessionTx = transactions.filter((transaction) => {
+          if (transaction.deletedAt) return false;
+          if (transaction.sessionId === session.id) return true;
+          if (transaction.sessionId || transaction.status !== "completed" || transaction.branchId !== session.branchId) return false;
+          const transactionTime = new Date(transaction.date).getTime();
+          return Number.isFinite(transactionTime) && transactionTime >= sessionOpenMs && transactionTime <= sessionCloseMs;
+        });
+        const totalSalesInSession = sessionTx.reduce((sum, transaction) => sum + (transaction.total || 0), 0);
+        const totalItems = sessionTx.reduce(
+          (sum, transaction) => sum + (transaction.items || []).reduce((itemSum, item) => itemSum + (item.quantity || 0), 0),
+          0
+        );
+        const payrollTotal = Number(payroll.find((item) => item.sessionId === session.id)?.totalSalary) || 0;
+        const dateToDisplay = new Date(session.closingDate || session.closedAt || session.openedAt);
+        return {
+          session,
+          sequentialTurn: sessionTurnMap.get(session.id) || session.id,
+          statusLabel: session.status === "open" ? "Abierto" : session.status === "cancelled" ? "Cancelado" : "Cerrado",
+          dateLabel: dateToDisplay.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" }),
+          timeLabel: dateToDisplay.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + (session.status === "open" ? " (En curso)" : ""),
+          branchName: branches.find((branch) => branch.id === session.branchId)?.name || "Sucursal Principal",
+          workerName: session.workerName || users.find((user) => user.id === session.userId)?.name || "Vendedor",
+          totalItems,
+          totalSalesInSession,
+          payrollTotal,
+        };
+      }),
+    [sortedSessions, transactions, payroll, users, branches, sessionTurnMap]
+  );
+
+  const ticketRows = useMemo(
+    () =>
+      displayedTransactions.map((tx) => {
+        const dateObj = new Date(tx.date);
+        return {
+          tx,
+          branchName: branches.find((branch) => branch.id === tx.branchId)?.name || "Sucursal",
+          workerName: tx.cashierName || users.find((user) => user.id === tx.userId)?.name || "Vendedor",
+          totalItems: (tx.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0),
+          dateLabel: dateObj.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" }),
+          timeLabel: dateObj.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          isHidden: hiddenReportIds.includes(tx.id),
+        };
+      }),
+    [displayedTransactions, branches, users, hiddenReportIds]
   );
 
   const sortableHeader = (label: string, scope: "sessions" | "transactions", key: string, align = "") => (
@@ -197,6 +246,13 @@ export function ReportsSalesTab({
         </div>
       </div>
 
+      {hiddenCount > 0 && (
+        <p className="rounded-xl border border-amber-200 bg-amber-50/70 px-3 py-2 font-bold text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200" style={{ fontSize: 11 }}>
+          Hay {hiddenCount} ticket{hiddenCount === 1 ? "" : "s"} oculto{hiddenCount === 1 ? "" : "s"} de esta lista. La venta, el cobro y el inventario siguen intactos y
+          sus importes continúan sumando en los totales del turno.
+        </p>
+      )}
+
       {salesViewMode === "by_shift" ? (
         <div className="bg-secondary rounded-2xl shadow-sm border border-base overflow-hidden">
           <div className="p-3 border-b border-base flex items-center justify-between bg-subtle/50">
@@ -208,7 +264,7 @@ export function ReportsSalesTab({
             </span>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[900px] text-left border-collapse">
               <thead>
                 <tr className="bg-subtle border-b border-base text-[8px] font-black text-muted uppercase tracking-[0.15em]">
@@ -223,46 +279,8 @@ export function ReportsSalesTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-base">
-                {sortedSessions.map((session, idx) => {
-                  const sessionOpenMs = new Date(session.openedAt).getTime();
-                  const sessionCloseMs = session.closedAt ? new Date(session.closedAt).getTime() : Infinity;
-                  const sessionTx = transactions.filter((transaction) => {
-                    if (transaction.deletedAt) return false;
-                    if (transaction.sessionId === session.id) return true;
-                    if (transaction.sessionId || transaction.status !== "completed" || transaction.branchId !== session.branchId) return false;
-                    const transactionTime = new Date(transaction.date).getTime();
-                    return Number.isFinite(transactionTime) && transactionTime >= sessionOpenMs && transactionTime <= sessionCloseMs;
-                  });
-                  const totalSalesInSession = sessionTx.reduce(
-                    (sum, transaction) => sum + (transaction.total || 0),
-                    0
-                  );
-                  const totalItems = sessionTx.reduce(
-                    (sum, transaction) =>
-                      sum +
-                      (transaction.items || []).reduce(
-                        (itemSum, item) => itemSum + (item.quantity || 0),
-                        0
-                      ),
-                    0
-                  );
-                  const sequentialTurn =
-                    sessionTurnMap.get(session.id) || session.id;
-                  const dateToDisplay = new Date(
-                    session.closingDate ||
-                      session.closedAt ||
-                      session.openedAt
-                  );
-                  const payrollItem = payroll.find(
-                    (item) => item.sessionId === session.id
-                  );
-                  const branchName =
-                    branches.find((branch) => branch.id === session.branchId)
-                      ?.name || "Sucursal Principal";
-                  const workerName =
-                    session.workerName ||
-                    users.find((user) => user.id === session.userId)?.name ||
-                    "Vendedor";
+                {sessionRows.map((row, idx) => {
+                  const { session } = row;
 
                   return (
                     <tr
@@ -271,7 +289,7 @@ export function ReportsSalesTab({
                     >
                       <td className="px-3 py-2 whitespace-nowrap">
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-100 dark:border-rose-900/50 tracking-wider">
-                          {sequentialTurn}
+                          {row.sequentialTurn}
                         </span>
                       </td>
 
@@ -282,76 +300,52 @@ export function ReportsSalesTab({
                             session.status === "open"
                               ? "bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
                               : session.status === "cancelled"
-                                ? "bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800"
+                                ? "bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-800"
                                 : "bg-slate-100 text-slate-600 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"
                           )}
                         >
-                          {session.status === "open"
-                            ? "Abierto"
-                            : session.status === "cancelled"
-                              ? "Cancelado"
-                              : "Cerrado"}
+                          {row.statusLabel}
                         </span>
                       </td>
 
                       <td className="px-3 py-2 whitespace-nowrap">
                         <div className="flex items-center gap-1.5 text-[11px] font-bold text-primary">
-                          <span>
-                            {dateToDisplay.toLocaleDateString("es-ES", {
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                            })}
-                          </span>
-                          <span className="text-[9px] font-medium text-muted">
-                            {dateToDisplay.toLocaleTimeString([], {
-                              hour: "2-digit",
-                              minute: "2-digit",
-                            })}
-                            {session.status === "open" && " (En curso)"}
+                          <span>{row.dateLabel}</span>
+                          <span className="text-[11px] font-medium text-muted">
+                            {row.timeLabel}
                           </span>
                         </div>
                       </td>
 
                       <td className="px-3 py-2 whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[11px] font-black text-primary uppercase whitespace-normal break-words">
-                            {workerName}
-                          </span>
-                          <span className="text-[8px] font-bold text-muted uppercase bg-subtle px-1.5 py-0.5 rounded border border-base">
-                            {branchName}
+                        <div className="min-w-0">
+                          <p className="max-w-[220px] truncate text-[11px] font-black uppercase text-primary" title={row.workerName}>
+                            {row.workerName}
+                          </p>
+                          <span className="mt-0.5 inline-block max-w-[220px] truncate rounded border border-base bg-subtle px-1.5 py-0.5 text-[11px] font-bold uppercase text-muted" title={row.branchName}>
+                            {row.branchName}
                           </span>
                         </div>
                       </td>
 
                       <td className="px-3 py-2 text-center whitespace-nowrap">
                         <span className="bg-subtle text-muted px-2 py-0.5 rounded text-[9px] font-black uppercase border border-base">
-                          {totalItems} prods
+                          {row.totalItems} prods
                         </span>
                       </td>
 
                       <td className="px-3 py-2 text-right font-black text-primary text-xs sm:text-sm tracking-tight whitespace-nowrap">
-                        {formatMoney(totalSalesInSession)}
+                        {formatMoney(row.totalSalesInSession)}
                       </td>
 
                       <td className="px-3 py-2 text-right whitespace-nowrap">
                         <span className="text-[11px] font-black text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded border border-emerald-100 dark:border-emerald-900/30">
-                          {formatMoney(payrollItem?.totalSalary || 0)}
+                          {formatMoney(row.payrollTotal)}
                         </span>
                       </td>
 
                       <td className="px-3 py-2 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1.5">
-                          {session.status === "open" && (
-                            <button
-                              onClick={() => onRequestCloseSession(session)}
-                              title="Cerrar Turno de Caja"
-                              className="h-7 px-2.5 inline-flex items-center justify-center gap-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[9px] font-black uppercase tracking-wider transition-all active:scale-95 shadow-2xs cursor-pointer"
-                            >
-                              <CheckCircle className="w-3 h-3" />
-                              <span>Cerrar</span>
-                            </button>
-                          )}
                           <button
                             onClick={() => onOpenSessionDetail(session.id)}
                             title="Ver Detalle Completo del Turno"
@@ -362,7 +356,7 @@ export function ReportsSalesTab({
                           </button>
                           <button
                             onClick={() => onPrintShiftTicket(session.id)}
-                            title="Imprimir Comprobante TÃ©rmico"
+                            title="Imprimir Comprobante Térmico"
                             className="h-7 w-7 p-0 inline-flex items-center justify-center bg-subtle text-primary rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 transition-all active:scale-95 border border-base cursor-pointer shadow-2xs"
                           >
                             <Printer className="w-3.5 h-3.5" />
@@ -386,6 +380,74 @@ export function ReportsSalesTab({
               </tbody>
             </table>
           </div>
+
+          <ul className="divide-y divide-base md:hidden">
+            {sessionRows.map((row, idx) => (
+              <li key={`m-${row.session.id || "sess"}-${row.session.openedAt || ""}-${idx}`} className="space-y-2 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex items-center rounded border border-rose-100 bg-rose-50 px-2 py-0.5 text-[11px] font-black uppercase tracking-wider text-rose-700 dark:border-rose-900/50 dark:bg-rose-950/50 dark:text-rose-300">
+                        {row.sequentialTurn}
+                      </span>
+                      <span
+                        className={cn(
+                          "rounded border px-2 py-0.5 text-[11px] font-black uppercase tracking-wider",
+                          row.session.status === "open"
+                            ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                            : row.session.status === "cancelled"
+                              ? "border-red-200 bg-red-50 text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-300"
+                              : "border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                        )}
+                      >
+                        {row.statusLabel}
+                      </span>
+                    </div>
+                    <p className="mt-1 truncate text-[12px] font-black uppercase text-primary" title={row.workerName}>
+                      {row.workerName}
+                    </p>
+                    <p className="truncate text-[11px] font-bold uppercase text-muted" title={row.branchName}>
+                      {row.branchName}
+                    </p>
+                    <p className="text-[11px] font-medium text-muted">
+                      {row.dateLabel} · {row.timeLabel}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="whitespace-nowrap text-[12px] font-black text-primary">{formatMoney(row.totalSalesInSession)}</p>
+                    <p className="whitespace-nowrap text-[11px] font-bold text-muted">{row.totalItems} prods</p>
+                    <p className="whitespace-nowrap text-[11px] font-bold text-emerald-700 dark:text-emerald-400">
+                      Salario {formatMoney(row.payrollTotal)}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => onOpenSessionDetail(row.session.id)}
+                    className="inline-flex min-h-9 flex-1 items-center justify-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 text-[11px] font-black uppercase tracking-wider text-rose-700 shadow-2xs transition-all hover:bg-rose-100 active:scale-95 dark:border-rose-900/50 dark:bg-rose-950/60 dark:text-rose-300"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    Detalle
+                  </button>
+                  <button
+                    onClick={() => onPrintShiftTicket(row.session.id)}
+                    title="Imprimir comprobante térmico"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-base bg-subtle text-primary shadow-2xs transition-all hover:bg-slate-200 active:scale-95 dark:hover:bg-slate-800"
+                  >
+                    <Printer className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </li>
+            ))}
+            {sessionRows.length === 0 && (
+              <li className="px-6 py-10 text-center text-muted">
+                <AlertCircle className="mx-auto mb-1.5 h-7 w-7 opacity-40" />
+                <p className="text-[11px] font-black uppercase tracking-wider">
+                  No se encontraron turnos para el filtro seleccionado.
+                </p>
+              </li>
+            )}
+          </ul>
         </div>
       ) : (
         <div className="bg-secondary rounded-2xl shadow-sm border border-base overflow-hidden">
@@ -399,7 +461,7 @@ export function ReportsSalesTab({
             </span>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-[900px] text-left border-collapse">
               <thead>
                 <tr className="bg-subtle border-b border-base text-[8px] font-black text-muted uppercase tracking-[0.15em]">
@@ -407,8 +469,8 @@ export function ReportsSalesTab({
                   <th className="px-3 py-2.5">{sortableHeader("Tipo Venta", "transactions", "type")}</th>
                   <th className="px-3 py-2.5">{sortableHeader("Fecha y Hora", "transactions", "date")}</th>
                   <th className="px-3 py-2.5">{sortableHeader("Vendedor / Cajero", "transactions", "worker")}</th>
-                  <th className="px-3 py-2.5">{sortableHeader("Sucursal / AlmacÃ©n", "transactions", "branch")}</th>
-                  <th className="px-3 py-2.5">{sortableHeader("ArtÃ­culos", "transactions", "items")}</th>
+                  <th className="px-3 py-2.5">{sortableHeader("Sucursal / Almacén", "transactions", "branch")}</th>
+                  <th className="px-3 py-2.5">{sortableHeader("Artículos", "transactions", "items")}</th>
                   <th className="px-3 py-2.5 text-right">{sortableHeader("Total", "transactions", "total", "justify-end")}</th>
                   <th className="px-3 py-2.5 text-center">Acciones</th>
                 </tr>
@@ -513,7 +575,7 @@ export function ReportsSalesTab({
                             onClick={() => {
                               if (tx.sessionId) onPrintShiftTicket(tx.sessionId);
                             }}
-                            title="Imprimir Ticket TÃ©rmico"
+                            title="Imprimir Ticket Térmico"
                             className="h-7 w-7 p-0 inline-flex items-center justify-center bg-subtle text-primary rounded-lg hover:bg-slate-200 dark:hover:bg-slate-800 transition-all border border-base active:scale-95 cursor-pointer shadow-2xs"
                           >
                             <Printer className="w-3.5 h-3.5" />
@@ -563,6 +625,87 @@ export function ReportsSalesTab({
               </tbody>
             </table>
           </div>
+
+          <ul className="divide-y divide-base md:hidden">
+            {ticketRows.map((row) => (
+              <li key={`m-${row.tx.id}`} className="space-y-2 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex items-center rounded border border-rose-200 bg-rose-50 px-2 py-0.5 font-mono text-[11px] font-black tracking-wider text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
+                        {row.tx.id}
+                      </span>
+                      {row.isHidden && (
+                        <span className="inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-black uppercase tracking-wider text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
+                          <EyeOff className="h-3 w-3" /> Oculto
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1 truncate text-[12px] font-black uppercase text-primary" title={row.workerName}>
+                      {row.workerName}
+                    </p>
+                    <p className="truncate text-[11px] font-bold uppercase text-muted" title={row.branchName}>
+                      {row.branchName}
+                    </p>
+                    <p className="text-[11px] font-medium text-muted">
+                      {row.dateLabel} · {row.timeLabel} · {row.totalItems} uds
+                    </p>
+                  </div>
+                  <p className="shrink-0 whitespace-nowrap text-[13px] font-black text-primary">
+                    {formatMoney(row.tx.total)}
+                  </p>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => onOpenTransactionDetail(row.tx)}
+                    className="inline-flex min-h-9 flex-1 items-center justify-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-2 text-[11px] font-black uppercase tracking-wider text-rose-700 shadow-2xs transition-all hover:bg-rose-100 active:scale-95 dark:border-rose-900/50 dark:bg-rose-950/60 dark:text-rose-300"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    Detalle
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (row.tx.sessionId) onPrintShiftTicket(row.tx.sessionId);
+                    }}
+                    title="Imprimir ticket térmico"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-base bg-subtle text-primary shadow-2xs transition-all hover:bg-slate-200 active:scale-95 dark:hover:bg-slate-800"
+                  >
+                    <Printer className="h-3.5 w-3.5" />
+                  </button>
+                  {showHiddenReports ? (
+                    <button
+                      type="button"
+                      onClick={() => onRestoreTransactionReport(row.tx)}
+                      className="inline-flex min-h-9 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 text-[11px] font-black uppercase text-emerald-700 transition-all active:scale-95"
+                    >
+                      Restaurar
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => onHideTransactionReport(row.tx)}
+                      title="Ocultar de reportes sin anular la venta"
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-700 shadow-2xs transition-all hover:bg-amber-100 active:scale-95"
+                    >
+                      <EyeOff className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                  <button
+                    onClick={() => void onVoidTransaction(row.tx)}
+                    title="Eliminar venta y devolver stock"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-600 shadow-2xs transition-all hover:bg-rose-100 active:scale-95"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </li>
+            ))}
+            {ticketRows.length === 0 && (
+              <li className="px-6 py-10 text-center text-[11px] font-bold uppercase text-muted">
+                No se encontraron transacciones para el filtro seleccionado.
+              </li>
+            )}
+          </ul>
         </div>
       )}
     </div>

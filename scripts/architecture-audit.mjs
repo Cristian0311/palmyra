@@ -9,13 +9,9 @@ const legacyLargeBaseline = {
   'src/pages/POS.tsx': { lines: 4420, bytes: 235600 },
   'src/pages/Reports.tsx': { lines: 4455, bytes: 248691 },
 };
-const ignoredDirs = new Set(['node_modules', '.git', 'dist', 'dist-admin', 'coverage', '.cache']);
+const ignoredDirs = new Set(['node_modules', '.git', 'dist', 'dist-admin', 'coverage', '.cache', 'build', 'release']);
+const ignoredPaths = new Set(['android/app/src/main/assets']);
 const duplicateScanRoots = new Set(['public', 'src']);
-const intentionalDuplicatePaths = new Set([
-  'public/favicon.svg',
-  'public/pwa-192.svg',
-  'public/pwa-512.svg',
-]);
 
 for (const dir of ['fixrender', 'dev-dist']) {
   if (existsSync(join(root, dir))) {
@@ -27,7 +23,7 @@ const duplicateHashes = new Map();
 
 function recordDuplicateCandidate(abs, rel) {
   const rootName = rel.split('/')[0];
-  if (!duplicateScanRoots.has(rootName) || intentionalDuplicatePaths.has(rel)) return;
+  if (!duplicateScanRoots.has(rootName)) return;
   try {
     const hash = createHash('sha256').update(readFileSync(abs)).digest('hex');
     const bucket = duplicateHashes.get(hash) || [];
@@ -46,6 +42,8 @@ function walk(dir) {
     if (ignoredDirs.has(entry.name)) continue;
 
     const abs = join(dir, entry.name);
+    const relDir = relative(root, abs).replaceAll('\\', '/');
+    if (ignoredPaths.has(relDir)) continue;
     if (entry.isDirectory()) {
       walk(abs);
       continue;

@@ -57,9 +57,19 @@ export async function setPlatformSupportSettings(settings: PlatformSupportSettin
   if(error) throw error;
   return (data||{}) as PlatformSupportSettings;
 }
-export async function approvePlanRequest(requestId:string){
+export async function approvePlanRequest(input:{
+  requestId:string;receivedAmount:number;receivedCurrency:'CUP'|'USD';reference:string;
+}){
   const supabase=getSupabase(); if(!supabase) throw new Error("Supabase no está configurado.");
-  const {data,error}=await supabase.rpc("approve_plan_request",{p_request_id:requestId});
+  const reference=String(input.reference||'').trim();
+  if(!Number.isFinite(input.receivedAmount)||input.receivedAmount<=0) throw new Error("Indica el importe realmente recibido.");
+  if(!reference) throw new Error("La referencia del pago es obligatoria.");
+  const {data,error}=await supabase.rpc("approve_plan_request_v3",{
+    p_request_id:input.requestId,
+    p_received_amount:input.receivedAmount,
+    p_received_currency:input.receivedCurrency,
+    p_reference:reference
+  });
   if(error) throw error; return data;
 }
 export async function rejectPlanRequest(requestId:string,note=""){
@@ -70,6 +80,11 @@ export async function rejectPlanRequest(requestId:string,note=""){
 export async function setPlatformCompanyStatus(companyId:string,status:"active"|"suspended"|"setup"|"pending_payment"){
   const supabase=getSupabase(); if(!supabase) throw new Error("Supabase no está configurado.");
   const {data,error}=await supabase.rpc("set_platform_company_status",{p_company_id:companyId,p_status:status});
+  if(error) throw error; return data;
+}
+export async function setSupportRequestStatus(requestId:string,status:"open"|"in_progress"|"resolved"|"closed"){
+  const supabase=getSupabase(); if(!supabase) throw new Error("Supabase no está configurado.");
+  const {data,error}=await supabase.rpc("set_platform_support_request_status",{p_request_id:requestId,p_status:status});
   if(error) throw error; return data;
 }
 

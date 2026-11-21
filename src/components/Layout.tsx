@@ -1,27 +1,24 @@
 import { useShallow } from 'zustand/react/shallow';
-import { NavLink, useLocation } from "react-router-dom";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard,
   ShoppingCart,
   Package,
-  Users, ShieldCheck,
+  Users,
   Store,
   Settings,
   Menu,
-  RotateCcw,
-  Calculator,
+  ShieldCheck,
   ArrowLeftRight,
   BarChart,
-  UserCircle,
+  Contact,
   LogOut,
   Truck,
   ClipboardCheck,
   Wifi,
   WifiOff,
-  CloudOff,
   CreditCard,
   FileText,
-  Clock,
   ChevronLeft,
   ChevronRight,
   RefreshCw,
@@ -29,15 +26,20 @@ import {
   Download,
   Smartphone,
   BookOpen,
-  ArrowDownUp,
-  Bell
+  CircleDollarSign,
+  Landmark,
+  Sparkles,
+  Lock
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
 import { cn } from "../lib/utils";
 import { loadSaaSContext } from "../services/saas";
 import { useStore } from "../store/useStore";
-import { getOfflineQueueCount, getOfflineQueue, waitForOfflineQueueReady } from "../services/offlineQueue";
-import { canUsePlanFeature, getPlanVisual, type PlanFeature } from "../services/planAccess";
+import { PalmyraWordmark } from "./PalmyraWordmark";
+import { getOfflineConflictCount, getOfflineQueueCount, getOfflineQueue } from "../services/offlineQueue";
+import { useAutoRateSync } from "../hooks/useAutoRateSync";
+import { useLanPresence } from "../hooks/useLanPresence";
+import { canUsePlanFeature, getPlanDisplayName, getPlanVisual, type PlanFeature } from "../services/planAccess";
 import { 
   CheckCircle2, 
   AlertTriangle, 
@@ -50,28 +52,26 @@ const adminNavItems = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard, permission: "reports.view" },
   { name: "POS", href: "/pos", icon: ShoppingCart, permission: "pos.access" },
   { name: "Transferencias", href: "/transfers", icon: ArrowLeftRight, permission: "inventory.manage", requiredFeature: "transfers" as PlanFeature },
-  { name: "Clientes", href: "/customers", icon: UserCircle, permission: "customers.manage", requiredFeature: "customers_suppliers" as PlanFeature },
+  { name: "Clientes", href: "/customers", icon: Contact, permission: "customers.manage", requiredFeature: "customers_suppliers" as PlanFeature },
   { name: "Cotizaciones", href: "/quotes", icon: FileText, permission: "pos.access" },
   { name: "Inventario", href: "/inventory", icon: Package, permission: "inventory.manage" },
   { name: "Auditoría", href: "/inventory-audit", icon: ClipboardCheck, permission: "inventory.manage", requiredFeature: "inventory_audit" as PlanFeature },
   { name: "Proveedores", href: "/suppliers", icon: Truck, permission: "suppliers.manage", requiredFeature: "customers_suppliers" as PlanFeature },
-  { name: "Bancos", href: "/banks", icon: CreditCard, permission: "settings.manage", requiredFeature: "banking" as PlanFeature },
-  { name: "Garantías y devoluciones", href: "/returns", icon: RotateCcw, permission: "pos.access", requiredFeature: "warranty_returns" as PlanFeature },
+  { name: "Bancos", href: "/banks", icon: Landmark, permission: "settings.manage", requiredFeature: "banking" as PlanFeature },
+  { name: "Garantías y devoluciones", href: "/returns", icon: ShieldCheck, permission: "pos.access", requiredFeature: "warranty_returns" as PlanFeature },
   { name: "Reportes", href: "/reports", icon: BarChart, permission: "reports.view" },
-  { name: "Configuración", href: "/settings", icon: Settings, permission: "settings.manage" },
+  { name: "Configuración", href: "/settings", icon: Settings, public: true },
   { name: "Equipo", href: "/team", icon: Users, permission: "employees.manage" },
-  { name: "Soporte", href: "/help", icon: Headphones, public: true },
-  { name: "Plan", href: "/subscription", icon: CreditCard, permission: "settings.manage" },
-  { name: "Tasa de cambio", href: "/exchange-rate", icon: ArrowDownUp, public: true },
-  { name: "Notificaciones", href: "/notifications", icon: Bell, public: true },
+  { name: "Soporte", href: "/help-center", icon: Headphones, public: true },
+  { name: "Plan", href: "/subscription", icon: Sparkles, permission: "settings.manage" },
+  { name: "Tasa de cambio", href: "/exchange-rate", icon: CircleDollarSign, public: true },
   { name: "Tutorial", href: "/tutorial", icon: BookOpen, public: true },
-  { name: "Catálogo Online", href: "#online-catalog", icon: Store, public: true, comingSoon: true },
 ];
 
-const APP_VERSION = "V 1.0.3";
+const APP_VERSION = `V ${__APP_VERSION__}`;
 const cashierNavItems = [
-  { name: "Notificaciones", href: "/notifications", icon: Bell, public: true },
-  { name: "Soporte", href: "/help", icon: Headphones, public: true },
+  { name: "Configuración", href: "/settings", icon: Settings, public: true },
+  { name: "Soporte", href: "/help-center", icon: Headphones, public: true },
   { name: "POS", href: "/pos", icon: ShoppingCart },
 ];
 
@@ -103,6 +103,21 @@ function formatPlanExpiry(target: string | null | undefined) {
 }
 const PALMYRA_PWA_INSTALLED_KEY = "palmyra:pwa-installed";
 const PALMYRA_UPDATE_AVAILABLE_KEY = "palmyra:update-available";
+const IS_DESKTOP_SHELL = typeof navigator !== "undefined" && /\bElectron\//i.test(navigator.userAgent);
+
+const UPDATE_PHASE_LABELS: Record<string, string> = {
+  checking: "Verificando versión",
+  downloading: "Descargando actualización",
+  installing: "Preparando instalación",
+  "reloading": "Reiniciando PALMYRA",
+  "up-to-date": "Todo al día",
+};
+
+function formatUpdateBytes(bytes?: number) {
+  if (!bytes || bytes <= 0) return "";
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB descargados`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB descargados`;
+}
 
 function isPALMYRAPWAInstalled() {
   if (typeof window === "undefined") return false;
@@ -134,20 +149,33 @@ function getDeferredPWAInstallPrompt() {
 }
 
 
+const SIDEBAR_COLLAPSED_KEY = "palmyra:sidebar-collapsed";
+
+function readSidebarCollapsed() {
+  try {
+    return window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(readSidebarCollapsed);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingOfflineCount, setPendingOfflineCount] = useState(getOfflineQueueCount());
+  const [conflictOfflineCount, setConflictOfflineCount] = useState(getOfflineConflictCount());
   const [isSyncingOffline, setIsSyncingOffline] = useState(false);
   const [expandedNotificationId, setExpandedNotificationId] = useState<string | null>(null);
   const [isNavigating, setIsNavigating] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [isApplyingUpdate, setIsApplyingUpdate] = useState(false);
+  const [updateProgress, setUpdateProgress] = useState<{ phase: string; percent: number; filesDone?: number; filesTotal?: number; receivedBytes?: number; version?: string } | null>(null);
+  const [updateError, setUpdateError] = useState("");
+  const [serverVersion, setServerVersion] = useState<string | null>(null);
   const [navigationTargetPath, setNavigationTargetPath] = useState<string | null>(null);
   const navigationTimerRef = useRef<number | null>(null);
   const [saasContext, setSaaSContext] = useState<Awaited<ReturnType<typeof loadSaaSContext>>>(null);
-  const [companySwitching, setCompanySwitching] = useState(false);
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
   const [showInstallPwa, setShowInstallPwa] = useState(false);
   const [pwaInstallAvailable, setPwaInstallAvailable] = useState(false);
@@ -155,12 +183,23 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [showOnlineCatalogInfo, setShowOnlineCatalogInfo] = useState(false);
   const { currentUser, logout, notifications, removeNotification, storeConfig, syncWithSupabase, addNotification, cart, currentBranchId, getCurrentSession } = useStore(useShallow((state) => ({ currentUser: state.currentUser, logout: state.logout, notifications: state.notifications, removeNotification: state.removeNotification, storeConfig: state.storeConfig, syncWithSupabase: state.syncWithSupabase, addNotification: state.addNotification, cart: state.cart, currentBranchId: state.currentBranchId, getCurrentSession: state.getCurrentSession })));
   const location = useLocation();
+  const navigate = useNavigate();
   const isPosPage = location.pathname === "/pos";
+  const activeWarehouseName = useStore(state => state.branches.find(branch => branch.id === state.currentBranchId)?.name || null);
+  useAutoRateSync();
+  useLanPresence(activeWarehouseName);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed ? "1" : "0");
+    } catch {}
+  }, [sidebarCollapsed]);
 
 
   useEffect(() => {
-    if (!currentUser?.id) {
+    if (!currentUser?.id || IS_DESKTOP_SHELL) {
       setShowInstallPwa(false);
+      setPwaInstallAvailable(false);
       return;
     }
 
@@ -272,11 +311,25 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const onUpdate = () => setUpdateAvailable(true);
+    const onUpdate = () => {
+      setUpdateAvailable(true);
+      try {
+        const version = window.localStorage.getItem("palmyra:update-version");
+        if (version) setServerVersion(version);
+      } catch {}
+    };
+    const onProgress = (event: Event) => {
+      const detail = (event as CustomEvent<{ phase: string; percent: number; filesDone?: number; filesTotal?: number; receivedBytes?: number; version?: string }>).detail;
+      if (!detail) return;
+      setUpdateProgress(detail);
+      if (detail.version) setServerVersion(detail.version);
+    };
     const checkPersistedUpdate = () => {
       try {
         if (window.localStorage.getItem(PALMYRA_UPDATE_AVAILABLE_KEY) === '1') {
           setUpdateAvailable(true);
+          const version = window.localStorage.getItem("palmyra:update-version");
+          if (version) setServerVersion(version);
         }
       } catch {}
     };
@@ -286,11 +339,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     // cambiar de pestaña, tanto en navegador como en PWA instalada.
     checkPersistedUpdate();
     window.addEventListener('palmyra:update-available', onUpdate);
+    window.addEventListener('palmyra:update-progress', onProgress);
     window.addEventListener('focus', checkPersistedUpdate);
     document.addEventListener('visibilitychange', checkPersistedUpdate);
 
     return () => {
       window.removeEventListener('palmyra:update-available', onUpdate);
+      window.removeEventListener('palmyra:update-progress', onProgress);
       window.removeEventListener('focus', checkPersistedUpdate);
       document.removeEventListener('visibilitychange', checkPersistedUpdate);
     };
@@ -322,7 +377,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }, [storeConfig.darkMode]);
 
   useEffect(() => {
-    const updateCount = () => setPendingOfflineCount(getOfflineQueueCount());
+    const updateCount = () => {
+      setPendingOfflineCount(getOfflineQueueCount());
+      setConflictOfflineCount(getOfflineConflictCount());
+    };
     const handleOnline = () => {
       setIsOnline(true);
       updateCount();
@@ -353,11 +411,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       addNotification('Actualización preparada', 'info', 'Finaliza o limpia la venta actual antes de actualizar PALMYRA. La caja y los datos permanecen protegidos.');
       return;
     }
+    setUpdateError("");
+    setUpdateProgress({ phase: 'checking', percent: 2 });
     setIsApplyingUpdate(true);
     try {
-      const apply = (window as typeof window & { __palmyraApplyUpdate?: () => Promise<void> }).__palmyraApplyUpdate;
+      const apply = (window as typeof window & { __palmyraApplyUpdate?: () => Promise<'reloaded' | 'up-to-date'> }).__palmyraApplyUpdate;
       if (apply) {
-        await apply();
+        const result = await apply();
+        if (result === 'up-to-date') {
+          setIsApplyingUpdate(false);
+          setUpdateProgress(null);
+          setUpdateAvailable(false);
+          try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
+          addNotification('PALMYRA está actualizada', 'info', 'Ya tienes la última versión disponible en este dispositivo.');
+        }
         return;
       }
 
@@ -368,7 +435,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.warn('[PALMYRA] No se pudo aplicar la actualización:', error);
       setIsApplyingUpdate(false);
+      setUpdateProgress(null);
+      const message = error instanceof Error ? error.message : '';
+      setUpdateError(
+        /conexión|network|servidor|disponible/i.test(message)
+          ? message
+          : 'No se pudo completar la actualización. Revisa la conexión y vuelve a intentarlo.'
+      );
     }
+  };
+
+  const handleLogoutClick = () => {
+    const pending = getOfflineQueueCount();
+    if (pending > 0 && !window.confirm(
+      `Hay ${pending} operación(es) offline sin sincronizar. Quedan guardadas en este dispositivo, pero solo se enviarán al volver a entrar con la misma cuenta CON internet: cerrar sesión bloquea el acceso offline hasta entonces. ¿Cerrar sesión?`
+    )) return;
+    logout();
   };
 
   const handleManualSync = async () => {
@@ -488,15 +570,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     (item, index, items) => items.findIndex((candidate) => candidate.href === item.href) === index
   );
   const currentPlanCode = saasContext?.subscription?.planCode || "";
-  const isPlanLocked = (item: { requiredFeature?: PlanFeature }) => Boolean(item.requiredFeature && !canUsePlanFeature(currentPlanCode, item.requiredFeature));
+  // Sin plan cargado (perfil en tránsito) no hay bloqueos: evita pintar el badge de plan
+  // sobre todas las secciones durante el primer render.
+  const isPlanLocked = (item: { requiredFeature?: PlanFeature }) => Boolean(currentPlanCode && item.requiredFeature && !canUsePlanFeature(currentPlanCode, item.requiredFeature));
   const getRequiredPlanCode = (feature?: PlanFeature) => feature === 'advanced_analytics' || feature === 'excel_exports' || feature === 'ai_dashboard' || feature === 'warranty_returns' || feature === 'abc_analysis' || feature === 'labels' ? 'pro' : feature ? 'growth' : '';
 
   const navSectionDefinitions = currentUser?.role === "admin"
     ? [
-        { label: "Operación", hrefs: ["/", "/pos", "/transfers", "/returns"] },
-        { label: "Gestión", hrefs: ["/customers", "/inventory", "/inventory-audit", "/suppliers", "#online-catalog"] },
+        { label: "Operación", hrefs: ["/", "/pos", "/quotes", "/transfers", "/returns"] },
+        { label: "Gestión", hrefs: ["/customers", "/inventory", "/inventory-audit", "/suppliers"] },
         { label: "Finanzas", hrefs: ["/banks", "/reports"] },
-        { label: "Administración", hrefs: ["/settings", "/team", "/help", "/subscription", "/tutorial", "/exchange-rate", "/notifications"] },
+        { label: "Administración", hrefs: ["/settings", "/team", "/help-center", "/subscription", "/tutorial", "/exchange-rate"] },
       ]
     : [{ label: "", hrefs: visibleNavItems.map((item) => item.href) }];
   const assignedNavHrefs = new Set<string>();
@@ -612,8 +696,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </div>
       {/* Mobile / tablet top bar */}
       {(
-        <div className="lg:hidden bg-white text-slate-700 p-2.5 flex justify-between items-center gap-2 shadow-sm border-b border-violet-100 shrink-0 min-w-0">
-          <div className="flex items-center gap-2 min-w-0"><img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="w-[clamp(104px,38vw,160px)] h-[34px] object-contain object-left shrink-0" /><span className="rounded-full bg-violet-50 px-2 py-1 text-[9px] font-black text-violet-700 tracking-tight shrink-0">{APP_VERSION}</span></div><div className={cn("flex items-center gap-1.5 px-2 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-wider", isOnline ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700")} title="Estado de conexión">{isOnline ? <Wifi className="w-3 h-3 shrink-0" /> : <WifiOff className="w-3 h-3 shrink-0" />}<span>{isOnline ? (pendingOfflineCount > 0 ? pendingOfflineCount+" pendientes" : "Online") : "Offline"}</span></div>
+        <div className="lg:hidden bg-secondary text-primary p-2.5 flex justify-between items-center gap-2 shadow-sm border-b border-base shrink-0 min-w-0">
+          <div className="flex items-center gap-2 min-w-0"><PalmyraWordmark className="w-[clamp(104px,38vw,160px)] h-[34px] shrink-0" /><span className="rounded-full bg-violet-50 px-2 py-1 text-[9px] font-black text-violet-700 tracking-tight shrink-0">{APP_VERSION}</span></div><div className={cn("flex items-center gap-1.5 px-2 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-wider", isOnline ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700")} title="Estado de conexión">{isOnline ? <Wifi className="w-3 h-3 shrink-0" /> : <WifiOff className="w-3 h-3 shrink-0" />}<span>{isOnline ? (pendingOfflineCount > 0 ? pendingOfflineCount+" pendientes" : "Online") : "Offline"}</span></div>
           <div className="flex items-center gap-1.5 shrink-0"><button data-palmy-menu-toggle type="button" onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 rounded-xl hover:bg-slate-100 transition" aria-label="Abrir menú principal" title="Abrir menú principal" aria-expanded={sidebarOpen}>
             <Menu className="w-3.5 h-3.5" />
           </button></div>
@@ -625,29 +709,32 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         className={cn(
           "bg-secondary border-r border-base transition-all duration-300 ease-in-out flex flex-col h-full shrink-0 shadow-sm",
           // Mobile: off-canvas drawer with fixed overlay
-          "fixed inset-y-0 left-0 z-50 w-[68vw] max-w-[210px] overflow-hidden",
+          "fixed inset-y-0 left-0 z-50 w-[72vw] max-w-[232px] overflow-hidden",
           sidebarOpen ? "translate-x-0" : "-translate-x-full",
           // Desktop (lg+): relative in-flow column, NEVER covers or overlaps the right content
           "lg:relative lg:inset-auto lg:z-auto lg:translate-x-0",
-          sidebarCollapsed ? "lg:w-11" : "lg:w-[11.5rem]"
+          sidebarCollapsed
+            ? "lg:w-14"
+            : "lg:w-48 xl:w-[13rem] 2xl:w-56"
         )}
       >
         {/* Header with Collapse toggle */}
-        <div className={cn("p-2 shrink-0 flex items-center justify-between gap-1.5 border-b border-subtle", sidebarCollapsed && "lg:p-2 lg:justify-center")}>
+        <div className={cn(
+          "p-2 shrink-0 border-b border-subtle",
+          sidebarCollapsed
+            ? "flex items-center justify-between gap-1.5 lg:flex-col lg:justify-center lg:gap-1 lg:p-1.5"
+            : "flex items-center justify-between gap-1.5"
+        )}>
           <div className={cn("flex items-center gap-1 min-w-0 flex-1 pr-0", sidebarCollapsed && "lg:hidden")}>
-            <img
-              src="/palmyra-logo-exact.svg"
-              alt="PALMYRA"
-              className="w-[84px] h-[23px] max-w-[calc(100%-2rem)] object-contain object-left"
-            />
-            <span className="shrink-0 rounded-full bg-subtle px-1.5 py-1 text-[8px] font-black text-primary tracking-tight leading-none">{APP_VERSION}</span>
+            <PalmyraWordmark className="w-[84px] h-[23px] max-w-[calc(100%-2rem)] shrink-0" />
+            <span className="hidden shrink-0 rounded-full bg-subtle px-1.5 py-1 text-[8px] font-black text-primary tracking-tight leading-none xl:inline-flex">{APP_VERSION}</span>
           </div>
 
           <div className={cn("hidden items-center justify-center", sidebarCollapsed && "lg:flex")}>
             <img
               src="/palmyra-mark-exact.svg"
               alt="PALMYRA"
-              className="w-8 h-8 object-contain"
+              className="h-7 w-7 object-contain"
             />
           </div>
           
@@ -665,8 +752,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             data-palmy-sidebar-collapse
             type="button"
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-            className="hidden lg:flex shrink-0 p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            className={cn(
+              "hidden lg:flex shrink-0 items-center justify-center rounded-lg text-muted hover:text-primary hover:bg-subtle transition-colors",
+              sidebarCollapsed ? "h-6 w-6" : "p-1.5"
+            )}
             title={sidebarCollapsed ? "Expandir menú" : "Minimizar menú"}
+            aria-label={sidebarCollapsed ? "Expandir menú" : "Minimizar menú"}
           >
             {sidebarCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
           </button>
@@ -674,9 +765,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         <nav className="flex-1 min-h-0 px-1.5 py-2 overflow-y-auto custom-scrollbar">
           {navSections.map((section, sectionIndex) => (
-            <div key={section.label || `section-${sectionIndex}`} className={cn(sectionIndex > 0 && !sidebarCollapsed ? "mt-3" : "")}>
+            <div key={section.label || `section-${sectionIndex}`} className={cn(sectionIndex > 0 && !sidebarCollapsed ? "mt-2" : "")}>
               {!sidebarCollapsed && section.label && (
-                <div className="px-2 pb-1 text-[7px] font-black uppercase tracking-[0.18em] text-muted/70">
+                <div className="px-2 pb-0.5 text-[7px] font-black uppercase tracking-[0.18em] text-muted/70">
                   {section.label}
                 </div>
               )}
@@ -703,33 +794,42 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                         <div
                           className={cn(
                             "flex items-center rounded-lg transition-colors duration-150 group min-w-0",
-                            sidebarCollapsed ? "justify-center p-2 my-0.5" : "gap-2 px-2.5 py-2.5",
+                            sidebarCollapsed ? "justify-center p-2 my-0.5" : "gap-2 px-2.5 py-1.5",
                             isActive && !(item as any).comingSoon
-                              ? "bg-rose-600 text-white shadow-sm"
-                              : "text-muted hover:bg-subtle hover:text-primary"
+                              ? "bg-[#6535C5] text-white shadow-sm"
+                              : "text-muted hover:bg-subtle hover:text-[#6535C5]"
                           )}
                         >
                           <Icon className={cn(
                             "w-4 h-4 shrink-0 transition-colors",
-                            isActive && !(item as any).comingSoon ? "text-white" : "text-muted group-hover:text-rose-600"
+                            isActive && !(item as any).comingSoon ? "text-white" : "text-muted group-hover:text-[#6535C5]"
                           )} />
                           {!sidebarCollapsed && (
-                            <span className="min-w-0 flex-1 font-black text-[10px] uppercase tracking-[-0.005em] leading-[1.2] whitespace-normal break-words">
-                              {item.name}
-                            </span>
-                          )}
-                          {!sidebarCollapsed && isPlanLocked(item as { requiredFeature?: PlanFeature }) && (() => {
-                            const requiredCode = getRequiredPlanCode((item as { requiredFeature?: PlanFeature }).requiredFeature);
-                            const visual = getPlanVisual(requiredCode);
-                            return (
-                              <span className={cn("shrink-0 rounded-full px-1 py-0.5 text-[5px] font-black uppercase tracking-tight border", visual.badge)}>
-                                {requiredCode === "pro" ? "Ciudadela" : "Caravana"}
+                            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                              <span
+                                className="min-w-0 font-black text-[10px] uppercase tracking-[-0.005em] leading-[1.2] whitespace-normal break-normal"
+                                title={item.name}
+                              >
+                                {item.name}
                               </span>
-                            );
-                          })()}
-                          {!sidebarCollapsed && (item as any).comingSoon && (
-                            <span className="shrink-0 rounded-full bg-rose-50 px-1 py-0.5 text-[5px] font-black uppercase tracking-tight text-rose-700 border border-rose-200">
-                              Próximamente
+                              {isPlanLocked(item as { requiredFeature?: PlanFeature }) && (() => {
+                                const requiredCode = getRequiredPlanCode((item as { requiredFeature?: PlanFeature }).requiredFeature);
+                                const visual = getPlanVisual(requiredCode);
+                                return (
+                                  <span
+                                    className={cn("inline-flex w-fit items-center gap-1 rounded-full border px-1.5 py-[1px] text-[7px] font-black uppercase leading-tight tracking-tight", visual.badge)}
+                                    title={`Requiere plan ${getPlanDisplayName(requiredCode)}`}
+                                  >
+                                    <Lock className="h-2 w-2 shrink-0" aria-hidden="true" />
+                                    {getPlanDisplayName(requiredCode)}
+                                  </span>
+                                );
+                              })()}
+                              {!isPlanLocked(item as { requiredFeature?: PlanFeature }) && (item as any).comingSoon && (
+                                <span className="inline-flex w-fit rounded-full border border-rose-200 bg-rose-50 px-1.5 py-[1px] text-[7px] font-black uppercase leading-tight tracking-tight text-rose-700">
+                                  Próximamente
+                                </span>
+                              )}
                             </span>
                           )}
                         </div>
@@ -746,7 +846,31 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           "shrink-0 min-w-0 overflow-hidden p-1.5 bg-secondary border-t border-subtle",
           sidebarCollapsed && "lg:p-1.5"
         )}>
-          {!sidebarCollapsed && (
+          {sidebarCollapsed ? (
+            <button
+              type="button"
+              onClick={handleManualSync}
+              disabled={isSyncingOffline || !isOnline}
+              className={cn(
+                "mx-auto mb-1.5 flex h-8 w-8 items-center justify-center rounded-lg border transition-colors",
+                !isOnline
+                  ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                  : pendingOfflineCount > 0
+                  ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20 hover:bg-rose-500/20"
+                  : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+              )}
+              title={!isOnline ? "Sin conexión" : pendingOfflineCount > 0 ? `${pendingOfflineCount} operación(es) pendientes. Sincronizar.` : "Conectado"}
+              aria-label={!isOnline ? "Sin conexión" : "Sincronizar datos"}
+            >
+              {isSyncingOffline ? (
+                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+              ) : isOnline ? (
+                <Wifi className="h-3.5 w-3.5" />
+              ) : (
+                <WifiOff className="h-3.5 w-3.5" />
+              )}
+            </button>
+          ) : (
             <button
               type="button"
               onClick={handleManualSync}
@@ -759,7 +883,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20 hover:bg-rose-500/20"
                   : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
               )}
-              title={pendingOfflineCount > 0 ? "Sincronizar datos pendientes" : undefined}
+              title={conflictOfflineCount > 0
+                ? `${conflictOfflineCount} operación(es) en conflicto. Revisa Configuración > Conectividad.`
+                : pendingOfflineCount > 0 ? "Sincronizar datos pendientes" : undefined}
             >
               <span className="flex items-center gap-1.5 min-w-0 truncate">
                 {isSyncingOffline ? (
@@ -773,7 +899,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   {!isOnline ? "Offline" : (pendingOfflineCount > 0 ? (isSyncingOffline ? "Subiendo…" : "Sincronizar") : "Online")}
                 </span>
               </span>
-              {pendingOfflineCount > 0 && (
+              {conflictOfflineCount > 0 && (
+                <span className="shrink-0 px-1 rounded-full text-[6px] font-black bg-rose-600 text-white">
+                  !{conflictOfflineCount}
+                </span>
+              )}
+              {conflictOfflineCount === 0 && pendingOfflineCount > 0 && (
                 <span className="shrink-0 px-1 rounded-full text-[6px] font-black bg-amber-500 text-white">
                   {pendingOfflineCount}
                 </span>
@@ -781,8 +912,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </button>
           )}
 
-          <div className="flex items-center gap-1.5 min-w-0">
-            <div className="w-6 h-6 rounded-full bg-subtle border border-base flex items-center justify-center text-primary font-black text-[9px] uppercase shrink-0">
+          <div className={cn(
+            "flex items-center gap-1.5 min-w-0",
+            sidebarCollapsed && "lg:flex-col lg:gap-1"
+          )}>
+            <div
+              className="w-6 h-6 rounded-full bg-subtle border border-base flex items-center justify-center text-primary font-black text-[9px] uppercase shrink-0"
+              title={sidebarCollapsed ? (currentUser?.name || "Usuario") : undefined}
+            >
               {currentUser?.name?.charAt(0) || "P"}
             </div>
             {!sidebarCollapsed && (
@@ -797,7 +934,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             )}
             <button
               type="button"
-              onClick={logout}
+              onClick={handleLogoutClick}
               className={cn(
                 "shrink-0 rounded-lg transition-colors text-muted hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50",
                 sidebarCollapsed ? "p-1.5" : "p-1"
@@ -838,23 +975,26 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 : "Sin contador";
 
             return (
-              <div className={cn("mt-1.5 min-w-0 rounded-xl border px-2.5 py-2", getPlanVisual(subscription?.planCode).border, getPlanVisual(subscription?.planCode).soft)}>
+              <button
+                type="button"
+                onClick={() => navigate("/subscription")}
+                title="Ver mi plan"
+                className={cn("mt-1.5 w-full min-w-0 rounded-xl border px-2.5 py-2 text-left transition-colors hover:border-[#6535C5]/40", getPlanVisual(subscription?.planCode).border, getPlanVisual(subscription?.planCode).soft)}
+              >
                 <div className="flex items-center gap-1.5 min-w-0">
                   <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center shrink-0", getPlanVisual(subscription?.planCode).soft)}>
-                    <CreditCard className={cn("w-3 h-3", getPlanVisual(subscription?.planCode).text)} />
+                    <Sparkles className={cn("w-3 h-3", getPlanVisual(subscription?.planCode).text)} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <p className={cn("min-w-0 flex-1 truncate text-[7px] font-black uppercase tracking-[0.11em]", getPlanVisual(subscription?.planCode).text)}>{subscription.planName || "Plan PALMYRA"}</p>
-                      <span className={cn("shrink-0 rounded-full px-1.5 py-0.5 text-[5.5px] font-black uppercase tracking-wider", countdown?.expired ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700")}>{statusLabel}</span>
-                    </div>
+                    <p className={cn("text-[7px] font-black uppercase leading-tight tracking-[0.11em]", getPlanVisual(subscription?.planCode).text)}>{subscription.planName || "Plan PALMYRA"}</p>
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[6.5px] font-bold leading-tight">
+                      <span className={cn("rounded-full px-1.5 py-0.5 text-[5.5px] font-black uppercase tracking-wider", countdown?.expired ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700")}>{statusLabel}</span>
                       <span className="text-primary">Vence {expiryLabel || "—"}</span>
                       <span className={cn("tabular-nums", countdown?.expired ? "text-rose-600 font-black" : getPlanVisual(subscription?.planCode).text)}>{timeLabel}</span>
                     </div>
                   </div>
                 </div>
-              </div>
+              </button>
             );
           })()}    </div>
 
@@ -867,7 +1007,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <p className="mt-4 text-[10px] font-black uppercase tracking-[0.16em] text-amber-700">Periodo de servicio finalizado</p>
             <h3 className="mt-1 text-xl font-black text-slate-900">PALMYRA está en modo lectura</h3>
             <p className="mt-2 text-sm leading-5 text-slate-600">Tus datos, ventas e historial se conservan. Para volver a operar y sincronizar nuevas modificaciones, activa nuevamente tu plan.</p>
-            <button type="button" onClick={() => window.location.assign('/subscription')} className="mt-5 w-full h-11 rounded-xl bg-indigo-600 text-white text-xs font-black uppercase tracking-wider">Ver planes y activar</button>
+            <button type="button" onClick={() => window.location.assign('/subscription')} className="mt-5 w-full h-11 rounded-xl bg-[#6535C5] hover:bg-[#4F249D] text-white text-xs font-black uppercase tracking-wider">Ver planes y activar</button>
           </div>
         </div>
       )}
@@ -917,17 +1057,55 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </div>
               <div className="relative mt-4 rounded-2xl border border-white/15 bg-black/10 px-3.5 py-3">
                 <p className="text-[10px] font-semibold leading-5 text-violet-50">
-                  Una nueva versión del sistema está lista. Actualiza ahora para continuar con la experiencia más reciente de PALMYRA.
+                  {serverVersion
+                    ? `La versión ${serverVersion} está lista. Actualiza ahora para continuar con la experiencia más reciente de PALMYRA.`
+                    : 'Una nueva versión del sistema está lista. Actualiza ahora para continuar con la experiencia más reciente de PALMYRA.'}
                 </p>
               </div>
             </div>
             <div className="border-t border-slate-100 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
               <div className="flex items-center justify-between gap-2.5">
                 <span className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-400">Actualización del sistema</span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[8px] font-black uppercase tracking-wider text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" /> Lista
+                <span className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-2 py-1 text-[8px] font-black uppercase tracking-wider",
+                  isApplyingUpdate
+                    ? "bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+                    : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                )}>
+                  <span className={cn("h-1.5 w-1.5 rounded-full", isApplyingUpdate ? "bg-violet-500 animate-pulse" : "bg-emerald-500")} />
+                  {isApplyingUpdate ? `${updateProgress?.percent ?? 0}%` : "Lista"}
                 </span>
               </div>
+
+              {isApplyingUpdate && (
+                <div className="mt-3 rounded-xl border border-violet-100 bg-violet-50/70 px-3 py-2.5 dark:border-violet-900/60 dark:bg-violet-950/30" aria-live="polite">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[9px] font-black uppercase tracking-[0.1em] text-violet-700 dark:text-violet-300">
+                      {UPDATE_PHASE_LABELS[updateProgress?.phase || 'checking'] || "Actualizando"}
+                      {updateProgress?.phase === 'downloading' && updateProgress.filesTotal
+                        ? ` · ${updateProgress.filesDone ?? 0}/${updateProgress.filesTotal}`
+                        : ""}
+                    </span>
+                    <span className="text-[9px] font-black tabular-nums text-violet-700 dark:text-violet-300">{updateProgress?.percent ?? 0}%</span>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-violet-100 dark:bg-violet-900/50" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={updateProgress?.percent ?? 0}>
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-violet-600 to-indigo-500 transition-[width] duration-300"
+                      style={{ width: `${Math.min(100, Math.max(3, updateProgress?.percent ?? 3))}%` }}
+                    />
+                  </div>
+                  <p className="mt-1.5 text-[8px] font-semibold text-violet-600/80 dark:text-violet-300/80">
+                    {formatUpdateBytes(updateProgress?.receivedBytes) || "No cierres PALMYRA durante la actualización. Tus datos están protegidos."}
+                  </p>
+                </div>
+              )}
+
+              {updateError && (
+                <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[9px] font-bold text-red-600 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300" role="alert">
+                  {updateError}
+                </div>
+              )}
+
               <div className="mt-3 flex flex-col-reverse gap-2.5 sm:flex-row">
                 <button
                   type="button"
@@ -935,6 +1113,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   onClick={() => {
                     try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
                     setUpdateAvailable(false);
+                    setUpdateError("");
+                    setUpdateProgress(null);
                   }}
                   className="h-11 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 text-[9px] font-black uppercase tracking-[0.08em] text-slate-600 transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
                 >
@@ -946,7 +1126,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   onClick={handleApplyUpdate}
                   className="h-11 flex-1 rounded-xl bg-violet-600 px-4 text-[9px] font-black uppercase tracking-[0.08em] text-white shadow-lg shadow-violet-600/20 transition hover:bg-violet-700 disabled:cursor-wait disabled:opacity-70"
                 >
-                  {isApplyingUpdate ? "Actualizando…" : "Actualizar ahora"}
+                  {isApplyingUpdate ? `Actualizando… ${updateProgress?.percent ?? 0}%` : "Actualizar ahora"}
                 </button>
               </div>
             </div>
@@ -988,7 +1168,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             onClick={() => setSidebarOpen(false)}
           />
         )}
-        <div className={cn("flex-1 min-w-0 h-full flex flex-col scroll-touch keyboard-safe-scroll", isPosPage ? "overflow-hidden p-0" : "overflow-y-auto p-3 sm:p-4 lg:p-6 pb-20 lg:pb-12")}>
+        <div className={cn("flex-1 min-w-0 h-full flex flex-col scroll-touch keyboard-safe-scroll", isPosPage ? "overflow-hidden p-0" : "overflow-y-auto p-3 sm:p-4 lg:p-6 pb-4 lg:pb-6")}>
           {children}
         </div>
         </main>

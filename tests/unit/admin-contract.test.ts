@@ -28,3 +28,20 @@ test("Admin tiene contrato de build independiente", () => {
   const viteConfig = readFileSync(join(process.cwd(), "admin/vite.config.ts"), "utf8");
   assert.match(viteConfig, /dist-admin/);
 });
+
+test("Las migraciones no repiten versión y el panel usa RPCs protegidas", () => {
+  const migrationsDir = join(process.cwd(), "supabase/migrations");
+  const versions = readdirSync(migrationsDir)
+    .filter((name) => name.endsWith(".sql"))
+    .map((name) => name.split("_")[0]);
+  assert.equal(new Set(versions).size, versions.length, "Hay migraciones con la misma versión");
+
+  const sql = readFileSync(join(migrationsDir, "20261120121000_platform_admin_console.sql"), "utf8");
+  for (const rpc of ["get_platform_companies", "set_platform_company_status", "set_platform_support_request_status"]) {
+    assert.match(sql, new RegExp(`create or replace function public\\.${rpc}`), rpc);
+    assert.match(sql, new RegExp(`revoke all on function public\\.${rpc}`), rpc);
+  }
+  assert.match(sql, /security definer/);
+  assert.match(sql, /platform_admins/);
+  assert.match(sql, /drop function if exists public\.set_platform_support_settings\(text,text,text\)/);
+});

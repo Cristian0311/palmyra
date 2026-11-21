@@ -143,10 +143,10 @@ export default function SaaSInvite() {
     <main className="min-h-[100dvh] bg-[#F7F5FC] px-3 sm:px-5 py-5 flex items-center justify-center overflow-y-auto">
       <div className="w-full max-w-3xl bg-white rounded-[26px] border border-violet-100 shadow-[0_30px_90px_-52px_rgba(59,27,110,.55)] overflow-hidden">
         <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4 border-b border-violet-100 bg-white">
-          <img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="w-[190px] h-12 object-contain object-left" />
+          <img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="h-auto w-[190px] object-contain object-left" />
           <div className="text-right">
-            <div className="text-[8px] uppercase tracking-[.18em] text-[#8B63E6] font-black">Invitación de empresa</div>
-            <div className="text-[9px] text-slate-400 mt-1">Acceso seguro al equipo</div>
+            <div className="text-[8px] uppercase tracking-[.18em] text-[#7649D6] font-black">Invitación de empresa</div>
+            <div className="text-[9px] text-slate-500 mt-1">Acceso seguro al equipo</div>
           </div>
         </div>
 

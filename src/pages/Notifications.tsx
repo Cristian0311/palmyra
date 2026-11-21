@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
-import { Bell, BellRing, CheckCheck, RefreshCw, Smartphone, Clock3, ShieldAlert, Laugh, AlertTriangle } from "lucide-react";
+import { Bell, BellRing, CheckCheck, ChevronDown, RefreshCw, Smartphone, Clock3, ShieldAlert, Laugh, AlertTriangle } from "lucide-react";
 import { getSupabase } from "../lib/supabase";
 import { loadSaaSContext } from "../services/saas";
+import { SettingsSectionHeader } from "../components/settings/SettingsSectionHeader";
+import { cn } from "../lib/utils";
 
 type Notice = {
   id: string;
@@ -30,15 +32,13 @@ type Preferences = {
 };
 type RateOption = { code: string; name: string };
 const DEFAULT_RATE_OPTIONS: RateOption[] = [
-  { code: "USD", name: "Dólar estadounidense" }, { code: "EUR", name: "Euro" },
-  { code: "MLC", name: "Moneda libremente convertible (MLC)" }, { code: "CAD", name: "Dólar canadiense" },
-  { code: "MXN", name: "Peso mexicano" }, { code: "GBP", name: "Libra esterlina" },
-  { code: "CHF", name: "Franco suizo" }, { code: "RUB", name: "Rublo ruso" },
-  { code: "CUP", name: "Peso cubano" }, { code: "CNY", name: "Yuan chino" },
-  { code: "JPY", name: "Yen japonés" }, { code: "BRL", name: "Real brasileño" },
-  { code: "COP", name: "Peso colombiano" }, { code: "DOP", name: "Peso dominicano" },
-  { code: "AUD", name: "Dólar australiano" }, { code: "NZD", name: "Dólar neozelandés" },
-  { code: "ZELLE", name: "Zelle · pagos en USD" }, { code: "CLA", name: "Clásica" },
+  { code: "USD", name: "Dólar estadounidense (Efectivo)" },
+  { code: "EUR", name: "Euro (Efectivo)" },
+  { code: "MLC", name: "Moneda libremente convertible (MLC)" },
+  { code: "USDT", name: "Tether (USDT · TRC-20)" },
+  { code: "BTC", name: "Bitcoin (BTC)" },
+  { code: "ZELLE", name: "Zelle · pagos en USD" },
+  { code: "CLA", name: "Tarjeta Clásica (USD)" },
 ];
 const CRYPTO_PREFIX = /^(BTC|ETH|BNB|TRX|USDT|USDC|LTC|DOGE|SOL|XRP|TON|ADA|BCH|DOT|AVAX|SHIB|LINK|XMR|MATIC|POL)/;
 function normalizedRateCode(value: unknown) {
@@ -136,9 +136,13 @@ export default function Notifications() {
   const [notices, setNotices] = useState<Notice[]>([]);
   const [prefs, setPrefs] = useState<Preferences>(defaults);
   const [loading, setLoading] = useState(true);
+  const [needsAccount, setNeedsAccount] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
   const [testBusy, setTestBusy] = useState(false);
+  const [markingAll, setMarkingAll] = useState(false);
+  const [view, setView] = useState<"history" | "prefs">("history");
+  const [filter, setFilter] = useState<"all" | "unread" | "rates">("all");
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [pushDeviceStatus, setPushDeviceStatus] = useState<"checking" | "unsupported" | "missing_key" | "permission_denied" | "registered" | "not_registered">("checking");
@@ -221,7 +225,9 @@ export default function Notifications() {
 
   const pushStatusDetail = ({
     checking: "Estamos comprobando el permiso del navegador y si este móvil ya está registrado.",
-    unsupported: "Abre PALMYRA con Chrome en Android o con un navegador compatible con notificaciones push.",
+    unsupported: typeof navigator !== "undefined" && /\bElectron\//i.test(navigator.userAgent)
+      ? "En la app de escritorio los avisos se muestran dentro de PALMYRA. Para recibirlos en el móvil, abre PALMYRA en Chrome (Android) desde el teléfono y activa el push allí."
+      : "Abre PALMYRA con Chrome en Android o con un navegador compatible con notificaciones push.",
     missing_key: "El despliegue no está exponiendo la clave pública VAPID. El historial funciona, pero no se puede registrar el móvil hasta corregir esa configuración.",
     permission_denied: "El navegador bloqueó los avisos. En los ajustes de Android/Chrome, permite las notificaciones para palmyracrm.onrender.com y vuelve a probar.",
     registered: "Hay una suscripción push guardada en este navegador. Usa «Enviar prueba» para comprobar la entrega real al dispositivo.",
@@ -237,7 +243,11 @@ export default function Notifications() {
       const [ctxResult, authResult] = await Promise.all([loadSaaSContext(true), supabase.auth.getUser()]);
       const cid = ctxResult?.companyId || "";
       const uid = authResult.data.user?.id || "";
-      if (!cid || !uid) throw new Error("No pudimos confirmar tu empresa y usuario. Vuelve a iniciar sesión cuando tengas conexión.");
+      if (!cid || !uid) {
+        setNeedsAccount(true);
+        return;
+      }
+      setNeedsAccount(false);
       setCompanyId(cid);
       setUserId(uid);
 
@@ -282,6 +292,26 @@ export default function Notifications() {
 
   useEffect(() => { void refresh(); }, [refresh]);
 
+  // Live updates: new notices appear without pressing refresh. Realtime is
+  // optional; if the table is not published the page keeps working manually.
+  useEffect(() => {
+    const supabase = getSupabase();
+    if (!supabase || !companyId || !userId) return;
+    const channel = supabase
+      .channel(`palmyra-notifications-${companyId}-${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "notifications", filter: `company_id=eq.${companyId}` },
+        (payload) => {
+          const row = payload.new as Notice;
+          if (row.user_id && row.user_id !== userId) return;
+          setNotices((items) => [row, ...items.filter((item) => item.id !== row.id)].slice(0, 50));
+        },
+      )
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [companyId, userId]);
+
   const savePrefs = async () => {
     const supabase = getSupabase();
     if (!supabase || !companyId || !userId) return;
@@ -301,7 +331,7 @@ export default function Notifications() {
         updated_at: new Date().toISOString(),
       }, { onConflict: "company_id,user_id" });
       if (saveError) throw saveError;
-      setMessage("¡Listo! Preferencias guardadas. PALMYRA ya sabe cuándo hablar y cuándo cerrar el pico. 😂");
+      setMessage("Preferencias guardadas.");
     } catch (e: any) {
       setError(e?.message || "No se pudieron guardar las preferencias.");
     } finally {
@@ -325,6 +355,37 @@ export default function Notifications() {
       return;
     }
     setNotices((items) => items.map((item) => item.id === notice.id ? { ...item, read_at: readAt } : item));
+  };
+
+  const markAllRead = async () => {
+    const supabase = getSupabase();
+    if (!supabase || !userId) return;
+    const pending = notices.filter((notice) => !notice.read_at && (notice.user_id === userId || notice.user_id === null));
+    if (!pending.length) return;
+    setMarkingAll(true);
+    setError("");
+    const readAt = new Date().toISOString();
+    try {
+      const ownIds = pending.filter((notice) => notice.user_id === userId).map((notice) => notice.id);
+      if (ownIds.length) {
+        const { error: ownError } = await supabase.from("notifications").update({ read_at: readAt }).in("id", ownIds).eq("user_id", userId);
+        if (ownError) throw ownError;
+      }
+      const shared = pending.filter((notice) => notice.user_id === null);
+      if (shared.length) {
+        const { error: sharedError } = await supabase.from("notification_reads").upsert(
+          shared.map((notice) => ({ notification_id: notice.id, company_id: companyId, user_id: userId, read_at: readAt })),
+          { onConflict: "notification_id,user_id" },
+        );
+        if (sharedError) throw sharedError;
+      }
+      setNotices((items) => items.map((item) => pending.some((notice) => notice.id === item.id) ? { ...item, read_at: readAt } : item));
+      setMessage("Todos los avisos quedaron como leídos.");
+    } catch (e: any) {
+      setError(e?.message || "No se pudieron marcar los avisos como leídos.");
+    } finally {
+      setMarkingAll(false);
+    }
   };
 
   const enablePush = async () => {
@@ -413,7 +474,7 @@ export default function Notifications() {
       if (prefError) throw prefError;
       setPrefs((p) => ({ ...p, push_enabled: true }));
       setPushDeviceStatus("registered");
-      setMessage("¡Dispositivo registrado! PALMYRA ya tiene dónde tocarte el hombro cuando llegue un aviso. 😂");
+      setMessage("Dispositivo registrado. PALMYRA puede enviarte avisos a este móvil.");
     } catch (e: any) {
       setError(e?.message || "No se pudo activar el push.");
     } finally {
@@ -434,14 +495,14 @@ export default function Notifications() {
         setNotices((items) => [{
           id: String(notificationId),
           kind: "test",
-          title: "¡PRUEBA DE NOTIFICACIONES! 🔔",
-          body: "Si recibes esto en el móvil, el push ya está funcionando. PALMYRA ha dejado de gritarle al vacío. 😂",
+          title: "Prueba de notificaciones",
+          body: "Si recibes este aviso en el móvil, el push ya está funcionando.",
           read_at: null,
           created_at: new Date().toISOString(),
           user_id: userId,
         }, ...items.filter((item) => item.id !== String(notificationId))].slice(0, 50));
       }
-      setMessage("Prueba creada; PALMYRA ha solicitado el envío inmediato al móvil. Dale unos segundos para que llegue. 😂");
+      setMessage("Prueba creada. El envío al móvil puede tardar unos segundos.");
     } catch (e: any) {
       setError(e?.message || "No se pudo crear la notificación de prueba.");
     } finally {
@@ -451,127 +512,246 @@ export default function Notifications() {
 
   const update = <K extends keyof Preferences,>(key: K, value: Preferences[K]) => setPrefs((current) => ({ ...current, [key]: value }));
   const unread = notices.filter((notice) => !notice.read_at).length;
+  const filteredNotices = notices.filter((notice) => {
+    if (filter === "unread") return !notice.read_at;
+    if (filter === "rates") return /exchange|currency|rate/i.test(notice.kind);
+    return true;
+  });
+  const filterChips = [
+    { id: "all", label: "Todos", count: notices.length },
+    { id: "unread", label: "Sin leer", count: unread },
+    { id: "rates", label: "Tasas", count: notices.filter((notice) => /exchange|currency|rate/i.test(notice.kind)).length },
+  ] as const;
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-4xl space-y-3 overflow-x-hidden pb-6 text-sm">
-      <header className="rounded-2xl bg-gradient-to-r from-violet-800 to-indigo-700 p-4 text-white shadow-sm sm:p-5">
-        <div className="flex min-w-0 items-start gap-3">
-          <div className="rounded-xl border border-white/20 bg-white/10 p-2"><BellRing className="h-5 w-5" /></div>
-          <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-violet-200">PALMYRA · CENTRO DE AVISOS</p>
-            <h1 className="mt-1 break-words text-xl font-black tracking-tight sm:text-2xl">Notificaciones</h1>
-            <p className="mt-1 max-w-2xl text-xs leading-5 text-violet-100">Configura los avisos, prueba el móvil y revisa el historial desde un solo lugar.</p>
+    <div className="w-full min-w-0 space-y-4 pb-6">
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="shrink-0 rounded-xl bg-violet-50 p-2.5 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
+            <BellRing size={18} />
+          </span>
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h2 className="text-xl font-bold leading-tight text-primary">Notificaciones</h2>
+              {unread > 0 && <span className="rounded-full bg-violet-600 px-2 py-0.5 text-xs font-bold text-white">{unread} sin leer</span>}
+            </div>
+            <p className="text-sm font-medium text-secondary">Tus avisos y la forma en que quieres recibirlos.</p>
           </div>
-          <button type="button" title="Actualizar historial y preferencias" aria-label="Actualizar historial y preferencias" onClick={() => void refresh()} className="shrink-0 rounded-lg border border-white/20 bg-white/10 p-2 hover:bg-white/20 disabled:opacity-50" disabled={loading}>
-            <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
-          </button>
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <span className="rounded-lg bg-white/15 px-2.5 py-1 text-xs font-semibold">{notices.length} avisos</span>
-          <span className="rounded-lg bg-white/15 px-2.5 py-1 text-xs font-semibold">{unread} sin leer</span>
-          <span className="rounded-lg bg-white/15 px-2.5 py-1 text-xs font-semibold">{pushStatusLabel}</span>
-        </div>
+        <button
+          type="button"
+          title="Actualizar historial y preferencias"
+          onClick={() => void refresh()}
+          disabled={loading}
+          className="flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl border border-base bg-secondary px-4 text-sm font-semibold text-primary transition-colors hover:bg-subtle disabled:opacity-50 sm:w-auto"
+        >
+          <RefreshCw size={15} className={loading ? "animate-spin" : ""} /> Actualizar
+        </button>
       </header>
 
-      {message && <div role="status" className="break-words rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs leading-5 font-semibold text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">{message}</div>}
-      {error && <div role="alert" className="break-words rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs leading-5 font-semibold text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><AlertTriangle className="mr-1.5 inline h-4 w-4" />{error}</div>}
+      <div role="tablist" aria-label="Vistas de notificaciones" className="grid grid-cols-2 gap-1 rounded-2xl border border-base bg-secondary p-1 sm:flex sm:w-fit">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "history"}
+          onClick={() => setView("history")}
+          className={cn(
+            "flex h-11 items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-semibold transition-colors",
+            view === "history" ? "bg-violet-600 text-white shadow-sm" : "text-secondary hover:bg-subtle hover:text-primary",
+          )}
+        >
+          Historial
+          {unread > 0 && <span className={cn("rounded-full px-1.5 py-0.5 text-xs font-bold tabular-nums", view === "history" ? "bg-white/20 text-white" : "bg-violet-600 text-white")}>{unread}</span>}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "prefs"}
+          onClick={() => setView("prefs")}
+          className={cn(
+            "flex h-11 items-center justify-center gap-1.5 rounded-xl px-4 text-sm font-semibold transition-colors",
+            view === "prefs" ? "bg-violet-600 text-white shadow-sm" : "text-secondary hover:bg-subtle hover:text-primary",
+          )}
+        >
+          Preferencias
+        </button>
+      </div>
 
-      <section className="min-w-0 rounded-2xl border border-violet-200 bg-white p-3 shadow-sm dark:border-violet-900 dark:bg-slate-900 sm:p-4">
-        <div className="flex min-w-0 items-start gap-2.5">
-          <div className="shrink-0 rounded-lg bg-violet-100 p-2 text-violet-700"><Smartphone className="h-5 w-5" /></div>
-          <div className="min-w-0 flex-1">
-            <h2 className="font-bold text-slate-900 dark:text-white">Notificaciones en el móvil</h2>
-            <p className="mt-0.5 break-words text-xs leading-5 text-slate-500">{pushStatusDetail}</p>
-          </div>
+      {message && <div role="status" className="break-words rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium leading-6 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">{message}</div>}
+      {error && <div role="alert" className="break-words rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium leading-6 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><AlertTriangle size={15} className="mr-1.5 inline" />{error}</div>}
+      {needsAccount && !error && (
+        <div role="status" className="break-words rounded-xl border border-violet-200 bg-violet-50/70 p-3 text-sm font-medium leading-6 text-violet-900 dark:border-violet-900/50 dark:bg-violet-950/20 dark:text-violet-200">
+          El historial y las preferencias se guardan en tu cuenta PALMYRA. Inicia sesión con tu empresa para verlos y recibir avisos en el móvil; el modo local no envía notificaciones push.
         </div>
-        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
-          <button type="button" title="Solicitar permiso y registrar este dispositivo para recibir avisos push" disabled={pushBusy || loading || !companyId || !userId} onClick={() => void enablePush()} className="flex min-w-0 items-center justify-center gap-2 rounded-lg bg-violet-700 px-3 py-2.5 text-xs font-bold text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-50">
-            <Smartphone className="h-4 w-4 shrink-0" /><span className="break-words">{pushBusy ? "Activando…" : pushDeviceStatus === "registered" ? "Registrar de nuevo" : "Activar push"}</span>
-          </button>
-          <button type="button" title="Crear una notificación de prueba para comprobar el envío al móvil" disabled={testBusy || loading || !companyId} onClick={() => void sendTestNotification()} className="flex min-w-0 items-center justify-center gap-2 rounded-lg border border-violet-200 px-3 py-2.5 text-xs font-bold text-violet-800 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-800 dark:text-violet-200 dark:hover:bg-violet-950/40">
-            <BellRing className="h-4 w-4 shrink-0" /><span>{testBusy ? "Enviando prueba…" : "Enviar prueba"}</span>
-          </button>
-          <button type="button" title="Volver a comprobar el permiso y la suscripción push del navegador" disabled={loading || pushDeviceStatus === "checking"} onClick={() => void checkPushStatus()} className="flex min-w-0 items-center justify-center gap-2 rounded-lg border border-slate-200 px-3 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">
-            <RefreshCw className="h-4 w-4 shrink-0" /><span>Comprobar estado</span>
-          </button>
-        </div>
-        <p className="mt-2 text-[11px] leading-4 text-slate-500">Activar registra el móvil; Enviar prueba comprueba la entrega; Comprobar estado revisa el permiso del navegador. Cada móvil se registra por separado.</p>
-      </section>
+      )}
 
-      <section className="min-w-0 rounded-2xl border border-emerald-200 bg-white p-3 shadow-sm dark:border-emerald-900 dark:bg-slate-900 sm:p-4">
-        <div className="flex min-w-0 items-start gap-2.5">
-          <div className="shrink-0 rounded-lg bg-emerald-100 p-2 text-emerald-800"><BellRing className="h-5 w-5" /></div>
-          <div className="min-w-0 flex-1">
-            <h2 className="font-bold text-slate-900 dark:text-white">Alertas de tasas de cambio</h2>
-            <p className="mt-0.5 text-xs leading-5 text-slate-500">Configura divisas y Bitcoin por separado. Se compara la tasa publicada; no es una predicción del mercado.</p>
-          </div>
-        </div>
-        <div className="mt-3 space-y-2">
-          <label className="flex min-w-0 items-center gap-3 rounded-lg border border-slate-200 px-3 py-2.5 dark:border-slate-700">
-            <input className="h-4 w-4 shrink-0 accent-emerald-700" type="checkbox" checked={prefs.exchange_currency_alerts_enabled} onChange={(e) => update("exchange_currency_alerts_enabled", e.target.checked)} />
-            <span className="min-w-0 flex-1"><span className="block text-xs font-bold text-slate-800 dark:text-slate-100">Alertas de divisas</span><span className="block text-[11px] leading-4 text-slate-500">Avisar solo de las monedas seleccionadas.</span></span>
-          </label>
-          <label className="flex min-w-0 items-center gap-3 rounded-lg border border-slate-200 px-3 py-2.5 dark:border-slate-700">
-            <input className="h-4 w-4 shrink-0 accent-emerald-700" type="checkbox" checked={prefs.exchange_bitcoin_alerts_enabled} onChange={(e) => update("exchange_bitcoin_alerts_enabled", e.target.checked)} />
-            <span className="min-w-0 flex-1"><span className="block text-xs font-bold text-slate-800 dark:text-slate-100">Bitcoin (BTC)</span><span className="block text-[11px] leading-4 text-slate-500">Control independiente del resto de divisas.</span></span>
-          </label>
-        </div>
-        <div className="mt-3 min-w-0 rounded-lg border border-slate-200 p-3 dark:border-slate-700">
-          <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="min-w-0"><h3 className="text-xs font-bold text-slate-900 dark:text-white">Monedas a vigilar</h3><p className="mt-0.5 text-[11px] text-slate-500">{prefs.exchange_currency_codes.length} seleccionadas</p></div>
-            <button type="button" title="Marcar todas las divisas disponibles en la lista" onClick={() => update("exchange_currency_codes", rateOptions.map((option) => option.code))} className="w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 sm:w-auto dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800">Seleccionar todas</button>
-          </div>
-          {rateOptions.length ? <div className="mt-2 grid min-w-0 grid-cols-1 gap-1.5 sm:grid-cols-2">
-            {rateOptions.map((option) => <label key={option.code} className="flex min-w-0 items-center gap-2 rounded-lg bg-slate-50 px-2.5 py-2 dark:bg-slate-800">
-              <input className="h-4 w-4 shrink-0 accent-emerald-700" type="checkbox" checked={prefs.exchange_currency_codes.includes(option.code)} onChange={(e) => update("exchange_currency_codes", e.target.checked ? [...new Set([...prefs.exchange_currency_codes, option.code])] : prefs.exchange_currency_codes.filter((code) => code !== option.code))} />
-              <span className="min-w-0 flex-1 break-words text-xs text-slate-800 dark:text-slate-100">{option.name}</span><span className="shrink-0 text-[10px] font-bold text-slate-500">{option.code}</span>
-            </label>)}
-          </div> : <p className="mt-2 text-xs text-slate-500">No se pudo cargar la lista ahora; se mantienen las opciones guardadas.</p>}
-          <p className="mt-2 text-[11px] leading-4 text-slate-500">La lista depende de las divisas que publique la fuente de tasas.</p>
-        </div>
-        <div className="mt-3 grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-          <label className="block min-w-0"><span className="block text-xs font-bold text-slate-700 dark:text-slate-200">Variación mínima (%)</span><input className="mt-1 block w-full min-w-0 rounded-lg border border-slate-200 bg-transparent px-3 py-2.5 text-sm outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100 dark:border-slate-700" type="number" min="0" max="100" step="0.01" value={prefs.exchange_alert_min_change_pct} onChange={(e) => update("exchange_alert_min_change_pct", Math.min(100, Math.max(0, Number(e.target.value) || 0)))} /><span className="mt-1 block text-[11px] leading-4 text-slate-500">0 = cualquier cambio detectado; un porcentaje mayor reduce avisos pequeños.</span></label>
-          <button type="button" title="Guardar los interruptores, las monedas elegidas y el porcentaje mínimo" disabled={saving || loading} onClick={() => void savePrefs()} className="w-full rounded-lg bg-emerald-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">{saving ? "Guardando…" : "Guardar alertas"}</button>
-        </div>
-        <p className="mt-2 text-[11px] leading-4 text-slate-500">Revisión aproximada cada cinco minutos. Guarda los cambios para aplicarlos.</p>
-      </section>
-
-      <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-4">
-        <div className="flex min-w-0 items-start gap-2.5">
-          <div className="shrink-0 rounded-lg bg-slate-100 p-2 text-slate-700 dark:bg-slate-800 dark:text-slate-200"><Clock3 className="h-5 w-5" /></div>
-          <div className="min-w-0 flex-1"><h2 className="font-bold text-slate-900 dark:text-white">Horario y preferencias</h2><p className="mt-0.5 text-xs leading-5 text-slate-500">Controla el silencio, el resumen y los tipos de aviso.</p></div>
-        </div>
-        <div className="mt-3 grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
-          <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2.5 dark:border-slate-700"><span className="min-w-0"><span className="block text-xs font-semibold text-slate-800 dark:text-slate-100">Horario de silencio</span><span className="block text-[11px] leading-4 text-slate-500">Pausa avisos rutinarios en el intervalo elegido.</span></span><input className="h-4 w-4 shrink-0 accent-violet-700" type="checkbox" checked={prefs.quiet_hours_enabled} onChange={(e) => update("quiet_hours_enabled", e.target.checked)} /></label>
-          <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2.5 dark:border-slate-700"><span className="min-w-0"><span className="block text-xs font-semibold text-slate-800 dark:text-slate-100">Resumen diario</span><span className="block text-[11px] leading-4 text-slate-500">Recibir un resumen a la hora indicada.</span></span><input className="h-4 w-4 shrink-0 accent-violet-700" type="checkbox" checked={prefs.routine_summary_enabled} onChange={(e) => update("routine_summary_enabled", e.target.checked)} /></label>
-          <label className="block min-w-0 rounded-lg border border-slate-200 px-3 py-2.5 dark:border-slate-700"><span className="block text-xs font-semibold text-slate-700 dark:text-slate-200">Inicio del silencio</span><input className="mt-1 block w-full min-w-0 rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm dark:border-slate-700" type="time" value={prefs.quiet_hours_start} onChange={(e) => update("quiet_hours_start", e.target.value)} /></label>
-          <label className="block min-w-0 rounded-lg border border-slate-200 px-3 py-2.5 dark:border-slate-700"><span className="block text-xs font-semibold text-slate-700 dark:text-slate-200">Fin del silencio</span><input className="mt-1 block w-full min-w-0 rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm dark:border-slate-700" type="time" value={prefs.quiet_hours_end} onChange={(e) => update("quiet_hours_end", e.target.value)} /></label>
-          <label className="block min-w-0 rounded-lg border border-slate-200 px-3 py-2.5 dark:border-slate-700"><span className="block text-xs font-semibold text-slate-700 dark:text-slate-200">Hora del resumen</span><input className="mt-1 block w-full min-w-0 rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm dark:border-slate-700" type="time" value={prefs.routine_summary_time} onChange={(e) => update("routine_summary_time", e.target.value)} /></label>
-          <label className="block min-w-0 rounded-lg border border-slate-200 px-3 py-2.5 dark:border-slate-700"><span className="block text-xs font-semibold text-slate-700 dark:text-slate-200">Zona horaria</span><select className="mt-1 block w-full min-w-0 rounded-lg border border-slate-200 bg-transparent px-3 py-2 text-sm dark:border-slate-700" value={prefs.timezone} onChange={(e) => update("timezone", e.target.value)}><option value="America/Havana">Cuba</option><option value="America/Puerto_Rico">Puerto Rico</option><option value="America/New_York">Este de EE. UU.</option><option value="UTC">UTC</option></select></label>
-          <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2.5 dark:border-slate-700"><span className="min-w-0"><span className="block text-xs font-semibold text-slate-800 dark:text-slate-100">Push habilitado</span><span className="block text-[11px] leading-4 text-slate-500">Permite avisos en este dispositivo registrado.</span></span><input className="h-4 w-4 shrink-0 accent-violet-700" type="checkbox" checked={prefs.push_enabled} onChange={(e) => update("push_enabled", e.target.checked)} /></label>
-          <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2.5 dark:border-slate-700"><span className="min-w-0"><span className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100"><ShieldAlert className="h-4 w-4 shrink-0 text-rose-500" />Avisos críticos</span><span className="block text-[11px] leading-4 text-slate-500">Prioriza alertas críticas de forma inmediata.</span></span><input className="h-4 w-4 shrink-0 accent-violet-700" type="checkbox" checked={prefs.critical_push_enabled} onChange={(e) => update("critical_push_enabled", e.target.checked)} /></label>
-          <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2.5 dark:border-slate-700"><span className="min-w-0"><span className="flex items-center gap-1.5 text-xs font-semibold text-slate-800 dark:text-slate-100"><Laugh className="h-4 w-4 shrink-0 text-violet-500" />Humor PALMYRA</span><span className="block text-[11px] leading-4 text-slate-500">Activa o desactiva los mensajes con humor.</span></span><input className="h-4 w-4 shrink-0 accent-violet-700" type="checkbox" checked={prefs.humour_enabled} onChange={(e) => update("humour_enabled", e.target.checked)} /></label>
-        </div>
-        <button type="button" title="Guardar el horario y todas las preferencias generales de notificación" disabled={saving || loading} onClick={() => void savePrefs()} className="mt-3 w-full rounded-lg bg-violet-700 px-4 py-2.5 text-xs font-bold text-white hover:bg-violet-800 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">{saving ? "Guardando…" : "Guardar preferencias"}</button>
-      </section>
-
-      <section className="min-w-0 space-y-2">
-        <div className="flex min-w-0 items-end justify-between gap-3 px-1">
-          <div className="min-w-0"><h2 className="font-bold text-slate-900 dark:text-white">Historial reciente</h2><p className="mt-0.5 text-xs text-slate-500">Avisos guardados, incluso al cerrar la pantalla.</p></div>
-          <span className="shrink-0 rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">{notices.length} total</span>
-        </div>
-        {loading ? <div className="rounded-xl border border-slate-200 p-6 text-center text-xs text-slate-500"><RefreshCw className="mr-1.5 inline h-4 w-4 animate-spin" />Cargando avisos…</div> : notices.length === 0 ? <div className="rounded-xl border border-dashed border-slate-300 p-6 text-center dark:border-slate-700"><Bell className="mx-auto h-7 w-7 text-slate-300" /><p className="mt-2 text-sm font-bold text-slate-700 dark:text-slate-200">Todavía no hay avisos</p><p className="mt-1 text-xs text-slate-500">Los avisos nuevos aparecerán aquí.</p></div> : notices.map((notice) => <article key={notice.id} className={`min-w-0 rounded-xl border p-3 ${notice.read_at ? "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900" : "border-violet-200 bg-violet-50/70 dark:border-violet-900 dark:bg-violet-950/20"}`}>
-          <div className="flex min-w-0 items-start gap-2.5">
-            <div className={`shrink-0 rounded-lg p-2 ${notice.read_at ? "bg-slate-100 text-slate-500" : "bg-violet-100 text-violet-700"}`}><Bell className="h-4 w-4" /></div>
-            <div className="min-w-0 flex-1">
-              <div className="flex min-w-0 flex-wrap items-center gap-1.5"><h3 className="min-w-0 break-words font-bold text-slate-900 dark:text-white">{notice.title}</h3><span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">{kindLabel(notice.kind)}</span>{!notice.read_at && <span className="shrink-0 rounded-full bg-violet-700 px-2 py-0.5 text-[10px] font-bold text-white">Nuevo</span>}</div>
-              <p className="mt-1 break-words whitespace-pre-line text-xs leading-5 text-slate-600 dark:text-slate-300">{notice.body}</p>
-              <p className="mt-1.5 text-[10px] text-slate-400">{new Date(notice.created_at).toLocaleString("es-PR")}</p>
+      {view === "history" && (
+        <section className="min-w-0 space-y-3">
+          <div className="flex min-w-0 flex-col gap-2 rounded-2xl border border-base bg-secondary p-2 sm:flex-row sm:items-center sm:justify-between">
+            <div role="group" aria-label="Filtrar avisos" className="flex min-w-0 flex-wrap gap-1">
+              {filterChips.map((chip) => (
+                <button
+                  key={chip.id}
+                  type="button"
+                  aria-pressed={filter === chip.id}
+                  onClick={() => setFilter(chip.id)}
+                  className={cn(
+                    "inline-flex h-11 items-center gap-1.5 rounded-xl px-3 text-sm font-semibold transition-colors",
+                    filter === chip.id ? "bg-violet-600 text-white shadow-sm" : "text-secondary hover:bg-subtle hover:text-primary",
+                  )}
+                >
+                  {chip.label}
+                  <span className={cn("rounded-full px-1.5 py-0.5 text-xs font-bold tabular-nums", filter === chip.id ? "bg-white/20 text-white" : "bg-subtle text-muted")}>{chip.count}</span>
+                </button>
+              ))}
             </div>
-            {!notice.read_at && notice.user_id === userId && <button type="button" title="Marcar esta notificación como leída" aria-label="Marcar como leída" onClick={() => void markRead(notice)} className="shrink-0 rounded-lg p-2 text-violet-700 hover:bg-violet-100 dark:text-violet-300 dark:hover:bg-violet-950/40"><CheckCheck className="h-4 w-4" /></button>}
+            <button
+              type="button"
+              title="Marcar todos los avisos pendientes como leídos"
+              onClick={() => void markAllRead()}
+              disabled={markingAll || unread === 0}
+              className="flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-base bg-primary px-3 text-sm font-semibold text-primary transition-colors hover:bg-subtle disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CheckCheck size={15} /> {markingAll ? "Marcando…" : "Marcar todo leído"}
+            </button>
           </div>
-        </article>)}
+
+          {loading ? (
+            <div className="rounded-xl border border-base bg-secondary p-6 text-center text-sm font-medium text-muted"><RefreshCw size={16} className="mr-1.5 inline animate-spin" />Cargando avisos…</div>
+          ) : filteredNotices.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-base bg-secondary p-6 text-center">
+              <Bell size={26} className="mx-auto text-muted" />
+              <p className="mt-2 text-sm font-bold text-primary">{notices.length === 0 ? "Todavía no hay avisos" : "No hay avisos con este filtro"}</p>
+              <p className="mt-1 text-sm font-medium text-muted">{notices.length === 0 ? "Los avisos nuevos aparecerán aquí." : "Cambia el filtro para ver el historial completo."}</p>
+            </div>
+          ) : (
+            <div className="grid min-w-0 gap-2 xl:grid-cols-2">
+              {filteredNotices.map((notice) => (
+                <article key={notice.id} className={cn("min-w-0 rounded-xl border p-3", notice.read_at ? "border-base bg-secondary" : "border-violet-200 bg-violet-50/70 dark:border-violet-900 dark:bg-violet-950/20")}>
+                  <div className="flex min-w-0 items-start gap-2.5">
+                    <div className={cn("shrink-0 rounded-xl p-2", notice.read_at ? "bg-subtle text-muted" : "bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300")}><Bell size={16} /></div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <h3 className="min-w-0 break-words text-sm font-bold text-primary">{notice.title}</h3>
+                        <span className="shrink-0 rounded-full bg-subtle px-2 py-0.5 text-xs font-semibold text-secondary">{kindLabel(notice.kind)}</span>
+                        {!notice.read_at && <span className="shrink-0 rounded-full bg-violet-600 px-2 py-0.5 text-xs font-semibold text-white">Nuevo</span>}
+                      </div>
+                      <p className="mt-1 whitespace-pre-line break-words text-sm font-medium leading-6 text-secondary">{notice.body}</p>
+                      <p className="mt-1.5 text-xs font-medium text-muted">{new Date(notice.created_at).toLocaleString("es-PR")}</p>
+                    </div>
+                    {!notice.read_at && (notice.user_id === userId || notice.user_id === null) && (
+                      <button type="button" title="Marcar esta notificación como leída" aria-label="Marcar como leída" onClick={() => void markRead(notice)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-violet-700 transition-colors hover:bg-violet-100 dark:text-violet-300 dark:hover:bg-violet-950/40"><CheckCheck size={16} /></button>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {view === "prefs" && (
+        <div className="space-y-4">
+
+      <section className="min-w-0 rounded-2xl border border-base bg-secondary p-3 shadow-sm space-y-4 sm:p-5">
+        <SettingsSectionHeader
+          icon={Smartphone}
+          title="Notificaciones en el móvil"
+          subtitle={pushStatusDetail}
+        />
+        <span className="inline-flex w-fit items-center gap-1.5 rounded-full bg-violet-50 px-2.5 py-1 text-sm font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
+          {pushDeviceStatus === "registered" ? <CheckCheck size={14} /> : <Bell size={14} />}
+          {pushStatusLabel}
+        </span>
+        <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-3">
+          <button type="button" title="Solicitar permiso y registrar este dispositivo para recibir avisos push" disabled={pushBusy || loading || !companyId || !userId} onClick={() => void enablePush()} className="flex min-w-0 h-11 items-center justify-center gap-2 rounded-xl bg-violet-600 px-3 text-sm font-semibold text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50">
+            <Smartphone size={15} className="shrink-0" /><span className="break-words">{pushBusy ? "Activando…" : pushDeviceStatus === "registered" ? "Registrar de nuevo" : "Activar push"}</span>
+          </button>
+          <button type="button" title="Crear una notificación de prueba para comprobar el envío al móvil" disabled={testBusy || loading || !companyId} onClick={() => void sendTestNotification()} className="flex min-w-0 h-11 items-center justify-center gap-2 rounded-xl border border-violet-200 px-3 text-sm font-semibold text-violet-700 transition-colors hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-violet-900/50 dark:text-violet-300 dark:hover:bg-violet-950/40">
+            <BellRing size={15} className="shrink-0" /><span>{testBusy ? "Enviando prueba…" : "Enviar prueba"}</span>
+          </button>
+          <button type="button" title="Volver a comprobar el permiso y la suscripción push del navegador" disabled={loading || pushDeviceStatus === "checking"} onClick={() => void checkPushStatus()} className="flex min-w-0 h-11 items-center justify-center gap-2 rounded-xl border border-base bg-primary px-3 text-sm font-semibold text-primary transition-colors hover:bg-subtle disabled:cursor-not-allowed disabled:opacity-50">
+            <RefreshCw size={15} className="shrink-0" /><span>Comprobar estado</span>
+          </button>
+        </div>
+        <p className="text-sm font-medium leading-6 text-muted">Activar registra el móvil; Enviar prueba comprueba la entrega; Comprobar estado revisa el permiso del navegador. Cada móvil se registra por separado.</p>
       </section>
+
+      <section className="min-w-0 rounded-2xl border border-base bg-secondary p-3 shadow-sm space-y-4 sm:p-5">
+        <SettingsSectionHeader
+          icon={BellRing}
+          title="Alertas de tasas de cambio"
+          subtitle="Configura divisas y Bitcoin por separado. Se compara la tasa publicada; no es una predicción del mercado."
+        />
+        <div className="space-y-2">
+          <label className="flex min-w-0 items-center gap-3 rounded-xl border border-base bg-primary px-3 py-3">
+            <input className="h-4 w-4 shrink-0 accent-violet-600" type="checkbox" checked={prefs.exchange_currency_alerts_enabled} onChange={(e) => update("exchange_currency_alerts_enabled", e.target.checked)} />
+            <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-primary">Alertas de divisas</span><span className="block text-sm font-medium leading-5 text-muted">Avisar solo de las monedas seleccionadas.</span></span>
+          </label>
+          <label className="flex min-w-0 items-center gap-3 rounded-xl border border-base bg-primary px-3 py-3">
+            <input className="h-4 w-4 shrink-0 accent-violet-600" type="checkbox" checked={prefs.exchange_bitcoin_alerts_enabled} onChange={(e) => update("exchange_bitcoin_alerts_enabled", e.target.checked)} />
+            <span className="min-w-0 flex-1"><span className="block text-sm font-semibold text-primary">Bitcoin (BTC)</span><span className="block text-sm font-medium leading-5 text-muted">Control independiente del resto de divisas.</span></span>
+          </label>
+        </div>
+        <details className="group min-w-0 rounded-xl border border-base bg-primary">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm font-semibold text-primary [&amp;::-webkit-details-marker]:hidden">
+            <span className="min-w-0">
+              Monedas a vigilar
+              <span className="ml-1.5 rounded-full bg-subtle px-2 py-0.5 text-xs font-bold text-secondary">{prefs.exchange_currency_codes.length}</span>
+            </span>
+            <ChevronDown size={15} className="shrink-0 text-muted transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="border-t border-base p-3">
+            <div className="mb-2 flex justify-end">
+              <button type="button" title="Marcar todas las divisas disponibles en la lista" onClick={() => update("exchange_currency_codes", rateOptions.map((option) => option.code))} className="h-11 rounded-xl border border-base bg-secondary px-3 text-sm font-semibold text-primary transition-colors hover:bg-subtle">Seleccionar todas</button>
+            </div>
+            {rateOptions.length ? <div className="grid min-w-0 grid-cols-1 gap-1.5 sm:grid-cols-2">
+              {rateOptions.map((option) => <label key={option.code} className="flex min-w-0 items-center gap-2 rounded-xl bg-subtle px-3 py-2">
+                <input className="h-4 w-4 shrink-0 accent-violet-600" type="checkbox" checked={prefs.exchange_currency_codes.includes(option.code)} onChange={(e) => update("exchange_currency_codes", e.target.checked ? [...new Set([...prefs.exchange_currency_codes, option.code])] : prefs.exchange_currency_codes.filter((code) => code !== option.code))} />
+                <span className="min-w-0 flex-1 break-words text-sm font-medium text-primary">{option.name}</span><span className="shrink-0 text-sm font-bold text-muted">{option.code}</span>
+              </label>)}
+            </div> : <p className="text-sm font-medium text-muted">No se pudo cargar la lista ahora; se mantienen las opciones guardadas.</p>}
+            <p className="mt-2 text-sm font-medium text-muted">La lista depende de las divisas que publique la fuente de tasas.</p>
+          </div>
+        </details>
+        <label className="block min-w-0"><span className="block text-sm font-semibold text-muted">Variación mínima (%)</span><input className="mt-1 block h-11 w-full min-w-0 rounded-xl border border-base bg-primary px-3 text-sm font-semibold text-primary outline-none focus:ring-1 focus:ring-violet-500" type="number" min="0" max="100" step="0.01" value={prefs.exchange_alert_min_change_pct} onChange={(e) => update("exchange_alert_min_change_pct", Math.min(100, Math.max(0, Number(e.target.value) || 0)))} /><span className="mt-1 block text-sm font-medium leading-5 text-muted">0 = cualquier cambio detectado; un porcentaje mayor reduce avisos pequeños.</span></label>
+        <p className="text-sm font-medium text-muted">Se revisa cada cinco minutos. Los cambios se aplican al guardar.</p>
+      </section>
+
+      <section className="min-w-0 space-y-4 rounded-2xl border border-base bg-secondary p-3 shadow-sm sm:p-5">
+        <SettingsSectionHeader
+          icon={Clock3}
+          title="Horario y preferencias"
+          subtitle="Elige cuándo quieres silencio y qué tipo de avisos recibir."
+        />
+        <div className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="flex min-h-11 min-w-0 items-center justify-between gap-3 rounded-xl border border-base bg-primary px-3 py-2.5"><span className="min-w-0"><span className="block text-sm font-semibold text-primary">Horario de silencio</span><span className="block text-sm font-medium leading-5 text-muted">Pausa avisos rutinarios en el intervalo elegido.</span></span><input className="h-4 w-4 shrink-0 accent-violet-600" type="checkbox" checked={prefs.quiet_hours_enabled} onChange={(e) => update("quiet_hours_enabled", e.target.checked)} /></label>
+          <label className="flex min-h-11 min-w-0 items-center justify-between gap-3 rounded-xl border border-base bg-primary px-3 py-2.5"><span className="min-w-0"><span className="block text-sm font-semibold text-primary">Resumen diario</span><span className="block text-sm font-medium leading-5 text-muted">Recibir un resumen a la hora indicada.</span></span><input className="h-4 w-4 shrink-0 accent-violet-600" type="checkbox" checked={prefs.routine_summary_enabled} onChange={(e) => update("routine_summary_enabled", e.target.checked)} /></label>
+        </div>
+        <details className="group min-w-0 rounded-xl border border-base bg-primary">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 px-3 py-2 text-sm font-semibold text-primary [&amp;::-webkit-details-marker]:hidden">
+            Horarios, zona horaria y tipos de aviso
+            <ChevronDown size={15} className="shrink-0 text-muted transition-transform group-open:rotate-180" />
+          </summary>
+          <div className="grid min-w-0 grid-cols-1 gap-2 border-t border-base p-3 sm:grid-cols-2">
+            <label className="block min-w-0"><span className="block text-sm font-semibold text-muted">Inicio del silencio</span><input className="mt-1 block h-11 w-full min-w-0 rounded-xl border border-base bg-subtle px-3 text-sm font-semibold text-primary outline-none focus:ring-1 focus:ring-violet-500" type="time" value={prefs.quiet_hours_start} onChange={(e) => update("quiet_hours_start", e.target.value)} /></label>
+            <label className="block min-w-0"><span className="block text-sm font-semibold text-muted">Fin del silencio</span><input className="mt-1 block h-11 w-full min-w-0 rounded-xl border border-base bg-subtle px-3 text-sm font-semibold text-primary outline-none focus:ring-1 focus:ring-violet-500" type="time" value={prefs.quiet_hours_end} onChange={(e) => update("quiet_hours_end", e.target.value)} /></label>
+            <label className="block min-w-0"><span className="block text-sm font-semibold text-muted">Hora del resumen</span><input className="mt-1 block h-11 w-full min-w-0 rounded-xl border border-base bg-subtle px-3 text-sm font-semibold text-primary outline-none focus:ring-1 focus:ring-violet-500" type="time" value={prefs.routine_summary_time} onChange={(e) => update("routine_summary_time", e.target.value)} /></label>
+            <label className="block min-w-0"><span className="block text-sm font-semibold text-muted">Zona horaria</span><select className="mt-1 block h-11 w-full min-w-0 rounded-xl border border-base bg-subtle px-3 text-sm font-semibold text-primary outline-none focus:ring-1 focus:ring-violet-500" value={prefs.timezone} onChange={(e) => update("timezone", e.target.value)}><option value="America/Havana">Cuba</option><option value="America/Puerto_Rico">Puerto Rico</option><option value="America/New_York">Este de EE. UU.</option><option value="UTC">UTC</option></select></label>
+            <label className="flex min-h-11 min-w-0 items-center justify-between gap-3 rounded-xl bg-subtle px-3 py-2"><span className="min-w-0"><span className="block text-sm font-semibold text-primary">Push habilitado</span><span className="block text-sm font-medium leading-5 text-muted">Avisos en este dispositivo registrado.</span></span><input className="h-4 w-4 shrink-0 accent-violet-600" type="checkbox" checked={prefs.push_enabled} onChange={(e) => update("push_enabled", e.target.checked)} /></label>
+            <label className="flex min-h-11 min-w-0 items-center justify-between gap-3 rounded-xl bg-subtle px-3 py-2"><span className="min-w-0"><span className="flex items-center gap-1.5 text-sm font-semibold text-primary"><ShieldAlert size={15} className="shrink-0 text-[var(--danger)]" />Avisos críticos</span><span className="block text-sm font-medium leading-5 text-muted">Prioriza alertas críticas de inmediato.</span></span><input className="h-4 w-4 shrink-0 accent-violet-600" type="checkbox" checked={prefs.critical_push_enabled} onChange={(e) => update("critical_push_enabled", e.target.checked)} /></label>
+            <label className="flex min-h-11 min-w-0 items-center justify-between gap-3 rounded-xl bg-subtle px-3 py-2 sm:col-span-2"><span className="min-w-0"><span className="flex items-center gap-1.5 text-sm font-semibold text-primary"><Laugh size={15} className="shrink-0 text-violet-500" />Humor PALMYRA</span><span className="block text-sm font-medium leading-5 text-muted">Activa o desactiva los mensajes con humor.</span></span><input className="h-4 w-4 shrink-0 accent-violet-600" type="checkbox" checked={prefs.humour_enabled} onChange={(e) => update("humour_enabled", e.target.checked)} /></label>
+          </div>
+        </details>
+      </section>
+
+      <div className="sticky bottom-3 z-10 flex min-w-0 flex-col gap-2 rounded-2xl border border-base bg-primary/95 p-2.5 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+        <p className="min-w-0 px-1 text-sm font-medium text-muted">Los cambios de preferencias se aplican al guardar. Registrar el móvil se aplica al instante.</p>
+        <button type="button" title="Guardar todas las preferencias de notificación" disabled={saving || loading} onClick={() => void savePrefs()} className="h-11 w-full shrink-0 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto">{saving ? "Guardando…" : "Guardar preferencias"}</button>
+      </div>
+        </div>
+      )}
+
     </div>
   );
 }

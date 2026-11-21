@@ -9,6 +9,14 @@ import { addSyncLog } from '../utils/syncLogger';
 import { getPalmyraLocalScopeKey } from './localScope';
 import { idbClear, idbDelete, idbGetAll, idbPut, idbReplaceAll, resetOfflineQueueDbCache } from './offlineQueueStorage';
 import type { OfflineActionType, OfflineQueueItem } from './offlineQueueTypes';
+import {
+  OFFLINE_ITEM_SCHEMA_VERSION,
+  assignMissingDeviceSequences,
+  compareOfflineQueueItems,
+  normalizeOfflineQueueItem,
+  summarizeOfflineQueue,
+  type OfflineQueueHealth
+} from './offline/syncContract';
 export type { OfflineActionType, OfflineQueueItem } from './offlineQueueTypes';
 
 
@@ -16,7 +24,9 @@ let STORAGE_KEY = 'palmyra-offline-queue__anonymous';
 let TOMBSTONES_KEY = 'palmyra-offline-queue-tombstones__anonymous';
 let DB_NAME = 'palmyra-offline-v2-anonymous';
 let DEVICE_KEY = 'palmyra_device_id__anonymous';
+let SEQUENCE_KEY = 'palmyra_offline_sequence__anonymous';
 let activeScopeKey: string | null = null;
+let deviceSequenceCache = 0;
 
 let memoryQueue: OfflineQueueItem[] = [];
 let queueReady = false;
@@ -28,17 +38,20 @@ let removedDuringQueueProcess = new Set<string>();
 function refreshScopeKeys() {
   const scopeKey = getPalmyraLocalScopeKey();
   activeScopeKey = scopeKey;
+  deviceSequenceCache = 0;
   if (!scopeKey) {
     STORAGE_KEY = 'palmyra-offline-queue__anonymous';
     TOMBSTONES_KEY = 'palmyra-offline-queue-tombstones__anonymous';
     DB_NAME = 'palmyra-offline-v2-anonymous';
     DEVICE_KEY = 'palmyra_device_id__anonymous';
+    SEQUENCE_KEY = 'palmyra_offline_sequence__anonymous';
     return;
   }
   STORAGE_KEY = 'palmyra-offline-queue__' + scopeKey;
   TOMBSTONES_KEY = 'palmyra-offline-queue-tombstones__' + scopeKey;
   DB_NAME = 'palmyra-offline-v2-' + encodeURIComponent(scopeKey);
   DEVICE_KEY = 'palmyra_device_id__' + scopeKey;
+  SEQUENCE_KEY = 'palmyra_offline_sequence__' + scopeKey;
 }
 
 refreshScopeKeys();
@@ -55,6 +68,27 @@ function getDeviceId(): string {
   const id = crypto.randomUUID();
   localStorage.setItem(DEVICE_KEY, id);
   return id;
+}
+
+function readDeviceSequence(): number {
+  if (typeof localStorage === 'undefined') return 0;
+  try {
+    const parsed = Number(localStorage.getItem(SEQUENCE_KEY));
+    return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeDeviceSequence(sequence: number): void {
+  if (typeof localStorage === 'undefined') return;
+  try { localStorage.setItem(SEQUENCE_KEY, String(sequence)); } catch {}
+}
+
+function nextDeviceSequence(): number {
+  deviceSequenceCache = Math.max(deviceSequenceCache, readDeviceSequence()) + 1;
+  writeDeviceSequence(deviceSequenceCache);
+  return deviceSequenceCache;
 }
 
 function readQueueTombstones(): Set<string> {
@@ -122,7 +156,7 @@ async function migrateLegacyQueue(): Promise<void> {
   // happens during startup from being overwritten by the migration itself.
   const merged = new Map<string, OfflineQueueItem>();
   const mergeCandidate = (item: OfflineQueueItem) => {
-    const normalized = { ...item, deviceId: item.deviceId || getDeviceId() };
+    const normalized = normalizeOfflineQueueItem(item, { deviceId: item.deviceId || getDeviceId() });
     const mergeKey = `${normalized.type}:${normalized.actionId}`;
     const previous = merged.get(mergeKey);
     if (!previous) { merged.set(mergeKey, normalized); return; }
@@ -140,9 +174,13 @@ async function migrateLegacyQueue(): Promise<void> {
   for (const item of (Array.isArray(existing) ? existing : [])) mergeCandidate(item);
   for (const item of (Array.isArray(legacy) ? legacy : [])) mergeCandidate(item);
   for (const item of memoryQueue) mergeCandidate(item);
-  memoryQueue = Array.from(merged.values())
-    .filter(item => !tombstones.has(String(item.id)))
-    .sort((a,b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')));
+  const sequenced = assignMissingDeviceSequences(
+    Array.from(merged.values()).filter(item => !tombstones.has(String(item.id))),
+    readDeviceSequence()
+  );
+  deviceSequenceCache = Math.max(deviceSequenceCache, sequenced.lastSequence);
+  writeDeviceSequence(deviceSequenceCache);
+  memoryQueue = sequenced.items.sort(compareOfflineQueueItems);
   try {
     await idbReplaceAll(DB_NAME, Boolean(activeScopeKey), memoryQueue);
     if (legacyRaw) localStorage.removeItem(STORAGE_KEY);
@@ -326,19 +364,29 @@ export function enqueueOfflineItem(type: OfflineActionType, data: any, actionId?
   const finalActionId = actionId || data?.id || crypto.randomUUID();
   const currentQueue = getOfflineQueue();
   const existingIdx = currentQueue.findIndex(item => item.type === type && item.actionId === finalActionId);
+  const now = new Date().toISOString();
   const base = {
     id: existingIdx >= 0 ? currentQueue[existingIdx].id : crypto.randomUUID(),
     actionId: finalActionId,
     type,
     data,
-    timestamp: new Date().toISOString(),
+    timestamp: now,
     retryCount: existingIdx >= 0 ? currentQueue[existingIdx].retryCount : 0,
     status: 'pending' as const,
-    deviceId: getDeviceId()
+    deviceId: getDeviceId(),
+    schemaVersion: OFFLINE_ITEM_SCHEMA_VERSION,
+    deviceSequence: nextDeviceSequence(),
+    queuedAt: now
   };
   if (existingIdx >= 0) {
     removedDuringQueueProcess.delete(currentQueue[existingIdx].id);
-    currentQueue[existingIdx] = { ...currentQueue[existingIdx], ...base, data: { ...currentQueue[existingIdx].data, ...data } };
+    currentQueue[existingIdx] = {
+      ...currentQueue[existingIdx],
+      ...base,
+      // Una actualización conserva el momento original de encolado.
+      queuedAt: currentQueue[existingIdx].queuedAt || now,
+      data: { ...currentQueue[existingIdx].data, ...data }
+    };
   } else {
     currentQueue.push(base);
   }
@@ -385,6 +433,30 @@ export function getOfflineQueueCount(): number {
 }
 export function getOfflineConflictCount(): number {
   return memoryQueue.filter(item => item.status === 'conflict').length;
+}
+
+export function getOfflineQueueHealth(): OfflineQueueHealth {
+  return summarizeOfflineQueue(memoryQueue);
+}
+
+/**
+ * Devuelve un conflicto a la cola normal. Se usa solo desde la revisión
+ * explícita del operador: nunca se reintenta en silencio.
+ */
+export async function requeueOfflineQueueItem(id: string): Promise<boolean> {
+  await waitForOfflineQueueReady();
+  const index = memoryQueue.findIndex(item => item.id === id);
+  if (index < 0) return false;
+  const updated: OfflineQueueItem = {
+    ...memoryQueue[index],
+    status: 'pending',
+    retryCount: 0,
+    nextRetryAt: undefined
+  };
+  memoryQueue[index] = updated;
+  emitQueueEvent();
+  await persistQueueItem(updated);
+  return true;
 }
 
 export function setOfflineQueueMemory(queue: OfflineQueueItem[]): void {

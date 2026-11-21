@@ -5,6 +5,7 @@ import type {
   SalarySettlement,
   Transaction,
 } from '../../../types';
+import { calculateExpectedBalances } from '../../../services/cash/expectedCash';
 
 export type SessionDiscrepancyDetail = {
   currencyCode: string;
@@ -91,43 +92,7 @@ export function getSessionDiscrepancyInfo(
     return null;
   }
 
-  const expected: { currencyCode: string; method: 'cash' | 'transfer'; amount: number }[] = [
-    { currencyCode: baseCurrency.code, method: 'cash', amount: session.openingBalance || 0 }
-  ];
-
-  const sessionTxs = transactions.filter(t =>
-    t.sessionId
-      ? t.sessionId === session.id
-      : (t.branchId === session.branchId &&
-         new Date(t.date).getTime() >= new Date(session.openedAt).getTime() &&
-         (!session.closedAt || new Date(t.date).getTime() <= new Date(session.closedAt).getTime()))
-  );
-
-  sessionTxs.forEach(tx => {
-    (tx.payments || []).forEach(p => {
-      const ex = expected.find(e => e.currencyCode === p.currencyCode && e.method === p.method);
-      if (ex) ex.amount += p.amount;
-      else expected.push({ currencyCode: p.currencyCode, method: p.method as any, amount: p.amount });
-    });
-    if (tx.changePayments && tx.changePayments.length > 0) {
-      tx.changePayments.forEach(cp => {
-        const ex = expected.find(e => e.currencyCode === cp.currencyCode && e.method === cp.method);
-        if (ex) ex.amount -= cp.amount;
-        else expected.push({ currencyCode: cp.currencyCode, method: cp.method as any, amount: -cp.amount });
-      });
-    } else if (tx.changeGiven && tx.changeGiven > 0) {
-      const ex = expected.find(e => e.currencyCode === baseCurrency.code && e.method === 'cash');
-      if (ex) ex.amount -= tx.changeGiven;
-      else expected.push({ currencyCode: baseCurrency.code, method: 'cash', amount: -tx.changeGiven });
-    }
-  });
-
-  (session.movements || []).forEach(m => {
-    const ex = expected.find(e => e.currencyCode === m.currencyCode && e.method === 'cash');
-    const amount = m.type === 'income' ? m.amount : -m.amount;
-    if (ex) ex.amount += amount;
-    else expected.push({ currencyCode: m.currencyCode, method: 'cash', amount });
-  });
+  const expected = calculateExpectedBalances(session, transactions, baseCurrency);
 
   const details: SessionDiscrepancyDetail[] = [];
   expected.forEach(eb => {
@@ -164,14 +129,20 @@ export function getSessionDiscrepancyInfo(
     else if (dd.difference > 0) totalOverageBase += dd.difference * rate;
   });
 
-  const matchingProducts = details.map(dd => ({
-    currencyCode: dd.currencyCode,
-    difference: dd.difference,
-    matchedProducts: products
-      .filter(p => Math.abs(p.price - Math.abs(dd.difference)) < 1)
-      .slice(0, 3)
-      .map(p => ({ id: p.id, name: p.name, price: p.price }))
-  })).filter(m => m.matchedProducts.length > 0);
+  // Product prices are stored in the base currency, so compare the difference
+  // converted to base instead of the raw amount of a USD/MLC mismatch.
+  const matchingProducts = details.map(dd => {
+    const rate = currencies.find(c => c.code === dd.currencyCode)?.rateToBase || 1;
+    const differenceBase = Math.abs(dd.difference) * rate;
+    return {
+      currencyCode: dd.currencyCode,
+      difference: dd.difference,
+      matchedProducts: products
+        .filter(p => Math.abs(Number(p.price) - differenceBase) < 1)
+        .slice(0, 3)
+        .map(p => ({ id: p.id, name: p.name, price: p.price }))
+    };
+  }).filter(m => m.matchedProducts.length > 0);
 
   const settlement = salarySettlements.find(st => st.sessionId === session.id);
   const deductionAmount = session.discrepancyDeductionApplied ?? settlement?.discrepancyDeduction ?? 0;

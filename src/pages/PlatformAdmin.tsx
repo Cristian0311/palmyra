@@ -1,6 +1,6 @@
 import React,{useEffect,useState} from "react";
 import {Check,Clock3,RefreshCw,ShieldAlert,Building2,Ban,XCircle,Headphones,Save,MessageCircle,Link2,Activity,DatabaseZap} from "lucide-react";
-import {loadPlatformAdminSnapshot,loadPlatformUsage,approvePlanRequest,rejectPlanRequest,setPlatformCompanyStatus,setPlatformSupportSettings,type PlatformSupportSettings} from "../services/platformAdmin";
+import {loadPlatformAdminSnapshot,loadPlatformUsage,approvePlanRequest,rejectPlanRequest,setPlatformCompanyStatus,setPlatformSupportSettings,setSupportRequestStatus,type PlatformSupportSettings} from "../services/platformAdmin";
 import {useStore} from "../store/useStore";
 import {DEFAULT_FACEBOOK_URL} from "../services/platformSupport";
 
@@ -25,6 +25,34 @@ export default function PlatformAdmin(){
  const [data,setData]=useState<any>(null),[loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState("");
  const [supportForm,setSupportForm]=useState<PlatformSupportSettings>(EMPTY_SUPPORT);
  const [usage,setUsage]=useState<any>(null);
+ const [approval,setApproval]=useState<{id:string;amount:string;currency:"CUP"|"USD";reference:string}|null>(null);
+ const paymentLabel=(method:string)=>method==="cup_cash"?"Efectivo CUP":method==="cup_bank_transfer"?"Transferencia CUP":method==="usd_cash"?"Efectivo USD":method||"Sin método";
+ const startApproval=(r:any)=>{
+  const method=String(r.payment_method||"");
+  const months=Number(r.billing_months||1);
+  setApproval({
+   id:r.id,
+   amount:String(r.quoted_amount??(Number(r.monthly_price||0)*months)),
+   currency:method.startsWith("cup_")?"CUP":"USD",
+   reference:""
+  });
+ };
+ const submitApproval=async()=>{
+  if(!approval)return;
+  setBusy(true);setError("");
+  try{
+   await approvePlanRequest({
+    requestId:approval.id,
+    receivedAmount:Number(approval.amount),
+    receivedCurrency:approval.currency,
+    reference:approval.reference
+   });
+   setApproval(null);
+   await refresh();
+   addNotification("Pago registrado y plan renovado.","success");
+  }catch(e:any){setError(e?.message||"No se pudo aprobar la solicitud.");}
+  finally{setBusy(false);}
+ };
  const refresh=async()=>{
   setLoading(true);setError("");
   try{
@@ -122,17 +150,51 @@ export default function PlatformAdmin(){
 
    <section className="bg-secondary border border-base rounded-3xl p-5">
     <div className="flex items-center gap-2"><Clock3 className="w-5 h-5 text-amber-600"/><h2 className="text-sm font-black text-primary">Solicitudes de plan pendientes</h2></div>
-    <div className="mt-4 space-y-2">{data.requests.length?data.requests.map((r:any)=><div key={r.id} className="p-4 rounded-2xl bg-subtle border border-base flex flex-col md:flex-row md:items-center gap-3"><div className="flex-1"><p className="text-sm font-black text-primary">{r.company_name}</p><p className="text-xs text-muted mt-1">{r.plan_name} · {Number(r.monthly_price||0).toFixed(2)} / mes</p><p className="text-[10px] text-muted mt-1">{new Date(r.requested_at).toLocaleString("es-CU")}</p></div><div className="flex gap-2"><button disabled={busy} onClick={()=>void action(()=>approvePlanRequest(r.id),"Solicitud aprobada y empresa activada.")} className="h-10 px-3 rounded-xl bg-emerald-600 text-white font-black text-xs flex items-center gap-2"><Check className="w-4 h-4"/>Confirmar efectivo y activar</button><button disabled={busy} onClick={()=>void action(()=>rejectPlanRequest(r.id,"Solicitud rechazada desde plataforma"),"Solicitud rechazada.")} className="h-10 px-3 rounded-xl bg-slate-200 text-slate-700 font-black text-xs flex items-center gap-2"><XCircle className="w-4 h-4"/>Rechazar</button></div></div>):<p className="text-xs text-muted py-5 text-center">No hay solicitudes pendientes.</p>}</div>
+    <div className="mt-4 space-y-2">{data.requests.length?data.requests.map((r:any)=><div key={r.id} className="p-4 rounded-2xl bg-subtle border border-base">
+     <div className="flex flex-col md:flex-row md:items-center gap-3">
+      <div className="flex-1">
+       <p className="text-sm font-black text-primary">{r.company_name}</p>
+       <p className="text-xs text-muted mt-1">{r.plan_name} · {paymentLabel(String(r.payment_method||""))} · {Number(r.billing_months||1)} {Number(r.billing_months||1)===1?"mes":"meses"}</p>
+       <p className="text-xs text-muted mt-1">{r.quoted_amount!=null?`Cotizado: ${Number(r.quoted_amount).toFixed(2)} USD`:`${Number(r.monthly_price||0).toFixed(2)} USD / mes`}</p>
+       <p className="text-[10px] text-muted mt-1">Solicitada el {new Date(r.requested_at).toLocaleString("es-CU")}</p>
+      </div>
+      <div className="flex gap-2">
+       <button disabled={busy} onClick={()=>approval?.id===r.id?setApproval(null):startApproval(r)} className="h-10 px-3 rounded-xl bg-emerald-600 text-white font-black text-xs flex items-center gap-2"><Check className="w-4 h-4"/>Registrar pago</button>
+       <button disabled={busy} onClick={()=>void action(()=>rejectPlanRequest(r.id,"Solicitud rechazada desde plataforma"),"Solicitud rechazada.")} className="h-10 px-3 rounded-xl bg-slate-200 text-slate-700 font-black text-xs flex items-center gap-2"><XCircle className="w-4 h-4"/>Rechazar</button>
+      </div>
+     </div>
+     {approval?.id===r.id&&<form onSubmit={e=>{e.preventDefault();void submitApproval();}} className="mt-4 grid gap-3 rounded-xl border border-base bg-primary p-4 sm:grid-cols-3">
+      <label className="block"><span className="text-[10px] font-black uppercase tracking-wide text-muted">Importe recibido ({approval.currency})</span><input required type="number" min="0.01" step="0.01" value={approval.amount} onChange={e=>setApproval({...approval,amount:e.target.value})} className="mt-1 h-11 w-full rounded-xl border border-base bg-secondary px-3 text-sm font-bold text-primary"/></label>
+      <label className="block"><span className="text-[10px] font-black uppercase tracking-wide text-muted">Referencia / comprobante</span><input required value={approval.reference} onChange={e=>setApproval({...approval,reference:e.target.value})} placeholder="Transferencia o recibo" className="mt-1 h-11 w-full rounded-xl border border-base bg-secondary px-3 text-sm font-bold text-primary"/></label>
+      <div className="flex flex-col justify-end gap-2">
+       <div className="flex gap-2">
+        <button disabled={busy} type="submit" className="h-11 flex-1 rounded-xl bg-emerald-600 px-3 text-xs font-black text-white disabled:opacity-60">Confirmar pago y renovar</button>
+        <button type="button" onClick={()=>setApproval(null)} className="h-11 rounded-xl border border-base px-3 text-xs font-black text-primary">Cancelar</button>
+       </div>
+      </div>
+     </form>}
+    </div>):<p className="text-xs text-muted py-5 text-center">No hay solicitudes pendientes.</p>}</div>
    </section>
 
    <section className="bg-secondary border border-base rounded-3xl p-5">
-    <div className="flex items-center gap-2"><MessageCircle className="w-5 h-5 text-violet-600"/><h2 className="text-sm font-black text-primary">Últimas solicitudes de atención</h2></div>
-    <div className="mt-4 space-y-2">{data.supportRequests?.length?data.supportRequests.map((r:any)=><div key={r.id} className="rounded-2xl border border-base bg-primary p-4"><div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2"><div><p className="text-sm font-black text-primary">{r.company_name}</p><p className="text-xs text-muted mt-1">{r.request_type} · {r.subject}</p></div><span className="text-[9px] uppercase font-black px-2 py-1 rounded-full bg-subtle text-muted">{r.status}</span></div><p className="mt-3 text-xs leading-5 text-secondary">{r.message}</p><p className="mt-3 text-[10px] text-muted">{new Date(r.created_at).toLocaleString("es-CU")}{r.contact_phone?" · "+r.contact_phone:""}</p></div>):<p className="text-xs text-muted py-5 text-center">Todavía no hay solicitudes de atención.</p>}</div>
+    <div className="flex items-center gap-2"><MessageCircle className="w-5 h-5 text-violet-600"/><div><h2 className="text-sm font-black text-primary">Solicitudes de atención</h2><p className="text-[11px] text-muted mt-0.5">Marca cada solicitud en proceso o resuelta; el cambio queda visible para la empresa.</p></div></div>
+    <div className="mt-4 space-y-2">{data.supportRequests?.length?data.supportRequests.map((r:any)=><div key={r.id} className="rounded-2xl border border-base bg-primary p-4">
+     <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+      <div><p className="text-sm font-black text-primary">{r.company_name}</p><p className="text-xs text-muted mt-1">{r.request_type} · {r.subject}</p></div>
+      <span className={'text-[9px] uppercase font-black px-2 py-1 rounded-full ' + (r.status==='open'?'bg-amber-100 text-amber-800':r.status==='resolved'?'bg-emerald-100 text-emerald-800':r.status==='closed'?'bg-slate-200 text-slate-600':'bg-violet-100 text-violet-800')}>{r.status}</span>
+     </div>
+     <p className="mt-3 text-xs leading-5 text-secondary">{r.message}</p>
+     <div className="mt-3 flex flex-wrap items-center gap-2">
+      <p className="text-[10px] text-muted mr-auto">{new Date(r.created_at).toLocaleString("es-CU")}{r.contact_phone?" · "+r.contact_phone:""}</p>
+      {r.status!=="in_progress"&&<button disabled={busy} onClick={()=>void action(()=>setSupportRequestStatus(r.id,"in_progress"),"Solicitud marcada en proceso.")} className="h-8 px-3 rounded-xl border border-base text-[10px] font-black text-primary disabled:opacity-60">En proceso</button>}
+      {r.status!=="resolved"&&<button disabled={busy} onClick={()=>void action(()=>setSupportRequestStatus(r.id,"resolved"),"Solicitud resuelta.")} className="h-8 px-3 rounded-xl bg-emerald-600 text-white text-[10px] font-black disabled:opacity-60">Resolver</button>}
+     </div>
+    </div>):<p className="text-xs text-muted py-5 text-center">Todavía no hay solicitudes de atención.</p>}</div>
    </section>
 
    <section className="bg-secondary border border-base rounded-3xl p-5">
     <div className="flex items-center gap-2"><Building2 className="w-5 h-5 text-rose-500"/><h2 className="text-sm font-black text-primary">Empresas</h2></div>
-    <div className="grid md:grid-cols-2 gap-3 mt-4">{data.companies.map((c:any)=><div key={c.id} className="p-4 rounded-2xl border border-base bg-primary"><div className="flex justify-between gap-3"><div><p className="text-sm font-black text-primary">{c.name}</p><p className="text-[10px] text-muted mt-1">{c.slug}</p></div><span className="text-[9px] uppercase font-black px-2 py-1 rounded-full bg-subtle text-muted">{c.account_status}</span></div><div className="grid grid-cols-3 gap-2 mt-4 text-center"><div><p className="text-lg font-black text-primary">{c.products}</p><p className="text-[9px] text-muted">Productos</p></div><div><p className="text-lg font-black text-primary">{c.employees}</p><p className="text-[9px] text-muted">Empleados</p></div><div><p className="text-lg font-black text-primary">{c.warehouses}</p><p className="text-[9px] text-muted">Almacenes</p></div></div><div className="flex gap-2 mt-4"><button disabled={busy} onClick={()=>void action(()=>setPlatformCompanyStatus(c.id,c.account_status==="suspended"?"active":"suspended"),c.account_status==="suspended"?"Empresa reactivada.":"Empresa suspendida.")} className="h-9 px-3 rounded-xl border border-base text-xs font-black flex items-center gap-2">{c.account_status==="suspended"?<Check className="w-3.5 h-3.5"/>:<Ban className="w-3.5 h-3.5"/>}{c.account_status==="suspended"?"Reactivar":"Suspender"}</button></div></div>)}</div>
+    <div className="grid md:grid-cols-2 gap-3 mt-4">{data.companies.map((c:any)=><div key={c.id} className="p-4 rounded-2xl border border-base bg-primary"><div className="flex justify-between gap-3"><div><p className="text-sm font-black text-primary">{c.name}</p><p className="text-[10px] text-muted mt-1">{c.slug}{c.plan_name?" · "+c.plan_name:""}</p>{c.period_end&&<p className="text-[10px] text-muted mt-0.5">Vence {new Date(c.period_end).toLocaleDateString("es-CU")}</p>}</div><span className="text-[9px] uppercase font-black px-2 py-1 rounded-full bg-subtle text-muted">{c.account_status}</span></div><div className="grid grid-cols-3 gap-2 mt-4 text-center"><div><p className="text-lg font-black text-primary">{c.products}</p><p className="text-[9px] text-muted">Productos</p></div><div><p className="text-lg font-black text-primary">{c.employees}</p><p className="text-[9px] text-muted">Empleados</p></div><div><p className="text-lg font-black text-primary">{c.warehouses}</p><p className="text-[9px] text-muted">Almacenes</p></div></div><div className="flex gap-2 mt-4"><button disabled={busy} onClick={()=>void action(()=>setPlatformCompanyStatus(c.id,c.account_status==="suspended"?"active":"suspended"),c.account_status==="suspended"?"Empresa reactivada.":"Empresa suspendida.")} className="h-9 px-3 rounded-xl border border-base text-xs font-black flex items-center gap-2">{c.account_status==="suspended"?<Check className="w-3.5 h-3.5"/>:<Ban className="w-3.5 h-3.5"/>}{c.account_status==="suspended"?"Reactivar":"Suspender"}</button></div></div>)}</div>
    </section>
   </div>
  </div>

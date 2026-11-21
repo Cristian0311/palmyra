@@ -34,6 +34,8 @@ import {
 import type { AppState } from '../storeTypes';
 import { buildSupabaseSyncState } from '../utils/buildSupabaseSyncState';
 import { mergeById, mergeUnique } from '../utils/syncMerges';
+import { collectPendingInventoryKeys, mergeBranchInventory, mergeBranchOperationalData } from '../utils/offlineProtection';
+import { recordSyncMoment } from '../../services/offline/syncLedger';
 
 
 type StoreSet = (
@@ -111,38 +113,29 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
       set((state) => {
         // Este refresco es deliberadamente parcial (ventas/sesiones/transferencias
         // recientes). Nunca debe borrar historial local antiguo solo porque no
-        // entró en el límite de la consulta. Los IDs que sí llegan del servidor
-        // reemplazan su versión local; el resto del historial permanece intacto.
-        const txMap = new Map<string, Transaction>();
-        for (const item of state.transactions || []) {
-          txMap.set(item.id, item);
-        }
-        for (const item of res.transactions || []) txMap.set(item.id, item);
-
-        const sessionMap = new Map<string, CashRegisterSession>();
-        for (const item of state.cashSessions || []) {
-          sessionMap.set(item.id, item);
-        }
-        for (const item of res.cashSessions || []) sessionMap.set(item.id, item);
-
-        const transferMap = new Map<string, InventoryTransfer>();
-        for (const item of state.transfers || []) {
-          transferMap.set(item.id || item.operationId, item);
-        }
-        for (const item of res.transfers || []) transferMap.set(item.id || item.operationId, item);
-
-        const invMap = new Map<string, InventoryLevel>();
-        for (const item of state.inventory || []) {
-          if (item.branchId !== branchId) invMap.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
-        }
-        for (const item of res.inventory || []) invMap.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
+        // entró en el límite de la consulta. Las operaciones que aún viven en la
+        // cola durable conservan su versión local hasta que Supabase las confirme.
+        const merged = mergeBranchOperationalData({
+          remote: res,
+          local: {
+            inventory: state.inventory || [],
+            transactions: state.transactions || [],
+            cashSessions: state.cashSessions || [],
+            transfers: state.transfers || [],
+            returns: (state as any).returns || [],
+            supplierOrders: (state as any).supplierOrders || []
+          },
+          branchId,
+          queue: getOfflineQueue()
+        });
         return {
-          transactions: Array.from(txMap.values()),
-          cashSessions: Array.from(sessionMap.values()),
-          transfers: Array.from(transferMap.values()),
-          inventory: Array.from(invMap.values())
+          transactions: merged.transactions,
+          cashSessions: merged.cashSessions,
+          transfers: merged.transfers,
+          inventory: merged.inventory
         };
       });
+      recordSyncMoment('pull');
       return true;
     } catch {
       return false;
@@ -155,12 +148,14 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
     try {
       const res = await pullBranchInventoryFromSupabase(branchId);
       if (!res.success) return false;
-      const byKey = new Map<string, InventoryLevel>();
-      for (const item of get().inventory || []) {
-        if (item.branchId !== branchId) byKey.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
-      }
-      for (const item of res.inventory) byKey.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
-      set({ inventory: Array.from(byKey.values()) });
+      const state = get();
+      const pendingInventoryKeys = collectPendingInventoryKeys(getOfflineQueue(), {
+        transactions: state.transactions || [],
+        returns: (state as any).returns || [],
+        supplierOrders: (state as any).supplierOrders || []
+      });
+      set({ inventory: mergeBranchInventory(res.inventory, state.inventory || [], branchId, pendingInventoryKeys) });
+      recordSyncMoment('pull');
       return true;
     } catch {
       return false;
@@ -263,6 +258,7 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
         syncResult: { success: true, message: 'Caché POS actualizado de forma incremental.' }
       };
     });
+    recordSyncMoment('pull');
     return true;
   },
 
@@ -281,6 +277,7 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
         set({ isSyncing: false, syncResult: result });
       }
       if (result.success) {
+        recordSyncMoment('pull');
         get().reconcileBankBalances().catch(() => {});
       }
       return result;

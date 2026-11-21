@@ -1498,3 +1498,9 @@
   .stock-manage-modal>.flex.justify-between{padding:9px 11px!important;gap:8px!important}
   .stock-manage-scroll{padding:10px!important}
 }
+
+/* Employee identity avatars in the team roster */
+.team-employee-row > .team-list-avatar{width:32px!important;height:32px!important;border-radius:11px!important}
+@media(max-width:640px){
+  .team-employee-row > .team-list-avatar{width:30px!important;height:30px!important;border-radius:10px!important;font-size:9px!important}
+}

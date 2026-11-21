@@ -5,21 +5,46 @@ import { setPalmyraLocalScope } from "./localScope";
 const PREFIX = "palmyra:offline-saas-credential:v2:";
 const PBKDF2_ITERATIONS = 120_000;
 
-// The sign-up flow temporarily holds the credential only in this module's
-// memory while the newly created account is configuring its first company.
-// It is never written to localStorage/sessionStorage and expires quickly.
-let pendingOfflineCredential: { email: string; password: string; createdAt: number } | null = null;
-const PENDING_CREDENTIAL_TTL_MS = 10 * 60_000;
+// The sign-up flow temporarily holds the credential while the newly created
+// account configures its first company. It lives in module memory and, for the
+// duration of the tab session, in sessionStorage: a reload during onboarding
+// must not lose the ability to enable offline access afterwards. It is never
+// written to localStorage and disappears when the app/tab is closed.
+const PENDING_CREDENTIAL_KEY = "palmyra:offline-saas-pending:v1";
+type PendingCredential = { email: string; password: string; createdAt: number };
+let pendingOfflineCredential: PendingCredential | null = null;
+const PENDING_CREDENTIAL_TTL_MS = 2 * 60 * 60_000;
+
+function readPendingOfflineCredential(): PendingCredential | null {
+  if (pendingOfflineCredential) return pendingOfflineCredential;
+  try {
+    const raw = sessionStorage.getItem(PENDING_CREDENTIAL_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PendingCredential;
+    if (!parsed?.email || !parsed?.password || typeof parsed.createdAt !== "number") return null;
+    pendingOfflineCredential = parsed;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function clearPendingOfflineCredential(): void {
+  pendingOfflineCredential = null;
+  try { sessionStorage.removeItem(PENDING_CREDENTIAL_KEY); } catch {}
+}
 
 export function rememberPendingOfflineCredential(email: string, password: string): void {
   const normalizedEmail = String(email || "").trim().toLowerCase();
   if (!normalizedEmail || !password) return;
-  pendingOfflineCredential = { email: normalizedEmail, password, createdAt: Date.now() };
+  const pending: PendingCredential = { email: normalizedEmail, password, createdAt: Date.now() };
+  pendingOfflineCredential = pending;
+  try { sessionStorage.setItem(PENDING_CREDENTIAL_KEY, JSON.stringify(pending)); } catch {}
 }
 
 export async function consumePendingOfflineCredential(context: SaaSContext): Promise<boolean> {
-  const pending = pendingOfflineCredential;
-  pendingOfflineCredential = null;
+  const pending = readPendingOfflineCredential();
+  clearPendingOfflineCredential();
   if (!pending || Date.now() - pending.createdAt > PENDING_CREDENTIAL_TTL_MS) return false;
   if (pending.email !== String(context?.user?.email || "").trim().toLowerCase()) return false;
   if (!context?.companyId || context.company?.account_status !== "active" ||

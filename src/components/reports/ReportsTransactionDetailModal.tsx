@@ -1,5 +1,5 @@
-import { CalendarDays, Printer, Trash2, TrendingUp, X } from "lucide-react";
-import { cn } from "../../lib/utils";
+import { createPortal } from "react-dom";
+import { CalendarDays, EyeOff, Printer, Trash2, TrendingUp, X } from "lucide-react";
 import type { Product, Transaction, User } from "../../types";
 
 type Props = {
@@ -12,6 +12,7 @@ type Props = {
   onClose: () => void;
   onPrintShiftTicket: (sessionId: string) => void;
   onVoidTransaction: (transaction: Transaction) => void | Promise<void>;
+  onHideTransaction: (transaction: Transaction) => void | Promise<void>;
   onEditDate: (transaction: Transaction) => void;
 };
 
@@ -25,6 +26,7 @@ export function ReportsTransactionDetailModal({
   onClose,
   onPrintShiftTicket,
   onVoidTransaction,
+  onHideTransaction,
   onEditDate,
 }: Props) {
   if (!transaction) return null;
@@ -43,8 +45,8 @@ export function ReportsTransactionDetailModal({
   const detailDifference = Number(transaction.total) - detailTotal;
   const hasDetailMismatch = Math.abs(detailDifference) > 0.01;
 
-  return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+  return createPortal((
+    <div className="fixed inset-0 z-[99] flex items-center justify-center overflow-hidden bg-slate-950/70 p-2 backdrop-blur-sm sm:p-4">
       <div className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 border border-base my-auto text-primary">
         <div className="bg-rose-600 p-5 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -55,7 +57,7 @@ export function ReportsTransactionDetailModal({
               <span className="text-[9px] font-black uppercase tracking-widest text-rose-200 block">
                 Comprobante de Venta POS
               </span>
-              <h3 className="text-base font-black text-white uppercase tracking-tight">
+              <h3 className="max-w-[13rem] truncate text-base font-black uppercase tracking-tight text-white sm:max-w-[18rem]" title={`Ticket #${transaction.id}`}>
                 Ticket #{transaction.id}
               </h3>
             </div>
@@ -75,7 +77,10 @@ export function ReportsTransactionDetailModal({
               <span className="text-[8px] font-black text-muted uppercase tracking-wider block mb-0.5">
                 Cajero / Vendedor
               </span>
-              <p className="text-xs font-black text-primary uppercase">
+              <p
+                className="truncate text-xs font-black uppercase text-primary"
+                title={transaction.cashierName || users.find((user) => user.id === transaction.userId)?.name || "Vendedor"}
+              >
                 {transaction.cashierName ||
                   users.find((user) => user.id === transaction.userId)?.name ||
                   "Vendedor"}
@@ -129,8 +134,8 @@ export function ReportsTransactionDetailModal({
                     key={index}
                     className="p-3 flex items-center justify-between hover:bg-subtle/50 transition-colors"
                   >
-                    <div>
-                      <p className="text-xs font-black text-primary uppercase">
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-xs font-black uppercase text-primary" title={name}>
                         {name}
                       </p>
                       {item.variantLabel && (
@@ -142,7 +147,7 @@ export function ReportsTransactionDetailModal({
                         {item.quantity} x {formatMoney(price)}
                       </p>
                     </div>
-                    <span className="text-xs font-black text-primary">
+                    <span className="ml-2 shrink-0 text-xs font-black text-primary">
                       {formatMoney(totalItem)}
                     </span>
                   </div>
@@ -206,7 +211,7 @@ export function ReportsTransactionDetailModal({
                 Total Facturado
               </span>
               <span className="text-xs font-bold text-muted">
-                {(transaction.items || []).length} productos diferentes
+                {(transaction.items || []).length} producto{(transaction.items || []).length === 1 ? "" : "s"} diferente{(transaction.items || []).length === 1 ? "" : "s"}
               </span>
             </div>
             <span className="text-lg font-black text-rose-700 dark:text-rose-300">
@@ -214,45 +219,63 @@ export function ReportsTransactionDetailModal({
             </span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 pt-2">
-            <button
-              onClick={() => {
-                if (transaction.sessionId) {
-                  onPrintShiftTicket(transaction.sessionId);
-                }
-              }}
-              className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
-            >
-              <Printer className="w-4 h-4" />
-              Imprimir
-            </button>
+        </div>
+
+        <div className="space-y-2 border-t border-base bg-secondary p-4">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (transaction.sessionId) onPrintShiftTicket(transaction.sessionId);
+                }}
+                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 font-black uppercase tracking-wider text-white shadow-md transition-all hover:bg-rose-700"
+                style={{ fontSize: 11 }}
+              >
+                <Printer className="h-4 w-4" aria-hidden="true" /> Imprimir
+              </button>
+              <button
+                type="button"
+                onClick={() => onEditDate(transaction)}
+                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-3 font-black uppercase tracking-wider text-amber-700 transition-all hover:bg-amber-100 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300"
+                style={{ fontSize: 11 }}
+                title="Cambiar la fecha de esta venta y del turno asociado"
+              >
+                <CalendarDays className="h-4 w-4" aria-hidden="true" /> Editar fecha
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => void onHideTransaction(transaction)}
+                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-secondary px-3 font-black uppercase tracking-wider text-amber-700 transition-colors hover:bg-amber-50 dark:border-amber-900/60 dark:text-amber-300 dark:hover:bg-amber-950/30"
+                style={{ fontSize: 11 }}
+                title="Quitar esta venta de la lista de reportes sin borrarla ni tocar el inventario"
+              >
+                <EyeOff className="h-4 w-4" aria-hidden="true" /> Ocultar venta
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-base bg-subtle px-3 font-black uppercase tracking-wider text-primary transition-colors hover:bg-slate-200 dark:hover:bg-slate-800"
+                style={{ fontSize: 11 }}
+              >
+                Cerrar
+              </button>
+            </div>
             <button
               type="button"
-              onClick={() => onEditDate(transaction)}
-              className="flex-1 min-w-[115px] py-2.5 bg-amber-50 hover:bg-amber-100 text-amber-700 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 cursor-pointer border border-amber-200"
-              title="Cambiar la fecha de esta venta y del turno asociado"
-            >
-              <CalendarDays className="w-4 h-4" />
-              Editar fecha
-            </button>
-            <button
               onClick={() => void onVoidTransaction(transaction)}
-              className={cn(
-                "px-3 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer border border-rose-200"
-              )}
-              title="Anular este Ticket"
+              className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 font-black uppercase tracking-wider text-white shadow-md transition-all hover:bg-rose-700"
+              style={{ fontSize: 11 }}
+              title="Eliminar la venta, sus registros y devolver los productos al almacén de origen"
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="h-4 w-4" aria-hidden="true" /> Eliminar venta
             </button>
-            <button
-              onClick={onClose}
-              className="px-4 py-2.5 bg-subtle hover:bg-slate-200 dark:hover:bg-slate-800 text-primary rounded-xl text-xs font-black uppercase tracking-wider transition-all cursor-pointer border border-base"
-            >
-              Cerrar
-            </button>
-          </div>
+            <p className="text-center text-[11px] font-semibold leading-snug text-muted">
+              Eliminar devuelve los productos vendidos a su almacén y quita la venta de los reportes. Ocultar solo la esconde.
+            </p>
         </div>
       </div>
     </div>
-  );
+  ), document.body);
 }

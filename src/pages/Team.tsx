@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AtSign, BriefcaseBusiness, Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, Edit3, Eye, EyeOff, Hash, Info, Link2, LockKeyhole, Mail, MapPin, MoreHorizontal, Plus, RefreshCw, ShieldCheck, UserRound, UserX, WalletCards, Warehouse, X, Shield, Save } from "lucide-react";
+import { AtSign, ArrowUpRight, BriefcaseBusiness, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, Copy, Edit3, Eye, EyeOff, Hash, Info, Link2, LockKeyhole, Mail, MapPin, MoreHorizontal, Network, Plus, RefreshCw, ShieldCheck, UserRound, Users, UserX, WalletCards, Warehouse, Wifi, WifiOff, X, Shield, Save } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useStore } from "../store/useStore";
 import { loadSaaSContext } from "../services/saas";
+import { canUsePlanFeature, getPlanDisplayName } from "../services/planAccess";
+import EmployeeAvatar from "../components/team/EmployeeAvatar";
+import TeamConfirmDialog from "../components/team/TeamConfirmDialog";
 import {
   createEmployeePosSecure,
   createEmployeeWithInvitation,
@@ -25,6 +28,7 @@ import {
 import { cn, generateId } from "../lib/utils";
 import { enqueueOfflineItem } from "../services/offlineQueue";
 import "./team.css";
+import OperationsSurface from '../components/OperationsSurface';
 
 const TEAM_CACHE_PREFIX = "palmyra-team-cache-v1:";
 const TEAM_COMP_CACHE_PREFIX = "palmyra-team-compensation-cache-v1:";
@@ -65,7 +69,21 @@ function copyText(value: string) {
 
 export default function Team() {
   const navigate = useNavigate();
-  const { currentUser, addNotification } = useStore();
+  const currentUser = useStore(state => state.currentUser);
+  const addNotification = useStore(state => state.addNotification);
+  const cashSessions = useStore(state => state.cashSessions);
+  const activeShiftNames = useMemo(() => {
+    const map = new Set<string>();
+    for (const session of cashSessions || []) {
+      if (session.status !== 'open' || session.deletedAt) continue;
+      if (session.userId) map.add(`id:${session.userId}`);
+      if (session.workerName) map.add(`name:${String(session.workerName).trim().toLowerCase()}`);
+    }
+    return map;
+  }, [cashSessions]);
+  const employeeInShift = (employee: TeamEmployee) =>
+    activeShiftNames.has(`id:${employee.user_id || employee.id}`) ||
+    activeShiftNames.has(`name:${employee.full_name.trim().toLowerCase()}`);
   const [snapshot, setSnapshot] = useState<TeamSnapshot | null>(null);
   const [context, setContext] = useState<Awaited<ReturnType<typeof loadSaaSContext>>>(null);
   const [loading, setLoading] = useState(true);
@@ -76,6 +94,7 @@ export default function Team() {
   const [formStep, setFormStep] = useState<1 | 2 | 3>(1);
   const [editing, setEditing] = useState<TeamEmployee | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<TeamEmployee | null>(null);
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [showRoleForm, setShowRoleForm] = useState(false);
   const [editingRole, setEditingRole] = useState<TeamRole | null>(null);
@@ -89,9 +108,25 @@ export default function Team() {
   const [compensationSettings, setCompensationSettings] = useState<CompanyCompensationSettings>({ mode: 'fixed_product', percentRate: 0, fixedAmount: 0, workerCount: 1, active: true });
   const [savingCompensation, setSavingCompensation] = useState(false);
   const [showPosPassword, setShowPosPassword] = useState(false);
+  const [activeSection, setActiveSection] = useState<'employees' | 'roles' | 'compensation'>('employees');
+  const [employeeSearch, setEmployeeSearch] = useState('');
+  const [employeeStatus, setEmployeeStatusFilter] = useState('all');
+  const [employeeRole, setEmployeeRole] = useState('all');
+  const filteredEmployees = useMemo(() => (snapshot?.employees || []).filter(employee => {
+    const term = employeeSearch.trim().toLocaleLowerCase('es');
+    return `${employee.full_name} ${employee.employee_code} ${employee.login_email || ''}`.toLocaleLowerCase('es').includes(term)
+      && (employeeRole === 'all' || employee.role_id === employeeRole)
+      && (employeeStatus === 'all'
+        || (employeeStatus === 'pending' ? Boolean(employee.pending_invitation)
+          : employeeStatus === 'shift' ? employee.active && employeeInShift(employee)
+            : employeeStatus === 'active' ? employee.active && !employee.pending_invitation
+              : !employee.active));
+  }), [snapshot?.employees, employeeSearch, employeeRole, employeeStatus, activeShiftNames]);
 
   const canManageRoles = currentUser?.permissions?.includes("roles.manage") || currentUser?.role === "admin";
-  const canUseCustomRoles = context?.subscription?.planCode !== "starter";
+  const planCode = context?.subscription?.planCode || null;
+  const canUseCustomRoles = canUsePlanFeature(planCode, "custom_roles");
+  const customRolesPlanName = getPlanDisplayName(planCode ? (canUseCustomRoles ? planCode : "starter") : "starter");
   const canManageEmployees = currentUser?.permissions?.includes("employees.manage") || currentUser?.role === "admin";
 
   const [form, setForm] = useState({
@@ -106,6 +141,7 @@ export default function Team() {
   });
 
   const refresh = async () => {
+    if (!canManageEmployees) { setLoading(false); return; }
     setLoading(true);
     setError("");
     const offline = typeof navigator !== "undefined" && !navigator.onLine;
@@ -176,17 +212,49 @@ export default function Team() {
   }, [snapshot?.companyId, context?.companyId]);
 
   const employeeLimit = Number((context?.subscription?.limits as any)?.employees || 0);
-  const activeEmployees = snapshot?.employees.filter(employee => employee.active).length || 0;
-  const remainingSlots = employeeLimit > 0 ? Math.max(0, employeeLimit - activeEmployees) : null;
+  // Una invitación sin aceptar no es un trabajador operativo, pero sí reserva
+  // su plaza en el plan hasta que se cancele o caduque.
+  const activeEmployees = snapshot?.employees.filter(employee => employee.active && !employee.pending_invitation).length || 0;
+  const pendingInvites = snapshot?.employees.filter(employee => employee.pending_invitation).length || 0;
+  const remainingSlots = employeeLimit > 0 ? Math.max(0, employeeLimit - (activeEmployees + pendingInvites)) : null;
+  const usedSlots = activeEmployees + pendingInvites;
+  const capacityPct = employeeLimit > 0 ? Math.min(100, Math.round((usedSlots / employeeLimit) * 100)) : 0;
+  const resolvedPlanName = getPlanDisplayName(planCode);
+  const planLabel = planCode && resolvedPlanName !== 'tu plan actual' ? resolvedPlanName : null;
+  const employeesInShift = (snapshot?.employees || []).filter(employee => employee.active && employeeInShift(employee)).length;
+  const online = typeof navigator === "undefined" ? true : navigator.onLine;
 
   const availableRoles = useMemo(
     () => (snapshot?.roles || []).filter(role => role.key !== "admin" && (role.is_system || canManageRoles)),
     [snapshot?.roles, canManageRoles]
   );
 
-  const resetForm = () => {
+  const permissionGroups = useMemo(() => {
+    const labels: Record<string, string> = {
+      pos: 'Punto de venta', cash: 'Caja y turnos', sales: 'Ventas', inventory: 'Inventario',
+      warehouse: 'Almacenes', transfers: 'Traslados', purchases: 'Compras', suppliers: 'Proveedores',
+      customers: 'Clientes', quotes: 'Cotizaciones', reports: 'Reportes', banking: 'Bancos',
+      employees: 'Equipo', roles: 'Roles', settings: 'Configuración', audit: 'Auditoría', company: 'Empresa'
+    };
+    const groups = new Map<string, NonNullable<typeof snapshot>['permissions']>();
+    for (const permission of snapshot?.permissions || []) {
+      const prefix = permission.key.includes('.') ? permission.key.split('.')[0] : 'otros';
+      const list = groups.get(prefix) || [];
+      list.push(permission);
+      groups.set(prefix, list);
+    }
+    return Array.from(groups.entries())
+      .map(([prefix, permissions]) => ({
+        prefix,
+        label: labels[prefix] || prefix.charAt(0).toUpperCase() + prefix.slice(1),
+        permissions
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, 'es'));
+  }, [snapshot?.permissions]);
+
+  const resetForm = (clearInvite = true) => {
     setEditing(null);
-    setInviteLink(null);
+    if (clearInvite) setInviteLink(null);
     setShowPosPassword(false);
     setForm({
       fullName: "",
@@ -202,7 +270,7 @@ export default function Team() {
 
   const openRoleCreate = () => {
     if (!canUseCustomRoles) {
-      setError("Los roles personalizados están disponibles desde el plan Caravana.");
+      setError(`Los roles personalizados están disponibles desde el plan ${customRolesPlanName}.`);
       return;
     }
     setEditingRole(null);
@@ -248,7 +316,7 @@ export default function Team() {
     }
     if (!snapshot?.companyId) return;
     if (!canManageRoles) return setError("No tienes permiso para administrar roles.");
-    if (!canUseCustomRoles) return setError("Los roles personalizados están disponibles desde el plan Caravana.");
+    if (!canUseCustomRoles) return setError(`Los roles personalizados están disponibles desde el plan ${customRolesPlanName}.`);
     if (roleForm.name.trim().length < 2) return setError("Escribe el nombre del rol.");
     if (roleForm.key.trim().length < 2) return setError("Escribe una clave para el rol.");
     const offline = typeof navigator !== "undefined" && !navigator.onLine;
@@ -357,7 +425,11 @@ export default function Team() {
     if (!form.employeeCode.trim()) return setError("Escribe un código de empleado.");
     if (!form.roleId) return setError("Selecciona un rol.");
     if (!form.warehouseIds.length) return setError("Selecciona al menos un almacén.");
-    if (form.sendInvite && !editing?.user_id && !form.email.trim()) return setError("Escribe el correo del trabajador para crear su acceso web.");
+    if (form.sendInvite && !editing?.user_id) {
+      const inviteEmail = form.email.trim();
+      if (!inviteEmail) return setError("Escribe el correo del trabajador para crear su acceso web.");
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(inviteEmail)) return setError("El correo del trabajador no es válido.");
+    }
     const needsNewPosPassword = !form.sendInvite && (!editing || Boolean(editing.user_id || editing.pending_invitation));
     if (needsNewPosPassword && form.posPassword.trim().length < 6) {
       return setError("Define una contraseña POS nueva de al menos 6 caracteres para retirar el acceso web.");
@@ -534,7 +606,9 @@ export default function Team() {
         }
       }
       await refresh();
-      setShowForm(true);
+      setShowForm(false);
+      setFormStep(1);
+      resetForm(false);
       addNotification("Cambios de equipo guardados.", "success");
     } catch (e: any) {
       setError(e?.message || "No se pudo guardar el empleado.");
@@ -576,10 +650,6 @@ export default function Team() {
 
   const deleteEmployee = async (employee: TeamEmployee) => {
     setMenuId(null);
-    const confirmed = window.confirm(
-      `Eliminar a ${employee.full_name}? Esta acción eliminará su acceso a la empresa, invitaciones, credenciales POS y configuraciones personales. Las ventas y sesiones históricas conservarán el empleado como referencia cuando la base de datos lo permita.`
-    );
-    if (!confirmed) return;
     setError("");
     const offline = typeof navigator !== "undefined" && !navigator.onLine;
     if (offline) {
@@ -678,39 +748,126 @@ export default function Team() {
   }
 
   return (
-    <div className="space-y-5 w-full min-w-0 max-w-6xl mx-auto pb-10" onClick={() => setMenuId(null)}>
-      <header className="bg-secondary border border-base rounded-3xl p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-        <div>
-          <p className="text-[10px] font-black tracking-[0.18em] uppercase text-rose-500">Empresa</p>
-          <h1 data-palmi-content="team" className="text-2xl font-black text-primary mt-1">Equipo y accesos</h1>
-          <p className="text-xs text-muted mt-1">Cada trabajador tiene su propio acceso y conserva sus permisos al cambiar de dispositivo.</p>
+    <OperationsSurface className="space-y-5 w-full min-w-0 max-w-6xl mx-auto pb-10" onClick={() => setMenuId(null)}>
+      <header className="relative overflow-hidden rounded-3xl border border-base bg-secondary p-5 md:p-6">
+        <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-violet-500/10 blur-3xl" aria-hidden="true" />
+        <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-start gap-4 min-w-0">
+            <span className="hidden sm:flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-500 text-white shadow-lg shadow-violet-500/20">
+              <Users className="h-6 w-6" />
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-[10px] font-black tracking-[0.18em] uppercase text-violet-600 dark:text-violet-300">Empresa{planLabel ? ` · Plan ${planLabel}` : ''}</p>
+                <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider',
+                  online ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300'
+                    : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300')}>
+                  {online ? <Wifi className="h-2.5 w-2.5" /> : <WifiOff className="h-2.5 w-2.5" />}
+                  {online ? 'En línea' : 'Modo local'}
+                </span>
+              </div>
+              <h1 data-palmi-content="team" className="mt-1 text-2xl font-black text-primary tracking-tight">Equipo y accesos</h1>
+              <p className="mt-1 max-w-2xl text-xs leading-5 text-secondary">Cada trabajador entra con su propia cuenta o contraseña POS; sus permisos y almacenes se conservan en cualquier equipo del negocio.</p>
+              {(snapshot?.employees || []).some(employee => employee.active) && (
+                <div className="mt-3 flex items-center gap-2">
+                  <div className="flex -space-x-2">
+                    {(snapshot?.employees || []).filter(employee => employee.active).slice(0, 5).map(employee => (
+                      <EmployeeAvatar key={employee.id} name={employee.full_name} seed={employee.user_id || employee.id} size="sm" active={employee.active} inShift={employeeInShift(employee)} className="ring-2 ring-[var(--bg-secondary)]" />
+                    ))}
+                  </div>
+                  <span className="text-[10px] font-bold text-muted">
+                    {activeEmployees} activo{activeEmployees === 1 ? '' : 's'}{employeesInShift > 0 ? ` · ${employeesInShift} en turno` : ''}
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+          <button onClick={openCreate} disabled={loading || busy || remainingSlots === 0}
+            className="w-full lg:w-auto h-11 px-5 rounded-xl bg-violet-600 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-violet-600/20 disabled:opacity-50 shrink-0">
+            <Plus className="w-4 h-4" /> Agregar trabajador
+          </button>
         </div>
-        <button onClick={openCreate} disabled={loading || busy || remainingSlots === 0}
-          className="w-full sm:w-auto h-11 px-4 rounded-xl bg-rose-600 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50">
-          <Plus className="w-4 h-4" /> Agregar trabajador
-        </button>
+
+        {employeeLimit > 0 && (
+          <div className="relative mt-5 rounded-2xl border border-base bg-subtle px-4 py-3">
+            <div className="flex items-center justify-between gap-3 text-[10px] font-black uppercase tracking-wider">
+              <span className="text-secondary">Plazas del plan</span>
+              <span className={cn('tabular-nums', usedSlots >= employeeLimit ? 'text-[var(--danger)]' : 'text-primary')}>{usedSlots} / {employeeLimit}</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-[var(--bg-primary)]">
+              <div className={cn('h-full rounded-full transition-all', usedSlots >= employeeLimit ? 'bg-[var(--danger)]' : 'bg-violet-600')} style={{ width: `${capacityPct}%` }} />
+            </div>
+            <p className="mt-1.5 text-[10px] font-medium leading-4 text-muted">
+              {usedSlots >= employeeLimit
+                ? `Alcanzaste el límite de plazas${planLabel ? ` del plan ${planLabel}` : ''}. Desactiva o elimina un trabajador, o mejora el plan para agregar más.`
+                : `${remainingSlots} plaza${remainingSlots === 1 ? '' : 's'} disponible${remainingSlots === 1 ? '' : 's'}${pendingInvites > 0 ? ` · ${pendingInvites} reservada${pendingInvites === 1 ? '' : 's'} por invitación` : ''}.`}
+            </p>
+          </div>
+        )}
       </header>
 
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-secondary border border-base rounded-2xl p-4">
+      <button
+        type="button"
+        onClick={() => navigate('/settings?section=lan')}
+        className="group flex w-full items-center gap-3 rounded-2xl border border-base bg-secondary p-3 text-left transition hover:border-violet-300 hover:shadow-sm"
+      >
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-300">
+          <Network className="h-5 w-5" />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-xs font-black text-primary">Varios equipos, una sola empresa</span>
+          <span className="mt-0.5 block text-[10px] font-medium leading-4 text-muted">Abre PALMYRA desde el Wi-Fi del negocio; cada trabajador inicia sesión en su propio equipo con su cuenta o contraseña POS.</span>
+        </span>
+        <span className="hidden sm:flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-violet-600 dark:text-violet-300">
+          Red local <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+        </span>
+      </button>
+
+      <nav aria-label="Secciones de equipo" className="grid grid-cols-3 gap-2 rounded-2xl border border-base bg-secondary p-1.5">
+        {([
+          ['employees', 'Empleados', `${snapshot?.employees.length || 0}`, UserRound],
+          ['roles', 'Roles', `${snapshot?.roles.length || 0}`, Shield],
+          ['compensation', 'Pago', '', WalletCards],
+        ] as [typeof activeSection, string, string, typeof UserRound][]).map(([id, label, detail, Icon]) => (
+          <button
+            key={id}
+            type="button"
+            aria-pressed={activeSection === id}
+            disabled={id === 'roles' && !canManageRoles}
+            onClick={() => setActiveSection(id)}
+            className={cn(
+              'flex min-h-11 min-w-0 items-center justify-center gap-2 rounded-xl px-2 py-2 transition-colors',
+              activeSection === id ? 'bg-violet-600 text-white shadow-sm' : 'text-secondary hover:bg-subtle',
+              id === 'roles' && !canManageRoles && 'opacity-50 cursor-not-allowed'
+            )}
+          >
+            <Icon className="h-4 w-4 shrink-0" />
+            <span className="truncate text-[11px] font-black uppercase tracking-wider">{label}</span>
+            {detail && <span className={cn('hidden sm:inline rounded-full px-1.5 py-0.5 text-[9px] font-black tabular-nums', activeSection === id ? 'bg-white/20 text-white' : 'bg-subtle text-muted')}>{detail}</span>}
+          </button>
+        ))}
+      </nav>
+
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+        <div className="rounded-2xl border border-base bg-secondary p-4">
           <p className="text-[9px] font-black uppercase tracking-wider text-muted">Empleados activos</p>
-          <p className="text-xl font-black text-primary mt-1">{activeEmployees}{employeeLimit ? ` / ${employeeLimit}` : ""}</p>
+          <p className="mt-1 text-xl font-black tabular-nums text-primary">{activeEmployees}{employeeLimit ? <span className="text-xs text-muted font-bold"> / {employeeLimit}</span> : ""}</p>
         </div>
-        <div className="bg-secondary border border-base rounded-2xl p-4">
-          <p className="text-[9px] font-black uppercase tracking-wider text-muted">Con acceso</p>
-          <p className="text-xl font-black text-primary mt-1">{snapshot?.employees.filter(e => e.active && e.user_id).length || 0}</p>
+        <div className="rounded-2xl border border-base bg-secondary p-4">
+          <p className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-muted"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />En turno</p>
+          <p className="mt-1 text-xl font-black tabular-nums text-primary">{employeesInShift}</p>
         </div>
-        <div className="bg-secondary border border-base rounded-2xl p-4">
-          <p className="text-[9px] font-black uppercase tracking-wider text-muted">Pendientes</p>
-          <p className="text-xl font-black text-primary mt-1">{snapshot?.employees.filter(e => e.pending_invitation).length || 0}</p>
+        <div className="rounded-2xl border border-base bg-secondary p-4">
+          <p className="text-[9px] font-black uppercase tracking-wider text-muted">Acceso web</p>
+          <p className="mt-1 text-xl font-black tabular-nums text-primary">{snapshot?.employees.filter(e => e.active && e.user_id).length || 0}</p>
         </div>
-        <div className="bg-secondary border border-base rounded-2xl p-4">
-          <p className="text-[9px] font-black uppercase tracking-wider text-muted">Almacenes</p>
-          <p className="text-xl font-black text-primary mt-1">{snapshot?.warehouses.length || 0}</p>
+        <div className="rounded-2xl border border-base bg-secondary p-4">
+          <p className="text-[9px] font-black uppercase tracking-wider text-muted">Invitaciones</p>
+          <p className="mt-1 text-xl font-black tabular-nums text-primary">{pendingInvites}</p>
         </div>
       </section>
 
-      {canManageRoles && (
+      {activeSection === 'roles' && canManageRoles && (
         <section className="bg-secondary border border-base rounded-3xl p-4 md:p-5">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
             <div>
@@ -720,8 +877,8 @@ export default function Team() {
               </div>
               <p className="text-[10px] text-muted mt-1">Crea perfiles de trabajo y decide qué módulos puede usar cada uno.</p>
             </div>
-            <button onClick={openRoleCreate} disabled={!canUseCustomRoles} className="w-full sm:w-auto h-10 px-4 rounded-xl bg-slate-950 text-white font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-2">
-              <Plus className="w-4 h-4" /> {canUseCustomRoles ? "Crear rol" : "Disponible desde Caravana"}
+            <button onClick={openRoleCreate} disabled={!canUseCustomRoles} className="w-full sm:w-auto h-10 px-4 rounded-xl bg-violet-600 text-white font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-60">
+              <Plus className="w-4 h-4" /> {canUseCustomRoles ? "Crear rol" : `Disponible desde ${customRolesPlanName}`}
             </button>
           </div>
           <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-2 mt-4">
@@ -741,10 +898,12 @@ export default function Team() {
                 </div>
                 <p className="text-[9px] text-muted mt-1 line-clamp-2">{role.description || "Sin descripción"}</p>
                 <div className="flex flex-wrap gap-1 mt-2">
-                  {(role.permission_keys || []).slice(0, 4).map(key => (
-                    <span key={key} className="text-[8px] rounded-full bg-subtle border border-base px-2 py-1 text-muted">{key}</span>
+                  {(role.permission_keys || []).slice(0, 3).map(key => (
+                    <span key={key} className="text-[8px] rounded-full bg-subtle border border-base px-2 py-1 text-secondary">
+                      {(snapshot?.permissions || []).find(permission => permission.key === key)?.name || key}
+                    </span>
                   ))}
-                  {(role.permission_keys || []).length > 4 && <span className="text-[8px] text-muted px-1 py-1">+{(role.permission_keys || []).length - 4}</span>}
+                  {(role.permission_keys || []).length > 3 && <span className="text-[8px] font-black text-violet-600 dark:text-violet-300 px-1 py-1">+{(role.permission_keys || []).length - 3}</span>}
                 </div>
               </button>
             ))}
@@ -752,6 +911,7 @@ export default function Team() {
         </section>
       )}
 
+      {activeSection === 'compensation' && (
                     <section className="team-compensation-global bg-secondary border border-base rounded-3xl p-4 md:p-5 mt-4">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                   <div className="min-w-0">
@@ -762,7 +922,7 @@ export default function Team() {
                     <p className="text-[10px] text-muted mt-1 leading-5">Define aquí la modalidad de pago para todos los trabajadores. Esta configuración es independiente del alta individual.</p>
                   </div>
                   <span className="text-[8px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-full bg-subtle border border-base text-muted shrink-0">
-                    {compensationSettings.workerCount} trabajador{compensationSettings.workerCount === 1 ? "" : "es"} activos
+                    {activeEmployees} activo{activeEmployees === 1 ? "" : "s"}{pendingInvites > 0 ? ` · ${pendingInvites} invitación${pendingInvites === 1 ? "" : "es"} pendiente${pendingInvites === 1 ? "" : "s"}` : ""}
                   </span>
                 </div>
                 <div className="grid md:grid-cols-2 gap-2 mt-4">
@@ -772,17 +932,17 @@ export default function Team() {
                   ] as [CompanyCompensationMode,string,string][]).map(([mode,label,description]) => (
                     <button key={mode} type="button" disabled={savingCompensation}
                       onClick={() => setCompensationSettings(prev => ({ ...prev, mode }))}
-                      className={cn("text-left p-4 rounded-2xl border transition-all", compensationSettings.mode === mode ? "bg-indigo-50/80 dark:bg-indigo-950/20 border-indigo-300 shadow-sm" : "bg-primary border-base hover:border-indigo-200")}>
+                      className={cn("text-left p-4 rounded-2xl border transition-all", compensationSettings.mode === mode ? "bg-violet-50 dark:bg-violet-950/30 border-violet-300 shadow-sm" : "bg-primary border-base hover:border-violet-200")}>
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-[10px] font-black text-primary uppercase tracking-wider">{label}</p>
-                        <span className={cn("w-5 h-5 rounded-full border flex items-center justify-center shrink-0", compensationSettings.mode === mode ? "bg-indigo-600 border-indigo-600 text-white" : "border-base text-transparent")}><Check className="w-3 h-3" /></span>
+                        <span className={cn("w-5 h-5 rounded-full border flex items-center justify-center shrink-0", compensationSettings.mode === mode ? "bg-violet-600 border-violet-600 text-white" : "border-base text-transparent")}><Check className="w-3 h-3" /></span>
                       </div>
                       <p className="text-[9px] text-muted mt-1.5 leading-5">{description}</p>
                     </button>
                   ))}
                 </div>
                 {compensationSettings.mode === 'sales_percent' && (
-                  <div className="mt-3 rounded-2xl bg-indigo-50/60 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 p-3">
+                  <div className="mt-3 rounded-2xl bg-violet-50/70 dark:bg-violet-950/25 border border-violet-100 dark:border-violet-900/40 p-3">
                     <label className="team-field-wrap">
                       <span className="team-field-label">Porcentaje general sobre ventas <b>*</b></span>
                       <span className="team-field"><span className="team-field-icon"><WalletCards className="w-4 h-4" /></span>
@@ -860,11 +1020,12 @@ export default function Team() {
                         setError(e?.message || "No se pudo guardar la configuración de compensación.");
                       } finally { setSavingCompensation(false); }
                     }}
-                    className="w-full sm:w-auto h-10 px-4 rounded-xl bg-indigo-600 text-white font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50">
+                    className="w-full sm:w-auto h-10 px-4 rounded-xl bg-violet-600 text-white font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-2 disabled:opacity-50">
                     {savingCompensation ? <><RefreshCw className="w-4 h-4 animate-spin" /> Guardando…</> : <><Save className="w-4 h-4" /> Guardar configuración</>}
                   </button>
                 </div>
               </section>
+      )}
 
       {inviteLink && (
         <section className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
@@ -885,30 +1046,88 @@ export default function Team() {
       {message && <div className="rounded-xl bg-slate-900 text-white text-xs font-bold p-3">{message}</div>}
       {error && <div className="rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold p-3">{error}</div>}
 
+      {activeSection === 'employees' && (
       <section className="bg-secondary border border-base rounded-3xl overflow-visible">
+        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_170px_170px] p-4 border-b border-base">
+          <label className="min-w-0">
+            <span className="text-[10px] font-black uppercase tracking-wider text-muted">Buscar</span>
+            <input type="search" value={employeeSearch} onChange={e => setEmployeeSearch(e.target.value)} placeholder="Nombre, código o correo" className="mt-1 w-full px-3 py-2.5 rounded-xl border border-base bg-primary text-primary text-xs font-bold outline-none focus:ring-1 focus:ring-rose-400" />
+          </label>
+          <label>
+            <span className="text-[10px] font-black uppercase tracking-wider text-muted">Estado</span>
+            <select value={employeeStatus} onChange={e => setEmployeeStatusFilter(e.target.value)} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-base bg-primary text-primary text-xs font-bold outline-none">
+              <option value="all">Todos</option>
+              <option value="active">Activos</option>
+              <option value="shift">En turno ahora</option>
+              <option value="inactive">Inactivos</option>
+              <option value="pending">Invitación pendiente</option>
+            </select>
+          </label>
+          <label>
+            <span className="text-[10px] font-black uppercase tracking-wider text-muted">Rol</span>
+            <select value={employeeRole} onChange={e => setEmployeeRole(e.target.value)} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-base bg-primary text-primary text-xs font-bold outline-none">
+              <option value="all">Todos</option>
+              {(snapshot?.roles || []).map(role => <option key={role.id} value={role.id}>{role.name}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 pb-2 -mt-1">
+          <p className="text-[10px] font-bold text-muted">
+            {filteredEmployees.length} de {snapshot?.employees.length || 0} trabajador{(snapshot?.employees.length || 0) === 1 ? '' : 'es'}
+            {employeesInShift > 0 && <span className="ml-2 inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />{employeesInShift} en turno</span>}
+          </p>
+          {(employeeSearch || employeeStatus !== 'all' || employeeRole !== 'all') && (
+            <button type="button" onClick={() => { setEmployeeSearch(''); setEmployeeStatusFilter('all'); setEmployeeRole('all'); }} className="text-[10px] font-black uppercase tracking-wider text-violet-600 hover:text-violet-700 dark:text-violet-300">
+              Limpiar filtros
+            </button>
+          )}
+        </div>
         {loading ? (
           <div className="p-10 text-center text-sm text-muted">Cargando equipo...</div>
-        ) : snapshot?.employees.length ? (
+        ) : filteredEmployees.length ? (
           <div className="divide-y divide-slate-200/70 dark:divide-slate-700/60">
-            {snapshot.employees.map(employee => {
-              const warehouseNames = employee.warehouse_ids.map(id => snapshot?.warehouses.find(w => w.id === id)?.name).filter(Boolean);
+            {filteredEmployees.map(employee => {
+              const warehouseNames = employee.warehouse_ids.map(id => snapshot?.warehouses.find(w => w.id === id)?.name).filter(Boolean) as string[];
+              const inShift = employeeInShift(employee);
+              const inviteDaysLeft = employee.pending_invitation
+                ? Math.ceil((Date.parse(employee.pending_invitation.expires_at) - Date.now()) / 86400000)
+                : null;
               return (
                 <div key={employee.id} className="team-employee-row">
-                  <div className={cn("team-employee-avatar", employee.active ? "is-active" : "is-inactive")}>
-                    {employee.user_id ? <UserRound className="w-4 h-4" /> : <UserX className="w-4 h-4" />}
-                  </div>
+                  <EmployeeAvatar
+                    name={employee.full_name}
+                    seed={employee.user_id || employee.id}
+                    size="sm"
+                    active={employee.active}
+                    pending={Boolean(employee.pending_invitation)}
+                    inShift={inShift}
+                    className="team-list-avatar"
+                  />
                   <div className="team-employee-main">
                     <strong>{employee.full_name}</strong>
-                    <small>Código {employee.employee_code}</small>
+                    <small className="flex items-center gap-1.5 flex-wrap">
+                      <span>{employee.employee_code}</span>
+                      {inShift && <em className="not-italic inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[6.5px] font-black uppercase tracking-wider text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"><span className="h-1 w-1 rounded-full bg-emerald-500" />En turno</em>}
+                    </small>
                   </div>
                   <div className="team-employee-role">
                     <span>{employee.role_name}</span>
                     {!employee.active && <em>Inactivo</em>}
-                    {employee.pending_invitation && employee.active && <em className="pending">Invitación pendiente</em>}
+                    {employee.pending_invitation && employee.active && (
+                      <em className="pending" title={`Expira ${employee.pending_invitation.expires_at ? new Date(employee.pending_invitation.expires_at).toLocaleDateString('es-CU') : 'pronto'}`}>
+                        Invitación{inviteDaysLeft !== null && inviteDaysLeft >= 0 ? ` · ${inviteDaysLeft}d` : ''}
+                      </em>
+                    )}
                   </div>
                   <div className="team-employee-contact">
-                    <span><Mail className="w-3 h-3" />{employee.user_id || employee.pending_invitation ? (employee.login_email || employee.pending_invitation?.email || "Cuenta web") : "Sin acceso web"}</span>
-                    <span><MapPin className="w-3 h-3" />{warehouseNames.length ? warehouseNames.join(", ") : "Sin almacén"}</span>
+                    <span title={employee.user_id || employee.pending_invitation ? (employee.login_email || employee.pending_invitation?.email || 'Cuenta web') : 'Sin acceso web'}>
+                      {employee.user_id ? <CheckCircle2 className="w-3 h-3 text-emerald-500" /> : <Mail className="w-3 h-3" />}
+                      {employee.user_id || employee.pending_invitation ? (employee.login_email || employee.pending_invitation?.email || "Cuenta web") : "Sin acceso web"}
+                    </span>
+                    <span title={warehouseNames.length ? warehouseNames.join(", ") : "Sin almacén"}>
+                      <MapPin className="w-3 h-3" />
+                      {warehouseNames.length ? (warehouseNames.length === 1 ? warehouseNames[0] : `${warehouseNames[0]} +${warehouseNames.length - 1}`) : "Sin almacén"}
+                    </span>
                   </div>
                   <div className="relative shrink-0">
                     <button onClick={(e) => { e.stopPropagation(); setMenuId(menuId === employee.id ? null : employee.id); }}
@@ -933,7 +1152,7 @@ export default function Team() {
                         <button onClick={() => changeStatus(employee)} className="w-full px-3 py-2 text-left text-xs font-bold hover:bg-subtle rounded-xl flex items-center gap-2">
                           <RefreshCw className="w-4 h-4" /> {employee.active ? "Desactivar acceso" : "Reactivar acceso"}
                         </button>
-                        <button onClick={() => deleteEmployee(employee)} disabled={busy} className="w-full px-3 py-2 text-left text-xs font-bold text-rose-700 hover:bg-rose-50 rounded-xl flex items-center gap-2">
+                        <button onClick={() => { setMenuId(null); setPendingDelete(employee); }} disabled={busy} className="w-full px-3 py-2 text-left text-xs font-bold text-[var(--danger)] hover:bg-[var(--danger)]/10 rounded-xl flex items-center gap-2">
                           <UserX className="w-4 h-4" /> Eliminar empleado
                         </button>
                       </div>
@@ -946,18 +1165,30 @@ export default function Team() {
         ) : (
           <div className="p-10 text-center">
             <UserRound className="w-10 h-10 text-slate-300 mx-auto mb-3" />
-            <p className="text-sm font-black text-primary">Todavía no hay trabajadores.</p>
-            <p className="text-xs text-muted mt-1">Agrega el primero para probar el flujo de acceso en otro dispositivo.</p>
+            {snapshot?.employees.length ? (
+              <>
+                <p className="text-sm font-black text-primary">Ningún trabajador coincide con los filtros.</p>
+                <button type="button" onClick={() => { setEmployeeSearch(''); setEmployeeStatusFilter('all'); setEmployeeRole('all'); }} className="mt-3 h-10 px-4 rounded-xl border border-base text-xs font-black text-primary">Limpiar filtros</button>
+              </>
+            ) : (
+              <>
+                <p className="text-sm font-black text-primary">Todavía no hay trabajadores.</p>
+                <p className="text-xs text-muted mt-1">Agrega el primero para probar el flujo de acceso en otro dispositivo.</p>
+              </>
+            )}
           </div>
         )}
       </section>
+      )}
 
       {showForm && (
         <div className="fixed inset-0 z-[200] bg-slate-950/70 backdrop-blur-md p-3 sm:p-5 flex items-center justify-center" onClick={() => setShowForm(false)}>
           <form onSubmit={submit} onClick={e => e.stopPropagation()} className="team-employee-modal w-full max-w-2xl bg-secondary border border-base rounded-[28px] shadow-2xl overflow-hidden">
             <div className="team-employee-modal-head">
               <div className="flex items-start gap-3 min-w-0">
-                <div className="team-employee-hero-icon" aria-hidden="true"><BriefcaseBusiness className="w-5 h-5" /></div>
+                {form.fullName.trim()
+                  ? <EmployeeAvatar name={form.fullName} seed={form.employeeCode || form.fullName} size="lg" className="shrink-0" />
+                  : <div className="team-employee-hero-icon" aria-hidden="true"><BriefcaseBusiness className="w-5 h-5" /></div>}
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="team-employee-kicker">{editing ? "Equipo · Configuración" : "Equipo · Alta segura"}</span>
@@ -996,7 +1227,7 @@ export default function Team() {
                   ) : (
                     <div className="team-field-wrap">
                       <span className="team-field-label">Modalidad de pago</span>
-                      <div className="team-field bg-indigo-50/60 border-indigo-100"><span className="team-field-icon"><WalletCards className="w-4 h-4" /></span><span className="team-field-input text-indigo-700 font-black">Porcentaje sobre el total de la venta · {Number(compensationSettings.percentRate || 0)}%</span></div>
+                      <div className="team-field bg-violet-50/70 dark:bg-violet-950/25 border-violet-100 dark:border-violet-900/40"><span className="team-field-icon"><WalletCards className="w-4 h-4" /></span><span className="team-field-input text-violet-700 dark:text-violet-300 font-black">Porcentaje sobre el total de la venta · {Number(compensationSettings.percentRate || 0)}%</span></div>
                     </div>
                   )}
                 </div>
@@ -1077,14 +1308,40 @@ export default function Team() {
               ) : (
                 <div className="team-form-section">
                   <div className="team-form-section-head"><div className="team-form-section-icon"><LockKeyhole className="w-4 h-4"/></div><div><h3>Permisos del rol</h3><p>Selecciona exactamente las acciones que tendrá este perfil.</p></div></div>
-                  <div className="grid sm:grid-cols-2 gap-2">
-                    {(snapshot?.permissions || []).map(permission => {
-                      const selected = roleForm.permissionKeys.includes(permission.key);
-                      return <label key={permission.id} className={cn("team-role-permission",selected&&"is-selected")}>
-                        <input type="checkbox" checked={selected} onChange={()=>toggleRolePermission(permission.key)} disabled={busy||Boolean(editingRole?.is_system)} />
-                        <span><strong>{permission.name}</strong><small>{permission.description||permission.key}</small></span>
-                      </label>;
-                    })}
+                  <div className="space-y-3">
+                    {permissionGroups.map(group => (
+                      <div key={group.prefix}>
+                        <div className="mb-1.5 flex items-center justify-between gap-2">
+                          <p className="text-[8px] font-black uppercase tracking-[0.12em] text-violet-600 dark:text-violet-300">{group.label}</p>
+                          <button
+                            type="button"
+                            disabled={busy || Boolean(editingRole?.is_system)}
+                            onClick={() => {
+                              const keys = group.permissions.map(permission => permission.key);
+                              const allSelected = keys.every(key => roleForm.permissionKeys.includes(key));
+                              setRoleForm(prev => ({
+                                ...prev,
+                                permissionKeys: allSelected
+                                  ? prev.permissionKeys.filter(key => !keys.includes(key))
+                                  : Array.from(new Set([...prev.permissionKeys, ...keys]))
+                              }));
+                            }}
+                            className="text-[8px] font-black uppercase tracking-wider text-muted hover:text-violet-600 disabled:opacity-50"
+                          >
+                            {group.permissions.every(permission => roleForm.permissionKeys.includes(permission.key)) ? 'Quitar todo' : 'Todo'}
+                          </button>
+                        </div>
+                        <div className="grid sm:grid-cols-2 gap-2">
+                          {group.permissions.map(permission => {
+                            const selected = roleForm.permissionKeys.includes(permission.key);
+                            return <label key={permission.id} className={cn("team-role-permission",selected&&"is-selected")}>
+                              <input type="checkbox" checked={selected} onChange={()=>toggleRolePermission(permission.key)} disabled={busy||Boolean(editingRole?.is_system)} />
+                              <span><strong>{permission.name}</strong><small>{permission.description||permission.key}</small></span>
+                            </label>;
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               )}
@@ -1097,8 +1354,23 @@ export default function Team() {
         </div>
       )}
 
-<p className="text-[10px] text-muted text-center">El acceso web del trabajador es independiente del selector de empleado/PIN del POS. Ambos pueden coexistir.</p>
-    </div>
+      <TeamConfirmDialog
+        open={Boolean(pendingDelete)}
+        title={pendingDelete ? `Eliminar a ${pendingDelete.full_name}` : 'Eliminar trabajador'}
+        description="Se eliminará su acceso a la empresa, invitaciones pendientes, contraseña POS y configuraciones personales. Las ventas y turnos históricos conservan la referencia del empleado."
+        confirmLabel="Eliminar empleado"
+        busy={busy}
+        onClose={() => setPendingDelete(null)}
+        onConfirm={async () => {
+          if (!pendingDelete) return;
+          const target = pendingDelete;
+          await deleteEmployee(target);
+          setPendingDelete(null);
+        }}
+      />
+
+      <p className="text-[10px] text-muted text-center leading-5">El acceso web del trabajador es independiente del selector de empleado/PIN del POS. Ambos pueden coexistir y funcionan también sin Internet en este equipo.</p>
+    </OperationsSurface>
   );
 }
 

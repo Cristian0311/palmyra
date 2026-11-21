@@ -134,7 +134,7 @@ export function useReportsPrinting(deps: {
       const toBranchName = branches.find(b => b.id === transfer.toBranchId)?.name || transfer.toBranchName || 'Destino';
       const width = (receiptConfig?.printerWidth || '58mm') as '58mm' | '80mm';
       const lines = buildTransferReceiptLines(transfer, {
-        businessName: receiptConfig?.businessName || "MARÉ POS",
+        businessName: receiptConfig?.businessName || "PALMYRA POS",
         userName: user?.name || transfer.userId || 'Sistema',
         fromBranchName,
         toBranchName,

@@ -132,24 +132,34 @@ export async function loadReturnsWarrantiesQuotesTimePayroll() {
     status:(pr.data||[]).find((run:any)=>run.id===x.payroll_run_id)?.status==='paid'?'paid':'pending'
   }));
 
+  const reviewStatusFor=(status:string):InventoryAudit['reviewStatus']=>
+    status==='approved'||status==='completed'?'approved'
+    :status==='submitted'?'pending_approval'
+    :status==='recount_requested'?'recount_requested'
+    :'counting';
+
   const audits:InventoryAudit[]=(aa.data||[]).map((x:any)=>({
     id:x.id,
     date:x.created_at,
     branchId:x.warehouse_id,
     userId:x.created_by,
-    status:x.status==='approved'?'completed':'pending',
-    mode:'cycle_count',
+    status:x.status==='approved'||x.status==='completed'?'completed':'pending',
+    mode:x.mode==='physical'?'physical':'cycle_count',
     blindCount:Boolean(x.blind_count),
-    submittedAt:x.submitted_at,
-    reviewedBy:x.reviewed_by,
-    reviewedAt:x.reviewed_at,
+    snapshotAt:x.snapshot_at||undefined,
+    submittedAt:x.submitted_at||undefined,
+    reviewStatus:reviewStatusFor(String(x.status||'')),
+    reviewedBy:x.reviewed_by||undefined,
+    reviewedAt:x.reviewed_at||undefined,
+    adjustmentPostedAt:reviewStatusFor(String(x.status||''))==='approved'?(x.reviewed_at||undefined):undefined,
     notes:x.notes||'',
     items:(ai.data||[]).filter((it:any)=>it.audit_id===x.id).map((it:any)=>({
       productId:it.product_id,
       productName:pMap.get(it.product_id)||'Producto',
+      variantLabel:it.variant_label||undefined,
       expected:Number(it.expected_quantity)||0,
-      counted:Number(it.counted_quantity),
-      difference:Number(it.difference)||0
+      counted:it.counted_quantity==null?null:Number(it.counted_quantity),
+      difference:it.difference==null?0:Number(it.difference)||0
     }))
   }));
 

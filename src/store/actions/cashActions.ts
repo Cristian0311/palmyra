@@ -23,7 +23,7 @@ import { setCanonicalInventoryQuantity, validateTransferStock } from '../utils/i
 import { buildLocalVoidTransactionPatch } from '../utils/localVoidTransaction';
 import { buildLocalCompletedSalePatch } from '../utils/localCompletedSale';
 import { replaceRemoteRecords } from '../utils/replaceRemoteRecords';
-import { calculateExpectedCashBase } from '../../services/cash/expectedCash';
+import { calculateExpectedCashBase, calculateExpectedBalances } from '../../services/cash/expectedCash';
 import { findSessionEmployeeUser } from '../../services/employeeCompensation';
 import { removeFromOfflineQueueByAction, removeFromOfflineQueueByTransactionId } from '../../services/offlineQueue/outboxUtils';
 import {
@@ -35,6 +35,7 @@ import {
   type LocalNcfRange,
 } from '../../services/fiscal/ncfLocal';
 import type { AppState } from '../storeTypes';
+import { isCloudBusinessSyncAllowed } from '../../services/localPlanMode';
 
 
 type StoreSet = (
@@ -95,8 +96,8 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       if (Number.isFinite(persisted) && persisted > maxTurn) maxTurn = persisted;
     });
     
-    // Si hay red, usar RPC para garantizar integridad y turno único
-    if (navigator.onLine) {
+    // Si hay red y el plan incluye respaldo, usar RPC para garantizar integridad y turno único
+    if (navigator.onLine && isCloudBusinessSyncAllowed()) {
       try {
         const res = await callOpenSessionRPCWithId(session);
         if (res.success && res.data) {
@@ -181,7 +182,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
         transactionTime >= sessionOpenTime &&
         transactionTime <= closingTime;
     });
-    if (pendingSessionTransactions.length > 0 && typeof navigator !== 'undefined' && navigator.onLine) {
+    if (pendingSessionTransactions.length > 0 && typeof navigator !== 'undefined' && navigator.onLine && isCloudBusinessSyncAllowed()) {
       get().addNotification(
         'No se puede cerrar todavía: hay ' + pendingSessionTransactions.length + ' venta(s) del turno pendientes de sincronizar.',
         'warning'
@@ -202,7 +203,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
     const user = findSessionEmployeeUser(session, get().users, workerName);
 
     let compensation = compensationOverride || null;
-    if (!compensation && typeof navigator !== 'undefined' && navigator.onLine) {
+    if (!compensation && typeof navigator !== 'undefined' && navigator.onLine && isCloudBusinessSyncAllowed()) {
       try {
         const tenant = await getActiveTenant();
         if (tenant?.companyId) compensation = await loadCompensationSettings(tenant.companyId);
@@ -258,7 +259,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
     const actionId = 'cash-close:' + sessionId;
     await enqueueOfflineItem('cash_session', { ...updatedSession, __operation: 'close', settlement }, actionId);
 
-    if (navigator.onLine) {
+    if (navigator.onLine && isCloudBusinessSyncAllowed()) {
       try {
         const cashOperationsFlushed = await flushPendingCashOperationsForSession(sessionId);
         if (!cashOperationsFlushed) {
@@ -346,7 +347,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
         await enqueueOfflineItem('cash_session', { ...updated, __operation: 'snapshot' }, actionId);
         await flushLocalStateStorage();
 
-        if (!navigator.onLine) return;
+        if (!navigator.onLine || !isCloudBusinessSyncAllowed()) return;
 
         const synced = await pushCashSessionMetadataToSupabase(updated);
         if (!synced) return;
@@ -470,7 +471,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
     // Joining a shared shift is a real state change and must survive reloads.
     const actionId = `cash-join:${sessionId}:${userId}`;
     void enqueueOfflineItem('cash_session', updatedSession, actionId).then(async () => {
-      if (!navigator.onLine) return;
+      if (!navigator.onLine || !isCloudBusinessSyncAllowed()) return;
       const synced = await pushCashSessionToSupabase(updatedSession);
       if (synced) {
         removeFromOfflineQueueByAction('cash_session', actionId);
@@ -606,7 +607,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
     );
     const user = findSessionEmployeeUser(session, get().users);
     let compensation = null;
-    if (navigator.onLine) {
+    if (navigator.onLine && isCloudBusinessSyncAllowed()) {
       try {
         const tenant = await getActiveTenant();
         if (tenant?.companyId) compensation = await loadCompensationSettings(tenant.companyId);
@@ -647,6 +648,40 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       status: 'pending'
     };
     const expectedCashBase = calculateExpectedCashBase(session, sessionTxs, get().currencies || []);
+    const baseCurrency = get().getBaseCurrency();
+    const expectedBalances = calculateExpectedBalances(
+      { ...session, closedAt: finalClosingDate },
+      sessionTxs,
+      baseCurrency,
+    );
+    const discrepancyDetails: NonNullable<CashRegisterSession['discrepancyDetails']> = [];
+    expectedBalances.forEach(expectedRow => {
+      const declared = finalBalances.find(b => b.currencyCode === expectedRow.currencyCode && b.method === expectedRow.method);
+      const actual = Number(declared?.amount) || 0;
+      const difference = Math.round((actual - expectedRow.amount) * 1000000) / 1000000;
+      if (Math.abs(difference) > 0.01) {
+        discrepancyDetails.push({
+          currencyCode: expectedRow.currencyCode,
+          method: expectedRow.method,
+          expected: expectedRow.amount,
+          actual,
+          difference,
+        });
+      }
+    });
+    finalBalances.forEach(declared => {
+      if (Number(declared.amount) <= 0.01) return;
+      const alreadyExpected = expectedBalances.some(r => r.currencyCode === declared.currencyCode && r.method === declared.method);
+      if (!alreadyExpected) {
+        discrepancyDetails.push({
+          currencyCode: declared.currencyCode,
+          method: declared.method,
+          expected: 0,
+          actual: Number(declared.amount),
+          difference: Number(declared.amount),
+        });
+      }
+    });
     const updatedSession: CashRegisterSession = {
       ...session,
       expectedBalance: expectedCashBase,
@@ -654,12 +689,15 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       closedAt: finalClosingDate,
       closingDate: finalClosingDate,
       closingBalances: finalBalances,
+      ...(discrepancyDetails.length > 0
+        ? { hasDiscrepancy: true, discrepancyDetails, auditStatus: 'pending_review' as const }
+        : { hasDiscrepancy: false }),
       notes: notes ? (session.notes ? session.notes + ' | ' + notes : notes) : session.notes
     };
     const queueData = { ...updatedSession, __operation: 'close', settlement };
     await enqueueOfflineItem('cash_session', queueData, 'cash-close:' + sessionId);
 
-    if (navigator.onLine) {
+    if (navigator.onLine && isCloudBusinessSyncAllowed()) {
       try {
         const cashOperationsFlushed = await flushPendingCashOperationsForSession(sessionId);
         if (!cashOperationsFlushed) {
@@ -667,8 +705,9 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
         }
         const res = await callCloseSessionRPC(sessionId, finalBalances, finalClosingDate, updatedSession.notes || '', settlement, expectedCashBase);
         if (!res.success) {
-          if (res.errorCode) return { success: false, error: res.error || 'No se pudo cerrar el turno' };
-          throw new Error(res.error || 'No se pudo cerrar el turno');
+          // El cierre nunca debe quedar a medias: si el servidor rechaza o falla,
+          // caemos al cierre local protegido para sincronización posterior.
+          throw new Error(res.error || 'No se pudo cerrar el turno en el servidor.');
         }
         const metadataOk = await pushCashSessionMetadataToSupabase(updatedSession);
         if (!metadataOk) throw new Error('El cierre fue confirmado, pero los datos del turno aún no pudieron sincronizarse.');

@@ -3,6 +3,7 @@ import React, { useMemo } from 'react';
 import { useStore } from '../store/useStore';
 import { AlertTriangle, Clock, TrendingUp, Calendar, AlertCircle, HelpCircle } from 'lucide-react';
 import { InfoTooltip } from './InfoTooltip';
+import { isLowStockQuantity } from '../modules/inventory/utils/lowStock';
 
 export function RestockAlerts() {
   const { products, inventory, transactions, currentBranchId } = useStore(useShallow((state) => ({ products: state.products, inventory: state.inventory, transactions: state.transactions, currentBranchId: state.currentBranchId })));
@@ -22,7 +23,9 @@ export function RestockAlerts() {
     });
 
     return products.map(product => {
-      const stock = inventory.filter(i => i.productId === product.id).reduce((sum, i) => sum + i.quantity, 0);
+      const stock = inventory
+        .filter(i => i.productId === product.id && (!currentBranchId || i.branchId === currentBranchId))
+        .reduce((sum, i) => sum + i.quantity, 0);
       const soldLast30Days = salesByProduct[product.id] || 0;
       const dailySalesRate = soldLast30Days / 30;
       
@@ -31,7 +34,7 @@ export function RestockAlerts() {
         daysUntilStockout = Math.floor(stock / dailySalesRate);
       }
 
-      const isLow = stock <= (product.minStockAlert || 5);
+      const isLow = isLowStockQuantity(stock, product);
       const isCritical = daysUntilStockout <= 7;
 
       return {
@@ -44,7 +47,7 @@ export function RestockAlerts() {
       };
     }).filter(p => p.isLow || p.isCritical).sort((a, b) => a.daysUntilStockout - b.daysUntilStockout);
 
-  }, [products, inventory, transactions]);
+  }, [products, inventory, transactions, currentBranchId]);
 
   if (restockData.length === 0) {
     return (

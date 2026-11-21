@@ -2,11 +2,27 @@ import { Search, Wifi, WifiOff, RefreshCw, Plus, Minus, CreditCard, Receipt, Tra
 import { cn, generateId } from "../lib/utils";
 import { formatMoney } from "../modules/pos/utils/paymentMath";
 import POSOpenSessionsModal from "./POSOpenSessionsModal";
+import EmployeeAvatar from "../components/team/EmployeeAvatar";
 
  type StartupProps = Record<string, any>;
 
 export default function POSStartupScreen(props: StartupProps) {
-  const { activeCashSessions, allowedBranches, baseCurrency, branches, currencies, currentSession, currentUser, detectedWorker, employeePickerOpen, employeePickerRef, employeePickerSearch, handleJoinExistingSession, handleOpenSession, handlePrintClosureThermal, isBranchLocked, isOnline, isOpeningSession, isRefreshingOpenSessions, joiningSessionId, joiningSessionPassword, lastClosedSession, logout, navigate, openSessionForWorker, openSessionsForResume, openingAmount, posError, posSuccess, refreshOpenSessions, sessionBranchId, sessionPassword, sessionWorkerName, setEmployeePickerOpen, setEmployeePickerSearch, setJoiningSessionId, setJoiningSessionPassword, setOpeningAmount, setPosError, setPosSuccess, setSessionBranchId, setSessionPassword, setSessionWorkerId, setSessionWorkerName, setShowOpenSessionsModal, setShowOpenShiftModal, showOpenSessionsModal, showOpenShiftModal, users } = props;
+  const { activeCashSessions, allowedBranches, baseCurrency, branches, currencies, currentSession, currentUser, detectedWorker, employeePickerOpen, employeePickerRef, employeePickerSearch, handleJoinExistingSession, handleOpenSession, handlePrintClosureThermal, isBranchLocked, isOnline, isOpeningSession, isRefreshingOpenSessions, joiningSessionId, joiningSessionPassword, lastClosedSession, logout, navigate, openSessionForWorker, openSessionsForResume, openingAmount, pendingQuoteBanner, posError, posSuccess, refreshOpenSessions, sessionBranchId, sessionPassword, sessionWorkerName, setEmployeePickerOpen, setEmployeePickerSearch, setJoiningSessionId, setJoiningSessionPassword, setOpeningAmount, setPosError, setPosSuccess, setSessionBranchId, setSessionPassword, setSessionWorkerId, setSessionWorkerName, setShowOpenSessionsModal, setShowOpenShiftModal, showOpenSessionsModal, showOpenShiftModal, users } = props;
+
+  const branchName = (id?: string) => (branches || []).find((b: any) => b.id === id)?.name || '';
+  const pickerQuery = String(employeePickerSearch || '').trim().toLowerCase();
+  const pickerUsers = (users || [])
+    .filter((u: any) => u.isActive !== false)
+    .slice()
+    .sort((a: any, b: any) => {
+      const openDiff = (openSessionForWorker(b.id) ? 1 : 0) - (openSessionForWorker(a.id) ? 1 : 0);
+      if (openDiff !== 0) return openDiff;
+      return String(a.name || '').localeCompare(String(b.name || ''), 'es');
+    })
+    .filter((u: any) => !pickerQuery || String(u.name || '').toLowerCase().includes(pickerQuery));
+  const selectedPickerUser = (users || []).find((u: any) => String(u.name || '').trim() === String(sessionWorkerName || '').trim());
+  const selectedOpenSession = selectedPickerUser ? openSessionForWorker(selectedPickerUser.id) : null;
+
   return (<>{!currentSession && (
         <div
           className={cn("pos-keyboard-overlay pos-modal-layer fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center px-3 py-5 sm:px-4 sm:py-6", "overflow-y-auto overscroll-contain")}
@@ -26,6 +42,11 @@ export default function POSStartupScreen(props: StartupProps) {
               </h3>
               <p className="text-[7px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">
                 Turno de {(activeCashSessions || []).find(s => s.id === joiningSessionId)?.workerName || 'Empleado'}
+                {(() => {
+                  const joining = (activeCashSessions || []).find((s: any) => s.id === joiningSessionId);
+                  const name = joining ? branchName(joining.branchId) : '';
+                  return name ? ` · ${name}` : '';
+                })()}
               </p>
 
               {posError && (
@@ -113,6 +134,8 @@ export default function POSStartupScreen(props: StartupProps) {
                       </div>
                     )}
                   </div>
+
+                  {pendingQuoteBanner}
 
                   {/* Botones de impresión y acciones */}
                   <div className="space-y-1.5">
@@ -229,6 +252,7 @@ export default function POSStartupScreen(props: StartupProps) {
                       </span>
                       {isRefreshingOpenSessions ? <RefreshCw className="w-3 h-3 shrink-0 animate-spin text-emerald-600" /> : <ArrowRight className="w-3 h-3 shrink-0 text-emerald-600 transition-transform group-hover:translate-x-0.5" />}
                     </button>
+                    {pendingQuoteBanner}
               <form onSubmit={handleOpenSession} className="space-y-2">
                     <div className="text-left space-y-2">
                       {!false && (
@@ -291,16 +315,11 @@ export default function POSStartupScreen(props: StartupProps) {
                             {employeePickerOpen && (
                               <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
                                 <div className="max-h-[30vh] overflow-y-auto custom-scrollbar p-1">
-                                  {(users || [])
-                                    .filter(u => u.isActive !== false)
-                                    .filter(u => {
-                                      const q = employeePickerSearch.trim().toLowerCase();
-                                      return !q || (u.name || '').toLowerCase().includes(q);
-                                    })
-                                    .map(u => {
+                                  {pickerUsers
+                                    .map((u: any) => {
                                       const isSelected = sessionWorkerName === (u.name || '');
-                                      const isSelectedEmployee = false;
                                       const open = openSessionForWorker(u.id);
+                                      const workerBranch = branchName(u.branchId) || ((u.allowedBranches || []).map(branchName).filter(Boolean).join(' · '));
                                       return (
                                         <button
                                           key={u.id}
@@ -314,17 +333,30 @@ export default function POSStartupScreen(props: StartupProps) {
                                             setEmployeePickerSearch(workerName);
                                             setEmployeePickerOpen(false);
                                             setSessionPassword('');
-                                            if (u.branchId) setSessionBranchId(u.branchId);
-                                            
+                                            const openSession = openSessionForWorker(u.id);
+                                            if (openSession?.branchId) setSessionBranchId(openSession.branchId);
+                                            else if (u.branchId) setSessionBranchId(u.branchId);
                                             else if ((u.allowedBranches || []).length === 1) setSessionBranchId(u.allowedBranches![0]);
                                             setPosError('');
+                                            if (openSession) {
+                                              setJoiningSessionId(openSession.id);
+                                              setJoiningSessionPassword("");
+                                            }
                                           }}
                                           className={cn(
                                             "w-full flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-left transition-colors",
                                             isSelected ? "bg-rose-100 text-rose-900" : "hover:bg-slate-50 text-slate-900"
                                           )}
                                         >
-                                          <div className="min-w-0">
+                                          <EmployeeAvatar
+                                            name={u.name || 'Trabajador'}
+                                            seed={u.id || u.name}
+                                            size="sm"
+                                            active={u.isActive !== false}
+                                            inShift={Boolean(open)}
+                                            className="!h-8 !w-8 !rounded-xl !text-[10px]"
+                                          />
+                                          <div className="min-w-0 flex-1">
                                             <span className="block text-[8px] sm:text-[9px] font-black uppercase tracking-tight leading-tight whitespace-normal break-words">
                                               {u.name || 'Trabajador'}
                                             </span>
@@ -333,6 +365,7 @@ export default function POSStartupScreen(props: StartupProps) {
                                               u.role === 'admin' ? "text-rose-700" : "text-slate-400"
                                             )}>
                                               {u.role === 'admin' ? "ADMINISTRADOR" : "EMPLEADO"}
+                                              {workerBranch ? <span className="text-slate-400"> · {workerBranch}</span> : null}
                                             </span>
                                           </div>
                                           <span className={cn(
@@ -344,10 +377,7 @@ export default function POSStartupScreen(props: StartupProps) {
                                         </button>
                                       );
                                     })}
-                                  {!(users || []).some(u => {
-                                    const q = employeePickerSearch.trim().toLowerCase();
-                                    return u.isActive !== false && (!q || (u.name || '').toLowerCase().includes(q));
-                                  }) && (
+                                  {pickerUsers.length === 0 && (
                                     <div className="px-3 py-4 text-center text-[9px] font-bold text-slate-400 uppercase">
                                       No se encontraron empleados.
                                     </div>
@@ -357,6 +387,21 @@ export default function POSStartupScreen(props: StartupProps) {
                             )}
                           </div>
 
+                          {selectedOpenSession && !employeePickerOpen && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setJoiningSessionId(selectedOpenSession.id);
+                                setJoiningSessionPassword("");
+                              }}
+                              className="flex w-full items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-left active:scale-[0.99]"
+                            >
+                              <Wallet className="h-3 w-3 shrink-0 text-emerald-600" />
+                              <span className="text-[7.5px] font-black uppercase tracking-wide text-emerald-800">
+                                Caja abierta{branchName(selectedOpenSession.branchId) ? ` en ${branchName(selectedOpenSession.branchId)}` : ''} · Reanudar turno
+                              </span>
+                            </button>
+                          )}
 
                         </div>
                       </div>

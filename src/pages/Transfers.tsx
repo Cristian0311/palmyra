@@ -1,1030 +1,965 @@
-import { getTransferStockHelpers } from '../modules/transfers/utils/transferStock';
-import { getWarehouseId } from "../modules/warehouse/warehouseScope";
 import { useShallow } from 'zustand/react/shallow';
-import React, { useMemo, useState, useEffect } from "react";
-import { loadSaaSContext } from "../services/saas";
-import { 
-  ArrowLeftRight, 
-  Search, 
-  Plus, 
-  Package, 
-  MapPin, 
-  ArrowRight, 
-  History, 
-  CheckCircle, 
-  Clock, 
-  HelpCircle,
-  Activity,
+import { useEffect, useMemo, useState } from "react";
+import { getAuthorizedWarehouseIds } from "../modules/warehouse/warehouseScope";
+import {
+  ArrowLeftRight,
+  Search,
+  Plus,
+  Package,
+  MapPin,
+  ArrowRight,
+  History,
+  CheckCircle,
+  Clock,
   RefreshCw,
   AlertTriangle,
-  CheckCircle2,
-  TrendingDown,
-  TrendingUp,
-  Boxes,
   Building2,
   X,
-  Minus
+  Minus,
+  Truck,
+  PackageCheck,
+  Undo2,
+  ArrowDownRight,
+  ArrowUpRight,
 } from "lucide-react";
 import { useStore } from "../store/useStore";
-import { InfoTooltip } from "../components/InfoTooltip";
 import { cn } from "../lib/utils";
 import PlanFeatureGate from "../components/PlanFeatureGate";
+import { ReportsStatBubbles } from "../components/reports/ReportsStatBubbles";
+import type { InventoryTransfer } from "../types";
+
+type HistoryMode = 'general' | 'branch';
+
+type TransferGroupRow = {
+  key: string;
+  rows: InventoryTransfer[];
+  first: InventoryTransfer;
+  totalQty: number;
+  dateMs: number;
+  dateLabel: string;
+  timeLabel: string;
+  direction: 'out' | 'in' | null;
+};
+
+const STATUS_LABEL: Record<string, string> = {
+  pending: 'Pendiente',
+  in_transit: 'En tránsito',
+  cancelled: 'Cancelada',
+  completed: 'Recibida',
+};
+
+function StatusBadge({ status }: { status: InventoryTransfer['status'] }) {
+  const tone =
+    status === 'pending'
+      ? 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300'
+      : status === 'in_transit'
+        ? 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300'
+        : status === 'cancelled'
+          ? 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300'
+          : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300';
+  const Icon = status === 'pending' ? Clock : status === 'in_transit' ? Truck : status === 'cancelled' ? AlertTriangle : CheckCircle;
+  return (
+    <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-black uppercase tracking-wide whitespace-nowrap', tone)}>
+      <Icon className="h-3 w-3 shrink-0" aria-hidden="true" />
+      {STATUS_LABEL[status] || 'Traslado'}
+    </span>
+  );
+}
+
+function DirectionBadge({ direction }: { direction: 'out' | 'in' }) {
+  return (
+    <span className={cn(
+      'inline-flex items-center gap-1 rounded-md border px-1.5 py-0.5 text-[11px] font-black uppercase tracking-wide whitespace-nowrap',
+      direction === 'out'
+        ? 'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300'
+        : 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300'
+    )}>
+      {direction === 'out' ? <ArrowUpRight className="h-3 w-3" aria-hidden="true" /> : <ArrowDownRight className="h-3 w-3" aria-hidden="true" />}
+      {direction === 'out' ? 'Salida' : 'Entrada'}
+    </span>
+  );
+}
 
 export default function Transfers() {
-  const { 
-    branches, 
-    products, 
-    inventory, 
-    transferInventory,
-    transferInventoryBatch, 
+  const {
+    branches,
+    products,
+    inventory,
     transferProductsBulk,
-    transfers, 
+    receiveTransfer,
+    cancelTransfer,
+    transfers,
     currentBranchId,
     addNotification,
-    users
-  } = useStore(useShallow((state) => ({ branches: state.branches, products: state.products, inventory: state.inventory, transferInventory: state.transferInventory, transferInventoryBatch: state.transferInventoryBatch, transferProductsBulk: state.transferProductsBulk, transfers: state.transfers, currentBranchId: state.currentBranchId, addNotification: state.addNotification, users: state.users })));
+    currentUser,
+  } = useStore(useShallow((state) => ({
+    branches: state.branches,
+    products: state.products,
+    inventory: state.inventory,
+    transferProductsBulk: state.transferProductsBulk,
+    receiveTransfer: state.receiveTransfer,
+    cancelTransfer: state.cancelTransfer,
+    transfers: state.transfers,
+    currentBranchId: state.currentBranchId,
+    addNotification: state.addNotification,
+    currentUser: state.currentUser,
+  })));
 
-  const getBranchDisplayName = (b: { id: string; name: string }) => {
-    const assignedUser = (users || []).find(u => getWarehouseId(u) === b.id);
-    return assignedUser ? `${b.name} (${assignedUser.name})` : b.name;
-  };
+  const authorizedBranchIds = useMemo(
+    () => currentUser?.role === 'admin' ? [] : getAuthorizedWarehouseIds(currentUser),
+    [currentUser]
+  );
+  const isBranchRestricted = currentUser?.role !== 'admin' && authorizedBranchIds.length > 0;
+  const allowedBranches = useMemo(
+    () => isBranchRestricted ? branches.filter(branch => authorizedBranchIds.includes(branch.id)) : branches,
+    [branches, isBranchRestricted, authorizedBranchIds]
+  );
 
   const [activeTab, setActiveTab] = useState<'history' | 'new'>('history');
+  const [historyMode, setHistoryMode] = useState<HistoryMode>('general');
+  const [branchFilter, setBranchFilter] = useState(currentBranchId || '');
+  const [historySearch, setHistorySearch] = useState('');
   const [bulkTransferItems, setBulkTransferItems] = useState<{ productId: string, quantity: number, variant?: string }[]>([]);
   const [bulkTransferSourceId, setBulkTransferSourceId] = useState(currentBranchId || (branches[0]?.id || ''));
   const [bulkTransferTargetId, setBulkTransferTargetId] = useState("");
+
+  // Mantener origen/filtro dentro de los almacenes autorizados del empleado.
+  useEffect(() => {
+    if (!isBranchRestricted) return;
+    const allowedIds = new Set(allowedBranches.map(branch => branch.id));
+    if (!allowedIds.has(bulkTransferSourceId)) setBulkTransferSourceId(allowedBranches[0]?.id || '');
+    if (!allowedIds.has(branchFilter)) setBranchFilter(allowedBranches[0]?.id || '');
+    if (bulkTransferTargetId && !allowedIds.has(bulkTransferTargetId)) setBulkTransferTargetId('');
+  }, [isBranchRestricted, allowedBranches, bulkTransferSourceId, branchFilter, bulkTransferTargetId]);
   const [transferSearch, setTransferSearch] = useState("");
   const [isExecutingTransfer, setIsExecutingTransfer] = useState(false);
-  const [planCode, setPlanCode] = useState<string | null>(null);
-  const [planLoading, setPlanLoading] = useState(true);
+  const [resolvingTransitKey, setResolvingTransitKey] = useState<string | null>(null);
   const [expandedBatches, setExpandedBatches] = useState<string[]>([]);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [formData, setFormData] = useState({
-    productId: '',
-    fromBranchId: currentBranchId || (branches[0]?.id || ''),
-    toBranchId: '',
-  });
-  const [variantQuantities, setVariantQuantities] = useState<{ [key: string]: number }>({});
-  const [error, setError] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    let mounted = true;
-    void loadSaaSContext().then((ctx) => {
-      if (mounted) setPlanCode(ctx?.subscription?.planCode || null);
-    }).catch(() => {
-      if (mounted) setPlanCode(null);
-    }).finally(() => {
-      if (mounted) setPlanLoading(false);
-    });
-    return () => { mounted = false; };
-  }, []);
-  const effectiveFromBranchId = formData.fromBranchId || (branches.length > 0 ? branches[0].id : '');
-  const effectiveToBranchId = formData.toBranchId;
-  const productById = useMemo(() => new Map(products.map(product => [product.id, product])), [products]);
-  const branchById = useMemo(() => new Map(branches.map(branch => [branch.id, branch])), [branches]);
-  const selectedProduct = productById.get(formData.productId);
-  const fromBranch = branchById.get(effectiveFromBranchId);
-  const toBranch = branchById.get(effectiveToBranchId);
-
-  useEffect(() => {
-    if (showAddModal) {
-      // Logic when modal opens (resetting etc)
-    }
-  }, [showAddModal]);
-
-  // Calculate live available stock in source/target branch.
-  const hasVariants = (selectedProduct?.availableSizes?.length || 0) + (selectedProduct?.availableColors?.length || 0) > 0;
-  const variantsList: string[] = hasVariants
-    ? Array.from(new Set([...(selectedProduct?.availableSizes || []), ...(selectedProduct?.availableColors || [])]))
-    : [''];
-
-  const {
-    getSourceStockForVariant,
-    getTargetStockForVariant,
-    totalSourceStock,
-    totalTargetStock,
-    totalTransferring,
-  } = getTransferStockHelpers(
-    inventory,
-    selectedProduct?.id || '',
-    effectiveFromBranchId,
-    effectiveToBranchId,
-    variantsList,
-    variantQuantities
+  const branchLabelById = useMemo(
+    () => new Map(branches.map((branch) => [branch.id, branch.name])),
+    [branches]
   );
 
-  const handleTransfer = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError("");
+  const branchLabel = (id?: string, fallback = 'Sucursal') =>
+    (id && branchLabelById.get(id)) || fallback;
 
-    if (!effectiveFromBranchId || !effectiveToBranchId) {
-      setError("Debes seleccionar tanto la sucursal de origen como la de destino.");
-      return;
+  const stockByKey = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const row of inventory) {
+      const key = `${row.productId}|${row.branchId}|${row.variantLabel || ''}`;
+      map.set(key, (map.get(key) || 0) + (Number(row.quantity) || 0));
     }
+    return map;
+  }, [inventory]);
 
-    if (effectiveFromBranchId === effectiveToBranchId) {
-      setError("La sucursal de origen y destino no pueden ser la misma.");
-      return;
+  const productById = useMemo(() => new Map(products.map((product) => [product.id, product])), [products]);
+
+  const productVariantLabels = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const product of products) {
+      const labels = Array.from(new Set([
+        ...(product.availableSizes || []),
+        ...(product.availableColors || []),
+      ])).map((value) => String(value).trim()).filter(Boolean);
+      map.set(product.id, labels.length ? labels : ['']);
     }
+    return map;
+  }, [products]);
 
-    if (!selectedProduct) {
-      setError("Debes seleccionar un producto válido.");
-      return;
+  const stockAt = (productId: string, branchId: string, variant?: string) =>
+    stockByKey.get(`${productId}|${branchId}|${variant || ''}`) || 0;
+
+  const branchScopedTransfers = useMemo(() => {
+    const visible = isBranchRestricted
+      ? transfers.filter((transfer) =>
+          authorizedBranchIds.includes(transfer.fromBranchId) || authorizedBranchIds.includes(transfer.toBranchId)
+        )
+      : transfers;
+    if (historyMode !== 'branch' || !branchFilter) return visible;
+    return visible.filter((transfer) =>
+      transfer.fromBranchId === branchFilter || transfer.toBranchId === branchFilter
+    );
+  }, [transfers, historyMode, branchFilter, isBranchRestricted, authorizedBranchIds]);
+
+  const inTransitGroups = useMemo(() => {
+    const groups = new Map<string, InventoryTransfer[]>();
+    for (const transfer of branchScopedTransfers) {
+      if (transfer.status !== 'in_transit') continue;
+      const key = transfer.batchId || transfer.operationId || transfer.id;
+      const list = groups.get(key) || [];
+      list.push(transfer);
+      groups.set(key, list);
     }
+    return Array.from(groups.entries())
+      .map(([key, rows]) => ({
+        key,
+        rows,
+        operationIds: Array.from(new Set(rows.map((row) => String(row.operationId || row.id)).filter(Boolean))),
+        totalQty: rows.reduce((sum, row) => sum + Number(row.quantity || 0), 0),
+        dateMs: new Date(rows[0]?.date || 0).getTime(),
+        fromBranchName: rows[0]?.fromBranchName || 'Origen',
+        toBranchName: rows[0]?.toBranchName || 'Destino',
+      }))
+      .sort((a, b) => b.dateMs - a.dateMs);
+  }, [branchScopedTransfers]);
 
-    const variantsToTransfer: [string, number][] = hasVariants 
-      ? Object.entries(variantQuantities)
-          .map(([v, qty]): [string, number] => [v, Number(qty) || 0])
-          .filter(([_, qty]) => qty > 0) 
-      : [['', Number(variantQuantities['']) || 0]];
-
-    if (variantsToTransfer.length === 0 || variantsToTransfer.every(([_, qty]) => qty <= 0)) {
-      setError("Debes ingresar una cantidad mayor a 0 para transferir.");
-      return;
+  const historyGroups = useMemo<TransferGroupRow[]>(() => {
+    const term = historySearch.trim().toLowerCase();
+    const scoped = term
+      ? branchScopedTransfers.filter((transfer) =>
+          [transfer.productName, transfer.fromBranchName, transfer.toBranchName, transfer.variantLabel, transfer.batchId]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase()
+            .includes(term)
+        )
+      : branchScopedTransfers;
+    const groups = new Map<string, InventoryTransfer[]>();
+    for (const transfer of scoped) {
+      const key = transfer.batchId || transfer.id;
+      const list = groups.get(key) || [];
+      list.push(transfer);
+      groups.set(key, list);
     }
+    return Array.from(groups.entries())
+      .map(([key, rows]) => {
+        const first = rows[0];
+        const date = new Date(first.date);
+        const direction = historyMode === 'branch' && branchFilter
+          ? (first.fromBranchId === branchFilter ? 'out' as const : first.toBranchId === branchFilter ? 'in' as const : null)
+          : null;
+        return {
+          key,
+          rows,
+          first,
+          totalQty: rows.reduce((sum, row) => sum + (Number(row.quantity) || 0), 0),
+          dateMs: date.getTime() || 0,
+          dateLabel: date.toLocaleDateString('es-CU', { day: '2-digit', month: '2-digit', year: 'numeric' }),
+          timeLabel: date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          direction,
+        };
+      })
+      .sort((a, b) => b.dateMs - a.dateMs);
+  }, [branchScopedTransfers, historySearch, historyMode, branchFilter]);
 
-    // Live verification: Check that no variant exceeds current source stock
-    for (const [variant, qty] of variantsToTransfer) {
-      const available = getSourceStockForVariant(variant);
-      if (qty > available) {
-        setError(`No hay suficiente stock en origen para ${variant ? `la variante "${variant}"` : 'este producto'}. Disponible: ${available} uds, intentas transferir: ${qty} uds.`);
-        return;
+  const stats = useMemo(() => {
+    const units = branchScopedTransfers.reduce((sum, transfer) => sum + (Number(transfer.quantity) || 0), 0);
+    const batches = new Set(branchScopedTransfers.map((transfer) => transfer.batchId || transfer.id)).size;
+    const transitRows = branchScopedTransfers.filter((transfer) => transfer.status === 'in_transit');
+    const transitBatches = new Set(transitRows.map((transfer) => transfer.batchId || transfer.operationId || transfer.id)).size;
+    const transitUnits = transitRows.reduce((sum, transfer) => sum + (Number(transfer.quantity) || 0), 0);
+    if (historyMode === 'branch' && branchFilter) {
+      const outgoing = branchScopedTransfers.filter((transfer) => transfer.fromBranchId === branchFilter).length;
+      const incoming = branchScopedTransfers.filter((transfer) => transfer.toBranchId === branchFilter).length;
+      return { units, batches, transitBatches, transitUnits, outgoing, incoming, topBranch: null as { name: string; count: number } | null };
+    }
+    const counts = new Map<string, { id: string; count: number }>();
+    for (const transfer of branchScopedTransfers) {
+      for (const id of [transfer.fromBranchId, transfer.toBranchId]) {
+        if (!id) continue;
+        const entry = counts.get(id) || { id, count: 0 };
+        entry.count += 1;
+        counts.set(id, entry);
       }
     }
+    const top = Array.from(counts.values()).sort((a, b) => b.count - a.count)[0];
+    return {
+      units,
+      batches,
+      transitBatches,
+      transitUnits,
+      outgoing: 0,
+      incoming: 0,
+      topBranch: top ? { name: branchLabelById.get(top.id) || 'Sucursal', count: top.count } : null,
+    };
+  }, [branchScopedTransfers, historyMode, branchFilter, branchLabelById]);
 
-    setIsSubmitting(true);
-    const variantsPayload = variantsToTransfer.map(([v, q]) => ({ variantLabel: v, quantity: q }));
+  const bubbleItems = historyMode === 'branch' && branchFilter
+    ? [
+        { label: 'Operaciones', value: String(stats.batches), hint: `${branchScopedTransfers.length} líneas en esta sucursal`, icon: ArrowLeftRight, tone: 'violet' as const },
+        { label: 'Unidades movidas', value: String(stats.units), hint: 'Artículos en esta sucursal', icon: Package, tone: 'blue' as const },
+        { label: 'Salidas', value: String(stats.outgoing), hint: 'Líneas enviadas a otras sucursales', icon: ArrowUpRight, tone: 'amber' as const },
+        { label: 'Entradas', value: String(stats.incoming), hint: 'Líneas recibidas de otras sucursales', icon: ArrowDownRight, tone: 'emerald' as const },
+      ]
+    : [
+        { label: 'Operaciones', value: String(stats.batches), hint: `${branchScopedTransfers.length} líneas registradas`, icon: ArrowLeftRight, tone: 'violet' as const },
+        { label: 'Unidades movidas', value: String(stats.units), hint: 'Artículos trasladados', icon: Package, tone: 'blue' as const },
+        { label: 'En tránsito', value: String(stats.transitBatches), hint: `${stats.transitUnits} uds por recibir`, icon: Truck, tone: 'amber' as const },
+        { label: 'Sucursal más activa', value: stats.topBranch?.name || '—', hint: stats.topBranch ? `${stats.topBranch.count} movimientos` : 'Sin datos aún', icon: Building2, tone: 'emerald' as const, valueClassName: 'line-clamp-2 text-base leading-snug break-words sm:text-lg' },
+      ];
 
-    const result = await transferInventoryBatch(
-      formData.productId,
-      effectiveFromBranchId,
-      effectiveToBranchId,
-      variantsPayload
-    );
-
-    setIsSubmitting(false);
-
-    if (result.success) {
-      addNotification(
-        (result as any).pending
-          ? "Traslado guardado offline. Quedó pendiente de confirmación con la nube."
-          : "Traslado individual completado exitosamente.",
-        (result as any).pending ? 'info' : 'success'
-      );
-      setShowAddModal(false);
-      setFormData({ ...formData, productId: '' });
-      setVariantQuantities({});
-      setError("");
-    } else {
-      setError(result.error || "No se pudo completar la transferencia. Revisa el stock disponible.");
+  const resolveTransit = async (key: string, operationIds: string[], action: 'receive' | 'cancel') => {
+    setResolvingTransitKey(key);
+    try {
+      const result = action === 'receive'
+        ? await receiveTransfer(operationIds)
+        : await cancelTransfer(operationIds);
+      if (result.success) {
+        addNotification(
+          result.pending
+            ? (action === 'receive'
+                ? 'Recepción guardada. Se confirmará con la nube al recuperar conexión.'
+                : 'Cancelación guardada. Se confirmará con la nube al recuperar conexión.')
+            : (action === 'receive'
+                ? 'Mercancía recibida y sumada al almacén de destino.'
+                : 'Traslado cancelado y mercancía devuelta al origen.'),
+          result.pending ? 'info' : 'success'
+        );
+      } else {
+        addNotification(result.error || 'No se pudo completar la operación.', 'error');
+      }
+    } catch (error: any) {
+      addNotification(error?.message || 'No se pudo completar la operación.', 'error');
+    } finally {
+      setResolvingTransitKey(null);
     }
+  };
+
+  const toggleBatch = (key: string) => {
+    setExpandedBatches((prev) => prev.includes(key) ? prev.filter((id) => id !== key) : [...prev, key]);
+  };
+
+  const addedKeys = useMemo(
+    () => new Set(bulkTransferItems.map((item) => `${item.productId}|${item.variant || ''}`)),
+    [bulkTransferItems]
+  );
+
+  const productEntries = useMemo(() => products.map((product) => {
+    const variants = productVariantLabels.get(product.id) || [''];
+    let bestVariant: string | undefined;
+    let bestStock = 0;
+    for (const variant of variants) {
+      const qty = stockAt(product.id, bulkTransferSourceId, variant);
+      if (bestVariant === undefined && qty > 0) {
+        bestVariant = variant;
+        bestStock = qty;
+      }
+    }
+    return { product, variants, bestVariant, stock: bestStock };
+  }), [products, productVariantLabels, bulkTransferSourceId, stockByKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const visibleProducts = useMemo(() => {
+    const term = transferSearch.trim().toLowerCase();
+    return productEntries
+      .filter((entry) => {
+        const haystack = `${entry.product.name} ${entry.product.sku || ''}`.toLowerCase();
+        if (term && !haystack.includes(term)) return false;
+        return !addedKeys.has(`${entry.product.id}|${entry.bestVariant || ''}`);
+      })
+      .slice(0, 30);
+  }, [productEntries, transferSearch, addedKeys]);
+
+  const shipments = useMemo(() => bulkTransferItems
+    .map((item) => {
+      const product = productById.get(item.productId);
+      if (!product) return null;
+      return {
+        item,
+        product,
+        variants: productVariantLabels.get(item.productId) || [''],
+        stock: stockAt(item.productId, bulkTransferSourceId, item.variant),
+      };
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry)),
+  [bulkTransferItems, productById, productVariantLabels, bulkTransferSourceId, stockByKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const updateShipmentQuantity = (index: number, nextQuantity: number, maxStock: number) => {
+    setBulkTransferItems((prev) => prev.map((candidate, idx) =>
+      idx === index ? { ...candidate, quantity: Math.max(1, Math.min(Math.max(1, maxStock), nextQuantity)) } : candidate
+    ));
   };
 
   return (
     <PlanFeatureGate
       feature="transfers"
       title="Transferencias entre almacenes"
-      description="Esta función mueve mercancía entre almacenes. Un plan Oasis tiene un solo almacén, por lo que no necesita transferencias. Puedes explorar la función y actualizar el plan cuando tengas varios puntos." 
+      description="Esta función mueve mercancía entre almacenes. Un plan Oasis tiene un solo almacén, por lo que no necesita transferencias. Puedes explorar la función y actualizar el plan cuando tengas varios puntos."
     >
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500 pb-20 p-4 sm:p-6 max-w-full overflow-x-hidden bg-slate-50/50 min-h-screen">
-      
-      {/* Header */}
-      <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 bg-secondary p-4 sm:p-5 rounded-2xl border border-base shadow-xs">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-md shadow-indigo-100 dark:shadow-none shrink-0">
-            <ArrowLeftRight className="w-5 h-5" />
+    <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
+
+      <header className="flex flex-col gap-3 rounded-2xl border border-base bg-secondary p-4 shadow-xs sm:flex-row sm:items-center sm:justify-between sm:p-5">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white shadow-md">
+            <ArrowLeftRight className="h-5 w-5" aria-hidden="true" />
           </div>
-          <div>
-            <h2 data-palmi-content="transfers" className="text-lg sm:text-xl font-black text-primary tracking-tight uppercase leading-none">Transferencias</h2>
-            <p className="text-[9px] font-bold text-muted uppercase tracking-widest mt-1">Gestión de inventario entre sucursales</p>
+          <div className="min-w-0">
+            <h2 data-palmi-content="transfers" className="truncate text-lg font-black uppercase leading-none tracking-tight text-primary sm:text-xl">Transferencias</h2>
+            <p className="mt-1 truncate text-[11px] font-bold uppercase tracking-widest text-muted">Inventario entre almacenes y sucursales</p>
           </div>
         </div>
-        
-        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
-          <div className="flex bg-subtle p-1 rounded-xl border border-base">
-            <button
-              onClick={() => setActiveTab('history')}
-              className={cn(
-                "px-3.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer",
-                activeTab === 'history' ? "bg-secondary text-indigo-600 shadow-xs border border-base" : "text-muted hover:text-primary"
-              )}
-            >
-              Historial
-            </button>
-            <button
-              onClick={() => setActiveTab('new')}
-              className={cn(
-                "px-3.5 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer",
-                activeTab === 'new' ? "bg-secondary text-indigo-600 shadow-xs border border-base" : "text-muted hover:text-primary"
-              )}
-            >
-              Nuevo Traslado
-            </button>
-          </div>
-          <button 
+
+        <div className="grid w-full grid-cols-2 gap-1 rounded-xl border border-base bg-subtle p-1 sm:w-auto">
+          <button
             type="button"
-            onClick={() => {
-              setShowAddModal(true);
-              setError("");
-              if (products.length > 0 && !formData.productId) {
-                setFormData(prev => ({ ...prev, productId: products[0].id }));
-              }
-            }}
-            className="btn-primary"
+            onClick={() => setActiveTab('history')}
+            aria-pressed={activeTab === 'history'}
+            className={cn(
+              'min-h-9 rounded-lg px-3 text-[11px] font-black uppercase tracking-wide transition-all',
+              activeTab === 'history' ? 'bg-secondary text-violet-700 shadow-xs dark:text-violet-300' : 'text-muted hover:text-primary'
+            )}
           >
-            <Plus className="w-3.5 h-3.5" />
-            Traslado Individual
+            Historial
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('new')}
+            aria-pressed={activeTab === 'new'}
+            className={cn(
+              'min-h-9 rounded-lg px-3 text-[11px] font-black uppercase tracking-wide transition-all',
+              activeTab === 'new' ? 'bg-secondary text-violet-700 shadow-xs dark:text-violet-300' : 'text-muted hover:text-primary'
+            )}
+          >
+            Nuevo traslado
           </button>
         </div>
       </header>
 
       {activeTab === 'history' ? (
-        /* Main Content Grid */
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          
-          {/* Left Column: Transfer History */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-              <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between bg-white">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center">
-                    <History className="w-4 h-4 text-indigo-600" />
-                  </div>
-                  <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Historial de Movimientos</h3>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest bg-slate-50 px-3 py-1.5 rounded-lg border border-slate-100">
-                    {transfers.length} Operaciones
-                  </span>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50/80 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">
-                      <th className="px-6 py-4">Fecha / Hora</th>
-                      <th className="px-6 py-4">Ruta y Cantidad Total</th>
-                      <th className="px-6 py-4">Detalle de Productos</th>
-                      <th className="px-6 py-4 text-center">Estado</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {transfers.length > 0 ? (() => {
-                      const grouped = transfers.reduce((acc, t) => {
-                        const key = t.batchId || t.id;
-                        if (!acc[key]) acc[key] = [];
-                        acc[key].push(t);
-                        return acc;
-                      }, {} as Record<string, typeof transfers>);
-
-                      const sortedGroups = Object.values(grouped).sort((a, b) => 
-                        new Date(b[0].date).getTime() - new Date(a[0].date).getTime()
-                      );
-
-                      return sortedGroups.map(group => {
-                        const first = group[0];
-                        const isBatch = group.length > 1;
-                        const isExpanded = expandedBatches.includes(first.batchId || first.id);
-                        const totalQty = group.reduce((sum, t) => sum + t.quantity, 0);
-                        const visibleItems = isExpanded ? group : group.slice(0, 2);
-                        const hasMore = group.length > 2;
-
-                        return (
-                          <React.Fragment key={first.batchId || first.id}>
-                            <tr className={cn(
-                              "hover:bg-slate-50/60 transition-colors group border-l-4",
-                              isBatch ? "border-l-indigo-500" : "border-l-transparent"
-                            )}>
-                              <td className="px-6 py-4 whitespace-nowrap">
-                                <div className="text-[11px] font-bold text-slate-900">{new Date(first.date).toLocaleDateString()}</div>
-                                <div className="text-[9px] font-mono text-slate-400">{new Date(first.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                                {isBatch && (
-                                  <div className="mt-1">
-                                    <span className="text-[8px] font-black uppercase text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
-                                      Lote de {group.length}
-                                    </span>
-                                  </div>
-                                )}
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="flex items-center gap-2">
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="text-[10px] font-black text-slate-700 uppercase bg-white px-2 py-1 rounded border border-slate-200 shadow-sm">
-                                      {first.fromBranchName}
-                                    </span>
-                                    <ArrowRight className="w-3 h-3 text-indigo-400 shrink-0" />
-                                    <span className="text-[10px] font-black text-indigo-700 uppercase bg-indigo-50 px-2 py-1 rounded border border-indigo-100 shadow-sm">
-                                      {first.toBranchName}
-                                    </span>
-                                  </div>
-                                  <span className="ml-2 text-[10px] font-black bg-slate-900 text-white px-2 py-1 rounded-lg">
-                                    {totalQty} UDS
-                                  </span>
-                                </div>
-                              </td>
-                              <td className="px-6 py-4">
-                                <div className="flex flex-wrap gap-2 max-w-md">
-                                  {visibleItems.map((t) => (
-                                    <div key={t.id} className="flex items-center gap-1.5 bg-slate-50 border border-slate-100 px-2 py-1 rounded-md">
-                                      <span className="text-[10px] font-bold text-slate-800 truncate max-w-[120px]">{t.productName}</span>
-                                      {t.variantLabel && (
-                                        <span className="text-[8px] font-black text-indigo-500 uppercase">{t.variantLabel}</span>
-                                      )}
-                                      <span className="text-[9px] font-black text-slate-400">({t.quantity})</span>
-                                    </div>
-                                  ))}
-                                  
-                                  {hasMore && (
-                                    <button 
-                                      onClick={() => {
-                                        if (isExpanded) {
-                                          setExpandedBatches(prev => prev.filter(id => id !== (first.batchId || first.id)));
-                                        } else {
-                                          setExpandedBatches(prev => [...prev, first.batchId || first.id]);
-                                        }
-                                      }}
-                                      className="text-[9px] font-black text-indigo-600 hover:text-indigo-700 bg-white border border-indigo-100 px-2 py-1 rounded-md transition-all active:scale-95"
-                                    >
-                                      {isExpanded ? "MOSTRAR MENOS" : `VER ${group.length - 2} MÁS`}
-                                    </button>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="px-6 py-4 text-center">
-                                {first.status === 'pending' ? (
-                                  <span className="inline-flex items-center gap-1 text-[9px] font-black text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
-                                    <Clock className="w-3 h-3 text-amber-600" />
-                                    PENDIENTE
-                                  </span>
-                                ) : first.status === 'cancelled' ? (
-                                  <span className="inline-flex items-center gap-1 text-[9px] font-black text-rose-700 bg-rose-50 px-2.5 py-1 rounded-full border border-rose-200">
-                                    <AlertTriangle className="w-3 h-3 text-rose-600" />
-                                    CONFLICTO
-                                  </span>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 text-[9px] font-black text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                                    <CheckCircle className="w-3 h-3 text-emerald-600" />
-                                    OK
-                                  </span>
-                                )}
-                              </td>
-                            </tr>
-                          </React.Fragment>
-                        );
-                      });
-                    })() : (
-                      <tr>
-                        <td colSpan={5} className="px-6 py-16 text-center">
-                          <div className="flex flex-col items-center justify-center text-slate-300">
-                            <ArrowLeftRight className="w-12 h-12 mb-3 text-slate-200" />
-                            <p className="text-xs font-black uppercase tracking-widest text-slate-400">Sin registros de transferencia</p>
-                            <p className="text-xs text-slate-400 mt-1 max-w-xs">Usa el botón "Nueva Transferencia" para mover stock entre tus almacenes de manera segura.</p>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          {/* Right Column: System Status & Diagnostic Summary */}
-          <div className="space-y-4">
-            <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-              <h3 className="text-xs font-black uppercase tracking-widest text-slate-900 mb-5 flex items-center justify-between border-b border-slate-100 pb-3">
-                <span>Métricas de Operación</span>
-                <Activity className="w-4 h-4 text-indigo-600" />
-              </h3>
-              
-              <div className="space-y-4">
-                <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center border border-slate-200 shadow-xs">
-                    <Package className="w-6 h-6 text-indigo-600" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-black text-slate-900 leading-none">{transfers.length}</p>
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mt-1">Transferencias Totales</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-4 p-3 bg-slate-50 rounded-xl border border-slate-100">
-                  <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center border border-slate-200 shadow-xs">
-                    <Building2 className="w-6 h-6 text-emerald-600" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-black text-slate-900 leading-none">{branches.length}</p>
-                    <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mt-1">Puntos de Distribución</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="bg-slate-900 p-6 rounded-2xl text-white shadow-xl">
-              <h3 className="text-xs font-black text-indigo-300 uppercase tracking-widest flex items-center gap-2 mb-4">
-                <Boxes className="w-4 h-4" />
-                Seguridad de Inventario
-              </h3>
-              <div className="space-y-4 text-[11px]">
-                <div className="flex gap-3 items-start">
-                  <div className="w-5 h-5 bg-emerald-500/20 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                  </div>
-                  <p className="font-medium text-slate-300">
-                    <strong className="text-white block mb-0.5 uppercase tracking-wide">Validación Atómica</strong>
-                    El stock se verifica en tiempo real antes de cada movimiento.
-                  </p>
-                </div>
-                <div className="flex gap-3 items-start">
-                  <div className="w-5 h-5 bg-emerald-500/20 rounded-lg flex items-center justify-center shrink-0 mt-0.5">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                  </div>
-                  <p className="font-medium text-slate-300">
-                    <strong className="text-white block mb-0.5 uppercase tracking-wide">Trazabilidad Total</strong>
-                    Cada transferencia genera un registro inmutable con ID de lote.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div className="flex-1 flex flex-col min-h-0 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 overflow-hidden animate-in fade-in zoom-in-95 duration-300">
-          <div className="p-5 bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 flex flex-col lg:flex-row gap-5 shrink-0">
-            <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <div>
-                <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 px-1">Origen de Mercancía</label>
-                <div className="relative">
-                  <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                  <select 
-                    value={bulkTransferSourceId}
-                    onChange={(e) => {
-                      setBulkTransferSourceId(e.target.value);
-                      setBulkTransferItems([]); 
-                    }}
-                    className="w-full bg-white dark:bg-slate-800 border border-slate-200 rounded-xl pl-10 pr-3 py-3 text-xs font-black uppercase outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm appearance-none"
-                  >
-                    {branches.map(b => (
-                      <option key={b.id} value={b.id}>{getBranchDisplayName(b)}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-              <div>
-                <label className="block text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5 px-1">Destino de Mercancía</label>
-                <div className="relative">
-                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-400" />
-                  <select 
-                    value={bulkTransferTargetId}
-                    onChange={(e) => setBulkTransferTargetId(e.target.value)}
-                    className="w-full bg-white dark:bg-slate-800 border border-indigo-100 rounded-xl pl-10 pr-3 py-3 text-xs font-black uppercase outline-none focus:ring-2 focus:ring-indigo-500 shadow-sm appearance-none"
-                  >
-                    <option value="">Seleccionar destino...</option>
-                    {branches.filter(b => b.id !== bulkTransferSourceId).map(b => (
-                      <option key={b.id} value={b.id}>{getBranchDisplayName(b)}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-            </div>
-            <div className="flex items-end gap-2">
+        <>
+          <section className="flex flex-col gap-2 rounded-2xl border border-base bg-secondary p-3 shadow-xs lg:flex-row lg:items-center">
+            <div className="grid grid-cols-2 gap-1 rounded-xl border border-base bg-subtle p-1">
               <button
-                disabled={isExecutingTransfer || bulkTransferItems.length === 0 || !bulkTransferTargetId}
-                onClick={async () => {
-                  setIsExecutingTransfer(true);
-                  try {
-                    const result = await transferProductsBulk(
-                      bulkTransferSourceId, 
-                      bulkTransferTargetId, 
-                      bulkTransferItems.map(item => ({
-                        productId: item.productId,
-                        quantity: item.quantity,
-                        variant: item.variant
-                      }))
-                    );
-                    
-                    if (result.success) {
-                      addNotification(
-                        (result as any).pending
-                          ? 'Traslado masivo guardado offline. Quedó pendiente de confirmación con la nube.'
-                          : 'Traslado masivo completado exitosamente.',
-                        (result as any).pending ? 'info' : 'success'
-                      );
-                      setBulkTransferItems([]);
-                      setActiveTab('history');
-                    } else {
-                      addNotification(result.error || "Error al realizar el traslado masivo.", 'error');
-                    }
-                  } catch (err) {
-                    addNotification("Error al procesar el traslado.", 'error');
-                  } finally {
-                    setIsExecutingTransfer(false);
-                  }
-                }}
-                className="w-full lg:w-auto px-6 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50 disabled:shadow-none flex items-center justify-center gap-2 cursor-pointer h-[42px]"
+                type="button"
+                onClick={() => setHistoryMode('general')}
+                aria-pressed={historyMode === 'general'}
+                className={cn(
+                  'min-h-9 rounded-lg px-3 text-[11px] font-black uppercase tracking-wide transition-all whitespace-nowrap',
+                  historyMode === 'general' ? 'bg-violet-600 text-white shadow-xs' : 'text-secondary hover:text-primary'
+                )}
               >
-                {isExecutingTransfer ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <ArrowLeftRight className="w-3.5 h-3.5" />}
-                Confirmar Envío ({bulkTransferItems.length} tipos)
+                Historial general
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setHistoryMode('branch');
+                  if (!branchFilter) setBranchFilter(currentBranchId || branches[0]?.id || '');
+                }}
+                aria-pressed={historyMode === 'branch'}
+                className={cn(
+                  'min-h-9 rounded-lg px-3 text-[11px] font-black uppercase tracking-wide transition-all whitespace-nowrap',
+                  historyMode === 'branch' ? 'bg-violet-600 text-white shadow-xs' : 'text-secondary hover:text-primary'
+                )}
+              >
+                Por sucursal
               </button>
             </div>
-          </div>
 
-          <div className="flex-1 flex flex-col lg:flex-row min-h-0">
-            <div className="flex-1 flex flex-col border-r border-slate-200 min-h-0 bg-slate-50/30 dark:bg-slate-900/30">
-              <div className="p-4 border-b border-slate-200 bg-white dark:bg-slate-900/50">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                  <input 
-                    type="text" 
-                    placeholder="Buscar productos por nombre o SKU..."
-                    value={transferSearch}
-                    onChange={(e) => setTransferSearch(e.target.value)}
-                    className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 rounded-xl text-xs font-black uppercase outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs transition-all"
-                  />
-                </div>
-              </div>
-              <div className="flex-1 overflow-auto p-5">
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {products
-                    .filter(p => 
-                      !bulkTransferItems.some(item => item.productId === p.id && (!item.variant || item.variant === '')) &&
-                      (p.name.toLowerCase().includes(transferSearch.toLowerCase()) || 
-                       p.sku?.toLowerCase().includes(transferSearch.toLowerCase()))
-                    )
-                    .slice(0, 21)
-                    .map(product => {
-                      const productVariants = Array.from(new Set([
-                        ...(product.availableSizes || []),
-                        ...(product.availableColors || [])
-                      ])).map(v => String(v).trim()).filter(Boolean);
-                      const cardVariants = productVariants.length ? productVariants : [''];
-                      const availableVariant = cardVariants.find(v => {
-                        const row = inventory.find(inv =>
-                          inv.productId === product.id &&
-                          inv.branchId === bulkTransferSourceId &&
-                          (inv.variantLabel || '') === v
-                        );
-                        return Number(row?.quantity || 0) > 0;
-                      });
-                      const stock = availableVariant === undefined ? 0 : Number(
-                        inventory.find(inv =>
-                          inv.productId === product.id &&
-                          inv.branchId === bulkTransferSourceId &&
-                          (inv.variantLabel || '') === availableVariant
-                        )?.quantity || 0
-                      );
-                      return (
-                        <button
-                          key={product.id}
-                          disabled={stock <= 0}
-                          onClick={() => {
-                            if (availableVariant === undefined) return;
-                            setBulkTransferItems(prev => [
-                              ...prev,
-                              { productId: product.id, quantity: 1, variant: availableVariant || undefined }
-                            ]);
-                          }}
-                          className={cn(
-                            "p-4 rounded-xl border text-left transition-all group flex flex-col gap-2 shadow-sm",
-                            stock > 0 
-                              ? "bg-white dark:bg-slate-800 border-slate-200 hover:border-indigo-500 hover:shadow-md cursor-pointer" 
-                              : "bg-slate-100 dark:bg-slate-900 border-slate-100 opacity-60 grayscale cursor-not-allowed"
-                          )}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase truncate leading-tight">{product.name}</p>
-                            <div className="w-6 h-6 rounded-lg bg-indigo-50 flex items-center justify-center shrink-0">
-                              <Plus className="w-3.5 h-3.5 text-indigo-600" />
-                            </div>
-                          </div>
-                          <div className="flex items-center justify-between mt-auto pt-2 border-t border-slate-50 dark:border-slate-700/50">
-                            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-tighter">Stock Origen</span>
-                            <span className={cn(
-                              "text-[10px] font-black px-2 py-0.5 rounded-md",
-                              stock > 0 ? "text-indigo-600 bg-indigo-50" : "text-slate-400 bg-slate-100"
-                            )}>{stock} uds</span>
-                          </div>
-                        </button>
-                      );
-                    })}
-                </div>
-              </div>
+            {historyMode === 'branch' && (
+              <select
+                value={branchFilter}
+                onChange={(event) => setBranchFilter(event.target.value)}
+                aria-label="Sucursal a consultar"
+                className="min-h-10 w-full rounded-xl border border-base bg-subtle px-3 text-[12px] font-black uppercase text-primary lg:w-64"
+              >
+                {allowedBranches.map((branch) => (
+                  <option key={branch.id} value={branch.id}>{branchLabel(branch.id, branch.name)}</option>
+                ))}
+              </select>
+            )}
+
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden="true" />
+              <input
+                type="search"
+                value={historySearch}
+                onChange={(event) => setHistorySearch(event.target.value)}
+                placeholder="Buscar producto, lote o sucursal…"
+                aria-label="Buscar en el historial de transferencias"
+                className="min-h-10 w-full rounded-xl border border-base bg-subtle pl-9 pr-3 text-[12px] font-bold text-primary"
+              />
             </div>
+          </section>
 
-            <div className="w-full lg:w-96 flex flex-col bg-white dark:bg-slate-900 min-h-0 border-l border-slate-200">
-              <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50 dark:bg-slate-800/30 shrink-0">
-                <h3 className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase tracking-widest flex items-center gap-2">
-                  <ArrowLeftRight className="w-4 h-4 text-indigo-600" />
-                  Lista de Envío
-                </h3>
-                <span className="px-3 py-1 bg-indigo-600 text-white rounded-lg text-[10px] font-black shadow-sm">
-                  {bulkTransferItems.length} items
+          <ReportsStatBubbles items={bubbleItems} />
+
+          {inTransitGroups.length > 0 && (
+            <section className="overflow-hidden rounded-2xl border border-amber-200 bg-secondary shadow-xs dark:border-amber-900/60">
+              <div className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50/70 px-3 py-2.5 dark:border-amber-900/60 dark:bg-amber-950/30">
+                <div className="flex min-w-0 items-center gap-2">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-secondary text-amber-600 dark:border-amber-900/60 dark:text-amber-300">
+                    <Truck className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0">
+                    <h3 className="truncate text-[12px] font-black uppercase tracking-wide text-amber-900 dark:text-amber-200">Mercancía en tránsito</h3>
+                    <p className="truncate text-[11px] font-semibold text-amber-700/90 dark:text-amber-300/80">Confirma la recepción en destino o devuélvela al origen.</p>
+                  </div>
+                </div>
+                <span className="shrink-0 rounded-lg border border-amber-200 bg-secondary px-2 py-1 text-[11px] font-black text-amber-800 dark:border-amber-900/60 dark:text-amber-300">
+                  {inTransitGroups.length} pendiente{inTransitGroups.length === 1 ? '' : 's'}
                 </span>
               </div>
-              <div className="flex-1 overflow-auto p-5 space-y-3">
-                {bulkTransferItems.length === 0 ? (
-                  <div className="h-full flex flex-col items-center justify-center text-center p-8 opacity-40">
-                    <div className="w-16 h-16 bg-slate-100 rounded-2xl flex items-center justify-center mb-4">
-                      <ArrowLeftRight className="w-8 h-8 text-slate-300" />
-                    </div>
-                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Lista de Envío Vacía</p>
-                    <p className="text-[10px] text-slate-400 mt-2 font-medium">Selecciona productos de la izquierda para comenzar el traslado.</p>
-                  </div>
-                ) : (
-                  bulkTransferItems.map((item, index) => {
-                    const product = products.find(p => p.id === item.productId);
-                    const productVariants = Array.from(new Set([
-                      ...(product?.availableSizes || []),
-                      ...(product?.availableColors || [])
-                    ])).map(v => String(v).trim()).filter(Boolean);
-                    const selectedVariant = String(item.variant || '');
-                    const stock = Number(
-                      inventory.find(inv =>
-                        inv.productId === item.productId &&
-                        inv.branchId === bulkTransferSourceId &&
-                        (inv.variantLabel || '') === selectedVariant
-                      )?.quantity || 0
-                    );
-                    const rowKey = item.productId + ':' + selectedVariant;
-                    
+              <ul className="divide-y divide-base">
+                {inTransitGroups.map((group) => {
+                  const busy = resolvingTransitKey === group.key;
+                  return (
+                    <li key={group.key} className="flex flex-col gap-2 px-3 py-3 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="max-w-full truncate rounded-md border border-base bg-subtle px-2 py-1 text-[11px] font-black uppercase text-secondary" title={group.fromBranchName}>
+                            {group.fromBranchName}
+                          </span>
+                          <ArrowRight className="h-3 w-3 shrink-0 text-amber-500" aria-hidden="true" />
+                          <span className="max-w-full truncate rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-black uppercase text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300" title={group.toBranchName}>
+                            {group.toBranchName}
+                          </span>
+                          <span className="rounded-md bg-slate-900 px-2 py-1 text-[11px] font-black text-white">{group.totalQty} uds</span>
+                        </div>
+                        <p className="mt-1.5 truncate text-[11px] font-semibold text-muted" title={`${new Date(group.dateMs).toLocaleString()} · ${group.rows.map((row) => row.productName).join(', ')}`}>
+                          {new Date(group.dateMs).toLocaleString('es-CU')} · {group.rows.slice(0, 3).map((row) => row.productName).join(', ')}
+                          {group.rows.length > 3 ? ` +${group.rows.length - 3} más` : ''}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1.5 lg:shrink-0">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void resolveTransit(group.key, group.operationIds, 'cancel')}
+                          className="inline-flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-base bg-secondary px-3 text-[11px] font-black uppercase tracking-wide text-secondary transition-colors hover:bg-subtle disabled:opacity-50 lg:flex-none"
+                        >
+                          <Undo2 className="h-3.5 w-3.5" aria-hidden="true" /> Cancelar
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void resolveTransit(group.key, group.operationIds, 'receive')}
+                          className="inline-flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-[11px] font-black uppercase tracking-wide text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50 lg:flex-none"
+                        >
+                          {busy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <PackageCheck className="h-3.5 w-3.5" aria-hidden="true" />}
+                          Recibir
+                        </button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
+
+          <section className="overflow-hidden rounded-2xl border border-base bg-secondary shadow-xs">
+            <div className="flex items-center justify-between gap-2 border-b border-base bg-subtle/60 px-3 py-2.5">
+              <span className="flex min-w-0 items-center gap-2 text-[12px] font-black uppercase tracking-wide text-primary">
+                <History className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-300" aria-hidden="true" />
+                <span className="truncate">
+                  {historyMode === 'branch' ? `Movimientos de ${branchLabel(branchFilter)}` : 'Historial de movimientos'}
+                </span>
+              </span>
+              <span className="shrink-0 text-[11px] font-bold text-muted">
+                {historyGroups.length} operaci{historyGroups.length === 1 ? 'ón' : 'ones'}
+              </span>
+            </div>
+
+            <div className="hidden overflow-x-auto md:block">
+              <table className="w-full min-w-[840px] border-collapse text-left">
+                <thead>
+                  <tr className="border-b border-base bg-subtle text-[11px] font-black uppercase tracking-wider text-muted">
+                    <th className="px-3 py-2.5">Fecha y hora</th>
+                    <th className="px-3 py-2.5">Ruta</th>
+                    <th className="px-3 py-2.5 text-center">Cantidad</th>
+                    <th className="px-3 py-2.5">Productos</th>
+                    <th className="px-3 py-2.5 text-center">Estado</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-base">
+                  {historyGroups.length > 0 ? historyGroups.map((group) => {
+                    const isExpanded = expandedBatches.includes(group.key);
+                    const visibleItems = isExpanded ? group.rows : group.rows.slice(0, 2);
+                    const hasMore = group.rows.length > 2;
                     return (
-                      <div key={rowKey} className="p-4 bg-white dark:bg-slate-800/50 rounded-xl border border-slate-200 shadow-xs animate-in slide-in-from-right-2 duration-200">
-                        <div className="flex items-center justify-between gap-3 mb-3">
-                          <p className="text-xs font-black text-slate-900 dark:text-slate-100 uppercase truncate leading-tight">{product?.name}</p>
-                          <button 
-                            onClick={() => setBulkTransferItems(prev => prev.filter((i, idx) => idx !== index))}
-                            className="w-6 h-6 rounded-lg bg-rose-50 text-rose-400 hover:bg-rose-100 hover:text-rose-600 flex items-center justify-center transition-all shrink-0"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                        {productVariants.length > 0 && (
-                          <select
-                            value={selectedVariant}
-                            onChange={(e) => {
-                              const nextVariant = e.target.value;
-                              setBulkTransferItems(prev => {
-                                const duplicate = prev.some((candidate, candidateIndex) =>
-                                  candidateIndex !== index &&
-                                  candidate.productId === item.productId &&
-                                  (candidate.variant || '') === nextVariant
-                                );
-                                if (duplicate) return prev;
-                                return prev.map((candidate, candidateIndex) =>
-                                  candidateIndex === index
-                                    ? { ...candidate, variant: nextVariant, quantity: Math.min(
-                                        Math.max(1, candidate.quantity),
-                                        Number(inventory.find(inv =>
-                                          inv.productId === candidate.productId &&
-                                          inv.branchId === bulkTransferSourceId &&
-                                          (inv.variantLabel || '') === nextVariant
-                                        )?.quantity || 0)
-                                      ) }
-                                    : candidate
-                                );
-                              });
-                            }}
-                            className="mb-2 w-full bg-white border border-indigo-100 rounded-lg px-2 py-2 text-[9px] font-black uppercase text-indigo-700 outline-none"
-                          >
-                            {productVariants.map(v => (
-                              <option key={v} value={v}>
-                                {v} — {Number(inventory.find(inv =>
-                                  inv.productId === item.productId &&
-                                  inv.branchId === bulkTransferSourceId &&
-                                  (inv.variantLabel || '') === v
-                                )?.quantity || 0)} uds
-                              </option>
-                            ))}
-                          </select>
-                        )}
-                        <div className="flex items-center justify-between gap-4 bg-slate-50 dark:bg-slate-900 p-2.5 rounded-xl border border-slate-100 shadow-inner">
-                          <div className="flex flex-col">
-                            <span className="text-[8px] font-black text-slate-400 uppercase leading-none mb-1">
-                              {selectedVariant ? 'Disponible · ' + selectedVariant : 'Disponible'}
+                      <tr key={group.key} className="transition-colors hover:bg-subtle/60">
+                        <td className="whitespace-nowrap px-3 py-3 align-top">
+                          <p className="text-[12px] font-black text-primary">{group.dateLabel}</p>
+                          <p className="font-mono text-[11px] text-muted">{group.timeLabel}</p>
+                          {group.rows.length > 1 && (
+                            <span className="mt-1 inline-block rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-black uppercase text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300">
+                              Lote de {group.rows.length}
                             </span>
-                            <span className="text-[10px] font-black text-slate-700">{stock} uds</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-3 align-top">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <span className="max-w-[150px] truncate rounded-md border border-base bg-secondary px-2 py-1 text-[11px] font-black uppercase text-secondary" title={group.first.fromBranchName}>
+                              {group.first.fromBranchName}
+                            </span>
+                            <ArrowRight className="h-3 w-3 shrink-0 text-violet-500" aria-hidden="true" />
+                            <span className="max-w-[150px] truncate rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-black uppercase text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300" title={group.first.toBranchName}>
+                              {group.first.toBranchName}
+                            </span>
                           </div>
-                          <div className="flex items-center gap-1 bg-white dark:bg-slate-800 rounded-lg p-1 border border-slate-100">
-                            <button 
-                              onClick={() => setBulkTransferItems(prev => prev.map((i, idx) => idx === index ? { ...i, quantity: Math.max(1, Math.min(i.quantity, Math.max(1, stock)) - 1) } : i))}
-                              className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
-                            >
-                              <Minus className="w-4 h-4" />
-                            </button>
-                            <input
-                              type="number"
-                              inputMode="numeric"
-                              min={1}
-                              max={stock}
-                              value={item.quantity}
-                              aria-label={`Cantidad a transferir de ${product?.name || 'producto'}`}
-                              onFocus={(event) => event.currentTarget.select()}
-                              onChange={(event) => {
-                                if (event.currentTarget.value === '' || stock <= 0) return;
-                                const requested = Math.floor(Number(event.currentTarget.value));
-                                if (!Number.isFinite(requested)) return;
-                                setBulkTransferItems(prev => prev.map((candidate, idx) => idx === index
-                                  ? { ...candidate, quantity: Math.max(1, Math.min(stock, requested)) }
-                                  : candidate));
-                              }}
-                              className="w-12 text-xs font-black text-center text-indigo-600 bg-transparent border border-transparent focus:border-indigo-300 rounded outline-none"
-                            />
-                            <button 
-                              onClick={() => setBulkTransferItems(prev => prev.map((i, idx) => idx === index ? { ...i, quantity: Math.min(stock, i.quantity + 1) } : i))}
-                              className="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition-colors"
-                            >
-                              <Plus className="w-4 h-4" />
-                            </button>
+                        </td>
+                        <td className="px-3 py-3 align-top">
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[11px] font-black tabular-nums text-white">{group.totalQty} uds</span>
+                            {group.direction && <DirectionBadge direction={group.direction} />}
                           </div>
-                        </div>
-                      </div>
+                        </td>
+                        <td className="px-3 py-3 align-top">
+                          <div className="flex max-w-md flex-wrap gap-1.5">
+                            {visibleItems.map((row) => (
+                              <div key={row.id} className="flex min-w-0 max-w-[240px] items-center gap-1 rounded-md border border-base bg-subtle px-2 py-1">
+                                <span className="truncate text-[11px] font-bold text-primary" title={row.productName}>{row.productName}</span>
+                                {row.variantLabel && (
+                                  <span className="shrink-0 text-[11px] font-black uppercase text-violet-600 dark:text-violet-300">{row.variantLabel}</span>
+                                )}
+                                <span className="shrink-0 text-[11px] font-black text-muted">({row.quantity})</span>
+                              </div>
+                            ))}
+                            {hasMore && (
+                              <button
+                                type="button"
+                                onClick={() => toggleBatch(group.key)}
+                                className="rounded-md border border-violet-200 bg-secondary px-2 py-1 text-[11px] font-black uppercase text-violet-700 transition-all hover:bg-violet-50 active:scale-95 dark:border-violet-900/60 dark:text-violet-300"
+                              >
+                                {isExpanded ? 'Mostrar menos' : `Ver ${group.rows.length - 2} más`}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-3 py-3 text-center align-top">
+                          <StatusBadge status={group.first.status} />
+                        </td>
+                      </tr>
                     );
-                  })
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Transfer Modal with Real-time Stock Inspector */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 sm:p-6 overflow-y-auto animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden border border-slate-200 animate-in zoom-in-95 my-auto">
-            
-            {/* Modal Header */}
-            <div className="p-6 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800">
-              <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-lg">
-                  <ArrowLeftRight className="w-5 h-5" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black uppercase tracking-wider">Traslado Individual</h3>
-                  <p className="text-[10px] text-slate-400 uppercase tracking-widest mt-0.5 font-bold">Verificación de stock en tiempo real</p>
-                </div>
-              </div>
-
-              <button 
-                type="button"
-                onClick={() => setShowAddModal(false)}
-                className="w-8 h-8 rounded-lg bg-white/10 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
+                  }) : (
+                    <tr>
+                      <td colSpan={5} className="px-6 py-14 text-center">
+                        <div className="flex flex-col items-center gap-1.5 text-muted">
+                          <ArrowLeftRight className="h-10 w-10 opacity-30" aria-hidden="true" />
+                          <p className="text-[12px] font-black uppercase tracking-wider">Sin registros de transferencia</p>
+                          <p className="max-w-xs text-[11px] font-semibold">
+                            {historySearch || historyMode === 'branch'
+                              ? 'Cambia la sucursal o la búsqueda para ver otros movimientos.'
+                              : 'Usa «Nuevo traslado» para mover stock entre tus almacenes.'}
+                          </p>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
 
-            <div className="p-6 space-y-6 max-h-[80vh] overflow-y-auto">
-              
-              {/* Error Alert */}
-              {error && (
-                <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs font-black flex items-start gap-3 animate-in shake">
-                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
-                  <p>{error}</p>
-                </div>
-              )}
-
-              <form onSubmit={handleTransfer} className="space-y-6">
-                
-                {/* Branch Selection Row */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">
-                      Almacén Origen
-                    </label>
-                    <div className="relative">
-                      <Building2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                      <select 
-                        required
-                        value={effectiveFromBranchId}
-                        onChange={e => {
-                          setFormData({ ...formData, fromBranchId: e.target.value });
-                          setVariantQuantities({});
-                          setError("");
-                        }}
-                        className="w-full pl-10 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-xs font-bold text-slate-900 appearance-none"
-                      >
-                        {branches.map(b => (
-                          <option key={b.id} value={b.id}>
-                            {getBranchDisplayName(b)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="block text-[10px] font-black text-indigo-600 uppercase tracking-widest ml-1">
-                      Almacén Destino
-                    </label>
-                    <div className="relative">
-                      <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-indigo-400" />
-                      <select 
-                        required
-                        value={effectiveToBranchId}
-                        onChange={e => {
-                          setFormData({ ...formData, toBranchId: e.target.value });
-                          setError("");
-                        }}
-                        className="w-full pl-10 pr-3 py-3 bg-indigo-50/30 border border-indigo-100 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-xs font-bold text-indigo-950 appearance-none"
-                      >
-                        <option value="">Seleccionar destino...</option>
-                        {branches.filter(b => b.id !== effectiveFromBranchId).map(b => (
-                          <option key={b.id} value={b.id}>
-                            {getBranchDisplayName(b)}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Product Selection */}
-                <div className="space-y-2">
-                  <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">
-                    Producto a Transferir
-                  </label>
-                  <div className="relative">
-                    <Package className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                    <select 
-                      required
-                      value={formData.productId}
-                      onChange={e => {
-                        setFormData({ ...formData, productId: e.target.value });
-                        setVariantQuantities({});
-                        setError("");
-                      }}
-                      className="w-full pl-10 pr-3 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-xs font-bold text-slate-900 appearance-none"
-                    >
-                      <option value="">Selecciona Producto...</option>
-                      {products.map(p => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} {p.sku ? `(SKU: ${p.sku})` : ''} - ${p.price}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                {/* Stock Info Summary */}
-                {selectedProduct && (
-                  <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Disponible en Origen</span>
-                      <div className="flex items-center gap-2">
-                        <span className={cn(
-                          "text-lg font-black",
-                          totalSourceStock > 0 ? "text-slate-900" : "text-rose-600"
-                        )}>{totalSourceStock}</span>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">Unidades</span>
+            <ul className="divide-y divide-base md:hidden">
+              {historyGroups.length > 0 ? historyGroups.map((group) => {
+                const isExpanded = expandedBatches.includes(group.key);
+                const visibleItems = isExpanded ? group.rows : group.rows.slice(0, 2);
+                const hasMore = group.rows.length > 2;
+                return (
+                  <li key={group.key} className="space-y-2 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-[12px] font-black text-primary">
+                          {group.dateLabel} · {group.timeLabel}
+                        </p>
+                        {group.rows.length > 1 && (
+                          <span className="mt-0.5 inline-block rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-black uppercase text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300">
+                            Lote de {group.rows.length}
+                          </span>
+                        )}
                       </div>
+                      <StatusBadge status={group.first.status} />
                     </div>
-                    <div className="space-y-1 border-l border-slate-200 pl-4">
-                      <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block">Stock en Destino</span>
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg font-black text-indigo-600">
-                          {effectiveToBranchId ? totalTargetStock : '--'}
-                        </span>
-                        <span className="text-[10px] font-bold text-slate-400 uppercase">Unidades</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
 
-                {/* Variant Quantity Inputs OR Single Product Input */}
-                {selectedProduct && hasVariants ? (
-                  <div className="space-y-3">
-                    <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">
-                      Variantes de Producto
-                    </label>
-                    <div className="max-h-56 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                      {variantsList.map(variant => {
-                        const currentStock = getSourceStockForVariant(variant);
-                        const isOutOfStock = currentStock <= 0;
-
-                        return (
-                          <div 
-                            key={variant} 
-                            className={`flex justify-between items-center p-3 rounded-xl border transition-all ${
-                              isOutOfStock 
-                                ? 'bg-slate-100/70 border-slate-200 opacity-60' 
-                                : 'bg-white border-slate-200'
-                            }`}
-                          >
-                            <div>
-                              <span className="text-xs font-black text-slate-800 block">
-                                {variant}
-                              </span>
-                              <span className={`text-[9px] font-bold ${
-                                isOutOfStock ? 'text-rose-600' : 'text-slate-400'
-                              } uppercase tracking-tighter`}>
-                                Disponible: {currentStock} uds
-                              </span>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              <input 
-                                type="number" 
-                                min="0"
-                                max={currentStock}
-                                disabled={isOutOfStock}
-                                value={variantQuantities[variant] ?? ''}
-                                onChange={e => {
-                                  const val = parseInt(e.target.value) || 0;
-                                  setVariantQuantities({
-                                    ...variantQuantities,
-                                    [variant]: Math.min(currentStock, Math.max(0, val))
-                                  });
-                                  setError("");
-                                }}
-                                className="w-16 px-2 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none text-xs font-black text-center disabled:bg-slate-100"
-                                placeholder="0"
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : selectedProduct && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between ml-1">
-                      <label className="block text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                        Cantidad a Transferir
-                      </label>
-                      <span className="text-[9px] font-bold text-slate-400 uppercase">
-                        Máximo: {totalSourceStock} uds
+                    <div className="flex min-w-0 items-center gap-1.5">
+                      <span className="min-w-0 flex-1 truncate rounded-md border border-base bg-subtle px-2 py-1 text-[11px] font-black uppercase text-secondary" title={group.first.fromBranchName}>
+                        {group.first.fromBranchName}
+                      </span>
+                      <ArrowRight className="h-3 w-3 shrink-0 text-violet-500" aria-hidden="true" />
+                      <span className="min-w-0 flex-1 truncate rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-black uppercase text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300" title={group.first.toBranchName}>
+                        {group.first.toBranchName}
                       </span>
                     </div>
 
-                    <div className="relative flex items-center gap-3">
-                      <input 
-                        type="number" 
-                        min="1"
-                        max={totalSourceStock}
-                        disabled={totalSourceStock <= 0}
-                        required
-                        value={variantQuantities[''] ?? ''}
-                        onChange={e => {
-                          const val = parseInt(e.target.value) || 0;
-                          setVariantQuantities({
-                            ...variantQuantities,
-                            '': Math.min(totalSourceStock, Math.max(0, val))
-                          });
-                          setError("");
-                        }}
-                        className="flex-1 px-4 py-4 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none text-xl font-black text-slate-900 disabled:opacity-50"
-                        placeholder="0"
-                      />
+                    <div className="flex items-center justify-between gap-2 rounded-lg border border-base bg-subtle px-2.5 py-1.5">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-muted">Cantidad</span>
+                      <span className="flex items-center gap-1.5">
+                        <span className="rounded-md bg-slate-900 px-2 py-1 text-[11px] font-black tabular-nums text-white">{group.totalQty} uds</span>
+                        {group.direction && <DirectionBadge direction={group.direction} />}
+                      </span>
+                    </div>
 
-                      {totalSourceStock > 0 && (
+                    <div className="space-y-1">
+                      {visibleItems.map((row) => (
+                        <div key={row.id} className="flex min-w-0 items-center gap-1.5 text-[11px]">
+                          <span className="min-w-0 flex-1 truncate font-bold text-primary" title={row.productName}>{row.productName}</span>
+                          {row.variantLabel && <span className="shrink-0 font-black uppercase text-violet-600 dark:text-violet-300">{row.variantLabel}</span>}
+                          <span className="shrink-0 font-black text-muted">{row.quantity} uds</span>
+                        </div>
+                      ))}
+                      {hasMore && (
                         <button
                           type="button"
-                          onClick={() => setVariantQuantities({ '': totalSourceStock })}
-                          className="px-4 py-4 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 font-black rounded-xl text-xs uppercase transition-colors whitespace-nowrap"
+                          onClick={() => toggleBatch(group.key)}
+                          className="min-h-8 rounded-md border border-violet-200 bg-secondary px-2 text-[11px] font-black uppercase text-violet-700 dark:border-violet-900/60 dark:text-violet-300"
                         >
-                          Todo ({totalSourceStock})
+                          {isExpanded ? 'Mostrar menos' : `Ver ${group.rows.length - 2} más`}
                         </button>
                       )}
                     </div>
+                  </li>
+                );
+              }) : (
+                <li className="px-6 py-12 text-center">
+                  <ArrowLeftRight className="mx-auto h-10 w-10 opacity-30 text-muted" aria-hidden="true" />
+                  <p className="mt-2 text-[12px] font-black uppercase tracking-wider text-muted">Sin registros de transferencia</p>
+                  <p className="mt-1 text-[11px] font-semibold text-muted">
+                    {historySearch || historyMode === 'branch'
+                      ? 'Cambia la sucursal o la búsqueda para ver otros movimientos.'
+                      : 'Usa «Nuevo traslado» para mover stock entre tus almacenes.'}
+                  </p>
+                </li>
+              )}
+            </ul>
+          </section>
+        </>
+      ) : (
+        <div className="space-y-4">
+          <section className="rounded-2xl border border-base bg-secondary p-3 shadow-xs sm:p-4">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label className="block min-w-0">
+                <span className="mb-1 block px-1 text-[11px] font-black uppercase tracking-widest text-muted">Origen de mercancía</span>
+                <div className="relative">
+                  <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden="true" />
+                  <select
+                    value={bulkTransferSourceId}
+                    onChange={(event) => {
+                      setBulkTransferSourceId(event.target.value);
+                      setBulkTransferItems([]);
+                    }}
+                    className="min-h-10 w-full appearance-none truncate rounded-xl border border-base bg-subtle pl-9 pr-3 text-[12px] font-black uppercase text-primary"
+                  >
+                    {branches.map((branch) => (
+                      <option key={branch.id} value={branch.id}>{branchLabel(branch.id, branch.name)}</option>
+                    ))}
+                  </select>
+                </div>
+              </label>
+              <label className="block min-w-0">
+                <span className="mb-1 block px-1 text-[11px] font-black uppercase tracking-widest text-muted">Destino de mercancía</span>
+                <div className="relative">
+                  <MapPin className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-violet-500" aria-hidden="true" />
+                  <select
+                    value={bulkTransferTargetId}
+                    onChange={(event) => setBulkTransferTargetId(event.target.value)}
+                    className="min-h-10 w-full appearance-none truncate rounded-xl border border-violet-200 bg-subtle pl-9 pr-3 text-[12px] font-black uppercase text-primary dark:border-violet-900/60"
+                  >
+                    <option value="">Seleccionar destino…</option>
+                    {allowedBranches.filter((branch) => branch.id !== bulkTransferSourceId).map((branch) => (
+                      <option key={branch.id} value={branch.id}>{branchLabel(branch.id, branch.name)}</option>
+                    ))}
+                  </select>
+                </div>
+              </label>
+            </div>
+            <button
+              type="button"
+              disabled={isExecutingTransfer || bulkTransferItems.length === 0 || !bulkTransferTargetId}
+              onClick={async () => {
+                setIsExecutingTransfer(true);
+                try {
+                  const result = await transferProductsBulk(
+                    bulkTransferSourceId,
+                    bulkTransferTargetId,
+                    bulkTransferItems.map((item) => ({
+                      productId: item.productId,
+                      quantity: item.quantity,
+                      variant: item.variant,
+                    }))
+                  );
+                  if (result.success) {
+                    addNotification(
+                      'Mercancía enviada. Queda en tránsito hasta que el almacén de destino confirme la recepción.',
+                      'success'
+                    );
+                    setBulkTransferItems([]);
+                    setBulkTransferTargetId('');
+                    setActiveTab('history');
+                  } else {
+                    addNotification(result.error || 'Error al realizar el traslado masivo.', 'error');
+                  }
+                } catch {
+                  addNotification('Error al procesar el traslado.', 'error');
+                } finally {
+                  setIsExecutingTransfer(false);
+                }
+              }}
+              className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-5 text-[12px] font-black uppercase tracking-widest text-white shadow-md transition-all hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            >
+              {isExecutingTransfer ? <RefreshCw className="h-4 w-4 animate-spin" aria-hidden="true" /> : <ArrowLeftRight className="h-4 w-4" aria-hidden="true" />}
+              Confirmar envío ({bulkTransferItems.length} artículo{bulkTransferItems.length === 1 ? '' : 's'})
+            </button>
+          </section>
+
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_340px] xl:grid-cols-[minmax(0,1fr)_320px]">
+            <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-base bg-secondary shadow-xs">
+              <div className="border-b border-base p-3">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" aria-hidden="true" />
+                  <input
+                    type="search"
+                    placeholder="Buscar productos por nombre o SKU…"
+                    value={transferSearch}
+                    onChange={(event) => setTransferSearch(event.target.value)}
+                    aria-label="Buscar productos para transferir"
+                    className="min-h-10 w-full rounded-xl border border-base bg-subtle pl-9 pr-3 text-[12px] font-bold text-primary"
+                  />
+                </div>
+              </div>
+              <div className="max-h-[min(78vh,820px)] min-h-[320px] flex-1 overflow-y-auto p-3">
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                  {visibleProducts.map(({ product, bestVariant, stock }) => (
+                    <button
+                      key={product.id}
+                      type="button"
+                      disabled={stock <= 0}
+                      onClick={() => {
+                        if (stock <= 0) return;
+                        setBulkTransferItems((prev) => [...prev, { productId: product.id, quantity: 1, variant: bestVariant || undefined }]);
+                      }}
+                      className={cn(
+                        'flex min-w-0 flex-col gap-2 rounded-xl border p-2.5 text-left shadow-xs transition-all',
+                        stock > 0
+                          ? 'border-base bg-secondary hover:border-violet-400 hover:shadow-md'
+                          : 'cursor-not-allowed border-base bg-subtle opacity-60 grayscale'
+                      )}
+                    >
+                      <div className="flex min-w-0 items-center justify-between gap-2">
+                        <p className="min-w-0 flex-1 truncate text-[12px] font-black uppercase text-primary" title={product.name}>{product.name}</p>
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300">
+                          <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                        </span>
+                      </div>
+                      <div className="mt-auto flex items-center justify-between border-t border-base pt-1.5">
+                        <span className="text-[11px] font-bold uppercase tracking-tight text-muted">{bestVariant ? `Stock · ${bestVariant}` : 'Stock disponible'}</span>
+                        <span className={cn('rounded-md px-1.5 py-0.5 text-[11px] font-black', stock > 0 ? 'bg-violet-50 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300' : 'bg-subtle text-muted')}>
+                          {stock} uds
+                        </span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                {visibleProducts.length === 0 && (
+                  <div className="flex flex-col items-center gap-1.5 py-10 text-center text-muted">
+                    <Package className="h-9 w-9 opacity-30" aria-hidden="true" />
+                    <p className="text-[12px] font-black uppercase tracking-wider">Sin productos disponibles</p>
+                    <p className="text-[11px] font-semibold">Prueba otro origen o cambia la búsqueda.</p>
                   </div>
                 )}
+              </div>
+            </section>
 
-                {/* Buttons */}
-                <div className="flex flex-col sm:flex-row gap-3 pt-4 border-t border-slate-100">
-                  <button 
-                    type="button"
-                    onClick={() => setShowAddModal(false)}
-                    className="flex-1 py-4 bg-white border border-slate-200 text-slate-500 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 active:scale-95 transition-all"
-                  >
-                    Cancelar
-                  </button>
-                  <button 
-                    type="submit"
-                    disabled={isSubmitting || totalSourceStock <= 0 || totalTransferring <= 0 || !effectiveToBranchId}
-                    className="flex-1 py-4 bg-slate-900 text-white rounded-xl font-black text-xs uppercase tracking-widest hover:bg-slate-800 shadow-lg shadow-slate-200 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
-                    {isSubmitting ? (
-                      <>
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                        Procesando...
-                      </>
-                    ) : (
-                      <>
-                        <ArrowLeftRight className="w-4 h-4" />
-                        Confirmar Envío
-                      </>
-                    )}
-                  </button>
-                </div>
-              </form>
-
-            </div>
+            <section className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-base bg-secondary shadow-xs">
+              <div className="flex items-center justify-between gap-2 border-b border-base bg-subtle/60 p-3">
+                <h3 className="flex min-w-0 items-center gap-2 text-[12px] font-black uppercase tracking-wide text-primary">
+                  <ArrowLeftRight className="h-4 w-4 shrink-0 text-violet-600 dark:text-violet-300" aria-hidden="true" />
+                  Lista de envío
+                </h3>
+                <span className="shrink-0 rounded-lg bg-violet-600 px-2 py-1 text-[11px] font-black text-white">{bulkTransferItems.length} ítems</span>
+              </div>
+              <div className="max-h-[min(78vh,820px)] flex-1 space-y-2.5 overflow-y-auto p-3">
+                {bulkTransferItems.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center gap-2 py-10 text-center text-muted">
+                    <span className="flex h-14 w-14 items-center justify-center rounded-2xl bg-subtle">
+                      <ArrowLeftRight className="h-7 w-7 opacity-40" aria-hidden="true" />
+                    </span>
+                    <p className="text-[12px] font-black uppercase tracking-wider">Lista de envío vacía</p>
+                    <p className="max-w-[220px] text-[11px] font-semibold">Selecciona productos de la izquierda para comenzar el traslado.</p>
+                  </div>
+                ) : shipments.map(({ item, product, variants, stock }, index) => {
+                  const selectedVariant = String(item.variant || '');
+                  const rowKey = `${item.productId}:${selectedVariant}`;
+                  return (
+                    <div key={rowKey} className="rounded-xl border border-base bg-secondary p-3 shadow-xs animate-in slide-in-from-right-2 duration-200">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="min-w-0 flex-1 truncate text-[12px] font-black uppercase text-primary" title={product.name}>{product.name}</p>
+                        <button
+                          type="button"
+                          onClick={() => setBulkTransferItems((prev) => prev.filter((_, idx) => idx !== index))}
+                          aria-label={`Quitar ${product.name} del envío`}
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-50 text-rose-500 transition-colors hover:bg-rose-100 hover:text-rose-600 dark:bg-rose-950/40 dark:text-rose-300"
+                        >
+                          <X className="h-3.5 w-3.5" aria-hidden="true" />
+                        </button>
+                      </div>
+                      {variants.length > 1 && (
+                        <select
+                          value={selectedVariant}
+                          onChange={(event) => {
+                            const nextVariant = event.target.value;
+                            const nextStock = stockAt(item.productId, bulkTransferSourceId, nextVariant);
+                            setBulkTransferItems((prev) => {
+                              const duplicate = prev.some((candidate, candidateIndex) =>
+                                candidateIndex !== index &&
+                                candidate.productId === item.productId &&
+                                (candidate.variant || '') === nextVariant
+                              );
+                              if (duplicate) return prev;
+                              return prev.map((candidate, candidateIndex) =>
+                                candidateIndex === index
+                                  ? { ...candidate, variant: nextVariant, quantity: Math.max(1, Math.min(candidate.quantity, Math.max(1, nextStock))) }
+                                  : candidate
+                              );
+                            });
+                          }}
+                          aria-label={`Variante de ${product.name}`}
+                          className="mb-2 min-h-9 w-full truncate rounded-lg border border-violet-200 bg-subtle px-2 text-[11px] font-black uppercase text-violet-700 dark:border-violet-900/60 dark:text-violet-300"
+                        >
+                          {variants.map((variant) => (
+                            <option key={variant} value={variant}>
+                              {variant || 'Sin variante'} — {stockAt(item.productId, bulkTransferSourceId, variant)} uds
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      <div className="flex items-center justify-between gap-3 rounded-xl border border-base bg-subtle p-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-[11px] font-black uppercase leading-none text-muted">{selectedVariant ? `Disponible · ${selectedVariant}` : 'Disponible'}</p>
+                          <p className="mt-1 text-[11px] font-black text-primary">{stock} uds</p>
+                        </div>
+                        <div className="flex items-center gap-1 rounded-lg border border-base bg-secondary p-1">
+                          <button
+                            type="button"
+                            onClick={() => updateShipmentQuantity(index, item.quantity - 1, stock)}
+                            aria-label="Reducir cantidad"
+                            className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors hover:bg-subtle hover:text-violet-600"
+                          >
+                            <Minus className="h-4 w-4" aria-hidden="true" />
+                          </button>
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={1}
+                            max={stock}
+                            value={item.quantity}
+                            aria-label={`Cantidad a transferir de ${product.name}`}
+                            onFocus={(event) => event.currentTarget.select()}
+                            onChange={(event) => {
+                              if (event.currentTarget.value === '' || stock <= 0) return;
+                              const requested = Math.floor(Number(event.currentTarget.value));
+                              if (!Number.isFinite(requested)) return;
+                              updateShipmentQuantity(index, requested, stock);
+                            }}
+                            className="w-11 border-0 bg-transparent p-0 text-center text-[12px] font-black tabular-nums text-primary focus:ring-0"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => updateShipmentQuantity(index, item.quantity + 1, stock)}
+                            aria-label="Aumentar cantidad"
+                            className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors hover:bg-subtle hover:text-violet-600"
+                          >
+                            <Plus className="h-4 w-4" aria-hidden="true" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
           </div>
         </div>
       )}
-
     </div>
     </PlanFeatureGate>
   );

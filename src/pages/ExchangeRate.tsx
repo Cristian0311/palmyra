@@ -1,479 +1,452 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Activity, AlertCircle, ArrowDownRight, ArrowUpRight, BarChart3,
-  CheckCircle2, RefreshCw, ShieldCheck, TrendingDown, TrendingUp
-} from "lucide-react";
-import {
-  CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis
-} from "recharts";
-import { getSupabase } from "../lib/supabase";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { Activity, AlertCircle, ArrowDownRight, ArrowUpRight, BarChart3, Clock3, KeyRound, Minus, RefreshCw, ShieldCheck, TrendingDown, TrendingUp } from 'lucide-react';
+import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import OperationsSurface from '../components/OperationsSurface';
+import { getSupabase } from '../lib/supabase';
+import { appendRateSnapshot, EXCHANGE_RATE_CACHE_KEY, isCryptoRate, isElToquePayload, parseExchangeRates, RATE_NAMES, readRateSnapshots, type ExchangePayload, type ExchangeRate, type RateSnapshot } from '../lib/exchangeRates';
 
-type Rate = {
-  code: string;
-  sourceCode: string;
-  name: string;
-  country: string;
-  value?: number;
-  buy?: number;
-  sell?: number;
-};
-type Payload = { source?: string; capturedAt?: string; data?: any; error?: string; configured?: boolean };
-type Snapshot = { capturedAt: string; rates: Record<string, number> };
-type Period = "24h" | "7d" | "30d" | "all";
-type MarketTab = "divisas" | "crypto";
-
-const HISTORY_KEY = "palmyra.exchange-rate-history.v1";
-const HISTORY_LIMIT = 2500;
+const CACHE_KEY = EXCHANGE_RATE_CACHE_KEY;
+const HISTORY_KEY = 'palmyra.eltoque-observations.v2';
 const REFRESH_MS = 5 * 60 * 1000;
+type Period = '24h' | '7d' | '30d' | 'all';
 
-const ASSET_META: Record<string, { name: string; country: string }> = {
-  USD: { name: "Dólar estadounidense", country: "Estados Unidos · uso oficial también en Ecuador" },
-  EUR: { name: "Euro", country: "Zona euro" },
-  ECU: { name: "Euro", country: "Zona euro" },
-  MLC: { name: "Moneda libremente convertible", country: "Cuba · saldo en USD" },
-  CAD: { name: "Dólar canadiense", country: "Canadá" },
-  MXN: { name: "Peso mexicano", country: "México" },
-  GBP: { name: "Libra esterlina", country: "Reino Unido" },
-  CHF: { name: "Franco suizo", country: "Suiza" },
-  RUB: { name: "Rublo ruso", country: "Rusia" },
-  CUP: { name: "Peso cubano", country: "Cuba" },
-  CNY: { name: "Yuan chino", country: "China" },
-  JPY: { name: "Yen japonés", country: "Japón" },
-  BRL: { name: "Real brasileño", country: "Brasil" },
-  COP: { name: "Peso colombiano", country: "Colombia" },
-  DOP: { name: "Peso dominicano", country: "República Dominicana" },
-  AUD: { name: "Dólar australiano", country: "Australia" },
-  NZD: { name: "Dólar neozelandés", country: "Nueva Zelanda" },
-  ZELLE: { name: "Zelle · pagos en USD", country: "Estados Unidos · servicio de pagos" },
-  CLA: { name: "Clásica", country: "Medio de pago publicado en Cuba" },
-  BTC: { name: "Bitcoin", country: "Criptoactivo · red Bitcoin" },
-  ETH: { name: "Ethereum", country: "Criptoactivo · red Ethereum" },
-  BNB: { name: "BNB", country: "Criptoactivo · BNB Chain" },
-  TRX: { name: "TRON", country: "Criptoactivo · red TRON" },
-  USDT: { name: "Tether (USDT)", country: "Stablecoin vinculada al USD" },
-  USDTTRC20: { name: "Tether (USDT · TRC-20)", country: "Stablecoin · red TRON" },
-  USDTTRC: { name: "Tether (USDT · TRC-20)", country: "Stablecoin · red TRON" },
-  USDC: { name: "USD Coin (USDC)", country: "Stablecoin vinculada al USD" },
-  LTC: { name: "Litecoin", country: "Criptoactivo · red Litecoin" },
-  DOGE: { name: "Dogecoin", country: "Criptoactivo · red Dogecoin" },
-  SOL: { name: "Solana", country: "Criptoactivo · red Solana" },
-  XRP: { name: "XRP", country: "Criptoactivo · red XRP Ledger" },
-  TON: { name: "Toncoin", country: "Criptoactivo · red TON" }
-};
+const PERIOD_DAYS: Record<Period, number | null> = { '24h': 1, '7d': 7, '30d': 30, all: null };
 
-function numeric(value: unknown): number | undefined {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value !== "string" || !value.trim()) return undefined;
-  const parsed = Number(value.trim().replace(/\s/g, "").replace(",", "."));
-  return Number.isFinite(parsed) ? parsed : undefined;
-}
-
-function rateNumber(...values: unknown[]): number | undefined {
-  for (const value of values) {
-    const direct = numeric(value);
-    if (direct !== undefined) return direct;
-    if (value && typeof value === "object") {
-      const nested = value as Record<string, unknown>;
-      const parsed = numeric(nested.value ?? nested.rate ?? nested.valor ?? nested.tasa ?? nested.median ?? nested.mediana);
-      if (parsed !== undefined) return parsed;
-    }
-  }
-  return undefined;
-}
-
-function isCryptoCode(code: string): boolean {
-  const compact = code.toUpperCase().replace(/[-_\s]/g, "");
-  return /^(BTC|ETH|BNB|TRX|USDT|USDC|LTC|DOGE|SOL|XRP|TON|ADA|BCH|DOT|AVAX|SHIB|LINK|XMR|MATIC|POL)/.test(compact);
-}
-
-function getRates(data: any): Rate[] {
-  if (!data || typeof data !== "object") return [];
-  let list: any = data;
-  const containerKeys = ["tasas", "rates", "data", "result", "exchangeRates", "exchange_rates", "cotizaciones"];
-  for (let depth = 0; depth < 4 && list && typeof list === "object" && !Array.isArray(list); depth += 1) {
-    const looksLikeRate = ["rate", "value", "valor", "tasa", "median", "mediana", "buy", "compra", "sell", "venta"].some((key) => list[key] !== undefined);
-    if (looksLikeRate) break;
-    const nestedKey = containerKeys.find((key) => list[key] !== undefined && list[key] !== null);
-    if (!nestedKey) break;
-    list = list[nestedKey];
-  }
-
-  const makeRate = (raw: any, fallbackCode: string, index: number): Rate | null => {
-    if (!raw || typeof raw !== "object") {
-      const value = rateNumber(raw);
-      if (value === undefined) return null;
-      const sourceCode = (fallbackCode || "RATE-" + (index + 1)).toUpperCase();
-      const code = sourceCode === "ECU" ? "EUR" : sourceCode;
-      const compact = code.replace(/[-_\s]/g, "");
-      const meta = ASSET_META[code] ?? ASSET_META[compact];
-      return {
-        code, sourceCode,
-        name: meta?.name ?? code,
-        country: meta?.country ?? "Referencia del mercado informal cubano",
-        value
-      };
-    }
-    const sourceCode = String(raw.code ?? raw.currency ?? raw.moneda ?? raw.symbol ?? raw.codigo ?? (fallbackCode || ("RATE-" + (index + 1)))).toUpperCase().trim();
-    const code = sourceCode === "ECU" ? "EUR" : sourceCode;
-    const compact = code.replace(/[-_\s]/g, "");
-    const meta = ASSET_META[code] ?? ASSET_META[compact];
-    const value = rateNumber(raw.rate, raw.value, raw.valor, raw.tasa, raw.tasa_referencia, raw.reference, raw.median, raw.mediana, raw.trm, raw.promedio, raw.price, raw.precio, raw.last, raw.rate_mid, raw.compra_venta);
-    const buy = rateNumber(raw.buy, raw.compra, raw.bid, raw.tasa_compra, raw.median_buy, raw.mediana_compra, raw.compra_mediana, raw.rate_buy);
-    const sell = rateNumber(raw.sell, raw.venta, raw.ask, raw.tasa_venta, raw.median_sell, raw.mediana_venta, raw.venta_mediana, raw.rate_sell);
-    if (value === undefined && buy === undefined && sell === undefined) return null;
-    const apiName = raw.name ?? raw.nombre ?? raw.description ?? raw.descripcion;
-    const apiCountry = raw.country ?? raw.pais ?? raw.countryName;
-    return {
-      code,
-      sourceCode,
-      name: meta?.name ?? (apiName ? String(apiName) : code),
-      country: meta?.country ?? (apiCountry ? String(apiCountry) : "Referencia del mercado informal cubano"),
-      value, buy, sell
-    };
-  };
-
-  if (Array.isArray(list)) return list.map((item, index) => makeRate(item, "", index)).filter((item): item is Rate => Boolean(item));
-  if (list && typeof list === "object") {
-    return Object.entries(list).flatMap(([code, raw], index) => {
-      const rate = makeRate(raw, code, index);
-      return rate ? [rate] : [];
-    });
-  }
-  return [];
-}
-function money(value: unknown) {
-  const n = numeric(value);
-  return n === undefined ? "—" : new Intl.NumberFormat("es-ES", { maximumFractionDigits: 2 }).format(n);
-}
-function readHistory(): Snapshot[] {
+function cachedPayload(): ExchangePayload | null {
   try {
-    const parsed = JSON.parse(localStorage.getItem(HISTORY_KEY) || "[]");
-    return Array.isArray(parsed) ? parsed.filter((x) => x?.capturedAt && x?.rates && typeof x.rates === "object").slice(-HISTORY_LIMIT) : [];
-  } catch { return []; }
+    const value: unknown = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+    return isElToquePayload(value) ? value : null;
+  } catch { return null; }
 }
-function percentChange(current?: number, previous?: number) {
-  if (current === undefined || previous === undefined || previous === 0) return null;
-  return ((current - previous) / Math.abs(previous)) * 100;
+function localHistory(): RateSnapshot[] {
+  try { return readRateSnapshots(JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]')).slice(-2500); }
+  catch { return []; }
 }
-function formatDate(value: string, withDate = false) {
-  const date = new Date(value);
-  if (!Number.isFinite(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("es-ES", withDate
-    ? { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }
-    : { hour: "2-digit", minute: "2-digit" }).format(date);
+function money(value?: number) {
+  return value === undefined ? '—' : new Intl.NumberFormat('es-CU', { maximumFractionDigits: value < 1 ? 6 : 2 }).format(value);
 }
-function AbsoluteDelta({ current, previous }: { current?: number; previous?: number }) {
-  if (current === undefined || previous === undefined) return <span className="text-xs font-semibold text-muted">Sin dato anterior</span>;
-  const difference = current - previous;
-  const up = difference > 0.00001;
-  const down = difference < -0.00001;
-  const Icon = up ? TrendingUp : down ? TrendingDown : Activity;
-  const color = up ? "text-emerald-700 bg-emerald-50" : down ? "text-rose-700 bg-rose-50" : "text-muted bg-subtle";
-  const pct = percentChange(current, previous);
-  return <span className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold ${color}`}><Icon className="h-3.5 w-3.5" />{difference > 0 ? "+" : ""}{money(difference)} CUP{pct === null ? "" : ` (${pct > 0 ? "+" : ""}${pct.toFixed(2)}%)`}</span>;
+function pct(value?: number) {
+  return value === undefined ? '—' : `${value > 0 ? '+' : ''}${new Intl.NumberFormat('es-CU', { maximumFractionDigits: 2 }).format(value)}%`;
 }
-function Sparkline({ values, positive }: { values: number[]; positive: boolean }) {
-  if (values.length < 2) return <span className="text-[10px] text-muted">Sin historial</span>;
+function dateLabel(value: string, timeOnly = false) {
+  return new Intl.DateTimeFormat('es-CU', timeOnly ? { hour: '2-digit', minute: '2-digit' } : { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+}
+function rateNumber(rate: ExchangeRate): number | undefined {
+  return rate.value ?? rate.sell ?? rate.buy;
+}
+function rateTitle(rate: ExchangeRate): string {
+  return RATE_NAMES[rate.code] || rate.code;
+}
+
+type Delta = { absolute: number; percent: number } | null;
+function computeDelta(current?: number, reference?: number): Delta {
+  if (current === undefined || reference === undefined || reference === 0) return null;
+  const absolute = current - reference;
+  return { absolute, percent: (absolute / reference) * 100 };
+}
+
+function TrendPill({ delta, compact = false }: { delta: Delta; compact?: boolean }) {
+  if (!delta) {
+    return <span className="inline-flex items-center gap-1 rounded-full bg-subtle px-2 py-0.5 text-[10px] font-bold text-muted"><Minus className="h-3 w-3" /> Sin comparación</span>;
+  }
+  const up = delta.absolute > 0;
+  const flat = delta.absolute === 0;
+  const Icon = flat ? Minus : up ? ArrowUpRight : ArrowDownRight;
+  return (
+    <span className={'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-black tabular-nums ' + (flat ? 'border-base bg-subtle text-muted' : up ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300' : 'border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300')} title={delta ? `${delta.absolute > 0 ? '+' : ''}${money(delta.absolute)} CUP en el período` : undefined}>
+      <Icon className="h-3 w-3" aria-hidden="true" />
+      {pct(delta.percent)}{!compact && <span className="hidden font-bold text-current/80 sm:inline"> · {up ? '+' : ''}{money(delta.absolute)}</span>}
+    </span>
+  );
+}
+
+function Sparkline({ values, id }: { values: number[]; id: string }) {
+  if (values.length < 2) {
+    return <div className="flex h-12 items-center text-[10px] font-bold uppercase tracking-wider text-muted">Sin historial en el período</div>;
+  }
+  const width = 220;
+  const height = 48;
   const min = Math.min(...values);
   const max = Math.max(...values);
-  const range = max - min || 1;
-  const points = values.map((value, i) => (i / (values.length - 1)) * 100 + "," + (22 - ((value - min) / range) * 17)).join(" ");
-  const color = positive ? "#16A34A" : "#E11D48";
-  return <svg viewBox="0 0 100 26" preserveAspectRatio="none" className="h-6 w-full" aria-label="Gráfica de evolución reciente"><polyline points={points} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" /></svg>;
+  const span = max - min || 1;
+  const stepX = width / (values.length - 1);
+  const points = values.map((value, index) => {
+    const x = index * stepX;
+    const y = height - 4 - ((value - min) / span) * (height - 8);
+    return [x, y] as const;
+  });
+  const line = points.map(([x, y], index) => `${index === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ');
+  const area = `${line} L${width},${height} L0,${height} Z`;
+  const rising = values[values.length - 1] >= values[0];
+  const stroke = rising ? '#10b981' : '#f43f5e';
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-12 w-full" role="img" aria-label={`Tendencia de ${values.length} consultas`} preserveAspectRatio="none">
+      <defs>
+        <linearGradient id={`${id}-fill`} x1="0" x2="0" y1="0" y2="1">
+          <stop offset="0%" stopColor={stroke} stopOpacity="0.22" />
+          <stop offset="100%" stopColor={stroke} stopOpacity="0.02" />
+        </linearGradient>
+      </defs>
+      <path d={area} fill={`url(#${id}-fill)`} />
+      <path d={line} fill="none" stroke={stroke} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" vectorEffect="non-scaling-stroke" />
+      <circle cx={points[points.length - 1][0]} cy={points[points.length - 1][1]} r="2.4" fill={stroke} />
+    </svg>
+  );
 }
-function Delta({ value }: { value: number | null }) {
-  if (value === null) return <span className="text-xs font-semibold text-muted">Sin historial comparable</span>;
-  const up = value > 0.00001;
-  const down = value < -0.00001;
-  const Icon = up ? ArrowUpRight : down ? ArrowDownRight : Activity;
-  const color = up ? "text-emerald-700 bg-emerald-50" : down ? "text-rose-700 bg-rose-50" : "text-muted bg-subtle";
-  return <span className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold ${color}`}><Icon className="h-3.5 w-3.5" />{value > 0 ? "+" : ""}{value.toFixed(2)}%</span>;
+
+function RefreshCountdown({ target, onRefresh, loading }: { target: number | null; onRefresh: () => void; loading: boolean }) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const remaining = target ? Math.max(0, target - now) : null;
+  const minutes = remaining === null ? null : Math.floor(remaining / 60000);
+  const seconds = remaining === null ? null : Math.floor((remaining % 60000) / 1000);
+  return (
+    <span className="inline-flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-semibold text-muted">
+      <span className="inline-flex items-center gap-1.5"><Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
+        {remaining === null ? 'Sin programar' : remaining === 0 ? 'Actualización disponible' : `Próxima en ${minutes}:${String(seconds).padStart(2, '0')}`}
+      </span>
+      {remaining === 0 && (
+        <button type="button" onClick={onRefresh} disabled={loading} className="inline-flex items-center gap-1 rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 font-bold text-violet-700 hover:bg-violet-100 disabled:opacity-50 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300">
+          Actualizar ahora
+        </button>
+      )}
+    </span>
+  );
 }
 
 export default function ExchangeRate() {
-  const [payload, setPayload] = useState<Payload | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState("");
-  const [legacyHistory] = useState<Snapshot[]>(readHistory);
-  const [history, setHistory] = useState<Snapshot[]>(legacyHistory);
-  const [historyError, setHistoryError] = useState("");
-  const legacyHistoryImported = useRef(false);
-  const [period, setPeriod] = useState<Period>("7d");
-  const [marketTab, setMarketTab] = useState<MarketTab>("divisas");
-  const [selectedCode, setSelectedCode] = useState("");
+  const [payload, setPayload] = useState<ExchangePayload | null>(cachedPayload);
+  const [history, setHistory] = useState<RateSnapshot[]>(localHistory);
+  const [remoteHistory, setRemoteHistory] = useState<RateSnapshot[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [fromCache, setFromCache] = useState(true);
+  const [error, setError] = useState('');
+  const [apiConfigured, setApiConfigured] = useState<boolean | null>(null);
+  const [storageError, setStorageError] = useState(false);
+  const [period, setPeriod] = useState<Period>('7d');
+  const [market, setMarket] = useState<'divisas' | 'crypto'>('divisas');
+  const [selectedCode, setSelectedCode] = useState('');
+  const [nextRefreshAt, setNextRefreshAt] = useState<number | null>(null);
+  const controller = useRef<AbortController | null>(null);
+  const cardIdPrefix = useId().replace(/[:]/g, '');
 
-  const load = useCallback(async (silent = false) => {
-    if (silent) setRefreshing(true); else setLoading(true);
-    setError("");
+  const load = useCallback(async () => {
+    if (controller.current) return;
+    const request = new AbortController();
+    controller.current = request;
+    let timedOut = false;
+    const timeout = window.setTimeout(() => { timedOut = true; request.abort(); }, 15000);
+    setLoading(true);
+    setError('');
     try {
-      const response = await fetch("/api/exchange-rates", { headers: { Accept: "application/json" }, cache: "no-store" });
-      const body = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(body.error || `Error HTTP ${response.status}`);
+      const response = await fetch('/api/exchange-rates', { headers: { Accept: 'application/json' }, cache: 'no-store', signal: request.signal });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        setApiConfigured(typeof body?.configured === 'boolean' ? body.configured : null);
+        throw new Error(typeof body?.error === 'string' ? body.error : 'La consulta no pudo completarse.');
+      }
+      if (!isElToquePayload(body)) throw new Error('La respuesta no contiene cotizaciones válidas de elTOQUE.');
+      setApiConfigured(true);
       setPayload(body);
-    } catch (e: any) {
-      setError(e?.message || "No se pudo conectar con el servicio de tasas.");
+      setFromCache(Boolean(body.stale));
+      setHistory(current => appendRateSnapshot(current, body));
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify(body)); setStorageError(false); }
+      catch { setStorageError(true); }
+    } catch (error) {
+      if (request.signal.aborted && !timedOut) return;
+      setFromCache(true);
+      setError(timedOut ? 'La consulta agotó el tiempo de espera. Puedes reintentar.' : error instanceof Error ? error.message : 'Sin conexión con el servicio de tasas.');
     } finally {
+      window.clearTimeout(timeout);
+      if (controller.current === request) controller.current = null;
+      setNextRefreshAt(Date.now() + REFRESH_MS);
       setLoading(false);
-      setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
     void load();
-    const timer = window.setInterval(() => { if (document.visibilityState === "visible") void load(true); }, REFRESH_MS);
-    const onFocus = () => { if (document.visibilityState === "visible") void load(true); };
-    window.addEventListener("focus", onFocus);
-    window.addEventListener("online", onFocus);
-    return () => { window.clearInterval(timer); window.removeEventListener("focus", onFocus); window.removeEventListener("online", onFocus); };
+    const sync = () => { if (document.visibilityState === 'visible') void load(); };
+    const timer = window.setInterval(sync, REFRESH_MS);
+    window.addEventListener('online', sync);
+    return () => { window.clearInterval(timer); window.removeEventListener('online', sync); };
   }, [load]);
 
-  const loadHistory = useCallback(async () => {
-    const supabase = getSupabase();
-    if (!supabase) {
-      setHistory(legacyHistory);
-      setHistoryError("No hay conexión de Supabase; se muestra temporalmente la copia local disponible.");
-      return;
-    }
+  useEffect(() => {
+    try { localStorage.setItem(HISTORY_KEY, JSON.stringify(history)); }
+    catch { setStorageError(true); }
+  }, [history]);
 
-    try {
-      const { data: authData, error: authError } = await supabase.auth.getUser();
-      if (authError) throw authError;
-
-      // One-time migration: preserve chart points already collected by this browser,
-      // but keep those unverified legacy points private to this authenticated user.
-      if (authData.user && legacyHistory.length && !legacyHistoryImported.current) {
-        legacyHistoryImported.current = true;
-        const { error: importError } = await supabase.rpc("import_exchange_rate_legacy_history", {
-          p_snapshots: legacyHistory.slice(-HISTORY_LIMIT),
-        });
-        if (importError) {
-          legacyHistoryImported.current = false;
-          throw importError;
-        }
-        try { localStorage.removeItem(HISTORY_KEY); } catch { /* The database copy is already durable. */ }
-      }
-
-      if (!authData.user) {
-        setHistory(legacyHistory);
-        setHistoryError("Inicia sesión para cargar el historial permanente guardado en la base de datos.");
-        return;
-      }
-
-      const now = Date.now();
-      const since = period === "24h" ? new Date(now - 24 * 60 * 60 * 1000).toISOString()
-        : period === "7d" ? new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString()
-        : period === "30d" ? new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString()
-        : null;
-      const limit = period === "30d" ? 10000 : HISTORY_LIMIT;
-      const { data, error: historyLoadError } = await supabase.rpc("get_exchange_rate_history", {
-        p_since: since,
-        p_limit: limit,
+  useEffect(() => {
+    let cancelled = false;
+    const client = getSupabase();
+    if (!client || !navigator.onLine) return;
+    const days = PERIOD_DAYS[period];
+    void (async () => {
+      const { data, error } = await client.rpc('get_verified_exchange_rate_history', {
+        p_since: days === null ? null : new Date(Date.now() - days * 86400000).toISOString(), p_limit: 2500
       });
-      if (historyLoadError) throw historyLoadError;
+      if (cancelled || error) return;
+      setRemoteHistory(readRateSnapshots((Array.isArray(data) ? data : []).map(item => ({ capturedAt: item.captured_at, rates: item.rates }))));
+    })().catch(() => {});
+    return () => { cancelled = true; };
+  }, [period, payload?.capturedAt]);
 
-      const snapshots = (Array.isArray(data) ? data : [])
-        .filter((item: any) => item?.captured_at && item?.rates && typeof item.rates === "object")
-        .map((item: any) => ({ capturedAt: item.captured_at, rates: item.rates as Record<string, number> }));
-      setHistory(snapshots);
-      setHistoryError("");
-    } catch (e: any) {
-      setHistory((current) => current.length ? current : legacyHistory);
-      setHistoryError(e?.message
-        ? "No se pudo actualizar el historial guardado en la base de datos; se conserva la última copia disponible."
-        : "No se pudo cargar el historial guardado en la base de datos.");
-    }
-  }, [legacyHistory, period]);
+  const rates = useMemo(() => parseExchangeRates(payload?.data), [payload]);
+  const visibleRates = useMemo(() => {
+    const filtered = rates.filter(rate => isCryptoRate(rate.code) === (market === 'crypto'));
+    return filtered.slice().sort((a, b) => {
+      const priority = ['USD', 'EUR', 'MLC', 'CLA', 'ZELLE'];
+      const ai = priority.indexOf(a.code);
+      const bi = priority.indexOf(b.code);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi) || a.code.localeCompare(b.code);
+    });
+  }, [rates, market]);
+  const selected = visibleRates.find(rate => rate.code === selectedCode) ?? visibleRates[0];
 
-  useEffect(() => {
-    void loadHistory();
-    const sync = () => {
-      if (document.visibilityState === "visible") void loadHistory();
-    };
-    const timer = window.setInterval(sync, REFRESH_MS);
-    window.addEventListener("focus", sync);
-    window.addEventListener("online", sync);
-    return () => {
-      window.clearInterval(timer);
-      window.removeEventListener("focus", sync);
-      window.removeEventListener("online", sync);
-    };
-  }, [loadHistory]);
+  const snapshots = useMemo(() => {
+    const entries = new Map(history.map(item => [item.capturedAt, item]));
+    remoteHistory.forEach(item => entries.set(item.capturedAt, item));
+    return [...entries.values()].sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt));
+  }, [history, remoteHistory]);
 
-  const rates = useMemo(() => getRates(payload?.data), [payload]);
-  const currencyRates = useMemo(() => rates.filter((rate) => !isCryptoCode(rate.code)), [rates]);
-  const cryptoRates = useMemo(() => rates.filter((rate) => isCryptoCode(rate.code)), [rates]);
-  const visibleRates = marketTab === "crypto" ? cryptoRates : currencyRates;
+  const since = useMemo(() => {
+    const days = PERIOD_DAYS[period];
+    return days === null ? 0 : Date.now() - days * 86400000;
+  }, [period]);
 
-  useEffect(() => {
-    if (visibleRates.length && !visibleRates.some((rate) => rate.code === selectedCode)) {
-      setSelectedCode(visibleRates[0].code);
-    }
-  }, [visibleRates, selectedCode]);
+  const seriesFor = useCallback((code: string) => snapshots
+    .filter(item => Date.parse(item.capturedAt) >= since && item.rates[code] !== undefined)
+    .map(item => ({ timestamp: item.capturedAt, label: dateLabel(item.capturedAt, period === '24h'), value: item.rates[code] })), [snapshots, since, period]);
 
-  const selectedRate = visibleRates.find((rate) => rate.code === selectedCode) ?? visibleRates[0];
-  const now = Date.now();
-  const cutoff = period === "24h" ? now - 24 * 60 * 60 * 1000
-    : period === "7d" ? now - 7 * 24 * 60 * 60 * 1000
-    : period === "30d" ? now - 30 * 24 * 60 * 60 * 1000 : 0;
-  const chartData = history
-    .filter((item) => new Date(item.capturedAt).getTime() >= cutoff && item.rates[selectedCode] !== undefined)
-    .map((item) => ({ timestamp: item.capturedAt, label: formatDate(item.capturedAt, period !== "24h"), value: item.rates[selectedCode] }));
-  const currentValue = selectedRate?.value ?? selectedRate?.sell ?? selectedRate?.buy;
-  const comparable = chartData.length > 1 ? chartData[0].value : undefined;
-  const change = percentChange(currentValue, comparable);
-  const updated = payload?.capturedAt ? formatDate(payload.capturedAt, true) : "";
+  const deltaFor = (rate: ExchangeRate): Delta => {
+    const values = seriesFor(rate.code);
+    if (values.length >= 2) return computeDelta(values[values.length - 1].value, values[0].value);
+    const current = rateNumber(rate);
+    const previous = [...snapshots].reverse().find(item => item.capturedAt < (payload?.capturedAt || '') && item.rates[rate.code] !== undefined)?.rates[rate.code];
+    return computeDelta(current, previous);
+  };
 
-  return <div className="h-full min-h-0 w-full min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-primary px-2 py-3 sm:px-3 sm:py-4 xl:px-5 xl:py-6">
-    <div className="mx-auto w-full max-w-7xl min-w-0 space-y-3 pb-8 sm:space-y-4 xl:space-y-5">
-      <section className="rounded-2xl border border-base bg-secondary px-4 py-3 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-800"><BarChart3 className="h-5 w-5" /></div>
-            <div className="min-w-0">
-              <p className="text-[9px] font-black uppercase tracking-[.16em] text-violet-700">PALMYRA · FUENTE elTOQUE</p>
-              <h1 className="text-xl font-black text-primary sm:text-2xl">Tasas de cambio</h1>
-              <p className="text-xs text-muted">Mercado informal de Cuba · referencias, compra/venta e historial</p>
-            </div>
+  const chart = selected ? seriesFor(selected.code) : [];
+  const selectedDelta = selected ? deltaFor(selected) : null;
+  const selectedStats = useMemo(() => {
+    if (!chart.length) return null;
+    const values = chart.map(item => item.value);
+    return { min: Math.min(...values), max: Math.max(...values), first: values[0], last: values[values.length - 1] };
+  }, [chart]);
+  const hasBuySell = visibleRates.some(rate => rate.buy !== undefined || rate.sell !== undefined);
+  const stale = fromCache || Boolean(payload?.stale) || Boolean(payload && Date.now() - Date.parse(payload.capturedAt) >= REFRESH_MS);
+  const globalDelta = useMemo(() => {
+    const usd = visibleRates.find(rate => rate.code === 'USD');
+    return usd ? deltaFor(usd) : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visibleRates, snapshots, since, payload?.capturedAt]);
+
+  const periodLabel = period === '24h' ? '24 h' : period === '7d' ? '7 días' : period === '30d' ? '30 días' : 'todo el historial';
+
+  return (
+    <OperationsSurface className="w-full min-w-0">
+      <main className="mx-auto w-full min-w-0 max-w-7xl space-y-5 pb-16">
+        <header className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="kicker font-bold uppercase tracking-[0.2em] text-violet-600 dark:text-violet-300">Cuba · Mercado informal · elTOQUE</p>
+            <h1 className="mt-1 text-2xl font-bold text-primary sm:text-3xl">Tasas de cambio</h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-secondary">Cotizaciones reales publicadas por elTOQUE, en CUP por unidad. No modifican los precios ni la tasa de venta de tu negocio.</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-lg bg-subtle px-2.5 py-2 text-xs font-bold text-primary"><span className={"h-2 w-2 rounded-full " + (error ? "bg-amber-500" : "bg-emerald-500")} />{error ? "Con incidencias" : payload ? "Fuente consultada" : "Conectando"}</span>
-            <span className="text-xs text-muted">{updated ? "Actualizado " + updated : "Sin fecha disponible"}</span>
-            <button onClick={() => void load(true)} disabled={loading || refreshing} className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg bg-violet-700 px-3 py-2 text-xs font-bold text-white transition hover:bg-violet-800 disabled:opacity-60">
-              <RefreshCw className={"h-3.5 w-3.5 " + (refreshing ? "animate-spin" : "")} />{refreshing ? "Actualizando…" : "Actualizar"}
-            </button>
-          </div>
-        </div>
-        {error && <p role="alert" className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800"><AlertCircle className="mr-1 inline h-3.5 w-3.5" />{error}</p>}
-      </section>
-
-      {loading && !payload && <div className="rounded-2xl border border-base bg-secondary p-6 text-sm text-muted" aria-live="polite">Consultando las cotizaciones de elTOQUE…</div>}
-
-      <nav className="flex w-full gap-1 rounded-xl border border-base bg-secondary p-1.5 sm:w-fit" aria-label="Tipo de mercado">
-        <button type="button" onClick={() => setMarketTab("divisas")} className={"inline-flex min-w-32 flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-extrabold transition sm:flex-none " + (marketTab === "divisas" ? "bg-violet-700 text-white shadow-sm" : "text-muted hover:bg-primary")}>
-          <Activity className="h-4 w-4" />Divisas<span className={"rounded-md px-1.5 py-0.5 text-[10px] " + (marketTab === "divisas" ? "bg-white/15 text-white" : "bg-subtle text-muted")}>{currencyRates.length}</span>
-        </button>
-        <button type="button" onClick={() => setMarketTab("crypto")} className={"inline-flex min-w-32 flex-1 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-extrabold transition sm:flex-none " + (marketTab === "crypto" ? "bg-violet-700 text-white shadow-sm" : "text-muted hover:bg-primary")}>
-          <BarChart3 className="h-4 w-4" />Crypto<span className={"rounded-md px-1.5 py-0.5 text-[10px] " + (marketTab === "crypto" ? "bg-white/15 text-white" : "bg-subtle text-muted")}>{cryptoRates.length}</span>
-        </button>
-      </nav>
-
-      <section className="overflow-hidden rounded-2xl border border-base bg-secondary shadow-sm">
-        <header className="flex flex-wrap items-center justify-between gap-2 border-b border-base px-4 py-3 sm:px-5">
-          <div>
-            <h2 className="text-sm font-extrabold text-primary">{marketTab === "divisas" ? "Divisas y medios de pago" : "Criptomonedas cotizadas"}</h2>
-            <p className="mt-0.5 text-xs text-muted">{marketTab === "divisas" ? "Nombre, país o área monetaria y cotización frente al CUP." : "Solo activos que aparecen en la respuesta de elTOQUE; no se agregan precios externos ni estimados."}</p>
-          </div>
-          <span className="rounded-lg bg-subtle px-2.5 py-1.5 text-xs font-bold text-muted">{visibleRates.length} {visibleRates.length === 1 ? "activo" : "activos"}</span>
+          <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-60">
+            <RefreshCw className={'h-4 w-4 ' + (loading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />{loading ? 'Consultando…' : 'Actualizar'}
+          </button>
         </header>
 
-        {visibleRates.length ? <>
-          <div className="hidden grid-cols-[minmax(0,1.6fr)_minmax(0,.75fr)_minmax(0,.65fr)_minmax(0,.65fr)_minmax(0,1fr)] gap-3 bg-primary px-5 py-2.5 text-[10px] font-black uppercase tracking-wider text-muted xl:grid">
-            <span>Moneda / activo</span><span>Referencia</span><span>Compra</span><span>Venta</span><span>Variación / tendencia</span>
-          </div>
-          <div className="divide-y divide-base">
-            {visibleRates.map((rate) => {
-              const value = rate.value ?? rate.sell ?? rate.buy;
-              const previous = [...history].reverse().find((snapshot) => snapshot.rates[rate.code] !== undefined && snapshot.capturedAt !== payload?.capturedAt)?.rates[rate.code];
-              const sparkValues = history.filter((snapshot) => snapshot.rates[rate.code] !== undefined).slice(-18).map((snapshot) => snapshot.rates[rate.code]);
-              const rising = previous === undefined || value === undefined ? true : value >= previous;
-              const active = selectedCode === rate.code;
-              return <button key={rate.code} type="button" onClick={() => setSelectedCode(rate.code)} className={"grid w-full min-w-0 grid-cols-2 gap-x-3 gap-y-2 px-3 py-3 text-left transition hover:bg-primary sm:grid-cols-3 sm:px-4 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,.75fr)_minmax(0,.65fr)_minmax(0,.65fr)_minmax(0,1fr)] xl:items-center xl:gap-3 " + (active ? "bg-violet-50/50" : "bg-secondary")}>
-                <div className="col-span-2 flex min-w-0 items-center gap-3 sm:col-span-3 xl:col-span-1">
-                  <span className={"flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[10px] font-black " + (isCryptoCode(rate.code) ? "bg-indigo-100 text-indigo-800" : "bg-violet-100 text-violet-800")}>{rate.code.length > 5 ? rate.code.slice(0, 4) : rate.code}</span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-extrabold text-primary">{rate.name}</span>
-                    <span className="mt-0.5 block min-w-0 break-words text-[11px] leading-tight text-muted">{rate.country}{rate.sourceCode === "ECU" ? " · código de origen elTOQUE: ECU" : ""}</span>
-                  </span>
-                </div>
-                <div className="min-w-0">
-                  <span className="block text-[10px] text-muted xl:hidden">Referencia</span>
-                  <span className="block break-words text-base font-black tabular-nums text-primary">{money(value)} <span className="text-[10px] font-semibold text-muted">CUP</span></span>
-                </div>
-                <div className="min-w-0">
-                  <span className="block text-[10px] text-muted xl:hidden">Compra</span>
-                  <span className="text-sm font-semibold tabular-nums text-primary">{money(rate.buy)}</span>
-                </div>
-                <div className="min-w-0">
-                  <span className="block text-[10px] text-muted xl:hidden">Venta</span>
-                  <span className="text-sm font-semibold tabular-nums text-primary">{money(rate.sell)}</span>
-                </div>
-                <div className="col-span-2 flex min-w-0 items-center justify-between gap-3 sm:col-span-3 xl:col-span-1">
-                  <AbsoluteDelta current={value} previous={previous} />
-                  <div className="w-[76px] shrink-0">{sparkValues.length > 1 ? <Sparkline values={sparkValues} positive={rising} /> : <span className="block text-right text-[10px] text-muted">Sin historial</span>}</div>
-                </div>
-              </button>;
-            })}
-          </div>
-        </> : <div className="flex flex-col items-center px-5 py-8 text-center">
-          <div className="rounded-xl bg-subtle p-3 text-violet-700">{marketTab === "crypto" ? <BarChart3 className="h-5 w-5" /> : <Activity className="h-5 w-5" />}</div>
-          <p className="mt-3 text-sm font-bold text-primary">{loading ? "Consultando elTOQUE…" : marketTab === "crypto" ? "No hay criptomonedas en esta respuesta" : "No hay cotizaciones de divisas disponibles"}</p>
-          <p className="mt-1 max-w-md text-xs leading-5 text-muted">{marketTab === "crypto" ? "La pestaña se llena automáticamente con BTC, USDT, TRX, BNB u otros activos únicamente cuando elTOQUE los devuelve. No se mostrarán precios inventados ni datos de otra fuente como si fueran de elTOQUE." : "Cuando la API responda con cotizaciones reconocibles, aparecerán aquí."}</p>
-          {error && <button type="button" onClick={() => void load(true)} className="mt-3 rounded-lg bg-violet-700 px-3 py-2 text-xs font-bold text-white">Reintentar conexión</button>}
-        </div>}
-        <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-base px-4 py-2.5 text-[10px] text-muted sm:px-5">
-          <span><CheckCircle2 className="mr-1 inline h-3.5 w-3.5 text-emerald-600" />Fuente: elTOQUE · valores informativos</span>
-          <span>Compra/venta solo se muestran si la API los entrega por separado.</span>
-        </footer>
-      </section>
-
-      {selectedRate && <section className="grid min-w-0 gap-3 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,.8fr)]">
-        <div className="min-w-0 rounded-2xl border border-base bg-secondary p-4 shadow-sm sm:p-5">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-[.16em] text-violet-700">Historial permanente en Supabase</p>
-              <h2 className="mt-1 text-base font-extrabold text-primary">{selectedRate.name} <span className="font-semibold text-muted">/ CUP</span></h2>
-              <p className="mt-0.5 text-xs text-muted">{selectedRate.country}</p>
+        <section className="rounded-2xl border border-base bg-secondary p-4 shadow-xs" aria-live="polite">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className={'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ' + (payload && !stale ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300' : 'border-base bg-subtle text-muted')}>
+                <ShieldCheck className="h-5 w-5" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="flex flex-wrap items-center gap-2 text-sm font-bold text-primary">
+                  {payload ? (stale ? 'Última consulta guardada' : 'Conexión activa con elTOQUE') : loading ? 'Consultando la fuente…' : 'Sin cotizaciones disponibles'}
+                  {payload && !stale && <LiveDot />}
+                  {payload && stale && <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">Sin conexión en vivo</span>}
+                </p>
+                <p className="mt-0.5 text-[11px] font-semibold text-muted">{payload ? `Consultado el ${dateLabel(payload.capturedAt)}` : 'Aún no hay una consulta válida'}</p>
+              </div>
             </div>
-            <div className="flex gap-1 rounded-lg bg-subtle p-1">
-              {([{ id: "24h", label: "24 h" }, { id: "7d", label: "7 días" }, { id: "30d", label: "30 días" }, { id: "all", label: "Todo" }] as const).map((item) =>
-                <button key={item.id} type="button" onClick={() => setPeriod(item.id)} className={"rounded-md px-2.5 py-1.5 text-[11px] font-bold transition " + (period === item.id ? "bg-secondary text-violet-700 shadow-sm" : "text-muted hover:text-primary")}>{item.label}</button>)}
+            <div className="flex flex-wrap items-center gap-3">
+              {globalDelta && (
+                <span className="hidden items-center gap-1 text-[11px] font-bold text-muted md:inline-flex">USD {periodLabel}: <TrendPill delta={globalDelta} compact /></span>
+              )}
+              <RefreshCountdown target={nextRefreshAt} onRefresh={() => void load()} loading={loading} />
             </div>
           </div>
-          {historyError && <p role="status" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">{historyError}</p>}
-          <div className="mt-4 h-[170px] w-full sm:h-[200px] xl:h-[220px]">
-            {chartData.length >= 2 ? <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 8, right: 8, left: 0, bottom: 3 }}>
-                <CartesianGrid stroke="var(--border-base)" strokeDasharray="3 5" vertical={false} />
-                <XAxis dataKey="label" tick={{ fontSize: 9, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} minTickGap={22} />
-                <YAxis domain={["auto", "auto"]} width={48} tick={{ fontSize: 9, fill: "var(--text-muted)" }} axisLine={false} tickLine={false} tickFormatter={(v) => new Intl.NumberFormat("es-ES", { notation: "compact", maximumFractionDigits: 2 }).format(v)} />
-                <Tooltip formatter={(value) => [money(value) + " CUP", "Cotización"]} labelFormatter={(label) => "Fecha: " + label} contentStyle={{ borderRadius: 10, borderColor: "var(--border-base)", background: "var(--bg-secondary)", color: "var(--text-primary)", fontSize: 11 }} />
-                <Line type="monotone" dataKey="value" stroke="#7C4DDE" strokeWidth={2.25} dot={false} activeDot={{ r: 4, strokeWidth: 0 }} connectNulls />
-              </LineChart>
-            </ResponsiveContainer> : <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-base bg-primary px-4 text-center">
-              <p className="text-sm font-bold text-primary">{chartData.length === 1 ? "Primer registro guardado" : "Aún no hay historial suficiente"}</p>
-              <p className="mt-1 max-w-sm text-xs leading-5 text-muted">El histórico permanente se consulta en la base de datos; los puntos antiguos del navegador se importan de forma privada a tu cuenta. No se inventan cotizaciones.</p>
-            </div>}
-          </div>
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-base pt-3 text-[10px] text-muted">
-            <span>{chartData.length} puntos en el período seleccionado</span><span>Consulta automática cada 5 min mientras la página está abierta</span>
-          </div>
-        </div>
+        </section>
 
-        <aside className="min-w-0 rounded-2xl border border-base bg-secondary p-4 shadow-sm sm:p-5">
-          <p className="text-[10px] font-black uppercase tracking-[.16em] text-violet-700">Detalle de cotización</p>
-          <div className="mt-2 flex items-start justify-between gap-3">
-            <div><h3 className="text-lg font-black text-primary">{selectedRate.code}</h3><p className="text-xs text-muted">{selectedRate.name}</p></div>
-            <span className="rounded-lg bg-violet-100 px-2 py-1 text-[10px] font-bold text-violet-800">{marketTab === "crypto" ? "Crypto" : "Divisa"}</span>
+        {error && (
+          <div role="alert" className={'flex items-start gap-3 rounded-2xl border p-4 text-sm leading-6 ' + (apiConfigured === false ? 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200' : 'border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200')}>
+            {apiConfigured === false ? <KeyRound className="mt-1 h-4 w-4 shrink-0" aria-hidden="true" /> : <AlertCircle className="mt-1 h-4 w-4 shrink-0" aria-hidden="true" />}
+            <div className="min-w-0">
+              <p className="font-bold">{apiConfigured === false ? 'Falta la credencial de elTOQUE en el servidor' : 'No se pudo actualizar la cotización'}</p>
+              <p className="mt-0.5">{apiConfigured === false
+                ? 'El administrador debe definir ELTOQUE_API_TOKEN en el servidor. Mientras tanto se muestra la última consulta guardada; PALMYRA no inventa ni sustituye tasas.'
+                : error}{error && payload && apiConfigured !== false ? ' Se mantiene la última cotización, no una tasa en vivo.' : ''}</p>
+            </div>
           </div>
-          <div className="mt-4 rounded-xl bg-primary p-3">
-            <p className="text-xs font-semibold text-muted">Tasa de referencia</p>
-            <p className="mt-1 text-2xl font-black tabular-nums text-primary">{money(currentValue)} <span className="text-xs font-semibold text-muted">CUP</span></p>
-            <div className="mt-2"><Delta value={change} /></div>
-          </div>
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <div className="rounded-xl border border-base p-3"><p className="text-[10px] font-bold uppercase text-muted">Compra</p><p className="mt-1 text-base font-black tabular-nums text-primary">{money(selectedRate.buy)}</p></div>
-            <div className="rounded-xl border border-base p-3"><p className="text-[10px] font-bold uppercase text-muted">Venta</p><p className="mt-1 text-base font-black tabular-nums text-primary">{money(selectedRate.sell)}</p></div>
-          </div>
-          <p className="mt-3 text-[10px] leading-4 text-muted">País / área monetaria: {selectedRate.country}. Los campos no publicados por elTOQUE se muestran como “—”.</p>
-        </aside>
-      </section>}
+        )}
+        {payload?.notice && !error && (
+          <p role="status" className="rounded-xl border border-base bg-subtle p-3 text-sm leading-6 text-secondary">{payload.notice}</p>
+        )}
+        {storageError && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">El dispositivo no pudo guardar la consulta. No estará disponible al cerrar la aplicación.</p>}
 
-      <div className="flex items-start gap-2 rounded-xl border border-base bg-secondary px-3 py-2.5 text-[10px] leading-4 text-muted">
-        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-violet-700" />
-        <p><strong className="text-primary">Nota:</strong> tasas referenciales de elTOQUE, no oficiales ni garantía de una operación. Los datos de compra/venta no se calculan si la fuente no los publica. El histórico principal se conserva en Supabase y se recupera al iniciar sesión, incluso después de borrar la caché. Los puntos antiguos importados se mantienen privados por usuario y no modifican precios, costos ni operaciones del POS.</p>
-      </div>
+        {rates.length > 0 ? (
+          <>
+            {rates.some(rate => isCryptoRate(rate.code)) && (
+              <nav aria-label="Tipo de cotización" className="flex gap-2">
+                {(['divisas', 'crypto'] as const).map(tab => (
+                  <button key={tab} type="button" onClick={() => setMarket(tab)} aria-pressed={market === tab} className={'min-h-11 rounded-xl px-4 text-sm font-semibold transition-colors ' + (market === tab ? 'bg-violet-600 text-white' : 'border border-base bg-secondary text-primary hover:border-violet-300')}>{tab === 'divisas' ? 'Divisas' : 'Criptoactivos'}</button>
+                ))}
+              </nav>
+            )}
 
-    </div>
-  </div>;
+            <section aria-label="Cotizaciones disponibles" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {visibleRates.map(rate => {
+                const delta = deltaFor(rate);
+                const values = seriesFor(rate.code).map(item => item.value);
+                const shown = rateNumber(rate);
+                const active = selected?.code === rate.code;
+                return (
+                  <button key={rate.code} type="button" aria-pressed={active} onClick={() => setSelectedCode(rate.code)} className={'group min-w-0 rounded-2xl border bg-secondary p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:border-violet-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-600 ' + (active ? 'border-violet-500 ring-1 ring-violet-500' : 'border-base')}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-lg font-black leading-none text-primary">{rate.code}</p>
+                        <p className="mt-1 truncate text-[11px] font-semibold text-secondary" title={rateTitle(rate)}>{rateTitle(rate)}</p>
+                      </div>
+                      <TrendPill delta={delta} compact />
+                    </div>
+                    <p className="mt-3 text-3xl font-black tabular-nums leading-none text-primary">{money(shown)} <span className="text-xs font-semibold text-muted">CUP</span></p>
+                    {shown === undefined && <p className="mt-1 text-[11px] font-semibold text-muted">La fuente no publicó una tasa de referencia.</p>}
+                    <div className="mt-3"><Sparkline values={values} id={`${cardIdPrefix}-${rate.code}`} /></div>
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-base pt-2 text-[11px] font-semibold text-secondary">
+                      {hasBuySell ? (
+                        <span className="flex flex-wrap gap-x-4 gap-y-0.5"><span>Compra <b className="tabular-nums text-primary">{money(rate.buy)}</b></span><span>Venta <b className="tabular-nums text-primary">{money(rate.sell)}</b></span></span>
+                      ) : <span className="text-muted">Sin compra/venta publicada</span>}
+                      <span className="text-muted">{values.length ? `${values.length} consultas` : 'Sin historial'}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </section>
+
+            {selected && (
+              <section className="rounded-2xl border border-base bg-secondary p-4 shadow-xs sm:p-6">
+                <header className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <h2 className="text-lg font-bold text-primary">Evolución de {selected.code} / CUP</h2>
+                    <p className="mt-1 text-sm text-muted">{remoteHistory.length ? 'Historial de la fuente y consultas de este dispositivo.' : 'Consultas guardadas en este dispositivo.'}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-1" aria-label="Período del historial">
+                    {([{ id: '24h', label: '24 h' }, { id: '7d', label: '7 días' }, { id: '30d', label: '30 días' }, { id: 'all', label: 'Todo' }] as const).map(item => (
+                      <button type="button" key={item.id} aria-pressed={period === item.id} onClick={() => setPeriod(item.id)} className={'min-h-11 rounded-lg px-3 text-sm font-semibold ' + (period === item.id ? 'bg-violet-600 text-white' : 'bg-subtle text-primary hover:bg-violet-50 dark:hover:bg-violet-950/30')}>{item.label}</button>
+                    ))}
+                  </div>
+                </header>
+
+                {selectedStats && (
+                  <dl className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    <div className="rounded-xl border border-base bg-subtle p-3">
+                      <dt className="text-[10px] font-bold uppercase tracking-wider text-muted">Actual</dt>
+                      <dd className="mt-0.5 flex items-center gap-1.5 text-lg font-black tabular-nums text-primary">{money(selectedStats.last)} {(selectedDelta?.absolute ?? 0) > 0 ? <TrendingUp className="h-4 w-4 text-emerald-600" aria-hidden="true" /> : (selectedDelta?.absolute ?? 0) < 0 ? <TrendingDown className="h-4 w-4 text-rose-600" aria-hidden="true" /> : null}</dd>
+                      <dd className="mt-1"><TrendPill delta={selectedDelta} compact /></dd>
+                    </div>
+                    <div className="rounded-xl border border-base bg-subtle p-3">
+                      <dt className="text-[10px] font-bold uppercase tracking-wider text-muted">Mínimo</dt>
+                      <dd className="mt-0.5 text-lg font-black tabular-nums text-primary">{money(selectedStats.min)}</dd>
+                    </div>
+                    <div className="rounded-xl border border-base bg-subtle p-3">
+                      <dt className="text-[10px] font-bold uppercase tracking-wider text-muted">Máximo</dt>
+                      <dd className="mt-0.5 text-lg font-black tabular-nums text-primary">{money(selectedStats.max)}</dd>
+                    </div>
+                    <div className="rounded-xl border border-base bg-subtle p-3">
+                      <dt className="text-[10px] font-bold uppercase tracking-wider text-muted">Consultas</dt>
+                      <dd className="mt-0.5 text-lg font-black tabular-nums text-primary">{chart.length}</dd>
+                    </div>
+                  </dl>
+                )}
+
+                <div className="mt-5 h-72" role="img" aria-label={`Evolución de ${selected.code}: ${chart.length} consultas; los valores exactos están en la tabla de historial.`}>
+                  {chart.length >= 2 ? (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={chart} margin={{ top: 8, right: 16, left: 10, bottom: 8 }}>
+                        <defs>
+                          <linearGradient id="palmyra-rate-fill" x1="0" x2="0" y1="0" y2="1">
+                            <stop offset="0%" stopColor="#7C4DDE" stopOpacity="0.28" />
+                            <stop offset="100%" stopColor="#7C4DDE" stopOpacity="0.02" />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid stroke="var(--border-base)" strokeDasharray="3 5" vertical={false} />
+                        <XAxis dataKey="label" tick={{ fontSize: 12 }} minTickGap={40} tickLine={false} axisLine={{ stroke: 'var(--border-base)' }} />
+                        <YAxis domain={['auto', 'auto']} width={70} tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
+                        <Tooltip labelFormatter={(_, items) => items[0]?.payload?.timestamp ? dateLabel(items[0].payload.timestamp) : ''} formatter={value => [`${money(Number(value))} CUP`, 'Referencia']} contentStyle={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', borderRadius: 12, border: '1px solid var(--border-base)' }} />
+                        <Area type="monotone" dataKey="value" stroke="#7C4DDE" strokeWidth={2.5} fill="url(#palmyra-rate-fill)" dot={chart.length < 20 ? { r: 2.5, fill: '#7C4DDE', strokeWidth: 0 } : false} activeDot={{ r: 4 }} isAnimationActive={false} />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  ) : (
+                    <div className="flex h-full flex-col items-center justify-center gap-3 rounded-xl bg-subtle p-4 text-center">
+                      <BarChart3 className="h-8 w-8 text-muted" aria-hidden="true" />
+                      <p className="text-sm text-secondary">{chart.length === 1 ? 'Hay una consulta guardada. La comparación aparecerá con la siguiente.' : 'Aún no hay consultas de referencia en este período.'}</p>
+                      <p className="max-w-sm text-[11px] font-semibold text-muted">La línea se construye con las tasas reales guardadas en este dispositivo y con el historial verificado del servidor.</p>
+                    </div>
+                  )}
+                </div>
+
+                {chart.length > 0 && (
+                  <details className="mt-4 border-t border-base pt-3">
+                    <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold text-primary">Ver consultas ({chart.length})</summary>
+                    <div className="max-h-64 overflow-auto custom-scrollbar">
+                      <table className="w-full text-left text-sm">
+                        <thead><tr className="text-muted"><th className="p-2">Fecha de consulta</th><th className="p-2 text-right">CUP por unidad</th><th className="p-2 text-right">Cambio</th></tr></thead>
+                        <tbody>
+                          {chart.slice().reverse().map((item, index, list) => {
+                            const previous = list[index + 1]?.value;
+                            const delta = computeDelta(item.value, previous);
+                            return (
+                              <tr key={item.timestamp} className="border-t border-base text-primary">
+                                <td className="p-2">{dateLabel(item.timestamp)}</td>
+                                <td className="p-2 text-right tabular-nums">{money(item.value)}</td>
+                                <td className="p-2 text-right"><TrendPill delta={delta} compact /></td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </details>
+                )}
+              </section>
+            )}
+          </>
+        ) : (
+          <section className="rounded-2xl border border-dashed border-base bg-secondary px-5 py-12 text-center">
+            <Activity className="mx-auto h-10 w-10 text-muted" aria-hidden="true" />
+            <h2 className="mt-4 text-lg font-semibold text-primary">{loading ? 'Esperando cotizaciones' : 'No hay tasas de elTOQUE para mostrar'}</h2>
+            <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">Cuando la fuente responda aparecerán únicamente sus monedas y valores. No se usarán tasas de otro proveedor ni conversiones calculadas para llenar esta pantalla.</p>
+          </section>
+        )}
+
+        <p className="text-xs leading-5 text-muted">Fuente: elTOQUE · Referencias del mercado informal, no tasas oficiales ni garantía de una operación. Compra y venta solo aparecen si la API las publica. La fecha indicada corresponde a la consulta, no necesariamente al momento de publicación del proveedor. Actualización automática cada 5 minutos con esta pantalla abierta.</p>
+      </main>
+    </OperationsSurface>
+  );
+}
+
+function LiveDot() {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+      <span className="relative flex h-1.5 w-1.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-70 motion-reduce:animate-none" /><span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" /></span>
+      En vivo
+    </span>
+  );
 }

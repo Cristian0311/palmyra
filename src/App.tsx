@@ -5,7 +5,8 @@ import { useShallow } from 'zustand/react/shallow';
  */
 
 import { useEffect, useState, useRef, lazy, Suspense } from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { canAccessSettingsSection, NOTIFICATIONS_PATH } from './utils/settingsAccess';
 import Layout from "./components/Layout";
 import { loadSaaSContext, signOutSaaSAccount } from "./services/saas";
 import { getSupabase } from "./lib/supabase";
@@ -44,7 +45,14 @@ const PlatformAdmin = lazy(() => import("./pages/PlatformAdmin"));
 const HelpCenter = lazy(() => import("./pages/HelpCenter"));
 const Tutorial = lazy(() => import("./pages/Tutorial"));
 const ExchangeRate = lazy(() => import("./pages/ExchangeRate"));
-const Notifications = lazy(() => import("./pages/Notifications"));
+function SettingsRoute() {
+  const user = useStore(state => state.currentUser);
+  const location = useLocation();
+  const section = new URLSearchParams(location.search).get('section');
+  return canAccessSettingsSection(user, section)
+    ? <Settings />
+    : <Navigate to={user ? NOTIFICATIONS_PATH : '/pos'} replace />;
+}
 const LandingPage = lazy(() => import("./pages/LandingPage"));
 
 function PageLoading() {
@@ -266,6 +274,26 @@ export default function App() {
     const { data: authSubscription } = supabase.auth.onAuthStateChange((event) => {
       if (!active) return;
       if (event === "SIGNED_OUT") {
+        // Un cierre de sesión intencional borra la caché antes de emitir el
+        // evento (signOutSaaSAccount). Si el contexto verificado sigue ahí y el
+        // equipo está sin conexión, este SIGNED_OUT viene de una renovación de
+        // token fallida: conservar el espacio local evita expulsar al usuario
+        // y arriesgar operaciones en curso.
+        const localScope = getPalmyraLocalScope();
+        const cachedContext = localScope?.userId ? getCachedSaaSContext(localScope.userId) : null;
+        if (typeof navigator !== "undefined" && !navigator.onLine && cachedContext?.companyId && cachedContext.warehouseIds?.[0]) {
+          console.info("[PALMYRA] SIGNED_OUT sin conexión; se conserva la sesión local verificada.");
+          useStore.setState({
+            currentUser: cachedContext.user,
+            currentBranchId: cachedContext.warehouseIds[0],
+          });
+          useStore.getState().addNotification?.(
+            "Sin conexión: sigues trabajando con la sesión local verificada. Al reconectar se validará tu acceso.",
+            "warning",
+          );
+          setAccessState("ready");
+          return;
+        }
         clearPalmyraLocalScope();
         void import("./services/offlineQueue").then(({ setOfflineQueueScope }) => setOfflineQueueScope()).catch(() => {});
         useStore.setState({ currentUser: null, currentBranchId: "", activeSessionId: null, cart: [] });
@@ -347,19 +375,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (accessState !== "ready" || !currentUser || getDevicePerformanceTier() === "ultra") return;
+    if (accessState !== "ready" || !currentUser) return;
     // Precalentar las dos rutas principales para que el primer salto al CRM
     // no dependa de una descarga perezosa justo después del login/onboarding.
-    if (getDevicePerformanceTier() !== "ultra") {
-      return scheduleIdleTask(() => {
-        void import("./pages/POS");
-        void import("./pages/Dashboard");
-      }, 700, 1600);
-    }
+    // En equipos de gama muy baja no se precarga nada: cada kB cuenta.
+    if (getDevicePerformanceTier() === "ultra") return;
 
     return scheduleIdleTask(() => {
       void import("./pages/POS");
-    }, 1200, 1600);
+      void import("./pages/Dashboard");
+    }, 700, 1600);
   }, [currentUser?.id, accessState]);
 
   useEffect(() => {
@@ -431,6 +456,17 @@ export default function App() {
     );
   }
 
+  // Con un usuario persistido, el router se monta antes de que la verificación
+  // cloud termine. Redirigir en "loading" destruía los enlaces profundos
+  // (p. ej. /pos o /reports abrían siempre el dashboard): esperamos aquí.
+  if (accessState === "loading") {
+    return (
+      <div className="min-h-screen bg-[#F7F5FC] flex items-center justify-center">
+        <div className="palmyra-loading-bubble">Preparando PALMYRA… <span className="palmyra-loading-dots">•••</span></div>
+      </div>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <Router>
@@ -460,20 +496,20 @@ export default function App() {
                     <Route path="/customers" element={can("customers.manage") ? <Customers /> : <Navigate to="/pos" replace />} />
 <Route path="/quotes" element={can("pos.access") ? <Quotes /> : <Navigate to="/pos" replace />} />
                     <Route path="/reports" element={can("reports.view") ? <Reports /> : <Navigate to="/pos" replace />} />
-                    <Route path="/settings" element={can("settings.manage") ? <Settings /> : <Navigate to="/pos" replace />} />
+                    <Route path="/settings" element={<SettingsRoute />} />
                     <Route path="/team" element={can("employees.manage") ? <Team /> : <Navigate to="/pos" replace />} />
                     <Route path="/subscription" element={can("settings.manage") ? <Subscription /> : <Navigate to="/pos" replace />} />
                     <Route path="/help" element={<Navigate to="/help-center" replace />} />
                     <Route path="/help-center" element={<HelpCenter />} />
                     <Route path="/tutorial" element={<Tutorial />} />
                     <Route path="/exchange-rate" element={<ExchangeRate />} />
-                    <Route path="/notifications" element={<Notifications />} />
+                    <Route path="/notifications" element={<Navigate to={NOTIFICATIONS_PATH} replace />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </Suspense>
               </Layout>
             ) : (
-              <Navigate to={accessState === "signed_out" ? "/landing" : accessState === "needs_onboarding" || pendingOnboarding ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/auth"} replace />
+              <Navigate to={accessState === "signed_out" ? "/auth" : accessState === "needs_onboarding" || pendingOnboarding ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/auth"} replace />
             )
           } />
         </Routes>

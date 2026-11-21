@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import type { Transaction, Product, CashRegisterSession, User, Branch, Currency, InventoryTransfer, Category } from '../types';
 
-type LocalDateYMD = (dStr: string | null | undefined) => string;
+import { filterReportTransactions, summarizeReportSales } from '../modules/reports/utils/reportSalesSummary';
 
 export function getLocalDateYMD(dStr: string | null | undefined): string {
   if (!dStr) return '';
@@ -43,16 +43,16 @@ export function useReportsAnalytics(params: {
   const branchById = useMemo(() => new Map(branches.map(branch => [branch.id, branch])), [branches]);
   const userById = useMemo(() => new Map(users.map(user => [user.id, user])), [users]);
 
-  const validSalesTransactions = useMemo(
-    () =>
-      transactions.filter(
-        tx =>
-          tx.status === 'completed' &&
-          !tx.deletedAt &&
-          !String(tx.notes || '').startsWith('AJUSTE_')
-      ),
-    [transactions]
-  );
+  const selectedWorker = selectedWorkerFilter !== 'all'
+    ? users.find(user => user.id === selectedWorkerFilter)
+    : undefined;
+  const scopedTransactions = useMemo(() => filterReportTransactions(transactions, {
+    branchId: selectedBranchFilter, workerId: selectedWorkerFilter,
+    workerAliases: [selectedWorker?.name || '', selectedWorker?.employeeId || ''].filter(Boolean) as string[],
+    date: selectedFilterDate, period: sessionFilter,
+  }), [transactions, selectedBranchFilter, selectedWorkerFilter, selectedWorker?.name, selectedWorker?.employeeId, selectedFilterDate, sessionFilter]);
+  const salesSummary = useMemo(() => summarizeReportSales(scopedTransactions, products), [scopedTransactions, products]);
+  const validSalesTransactions = salesSummary.sales;
 
   const categoryData = useMemo(() => {
     const data: Record<string, number> = {};
@@ -131,18 +131,21 @@ export function useReportsAnalytics(params: {
   }, [transfers, transferFromFilter, transferToFilter, selectedBranchFilter, selectedFilterDate, sessionFilter, transferSearch, branchById]);
 
   const transferStats = useMemo(() => {
+    // Un traslado cancelado devolvió la mercancía al origen: no cuenta como
+    // unidad movida ni como recepción en destino.
+    const effectiveTransfers = filteredTransfers.filter(t => t.status !== 'cancelled');
     const totalCount = filteredTransfers.length;
-    const totalUnits = filteredTransfers.reduce((sum, t) => sum + (t.quantity || 0), 0);
+    const totalUnits = effectiveTransfers.reduce((sum, t) => sum + (t.quantity || 0), 0);
 
     const originCounts: Record<string, number> = {};
-    filteredTransfers.forEach(t => {
+    effectiveTransfers.forEach(t => {
       const name = branchById.get(t.fromBranchId)?.name || t.fromBranchName || 'Origen';
       originCounts[name] = (originCounts[name] || 0) + t.quantity;
     });
     const topOrigin = Object.entries(originCounts).sort((a, b) => b[1] - a[1])[0] || ['Ninguna', 0];
 
     const destCounts: Record<string, number> = {};
-    filteredTransfers.forEach(t => {
+    effectiveTransfers.forEach(t => {
       const name = branchById.get(t.toBranchId)?.name || t.toBranchName || 'Destino';
       destCounts[name] = (destCounts[name] || 0) + t.quantity;
     });
@@ -151,35 +154,11 @@ export function useReportsAnalytics(params: {
     return { totalCount, totalUnits, topOrigin, topDest };
   }, [filteredTransfers, branchById]);
 
-  const filteredTransactions = useMemo(() => {
-    const todayYMD = getLocalDateYMD(new Date().toISOString());
-    const yesterdayDate = new Date();
-    yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-    const yesterdayYMD = getLocalDateYMD(yesterdayDate.toISOString());
-
-    return transactions.filter(t => {
-      if (t.deletedAt) return false;
-      if (selectedBranchFilter !== 'all' && t.branchId !== selectedBranchFilter) return false;
-      if (selectedWorkerFilter !== 'all') {
-        const directUser = userById.get(t.userId);
-        const emp = directUser || users.find(u => u.name && t.cashierName && u.name.toLowerCase() === t.cashierName.toLowerCase());
-        if (emp?.id !== selectedWorkerFilter && t.userId !== selectedWorkerFilter && t.cashierName !== selectedWorkerFilter) return false;
-      }
-      const tYMD = getLocalDateYMD(t.date);
-      if (selectedFilterDate) {
-        if (tYMD !== selectedFilterDate) return false;
-      } else if (sessionFilter === 'today') {
-        if (tYMD !== todayYMD) return false;
-      } else if (sessionFilter === 'yesterday') {
-        if (tYMD !== yesterdayYMD) return false;
-      }
-      return true;
-    }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [transactions, selectedBranchFilter, selectedWorkerFilter, selectedFilterDate, sessionFilter, userById, users]);
+  const filteredTransactions = scopedTransactions;
 
   return {
     categoryData, hourData, branchData,
     filteredTransfers, transferStats,
-    filteredTransactions,
+    filteredTransactions, salesSummary,
   };
 }

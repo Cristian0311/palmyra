@@ -10,13 +10,17 @@ import {
 import { enqueueOfflineItem, getOfflineQueue, waitForOfflineQueueReady } from '../../services/offlineQueue';
 import { removeFromOfflineQueueByAction, removeFromOfflineQueueByTransactionId } from '../../services/offlineQueue/outboxUtils';
 import { buildLocalCompletedSalePatch } from '../utils/localCompletedSale';
-import { buildLocalVoidTransactionPatch } from '../utils/localVoidTransaction';
+import { buildLocalVoidTransactionsPatch, canVoidSales } from '../utils/localVoidTransaction';
+import { purgeCancelledShift } from '../utils/purgeCancelledShift';
+import { createVoidTransactionAction } from '../utils/voidTransactionAction';
+import { stableLegacySaleUuid } from '../../services/supabaseSync/rpc';
 import { setCanonicalInventoryQuantity } from '../utils/inventoryTransforms';
 import { generateId, generateReadableId } from '../../lib/utils';
 import { normalizeSemanticText } from '../../utils/textUtils';
 import { getActiveTenant } from '../../services/tenant';
 import { pushWarrantyToSupabase, callCancelSessionRPC, pullBranchInventoryFromSupabase } from '../../services/supabaseSync';
 import { flushLocalStateStorage } from '../../services/localStateStorage';
+import { isCloudBusinessSyncAllowed } from '../../services/localPlanMode';
 
 type StoreSet = (
   partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)
@@ -24,8 +28,33 @@ type StoreSet = (
 type StoreGet = () => AppState;
 
 
-async function refreshInventoryBranchesFromSupabase(set: StoreSet, get: StoreGet, branchIds: string[]): Promise<boolean> {
-  const ids = Array.from(new Set(branchIds.filter(Boolean)));
+/**
+ * A cancelled shift leaves no trace: stock goes back, the bank reversal is
+ * applied when possible, and the session, its tickets and its salary
+ * settlement are removed from the local snapshot instead of being kept as
+ * "cancelled" rows.
+ */
+function applyCancelledShiftPatch(
+  set: StoreSet,
+  get: StoreGet,
+  sessionId: string,
+  sales: Transaction[],
+  audit: { userId: string; reason: string; date: string },
+) {
+  const state = get();
+  let voidPatch: ReturnType<typeof buildLocalVoidTransactionsPatch>;
+  try {
+    voidPatch = buildLocalVoidTransactionsPatch(state, sales, audit);
+  } catch (error) {
+    // The server already voided the shift; the local bank copy is refreshed
+    // right after, so an insufficient local balance must not block the purge.
+    console.warn('[cancelSession] Reversión bancaria local omitida; se reconciliará con Supabase:', error);
+    voidPatch = buildLocalVoidTransactionsPatch(state, sales, audit, { reverseBank: false });
+  }
+  set({ ...voidPatch, ...purgeCancelledShift(state, sessionId, sales.map(sale => sale.id)) });
+}
+
+async function refreshInventoryBranchesFromSupabase(set: StoreSet, get: StoreGet, branchIds: string[]): Promise<boolean> {  const ids = Array.from(new Set(branchIds.filter(Boolean)));
   if (!ids.length) return true;
   try {
     const results = await Promise.all(ids.map(id => pullBranchInventoryFromSupabase(id)));
@@ -39,6 +68,7 @@ async function refreshInventoryBranchesFromSupabase(set: StoreSet, get: StoreGet
 }
 
 export function createPosActions(set: StoreSet, get: StoreGet): any {
+  const cancellingSessions = new Set<string>();
   return {
   cart: [],
   currentCustomerId: undefined,
@@ -156,6 +186,19 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
       }).catch(() => {});
     }
   },
+  deleteQuote: (id) => {
+    const queueDelete = () => {
+      enqueueOfflineItem('quote_delete', { id }, `quote-delete:${id}`).catch(() => {});
+    };
+    set((state) => ({ quotes: state.quotes.filter(q => q.id !== id) }));
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      queueDelete();
+      return;
+    }
+    import('../../services/supabaseSync').then(({ deleteQuoteFromSupabase }) => {
+      deleteQuoteFromSupabase(id).then((ok) => { if (!ok) queueDelete(); }).catch(queueDelete);
+    }).catch(queueDelete);
+  },
 
   timeShifts: [],
   addTimeShift: (shift) => {
@@ -220,7 +263,8 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
       await flushLocalStateStorage();
     };
 
-    if (typeof navigator === 'undefined' || navigator.onLine === false) {
+    // El plan Gratis no tiene nube: la venta es local aunque el teléfono esté online.
+    if (typeof navigator === 'undefined' || navigator.onLine === false || !isCloudBusinessSyncAllowed()) {
       await applyLocalSale(true);
       return true;
     }
@@ -298,48 +342,25 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
     }
   },
 
-  deleteTransaction: async (id: string, reason?: string) => {
-    const state = get();
-    const tx = (state.transactions || []).find(t => t.id === id);
-    if (!tx || tx.deletedAt) return false;
-    const userId = state.currentUser?.id || 'system';
-    const finalReason = reason || 'Anulación de venta';
-
-    if (!navigator.onLine) {
-      await enqueueOfflineItem('void_transaction', { id, remoteId: tx.remoteId || id, userId, reason: finalReason }, 'void:' + id);
-      set(current => buildLocalVoidTransactionPatch(current, tx));
-      const deletedAt = new Date().toISOString();
-      set((current) => ({
-        transactions: current.transactions.map(t => t.id === id ? { ...t, deletedAt, deletedBy: userId, deleteReason: finalReason } : t)
-      }));
-      return true;
-    }
-
-    await enqueueOfflineItem('void_transaction', { id, remoteId: tx.remoteId || id, userId, reason: finalReason }, 'void:' + id);
-    try {
-      const res = await callVoidTransactionRPC(tx.remoteId || id, userId, finalReason);
-      if (!res.success) throw new Error(res.error || 'No se pudo anular la venta');
-      set(current => buildLocalVoidTransactionPatch(current, tx));
-      const deletedAt = new Date().toISOString();
-      set((current) => ({
-        transactions: current.transactions.map(t => t.id === id ? { ...t, deletedAt, deletedBy: userId, deleteReason: finalReason } : t)
-      }));
-
-      const inventoryReconciled = await get().refreshBranchInventory();
+  deleteTransaction: createVoidTransactionAction({
+    get, set,
+    ready: waitForOfflineQueueReady,
+    enqueue: data => enqueueOfflineItem('void_transaction', data, 'void:' + data.id),
+    remove: id => removeFromOfflineQueueByAction('void_transaction', 'void:' + id),
+    resolveId: async id => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id)
+      ? id : stableLegacySaleUuid((await getActiveTenant()).companyId, id),
+    hasPendingSale: id => getOfflineQueue().some(item => item.type === 'transaction' && item.data?.id === id),
+    online: () => typeof navigator !== 'undefined' && navigator.onLine && isCloudBusinessSyncAllowed(),
+    rpc: callVoidTransactionRPC,
+    flush: flushLocalStateStorage,
+    reconcile: async branchId => {
+      const inventoryOk = await refreshInventoryBranchesFromSupabase(set, get, [branchId]);
       const { pullBankDataFromSupabase } = await import('../../services/supabaseSync');
-      const bankRes = await pullBankDataFromSupabase();
-      if (!inventoryReconciled || !bankRes.success) {
-        throw new Error('Venta anulada en servidor, pero el inventario/saldos locales aún no pudieron reconciliarse');
-      }
-      set({ bankCards: bankRes.bankCards, bankTransactions: bankRes.bankTransactions });
-
-      removeFromOfflineQueueByAction('void_transaction', 'void:' + id);
-      return true;
-    } catch (err) {
-      console.warn('[deleteTransaction] Anulación no confirmada; queda durable para reintento:', err);
-      return false;
-    }
-  },
+      const banks = await pullBankDataFromSupabase();
+      if (banks.success) set({ bankCards: banks.bankCards, bankTransactions: banks.bankTransactions });
+      return inventoryOk && banks.success;
+    },
+  }),
 
   updateTransaction: (id: string, updates: Partial<Transaction>) => {
     const existing = get().transactions.find(t => t.id === id);
@@ -358,14 +379,40 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
   cancelSession: async (sessionId: string, reason = 'Cancelación de turno') => {
     const state = get();
     const session = state.cashSessions.find(s => s.id === sessionId);
-    if (!session) return false;
-    if (session.status !== 'open') {
-      state.addNotification('El turno ya no está abierto.', 'warning');
+    if (!session || cancellingSessions.has(sessionId)) return false;
+    if (!canVoidSales(state.currentUser, session.branchId) ||
+        (state.currentUser?.role !== 'admin' && !state.currentUser?.permissions?.includes('cash.close'))) {
+      state.addNotification('Se requieren permisos de anulación de ventas y cierre de caja.', 'warning');
+      return false;
+    }
+    if (session.status === 'cancelled') return true;
+    if (reason.trim().length < 3) {
+      state.addNotification('Indica un motivo para anular el turno.', 'warning');
+      return false;
+    }
+    await waitForOfflineQueueReady();
+    if (getOfflineQueue().some(item => ['transaction', 'void_transaction', 'return_complete', 'cash_session'].includes(item.type))) {
+      state.addNotification('Sincroniza las ventas, devoluciones y turnos pendientes antes de anular el turno completo.', 'warning');
       return false;
     }
 
-    const userId = state.currentUser?.id || 'system';
+    const userId = state.currentUser!.id;
     const cancelledAt = new Date().toISOString();
+
+    if (!isCloudBusinessSyncAllowed()) {
+      // Plan Gratis: no hay autoridad remota. Se aplica la misma eliminación
+      // integral en este dispositivo con los permisos ya verificados arriba.
+      const sessionSales = get().transactions.filter(tx => tx.sessionId === sessionId && !tx.deletedAt);
+      const audit = { userId, reason: reason.trim(), date: cancelledAt };
+      applyCancelledShiftPatch(set, get, sessionId, sessionSales, audit);
+      await flushLocalStateStorage();
+      state.addNotification(
+        'Turno eliminado por completo.',
+        'success',
+        `Se reintegraron ${sessionSales.length} venta(s) al inventario local y el turno dejó de existir en este dispositivo. El plan Gratis no sincroniza esta eliminación con la nube.`
+      );
+      return true;
+    }
 
     // La sesión autenticada y el permiso cash.close se validan en Supabase.
     // No se requiere una contraseña adicional del empleado para esta acción.
@@ -378,34 +425,41 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
       return false;
     }
 
+    cancellingSessions.add(sessionId);
+    let confirmed = false;
     try {
-      const res = await callCancelSessionRPC(sessionId, userId, reason);
+      const res = await callCancelSessionRPC(sessionId, userId, reason.trim().slice(0, 500));
       if (!res.success) {
         get().addNotification(res.error || 'No se pudo cancelar el turno.', 'error');
         return false;
       }
 
-      const sessionTxs = (get().transactions || []).filter(t => t.sessionId === sessionId && !t.deletedAt);
-      sessionTxs.forEach(tx => set(current => buildLocalVoidTransactionPatch(current, tx)));
-      set(current => ({
-        cashSessions: (current.cashSessions || []).map(s => s.id === sessionId ? {
-          ...s, status: 'cancelled', closedAt: cancelledAt, closingDate: cancelledAt, deleteReason: reason
-        } : s),
-        transactions: (current.transactions || []).map(t =>
-          t.sessionId === sessionId && !t.deletedAt
-            ? { ...t, deletedAt: cancelledAt, deletedBy: userId, deleteReason: reason, status: 'refunded' as const }
-            : t
-        ),
-        cart: []
-      }));
+      // Older servers only marked the turn voided. Never invent stock restores
+      // for sales that the server did not explicitly confirm as voided.
+      if (!Array.isArray(res.data?.voided_sale_ids)) {
+        state.addNotification('El servidor no confirmó la anulación de las ventas. Se requiere actualizar el RPC de anulación de turnos.', 'error');
+        return false;
+      }
+      confirmed = true;
+      const voidedIds = new Set<string>(res.data.voided_sale_ids);
+      // Only the sales the server explicitly confirmed are restored. Tickets
+      // without remoteId were voided server-side through the same turn, so they
+      // are matched by session; a sale confirmed elsewhere is never re-restored.
+      const sessionSales = get().transactions.filter(tx =>
+        tx.sessionId === sessionId && !tx.deletedAt &&
+        (voidedIds.has(tx.remoteId || tx.id) || !tx.remoteId));
+      const audit = { userId, reason, date: cancelledAt };
+      applyCancelledShiftPatch(set, get, sessionId, sessionSales, audit);
+      await flushLocalStateStorage();
 
-      const inventoryReconciled = await get().refreshBranchInventory();
+      const inventoryReconciled = await refreshInventoryBranchesFromSupabase(set, get, [session.branchId]);
       const { pullBankDataFromSupabase } = await import('../../services/supabaseSync');
       const bankRes = await pullBankDataFromSupabase();
       if (!inventoryReconciled || !bankRes.success) {
-        get().addNotification('Turno cancelado, pero la reconciliación local aún está pendiente.', 'warning');
+        get().addNotification('Turno eliminado, pero la reconciliación local aún está pendiente.', 'warning');
       } else {
         set({ bankCards: bankRes.bankCards, bankTransactions: bankRes.bankTransactions });
+        get().addNotification('Turno eliminado por completo.', 'success', 'El turno, sus ventas y su liquidación se eliminaron y el stock volvió al inventario.');
       }
       removeFromOfflineQueueByAction('cash_session', 'cash-cancel:' + sessionId);
       await flushLocalStateStorage();
@@ -413,11 +467,12 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
     } catch (err) {
       console.warn('[cancelSession] No se pudo confirmar la cancelación:', err);
       get().addNotification(
-        'No se pudo confirmar la cancelación',
-        'warning',
-        'El turno permanece abierto. Vuelve a intentarlo con una conexión estable.'
+        confirmed ? 'Turno anulado; reconciliación local pendiente.' : 'No se pudo confirmar la anulación. Sincroniza y vuelve a intentarlo.',
+        'warning'
       );
-      return false;
+      return confirmed;
+    } finally {
+      cancellingSessions.delete(sessionId);
     }
   },
 
@@ -453,7 +508,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
 
     if (action === 'complete') {
       await enqueueOfflineItem('return_complete', { id, userId }, 'return:' + id);
-      if (navigator.onLine) {
+      if (navigator.onLine && isCloudBusinessSyncAllowed()) {
         try {
           // Primero confirmamos la existencia de la devolución en la nube. Así
           // "Completar" nunca corre antes que "Crear devolución".

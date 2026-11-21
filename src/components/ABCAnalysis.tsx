@@ -15,12 +15,16 @@ export function ABCAnalysis() {
   // We'll use sales history if available, otherwise stock value.
   
   const abcData = useMemo(() => {
+    // Solo ventas efectivas: anuladas, reembolsadas y ocultas del reporte no
+    // cuentan como consumo, igual que en el reporte de ventas.
+    const effectiveSales = transactions.filter(tx => tx.status === 'completed' && !tx.reportHidden);
+
     // 1. Calculate value per product
     const productValues = products.map(p => {
       // Find total sales for this product
       let totalSales = 0;
       let quantitySold = 0;
-      transactions.forEach(tx => {
+      effectiveSales.forEach(tx => {
         tx.items.forEach(item => {
           if ((typeof item.product === 'string' ? item.product : item.product?.id) === p.id) {
             totalSales += item.product.price * item.quantity;

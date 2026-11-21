@@ -16,24 +16,30 @@ export function InfoTooltip({
 }: InfoTooltipProps) {
   const [isVisible, setIsVisible] = useState(false);
   const triggerRef = useRef<HTMLDivElement | null>(null);
+  const bubbleRef = useRef<HTMLDivElement | null>(null);
   const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
 
   useEffect(() => {
     if (!isVisible || !triggerRef.current) return;
     const updatePosition = () => {
       const rect = triggerRef.current!.getBoundingClientRect();
-      const width = Math.min(320, Math.max(192, window.innerWidth - 24));
-      const gap = 8;
+      const bubble = bubbleRef.current;
+      const width = bubble?.offsetWidth || Math.min(280, window.innerWidth - 20);
+      const height = bubble?.offsetHeight || 0;
+      const gap = 10;
       let left = rect.left + rect.width / 2 - width / 2;
-      left = Math.max(12, Math.min(left, window.innerWidth - width - 12));
-      let top = rect.top - gap;
-      if (top < 12) top = rect.bottom + gap;
+      left = Math.max(10, Math.min(left, window.innerWidth - width - 10));
+      let top = rect.top - height - gap;
+      if (top < 10) top = rect.bottom + gap;
+      if (top + height > window.innerHeight - 10) top = Math.max(10, window.innerHeight - height - 10);
       setCoords({ top, left });
     };
     updatePosition();
+    const raf = requestAnimationFrame(updatePosition);
     window.addEventListener('resize', updatePosition);
     window.addEventListener('scroll', updatePosition, true);
     return () => {
+      cancelAnimationFrame(raf);
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
     };
@@ -59,21 +65,20 @@ export function InfoTooltip({
       <AnimatePresence>
         {isVisible && (
           <motion.div
+            ref={bubbleRef}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.1 }}
-            className="fixed z-[100000] p-2.5 bg-slate-800 text-white text-[10px] leading-4 rounded-xl shadow-2xl pointer-events-none text-center whitespace-normal break-words"
+            className="pointer-events-none fixed z-[100000] w-[min(17.5rem,calc(100vw-20px))] rounded-lg border border-white/10 bg-slate-800 px-2.5 py-2 text-left text-[11px] leading-[1.45] text-white shadow-2xl break-words whitespace-normal sm:w-[min(20rem,calc(100vw-24px))] sm:px-3 sm:py-2.5 sm:text-xs sm:leading-5"
             style={{
               top: coords?.top ?? -9999,
               left: coords?.left ?? -9999,
-              width: 'min(20rem, calc(100vw - 24px))',
-              maxHeight: 'min(50vh, 14rem)',
+              maxHeight: 'min(40vh, 12rem)',
               overflowY: 'auto',
             }}
           >
             {text}
-            <div className="hidden" />
           </motion.div>
         )}
       </AnimatePresence>

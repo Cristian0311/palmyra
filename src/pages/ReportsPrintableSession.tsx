@@ -1,5 +1,7 @@
 type ModalProps = Record<string, any>;
 
+import { PalmyraWordmark } from "../components/PalmyraWordmark";
+
 export default function ReportsPrintableSession(props: ModalProps) {
   const { String, formatMoney, getProductName, printBranch, printPayrollItem, printSession, products, sessionTurnMap, transactions, users } = props;
   return (
@@ -22,7 +24,7 @@ export default function ReportsPrintableSession(props: ModalProps) {
             return (
               <>
                 <div className="text-center mb-3">
-                  <h1 className="text-base font-black uppercase tracking-wider">PALMYRA</h1>
+                  <PalmyraWordmark className="h-8 w-auto mx-auto mb-1" />
                   <p className="text-[10px] uppercase font-bold">{printBranch?.name || 'Sucursal Principal'}</p>
                   <p className="text-[9px] mt-1 font-bold">COMPROBANTE DE CIERRE DE TURNO</p>
                   <div className="border-b-2 border-black my-2"></div>

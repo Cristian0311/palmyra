@@ -1,5 +1,6 @@
 import { Search, Wifi, WifiOff, RefreshCw, Plus, Minus, CreditCard, Receipt, Trash2, ShoppingCart, ShieldCheck, DollarSign, Banknote, QrCode, ArrowLeftRight, UserPlus, X, Lock, Unlock, Camera, AlertCircle, TrendingUp, Wallet, MessageSquare, Mail, HelpCircle, Calculator, ArrowRight, Package, User, RotateCcw, Printer, Bluetooth, Usb, Smartphone, Send, Copy, Check, CheckCircle, Share2, Store, ChevronDown, ChevronUp, Filter } from "lucide-react";
 import { cn, generateId } from "../lib/utils";
+import EmployeeAvatar from "../components/team/EmployeeAvatar";
 
 type ModalProps = Record<string, any>;
 
@@ -35,7 +36,10 @@ export default function POSOpenSessionsModal(props: ModalProps) {
                         return (
                           <div key={session.id} className="grid grid-cols-[auto,minmax(0,1fr),auto] items-center gap-2 rounded-xl border border-slate-100 bg-slate-50/80 px-2.5 py-2">
                             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white border border-slate-200 text-[8px] font-black text-slate-700 shadow-xs">T{session.turnNumber || "—"}</div>
-                            <div className="min-w-0"><p className="text-[8px] font-black text-slate-900 truncate">{session.workerName || "Administrador"}</p><div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[6.5px] font-bold text-slate-500"><span>{branchName}</span><span>·</span><span>Abierto {openedLabel}</span></div></div>
+                            <div className="flex min-w-0 items-center gap-2">
+                              <EmployeeAvatar name={session.workerName || "Administrador"} seed={session.userId || session.workerName || session.id} size="sm" inShift className="!h-7 !w-7 !rounded-lg !text-[9px]" />
+                              <div className="min-w-0"><p className="text-[8px] font-black text-slate-900 truncate">{session.workerName || "Administrador"}</p><div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[6.5px] font-bold text-slate-500"><span>{branchName}</span><span>·</span><span>Abierto {openedLabel}</span></div></div>
+                            </div>
                             <button type="button" onClick={() => { setShowOpenSessionsModal(false); setJoiningSessionId(session.id); setJoiningSessionPassword(""); setPosError(""); }} className="shrink-0 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[7px] font-black uppercase tracking-tight text-white shadow-sm hover:bg-emerald-700 active:scale-[0.98]">Reanudar</button>
                           </div>
                         );

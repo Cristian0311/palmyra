@@ -1,0 +1,40 @@
+apply plugin: 'com.android.application'
+
+
+def appVersionName = '1.0.25'
+def appVersionCode = 10025
+
+android {
+    namespace 'cu.palmyra.app'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'cu.palmyra.app'
+        minSdk 24
+        targetSdk 34
+        versionCode appVersionCode
+        versionName appVersionName
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            shrinkResources false
+            // Instalable fuera de la tienda: firma con la clave de depuración.
+            signingConfig signingConfigs.debug
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packagingOptions {
+        resources.excludes += ['META-INF/*.kotlin_module']
+    }
+}
+
+dependencies {
+    implementation 'org.nanohttpd:nanohttpd:2.3.1'
+}

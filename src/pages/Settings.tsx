@@ -1,38 +1,90 @@
 import { useShallow } from 'zustand/react/shallow';
-import React, { useMemo, useState, useEffect, useRef } from "react";
-import { useNavigate } from "react-router-dom";
-import { Settings as SettingsIcon, Save, DollarSign, Building2, Users, Plus, Trash2, Edit, LayoutGrid, Store, AlertTriangle, RefreshCw, Usb, Bluetooth, Wifi, Printer, CheckCircle2, ExternalLink, AlertCircle, Sparkles, ChevronRight, Package, Search, X, Database, CreditCard, CloudUpload, CloudDownload, Check, Sun, Moon, Type, Palette } from "lucide-react";
+import React, { useState, useEffect, useRef } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import Notifications from './Notifications';
+import OperationsSurface from '../components/OperationsSurface';
+import { canManageSettings, resolveSettingsSection, type SettingsSection } from '../utils/settingsAccess';
+import { Settings as SettingsIcon, Save, DollarSign, Building2, Users, Trash2, LayoutGrid, Store, AlertTriangle, RefreshCw, Usb, Bluetooth, Wifi, Printer, CheckCircle2, AlertCircle, Package, X, Database, CreditCard, CloudUpload, CloudDownload, Type, Palette, Network, Bell } from "lucide-react";
 import { useStore } from "../store/useStore";
-import { InfoTooltip } from "../components/InfoTooltip";
 import { SettingsWarehousesSection } from "../components/settings/SettingsWarehousesSection";
 import { SettingsCategoriesSection } from "../components/settings/SettingsCategoriesSection";
+import { SettingsCurrencySection } from "../components/settings/SettingsCurrencySection";
+import SettingsLanSection from "../components/settings/SettingsLanSection";
+import { SettingsSectionHeader } from "../components/settings/SettingsSectionHeader";
+import { SettingsSectionNav } from "../components/settings/SettingsSectionNav";
+import OfflineHealthSection from "../components/settings/OfflineHealthSection";
 import { Branch, Category } from "../types";
 import { cn } from "../lib/utils";
-import { normalizeSemanticText } from "../utils/textUtils";
-import { connectBluetoothPrinter, connectPrinter, printESCPOS, isInsideIframe, isThermalPrinterAutoConnectEnabled, setThermalPrinterAutoConnect } from "../lib/escpos";
+import { connectBluetoothPrinter, connectPrinter, getConnectedDeviceName, printESCPOS, isInsideIframe, isThermalPrinterAutoConnectEnabled, setThermalPrinterAutoConnect } from "../lib/escpos";
 import { getSupabase } from "../lib/supabase";
 import { loadSaaSContext } from "../services/saas";
 import { canUsePlanFeature } from "../services/planAccess";
 import PlanFeatureGate from "../components/PlanFeatureGate";
 
+const settingsTabs = [
+  { id: 'company', label: 'Empresa', detail: 'Identidad y contacto', icon: Store },
+  { id: 'branches', label: 'Almacenes', detail: 'Ubicaciones de inventario', icon: Building2 },
+  { id: 'categories', label: 'Categorías', detail: 'Organización del catálogo', icon: LayoutGrid },
+  { id: 'currency', label: 'Monedas y tasas', detail: 'Tasas manuales o automáticas', icon: DollarSign },
+  { id: 'ticket', label: 'Impresora y comprobantes', detail: 'Conexión y formato de impresión', icon: Printer },
+  { id: 'visual', label: 'Apariencia', detail: 'Tamaño del texto de la interfaz', icon: Palette },
+  { id: 'lan', label: 'Red local', detail: 'Equipos conectados y nombres', icon: Network },
+  { id: 'connectivity', label: 'Conexión y datos', detail: 'Estado local y sincronización', icon: Wifi },
+  { id: 'notifications', label: 'Notificaciones', detail: 'Tus avisos y preferencias', icon: Bell },
+  { id: 'advanced', label: 'Administración avanzada', detail: 'Respaldos y acciones destructivas', icon: AlertTriangle },
+] satisfies { id: SettingsSection; label: string; detail: string; icon: typeof Bell }[];
+
+const settingsGroups = [
+  { id: 'business', label: 'Negocio', tabIds: ['company', 'branches', 'categories'] },
+  { id: 'sales', label: 'Ventas y caja', tabIds: ['currency', 'ticket', 'visual'] },
+  { id: 'system', label: 'Sistema', tabIds: ['lan', 'connectivity', 'notifications', 'advanced'] },
+] satisfies { id: string; label: string; tabIds: SettingsSection[] }[];
+
 export default function Settings() {
+  const user = useStore(state => state.currentUser);
+  const [params] = useSearchParams();
+  const canManage = canManageSettings(user);
+  const activeTab = resolveSettingsSection(user, params.get('section'));
+  const tabs = settingsTabs.filter(tab => canManage || tab.id === 'notifications');
+  const navGroups = settingsGroups
+    .map(group => ({
+      id: group.id,
+      label: group.label,
+      tabs: group.tabIds
+        .map(id => tabs.find(tab => tab.id === id))
+        .filter((tab): tab is (typeof tabs)[number] => Boolean(tab)),
+    }))
+    .filter(group => group.tabs.length > 0);
+  if (!user) return null;
+  return (
+    <OperationsSurface className="mx-auto w-full max-w-[1600px] space-y-5 pb-8">
+      <header className="flex flex-col gap-1">
+        <p className="kicker font-bold uppercase tracking-[0.2em] text-violet-600 dark:text-violet-300">Configuración</p>
+        <h1 className="text-2xl font-bold text-primary">Tu negocio, tus equipos y tus preferencias</h1>
+        <p className="text-sm text-secondary">{canManage ? 'Todo lo que define cómo funciona PALMYRA en este negocio, en un solo lugar.' : 'Gestiona tus avisos personales. Los ajustes del negocio requieren autorización.'}</p>
+      </header>
+      <SettingsSectionNav groups={navGroups} activeTab={activeTab} />
+      <div className="min-w-0">
+        {activeTab === 'notifications' ? <Notifications /> : canManage ? <SettingsAdminContent activeTab={activeTab} /> : null}
+      </div>
+    </OperationsSurface>
+  );
+}
+
+function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
   const navigate = useNavigate();
   const { 
-    currencies, updateCurrencyRate, 
     storeConfig, updateStoreConfig, 
     branches, addBranch, updateBranch, deleteBranch,
     categories, addCategory, updateCategory, deleteCategory,
     receiptConfig, updateReceiptConfig,
-    users, currentUser,
-    getBaseCurrency, clearAllData,
+    currentUser,
     exportData, importData,
     products,
-    inventory, transactions, cashSessions,
+    transactions,
     syncWithSupabase,
     addNotification
   } = useStore(useShallow((state) => ({ 
-    currencies: state.currencies, 
-    updateCurrencyRate: state.updateCurrencyRate, 
     storeConfig: state.storeConfig, 
     updateStoreConfig: state.updateStoreConfig, 
     branches: state.branches, 
@@ -45,42 +97,14 @@ export default function Settings() {
     deleteCategory: state.deleteCategory, 
     receiptConfig: state.receiptConfig, 
     updateReceiptConfig: state.updateReceiptConfig, 
-    users: state.users, 
-    updateUser: state.updateUser,
     currentUser: state.currentUser, 
-    addUser: state.addUser, 
-    deleteUser: state.deleteUser, 
-    getBaseCurrency: state.getBaseCurrency, 
-    clearAllData: state.clearAllData, 
     exportData: state.exportData, 
     importData: state.importData, 
-    registerEmployee: state.registerEmployee, 
     products: state.products, 
-    inventory: state.inventory, 
     transactions: state.transactions, 
-    cashSessions: state.cashSessions, 
     syncWithSupabase: state.syncWithSupabase,
     addNotification: state.addNotification
   })));
-
-  const baseCurrency = getBaseCurrency();
-  const productById = useMemo(() => new Map(products.map(product => [product.id, product])), [products]);
-
-  const [rates, setRates] = useState<{ [code: string]: number }>(
-    currencies.reduce((acc, c) => ({ ...acc, [c.code]: c.rateToBase }), {})
-  );
-  const [ratesDirty, setRatesDirty] = useState(false);
-  const [isSavingRates, setIsSavingRates] = useState(false);
-
-  // El catálogo remoto puede hidratarse después del primer render. Mantén la
-  // edición del usuario, pero actualiza el formulario cuando llegan tasas nuevas.
-  useEffect(() => {
-    if (ratesDirty) return;
-    setRates(currencies.reduce((acc, currency) => ({
-      ...acc,
-      [currency.code]: currency.rateToBase
-    }), {} as { [code: string]: number }));
-  }, [currencies, ratesDirty]);
 
   const [config, setConfig] = useState(storeConfig);
   const [ticketConfig, setTicketConfig] = useState(receiptConfig);
@@ -117,6 +141,17 @@ export default function Settings() {
     }
   }, []);
 
+  useEffect(() => {
+    if (activeTab !== 'ticket') return;
+    let cancelled = false;
+    void getConnectedDeviceName().then(name => {
+      if (!cancelled && name) setPrinterStatus({ type: 'success', message: `Conectada: ${name}` });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab]);
+
   const [newBranchName, setNewBranchName] = useState("");
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
   const [warehousePlanLimit, setWarehousePlanLimit] = useState<number | null>(null);
@@ -145,7 +180,6 @@ export default function Settings() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const [showConfirmCache, setShowConfirmCache] = useState(false);
   const [showConfirmReset, setShowConfirmReset] = useState(false);
   const [resetInput, setResetInput] = useState("");
   const RESET_OPTIONS = [
@@ -165,8 +199,8 @@ export default function Settings() {
   const [resetSections, setResetSections] = useState<string[]>([]);
 
   const settingsContentRef = useRef<HTMLDivElement | null>(null);
+  const lastScrolledTab = useRef(activeTab);
 
-  const [activeTab, setActiveTab] = useState<'connectivity' | 'company' | 'currency' | 'branches' | 'categories' | 'ticket' | 'visual' | 'advanced'>('connectivity');
   const [planCode, setPlanCode] = useState<string | null>(null);
   const [fontScale, setFontScale] = useState(() => { try { const saved = Number(localStorage.getItem('palmyra-font-scale') || '1'); return [0.9,1,1.1,1.2].includes(saved) ? saved : 1; } catch { return 1; } });
   useEffect(() => {
@@ -179,7 +213,10 @@ export default function Settings() {
   const visualStyleLocked = planCode !== null && !canUsePlanFeature(planCode, "visual_style");
   useEffect(() => { document.documentElement.style.setProperty('--palmyra-font-scale', String(fontScale)); try { localStorage.setItem('palmyra-font-scale', String(fontScale)); } catch {} }, [fontScale]);
   useEffect(() => {
-    settingsContentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // Solo al cambiar de sección: en la primera carga el navegador ya abre arriba.
+    if (lastScrolledTab.current === activeTab) return;
+    lastScrolledTab.current = activeTab;
+    settingsContentRef.current?.scrollIntoView({ behavior: 'auto', block: 'start' });
   }, [activeTab]);
 
   const handleClearData = async () => {
@@ -261,48 +298,6 @@ export default function Settings() {
     showToast("Categoría eliminada correctamente.");
   };
 
-  const handleSaveRates = async () => {
-    const baseCode = currencies.find(currency => currency.isBase)?.code || baseCurrency.code;
-    const editableCurrencies = currencies.filter(currency =>
-      ['CUP', 'USD', 'EUR'].includes(currency.code) &&
-      currency.code !== baseCode &&
-      !currency.isBase
-    );
-
-    const invalidCurrency = editableCurrencies.find(currency => {
-      const rate = Number(rates[currency.code]);
-      return !Number.isFinite(rate) || rate <= 0;
-    });
-    if (invalidCurrency) {
-      showToast(`Introduce una tasa mayor que 0 para ${invalidCurrency.code}.`, 'error');
-      return;
-    }
-
-    setIsSavingRates(true);
-    try {
-      const results = await Promise.all(editableCurrencies.map(currency =>
-        updateCurrencyRate(currency.code, Number(rates[currency.code]))
-      ));
-      const latestCurrencies = useStore.getState().currencies || [];
-      setRates(latestCurrencies.reduce((acc, currency) => ({
-        ...acc,
-        [currency.code]: currency.rateToBase
-      }), {} as { [code: string]: number }));
-      setRatesDirty(false);
-
-      if (results.every(Boolean)) {
-        showToast("Tasas de cambio guardadas y confirmadas por Supabase.");
-      } else {
-        showToast("Tasas guardadas en este dispositivo; una o más no se confirmaron en Supabase y quedan pendientes de revisión/sincronización.", 'info');
-      }
-    } catch (error) {
-      console.error('[Settings] No se pudieron guardar todas las tasas:', error);
-      showToast("No se pudo confirmar el guardado remoto. Los valores locales se conservaron; revisa la conexión y vuelve a intentarlo.", 'error');
-    } finally {
-      setIsSavingRates(false);
-    }
-  };
-
   const handleSaveConfig = async () => {
     const companyName = config.storeName.trim();
     if (!companyName) {
@@ -333,6 +328,39 @@ export default function Settings() {
   const handleSaveTicket = () => {
     updateReceiptConfig(ticketConfig);
     showToast("Configuración de ticket guardada.");
+  };
+
+  const handleConnectPrinter = async (mode: 'serial' | 'bluetooth') => {
+    if (isInsideIframe()) {
+      setPrinterStatus({ type: 'error', message: 'Abre PALMYRA en una pestaña nueva para conectar la impresora.' });
+      return;
+    }
+    setPrinterStatus({ type: 'loading', message: mode === 'serial' ? 'Buscando impresora USB…' : 'Buscando impresora Bluetooth…' });
+    try {
+      if (mode === 'serial') await connectPrinter();
+      else await connectBluetoothPrinter();
+      setPrinterStatus({ type: 'success', message: mode === 'serial' ? 'Impresora USB/Serie lista.' : 'Impresora Bluetooth lista.' });
+    } catch (error: any) {
+      setPrinterStatus({ type: 'error', message: error?.message || 'No se pudo conectar la impresora.' });
+    }
+  };
+
+  const handleTestPrint = async () => {
+    setPrinterStatus({ type: 'loading', message: 'Enviando prueba…' });
+    try {
+      const method = await printESCPOS({
+        lines: [
+          config.storeName || 'PALMYRA',
+          'PRUEBA DE IMPRESION',
+          new Date().toLocaleString('es-CU'),
+          'Si lees esto, la impresora esta lista.'
+        ],
+        width: ticketConfig.printerWidth || '80mm'
+      });
+      setPrinterStatus({ type: 'success', message: method === 'bluetooth' ? 'Prueba enviada por Bluetooth.' : 'Prueba enviada por USB/Serie.' });
+    } catch (error: any) {
+      setPrinterStatus({ type: 'error', message: error?.message || 'No hay una impresora conectada.' });
+    }
   };
 
   const handleClearAppCache = async () => {
@@ -388,7 +416,7 @@ export default function Settings() {
   };
 
   return (
-    <div data-palmi-content="settings" className="settings-page space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 w-full min-w-0 max-w-5xl mx-auto pb-8 relative overflow-x-hidden">
+    <div data-palmi-content="settings" className="settings-page space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 w-full min-w-0 pb-8 relative overflow-x-hidden">
       {/* In-App Toast Notification */}
       {toast && (
         <div className="fixed top-2 right-2 sm:top-4 sm:right-4 z-[200] w-[calc(100vw-1rem)] sm:w-auto max-w-md min-w-0 animate-in slide-in-from-top-4 fade-in duration-300">
@@ -400,7 +428,7 @@ export default function Settings() {
           )}>
             {toast.type === 'success' && <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />}
             {toast.type === 'error' && <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />}
-            {toast.type === 'info' && <Database className="w-5 h-5 text-rose-400 shrink-0" />}
+            {toast.type === 'info' && <Database className="w-5 h-5 text-violet-300 shrink-0" />}
             <div className="flex-1 text-xs font-bold leading-snug">{toast.message}</div>
             <button onClick={() => setToast(null)} className="p-1 hover:bg-white/10 rounded-lg transition-colors">
               <X className="w-4 h-4 text-slate-400 hover:text-white" />
@@ -409,148 +437,110 @@ export default function Settings() {
         </div>
       )}
 
-      {/* Header and Sync Status */}
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-secondary p-4 rounded-3xl border border-base shadow-sm">
-          <div>
-            <h2 className="text-xl font-black text-primary uppercase tracking-tight flex items-center gap-2">
-              <SettingsIcon size={20} className="text-rose-600" />
-              Configuración
-            </h2>
-            <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Sistema y Preferencias</p>
-          </div>
-          <button
-            onClick={handleManualSync}
-            disabled={isSyncing || !navigator.onLine}
-            className={cn(
-              "w-full sm:w-auto px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 disabled:opacity-50",
-              isSyncing ? "bg-slate-100 text-slate-400" : "bg-rose-600 text-white hover:bg-rose-700 shadow-rose-600/20"
-            )}
-          >
-            {isSyncing ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CloudUpload size={14} />}
-            {isSyncing ? "Sincronizando..." : "Sincronizar Nube"}
-          </button>
-        </div>
-
-        {/* Linear Tabs for Sections */}
-        <div className="flex items-center gap-1 bg-secondary p-1 rounded-xl border border-base shrink-0 w-full overflow-x-auto custom-scrollbar shadow-xs scroll-smooth">
-          {/* Las acciones críticas de backup, restauración, caché y borrado global están aisladas en Avanzado. */}
-          {[
-            { id: 'connectivity', label: 'Conexión', icon: Wifi },
-            { id: 'company', label: 'Empresa', icon: Store },
-            { id: 'currency', label: 'Monedas', icon: DollarSign },
-            { id: 'branches', label: 'Almacenes', icon: Building2 },
-            { id: 'categories', label: 'Categorías', icon: LayoutGrid },
-            { id: 'ticket', label: 'Impresora térmica', icon: Printer },
-            { id: 'visual', label: 'Estilo visual', icon: Palette },
-            { id: 'advanced', label: 'Avanzado', icon: AlertTriangle },
-          ].map(tab => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
+      <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-3">
+          {(() => {
+            const activeMeta = settingsTabs.find(tab => tab.id === activeTab);
+            const ActiveIcon = activeMeta?.icon || SettingsIcon;
             return (
-              <button 
-                key={tab.id} 
-                onClick={() => setActiveTab(tab.id as any)} 
-                className={cn(
-                  "px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap cursor-pointer",
-                  isActive 
-                    ? "bg-rose-600 text-white shadow-xs" 
-                    : "text-secondary hover:text-primary hover:bg-subtle"
-                )}
-              >
-                <Icon size={13} />
-                {tab.label}
-              </button>
+              <span className="shrink-0 rounded-xl bg-violet-50 p-2.5 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">
+                <ActiveIcon size={18} />
+              </span>
             );
-          })}
+          })()}
+          <div className="min-w-0">
+            <h2 className="text-xl font-bold leading-tight text-primary break-words">{settingsTabs.find(tab => tab.id === activeTab)?.label}</h2>
+            <p className="text-sm font-medium text-secondary">{settingsTabs.find(tab => tab.id === activeTab)?.detail}</p>
+          </div>
         </div>
-      </div>
+        {activeTab === 'connectivity' && <button onClick={handleManualSync} disabled={isSyncing || !navigator.onLine}
+          className="flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-violet-700 disabled:opacity-50 sm:w-auto">
+          <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />{isSyncing ? 'Sincronizando…' : 'Sincronizar con la nube'}
+        </button>}
+      </header>
 
-      <div className="bg-violet-50/70 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-900/40 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      {activeTab === 'company' && (currentUser?.role === 'admin' || currentUser?.permissions?.includes('employees.manage')) && <div className="bg-secondary border border-base rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-[9px] font-black uppercase tracking-[0.16em] text-violet-600 dark:text-violet-300">Gestión de trabajadores</p>
-          <h3 className="mt-1 text-sm font-black text-primary">Todo el equipo se administra desde una sola vista</h3>
-          <p className="mt-1 text-[10px] leading-4 text-secondary">Crear empleados, enviar invitaciones, asignar roles, permisos, salarios y almacenes ahora vive en <strong>Equipo</strong>.</p>
+          <p className="kicker font-bold uppercase tracking-[0.16em] text-violet-600 dark:text-violet-300">Gestión de trabajadores</p>
+          <h3 className="mt-1 text-base font-bold text-primary">Todo el equipo se administra desde una sola vista</h3>
+          <p className="mt-1 text-sm font-medium text-secondary">Crear empleados, enviar invitaciones, asignar roles, permisos, salarios y almacenes ahora vive en <strong>Equipo</strong>.</p>
         </div>
-        <button type="button" onClick={() => navigate("/team")} className="shrink-0 w-full sm:w-auto h-10 px-4 rounded-xl bg-violet-600 text-white text-[10px] font-black uppercase tracking-wider shadow-sm hover:bg-violet-700 transition-colors">Abrir Equipo</button>
-      </div>
+        <button type="button" onClick={() => navigate("/team")} className="shrink-0 w-full sm:w-auto h-11 px-4 rounded-xl bg-violet-600 text-white text-sm font-semibold shadow-sm hover:bg-violet-700 transition-colors">Abrir equipo</button>
+      </div>}
 
-      <div ref={settingsContentRef} id="settings-section-content" className="grid grid-cols-1 gap-3 min-w-0 scroll-mt-2">
+      <div ref={settingsContentRef} id="settings-section-content" className="grid scroll-mt-20 grid-cols-1 gap-3 min-w-0">
         {/* Conectividad y Sincronización */}
         {activeTab === 'connectivity' && (
           <div className="space-y-4">
-            <div className="bg-secondary rounded-2xl shadow-sm border border-rose-200 dark:border-rose-900/30 p-5 space-y-4">
-              <div className="flex items-center gap-3 border-b border-rose-50 dark:border-rose-950/30 pb-3">
-                <div className="bg-rose-50 dark:bg-rose-950/50 p-2 rounded-lg text-rose-600 dark:text-rose-400">
-                  <Wifi size={16} />
-                </div>
-                <div>
-                  <h3 className="text-xs font-black text-rose-600 dark:text-rose-400 uppercase tracking-wider">Conectividad y Nube</h3>
-                  <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Control de guardado offline y transferencia de datos</p>
-                </div>
-              </div>
+            <div className="bg-secondary rounded-2xl shadow-sm border border-base p-3 sm:p-5 space-y-4">
+              <SettingsSectionHeader icon={Wifi} title="Conectividad y nube" subtitle="Control del guardado offline y de la transferencia de datos." />
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-4">
-                  <label className="flex items-center justify-between p-3.5 bg-primary border border-base rounded-2xl cursor-pointer group hover:border-rose-300 transition-all">
-                    <div className="flex-1 pr-4">
+                  <div className="flex items-center justify-between gap-3 p-3.5 bg-primary border border-base rounded-2xl hover:border-violet-300 transition-all">
+                    <div className="flex-1 pr-2 min-w-0">
                       <div className="flex items-center gap-2">
-                        <CloudUpload size={14} className="text-rose-600" />
-                        <span className="text-[11px] font-black text-primary uppercase">Sincronización Manual</span>
+                        <CloudUpload size={15} className="text-violet-600" />
+                        <span className="text-sm font-bold text-primary">Sincronización manual</span>
                       </div>
-                      <p className="text-[9px] text-muted font-medium mt-1 leading-tight">
-                        Si se activa, el sistema NO subirá los datos automáticamente al recuperar internet. Deberás presionar "Sincronizar Nube" manualmente para evitar errores por caídas de conexión.
+                      <p className="mt-1 text-sm font-medium leading-6 text-muted">
+                        Si se activa, el sistema NO subirá los datos automáticamente al recuperar internet. Deberás presionar «Sincronizar con la nube» manualmente para evitar errores por caídas de conexión.
                       </p>
                     </div>
-                    <div className="relative inline-flex items-center">
-                      <input 
-                        type="checkbox" 
-                        className="sr-only peer"
-                        checked={config.manualOfflineSync === true}
-                        onChange={e => {
-                          const newConfig = { ...config, manualOfflineSync: e.target.checked };
-                          setConfig(newConfig);
-                          updateStoreConfig(newConfig);
-                          showToast(`Sincronización manual ${e.target.checked ? 'activada' : 'desactivada'}.`, 'info');
-                        }}
-                      />
-                      <div className="w-11 h-6 bg-slate-200 dark:bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-600"></div>
-                    </div>
-                  </label>
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={config.manualOfflineSync === true}
+                      aria-label="Activar sincronización manual"
+                      onClick={() => {
+                        const enabled = !(config.manualOfflineSync === true);
+                        const newConfig = { ...config, manualOfflineSync: enabled };
+                        setConfig(newConfig);
+                        updateStoreConfig(newConfig);
+                        showToast(`Sincronización manual ${enabled ? 'activada' : 'desactivada'}.`, 'info');
+                      }}
+                      className="relative h-11 w-12 shrink-0 rounded-full"
+                    >
+                      <span className={cn('absolute left-0 top-1/2 h-7 w-12 -translate-y-1/2 rounded-full border transition-colors', config.manualOfflineSync ? 'bg-violet-600 border-violet-600' : 'bg-slate-300 border-slate-400 dark:bg-slate-600 dark:border-slate-500')}>
+                        <span className={cn('absolute top-[3px] h-[22px] w-[22px] rounded-full bg-white shadow transition-all', config.manualOfflineSync ? 'left-[23px]' : 'left-[3px]')} />
+                      </span>
+                    </button>
+                  </div>
 
                <div className="bg-amber-50/50 dark:bg-amber-950/10 p-3.5 rounded-2xl border border-amber-100 dark:border-amber-900/30 flex items-start gap-3">
-                    <AlertTriangle size={16} className="text-amber-600 shrink-0 mt-0.5" />
-                    <p className="text-[9px] text-amber-700 dark:text-amber-400 font-medium leading-relaxed">
-                      <strong>Recomendación:</strong> Activa el modo manual en zonas con internet inestable. El sistema guardará todo en una cola local protegida y solo subirá cuando tú lo decidas, garantizando la integridad de cada transacción.
+                    <AlertTriangle size={17} className="text-amber-600 shrink-0 mt-0.5" />
+                    <p className="text-sm text-amber-700 dark:text-amber-400 font-medium leading-6">
+                      <strong>Recomendación:</strong> activa el modo manual en zonas con internet inestable. El sistema guardará todo en una cola local protegida y solo subirá cuando tú lo decidas, garantizando la integridad de cada transacción.
                     </p>
                   </div>
                 </div>
 
                 <div className="bg-primary p-4 rounded-2xl border border-base border-dashed flex flex-col justify-between">
                   <div>
-                    <h4 className="text-[10px] font-black text-primary uppercase flex items-center gap-2">
-                      <Database size={14} className="text-rose-600" />
-                      Estado de la Base de Datos
+                    <h4 className="text-sm font-bold text-primary flex items-center gap-2">
+                      <Database size={15} className="text-violet-600" />
+                      Estado de la base de datos
                     </h4>
                     <div className="grid grid-cols-2 gap-3 mt-4">
                       <div className="p-3 bg-secondary rounded-xl border border-base">
-                        <p className="text-[8px] font-black text-muted uppercase">Productos</p>
-                        <p className="text-base font-black text-primary">{products.length}</p>
+                        <p className="text-sm font-medium text-muted">Productos</p>
+                        <p className="text-lg font-bold text-primary tabular-nums">{products.length}</p>
                       </div>
                       <div className="p-3 bg-secondary rounded-xl border border-base">
-                        <p className="text-[8px] font-black text-muted uppercase">Ventas</p>
-                        <p className="text-base font-black text-primary">{transactions.length}</p>
+                        <p className="text-sm font-medium text-muted">Ventas</p>
+                        <p className="text-lg font-bold text-primary tabular-nums">{transactions.length}</p>
                       </div>
                     </div>
                   </div>
-                  <p className="text-[8px] text-muted uppercase tracking-wider text-center mt-4 font-bold">
-                    Conectado a Supabase: <span className="text-emerald-500">{navigator.onLine ? 'SÍ' : 'NO (OFFLINE)'}</span>
+                  <p className="mt-4 flex items-center justify-center gap-2 text-sm font-medium text-muted">
+                    <span className={cn('h-2 w-2 rounded-full', navigator.onLine ? 'bg-emerald-500' : 'bg-amber-500')} />
+                    {navigator.onLine ? 'Dispositivo en línea' : 'Dispositivo sin conexión'}
                   </p>
                 </div>
               </div>
             </div>
 
-
+            <OfflineHealthSection />
           </div>
         )}
 
@@ -558,48 +548,33 @@ export default function Settings() {
         {activeTab === 'company' && (
           <div className="space-y-3 min-w-0">
             <div className="bg-secondary rounded-2xl shadow-sm border border-base p-3 sm:p-5 space-y-4 min-w-0">
-              <div className="flex items-center gap-3 border-b border-base pb-3">
-                <div className="bg-rose-50 dark:bg-rose-950/50 p-2 rounded-lg text-rose-600 dark:text-rose-400 shrink-0">
-                  <Store size={16} />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-xs font-black text-primary uppercase tracking-wider">Datos de la Empresa</h3>
-                  <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Nombre, teléfono y dirección usados por PALMYRA</p>
-                </div>
-              </div>
+              <SettingsSectionHeader icon={Store} title="Datos de la empresa" subtitle="Nombre, teléfono y dirección que aparecen en tickets y reportes." />
 
-              <div className="rounded-2xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/60 dark:bg-indigo-950/20 p-3 flex items-start gap-3">
-              <input type="checkbox" checked={autoConnectPrinter} onChange={e => { setAutoConnectPrinter(e.target.checked); setThermalPrinterAutoConnect(e.target.checked); }} className="mt-0.5 h-4 w-4 accent-indigo-600 shrink-0" />
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-wider text-indigo-800 dark:text-indigo-200">Conectar automáticamente la impresora</p>
-                <p className="mt-0.5 text-[9px] leading-4 font-semibold text-indigo-700/80 dark:text-indigo-300/80">PALMYRA intentará reconectar la última impresora autorizada al abrir la web o la PWA.</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <label className="space-y-1.5 min-w-0">
-                  <span className="text-[10px] font-black text-muted uppercase px-1">Nombre del Negocio</span>
+                  <span className="text-sm font-semibold text-muted">Nombre del negocio</span>
                   <input type="text" value={config.storeName}
                     onChange={e => setConfig({ ...config, storeName: e.target.value })}
-                    className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-primary border border-base rounded-xl text-xs font-bold text-primary outline-none focus:ring-1 focus:ring-rose-500 shadow-sm" />
+                    className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-primary border border-base rounded-xl text-sm font-semibold text-primary outline-none focus:ring-1 focus:ring-violet-500 shadow-sm" />
                 </label>
                 <label className="space-y-1.5 min-w-0">
-                  <span className="text-[10px] font-black text-muted uppercase px-1">Teléfono</span>
+                  <span className="text-sm font-semibold text-muted">Teléfono</span>
                   <input type="text" value={config.phone}
                     onChange={e => setConfig({ ...config, phone: e.target.value })}
-                    className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-primary border border-base rounded-xl text-xs font-bold text-primary outline-none focus:ring-1 focus:ring-rose-500 shadow-sm" />
+                    className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-primary border border-base rounded-xl text-sm font-semibold text-primary outline-none focus:ring-1 focus:ring-violet-500 shadow-sm" />
                 </label>
                 <label className="space-y-1.5 md:col-span-2 min-w-0">
-                  <span className="text-[10px] font-black text-muted uppercase px-1">Dirección</span>
+                  <span className="text-sm font-semibold text-muted">Dirección</span>
                   <input type="text" value={config.address}
                     onChange={e => setConfig({ ...config, address: e.target.value })}
-                    className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-primary border border-base rounded-xl text-xs font-bold text-primary outline-none focus:ring-1 focus:ring-rose-500 shadow-sm" />
+                    className="w-full min-w-0 px-3 sm:px-4 py-2.5 bg-primary border border-base rounded-xl text-sm font-semibold text-primary outline-none focus:ring-1 focus:ring-violet-500 shadow-sm" />
                 </label>
               </div>
 
               <div className="pt-1 flex justify-end">
                 <button onClick={handleSaveConfig}
-                  className="w-full sm:w-auto px-5 py-2.5 bg-rose-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-rose-700 transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer">
-                  <Save size={14} /> Guardar Cambios
+                  className="w-full sm:w-auto px-5 h-11 bg-violet-600 text-white rounded-xl text-sm font-semibold hover:bg-violet-700 transition-colors shadow-sm flex items-center justify-center gap-2 cursor-pointer">
+                  <Save size={15} /> Guardar cambios
                 </button>
               </div>
             </div>
@@ -607,63 +582,10 @@ export default function Settings() {
         )}
 
         {/* Monedas y tasas */}
-        {activeTab === 'currency' && (
-          <div className="bg-secondary rounded-2xl shadow-sm border border-base p-3 sm:p-5 space-y-4 min-w-0">
-            <div className="flex items-center gap-3 border-b border-base pb-3">
-              <div className="bg-emerald-50 dark:bg-emerald-950/30 p-2 rounded-lg text-emerald-600 dark:text-emerald-400 shrink-0">
-                <DollarSign size={16} />
-              </div>
-              <div className="min-w-0">
-                <h3 className="text-xs font-black text-primary uppercase tracking-wider">Monedas y tasas</h3>
-                <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Configura las tasas usadas por ventas, caja y reportes</p>
-              </div>
-            </div>
+        <SettingsCurrencySection active={activeTab === 'currency'} onToast={showToast} />
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
-              {currencies.filter(currency => ['CUP', 'USD', 'EUR'].includes(currency.code)).map(currency => {
-                const isBase = currency.code === baseCurrency.code;
-                return (
-                  <div key={currency.code} className={cn("min-w-0 px-3 py-2.5 rounded-xl border flex items-center justify-between gap-3", isBase ? "bg-subtle border-base" : "bg-primary border-base")}>
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className="w-6 h-6 rounded-md bg-secondary text-primary font-black text-[11px] flex items-center justify-center shrink-0 border border-base">{currency.symbol || (currency.code === 'EUR' ? '€' : '$')}</span>
-                      <span className="text-xs font-black text-primary uppercase">{currency.code}</span>
-                    </div>
-                    {isBase ? (
-                      <span className="shrink-0 text-[9px] font-black uppercase text-emerald-600">1.00 (Base)</span>
-                    ) : (
-                      <div className="flex items-center min-w-0 bg-subtle border border-base rounded-lg px-2 py-0.5">
-                        <span className="hidden sm:inline text-[9px] font-black text-muted mr-1 whitespace-nowrap">1 {currency.code} =</span>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0.01"
-                          inputMode="decimal"
-                          aria-label={`Tasa de cambio de ${currency.code} a ${baseCurrency.code}`}
-                          value={rates[currency.code] ?? ''}
-                          onChange={e => {
-                            setRates({ ...rates, [currency.code]: e.target.value === '' ? 0 : Number(e.target.value) });
-                            setRatesDirty(true);
-                          }}
-                          className="w-24 max-w-full min-w-0 bg-transparent text-right text-sm font-black text-primary outline-none border-0 shadow-none"
-                        />
-                        <span className="text-[9px] font-black text-muted ml-1">CUP</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            <button
-              type="button"
-              onClick={handleSaveRates}
-              disabled={isSavingRates}
-              className="w-full py-2.5 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-wait transition-all flex items-center justify-center gap-2"
-            >
-              <Save size={14} /> {isSavingRates ? 'Guardando tasas…' : 'Guardar Tasas'}
-            </button>
-          </div>
-        )}
+        {/* Red local */}
+        <SettingsLanSection active={activeTab === 'lan'} onToast={showToast} />
 
         {/* Estilo visual */}
         {activeTab === 'visual' && visualStyleLocked && (
@@ -672,17 +594,14 @@ export default function Settings() {
 
         {activeTab === 'visual' && !visualStyleLocked && (
           <div className="space-y-4">
-            <div className="bg-secondary rounded-2xl shadow-sm border border-base p-5 space-y-5">
-              <div className="flex items-center gap-3 border-b border-base pb-3">
-                <div className="bg-violet-100 dark:bg-violet-950/40 p-2.5 rounded-xl text-violet-700 dark:text-violet-300"><Palette size={18} /></div>
-                <div><h3 className="text-xs font-black text-primary uppercase tracking-wider">Estilo visual del software</h3><p className="text-[9px] font-bold text-muted uppercase tracking-tight">Personaliza la lectura sin cambiar la estructura de PALMYRA</p></div>
-              </div>
+            <div className="bg-secondary rounded-2xl shadow-sm border border-base p-3 sm:p-5 space-y-5">
+              <SettingsSectionHeader icon={Palette} title="Estilo visual del software" subtitle="Personaliza la lectura sin cambiar la estructura de PALMYRA." />
               <div className="p-4 rounded-2xl border border-base bg-subtle">
                 <div className="flex items-start gap-3">
                   <Type className="w-5 h-5 text-violet-600 mt-0.5 shrink-0" />
-                  <div className="flex-1">
-                    <h4 className="text-sm font-black text-primary">Tamaño de las letras</h4>
-                    <p className="text-xs text-muted mt-1">El cambio se aplica inmediatamente a toda la interfaz y se conserva en este dispositivo.</p>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-bold text-primary">Tamaño de las letras</h4>
+                    <p className="mt-1 text-sm font-medium leading-6 text-muted">El cambio se aplica inmediatamente a toda la interfaz y se conserva en este dispositivo.</p>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-4">
                       {[
                         {value:0.9,label:'Pequeña',sample:'Aa'},
@@ -692,18 +611,18 @@ export default function Settings() {
                       ].map(option => (
                         <button key={option.value} type="button" onClick={() => setFontScale(option.value)}
                           className={cn("rounded-xl border p-3 text-left transition-all", fontScale === option.value ? "border-violet-500 bg-violet-50 dark:bg-violet-950/30 ring-2 ring-violet-500/15" : "border-base bg-primary hover:bg-subtle")}>
-                          <span className="block text-lg font-black text-primary" style={{fontSize: (18 * option.value) + 'px'}}>{option.sample}</span>
-                          <span className="block text-[10px] font-black text-primary mt-1">{option.label}</span>
-                          <span className="block text-[9px] text-muted">{Math.round(option.value*100)}%</span>
+                          <span className="block font-bold text-primary" style={{fontSize: (22 * option.value) + 'px'}}>{option.sample}</span>
+                          <span className="block text-sm font-semibold text-primary mt-1">{option.label}</span>
+                          <span className="block text-sm text-muted">{Math.round(option.value*100)}%</span>
                         </button>
                       ))}
                     </div>
                   </div>
                 </div>
               </div>
-              <div className="p-4 rounded-2xl border border-base bg-primary flex items-center justify-between gap-4">
-                <div><h4 className="text-xs font-black text-primary">Vista recomendada</h4><p className="text-[10px] text-muted mt-1">Normal es el tamaño equilibrado para POS, tablets y escritorio.</p></div>
-                <button type="button" onClick={() => setFontScale(1)} className="px-4 py-2 rounded-xl bg-violet-600 text-white text-[10px] font-black uppercase">Restablecer</button>
+              <div className="p-4 rounded-2xl border border-base bg-primary flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div><h4 className="text-sm font-bold text-primary">Vista recomendada</h4><p className="mt-1 text-sm font-medium text-muted">Normal es el tamaño equilibrado para POS, tablets y escritorio.</p></div>
+                <button type="button" onClick={() => setFontScale(1)} className="h-11 shrink-0 px-4 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700">Restablecer</button>
               </div>
             </div>
           </div>
@@ -735,46 +654,115 @@ export default function Settings() {
 
         {activeTab === 'ticket' && (
           <div className="bg-secondary rounded-2xl shadow-sm border border-base p-3 sm:p-5 space-y-4 min-w-0">
-            <div className="flex items-center gap-3 border-b border-base pb-3">
-              <div className="bg-indigo-50 dark:bg-indigo-950/30 p-2 rounded-lg text-indigo-600 dark:text-indigo-400"><Printer size={16} /></div>
-              <div><h3 className="text-xs font-black text-primary uppercase tracking-wider">Impresora térmica</h3><p className="text-[8px] font-bold text-muted uppercase tracking-tight">Configuración que queda guardada por empresa</p></div>
+            <SettingsSectionHeader icon={Printer} title="Impresora térmica" subtitle="Conexión de la impresora y formato de los comprobantes del negocio." />
+            {isInIframe && (
+              <p className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-medium leading-6 text-amber-900 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+                Abre PALMYRA en una pestaña completa para conectar la impresora: el navegador bloquea USB y Bluetooth dentro de marcos.
+              </p>
+            )}
+            <div className="rounded-xl border border-base bg-primary p-3 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-bold text-primary">Conexión de la impresora</p>
+                {printerStatus && (
+                  <span className={cn(
+                    "text-sm font-semibold",
+                    printerStatus.type === 'success' ? "text-emerald-600 dark:text-emerald-400" : printerStatus.type === 'error' ? "text-rose-600 dark:text-rose-400" : "text-violet-600 dark:text-violet-300"
+                  )}>
+                    {printerStatus.type === 'loading' ? <RefreshCw size={14} className="inline animate-spin mr-1" /> : null}
+                    {printerStatus.message}
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <button type="button" onClick={() => void handleConnectPrinter('serial')} disabled={printerStatus?.type === 'loading'}
+                  className="h-11 rounded-xl border border-base bg-secondary text-primary text-sm font-semibold flex items-center justify-center gap-1.5 hover:bg-subtle transition-colors disabled:opacity-50">
+                  <Usb size={15} /> USB / Serie
+                </button>
+                <button type="button" onClick={() => void handleConnectPrinter('bluetooth')} disabled={printerStatus?.type === 'loading'}
+                  className="h-11 rounded-xl border border-base bg-secondary text-primary text-sm font-semibold flex items-center justify-center gap-1.5 hover:bg-subtle transition-colors disabled:opacity-50">
+                  <Bluetooth size={15} /> Bluetooth
+                </button>
+                <button type="button" onClick={() => void handleTestPrint()} disabled={printerStatus?.type === 'loading'}
+                  className="h-11 rounded-xl bg-violet-600 text-white text-sm font-semibold flex items-center justify-center gap-1.5 hover:bg-violet-700 transition-colors disabled:opacity-50">
+                  <Printer size={15} /> Imprimir prueba
+                </button>
+              </div>
+              <p className="text-sm font-medium leading-6 text-muted">
+                El navegador pedirá permiso la primera vez. La conexión queda activa mientras la pestaña siga abierta; en el POS instalado se reconecta sola si la opción de abajo está activa.
+              </p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <label className="flex items-center justify-between gap-3 rounded-xl border border-indigo-200 bg-indigo-50/60 dark:bg-indigo-950/20 dark:border-indigo-900/40 p-3 cursor-pointer md:col-span-2">
+              <div className="flex items-center justify-between gap-3 rounded-xl border border-violet-200 bg-violet-50/60 dark:bg-violet-950/20 dark:border-violet-900/40 p-3 md:col-span-2">
                 <div className="min-w-0">
-                  <span className="block text-[10px] font-black text-indigo-900 dark:text-indigo-100 uppercase">Siempre conectarse automáticamente</span>
-                  <span className="block text-[8px] font-semibold text-indigo-700/80 dark:text-indigo-300/80 mt-0.5">Al abrir PALMYRA o la PWA intentará reconectar la última impresora autorizada.</span>
+                  <span className="block text-sm font-bold text-violet-900 dark:text-violet-100">Siempre conectarse automáticamente</span>
+                  <span className="mt-0.5 block text-sm font-medium text-violet-700/80 dark:text-violet-300/80">Al abrir PALMYRA o la PWA intentará reconectar la última impresora autorizada.</span>
                 </div>
-                <input type="checkbox" checked={autoConnectPrinter} onChange={e => { setAutoConnectPrinter(e.target.checked); setThermalPrinterAutoConnect(e.target.checked); }} className="h-4 w-4 accent-indigo-600 shrink-0" />
-              </label>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={autoConnectPrinter}
+                  aria-label="Reconectar la impresora automáticamente"
+                  onClick={() => {
+                    const enabled = !autoConnectPrinter;
+                    setAutoConnectPrinter(enabled);
+                    setThermalPrinterAutoConnect(enabled);
+                  }}
+                  className="relative h-11 w-12 shrink-0 rounded-full"
+                >
+                  <span className={cn('absolute left-0 top-1/2 h-7 w-12 -translate-y-1/2 rounded-full border transition-colors', autoConnectPrinter ? 'bg-violet-600 border-violet-600' : 'bg-slate-300 border-slate-400 dark:bg-slate-600 dark:border-slate-500')}>
+                    <span className={cn('absolute top-[3px] h-[22px] w-[22px] rounded-full bg-white shadow transition-all', autoConnectPrinter ? 'left-[23px]' : 'left-[3px]')} />
+                  </span>
+                </button>
+              </div>
               {[['showLogo','Mostrar logo'],['showAddress','Mostrar dirección'],['showPhone','Mostrar teléfono'],['showFooter','Mostrar pie del ticket'],['autoPrint','Imprimir automáticamente']].map(([key,label]) => (
-                <label key={key} className="flex items-center justify-between gap-3 rounded-xl border border-base bg-primary p-3 cursor-pointer">
-                  <span className="text-[10px] font-black text-primary uppercase">{label}</span>
-                  <input type="checkbox" checked={Boolean((ticketConfig as any)[key])} onChange={e => setTicketConfig(prev => ({ ...prev, [key]: e.target.checked }))} className="h-4 w-4 accent-indigo-600" />
+                <label key={key} className="flex min-h-11 items-center justify-between gap-3 rounded-xl border border-base bg-primary p-3 cursor-pointer">
+                  <span className="text-sm font-semibold text-primary">{label}</span>
+                  <input type="checkbox" checked={Boolean((ticketConfig as any)[key])} onChange={e => setTicketConfig(prev => ({ ...prev, [key]: e.target.checked }))} className="h-4 w-4 accent-violet-600" />
                 </label>
               ))}
-              <label className="space-y-1.5"><span className="text-[10px] font-black text-muted uppercase">Ancho</span><select value={ticketConfig.printerWidth || '80mm'} onChange={e => setTicketConfig(prev => ({ ...prev, printerWidth: e.target.value as '58mm' | '80mm' }))} className="w-full px-3 py-2.5 bg-primary border border-base rounded-xl text-xs font-bold text-primary"><option value="58mm">58 mm</option><option value="80mm">80 mm</option></select></label>
-              <label className="space-y-1.5 md:col-span-2"><span className="text-[10px] font-black text-muted uppercase">Texto del pie</span><textarea value={ticketConfig.footerText || ''} onChange={e => setTicketConfig(prev => ({ ...prev, footerText: e.target.value }))} rows={2} className="w-full px-3 py-2.5 bg-primary border border-base rounded-xl text-xs font-bold text-primary resize-y" /></label>
+              <label className="space-y-1.5"><span className="text-sm font-semibold text-muted">Ancho</span><select value={ticketConfig.printerWidth || '80mm'} onChange={e => setTicketConfig(prev => ({ ...prev, printerWidth: e.target.value as '58mm' | '80mm' }))} className="w-full px-3 py-2.5 bg-primary border border-base rounded-xl text-sm font-semibold text-primary"><option value="58mm">58 mm</option><option value="80mm">80 mm</option></select></label>
+              <label className="space-y-1.5 md:col-span-2"><span className="text-sm font-semibold text-muted">Texto del pie</span><textarea value={ticketConfig.footerText || ''} onChange={e => setTicketConfig(prev => ({ ...prev, footerText: e.target.value }))} rows={2} className="w-full px-3 py-2.5 bg-primary border border-base rounded-xl text-sm font-semibold text-primary resize-y" /></label>
             </div>
-            <div className="flex justify-end"><button type="button" onClick={handleSaveTicket} className="w-full sm:w-auto px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2"><Save size={14}/> Guardar configuración de ticket</button></div>
+            <div className="flex justify-end"><button type="button" onClick={handleSaveTicket} className="w-full sm:w-auto px-5 h-11 bg-violet-600 text-white rounded-xl text-sm font-semibold flex items-center justify-center gap-2 hover:bg-violet-700 transition-colors"><Save size={15}/> Guardar configuración de ticket</button></div>
           </div>
         )}
 
         {activeTab === 'advanced' && (
           <div className="bg-secondary rounded-2xl shadow-sm border border-base p-3 sm:p-5 space-y-4">
-            <div className="flex items-center gap-3 border-b border-base pb-3"><div className="bg-amber-50 dark:bg-amber-950/30 p-2 rounded-lg text-amber-600"><AlertTriangle size={16}/></div><div><h3 className="text-xs font-black text-primary uppercase tracking-wider">Herramientas avanzadas</h3><p className="text-[8px] font-bold text-muted uppercase tracking-tight">Respaldo, caché, sincronización y restablecimiento selectivo</p></div></div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <button type="button" onClick={() => { const data = exportData(); const blob = new Blob([data], {type:'application/json'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='palmyra-respaldo.json'; a.click(); URL.revokeObjectURL(url); showToast('Respaldo exportado correctamente.'); }} className="h-11 rounded-xl border border-base bg-primary text-primary text-[10px] font-black uppercase flex items-center justify-center gap-2"><CloudDownload size={15}/> Exportar respaldo</button>
-              <button type="button" onClick={handleClearAppCache} disabled={isLoading} className="h-11 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300 dark:border-amber-900/40 text-[10px] font-black uppercase flex items-center justify-center gap-2 disabled:opacity-50"><RefreshCw size={15}/> Borrar caché</button>
-              <button type="button" onClick={() => setShowConfirmReset(true)} className="h-11 rounded-xl bg-rose-600 text-white text-[10px] font-black uppercase flex items-center justify-center gap-2"><Trash2 size={15}/> Restablecer datos</button>
+            <SettingsSectionHeader icon={AlertTriangle} title="Herramientas avanzadas" subtitle="Respaldo, caché, sincronización y restablecimiento selectivo." />
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+              <button type="button" onClick={() => { const data = exportData(); const blob = new Blob([data], {type:'application/json'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='palmyra-respaldo.json'; a.click(); URL.revokeObjectURL(url); showToast('Respaldo exportado correctamente.'); }} className="h-11 rounded-xl border border-base bg-primary text-primary text-sm font-semibold flex items-center justify-center gap-2 hover:bg-subtle transition-colors"><CloudDownload size={16}/> Exportar respaldo</button>
+              <label className="h-11 rounded-xl border border-base bg-primary text-primary text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer hover:bg-subtle transition-colors">
+                <CloudUpload size={16}/> Importar respaldo
+                <input type="file" accept="application/json,.json" className="sr-only" disabled={isLoading} onChange={async e => {
+                  const file = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!file) return;
+                  setIsLoading(true);
+                  try {
+                    const text = await file.text();
+                    const result = await importData(text);
+                    if (!result.success) { showToast(result.error || 'El archivo no tiene un formato de respaldo válido.', 'error'); return; }
+                    showToast('Respaldo importado. La interfaz se recargará para aplicar los datos.');
+                    window.setTimeout(() => window.location.reload(), 600);
+                  } catch (importError) {
+                    console.error('[PALMYRA] No se pudo importar el respaldo:', importError);
+                    showToast('No se pudo leer el archivo de respaldo.', 'error');
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }} />
+              </label>
+              <button type="button" onClick={handleClearAppCache} disabled={isLoading} className="h-11 rounded-xl border border-amber-200 bg-amber-50 text-amber-800 dark:bg-amber-950/20 dark:text-amber-300 dark:border-amber-900/40 text-sm font-semibold flex items-center justify-center gap-2 hover:bg-amber-100/70 disabled:opacity-50 transition-colors"><RefreshCw size={16}/> Borrar caché</button>
+              <button type="button" onClick={() => setShowConfirmReset(true)} className="h-11 rounded-xl border border-rose-200 bg-primary text-rose-700 dark:border-rose-900/40 dark:text-rose-300 text-sm font-semibold flex items-center justify-center gap-2 hover:bg-rose-50 dark:hover:bg-rose-950/20 transition-colors"><Trash2 size={16}/> Restablecer datos</button>
             </div>
-            <div className="rounded-2xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/70 dark:bg-amber-950/20 p-3 text-[9px] font-semibold text-amber-800 dark:text-amber-300">El restablecimiento es selectivo. No modifica la cuenta SaaS, el plan ni la autenticación.</div>
+            <div className="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/70 dark:bg-amber-950/20 p-3 text-sm font-medium leading-6 text-amber-800 dark:text-amber-300">El restablecimiento es selectivo. No modifica la cuenta SaaS, el plan ni la autenticación.</div>
             {showConfirmReset && (
               <div className="rounded-2xl border border-rose-200 dark:border-rose-900/40 bg-rose-50/60 dark:bg-rose-950/20 p-4 space-y-3">
-                <div className="flex items-center justify-between gap-2"><p className="text-[10px] font-black uppercase text-rose-700 dark:text-rose-300">Selecciona qué restablecer</p><button type="button" onClick={toggleAllResetSections} className="text-[8px] font-black uppercase text-rose-600">{resetSections.length === RESET_OPTIONS.length ? 'Quitar todo' : 'Seleccionar todo'}</button></div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{RESET_OPTIONS.map(option => { const Icon=option.icon; const checked=resetSections.includes(option.id); return <label key={option.id} className={cn('flex items-start gap-2 p-2.5 rounded-xl border cursor-pointer',checked?'border-rose-400 bg-white dark:bg-slate-900':'border-base bg-primary')}><input type="checkbox" checked={checked} onChange={()=>toggleResetSection(option.id)} className="mt-0.5 accent-rose-600"/><Icon size={13} className="text-rose-600 mt-0.5 shrink-0"/><span><span className="block text-[9px] font-black text-primary uppercase">{option.label}</span><span className="block text-[8px] text-muted mt-0.5">{option.desc}</span></span></label>; })}</div>
-                <input value={resetInput} onChange={e=>setResetInput(e.target.value)} placeholder="Escribe ELIMINAR para confirmar" className="w-full px-3 py-2.5 bg-primary border border-base rounded-xl text-xs font-bold text-primary"/>
-                <div className="flex gap-2"><button type="button" onClick={()=>{setShowConfirmReset(false);setResetInput('');setResetSections([])}} className="flex-1 h-10 rounded-xl border border-base text-[9px] font-black uppercase">Cancelar</button><button type="button" disabled={resetInput.trim().toUpperCase()!=='ELIMINAR'||resetSections.length===0||isLoading} onClick={handleClearData} className="flex-1 h-10 rounded-xl bg-rose-600 text-white text-[9px] font-black uppercase disabled:opacity-40">{isLoading?'Procesando…':'Confirmar'}</button></div>
+                <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-sm font-bold text-rose-700 dark:text-rose-300">Selecciona qué restablecer</p><button type="button" onClick={toggleAllResetSections} className="min-h-11 px-2 text-sm font-semibold text-rose-600 underline-offset-4 hover:underline">{resetSections.length === RESET_OPTIONS.length ? 'Quitar todo' : 'Seleccionar todo'}</button></div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{RESET_OPTIONS.map(option => { const Icon=option.icon; const checked=resetSections.includes(option.id); return <label key={option.id} className={cn('flex items-start gap-2.5 p-3 rounded-xl border cursor-pointer',checked?'border-rose-300 bg-primary dark:border-rose-900/50':'border-base bg-primary')}><input type="checkbox" checked={checked} onChange={()=>toggleResetSection(option.id)} className="mt-0.5 h-4 w-4 accent-rose-600"/><Icon size={15} className="text-rose-600 mt-0.5 shrink-0"/><span className="min-w-0"><span className="block text-sm font-semibold text-primary">{option.label}</span><span className="mt-0.5 block text-sm font-medium leading-snug text-muted">{option.desc}</span></span></label>; })}</div>
+                <input value={resetInput} onChange={e=>setResetInput(e.target.value)} placeholder="Escribe ELIMINAR para confirmar" className="w-full px-3 py-2.5 bg-primary border border-base rounded-xl text-sm font-semibold text-primary outline-none focus:ring-1 focus:ring-rose-500"/>
+                <div className="flex gap-2"><button type="button" onClick={()=>{setShowConfirmReset(false);setResetInput('');setResetSections([])}} className="flex-1 h-11 rounded-xl border border-base text-sm font-semibold text-primary hover:bg-subtle">Cancelar</button><button type="button" disabled={resetInput.trim().toUpperCase()!=='ELIMINAR'||resetSections.length===0||isLoading} onClick={handleClearData} className="flex-1 h-11 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700 disabled:opacity-40">{isLoading?'Procesando…':'Confirmar'}</button></div>
               </div>
             )}
           </div>
@@ -782,10 +770,10 @@ export default function Settings() {
 
         {(branchToDelete || categoryToDelete) && (
           <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
-            <div className="w-full max-w-sm rounded-3xl bg-white dark:bg-slate-900 border border-base shadow-2xl p-5">
-              <div className="flex items-center gap-3"><AlertTriangle className="w-5 h-5 text-rose-600"/><h3 className="text-sm font-black text-primary">Confirmar eliminación</h3></div>
-              <p className="mt-3 text-xs text-secondary">¿Seguro que deseas eliminar <strong>{branchToDelete?.name || categoryToDelete?.name}</strong>? Los registros históricos no se borrarán.</p>
-              <div className="mt-5 flex gap-2"><button type="button" onClick={() => { setBranchToDelete(null); setCategoryToDelete(null); }} className="flex-1 h-10 rounded-xl border border-base text-xs font-black">Cancelar</button><button type="button" onClick={() => branchToDelete ? confirmDeleteBranch() : confirmDeleteCategory()} className="flex-1 h-10 rounded-xl bg-rose-600 text-white text-xs font-black">Eliminar</button></div>
+            <div className="w-full max-w-sm rounded-3xl bg-secondary border border-base shadow-2xl p-5">
+              <div className="flex items-center gap-3"><AlertTriangle className="w-5 h-5 text-rose-600"/><h3 className="text-base font-bold text-primary">Confirmar eliminación</h3></div>
+              <p className="mt-3 text-sm text-secondary">¿Seguro que deseas eliminar <strong>{branchToDelete?.name || categoryToDelete?.name}</strong>? Los registros históricos no se borrarán.</p>
+              <div className="mt-5 flex gap-2"><button type="button" onClick={() => { setBranchToDelete(null); setCategoryToDelete(null); }} className="flex-1 h-11 rounded-xl border border-base text-sm font-semibold text-primary hover:bg-subtle">Cancelar</button><button type="button" onClick={() => branchToDelete ? confirmDeleteBranch() : confirmDeleteCategory()} className="flex-1 h-11 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700">Eliminar</button></div>
             </div>
           </div>
         )}

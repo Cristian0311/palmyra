@@ -48,7 +48,7 @@ export function buildShiftReceiptLines(
   });
 
   const lines: string[] = [
-    "CENTER|BOLD|MARÉ",
+    "CENTER|BOLD|PALMYRA",
     `CENTER|${(branchName || 'Sucursal Principal').toUpperCase()}`,
     "CENTER|BOLD|CIERRE DE TURNO",
     "---",
@@ -83,7 +83,7 @@ export function buildShiftReceiptLines(
       format58mmLine("Estado:", payrollItem.status === 'paid' ? 'PAGADO' : 'PENDIENTE', 32),
     );
   }
-  lines.push("---","CENTER|Firma Trabajador: ___________","CENTER|Firma Supervisor: ___________","CENTER|MARÉ SISTEMA POS");
+  lines.push("---","CENTER|Firma Trabajador: ___________","CENTER|Firma Supervisor: ___________","CENTER|PALMYRA SISTEMA POS");
   return lines;
 }
 
@@ -94,7 +94,7 @@ export function buildDiscrepancyReceiptLines(
 ): string[] {
   const { branchName, sequentialTurn, workerName, formatMoney, format58mmLine } = deps;
   const lines: string[] = [
-    "CENTER|BOLD|MARÉ",
+    "CENTER|BOLD|PALMYRA",
     `CENTER|${(branchName || 'Sucursal Principal').toUpperCase()}`,
     "CENTER|BOLD|AUDITORIA DE DESCUADRE",
     "CENTER|CIERRE FORZADO DE CAJA",
@@ -122,7 +122,7 @@ export function buildDiscrepancyReceiptLines(
     lines.push("---");
     lines.push(`NOTA: ${session.auditNotes.slice(0, 30)}`);
   }
-  lines.push("---","CENTER|Firma Cajero: ____________","CENTER|Firma Auditor: ___________","CENTER|MARÉ SISTEMA POS");
+  lines.push("---","CENTER|Firma Cajero: ____________","CENTER|Firma Auditor: ___________","CENTER|PALMYRA SISTEMA POS");
   return lines;
 }
 
@@ -141,7 +141,7 @@ export function buildCashMovementReceiptLines(
 ): string[] {
   const { formatMoney, format58mmLine } = deps;
   return [
-    "CENTER|BOLD|MARÉ POS",
+    "CENTER|BOLD|PALMYRA POS",
     `CENTER|${movement.branchName.toUpperCase()}`,
     `CENTER|BOLD|VALE DE ${movement.type === 'income' ? 'INGRESO (ENTRADA)' : 'EGRESO (GASTO)'}`,
     "---",

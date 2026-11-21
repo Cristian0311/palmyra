@@ -6,18 +6,21 @@ import { useStore } from '../../store/useStore';
 export async function reconcileSupplierReceiveCanonical(supabase: any, orderId: string): Promise<void> {
 
   try {
+    // Las órdenes de compra viven en purchase_orders; el estado de Postgres usa
+    // "ordered" donde la UI usa "pending", así que se traduce al reconciliar.
     const { data: remoteOrder, error } = await supabase
-      .from('supplier_orders')
-      .select('*')
+      .from('purchase_orders')
+      .select('status, warehouse_id')
       .eq('id', orderId)
       .maybeSingle();
     if (error) throw error;
 
     if (remoteOrder) {
+      const localStatus = remoteOrder.status === 'ordered' ? 'pending' : remoteOrder.status;
       useStore.setState(state => ({
         supplierOrders: (state.supplierOrders || []).map(order =>
           order.id === orderId
-            ? { ...order, status: remoteOrder.status || order.status }
+            ? { ...order, status: localStatus || order.status }
             : order
         )
       }));
@@ -26,7 +29,7 @@ export async function reconcileSupplierReceiveCanonical(supabase: any, orderId: 
     // El inventario local puede haber sido incrementado de forma optimista
     // mientras estaba offline; refrescamos la sucursal para devolverlo al
     // estado que realmente existe en Supabase.
-    const branchId = remoteOrder?.branch_id;
+    const branchId = remoteOrder?.warehouse_id;
     if (branchId) {
       const inventoryRes = await pullBranchInventoryFromSupabase(branchId);
       if (!inventoryRes.success) {

@@ -1,44 +1,67 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import fs from 'fs';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
+const packageVersion = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8')).version || '0.0.0';
+  } catch {
+    return '0.0.0';
+  }
+})();
+
 export default defineConfig(() => {
   return {
+    define: {
+      __APP_VERSION__: JSON.stringify(packageVersion)
+    },
     plugins: [
       react(), 
       tailwindcss(),
       VitePWA({
         registerType: 'prompt',
-        includeAssets: ['favicon.svg', 'icon.png', 'pwa-192.svg', 'pwa-512.svg'],
+        includeAssets: ['favicon.ico', 'icon.png', 'pwa-192.png', 'pwa-512.png', 'pwa-maskable-512.png', 'apple-touch-icon.png'],
+        // El servidor de desarrollo y la app de escritorio comparten el origen
+        // 127.0.0.1:10000. Un Service Worker de desarrollo cacheado allí servía
+        // el shell viejo dentro del POS instalado y dejaba la ventana morada.
         devOptions: {
-          enabled: true
+          enabled: false
         },
         manifest: {
           id: '/',
           name: 'PALMYRA POS - Gestión empresarial',
           short_name: 'PALMYRA POS',
           description: 'Punto de venta empresarial',
+          lang: 'es',
+          dir: 'ltr',
           start_url: '/',
           scope: '/',
           display: 'standalone',
           display_override: ['fullscreen', 'standalone'],
           orientation: 'any',
-          background_color: '#ffffff',
-          theme_color: '#ffffff',
+          background_color: '#32145F',
+          theme_color: '#32145F',
           icons: [
             {
-              src: '/pwa-192.svg',
+              src: '/pwa-192.png',
               sizes: '192x192',
-              type: 'image/svg+xml',
-              purpose: 'any maskable'
+              type: 'image/png',
+              purpose: 'any'
             },
             {
-              src: '/pwa-512.svg',
+              src: '/pwa-512.png',
               sizes: '512x512',
-              type: 'image/svg+xml',
-              purpose: 'any maskable'
+              type: 'image/png',
+              purpose: 'any'
+            },
+            {
+              src: '/pwa-maskable-512.png',
+              sizes: '512x512',
+              type: 'image/png',
+              purpose: 'maskable'
             }
           ]
         },

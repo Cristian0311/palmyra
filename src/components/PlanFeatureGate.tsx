@@ -3,6 +3,7 @@ import { LockKeyhole, ArrowUpCircle, Loader2, Sparkles, Check, ShieldCheck, Arro
 import { useNavigate } from 'react-router-dom';
 import { loadSaaSContext } from '../services/saas';
 import { canUsePlanFeature, getPlanDisplayName, getRequiredPlanCode, type PlanFeature } from '../services/planAccess';
+import { PalmyraWordmark } from './PalmyraWordmark';
 
 const REQUIRED_NAMES: Record<string,string> = { growth: 'Caravana', pro: 'Ciudadela' };
 
@@ -65,7 +66,7 @@ export default function PlanFeatureGate({
 
   return (
     <div className="min-h-[60vh] flex items-center justify-center p-4 sm:p-6">
-      <div className="relative w-full max-w-2xl overflow-hidden rounded-[30px] border border-violet-100/80 bg-white shadow-[0_24px_70px_-28px_rgba(91,33,182,0.35)]">
+      <div className="relative w-full max-w-2xl overflow-hidden rounded-[30px] border border-violet-100/80 bg-white shadow-[0_24px_70px_-28px_rgba(91,33,182,0.35)] dark:border-slate-800 dark:bg-slate-900">
         <div className="absolute -right-20 -top-24 h-56 w-56 rounded-full bg-violet-200/45 blur-3xl" />
         <div className="absolute -left-20 bottom-0 h-48 w-48 rounded-full bg-indigo-100/55 blur-3xl" />
 
@@ -73,7 +74,7 @@ export default function PlanFeatureGate({
           <button
             type="button"
             onClick={() => setDismissed(true)}
-            className="absolute right-4 top-4 h-8 w-8 rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-slate-700 hover:bg-slate-50 flex items-center justify-center"
+            className="absolute right-4 top-4 h-8 w-8 rounded-xl border border-slate-200 bg-white text-slate-400 hover:text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white flex items-center justify-center"
             aria-label="Cerrar aviso"
             title="Cerrar"
           >
@@ -89,28 +90,28 @@ export default function PlanFeatureGate({
               </div>
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[8px] font-black uppercase tracking-[.14em] text-violet-700">
+                  <span className="rounded-full bg-violet-50 px-2.5 py-1 text-[8px] font-black uppercase tracking-[.14em] text-violet-700 dark:bg-violet-950/50 dark:text-violet-300">
                     Función premium
                   </span>
-                  <span className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[8px] font-black uppercase tracking-[.12em] text-slate-600">
-                    <ShieldCheck className="h-3 w-3" /> PALMYRA
+                  <span className="flex items-center gap-1 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[8px] font-black uppercase tracking-[.12em] text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                  <PalmyraWordmark className="h-4 w-auto shrink-0" />
                   </span>
                 </div>
-                <h1 className="mt-2 text-xl sm:text-2xl font-black tracking-tight text-slate-950">{title}</h1>
+                <h1 className="mt-2 text-xl sm:text-2xl font-black tracking-tight text-slate-950 dark:text-white">{title}</h1>
               </div>
             </div>
           </div>
 
-          <p className="mt-5 max-w-xl text-sm leading-6 text-slate-500">{description}</p>
+          <p className="mt-5 max-w-xl text-sm leading-6 text-slate-500 dark:text-slate-300">{description}</p>
 
           <div className="mt-5 grid gap-3 sm:grid-cols-[1fr_auto]">
-            <div className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50/90 via-white to-indigo-50/70 p-4 text-left">
+            <div className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50/90 via-white to-indigo-50/70 p-4 text-left dark:border-slate-800 dark:from-violet-950/40 dark:via-slate-900 dark:to-indigo-950/40">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-[8px] font-black uppercase tracking-[.14em] text-slate-500">Desbloquea con</p>
-                  <p className="mt-1 text-base font-black text-slate-950">{requiredName}</p>
+                  <p className="text-[8px] font-black uppercase tracking-[.14em] text-slate-500 dark:text-slate-400">Desbloquea con</p>
+                  <p className="mt-1 text-base font-black text-slate-950 dark:text-white">{requiredName}</p>
                 </div>
-                <span className="rounded-xl bg-white px-3 py-2 text-[9px] font-black text-violet-700 shadow-sm ring-1 ring-violet-100">
+                <span className="rounded-xl bg-white px-3 py-2 text-[9px] font-black text-violet-700 shadow-sm ring-1 ring-violet-100 dark:bg-slate-800 dark:text-violet-300 dark:ring-slate-700">
                   Plan superior
                 </span>
               </div>
@@ -120,8 +121,8 @@ export default function PlanFeatureGate({
                   'Herramientas preparadas para crecer',
                   'Todo queda integrado con tu operación PALMYRA'
                 ].map((line) => (
-                  <div key={line} className="flex items-center gap-2 text-[10px] font-bold text-slate-600">
-                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+                  <div key={line} className="flex items-center gap-2 text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                    <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-300">
                       <Check className="h-2.5 w-2.5" />
                     </span>
                     {line}
@@ -130,20 +131,20 @@ export default function PlanFeatureGate({
               </div>
             </div>
 
-            <div className="min-w-[150px] rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-left">
-              <p className="text-[8px] font-black uppercase tracking-[.14em] text-slate-500">Tu plan actual</p>
-              <p className="mt-1 text-sm font-black text-slate-900">{currentName}</p>
-              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-200">
+            <div className="min-w-[150px] rounded-2xl border border-slate-200 bg-slate-50/80 p-4 text-left dark:border-slate-800 dark:bg-slate-800/50">
+              <p className="text-[8px] font-black uppercase tracking-[.14em] text-slate-500 dark:text-slate-400">Tu plan actual</p>
+              <p className="mt-1 text-sm font-black text-slate-900 dark:text-white">{currentName}</p>
+              <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
                 <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-violet-500 to-indigo-500" />
               </div>
-              <p className="mt-2 text-[9px] font-bold leading-4 text-slate-500">
+              <p className="mt-2 text-[9px] font-bold leading-4 text-slate-500 dark:text-slate-300">
                 Esta sección permanece visible para que sepas qué puedes desbloquear.
               </p>
             </div>
           </div>
 
           <div className="mt-5 flex flex-col-reverse gap-2.5 sm:flex-row sm:items-center sm:justify-between">
-            <p className="text-[9px] font-bold leading-4 text-slate-400">
+            <p className="text-[9px] font-bold leading-4 text-slate-400 dark:text-slate-400">
               No es un error: esta función forma parte de un plan superior.
             </p>
             <button

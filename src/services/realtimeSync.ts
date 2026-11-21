@@ -45,7 +45,12 @@ async function getTenantState() {
       const { pullPosBootstrapFromSupabase } = await import('./supabaseSync');
       const result = await pullPosBootstrapFromSupabase(useStore.getState().currentBranchId);
       if (result.success) {
-        useStore.setState(result.data);
+        const { mergeInventoryAudits } = await import('../store/utils/mergeInventoryAudits');
+        const data: any = { ...result.data };
+        if (Array.isArray(data.inventoryAudits)) {
+          data.inventoryAudits = mergeInventoryAudits(useStore.getState().inventoryAudits, data.inventoryAudits);
+        }
+        useStore.setState(data);
         return true;
       }
       return false;

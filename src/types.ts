@@ -106,6 +106,10 @@ export interface StoreConfig {
   longitude?: number;
   darkMode?: boolean;
   manualOfflineSync?: boolean;
+  /** Aplica la cotización de elTOQUE cuando supera el umbral configurado. */
+  autoRateSync?: boolean;
+  /** Diferencia mínima en CUP para aceptar un cambio automático (por defecto 5). */
+  autoRateThreshold?: number;
 }
 
 
@@ -331,7 +335,7 @@ export interface InventoryTransfer {
   userId: string;
   transactionId?: string;
   batchId?: string; // For grouping multiple products in a single operation
-  status: 'completed' | 'cancelled' | 'pending';
+  status: 'completed' | 'cancelled' | 'pending' | 'in_transit';
   operationId?: string;
 }
 
@@ -375,6 +379,8 @@ export interface BankCard {
   phone?: string; // Teléfono asociado para confirmación (Transfermóvil)
   lastFour?: string;
   lastFourDigits?: string;
+  expiryDate?: string; // MM/YY
+  cardType?: string; // MN | MLC | Clásica USD
   balance: number;
   currency: string;
   color?: string;
@@ -469,6 +475,8 @@ export interface Quote {
   items: CartItem[];
   status: 'pending' | 'converted' | 'expired';
   notes?: string;
+  currencyCode?: string;
+  validUntil?: string;
 }
 
 export interface TimeShift {

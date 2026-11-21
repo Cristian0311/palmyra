@@ -1,223 +1,128 @@
-/**
- * Persistencia local del estado de la aplicación.
- * IndexedDB evita que un POS offline dependa de localStorage para un objeto enorme.
- * Las escrituras se agrupan brevemente para evitar serializar el store en cada set().
- */
 import type { StateStorage } from 'zustand/middleware';
-import { getPalmyraLocalScopeKey, getPalmyraScopedStorageKey } from './localScope';
+import { getPalmyraLocalScopeKey } from './localScope';
 
 const DB_PREFIX = 'palmyra-local-state-v2';
-const DB_VERSION = 1;
 const STORE = 'state';
 const KEY = 'zustand';
-let activeDbName = '';
-
-let writeTimer: ReturnType<typeof setTimeout> | null = null;
-let pendingValue: string | null = null;
+const databases = new Map<string, Promise<IDBDatabase | null>>();
 let writeChain: Promise<void> = Promise.resolve();
-let lastWriteError: Error | null = null;
-let dbPromise: Promise<IDBDatabase | null> | null = null;
+const writeErrors = new Map<string, Error>();
 
-function getStorageScopeKey(): string | null {
-  return getPalmyraLocalScopeKey();
-}
+const legacyKey = (scope: string) => 'palmyra-local-state__' + scope;
+const recoveryKey = (scope: string) => 'palmyra-local-state-recovery__' + scope;
 
-function getDbName(): string | null {
-  const scope = getStorageScopeKey();
-  return scope ? DB_PREFIX + '-' + encodeURIComponent(scope) : null;
-}
-
-function openDb(): Promise<IDBDatabase | null> {
+function openDb(scope: string): Promise<IDBDatabase | null> {
   if (typeof indexedDB === 'undefined') return Promise.resolve(null);
-  const dbName = getDbName();
-  if (!dbName) return Promise.resolve(null);
-  if (dbPromise && activeDbName === dbName) return dbPromise;
-  dbPromise = new Promise(resolve => {
-    activeDbName = dbName;
-    const req = indexedDB.open(dbName, DB_VERSION);
+  const existing = databases.get(scope);
+  if (existing) return existing;
+  const promise = new Promise<IDBDatabase | null>(resolve => {
+    const req = indexedDB.open(DB_PREFIX + '-' + encodeURIComponent(scope), 1);
     req.onupgradeneeded = () => {
       if (!req.result.objectStoreNames.contains(STORE)) req.result.createObjectStore(STORE);
     };
     req.onsuccess = () => {
       const db = req.result;
-      db.onversionchange = () => { db.close(); dbPromise = null; };
+      db.onversionchange = () => { db.close(); databases.delete(scope); };
       resolve(db);
     };
-    req.onerror = () => { dbPromise = null; resolve(null); };
+    req.onerror = () => { databases.delete(scope); resolve(null); };
+    req.onblocked = () => { databases.delete(scope); resolve(null); };
   });
-  return dbPromise;
+  databases.set(scope, promise);
+  return promise;
 }
 
-async function read(): Promise<string | null> {
-  const fallback = () => {
-    const key = getPalmyraScopedStorageKey('palmyra-local-state');
-    if (!key) return null;
-    try { return localStorage.getItem(key); } catch { return null; }
-  };
+function stored(key: string): string | null {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
 
-  const db = await openDb();
-  if (!db) return fallback();
-
+async function read(scope: string): Promise<string | null> {
+  await writeChain;
+  // A recovery record is newer than IndexedDB after a failed write, not an older backup.
+  const recovery = stored(recoveryKey(scope));
+  if (recovery !== null) return recovery;
+  const db = await openDb(scope);
+  if (!db) return stored(legacyKey(scope));
   return new Promise(resolve => {
-    const tx = db.transaction(STORE, 'readonly');
-    const req = tx.objectStore(STORE).get(KEY);
-    req.onsuccess = () => {
-      const value = typeof req.result === 'string' ? req.result : null;
-      // Si IndexedDB aún no tiene un valor válido, conservar el respaldo
-      // local evita arrancar el POS con un estado vacío tras una recuperación.
-      resolve(value ?? fallback());
-    };
-    req.onerror = () => resolve(fallback());
+    try {
+      const tx = db.transaction(STORE, 'readonly');
+      const req = tx.objectStore(STORE).get(KEY);
+      req.onsuccess = () => resolve(typeof req.result === 'string' ? req.result : stored(legacyKey(scope)));
+      req.onerror = () => resolve(stored(legacyKey(scope)));
+      tx.onabort = () => resolve(stored(legacyKey(scope)));
+    } catch { resolve(stored(legacyKey(scope))); }
   });
 }
 
-async function writeNow(value: string): Promise<void> {
-  const scopeKey = getStorageScopeKey();
-  if (!scopeKey) return;
-  const fallbackKey = getPalmyraScopedStorageKey('palmyra-local-state');
+async function writeNow(scope: string, value: string): Promise<void> {
   const operation = writeChain.then(async () => {
-    const db = await openDb();
-
-    if (!db) {
-      try {
-        if (!fallbackKey) return;
-        localStorage.setItem(fallbackKey, value);
-        lastWriteError = null;
-        return;
-      } catch (localError) {
-        const error = new Error(`No se pudo persistir el estado local: ${String(localError)}`);
-        lastWriteError = error;
-        throw error;
-      }
-    }
-
     try {
+      const db = await openDb(scope);
+      if (!db) throw new Error('IndexedDB no disponible');
       await new Promise<void>((resolve, reject) => {
         const tx = db.transaction(STORE, 'readwrite');
         tx.objectStore(STORE).put(value, KEY);
         tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error || new Error('IndexedDB state write failed'));
-        tx.onabort = () => reject(tx.error || new Error('IndexedDB state write aborted'));
+        tx.onerror = () => reject(tx.error || new Error('Error escribiendo IndexedDB'));
+        tx.onabort = () => reject(tx.error || new Error('Escritura abortada'));
       });
-      lastWriteError = null;
-    } catch (idbError) {
-      // Respaldo inmediato: una venta cobrada offline nunca debe depender de
-      // una única implementación de almacenamiento del navegador.
+      try { localStorage.removeItem(recoveryKey(scope)); localStorage.removeItem(legacyKey(scope)); } catch {}
+      writeErrors.delete(scope);
+    } catch {
       try {
-        if (!fallbackKey) throw idbError;
-        localStorage.setItem(fallbackKey, value);
-        lastWriteError = null;
-        console.warn('[localStateStorage] IndexedDB falló; se guardó el estado en localStorage:', idbError);
-      } catch (localError) {
-        const error = new Error(
-          `No se pudo persistir el estado local ni en IndexedDB ni en localStorage: ${String(localError)}`
-        );
-        lastWriteError = error;
+        localStorage.setItem(recoveryKey(scope), value);
+        writeErrors.delete(scope);
+      } catch {
+        const error = new Error('No se pudo guardar en este dispositivo. Libera espacio y vuelve a intentar antes de cerrar la aplicación.');
+        writeErrors.set(scope, error);
+        if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('palmyra:storage-warning', { detail: { message: error.message } }));
         throw error;
       }
     }
   });
-
-  // La cadena queda siempre reutilizable para las siguientes escrituras, pero
-  // conservamos el último error para que flushLocalStateStorage pueda reportar
-  // correctamente una pérdida de persistencia.
-  writeChain = operation.catch(error => {
-    lastWriteError = error instanceof Error ? error : new Error(String(error));
-    console.error('[localStateStorage] Error escribiendo estado local:', error);
-  });
-
+  writeChain = operation.catch(() => {});
   await operation;
 }
 
 export async function flushLocalStateStorage(): Promise<void> {
-  if (writeTimer) {
-    clearTimeout(writeTimer);
-    writeTimer = null;
-    const next = pendingValue;
-    pendingValue = null;
-    if (next != null) {
-      await writeNow(next);
-      return;
-    }
-  }
-
+  const scope = getPalmyraLocalScopeKey();
   await writeChain;
-  if (lastWriteError) {
-    const error = lastWriteError;
-    lastWriteError = null;
-    throw error;
-  }
+  const error = scope ? writeErrors.get(scope) : undefined;
+  if (error) throw error;
 }
 
 export const localStateStorage: StateStorage = {
   getItem: async () => {
-    const value = await read();
-    // Migración transparente desde la persistencia antigua de Zustand.
-    if (value) {
-      void writeNow(value);
-    }
-    return value;
+    const scope = getPalmyraLocalScopeKey();
+    if (!scope) return null;
+    return read(scope);
   },
   setItem: async (_name, value) => {
-    pendingValue = value;
-    if (writeTimer) return;
-    writeTimer = setTimeout(() => {
-      writeTimer = null;
-      const next = pendingValue;
-      pendingValue = null;
-      if (next != null) void writeNow(next);
-    }, 250);
+    const scope = getPalmyraLocalScopeKey();
+    if (!scope) return;
+    // Capture the account before awaiting: session changes must not redirect an in-flight write.
+    await writeNow(scope, value);
   },
   removeItem: async () => {
-    const fallbackKey = getPalmyraScopedStorageKey('palmyra-local-state');
-    const db = await openDb();
-    if (!db) {
-      if (fallbackKey) {
-        try { localStorage.removeItem(fallbackKey); } catch {}
-      }
-      return;
-    }
-    await new Promise<void>(resolve => {
-      const tx = db.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).delete(KEY);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => resolve();
-    });
+    await clearLocalStateStorage();
   }
 };
 
 export async function clearLocalStateStorage(): Promise<void> {
-  if (writeTimer) {
-    clearTimeout(writeTimer);
-    writeTimer = null;
-    const next = pendingValue;
-    pendingValue = null;
-    if (next != null) {
-      try {
-        await writeNow(next);
-      } catch (error) {
-        console.warn('[localStateStorage] No se pudo vaciar la escritura pendiente antes de limpiar:', error);
-      }
-    }
-  }
-
-  // Esperar a cualquier escritura que ya esté en vuelo. Sin esto, un put()
-  // pendiente podía terminar después del delete() y reconstituir una caché vieja.
-  try { await writeChain; } catch {}
-
-  const db = await openDb();
+  const scope = getPalmyraLocalScopeKey();
+  if (!scope) return;
+  await writeChain;
+  const db = await openDb(scope);
   if (db) {
-    await new Promise<void>(resolve => {
+    await new Promise<void>((resolve, reject) => {
       const tx = db.transaction(STORE, 'readwrite');
       tx.objectStore(STORE).delete(KEY);
       tx.oncomplete = () => resolve();
-      tx.onerror = () => resolve();
-      tx.onabort = () => resolve();
+      tx.onerror = () => reject(tx.error);
+      tx.onabort = () => reject(tx.error);
     });
   }
-
-  const fallbackKey = getPalmyraScopedStorageKey('palmyra-local-state');
-  if (fallbackKey) {
-    try { localStorage.removeItem(fallbackKey); } catch {}
-  }
+  localStorage.removeItem(recoveryKey(scope));
+  localStorage.removeItem(legacyKey(scope));
+  writeErrors.delete(scope);
 }

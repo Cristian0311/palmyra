@@ -41,7 +41,7 @@ test("POS shift-cancellation modal has only cancel and accept actions, with no p
   const modal = source("src/components/pos/POSCancelShiftModal.tsx");
   const pos = source("src/pages/POS.tsx");
   assert.doesNotMatch(modal, /type="password"|Contraseña del Trabajador|setPassword/);
-  assert.match(modal, /Aceptar cancelación/);
+  assert.match(modal, /Eliminar turno/);
   assert.doesNotMatch(pos, /cancelShiftPassword/);
   assert.match(pos, /cancelSession\(sessionId, 'Cancelación de turno'\)/);
 });

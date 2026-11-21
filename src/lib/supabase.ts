@@ -14,7 +14,7 @@ export function getSupabaseCredentials() {
   const storedKey = localStorage.getItem(STORAGE_ANON_KEY) || '';
 
   // Render/Vite environment variables take precedence in production.
-  // PALMYRA-specific storage keys prevent older OmniSync/MARÉ credentials
+  // PALMYRA-specific storage keys prevent credentials from older versions
   // from silently redirecting the POS to a different Supabase project.
   const url = envUrl || storedUrl || DEFAULT_SUPABASE_URL;
   const anonKey = envKey || storedKey || DEFAULT_SUPABASE_ANON_KEY;
@@ -41,6 +41,7 @@ const supabaseFetch: typeof fetch = (input, init) => {
   headers.set('Pragma', 'no-cache');
   requestInit.headers = headers;
   requestInit.cache = 'no-store';
+
   return fetch(input, requestInit);
 };
 

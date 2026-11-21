@@ -16,8 +16,10 @@ export type PlanRequest = {
   company_name?: string | null;
   plan_name?: string | null;
   monthly_price?: number | null;
+  quoted_amount?: number | null;
   requested_at?: string | null;
   payment_method?: string | null;
+  billing_months?: number | null;
   status?: string | null;
 };
 
@@ -55,8 +57,21 @@ export async function loadPlatformSnapshot(): Promise<PlatformSnapshot> {
   };
 }
 
-export async function approveRequest(id: string) {
-  const { data, error } = await getAdminSupabase().rpc("approve_plan_request", { p_request_id: id });
+export async function approveRequest(
+  id: string,
+  payment: { amount: number; currency: "CUP" | "USD"; reference: string },
+) {
+  const reference = payment.reference.trim();
+  if (!Number.isFinite(payment.amount) || payment.amount <= 0) {
+    throw new Error("Indica el importe realmente recibido.");
+  }
+  if (!reference) throw new Error("La referencia del pago es obligatoria.");
+  const { data, error } = await getAdminSupabase().rpc("approve_plan_request_v3", {
+    p_request_id: id,
+    p_received_amount: payment.amount,
+    p_received_currency: payment.currency,
+    p_reference: reference,
+  });
   if (error) throw error;
   return data;
 }
@@ -87,6 +102,8 @@ export type PlatformSupportSettings = {
   whatsapp_number: string | null;
   support_email: string | null;
   privacy_url: string | null;
+  facebook_url: string | null;
+  whatsapp_channel_url: string | null;
 };
 
 export type PlatformSupportRequest = {
@@ -111,6 +128,8 @@ export async function loadSupportSettings(): Promise<PlatformSupportSettings> {
     whatsapp_number: value.whatsapp_number ? String(value.whatsapp_number) : null,
     support_email: value.support_email ? String(value.support_email) : null,
     privacy_url: value.privacy_url ? String(value.privacy_url) : null,
+    facebook_url: value.facebook_url ? String(value.facebook_url) : null,
+    whatsapp_channel_url: value.whatsapp_channel_url ? String(value.whatsapp_channel_url) : null,
   };
 }
 
@@ -120,6 +139,8 @@ export async function saveSupportSettings(settings: PlatformSupportSettings): Pr
     p_whatsapp_number: settings.whatsapp_number || null,
     p_support_email: settings.support_email || null,
     p_privacy_url: settings.privacy_url || null,
+    p_facebook_url: settings.facebook_url || null,
+    p_whatsapp_channel_url: settings.whatsapp_channel_url || null,
   });
   if (error) throw error;
   const value = (data || {}) as Record<string, unknown>;
@@ -127,6 +148,8 @@ export async function saveSupportSettings(settings: PlatformSupportSettings): Pr
     whatsapp_number: value.whatsapp_number ? String(value.whatsapp_number) : null,
     support_email: value.support_email ? String(value.support_email) : null,
     privacy_url: value.privacy_url ? String(value.privacy_url) : null,
+    facebook_url: value.facebook_url ? String(value.facebook_url) : null,
+    whatsapp_channel_url: value.whatsapp_channel_url ? String(value.whatsapp_channel_url) : null,
   };
 }
 
@@ -138,4 +161,16 @@ export async function loadSupportRequests(status?: string): Promise<PlatformSupp
   });
   if (error) throw error;
   return Array.isArray(data) ? data as PlatformSupportRequest[] : [];
+}
+
+export async function setSupportRequestStatus(
+  requestId: string,
+  status: "open" | "in_progress" | "resolved" | "closed",
+) {
+  const { data, error } = await getAdminSupabase().rpc("set_platform_support_request_status", {
+    p_request_id: requestId,
+    p_status: status,
+  });
+  if (error) throw error;
+  return data;
 }

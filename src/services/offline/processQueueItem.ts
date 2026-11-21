@@ -13,13 +13,14 @@ import {
 import {
   callOpenSessionRPCWithId, callProcessTransactionRPC, callVoidTransactionRPC, callGetCompensationSettingsRPC,
   callCompleteReturnRPC, callTransferInventoryRPC, callTransferInventoryBulkRPC, callReceiveSupplierOrderRPC,
+  callReceiveTransferRPC, callCancelTransferRPC,
   callStartInventoryAuditRPC, callSaveInventoryAuditCountRPC, callRequestInventoryAuditRecountRPC, callApproveInventoryAuditRPC,
   callBankInternalTransferRPC, callDeleteBankInternalTransferRPC, callDeleteBankTransactionRPC, callDeleteBankCardRPC, callProcessBankTransactionRPC,
   setBankCardBalanceToSupabase, pullBranchInventoryFromSupabase,
   pushCashSessionToSupabase, deleteProductFromSupabase, pullTransferHistoryFromSupabase,
   pushBranchToSupabase, deleteBranchFromSupabase, pushCategoryToSupabase, deleteCategoryFromSupabase, deleteSupplierFromSupabase, deleteUserFromSupabase,
   pushProductToSupabase, pushUserToSupabase, pushWarrantyToSupabase, pushTimeShiftToSupabase, deleteBankCardFromSupabase,
-  pushQuoteToSupabase, pushBankCardToSupabase, pushReturnToSupabase, stableOfflineEntityUuid, stableLegacySaleUuid,
+  pushQuoteToSupabase, pushBankCardToSupabase, pushReturnToSupabase, stableOfflineEntityUuid, stableLegacySaleUuid, deleteQuoteFromSupabase,
   pushSupplierToSupabase, pushSupplierOrderToSupabase, pushInventoryAuditToSupabase,
   pushSalarySettlementToSupabase, hasPayrollEmployeeForSettlement, pushInventoryToSupabase, pushCurrencyToSupabase,
   pushCashMovementToSupabase, deleteCashMovementFromSupabase, pushCashSessionMetadataToSupabase,
@@ -601,7 +602,16 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
     }
     case 'transfer_bulk': {
       const res = await callTransferInventoryBulkRPC(data as any);
-      if (!res.success) throw new Error(res.error || 'No se pudo sincronizar el traslado múltiple.');
+      if (!res.success) {
+        const allPermanent = res.failedItems.length > 0 &&
+          res.failedItems.every(failure => isPermanentSyncSqlCode(failure.errorCode));
+        // Un lote parcialmente aplicado nunca se descarta: las operaciones ya
+        // confirmadas son idempotentes y las pendientes deben reintentarse.
+        if (!res.partial && allPermanent) {
+          throw new PermanentSyncError(res.error || 'El traslado múltiple fue rechazado por el servidor.');
+        }
+        throw new Error(res.error || 'No se pudo sincronizar el traslado múltiple.');
+      }
       const results = await Promise.all([
         pullBranchInventoryFromSupabase(data.fromBranchId),
         pullBranchInventoryFromSupabase(data.toBranchId),
@@ -622,6 +632,70 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
           !remote.some((r: any) => String(r.operationId || r.id) === String(t.operationId || t.id))
         );
         return { transfers: [...pendingOther, ...remote] };
+      });
+      return true;
+    }
+    case 'transfer_receive': {
+      const ids = Array.isArray(data?.operationIds)
+        ? data.operationIds.map((id: any) => String(id || '')).filter(Boolean)
+        : [];
+      if (!ids.length) throw new PermanentSyncError('Recepción de traslado sin operaciones.');
+      for (const id of ids) {
+        const res = await callReceiveTransferRPC(id);
+        if (!res.success) throw new Error(res.error || 'No se pudo confirmar la recepción del traslado.');
+      }
+      const branchIds: string[] = Array.from(new Set<string>(
+        (Array.isArray(data?.rows) ? data.rows : []).map((row: any): string => String(row?.branchId || '')).filter(Boolean)
+      ));
+      if (branchIds.length) {
+        const results = await Promise.all(branchIds.map(branchId => pullBranchInventoryFromSupabase(branchId)));
+        if (results.some(result => !result.success)) {
+          throw new Error('Recepción confirmada, pero no se pudo reconciliar el inventario. Se conservará en cola para verificarlo.');
+        }
+        replaceWarehousesInventory(branchIds, results.flatMap(result => result.inventory || []));
+      }
+      const history = await pullTransferHistoryFromSupabase();
+      if (!history.success) {
+        throw new Error('Recepción confirmada, pero no se pudo actualizar el historial de transferencias.');
+      }
+      useStore.setState(state => {
+        const confirmedIds = new Set(ids);
+        const pendingLocal = (state.transfers || []).filter((t: any) =>
+          t.status === 'pending' && !confirmedIds.has(String(t.operationId || t.id))
+        );
+        return { transfers: [...pendingLocal, ...history.transfers] };
+      });
+      return true;
+    }
+    case 'transfer_cancel': {
+      const ids = Array.isArray(data?.operationIds)
+        ? data.operationIds.map((id: any) => String(id || '')).filter(Boolean)
+        : [];
+      if (!ids.length) throw new PermanentSyncError('Cancelación de traslado sin operaciones.');
+      for (const id of ids) {
+        const res = await callCancelTransferRPC(id);
+        if (!res.success) throw new Error(res.error || 'No se pudo cancelar el traslado pendiente.');
+      }
+      const branchIds: string[] = Array.from(new Set<string>(
+        (Array.isArray(data?.rows) ? data.rows : []).map((row: any): string => String(row?.branchId || '')).filter(Boolean)
+      ));
+      if (branchIds.length) {
+        const results = await Promise.all(branchIds.map(branchId => pullBranchInventoryFromSupabase(branchId)));
+        if (results.some(result => !result.success)) {
+          throw new Error('Cancelación confirmada, pero no se pudo reconciliar el inventario. Se conservará en cola para verificarlo.');
+        }
+        replaceWarehousesInventory(branchIds, results.flatMap(result => result.inventory || []));
+      }
+      const history = await pullTransferHistoryFromSupabase();
+      if (!history.success) {
+        throw new Error('Cancelación confirmada, pero no se pudo actualizar el historial de transferencias.');
+      }
+      useStore.setState(state => {
+        const confirmedIds = new Set(ids);
+        const pendingLocal = (state.transfers || []).filter((t: any) =>
+          t.status === 'pending' && !confirmedIds.has(String(t.operationId || t.id))
+        );
+        return { transfers: [...pendingLocal, ...history.transfers] };
       });
       return true;
     }
@@ -805,6 +879,11 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
     case 'bank_card_delete': {
       const ok = await deleteBankCardFromSupabase(String(data?.id || ''));
       if (!ok) throw new Error('No se pudo sincronizar la eliminación de la cuenta bancaria.');
+      return true;
+    }
+    case 'quote_delete': {
+      const ok = await deleteQuoteFromSupabase(String(data?.id || ''));
+      if (!ok) throw new Error('No se pudo sincronizar la eliminación de la cotización.');
       return true;
     }
     case 'bank_card': {

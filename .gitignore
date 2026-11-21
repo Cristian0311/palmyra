@@ -1,6 +1,8 @@
 node_modules/
 dist/
+dist-admin/
 dev-dist/
+release/
 .env
 .env.*
 !.env.example
@@ -12,10 +14,17 @@ dev-dist/
 
 # Legacy/non-active source copies
 fixrender/
+# Respaldos locales de assets y módulos retirados (no se despliegan)
+_unused/
 # Temporary local artifacts
 temp.txt
 # Generated at build time by scripts/write-version.mjs
 public/version.json
+# Android build outputs and generated web bundle
+android/.gradle/
+android/build/
+android/local.properties
+android/app/src/main/assets/web/
 # Local validation logs
 npm-install.log
 npm-install.err

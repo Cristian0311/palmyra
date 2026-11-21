@@ -22,7 +22,6 @@ export interface CheckoutModalProps {
   changeBase: number;
   paymentLines: CheckoutPaymentLine[];
   activePaymentLineId: string | null;
-  lockedPaymentMethod?: 'cash' | 'transfer';
   bankCards: Array<{
     id: string;
     bank?: string;
@@ -56,7 +55,6 @@ export default function CheckoutModal({
   changeBase,
   paymentLines,
   activePaymentLineId,
-  lockedPaymentMethod,
   bankCards,
   isSubmittingCheckout,
   onClose,

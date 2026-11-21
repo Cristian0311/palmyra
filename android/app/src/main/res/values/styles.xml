@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Palmyra" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">#5B2DBA</item>
+        <item name="android:navigationBarColor">#3B1B78</item>
+        <item name="android:windowBackground">#F7F5FC</item>
+    </style>
+</resources>

@@ -235,7 +235,7 @@ export default function SaaSAuth() {
       <div className="w-full max-w-4xl">
         <div className="flex items-center justify-between mb-3 px-1">
           <button onClick={() => navigate("/landing")} className="flex items-center gap-2.5">
-            <img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="w-[230px] h-[59px] object-contain object-left" />
+            <img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="h-auto w-[230px] max-w-full object-contain object-left" />
           </button>
           <button onClick={() => navigate("/landing")} className="text-[9px] font-black uppercase tracking-wider text-slate-400 hover:text-[#6535C5]">Volver al inicio</button>
         </div>
@@ -254,13 +254,13 @@ export default function SaaSAuth() {
                   { Icon: Users, text: "Trabajadores con cuentas y permisos propios." }
                 ].map(({ Icon, text }) => <div key={text} className="flex items-center gap-2.5 rounded-xl bg-white/8 border border-white/8 p-3"><Icon className="w-4 h-4 text-violet-200 shrink-0"/><span className="text-[9px] text-violet-100/80">{text}</span></div>)}
               </div>
-              <div className="mt-7 rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-[8px] uppercase tracking-wider font-black text-violet-200">Cuba</p><p className="text-sm font-black mt-1">Planes con pago en efectivo</p><p className="text-[9px] text-violet-200/70 mt-1">Pagos internacionales preparados para una fase posterior.</p></div>
+              <div className="mt-7 rounded-2xl border border-white/10 bg-white/5 p-4"><p className="text-[8px] uppercase tracking-wider font-black text-violet-200">Cuba</p><p className="text-sm font-black mt-1">Planes con pago en efectivo</p><p className="text-[9px] text-violet-200/70 mt-1">CUP en efectivo o por transferencia y USD en efectivo; confirmación manual de cada pago.</p></div>
             </div>
           </section>
 
           <section className="p-4 sm:p-6">
             <div>
-              <p className="text-[9px] uppercase tracking-[.18em] font-black text-[#8B63E6]">
+              <p className="text-[9px] uppercase tracking-[.18em] font-black text-[#7649D6]">
                 {mode === "recovery" ? "Recuperación" : mode === "signup" ? "Crear cuenta" : mode === "reset" ? "Recuperar acceso" : "Bienvenido"}
               </p>
               <h2 className="text-2xl font-black tracking-[-.04em] text-[#2A1938] mt-1">

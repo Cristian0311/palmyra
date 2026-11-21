@@ -1,0 +1,53 @@
+appId: com.palmyra.pos
+productName: PALMYRA POS
+copyright: PALMYRA
+
+directories:
+  output: release
+  buildResources: build
+
+# El servidor de escritorio se empaqueta como un único archivo
+# (dist/desktop-server.cjs), así que la app no necesita node_modules.
+# asar:false evita problemas al ejecutar ese archivo con ELECTRON_RUN_AS_NODE.
+asar: false
+npmRebuild: false
+
+files:
+  - "dist/**/*"
+  - "main.electron.cjs"
+  - "!**/*.map"
+  - "!node_modules/**/*"
+
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+  icon: build/icon.ico
+  artifactName: PALMYRA-POS-${version}-Setup.${ext}
+
+# Instalación por usuario (sin UAC). Sin la página "todos/yo" las
+# actualizaciones se pueden instalar en silencio con /S.
+nsis:
+  oneClick: false
+  perMachine: false
+  allowElevation: false
+  include: build/installer.nsh
+  allowToChangeInstallationDirectory: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: PALMYRA POS
+  uninstallDisplayName: PALMYRA POS
+  deleteAppDataOnUninstall: false
+
+linux:
+  target:
+    - AppImage
+  category: Office
+  icon: build/icon.png
+
+mac:
+  target:
+    - dmg
+  category: public.app-category.business
+  icon: build/icon.png

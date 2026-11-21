@@ -8,6 +8,9 @@ import {
   applyInventoryAdjustmentToSupabase,
   callTransferInventoryRPC,
   callTransferInventoryBulkRPC,
+  callReceiveTransferRPC,
+  callCancelTransferRPC,
+  pullTransferHistoryFromSupabase,
 } from '../../services/supabaseSync';
 import { enqueueOfflineItem, getOfflineQueue, removeFromOfflineQueue } from '../../services/offlineQueue';
 import { removeFromOfflineQueueByAction } from '../../services/offlineQueue/outboxUtils';
@@ -16,6 +19,7 @@ import { setCanonicalInventoryQuantity, validateTransferStock } from '../utils/i
 import { buildLocalCompletedSalePatch } from '../utils/localCompletedSale';
 import { normalizeSemanticText } from '../../utils/textUtils';
 import { getActiveTenant } from '../../services/tenant';
+import { isCloudBusinessSyncAllowed } from '../../services/localPlanMode';
 import { INITIAL_PRODUCTS, INITIAL_INVENTORY } from '../storeInitialData';
 
 type StoreSet = (
@@ -38,6 +42,58 @@ async function refreshInventoryBranchesFromSupabase(set: StoreSet, get: StoreGet
   } catch { return false; }
 }
 
+/** Adds the received/cancelled quantities to one side of the transfer. */
+function addTransferStock(
+  inventory: InventoryLevel[],
+  rows: InventoryTransfer[],
+  side: 'fromBranchId' | 'toBranchId'
+): InventoryLevel[] {
+  const next = [...inventory];
+  for (const row of rows) {
+    const branchId = row[side];
+    const quantity = Number(row.quantity || 0);
+    if (!branchId || !Number.isFinite(quantity) || quantity <= 0) continue;
+    const label = row.variantLabel && row.variantLabel !== 'Producto Base' ? row.variantLabel : '';
+    const idx = next.findIndex(item =>
+      item.productId === row.productId && item.branchId === branchId && (item.variantLabel || '') === label
+    );
+    if (idx >= 0) {
+      next[idx] = { ...next[idx], quantity: Number(next[idx].quantity || 0) + quantity };
+    } else {
+      next.push({
+        id: crypto.randomUUID(),
+        productId: row.productId,
+        branchId,
+        variantLabel: label || undefined,
+        quantity,
+        minQuantity: 5
+      });
+    }
+  }
+  return next;
+}
+
+/** Replaces the transfer history with the canonical rows, keeping local pending ones. */
+async function syncTransferHistory(set: StoreSet): Promise<void> {
+  try {
+    const result = await pullTransferHistoryFromSupabase();
+    if (!result.success) return;
+    set(state => {
+      const pendingLocal = (state.transfers || []).filter(t => t.status === 'pending');
+      return {
+        transfers: [
+          ...pendingLocal,
+          ...result.transfers.filter(remote =>
+            !pendingLocal.some(pending => String(pending.operationId || pending.id) === String(remote.operationId || remote.id))
+          )
+        ]
+      };
+    });
+  } catch {
+    // La reconciliación se reintentará en el siguiente ciclo de sincronización.
+  }
+}
+
 export function createInventoryActions(set: StoreSet, get: StoreGet): any {
   return {
   products: INITIAL_PRODUCTS,
@@ -47,20 +103,32 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
     // El stock inicial ya no se genera desde este formulario; se gestiona
     // exclusivamente desde la acción "Gestionar Stock" del inventario.
     let added = false;
+    let duplicateField: 'sku' | 'name' | null = null;
     set((state) => {
       const normalizedSku = String(product.sku || '').trim().toLowerCase();
       const normalizedName = String(product.name || '').trim().toLowerCase();
-      const isDuplicate = state.products.some(p =>
+      const duplicate = state.products.find(p =>
         p.id === product.id ||
         (normalizedSku && String(p.sku || '').trim().toLowerCase() === normalizedSku) ||
         String(p.name || '').trim().toLowerCase() === normalizedName
       );
-      if (isDuplicate) return state;
+      if (duplicate) {
+        duplicateField = normalizedSku && String(duplicate.sku || '').trim().toLowerCase() === normalizedSku ? 'sku' : 'name';
+        return state;
+      }
       added = true;
       return { products: [product, ...state.products] };
     });
 
-    if (!added) return;
+    if (!added) {
+      get().addNotification(
+        duplicateField === 'sku'
+          ? 'Ya existe un producto con ese SKU. Usa un código distinto o edita el producto existente.'
+          : 'Ya existe un producto con ese nombre. Usa otro nombre o edita el producto existente.',
+        'warning'
+      );
+      return false;
+    }
 
     // Producto durable; no se crea ninguna fila de stock aquí.
     void enqueueOfflineItem('product', product, product.id)
@@ -74,6 +142,7 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
       .catch((error) => {
         console.warn('[PALMYRA] No se pudo preparar la cola durable del producto:', error);
       });
+    return true;
   },
 
   updateProduct: (id, product) => {
@@ -106,7 +175,7 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
       }
     };
 
-    if (typeof navigator !== 'undefined' && navigator.onLine) {
+    if (typeof navigator !== 'undefined' && navigator.onLine && isCloudBusinessSyncAllowed()) {
       deleteRemotely().catch(async () => {
         await enqueueOfflineItem('product_delete', { id: productId }, deleteActionId);
       });
@@ -157,7 +226,7 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
 
     await enqueueOfflineItem('transfer', serverPayload, actionId);
 
-    let wasOnline = typeof navigator !== 'undefined' && navigator.onLine;
+    let wasOnline = typeof navigator !== 'undefined' && navigator.onLine && isCloudBusinessSyncAllowed();
     let serverConfirmed = false;
     let canonicalRefreshed = false;
 
@@ -188,6 +257,9 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
     }
 
     if (!canonicalRefreshed) {
+      // La mercancía queda EN TRÁNSITO: se descuenta del origen y el destino
+      // solo se acredita al confirmar la recepción. Acreditar aquí duplicaría
+      // el stock cuando el operador reciba el traslado.
       const newInventory = [...get().inventory];
       for (const v of activeVariants) {
         const sourceIdx = newInventory.findIndex(i =>
@@ -200,27 +272,6 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
             ...newInventory[sourceIdx],
             quantity: Math.max(0, Number(newInventory[sourceIdx].quantity) - v.quantity)
           };
-        }
-
-        const targetIdx = newInventory.findIndex(i =>
-          i.productId === productId &&
-          i.branchId === toBranchId &&
-          (i.variantLabel || '') === v.variantLabel
-        );
-        if (targetIdx !== -1) {
-          newInventory[targetIdx] = {
-            ...newInventory[targetIdx],
-            quantity: Number(newInventory[targetIdx].quantity) + v.quantity
-          };
-        } else {
-          newInventory.push({
-            id: crypto.randomUUID(),
-            productId,
-            branchId: toBranchId,
-            variantLabel: v.variantLabel || undefined,
-            quantity: v.quantity,
-            minQuantity: 5
-          });
         }
       }
       set({ inventory: newInventory });
@@ -264,7 +315,7 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
     set({ inventory: newInventory });
     let needsRefresh = false;
     for (const op of operations) {
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      if (typeof navigator !== 'undefined' && (!navigator.onLine || !isCloudBusinessSyncAllowed())) {
         await enqueueOfflineItem('inventory_reconcile', op, op.operationId);
         continue;
       }
@@ -310,7 +361,7 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
     for (const productId of productIds) {
       removeFromOfflineQueueByAction('product', productId);
       const actionId = 'product-delete:' + productId;
-      if (typeof navigator !== 'undefined' && navigator.onLine) {
+      if (typeof navigator !== 'undefined' && navigator.onLine && isCloudBusinessSyncAllowed()) {
         deleteProductFromSupabase(productId).then(ok => {
           if (ok) removeFromOfflineQueueByAction('product_delete', actionId);
           else enqueueOfflineItem('product_delete', { id: productId }, actionId).catch(() => {});
@@ -350,7 +401,7 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
       else if (nextQty > 0) newInventory.push({ id: crypto.randomUUID(), productId, branchId, quantity: nextQty, minQuantity: payload.minQuantity, variantLabel });
       return { inventory: newInventory };
     });
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    if (typeof navigator !== 'undefined' && (!navigator.onLine || !isCloudBusinessSyncAllowed())) {
       enqueueOfflineItem('inventory_adjustment', payload, operationId);
       return;
     }
@@ -395,7 +446,7 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
       else newInventory.push({ id: crypto.randomUUID(), productId, branchId, quantity: newQuantity, minQuantity: payload.minQuantity, variantLabel });
       return { inventory: newInventory };
     });
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+    if (typeof navigator !== 'undefined' && (!navigator.onLine || !isCloudBusinessSyncAllowed())) {
       enqueueOfflineItem('inventory_reconcile', payload, operationId);
       return;
     }
@@ -461,7 +512,8 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
 
     let canonicalRefreshed = false;
     let serverConfirmed = false;
-    const online = typeof navigator !== 'undefined' && navigator.onLine;
+    let bulkPartial = false;
+    const online = typeof navigator !== 'undefined' && navigator.onLine && isCloudBusinessSyncAllowed();
 
     if (online) {
       try {
@@ -469,7 +521,18 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
         if (!res.success) {
           const code = String(res.errorCode || '');
           const permanentCodes = new Set(['P0001','23503','23505','42501','22003','22P02','IDEMPOTENCY_CONFLICT']);
-          if (permanentCodes.has(code)) {
+          if (res.partial) {
+            // El servidor aplicó una parte del lote. La cola debe quedarse para
+            // completar los pendientes; el stock se relee de la fuente canónica
+            // para reflejar exactamente lo aplicado.
+            bulkPartial = true;
+            canonicalRefreshed = await refreshInventoryBranchesFromSupabase(set, get, [fromBranchId, toBranchId]);
+            get().addNotification(
+              'Traslado aplicado parcialmente',
+              'warning',
+              res.error || 'Los artículos pendientes se reintentarán automáticamente y el stock se reconciliará al reconectar.'
+            );
+          } else if (permanentCodes.has(code)) {
             removeFromOfflineQueueByAction('transfer_bulk', actionId);
             return { success: false, pending: false, error: res.error || 'El traslado múltiple fue rechazado por el servidor.' };
           }
@@ -483,7 +546,10 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
       }
     }
 
-    if (!canonicalRefreshed && !serverConfirmed) {
+    // Un lote parcial nunca aplica deltas locales a medias: un reintento
+    // volvería a incluir los artículos ya confirmados y descontaría dos veces.
+    // El stock se reconciliará desde el servidor en el siguiente intento.
+    if (!bulkPartial && !canonicalRefreshed && !serverConfirmed) {
       set(state => {
         const nextInventory = [...state.inventory];
         for (const item of validItems) {
@@ -536,7 +602,7 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
         variants: op.variants,
         date: new Date().toISOString(),
         userId,
-        status: serverConfirmed && canonicalRefreshed ? 'completed' as const : 'pending' as const,
+        status: serverConfirmed ? 'in_transit' as const : 'pending' as const,
         variantLabel: item.variant || 'Producto Base',
         batchId
       };
@@ -549,7 +615,117 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
       ]
     }));
 
-    return { success: true, pending: !canonicalRefreshed };
+    return { success: true, pending: bulkPartial || !canonicalRefreshed };
+  },
+
+  receiveTransfer: async (operationIds) => {
+    const ids: string[] = Array.from(new Set<string>((operationIds || []).map((id): string => String(id || '')).filter(Boolean)));
+    if (!ids.length) return { success: true, pending: false };
+    const rows = (get().transfers || []).filter(t =>
+      ids.includes(String(t.operationId || t.id)) && t.status === 'in_transit'
+    );
+    if (!rows.length) return { success: true, pending: false };
+    const destinationIds = Array.from(new Set(rows.map(row => row.toBranchId).filter(Boolean)));
+
+    const settleLocal = () => set(state => ({
+      inventory: addTransferStock(state.inventory, rows, 'toBranchId'),
+      transfers: (state.transfers || []).map(t =>
+        ids.includes(String(t.operationId || t.id)) && t.status === 'in_transit'
+          ? { ...t, status: 'completed' as const }
+          : t
+      )
+    }));
+
+    const queuePayload = {
+      operationIds: ids,
+      rows: rows.map(row => ({
+        productId: row.productId,
+        branchId: row.toBranchId,
+        variantLabel: row.variantLabel || '',
+        quantity: row.quantity
+      }))
+    };
+
+    const online = typeof navigator !== 'undefined' && navigator.onLine && isCloudBusinessSyncAllowed();
+    if (!online) {
+      settleLocal();
+      await enqueueOfflineItem('transfer_receive', queuePayload, 'transfer-receive:' + ids.join(','));
+      return { success: true, pending: true };
+    }
+
+    const failedIds: string[] = [];
+    let lastError = '';
+    for (const id of ids) {
+      const res = await callReceiveTransferRPC(id);
+      if (!res.success) {
+        failedIds.push(id);
+        lastError = res.error || lastError;
+      }
+    }
+    if (failedIds.length) {
+      await enqueueOfflineItem('transfer_receive', { ...queuePayload, operationIds: failedIds }, 'transfer-receive:' + failedIds.join(','));
+    }
+    await refreshInventoryBranchesFromSupabase(set, get, destinationIds);
+    await syncTransferHistory(set);
+    if (failedIds.length) {
+      return { success: false, pending: true, error: lastError || 'La recepción quedó pendiente de confirmación con la nube.' };
+    }
+    return { success: true, pending: false };
+  },
+
+  cancelTransfer: async (operationIds) => {
+    const ids: string[] = Array.from(new Set<string>((operationIds || []).map((id): string => String(id || '')).filter(Boolean)));
+    if (!ids.length) return { success: true, pending: false };
+    const rows = (get().transfers || []).filter(t =>
+      ids.includes(String(t.operationId || t.id)) && t.status === 'in_transit'
+    );
+    if (!rows.length) return { success: true, pending: false };
+    const originIds = Array.from(new Set(rows.map(row => row.fromBranchId).filter(Boolean)));
+
+    const settleLocal = () => set(state => ({
+      inventory: addTransferStock(state.inventory, rows, 'fromBranchId'),
+      transfers: (state.transfers || []).map(t =>
+        ids.includes(String(t.operationId || t.id)) && t.status === 'in_transit'
+          ? { ...t, status: 'cancelled' as const }
+          : t
+      )
+    }));
+
+    const queuePayload = {
+      operationIds: ids,
+      rows: rows.map(row => ({
+        productId: row.productId,
+        branchId: row.fromBranchId,
+        variantLabel: row.variantLabel || '',
+        quantity: row.quantity
+      }))
+    };
+
+    const online = typeof navigator !== 'undefined' && navigator.onLine && isCloudBusinessSyncAllowed();
+    if (!online) {
+      settleLocal();
+      await enqueueOfflineItem('transfer_cancel', queuePayload, 'transfer-cancel:' + ids.join(','));
+      return { success: true, pending: true };
+    }
+
+    const failedIds: string[] = [];
+    let lastError = '';
+    for (const id of ids) {
+      const res = await callCancelTransferRPC(id);
+      if (!res.success) {
+        failedIds.push(id);
+        lastError = res.error || lastError;
+      }
+    }
+    if (failedIds.length) {
+      await enqueueOfflineItem('transfer_cancel', { ...queuePayload, operationIds: failedIds }, 'transfer-cancel:' + failedIds.join(','));
+    }
+    await refreshInventoryBranchesFromSupabase(set, get, originIds);
+    await syncTransferHistory(set);
+    if (failedIds.length) {
+      return { success: false, pending: true, error: lastError || 'La cancelación quedó pendiente de confirmación con la nube.' };
+    }
+    return { success: true, pending: false };
   },
   };
 }

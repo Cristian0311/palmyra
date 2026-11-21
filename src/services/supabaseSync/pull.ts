@@ -189,6 +189,9 @@ async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string
       .from('sales')
       .select('*')
       .eq('company_id', tenant.companyId)
+      // A voided shift is deleted from the operator's point of view: neither
+      // the shift nor its tickets must reappear after a refresh.
+      .neq('status', 'voided')
       .order('created_at', { ascending: false })
       .range(from, from + pageSize - 1);
     if (branchId) salesQ = salesQ.eq('warehouse_id', branchId);
@@ -356,6 +359,9 @@ async function loadCashSessions(branchId?: string) {
       .from('cash_sessions')
       .select('*')
       .eq('company_id', tenant.companyId)
+      // Cancelled shifts are fully purged: keeping the `voided` row would show
+      // them again in Reports and in the cash history.
+      .neq('status', 'voided')
       .order('opened_at', { ascending: false })
       .range(from, from + cashPageSize - 1);
     if (error) throw error;
@@ -561,7 +567,11 @@ async function loadTransfers(branchId?: string) {
         fromBranchId:t.origin_warehouse_id,fromBranchName:wMap.get(t.origin_warehouse_id)||'Origen',
         toBranchId:t.destination_warehouse_id,toBranchName:wMap.get(t.destination_warehouse_id)||'Destino',
         variantLabel:vMap.get(i.variant_id)||undefined,quantity:Number(i.quantity)||0,variants:[],
-        date:t.created_at,userId:t.created_by||'',status:t.status||'completed'
+        date:t.created_at,userId:t.created_by||'',
+        batchId:t.batch_id||undefined,
+        status: t.status === 'cancelled' ? 'cancelled'
+          : t.status === 'in_transit' ? 'in_transit'
+          : 'completed'
       });
     }
   }

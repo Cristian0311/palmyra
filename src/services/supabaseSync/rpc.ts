@@ -2,6 +2,11 @@ import { getSupabase } from '../../lib/supabase';
 import { getActiveTenant, getEmployeeForIdentity } from '../tenant';
 import type { CashRegisterSession, Transaction, SalarySettlement, InventoryTransfer } from '../../types';
 import { resolveSaleEmployeeAttributionId } from '../employeeCompensation';
+import {
+  summarizeTransferBatch,
+  type TransferBatchFailure,
+  type TransferBatchSummary
+} from '../offline/transferBatch';
 
 export type RpcFailure = { success: false; error: string; errorCode?: string; data?: any; conflict?: boolean };
 export type RpcSuccess<T = any> = { success: true; data: T; error?: string; errorCode?: string };
@@ -289,45 +294,77 @@ export async function callReceiveSupplierOrderRPC(orderId:string,userId:string){
 export async function callReserveNCFRangeRPC(params:{fiscalType:string;deviceId:string;blockSize?:number;userId:string}){
   try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_reserve_ncf_range',{p_company_id:companyId,p_fiscal_type:params.fiscalType,p_device_id:params.deviceId,p_block_size:params.blockSize||100});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);}
 }
-async function deriveVariantOperationId(baseOperationId:string, variantLabel:string, index:number): Promise<string> {
-  const normalized = normalizeUuidOperationId(baseOperationId);
-  const seed = new TextEncoder().encode(`${normalized}:variant:${index}:${String(variantLabel || '')}`);
-  const digest = await crypto.subtle.digest('SHA-256', seed);
-  const bytes = new Uint8Array(digest).slice(0, 16);
-  bytes[6] = (bytes[6] & 0x0f) | 0x50;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  return Array.from(bytes).map((b,i)=>[4,6,8,10].includes(i)?'-'+b.toString(16).padStart(2,'0'):b.toString(16).padStart(2,'0')).join('');
-}
-
 export async function callTransferInventoryRPC(params:{operationId:string;batchId?:string;productId:string;fromBranchId:string;toBranchId:string;variants:{variantLabel:string;quantity:number}[];userId:string}){
   try{
     const {companyId}=await getActiveTenant();
     if(params.variants?.length){
-      for(let index=0; index<params.variants.length; index++){
-        const v=params.variants[index];
-        const vid=await resolveVariantId(params.productId,v.variantLabel);
-        const operationId = params.variants.length === 1
-          ? normalizeUuidOperationId(params.operationId)
-          : await deriveVariantOperationId(params.operationId,v.variantLabel,index);
-        await rpc('palmyra_transfer_inventory',{
-          p_operation_id:operationId,p_company_id:companyId,p_from_warehouse_id:params.fromBranchId,
-          p_to_warehouse_id:params.toBranchId,p_product_id:params.productId,p_variant_id:vid,
-          p_quantity:Number(v.quantity)||0,p_notes:''
-        });
+      // Un solo despacho por producto con todas sus variantes: el servidor
+      // descuenta el stock de origen y deja el traslado en tránsito. La
+      // operación es idempotente por p_operation_id.
+      const items: {product_id:string;variant_id:string|null;quantity:number}[] = [];
+      for(const v of params.variants){
+        const vid=await resolveVariantId(params.productId,String(v.variantLabel || ''));
+        items.push({product_id:params.productId,variant_id:vid,quantity:Number(v.quantity)||0});
       }
+      const data=await rpc('palmyra_dispatch_transfer',{
+        p_operation_id:normalizeUuidOperationId(params.operationId),
+        p_batch_id:params.batchId?normalizeUuidOperationId(params.batchId):null,
+        p_company_id:companyId,
+        p_origin_warehouse_id:params.fromBranchId,
+        p_destination_warehouse_id:params.toBranchId,
+        p_items:items,
+        p_notes:''
+      });
+      return {success:true as const,error:undefined,errorCode:undefined,data};
     }
     return {success:true as const,error:undefined,errorCode:undefined,data:{success:true}};
   }catch(e:any){return errorResult(e);}
 }
-async function resolveVariantId(productId:string,label?:string){const supabase=getSupabase()!;const {companyId}=await getActiveTenant();if(!label?.trim())return null;const {data,error}=await supabase.from('product_variants').select('id').eq('company_id',companyId).eq('product_id',productId).eq('name',label.trim()).eq('active',true).maybeSingle();if(error)throw error;if(!data?.id)throw new Error(`No se encontró la variante activa "${label.trim()}" para este producto. No se modificó el inventario.`);return data.id;}
-export async function callTransferInventoryBulkRPC(params:{batchId:string;fromBranchId:string;toBranchId:string;items:{operationId:string;productId:string;variants:{variantLabel:string;quantity:number}[]}[];userId:string}){
+
+export async function callReceiveTransferRPC(operationId:string){
   try{
-    for(const item of params.items){
-      const result=await callTransferInventoryRPC({operationId:item.operationId,batchId:params.batchId,productId:item.productId,fromBranchId:params.fromBranchId,toBranchId:params.toBranchId,variants:item.variants||[],userId:params.userId});
-      if(!result.success) throw Object.assign(new Error(result.error || 'No se pudo sincronizar un artículo del traslado.'), { code: result.errorCode });
-    }
-    return {success:true as const,error:undefined,errorCode:undefined,data:{success:true}};
+    const {companyId}=await getActiveTenant();
+    const data=await rpc('palmyra_receive_transfer',{
+      p_operation_id:normalizeUuidOperationId(operationId),
+      p_company_id:companyId
+    });
+    return {success:true as const,error:undefined,errorCode:undefined,data};
   }catch(e:any){return errorResult(e);}
+}
+
+export async function callCancelTransferRPC(operationId:string){
+  try{
+    const {companyId}=await getActiveTenant();
+    const data=await rpc('palmyra_cancel_transfer',{
+      p_operation_id:normalizeUuidOperationId(operationId),
+      p_company_id:companyId
+    });
+    return {success:true as const,error:undefined,errorCode:undefined,data};
+  }catch(e:any){return errorResult(e);}
+}
+async function resolveVariantId(productId:string,label?:string){const supabase=getSupabase()!;const {companyId}=await getActiveTenant();if(!label?.trim())return null;const {data,error}=await supabase.from('product_variants').select('id').eq('company_id',companyId).eq('product_id',productId).eq('name',label.trim()).eq('active',true).maybeSingle();if(error)throw error;if(!data?.id)throw new Error(`No se encontró la variante activa "${label.trim()}" para este producto. No se modificó el inventario.`);return data.id;}
+export type TransferBulkFailure = TransferBatchFailure;
+export type TransferBulkResult = TransferBatchSummary;
+
+export async function callTransferInventoryBulkRPC(params:{batchId:string;fromBranchId:string;toBranchId:string;items:{operationId:string;productId:string;variants:{variantLabel:string;quantity:number}[]}[];userId:string}): Promise<TransferBulkResult> {
+  const appliedOperationIds: string[] = [];
+  const failedItems: TransferBatchFailure[] = [];
+  // Procesamos todos los artículos antes de responder. Abortar en el primer
+  // fallo dejaba artículos ya aplicados en el servidor y otros sin intentar,
+  // y el cliente no podía distinguirlos. Cada operación es idempotente por
+  // operation_id, así que un reintento del lote es seguro.
+  for(const item of params.items){
+    const result=await callTransferInventoryRPC({operationId:item.operationId,batchId:params.batchId,productId:item.productId,fromBranchId:params.fromBranchId,toBranchId:params.toBranchId,variants:item.variants||[],userId:params.userId});
+    if(result.success) appliedOperationIds.push(item.operationId);
+    else failedItems.push({
+      operationId: item.operationId,
+      productId: item.productId,
+      error: result.error || 'No se pudo sincronizar un artículo del traslado.',
+      errorCode: result.errorCode
+    });
+  }
+
+  return summarizeTransferBatch(params.items.length, appliedOperationIds, failedItems);
 }
 export async function callDeleteBankInternalTransferRPC(operationId:string){ try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_delete_bank_internal_transfer',{p_operation_id:operationId,p_company_id:companyId});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);} }
 export async function callDeleteBankTransactionRPC(transactionId:string){ try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_delete_bank_transaction',{p_transaction_id:transactionId,p_company_id:companyId});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);} }

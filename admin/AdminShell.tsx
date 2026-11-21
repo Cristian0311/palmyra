@@ -55,7 +55,22 @@ export default function AdminShell({
   };
 
   const approve = async (request: PlanRequest) => {
-    await act(() => approveRequest(request.id));
+    const currency: "CUP" | "USD" = String(request.payment_method || "").startsWith("cup_") ? "CUP" : "USD";
+    const suggested = request.quoted_amount ?? request.monthly_price ?? null;
+    const amountText = window.prompt(`Importe realmente recibido (${currency}):`, suggested != null ? String(suggested) : "");
+    if (amountText === null) return;
+    const amount = Number(amountText);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setError("Indica el importe realmente recibido.");
+      return;
+    }
+    const reference = window.prompt("Referencia o comprobante del pago (obligatoria):", "");
+    if (reference === null) return;
+    if (!reference.trim()) {
+      setError("La referencia del pago es obligatoria.");
+      return;
+    }
+    await act(() => approveRequest(request.id, { amount, currency, reference }));
   };
 
   const reject = async (request: PlanRequest) => {

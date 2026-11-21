@@ -39,12 +39,53 @@ import { reconcileBankCanonical } from './offline/reconcileBank';
 import { replaceWarehouseInventory, replaceWarehousesInventory } from './offline/reconcileInventory';
 import { processQueueItem } from './offline/processQueueItem';
 import { reconcileSupplierReceiveCanonical } from './offline/reconcileSupplierReceive';
-
+import { compareOfflineQueueItems } from './offline/syncContract';
+import { recordSyncMoment } from './offline/syncLedger';
 
 
 let isProcessingQueue = false;
 
-export async function processOfflineQueue(): Promise<{ processed: number; failed: number; remaining: number; conflicts: number; errors: Array<{ type: string; actionId: string; message: string; retryCount?: number }> }> {
+export type OfflineQueueRunResult = {
+  processed: number;
+  failed: number;
+  remaining: number;
+  conflicts: number;
+  errors: Array<{ type: string; actionId: string; message: string; retryCount?: number }>;
+};
+
+const QUEUE_SYNC_LOCK = 'palmyra-offline-queue-sync';
+
+function idleQueueResult(): OfflineQueueRunResult {
+  return {
+    processed: 0,
+    failed: 0,
+    remaining: getOfflineQueueCount(),
+    conflicts: getOfflineConflictCount(),
+    errors: []
+  };
+}
+
+/**
+ * Solo una pestaña/ventana puede drenar la cola durable a la vez. Sin este
+ * cerrojo, la app instalada y una pestaña del navegador podrían reproducir la
+ * misma operación en paralelo y duplicar efectos no idempotentes (movimientos
+ * de caja, deltas de stock). Web Locks se libera solo si la pestaña muere.
+ */
+export async function processOfflineQueue(): Promise<OfflineQueueRunResult> {
+  await waitForOfflineQueueReady();
+  const locks = typeof navigator !== 'undefined' ? (navigator as any).locks : null;
+  if (!locks?.request) return processOfflineQueueLocked();
+
+  let result: OfflineQueueRunResult | null = null;
+  await locks.request(QUEUE_SYNC_LOCK, { ifAvailable: true }, async (lock: unknown) => {
+    // Otra ventana ya está sincronizando: no competir por la misma cola.
+    if (!lock) return;
+    result = await processOfflineQueueLocked();
+  });
+  return result ?? idleQueueResult();
+}
+
+async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
   // Nunca inspeccionar una cola todavía no hidratada desde IndexedDB.
   await waitForOfflineQueueReady();
   if (isProcessingQueue || (typeof navigator !== 'undefined' && !navigator.onLine)) {
@@ -281,6 +322,12 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
         break;
       case 'transfer':
         add(dep('product', data.productId)); add(dep('branch', data.fromBranchId)); add(dep('branch', data.toBranchId)); add(dep('user', data.userId)); break;
+      case 'transfer_receive': case 'transfer_cancel':
+        for (const row of Array.isArray(data?.rows) ? data.rows : []) {
+          if (row?.productId) add(dep('product', row.productId));
+          if (row?.branchId) add(dep('branch', row.branchId));
+        }
+        break;
       case 'supplier_order': add(dep('supplier', data.supplierId)); add(dep('branch', data.branchId)); break;
       case 'supplier_receive': add(dep('supplier_order', data.id)); break;
       case 'inventory_audit': add(dep('branch', data.branchId)); add(dep('user', data.userId)); break;
@@ -323,6 +370,7 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
       case 'user': add(dep('branch', data.branchId));  add(dep('user', data.supervisorId)); break;
       case 'product': add(dep('category', data.categoryId)); break;
       case 'customer_delete': break;
+      case 'quote_delete': break;
     }
     return d;
   };
@@ -332,11 +380,11 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
   while (pending.size) {
     const ready = queueAtStart
       .filter(x => pending.has(x.id) && dependencies(x).every(d => !pending.has(d.id)))
-      .sort((a,b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')) || String(a.id || '').localeCompare(String(b.id || '')));
+      .sort(compareOfflineQueueItems);
     if (!ready.length) {
       // Cycle protection: preserve deterministic FIFO rather than deadlocking
       // the entire queue forever because of a malformed dependency graph.
-      const fallback = queueAtStart.filter(x => pending.has(x.id)).sort((a,b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')) || String(a.id || '').localeCompare(String(b.id || '')));
+      const fallback = queueAtStart.filter(x => pending.has(x.id)).sort(compareOfflineQueueItems);
       sorted.push(...fallback); break;
     }
     for (const item of ready) { sorted.push(item); pending.delete(item.id); }
@@ -465,7 +513,7 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
     }
   }
 
-  const finalQueue = Array.from(finalById.values()).sort((a,b) => String(a.timestamp || '').localeCompare(String(b.timestamp || '')) || String(a.id || '').localeCompare(String(b.id || '')));
+  const finalQueue = Array.from(finalById.values()).sort(compareOfflineQueueItems);
   for (const item of sorted) clearOfflineQueueRemovalMark(item.id);
   // Reconciliamos contra el estado final, no contra la instantánea inicial.
   // Esto evita que un enqueue concurrente sea borrado por el commit de la cola.
@@ -489,6 +537,10 @@ export async function processOfflineQueue(): Promise<{ processed: number; failed
     addSyncLog({ level:'error', source:'offline_queue', title:'Cola local no pudo persistirse', details:persistenceMessage, entityType:'offline_queue' });
     return { processed, failed, remaining: getOfflineQueueCount(), conflicts: getOfflineConflictCount(), errors };
   }
+
+  // Solo cuenta como contacto real si al menos una operación fue confirmada.
+  // Un reintento fallido no debe reiniciar la ventana de frescura offline.
+  if (processed > 0) recordSyncMoment('push');
 
   return { processed, failed, remaining: finalQueue.filter(item => item.status !== 'conflict').length, conflicts: finalQueue.filter(item => item.status === 'conflict').length, errors };
   } finally {
@@ -516,6 +568,9 @@ export function initOfflineSyncWatcher(): () => void {
     await new Promise(resolve => setTimeout(resolve, 1200));
     const reachability = await checkSupabaseReachability(12000);
     if (!reachability.ok) return;
+    // Renovar folios fiscales en segundo plano para que el próximo corte de
+    // internet no deje al POS sin numeración disponible.
+    try { await useStore.getState().refreshNcfRangeIfExhausted?.(); } catch {}
     const count = getOfflineQueueCount();
     if (!count) return;
     useStore.getState().addNotification(`Conexión detectada. Sincronizando ${count} operaciones pendientes...`, 'info');
@@ -551,5 +606,6 @@ export function initOfflineSyncWatcher(): () => void {
     }
   }, 30000);
   if (navigator.onLine && getOfflineQueueCount() && !isManualOfflineSyncEnabled()) processOfflineQueue().catch(() => {});
+  if (navigator.onLine) useStore.getState().refreshNcfRangeIfExhausted?.().catch(() => {});
   return () => { window.removeEventListener('online', handleOnline); window.removeEventListener('offline', handleOffline); if (intervalId) clearInterval(intervalId); };
 }

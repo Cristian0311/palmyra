@@ -1,4 +1,4 @@
-import { Trash2 } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 
 type Props = {
   open: boolean;
@@ -6,6 +6,13 @@ type Props = {
   onCancel: () => void;
   onClose: () => void;
 };
+
+const CONSEQUENCES = [
+  "Se elimina el turno y su historial de caja.",
+  "Se borran todos los tickets vendidos en el turno.",
+  "El stock de esos productos vuelve al inventario.",
+  "No queda el turno marcado como cancelado: desaparece por completo.",
+];
 
 export function POSCancelShiftModal({
   open,
@@ -16,24 +23,45 @@ export function POSCancelShiftModal({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-md z-[200] flex items-center justify-center p-4">
-      <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 border border-rose-100">
-        <div className="p-8 text-center space-y-6">
-          <div className="w-20 h-20 bg-rose-100 text-rose-600 rounded-3xl flex items-center justify-center mx-auto rotate-12 shadow-lg shadow-rose-100">
-            <Trash2 className="w-10 h-10" />
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
+      <div className="w-full max-w-sm overflow-hidden rounded-3xl border border-base bg-secondary shadow-2xl animate-in zoom-in-95">
+        <div className="space-y-4 p-5">
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] text-[var(--danger)]">
+              <TriangleAlert className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-base font-black uppercase leading-tight tracking-tight text-primary">Eliminar turno</h3>
+              <p className="mt-1 text-xs font-semibold leading-relaxed text-secondary">
+                Esta acción es definitiva y deja el turno como si nunca hubiera existido.
+              </p>
+            </div>
           </div>
-          <div className="space-y-2">
-            <h3 className="text-xl font-black text-slate-900 uppercase tracking-tighter">¿Cancelar turno?</h3>
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-4">
-              Esta acción anulará las ventas de este turno y revertirá el inventario. El turno quedará registrado como cancelado en el historial.
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <button type="button" onClick={onClose} className="flex-1 py-4 bg-slate-100 text-slate-500 rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-colors">
-              Cancelar
+
+          <ul className="space-y-1.5 rounded-2xl border border-base bg-subtle p-3">
+            {CONSEQUENCES.map(item => (
+              <li key={item} className="flex items-start gap-2 text-xs font-semibold leading-snug text-secondary">
+                <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--danger)]" />
+                {item}
+              </li>
+            ))}
+          </ul>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-11 flex-1 rounded-2xl border border-base bg-secondary text-xs font-black uppercase tracking-wider text-secondary transition-colors hover:bg-subtle"
+            >
+              Volver
             </button>
-            <button type="button" onClick={onCancel} disabled={isCancelling} className="flex-[2] py-4 bg-rose-600 text-white rounded-2xl font-black text-[10px] uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-200 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed">
-              {isCancelling ? "Cancelando..." : "Aceptar cancelación"}
+            <button
+              type="button"
+              onClick={onCancel}
+              disabled={isCancelling}
+              className="h-11 flex-[1.6] rounded-2xl bg-[var(--danger)] text-xs font-black uppercase tracking-wider text-white transition-all hover:brightness-95 active:scale-95 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {isCancelling ? "Eliminando..." : "Eliminar turno"}
             </button>
           </div>
         </div>

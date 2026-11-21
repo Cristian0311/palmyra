@@ -1,5 +1,6 @@
 import { useShallow } from 'zustand/react/shallow';
 import React, { useEffect, useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { 
   TrendingUp, 
   Users, 
@@ -20,7 +21,14 @@ import {
   ChevronRight,
   ChevronDown,
   RefreshCw,
-  Sparkles
+  Sparkles,
+  LayoutGrid,
+  BarChart3,
+  ArrowLeftRight,
+  UserCircle,
+  ShoppingCart,
+  Building2,
+  ShieldCheck
 } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { cn } from "../lib/utils";
@@ -28,10 +36,12 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { getBusinessSummaryAI } from "../services/gemini";
 import { loadSaaSContext } from "../services/saas";
 import PlanFeatureGate from "../components/PlanFeatureGate";
+import { PalmyraWordmark } from "../components/PalmyraWordmark";
 import type { Transaction, CartItem, Payment } from "../types";
 
 export default function Dashboard() {
-  const { branches, currentBranchId, setCurrentBranch, transactions, getBaseCurrency, currencies, inventory, products, customers, users, categories } = useStore(useShallow((state) => ({ branches: state.branches, currentBranchId: state.currentBranchId, setCurrentBranch: state.setCurrentBranch, transactions: state.transactions, getBaseCurrency: state.getBaseCurrency, currencies: state.currencies, inventory: state.inventory, products: state.products, customers: state.customers, users: state.users, categories: state.categories })));
+  const navigate = useNavigate();
+  const { branches, currentBranchId, setCurrentBranch, transactions, getBaseCurrency, currencies, inventory, products, customers, users, categories, currentUser } = useStore(useShallow((state) => ({ branches: state.branches, currentBranchId: state.currentBranchId, setCurrentBranch: state.setCurrentBranch, transactions: state.transactions, getBaseCurrency: state.getBaseCurrency, currencies: state.currencies, inventory: state.inventory, products: state.products, customers: state.customers, users: state.users, categories: state.categories, currentUser: state.currentUser })));
   const baseCurrency = getBaseCurrency();
   const productById = useMemo(() => new Map(products.map(product => [product.id, product])), [products]);
   const categoryById = useMemo(() => new Map(categories.map(category => [category.id, category])), [categories]);
@@ -225,6 +235,20 @@ export default function Dashboard() {
 
   const secondaryCurrencies = useMemo(() => currencies.filter(c => !c.isBase), [currencies]);
 
+  const quickActions = useMemo(() => {
+    const isAdmin = currentUser?.role === 'admin';
+    const permissions = currentUser?.permissions || [];
+    const can = (permission?: string) => !permission || isAdmin || permissions.includes(permission);
+    return [
+      { label: 'Nueva venta', href: '/pos', icon: ShoppingCart, color: 'bg-blue-500', permission: 'pos.access' },
+      { label: 'Inventario', href: '/inventory', icon: Package, color: 'bg-orange-500', permission: 'inventory.manage' },
+      { label: 'Reportes', href: '/reports', icon: BarChart3, color: 'bg-emerald-500', permission: 'reports.view' },
+      { label: 'Traslados', href: '/transfers', icon: ArrowLeftRight, color: 'bg-sky-500', permission: 'inventory.manage' },
+      { label: 'Clientes', href: '/customers', icon: UserCircle, color: 'bg-violet-500', permission: 'customers.manage' },
+      { label: 'Equipo', href: '/team', icon: Users, color: 'bg-rose-500', permission: 'employees.manage' }
+    ].filter(action => can(action.permission));
+  }, [currentUser]);
+
   // Helper function to render payment currency badges for a transaction
   const renderPaymentBadges = (tx: Transaction) => {
     const payments = tx.payments || [];
@@ -280,44 +304,51 @@ export default function Dashboard() {
   return (
     <div className="space-y-2.5 text-[9px] animate-in fade-in slide-in-from-bottom-2 duration-500 pb-5">
 
-      <section className="dashboard-hero relative isolate overflow-hidden rounded-[1.6rem] border border-violet-300/20 bg-[radial-gradient(circle_at_82%_28%,rgba(139,92,246,.34),transparent_25%),radial-gradient(circle_at_8%_100%,rgba(99,102,241,.24),transparent_34%),linear-gradient(135deg,#0b0620_0%,#171044_52%,#28135f_100%)] shadow-[0_20px_60px_rgba(67,34,140,.24)] min-h-[300px] sm:min-h-[285px] lg:min-h-[300px]">
-        <div className="pointer-events-none absolute inset-0 opacity-30" aria-hidden="true">
-          <div className="absolute -right-20 -top-24 h-72 w-72 rounded-full border border-violet-300/20" />
-          <div className="absolute right-8 -top-4 h-52 w-52 rounded-full border border-violet-300/12" />
-          <div className="absolute right-28 top-20 h-28 w-28 rounded-full bg-violet-400/15 blur-3xl" />
-          <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.035)_1px,transparent_1px)] bg-[size:30px_30px]" />
+      <section className="dashboard-hero relative isolate min-h-[19rem] overflow-hidden rounded-[1.75rem] border border-violet-300/25 bg-[#170a33] shadow-[0_28px_70px_-32px_rgba(63,24,140,.6)] sm:min-h-[18rem] lg:min-h-[19.5rem]">
+        <div className="dashboard-hero-media absolute inset-0" aria-hidden="true">
+          <img src="/dashboard/palmyra-hero.webp" alt="" className="dashboard-hero-image" decoding="async" fetchPriority="high" />
         </div>
+        <div className="dashboard-hero-shade pointer-events-none absolute inset-0" aria-hidden="true" />
 
-        <div className="relative z-10 flex min-h-[300px] items-center px-5 py-7 sm:min-h-[285px] sm:px-8 lg:min-h-[300px] lg:px-10">
-          <div className="min-w-0 max-w-[720px]">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-violet-200/20 bg-white/[.07] px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[.16em] text-violet-100 backdrop-blur-sm">
-              <Sparkles className="h-3.5 w-3.5 text-violet-300" />
-              <span>PALMYRA · Centro de mando</span>
+        <div className="relative z-10 flex min-h-[19rem] items-end px-5 pb-5 pt-12 sm:min-h-[18rem] sm:items-center sm:px-8 sm:py-7 lg:min-h-[19.5rem] lg:px-10">
+          <div className="min-w-0 max-w-[35rem]">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[.16em] text-violet-50 backdrop-blur-md">
+              <Sparkles className="h-3.5 w-3.5 text-violet-200" />
+              <PalmyraWordmark className="h-5 w-auto shrink-0" />
+              <span className="text-[8px] font-black uppercase tracking-[.16em] text-violet-50">Centro de mando</span>
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,.9)]" />
             </div>
 
-            <h1 className="mt-4 text-[2.35rem] font-black leading-[.9] tracking-[-.055em] text-white sm:text-4xl lg:text-5xl">
-              Hola{dashboardUserName ? ", " + dashboardUserName.split(" ")[0] : ""} <span className="text-[.62em] align-[.02em]" aria-hidden="true">👋</span>
+            <h1 className="mt-3 text-[2.4rem] font-black leading-[.9] tracking-[-.055em] text-white drop-shadow-[0_3px_20px_rgba(10,3,28,.7)] sm:text-[3rem] lg:text-[3.35rem]">
+              ¡Bienvenido{dashboardUserName ? ", " + dashboardUserName.split(" ")[0] : ""}! <span className="align-[.04em] text-[.55em]" aria-hidden="true">👋</span>
             </h1>
 
-            <p className="mt-2 text-base font-black tracking-[-.02em] text-white/95 sm:text-xl lg:text-2xl">
-              Bienvenido a <span className="text-violet-300">{businessName}</span>
-            </p>
+            <div className="mt-2.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+              <span className="text-[1.3rem] font-black uppercase leading-none tracking-[.16em] text-white sm:text-[1.55rem]">
+                Palmyra<span className="text-violet-300"> POS</span>
+              </span>
+              <span className="text-[7.5px] font-black uppercase tracking-[.22em] text-violet-100/85 sm:text-[8.5px]">
+                Potencia tus ventas con fuerza
+              </span>
+            </div>
 
             <div className="mt-4 flex flex-wrap items-center gap-2">
-              <div className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[.06] px-3 py-2 backdrop-blur-sm">
-                <MapPin className="h-3.5 w-3.5 text-violet-300" />
-                <span className="text-[8px] font-black uppercase tracking-[.12em] text-violet-200/65">Operando en</span>
-                <span className="max-w-[180px] truncate text-[9px] font-black text-white">{selectedBranchFilter === "all" ? "Todas las sucursales" : (branchById.get(selectedBranchFilter)?.name || "Sucursal")}</span>
+              <div className="inline-flex min-w-0 items-center gap-1.5 rounded-xl border border-white/12 bg-black/25 px-2.5 py-1.5 backdrop-blur-md">
+                <Building2 className="h-3.5 w-3.5 shrink-0 text-violet-300" />
+                <span className="max-w-[10rem] truncate text-[9px] font-black text-white">{businessName}</span>
               </div>
-              <div className="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[.06] px-3 py-2 backdrop-blur-sm">
-                <Banknote className="h-3.5 w-3.5 text-violet-300" />
-                <span className="text-[8px] font-black uppercase tracking-[.12em] text-violet-200/65">Moneda</span>
+              <div className="inline-flex min-w-0 items-center gap-1.5 rounded-xl border border-white/12 bg-black/25 px-2.5 py-1.5 backdrop-blur-md">
+                <MapPin className="h-3.5 w-3.5 shrink-0 text-violet-300" />
+                <span className="text-[7.5px] font-black uppercase tracking-[.12em] text-violet-200/70">Sucursal</span>
+                <span className="max-w-[9.5rem] truncate text-[9px] font-black text-white">{selectedBranchFilter === "all" ? "Todas" : (branchById.get(selectedBranchFilter)?.name || "Sucursal")}</span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 rounded-xl border border-white/12 bg-black/25 px-2.5 py-1.5 backdrop-blur-md">
+                <Banknote className="h-3.5 w-3.5 shrink-0 text-violet-300" />
                 <span className="text-[9px] font-black text-white">{baseCurrency.code} · {baseCurrency.symbol}</span>
               </div>
-              <span className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300/15 bg-emerald-400/10 px-3 py-2 text-[8px] font-black text-emerald-200">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Operación lista
+              <span className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300/20 bg-emerald-400/15 px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[.08em] text-emerald-100 backdrop-blur-md">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Offline listo
               </span>
             </div>
           </div>
@@ -437,68 +468,95 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* Metrics Grid (Compact & Clear Currency Indicators) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-        <div className="bg-secondary p-2.5 rounded-2xl border border-base shadow-xs hover:shadow-md transition-all flex flex-col justify-between min-w-0 overflow-hidden">
-          <div className="flex justify-between items-start mb-2 gap-1">
-            <div className="p-1.5 sm:p-2 rounded-xl text-white shrink-0 shadow-xs bg-indigo-600">
-              <TrendingUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+      {/* Metrics Grid */}
+      <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
+        <StatCard
+          label="Ventas de hoy"
+          value={<><span className="mr-1 text-[8px] font-black text-emerald-600 dark:text-emerald-400">{baseCurrency.code}</span>{baseCurrency.symbol}{formatMoney(totalSalesToday)}</>}
+          hint={secondaryCurrencies.length > 0 && totalSalesToday > 0
+            ? secondaryCurrencies.map(c => `≈ ${c.code} ${(totalSalesToday / (c.rateToBase || 1)).toLocaleString('es-CU', { maximumFractionDigits: 2 })}`).join(' · ')
+            : 'Acumulado del día'}
+          icon={TrendingUp}
+          accent="bg-emerald-500"
+          tint="bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300"
+        />
+
+        <StatCard
+          label="Tickets emitidos"
+          value={todayTransactions.length.toString()}
+          hint={todayTransactions.length > 0 ? `Promedio ${baseCurrency.symbol}${formatMoney(averageTicketToday)}` : 'Sin ventas hoy'}
+          icon={ShoppingBag}
+          accent="bg-blue-500"
+          tint="bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300"
+        />
+
+        <StatCard
+          label="Stock bajo"
+          value={lowStockCount.toString()}
+          hint={lowStockCount > 0 ? 'Productos por reponer' : 'Inventario estable'}
+          icon={Package}
+          accent="bg-rose-500"
+          tint="bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300"
+        />
+
+        <StatCard
+          label="Clientes"
+          value={customers.length.toString()}
+          hint={`${products.length} productos activos`}
+          icon={Users}
+          accent="bg-violet-500"
+          tint="bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300"
+        />
+      </div>
+
+      {/* Quick actions + brand card */}
+      <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-3">
+        <section className="rounded-2xl border border-base bg-secondary p-3 shadow-xs lg:col-span-2">
+          <div className="mb-2.5 flex items-start justify-between gap-2">
+            <div>
+              <h3 className="text-[11px] font-black uppercase tracking-[.16em] text-primary">Funcionalidades generales</h3>
+              <p className="text-[7.5px] font-bold uppercase tracking-[.12em] text-muted">Accesos directos a lo que más usas</p>
             </div>
-            <div className="badge-quiet">
-              Hoy
+            <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300">
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            {quickActions.map(action => (
+              <button
+                key={action.href}
+                type="button"
+                onClick={() => navigate(action.href)}
+                className="group flex min-w-0 flex-col items-center justify-center gap-1.5 rounded-xl border border-base bg-subtle px-1.5 py-3 text-center transition-all hover:-translate-y-0.5 hover:border-violet-300 hover:bg-secondary hover:shadow-md"
+              >
+                <span className={cn("grid h-9 w-9 place-items-center rounded-full text-white shadow-sm transition-transform group-hover:scale-105", action.color)}>
+                  <action.icon className="h-4 w-4" />
+                </span>
+                <span className="text-[7.5px] font-black uppercase leading-tight tracking-[.04em] text-primary">{action.label}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <aside className="relative isolate flex flex-col justify-between overflow-hidden rounded-2xl border border-violet-300/25 bg-[linear-gradient(150deg,#2a1163_0%,#4a1f9c_52%,#6535C5_100%)] p-4 text-white shadow-xs">
+          <div aria-hidden="true" className="pointer-events-none absolute -right-10 -top-12 h-36 w-36 rounded-full border border-white/10" />
+          <div aria-hidden="true" className="pointer-events-none absolute -bottom-10 -right-6 h-28 w-28 rounded-full bg-violet-400/20 blur-2xl" />
+          <div className="relative flex items-center gap-2">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-white shadow-sm">
+              <img src="/palmyra-mark-exact.svg" alt="" aria-hidden="true" className="h-7 w-7 object-contain" />
+            </span>
+            <div className="min-w-0">
+              <p className="text-[7.5px] font-black uppercase tracking-[.16em] text-violet-200/80">Filosofía Palmyra</p>
+              <p className="truncate text-[10px] font-black">Tu negocio, siempre en control</p>
             </div>
           </div>
-          <div className="min-w-0">
-            <p className="text-[8px] font-black text-muted uppercase tracking-widest mb-0.5 truncate">Ventas Hoy</p>
-            <div className="flex items-baseline gap-1">
-              <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300">
-                {baseCurrency.code}
-              </span>
-              <h4 className="text-sm font-black text-primary tracking-tight truncate tabular-nums">
-                {baseCurrency.symbol}{formatMoney(totalSalesToday)}
-              </h4>
-            </div>
-            {secondaryCurrencies.length > 0 && totalSalesToday > 0 && (
-              <div className="mt-1 text-[8px] font-bold text-muted flex flex-wrap gap-1.5 tabular-nums">
-                {secondaryCurrencies.map(c => (
-                  <span key={c.code} className="whitespace-nowrap">
-                    ≈ {c.code} {c.symbol}{(totalSalesToday / (c.rateToBase || 1)).toLocaleString('es-CU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                ))}
-              </div>
-            )}
+          <p className="relative mt-3 text-[9.5px] font-bold leading-relaxed text-violet-50/90">
+            “Cada venta suma. Mantén tu inventario al día y deja que Palmyra cuide tus números, incluso sin conexión.”
+          </p>
+          <div className="relative mt-3 inline-flex items-center gap-1.5 self-start rounded-xl border border-white/15 bg-black/20 px-2.5 py-1.5 text-[7.5px] font-black uppercase tracking-[.1em] text-emerald-200">
+            <ShieldCheck className="h-3.5 w-3.5" /> Modo offline garantizado
           </div>
-        </div>
-
-        <MetricCard 
-          title="Tickets Emitidos" 
-          value={todayTransactions.length.toString()} 
-          subtitle={todayTransactions.length > 0 ? `Promedio: ${baseCurrency.code} ${baseCurrency.symbol}${formatMoney(averageTicketToday)}` : 'Sin ventas hoy'}
-          icon={ShoppingBag} 
-          trend="Hoy" 
-          positive={true}
-          color="bg-emerald-600"
-        />
-
-        <MetricCard 
-          title="Stock Bajo" 
-          value={lowStockCount.toString()} 
-          subtitle={lowStockCount > 0 ? "Productos por reponer" : "Inventario estable"}
-          icon={Package} 
-          trend={lowStockCount > 0 ? "Revisar" : "OK"} 
-          positive={lowStockCount === 0}
-          color="bg-rose-600"
-        />
-
-        <MetricCard 
-          title="Clientes" 
-          value={customers.length.toString()} 
-          subtitle="Registrados en el sistema"
-          icon={Users} 
-          trend="Total" 
-          positive={true}
-          color="bg-blue-600"
-        />
+        </aside>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-2.5">
@@ -1072,23 +1130,24 @@ export default function Dashboard() {
   );
 }
 
-function MetricCard({ title, value, subtitle, icon: Icon, trend, positive, color }: any) {
+function StatCard({ label, value, hint, icon: Icon, accent, tint }: {
+  label: string;
+  value: React.ReactNode;
+  hint?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  accent: string;
+  tint: string;
+}) {
   return (
-    <div className="bg-secondary p-3.5 sm:p-4 rounded-2xl sm:rounded-3xl border border-base shadow-xs hover:shadow-md transition-all flex flex-col justify-between min-w-0 overflow-hidden">
-      <div className="flex justify-between items-start mb-2 sm:mb-3 gap-1">
-        <div className={cn("p-1.5 sm:p-2 rounded-xl text-white shrink-0 shadow-xs", color)}>
-          <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-        </div>
-        <div className="badge-quiet">
-          {trend}
-        </div>
-      </div>
+    <div className="relative flex min-w-0 items-center gap-2.5 overflow-hidden rounded-2xl border border-base bg-secondary py-2.5 pl-3.5 pr-3 shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md">
+      <span aria-hidden="true" className={cn("absolute inset-y-2 left-0 w-[3px] rounded-full", accent)} />
+      <span className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-xl", tint)}>
+        <Icon className="h-4 w-4" />
+      </span>
       <div className="min-w-0">
-        <p className="text-[8px] font-black text-muted uppercase tracking-widest mb-0.5 truncate">{title}</p>
-        <h4 className="text-sm font-black text-primary tracking-tight truncate tabular-nums">{value}</h4>
-        {subtitle && (
-          <p className="text-[7.5px] font-bold text-muted truncate mt-0.5">{subtitle}</p>
-        )}
+        <p className="truncate text-[7.5px] font-black uppercase tracking-[.13em] text-muted">{label}</p>
+        <p className="truncate text-[15px] font-black leading-tight text-primary tabular-nums">{value}</p>
+        {hint ? <p className="truncate text-[7px] font-bold text-muted/90">{hint}</p> : null}
       </div>
     </div>
   );

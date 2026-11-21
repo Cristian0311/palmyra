@@ -1,4 +1,4 @@
-import { Calculator, Eye, Printer, User } from "lucide-react";
+import { Calculator, CheckCircle2, Clock, Eye, Printer, User } from "lucide-react";
 import { cn } from "../../lib/utils";
 
 export type PayrollRowView = {
@@ -60,34 +60,36 @@ export function ReportsPayrollTab({
   const totalSalary = payroll.reduce((sum, item) => sum + item.totalSalary, 0);
   const totalCommissions = payroll.reduce((sum, item) => sum + item.commissions, 0);
   const totalBase = payroll.reduce((sum, item) => sum + item.baseSalary, 0);
+  const totalDeductions = payroll.reduce((sum, item) => sum + item.discrepancyDeduction, 0);
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <KPI label="Total Nómina Liquidada" value={formatMoney(totalSalary)} tone="text-rose-600 dark:text-rose-400" />
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+        <KPI label="Total Nómina Neta" value={formatMoney(totalSalary)} tone="text-violet-600 dark:text-violet-300" />
         <KPI label="Total Comisiones" value={formatMoney(totalCommissions)} tone="text-emerald-600 dark:text-emerald-400" />
         <KPI label="Total Salarios Base" value={formatMoney(totalBase)} tone="text-primary" />
+        <KPI label="Deducciones por Descuadre" value={formatMoney(totalDeductions)} tone={totalDeductions > 0 ? "text-red-600 dark:text-red-400" : "text-primary"} />
         <KPI label="Turnos Computados" value={`${payroll.length} Turnos`} tone="text-primary" />
       </div>
 
       <div className="bg-secondary rounded-2xl shadow-sm border border-base overflow-hidden">
-        <div className="p-3.5 border-b border-base flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-rose-50/20 dark:bg-rose-950/20">
+        <div className="p-3.5 border-b border-base flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-violet-50/30 dark:bg-violet-950/20">
           <div>
             <h3 className="text-xs font-black text-primary uppercase tracking-wider flex items-center gap-2">
-              <Calculator className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+              <Calculator className="w-4 h-4 text-violet-600 dark:text-violet-300" />
               Liquidación Diaria de Salarios por Turno Cerrado
             </h3>
             <p className="text-[8px] font-bold text-muted uppercase tracking-widest mt-0.5">
               Fecha de salario, turno lineal consecutivo, ventas, comisiones y liquidación exacta
             </p>
           </div>
-          <span className="text-[9px] font-black text-rose-600 dark:text-rose-400 uppercase tracking-wider">
+          <span className="text-[9px] font-black text-violet-600 dark:text-violet-300 uppercase tracking-wider">
             {payroll.length} liquidaciones
           </span>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[940px] text-left border-collapse">
+          <table className="w-full min-w-[1020px] text-left border-collapse">
             <thead>
               <tr className="bg-subtle border-b border-base text-[8px] font-black text-muted uppercase tracking-[0.15em]">
                 <th className="px-3 py-2.5">Turno</th>
@@ -96,6 +98,7 @@ export function ReportsPayrollTab({
                 <th className="px-3 py-2.5 text-right">Ventas Turno</th>
                 <th className="px-3 py-2.5 text-right">Salario Base</th>
                 <th className="px-3 py-2.5 text-right">Comisión</th>
+                <th className="px-3 py-2.5 text-right">Deducción</th>
                 <th className="px-3 py-2.5 text-right">Total a Liquidar</th>
                 <th className="px-3 py-2.5 text-center">Estado</th>
                 <th className="px-3 py-2.5 text-center">Acciones</th>
@@ -108,7 +111,7 @@ export function ReportsPayrollTab({
                 return (
                   <tr key={`${item.sessionId || 'pay'}-${item.date || ''}-${idx}`} className="hover:bg-subtle transition-colors">
                     <td className="px-3 py-2 whitespace-nowrap">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-100 dark:border-rose-900/50 tracking-wider">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black bg-subtle text-secondary border border-base tracking-wider">
                         {item.turnLabel}
                       </span>
                     </td>
@@ -138,6 +141,11 @@ export function ReportsPayrollTab({
                     <td className="px-3 py-2 text-right text-[10px] font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
                       +{formatMoney(item.commissions)}
                     </td>
+                    <td className="px-3 py-2 text-right text-[10px] font-bold whitespace-nowrap">
+                      {item.discrepancyDeduction > 0.01
+                        ? <span className="font-black text-red-600 dark:text-red-400">−{formatMoney(item.discrepancyDeduction)}</span>
+                        : <span className="text-muted">—</span>}
+                    </td>
                     <td className="px-3 py-2 text-right whitespace-nowrap">
                       <span className="text-xs font-black text-emerald-700 dark:text-emerald-400 tracking-tight bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-lg border border-emerald-100 dark:border-emerald-900/30">
                         {formatMoney(item.totalSalary)}
@@ -156,7 +164,11 @@ export function ReportsPayrollTab({
                             : "bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900/50 hover:bg-amber-100 dark:hover:bg-amber-900/70"
                         )}
                       >
-                        {item.status === 'paid' ? '✓ Pagado' : '⏳ Pendiente'}
+                        {item.status === 'paid' ? (
+                          <span className="inline-flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Pagado</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" />Pendiente</span>
+                        )}
                       </button>
                     </td>
 
@@ -167,9 +179,9 @@ export function ReportsPayrollTab({
                           onClick={() => onOpenSession(item.sessionId)}
                           title="Ver Detalle del Turno y Liquidación"
                           aria-label="Ver detalle del turno y liquidación"
-                          className="h-7 px-2.5 inline-flex items-center justify-center gap-1 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/60 dark:hover:bg-rose-900/80 text-rose-700 dark:text-rose-300 text-[9px] font-black uppercase rounded-lg border border-rose-200 dark:border-rose-900/50 transition-all active:scale-95 shadow-2xs cursor-pointer"
+                          className="h-7 px-2.5 inline-flex items-center justify-center gap-1 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/50 dark:hover:bg-violet-900/60 text-violet-700 dark:text-violet-300 text-[9px] font-black uppercase rounded-lg border border-violet-200 dark:border-violet-900/50 transition-all active:scale-95 shadow-2xs cursor-pointer"
                         >
-                          <Eye className="w-3 h-3 text-rose-600 dark:text-rose-400" />
+                          <Eye className="w-3 h-3 text-violet-600 dark:text-violet-300" />
                           <span>Detalle</span>
                         </button>
                         <button
@@ -189,7 +201,7 @@ export function ReportsPayrollTab({
 
               {payroll.length === 0 && (
                 <tr>
-                  <td colSpan={9} className="px-6 py-10 text-center text-muted font-bold uppercase text-[10px]">
+                  <td colSpan={10} className="px-6 py-10 text-center text-muted font-bold uppercase text-[10px]">
                     No hay turnos cerrados con nómina calculada para el filtro seleccionado.
                   </td>
                 </tr>
@@ -202,12 +214,12 @@ export function ReportsPayrollTab({
       <div className="bg-secondary rounded-2xl shadow-sm border border-base overflow-hidden">
         <div className="p-3.5 border-b border-base bg-subtle/50">
           <h3 className="text-[11px] font-black text-primary uppercase tracking-wider flex items-center gap-2">
-            <User className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+            <User className="w-3.5 h-3.5 text-violet-600 dark:text-violet-300" />
             Resumen Acumulado por Trabajador
           </h3>
         </div>
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-left border-collapse">
+          <table className="w-full min-w-[860px] text-left border-collapse">
             <thead>
               <tr className="bg-subtle border-b border-base text-[8px] font-black text-muted uppercase tracking-[0.15em]">
                 <th className="px-3 py-2.5">Trabajador</th>
@@ -215,6 +227,7 @@ export function ReportsPayrollTab({
                 <th className="px-3 py-2.5 text-right">Ventas Totales</th>
                 <th className="px-3 py-2.5 text-right">Salario Base Acumulado</th>
                 <th className="px-3 py-2.5 text-right">Comisiones Totales</th>
+                <th className="px-3 py-2.5 text-right">Deducciones</th>
                 <th className="px-3 py-2.5 text-right">Total Ganado</th>
                 <th className="px-3 py-2.5 text-right">Pendiente de Pago</th>
               </tr>
@@ -253,7 +266,7 @@ export function ReportsPayrollTab({
 
               {aggregatedByWorker.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-6 text-center text-muted text-[10px] font-bold uppercase">
+                  <td colSpan={8} className="px-6 py-6 text-center text-muted text-[10px] font-bold uppercase">
                     No hay acumulación registrada de trabajadores.
                   </td>
                 </tr>

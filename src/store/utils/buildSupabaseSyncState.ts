@@ -3,6 +3,7 @@ import type { InventoryLevel } from "../../types";
 import { getOfflineQueue } from "../../services/offlineQueue";
 import { replaceRemoteRecords } from "./replaceRemoteRecords";
 import { mergeUnique } from "./syncMerges";
+import { collectPendingInventoryKeys } from "./offlineProtection";
 
 type SyncSnapshot = any;
 
@@ -108,74 +109,10 @@ baseInv.forEach(inv => {
 // Si una operación de inventario sigue en la cola, su valor local es el
 // estado que todavía no está confirmado por Supabase. Conservamos esa fila
 // durante el merge para evitar que un snapshot remoto anterior la revierta.
-const pendingInventoryKeys = new Set<string>();
-getOfflineQueue().forEach(i => {
-  const d = i.data || {};
-
-  if (i.type === 'inventory_adjustment' || i.type === 'inventory_reconcile' || i.type === 'inventory') {
-    pendingInventoryKeys.add(`${d.productId}_${d.branchId}_${d.variantLabel || ''}`);
-    return;
-  }
-
-  if (i.type === 'transaction') {
-    const branchId = d.branchId;
-    for (const saleItem of Array.isArray(d.items) ? d.items : []) {
-      const product = typeof saleItem?.product === 'string' ? saleItem.product : saleItem?.product?.id;
-      if (!product || !branchId) continue;
-      const label = saleItem?.variantLabel || saleItem?.variant_label || '';
-      pendingInventoryKeys.add(`${product}_${branchId}_${label}`);
-      const components = typeof saleItem?.product === 'object'
-        ? (saleItem.product?.kitComponents || saleItem.product?.kitItems || [])
-        : [];
-      for (const component of Array.isArray(components) ? components : []) {
-        if (component?.productId) {
-          pendingInventoryKeys.add(`${component.productId}_${branchId}_`);
-        }
-      }
-    }
-    return;
-  }
-
-  if (i.type === 'transfer' || i.type === 'transfer_bulk') {
-    const operations = i.type === 'transfer'
-      ? [{ productId: d.productId, variants: d.variants }]
-      : (Array.isArray(d.items) ? d.items : []);
-    for (const op of operations) {
-      const productId = op?.productId;
-      for (const v of Array.isArray(op?.variants) ? op.variants : []) {
-        const label = v?.variantLabel ?? v?.variant_label ?? '';
-        if (!productId) continue;
-        pendingInventoryKeys.add(`${productId}_${d.fromBranchId}_${label}`);
-        pendingInventoryKeys.add(`${productId}_${d.toBranchId}_${label}`);
-      }
-    }
-    return;
-  }
-
-  if (i.type === 'return' || i.type === 'return_complete') {
-    const req = i.type === 'return'
-      ? d
-      : (state.returns || []).find((r: any) => r.id === d.id);
-    if (!req) return;
-    const originalTx = (state.transactions || []).find((tx: any) => tx.id === req.transactionId);
-    const branchId = req.branchId || originalTx?.branchId;
-    if (!branchId) return;
-    const label = req.variantLabel || '';
-    if (req.type === 'refund') {
-      pendingInventoryKeys.add(`${req.productId}_${branchId}_${label}`);
-    }
-    if (req.type === 'warranty_exchange' && req.replacementProductId) {
-      pendingInventoryKeys.add(`${req.replacementProductId}_${branchId}_`);
-    }
-    return;
-  }
-
-  if (i.type === 'supplier_receive') {
-    const order = (state.supplierOrders || []).find((o: any) => o.id === d.id);
-    for (const item of Array.isArray(order?.items) ? order.items : []) {
-      pendingInventoryKeys.add(`${item.productId}_${order.branchId}_${item.variantLabel || ''}`);
-    }
-  }
+const pendingInventoryKeys = collectPendingInventoryKeys(getOfflineQueue(), {
+  transactions: state.transactions || [],
+  returns: state.returns || [],
+  supplierOrders: state.supplierOrders || []
 });
 
 // Si una operación todavía está pendiente, su snapshot local ya
@@ -256,6 +193,10 @@ for (const q of getOfflineQueue()) {
     for (const op of Array.isArray(q.data?.items) ? q.data.items : []) {
       if (op?.operationId) pendingTransferIds.add(String(op.operationId));
     }
+  } else if (q.type === 'transfer_receive' || q.type === 'transfer_cancel') {
+    for (const operationId of Array.isArray(q.data?.operationIds) ? q.data.operationIds : []) {
+      if (operationId) pendingTransferIds.add(String(operationId));
+    }
   }
 }
 const mergedTransfers = replaceRemoteRecords(
@@ -264,7 +205,18 @@ const mergedTransfers = replaceRemoteRecords(
   pendingTransferIds
 );
 const mergedWarranties = replaceRemoteRecords(data.warranties, state.warranties || [], new Set(getOfflineQueue().filter(i => i.type === 'warranty').map(i => String(i.data?.id || i.actionId))));
-const mergedQuotes = replaceRemoteRecords(data.quotes, state.quotes || [], new Set(getOfflineQueue().filter(i => i.type === 'quote').map(i => String(i.data?.id || i.actionId))));
+const pendingQuoteDeletes = new Set(
+  getOfflineQueue()
+    .filter(i => i.type === 'quote_delete')
+    .map(i => String(i.data?.id || i.actionId))
+);
+const remoteQuotesWithoutDeletes = (data.quotes || []).filter((quote: any) => !pendingQuoteDeletes.has(String(quote?.id)));
+const localQuotesWithoutDeletes = (state.quotes || []).filter((quote: any) => !pendingQuoteDeletes.has(String(quote?.id)));
+const mergedQuotes = replaceRemoteRecords(
+  remoteQuotesWithoutDeletes,
+  localQuotesWithoutDeletes,
+  new Set(getOfflineQueue().filter(i => i.type === 'quote').map(i => String(i.data?.id || i.actionId)))
+);
 const mergedTimeShifts = replaceRemoteRecords(data.timeShifts, state.timeShifts || [], new Set(getOfflineQueue().filter(i => i.type === 'time_shift').map(i => String(i.data?.id || i.actionId))));
 const mergedSalarySettlements = replaceRemoteRecords(data.salarySettlements, state.salarySettlements || [], new Set(getOfflineQueue().filter(i => i.type === 'salary_settlement').map(i => String(i.data?.id || i.actionId))));
 

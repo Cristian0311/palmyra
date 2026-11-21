@@ -1,4 +1,5 @@
 import type { InventoryLevel, Product } from '../../../types';
+import { isLowStockQuantity } from './lowStock';
 
 export function buildInventoryViewData(
   products: Product[],
@@ -42,7 +43,7 @@ const inventoryData = (() => {
         : allLevels.filter(level => level.branchId === selectedBranch);
 
       const totalStock = productLevels.reduce((acc, curr) => acc + curr.quantity, 0);
-      const isLowStock = productLevels.some(i => i.quantity <= (product.minStockAlert || i.minQuantity));
+      const isLowStock = productLevels.some(i => isLowStockQuantity(i.quantity, product, i.minQuantity));
       const variantLevels = productLevels.filter(level => !!level.variantLabel);
 
       return {

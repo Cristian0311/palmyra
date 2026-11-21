@@ -45,7 +45,7 @@ export interface AppState {
   deleteCategory: (id: string) => void;
   products: Product[];
   inventory: InventoryLevel[];
-  addProduct: (product: Product, initialQuantity?: number, branchId?: string, variantLabel?: string, initialVariantQuantities?: { [key: string]: number }) => void;
+  addProduct: (product: Product, initialQuantity?: number, branchId?: string, variantLabel?: string, initialVariantQuantities?: { [key: string]: number }) => boolean;
   updateProduct: (id: string, product: Partial<Product>) => void;
   deleteProduct: (id: string) => void;
   batchDeleteProducts: (ids: string[]) => void;
@@ -57,6 +57,8 @@ export interface AppState {
   adjustInventory: (productId: string, branchId: string, delta: number, variantLabel?: string, minQuantity?: number) => void;
   setInventoryQuantity: (productId: string, branchId: string, quantity: number, variantLabel?: string, minQuantity?: number) => void;
   transferProductsBulk: (fromBranchId: string, toBranchId: string, items: { productId: string; quantity: number; variant?: string }[]) => Promise<{ success: boolean; error?: string }>;
+  receiveTransfer: (operationIds: string[]) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
+  cancelTransfer: (operationIds: string[]) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
   
   // Carrito POS
   cart: CartItem[];
@@ -75,13 +77,14 @@ export interface AppState {
   quotes: import("../types").Quote[];
   addQuote: (quote: import("../types").Quote) => void;
   updateQuote: (id: string, updates: Partial<import("../types").Quote>) => void;
+  deleteQuote: (id: string) => void;
   returns: ReturnItem[];
   processTransaction: (transaction: Transaction) => Promise<boolean>;
   updateTransaction: (id: string, updates: Partial<Transaction>) => void;
   deleteTransaction: (id: string, reason?: string) => Promise<boolean>;
   createReturn: (returnItem: ReturnItem) => void;
   updateReturn: (id: string, returnItem: Partial<ReturnItem>) => void;
-  processReturn: (id: string, action: 'complete' | 'reject') => void;
+  processReturn: (id: string, action: 'complete' | 'reject') => Promise<boolean>;
 
   // Clientes
   customers: Customer[];
@@ -120,7 +123,7 @@ export interface AppState {
     currencyCode?: string;
     variantLabel?: string;
   }, affectStock?: boolean) => Promise<{ success: boolean; transactionId?: string }>;
-  forceCloseSessionFromReports: (sessionId: string, closingBalances?: import('../types').Payment[], closingDate?: string, notes?: string) => Promise<{ success: boolean }>;
+  forceCloseSessionFromReports: (sessionId: string, closingBalances?: import('../types').Payment[], closingDate?: string, notes?: string) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
 
   // Garantías
   warranties: import('../types').Warranty[];
@@ -155,11 +158,12 @@ export interface AppState {
   createInventoryAudit: (audit: InventoryAudit) => Promise<{ success: boolean; error?: string }>;
   completeInventoryAudit: (id: string, items: any[], notes?: string) => Promise<{ success: boolean; error?: string }>;
   requestInventoryAuditRecount: (id: string, notes?: string) => Promise<{ success: boolean; error?: string }>;
-  approveInventoryAudit: (id: string, notes?: string) => Promise<{ success: boolean; error?: string }>;
+  approveInventoryAudit: (id: string, notes?: string) => Promise<{ success: boolean; error?: string; pending?: boolean }>;
   
   fiscalConfigs: FiscalConfig[];
   updateFiscalConfig: (id: string, config: Partial<FiscalConfig>) => void;
   getNextNCF: (type: string) => Promise<string | undefined>;
+  refreshNcfRangeIfExhausted: () => Promise<boolean>;
 
   demandForecasts: DemandForecast[];
   updateForecasts: (forecasts: DemandForecast[]) => void;

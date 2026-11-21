@@ -25,7 +25,11 @@ test("the new-company signup flow binds the pending offline verifier after onboa
   assert.match(auth, /rememberPendingOfflineCredential\(credentialEmail, credentialPassword\)/);
   assert.match(onboarding, /loadSaaSContext\(true\)[\s\S]*?consumePendingOfflineCredential\(context\)/);
   assert.match(offlineAuth, /PENDING_CREDENTIAL_TTL_MS/);
-  assert.match(offlineAuth, /localStorage\/sessionStorage/);
+  // The onboarding credential may survive a tab reload, but it must stay in
+  // sessionStorage and never reach localStorage (which outlives the session).
+  assert.match(offlineAuth, /never[\s\S]{0,40}written to localStorage/);
+  assert.match(offlineAuth, /sessionStorage\.setItem\(PENDING_CREDENTIAL_KEY/);
+  assert.doesNotMatch(offlineAuth, /localStorage\.setItem\(PENDING_CREDENTIAL_KEY/);
 });
 
 test("password reset invalidates the older offline password verifier", () => {

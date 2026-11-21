@@ -3,6 +3,18 @@ import type { CashRegisterSession, Transaction, User } from '../../types';
 import { getLocalDateYMD } from '../../utils/dateUtils';
 import { findSessionEmployeeUser } from '../../services/employeeCompensation';
 
+/**
+ * Supabase stores a voided turn as `voided` while the POS type and UI speak
+ * `cancelled`. Normalizing here keeps the status filter, badges and totals
+ * consistent whichever spelling the server returns.
+ */
+export function normalizeSessionStatus(status: string | null | undefined): CashRegisterSession['status'] {
+  const value = String(status || '').toLowerCase();
+  if (value === 'open' || value === 'closed') return value;
+  if (value === 'cancelled' || value === 'canceled' || value === 'voided') return 'cancelled';
+  return 'open';
+}
+
 export function buildSessionTurnMap(
   sessions: CashRegisterSession[],
 ): Map<string, string> {
@@ -44,7 +56,9 @@ export function useReportsSessions(params: {
     const sessionMap = new Map<string, CashRegisterSession>();
 
     cashSessions.forEach(session => {
-      if (!session.deletedAt) sessionMap.set(session.id, session);
+      if (!session.deletedAt) {
+        sessionMap.set(session.id, { ...session, status: normalizeSessionStatus(session.status) });
+      }
     });
 
     // Recover a display-only session when a sale still references a missing

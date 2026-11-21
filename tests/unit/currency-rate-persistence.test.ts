@@ -25,10 +25,12 @@ test("currency-rate queue retries preserve the actual Supabase error without rec
 test("exchange-rate graph reloads durable server history after local cache is removed", () => {
   const page = read("src/pages/ExchangeRate.tsx");
   const migration = read("supabase/migrations/20261011170000_durable_exchange_rate_history.sql");
+  const verified = read("supabase/migrations/20261118143000_verified_exchange_history.sql");
   const worker = read("supabase/functions/monitor-exchange-rates/index.ts");
-  assert.match(page, /rpc\("get_exchange_rate_history"/);
-  assert.match(page, /Historial permanente en Supabase/);
-  assert.match(page, /El histórico principal se conserva en Supabase/);
+  assert.match(page, /rpc\('get_verified_exchange_rate_history'/);
+  assert.match(page, /Historial de la fuente y consultas de este dispositivo/);
+  assert.match(page, /remoteHistory\.length/);
+  assert.match(verified, /create or replace function public\.get_verified_exchange_rate_history/);
   assert.match(migration, /CREATE TABLE IF NOT EXISTS public\.exchange_rate_history/);
   assert.match(migration, /CREATE OR REPLACE FUNCTION public\.get_exchange_rate_history/);
   assert.match(worker, /from\("exchange_rate_history"\)/);
