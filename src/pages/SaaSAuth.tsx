@@ -417,9 +417,10 @@ export default function SaaSAuth() {
                   </div>
                 </div>
                 <ol className="mt-3 space-y-1.5 text-[11px] leading-5 text-slate-600">
-                  <li>1. Abre el correo de PALMYRA (revisa también Spam).</li>
+                  <li>1. Busca el remitente <strong className="text-slate-700">PALMYRA</strong> en Principal, Promociones o Spam.</li>
                   <li>2. Pulsa «Confirmar correo electrónico».</li>
-                  <li>3. Vuelve aquí y entra con tu contraseña si el enlace no abre la sesión.</li>
+                  <li>3. Márcalo como «No es spam» y agrégalo a contactos para que los próximos avisos lleguen a Principal.</li>
+                  <li>4. Si el enlace no abre la sesión, vuelve aquí y entra con tu contraseña.</li>
                 </ol>
                 {error ? <div role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[11px] font-bold text-rose-700">{error}</div> : null}
                 {message ? <div role="status" className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-[11px] font-bold text-emerald-700">{message}</div> : null}

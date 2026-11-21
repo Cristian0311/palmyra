@@ -253,7 +253,7 @@ export default function AuthConfirm() {
         options: { emailRedirectTo: `${window.location.origin}/auth` },
       });
       if (resendError) throw resendError;
-      setResent("Correo reenviado. Revisa tu bandeja de entrada y la carpeta de spam.");
+      setResent("Correo reenviado. Revisa Principal y Spam; si aparece en Spam, márcalo como «No es spam».");
     } catch (caught: any) {
       const raw = String(caught?.message || "");
       setError(/for security purposes|only request this after/i.test(raw)
