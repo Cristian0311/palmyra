@@ -54,6 +54,16 @@ export async function signUpSaaSAccount(fullName: string, email: string, passwor
   });
 }
 
+export async function resendSaaSSignupConfirmation(email: string) {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error('Supabase no está configurado.');
+  return supabase.auth.resend({
+    type: 'signup',
+    email: email.trim().toLowerCase(),
+    options: { emailRedirectTo: getPalmyraAuthUrl('/auth') }
+  });
+}
+
 export async function signInSaaSAccount(email: string, password: string) {
   clearActiveTenant();
   const supabase = getSupabase();

@@ -1,5 +1,23 @@
 project_id = "hmcvujyqloyjdvngpdxz"
 
+[auth]
+site_url = "https://palmyracrm.onrender.com"
+additional_redirect_urls = [
+  "https://palmyracrm.onrender.com/**",
+  "http://localhost:3000/**",
+  "http://127.0.0.1:3000/**"
+]
+enable_signup = true
+enable_confirmations = true
+
+[auth.email.template.confirmation]
+subject = "Confirma tu cuenta PALMYRA"
+content_path = "./supabase/email-templates/confirm.html"
+
+[auth.email.template.recovery]
+subject = "Restablece tu contraseña PALMYRA"
+content_path = "./supabase/email-templates/recovery.html"
+
 # Los workers se autentican con x-worker-secret contra Vault y son llamados por
 # pg_cron/pg_net sin JWT: deben desplegarse con verify_jwt desactivado.
 [functions.deliver-notifications]

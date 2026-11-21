@@ -1,5 +1,40 @@
 # CHANGELOG — PALMYRA POS
 
+## 1.3.1 — Registro y confirmación de correo sin errores
+
+### Confirmación por correo
+- La plantilla enviada por Supabase vuelve a mostrar el **logo oficial de
+  PALMYRA** (`palmyra-email-logo-v2.png`) y ahora está rediseñada con la
+  identidad violeta, el correo del destinatario y un enlace de respaldo.
+- El botón «Confirmar» ya no responde «el enlace no es válido»: la página
+  `/auth/confirm` prueba `email`, `signup`, el token antiguo y el código PKCE,
+  y si el enlace ya se consumió pero la cuenta quedó confirmada, deja entrar.
+- Si el enlace caducó de verdad, la misma página ofrece **reenviar el correo**
+  sin salir de ella.
+- Los asuntos del correo quedan en español:
+  «Confirma tu cuenta PALMYRA» y «Restablece tu contraseña PALMYRA».
+
+### Flujo de registro
+- Tras crear la cuenta se muestra un panel **«Revisa tu correo»** con el
+  correo usado, los 3 pasos, cuenta atrás para reenviar, «Ya confirmé · Entrar»
+  y «Usar otro correo».
+- El registro valida el correo y la confirmación de contraseña antes de enviar,
+  y avisa cuando el correo ya tiene una cuenta PALMYRA.
+- Iniciar sesión con un correo sin confirmar ofrece reenviar la confirmación.
+
+### Onboarding
+- Quien ya tiene una empresa **no vuelve a ver la configuración inicial**:
+  al confirmar se consulta la membresía y se entra directo al panel; si la
+  empresa está pendiente va a «Estado de la cuenta».
+- Después de confirmar se abre el onboarding con los **cuatro planes** reales
+  (Gratis, Oasis, Caravana, Ciudadela) en tarjetas PALMYRA con límites,
+  prestaciones, duración, forma de pago y resumen fijo.
+- El plan elegido en el landing se conserva durante el viaje al correo.
+
+### Correcciones
+- Logo: atributos SVG en camelCase y IDs de título/descripción únicos por copia
+  (React dejaba de avisar de propiedades inválidas).
+
 ## 1.2.0 — Turnos, auditorías, bancos y Android
 
 ### Inventario

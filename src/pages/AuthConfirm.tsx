@@ -1,7 +1,11 @@
-import { useEffect, useState } from "react";
-import { CheckCircle2, Loader2, AlertCircle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { AlertCircle, ArrowRight, CheckCircle2, Loader2, MailCheck, Send } from "lucide-react";
 import { useSearchParams } from "react-router-dom";
+import type { EmailOtpType, VerifyOtpParams } from "@supabase/supabase-js";
 import { getSupabase } from "../lib/supabase";
+import { PalmyraWordmark } from "../components/PalmyraWordmark";
+
+type Phase = "verifying" | "success" | "error";
 
 function getInvitationRedirect(searchParams: URLSearchParams): string | null {
   const candidates = [
@@ -31,109 +35,293 @@ function getInvitationRedirect(searchParams: URLSearchParams): string | null {
   return null;
 }
 
+function friendlyVerifyError(message: string) {
+  return /expired|invalid|otp|used/i.test(message)
+    ? "El enlace ya fue utilizado o caducó. Si ya confirmaste tu correo, entra con tu contraseña; si no, reenvía el correo de confirmación."
+    : message || "No pudimos verificar el enlace. Inténtalo de nuevo.";
+}
+
 export default function AuthConfirm() {
   const [params] = useSearchParams();
+  const [phase, setPhase] = useState<Phase>("verifying");
+  const [status, setStatus] = useState("Verificando tu enlace seguro…");
   const [error, setError] = useState("");
-  const [status, setStatus] = useState("Confirmando tu cuenta…");
+  const [destination, setDestination] = useState("/");
+  const [target, setTarget] = useState("");
+  const [resendEmail, setResendEmail] = useState("");
+  const [sending, setSending] = useState(false);
+  const [resent, setResent] = useState("");
+
+  const type = useMemo(() => (params.get("type") || "email").toLowerCase(), [params]);
+  const tokenHash = params.get("token_hash");
+  const rawToken = params.get("token");
+  const authCode = params.get("code");
+  const queryError = params.get("error_description") || params.get("error");
+
+  const finishSuccess = useCallback((path: string, note: string) => {
+    setDestination(path);
+    setStatus(note);
+    setPhase("success");
+    window.setTimeout(() => window.location.replace(path), 900);
+  }, []);
 
   useEffect(() => {
     let active = true;
 
+    const decideDestination = async (supabase: ReturnType<typeof getSupabase>, userId: string) => {
+      try {
+        const { data, error: membershipError } = await supabase!
+          .from("company_memberships")
+          .select("company_id,status")
+          .eq("user_id", userId)
+          .limit(5);
+        if (!membershipError) {
+          const rows = (data || []) as Array<{ company_id: string; status: string }>;
+          const usable = rows.find((row) => row.status === "active");
+          if (usable) {
+            try { sessionStorage.removeItem("palmyra_pending_onboarding"); } catch {}
+            return { path: "/", note: "Correo confirmado. Abriendo tu empresa…" };
+          }
+          if (rows.length) {
+            return { path: "/account-status", note: "Correo confirmado. Revisando el estado de tu empresa…" };
+          }
+        }
+      } catch { /* Si la consulta falla, el onboarding vuelve a comprobar el estado. */ }
+      try { sessionStorage.setItem("palmyra_pending_onboarding", "1"); } catch {}
+      return { path: "/onboarding", note: "Correo confirmado. Prepara tu empresa para empezar…" };
+    };
+
     const verify = async () => {
       const supabase = getSupabase();
-      const tokenHash = params.get("token_hash");
-      const type = params.get("type") as "email" | "recovery" | "invite" | "email_change" | "sms" | "phone_change" | null;
-
-      if (!supabase || !tokenHash || !type) {
-        if (active) setError("El enlace de confirmación no es válido o está incompleto.");
+      if (!supabase) {
+        if (active) { setError("La conexión con PALMYRA no está configurada en este dispositivo."); setPhase("error"); }
         return;
       }
 
-      const invitationRedirect = type !== "recovery" ? getInvitationRedirect(params) : null;
-
-      const { error: verifyError } = await supabase.auth.verifyOtp({
-        token_hash: tokenHash,
-        type
-      });
-
-      if (!active) return;
-
-      if (verifyError) {
-        setError(
-          /expired|invalid|otp/i.test(verifyError.message)
-            ? "Este enlace ya no es válido o ha caducado. Solicita un nuevo enlace."
-            : verifyError.message
-        );
+      if (queryError) {
+        if (active) {
+          setError(friendlyVerifyError(String(queryError)));
+          setPhase("error");
+        }
         return;
       }
 
-      if (type === "recovery") {
-        setStatus("Enlace verificado. Preparando la recuperación…");
-        window.setTimeout(() => window.location.replace("/auth?recovery=1"), 150);
-        return;
+      let verified = false;
+      let lastMessage = "";
+
+      if (authCode) {
+        const { error: codeError } = await supabase.auth.exchangeCodeForSession(authCode);
+        verified = !codeError;
+        lastMessage = codeError?.message || "";
+      } else if (tokenHash || rawToken) {
+        const attempts = new Set<string>();
+        attempts.add(type);
+        if (type !== "recovery") {
+          // GoTrue acepta type=email para confirmar registros; signup se
+          // mantiene como respaldo para enlaces generados por otras vías.
+          if (!attempts.has("email")) attempts.add("email");
+          if (!attempts.has("signup")) attempts.add("signup");
+        }
+        const linkEmail = (params.get("email") || resendEmail || "").trim().toLowerCase();
+        for (const attempt of attempts) {
+          if (rawToken && !tokenHash && !linkEmail) break;
+          const credentials: VerifyOtpParams = tokenHash
+            ? { token_hash: tokenHash, type: attempt as EmailOtpType }
+            : { email: linkEmail, token: rawToken as string, type: attempt as EmailOtpType };
+          const { error: verifyError } = await supabase.auth.verifyOtp(credentials);
+          if (!verifyError) { verified = true; break; }
+          lastMessage = verifyError.message || lastMessage;
+        }
+      } else {
+        // Enlaces antiguos (hash en la URL) dejan la sesión creada por
+        // supabase-js al cargar la página; si ya existe, continuamos.
+        const { data } = await supabase.auth.getSession();
+        if (data.session?.user?.email_confirmed_at) {
+          verified = true;
+        } else if (!data.session) {
+          lastMessage = "El enlace no incluye los datos de confirmación.";
+        }
       }
 
       const { data: sessionData } = await supabase.auth.getSession();
       if (!active) return;
 
-      if (!sessionData.session) {
-        setError("El correo fue confirmado, pero no pudimos recuperar la sesión automáticamente. Vuelve a iniciar sesión para continuar.");
+      if (!verified && sessionData.session?.user?.email_confirmed_at && /expired|invalid|otp|used/i.test(lastMessage)) {
+        // El token pudo consumirse en el primer clic (o por un escáner del
+        // correo). Si esta cuenta ya quedó confirmada, el acceso es válido.
+        verified = true;
+      }
+
+      if (!verified) {
+        if (!sessionData.session && !lastMessage) {
+          lastMessage = "El enlace de confirmación está incompleto.";
+        }
+        setError(friendlyVerifyError(lastMessage));
+        setPhase("error");
         return;
       }
 
+      if (!sessionData.session) {
+        setError("El correo quedó confirmado, pero la sesión no se abrió en este navegador. Inicia sesión con tu contraseña para continuar.");
+        setPhase("error");
+        return;
+      }
+
+      const user = sessionData.session.user;
+      if (type === "recovery") {
+        finishSuccess("/auth?recovery=1", "Enlace verificado. Crea tu nueva contraseña…");
+        return;
+      }
+
+      const invitationRedirect = getInvitationRedirect(params);
       if (invitationRedirect) {
         try {
           const invitationUrl = new URL(invitationRedirect, window.location.origin);
           const invitationToken = invitationUrl.searchParams.get("token");
           if (invitationToken) {
             sessionStorage.setItem("palmyra_pending_invitation", invitationToken);
-            sessionStorage.setItem(
-              "palmyra_pending_invitation_email",
-              sessionData.session.user.email?.trim().toLowerCase() || ""
-            );
+            sessionStorage.setItem("palmyra_pending_invitation_email", user.email?.trim().toLowerCase() || "");
           }
         } catch {}
-        setStatus("Correo confirmado. Activando tu acceso a la empresa…");
-        window.setTimeout(() => window.location.replace(invitationRedirect), 150);
+        finishSuccess(invitationRedirect, "Correo confirmado. Activando tu acceso a la empresa…");
         return;
       }
 
-      if (typeof sessionStorage !== "undefined") {
-        sessionStorage.setItem("palmyra_pending_onboarding", "1");
-      }
-
-      setStatus("Correo confirmado. Preparando tu cuenta…");
-      window.setTimeout(() => window.location.replace("/onboarding"), 150);
+      const decision = await decideDestination(supabase, user.id);
+      if (!active) return;
+      finishSuccess(decision.path, decision.note);
     };
 
-    void verify();
+    void verify().catch((unexpected) => {
+      if (!active) return;
+      setError(friendlyVerifyError(String((unexpected as Error)?.message || "")));
+      setPhase("error");
+    });
+
     return () => { active = false; };
-  }, [params]);
+  }, [params, type, tokenHash, rawToken, authCode, queryError, finishSuccess]);
+
+  useEffect(() => {
+    const supabase = getSupabase();
+    if (!supabase) return;
+    void supabase.auth.getSession().then(({ data }) => {
+      if (data.session?.user?.email) {
+        setResendEmail((current) => current || data.session?.user.email || "");
+        setTarget(data.session.user.email || "");
+      }
+    });
+  }, []);
+
+  const resend = async () => {
+    const email = resendEmail.trim().toLowerCase();
+    setResent("");
+    setError("");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+      setError("Escribe el correo con el que te registraste.");
+      return;
+    }
+    const supabase = getSupabase();
+    if (!supabase) return;
+    setSending(true);
+    try {
+      const { error: resendError } = await supabase.auth.resend({
+        type: "signup",
+        email,
+        options: { emailRedirectTo: `${window.location.origin}/auth` },
+      });
+      if (resendError) throw resendError;
+      setResent("Correo reenviado. Revisa tu bandeja de entrada y la carpeta de spam.");
+    } catch (caught: any) {
+      const raw = String(caught?.message || "");
+      setError(/rate limit/i.test(raw)
+        ? "Se enviaron varios correos seguidos. Espera unos minutos antes de reenviar."
+        : raw || "No pudimos reenviar el correo. Inténtalo de nuevo.");
+    } finally {
+      setSending(false);
+    }
+  };
 
   return (
-    <main className="min-h-screen bg-[#F7F5FC] flex items-center justify-center p-4">
-      <section className="w-full max-w-md rounded-[26px] bg-white border border-violet-100 shadow-[0_30px_90px_-52px_rgba(59,27,110,.55)] p-7 text-center">
-        <img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="mx-auto mb-7 h-auto w-full max-w-[230px]" />
-        {error ? (
-          <>
-            <div className="mx-auto w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center">
-              <AlertCircle className="w-6 h-6" />
-            </div>
-            <h1 className="text-xl font-black text-[#3B1B78] mt-4">No pudimos confirmar el enlace</h1>
-            <p className="text-sm text-slate-500 leading-6 mt-2">{error}</p>
-            <a href="/auth" className="inline-flex mt-6 h-11 px-5 rounded-xl bg-[#5B2DBA] text-white text-xs font-black items-center justify-center">
-              Volver a PALMYRA
-            </a>
-          </>
-        ) : (
-          <>
-            <div className="mx-auto w-12 h-12 rounded-2xl bg-[#EFE8FF] text-[#5B2DBA] flex items-center justify-center">
-              {status.startsWith("Correo confirmado") ? <CheckCircle2 className="w-6 h-6" /> : <Loader2 className="w-6 h-6 animate-spin" />}
-            </div>
-            <h1 className="text-xl font-black text-[#3B1B78] mt-4">Un momento…</h1>
-            <p className="text-sm text-slate-500 leading-6 mt-2">{status}</p>
-          </>
-        )}
+    <main className="min-h-[100dvh] overflow-y-auto bg-[#F7F5FC] px-3 py-6 sm:px-5 sm:py-10" data-keyboard-viewport="native">
+      <section className="mx-auto w-full max-w-lg overflow-hidden rounded-[26px] border border-violet-100 bg-white shadow-[0_30px_90px_-52px_rgba(59,27,110,.55)]">
+        <div className="h-1 bg-gradient-to-r from-[#3B1B78] via-[#6535C5] to-[#9B7BE8]" />
+        <div className="px-5 py-7 text-center sm:px-8 sm:py-9">
+          <PalmyraWordmark className="mx-auto h-10 w-auto sm:h-12" />
+
+          {phase === "verifying" ? (
+            <>
+              <div className="mx-auto mt-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#EFE8FF] text-[#5B2DBA]">
+                <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+              <h1 className="mt-4 text-xl font-black tracking-[-.02em] text-[#3B1B78] sm:text-2xl">Confirmando tu cuenta</h1>
+              <p role="status" className="mt-2 text-sm leading-6 text-slate-500">{status}</p>
+              <p className="mt-4 text-xs leading-5 text-slate-400">No cierres esta ventana; el enlace se verifica una sola vez.</p>
+            </>
+          ) : null}
+
+          {phase === "success" ? (
+            <>
+              <div className="mx-auto mt-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+                <CheckCircle2 className="h-7 w-7" />
+              </div>
+              <h1 className="mt-4 text-xl font-black tracking-[-.02em] text-[#3B1B78] sm:text-2xl">Correo confirmado</h1>
+              <p role="status" className="mt-2 text-sm leading-6 text-slate-500">{status}</p>
+              <a href={destination} className="mt-6 inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#5B2DBA] px-5 text-xs font-black text-white hover:bg-[#4B239B]">
+                Continuar ahora <ArrowRight className="h-4 w-4" />
+              </a>
+            </>
+          ) : null}
+
+          {phase === "error" ? (
+            <>
+              <div className="mx-auto mt-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+                <AlertCircle className="h-7 w-7" />
+              </div>
+              <h1 className="mt-4 text-xl font-black tracking-[-.02em] text-[#3B1B78] sm:text-2xl">El enlace no pudo confirmarse</h1>
+              <p role="alert" className="mt-2 text-sm leading-6 text-slate-500">{error}</p>
+
+              <div className="mt-6 rounded-2xl border border-violet-100 bg-[#F7F5FC] p-4 text-left">
+                <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-[#6535C5]"><MailCheck className="h-4 w-4" /> Reenviar confirmación</p>
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  {target ? `Enviaremos un enlace nuevo a ${target}.` : "Escribe el correo con el que te registraste."}
+                </p>
+                <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                  <input
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    value={resendEmail}
+                    onChange={(event) => setResendEmail(event.target.value)}
+                    placeholder="nombre@empresa.com"
+                    className="h-11 min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 focus-visible:outline-violet-600"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void resend()}
+                    disabled={sending}
+                    className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#5B2DBA] px-4 text-xs font-black text-white disabled:opacity-50"
+                  >
+                    {sending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    Reenviar
+                  </button>
+                </div>
+                {resent ? <p role="status" className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-700">{resent}</p> : null}
+              </div>
+
+              <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                <a href="/auth" className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl border border-violet-200 bg-white text-xs font-black text-[#5B2DBA]">
+                  Ir a iniciar sesión
+                </a>
+                <a href="/landing" className="inline-flex h-11 flex-1 items-center justify-center rounded-xl bg-[#EFE8FF] text-xs font-black text-[#5B2DBA]">
+                  Volver a PALMYRA
+                </a>
+              </div>
+              <p className="mt-4 text-[11px] leading-5 text-slate-400">
+                Si ya confirmaste antes, basta con iniciar sesión. Cada enlace funciona una sola vez.
+              </p>
+            </>
+          ) : null}
+        </div>
       </section>
     </main>
   );

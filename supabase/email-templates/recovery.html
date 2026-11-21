@@ -4,45 +4,47 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="x-apple-disable-message-reformatting">
-<title>Recuperación de contraseña PALMYRA</title>
+<meta name="color-scheme" content="light only">
+<title>Restablece tu contraseña PALMYRA</title>
 </head>
-<body style="margin:0;padding:0;background:#f3f4f6;font-family:Arial,Helvetica,sans-serif;color:#172033;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:#f3f4f6;">
-<tr><td align="center" style="padding:40px 16px;">
-<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
-<tr><td style="height:4px;background:#6332c4;font-size:0;line-height:0;">&nbsp;</td></tr>
-<tr><td align="center" style="padding:32px 30px 26px;background:#fff;">
-<img src="https://palmyracrm.onrender.com/palmyra-email-logo-v2.png" width="230" alt="PALMYRA" style="display:block;width:230px;max-width:80%;height:auto;margin:0 auto;border:0;outline:none;text-decoration:none;">
+<body style="margin:0;padding:0;background:#F7F5FC;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,Helvetica,sans-serif;color:#2A1938;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">Crea una nueva contraseña para tu cuenta PALMYRA. El enlace es personal y funciona una vez.</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;background:#F7F5FC;">
+<tr><td align="center" style="padding:32px 12px;">
+<table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#ffffff;border:1px solid #E8E1F7;border-radius:18px;overflow:hidden;">
+<tr><td style="height:5px;background:#5B2DBA;font-size:0;line-height:0;">&nbsp;</td></tr>
+<tr><td align="center" style="padding:26px 24px 22px;background:#ffffff;">
+<img src="https://palmyracrm.onrender.com/palmyra-email-logo-v2.png" width="210" alt="PALMYRA" style="display:block;width:210px;max-width:75%;height:auto;margin:0 auto;border:0;outline:none;text-decoration:none;">
 </td></tr>
-<tr><td style="height:1px;background:#eef0f3;font-size:0;line-height:0;">&nbsp;</td></tr>
-<tr><td style="padding:38px 44px 12px;">
-<div style="font-size:11px;line-height:18px;font-weight:700;color:#6332c4;text-transform:uppercase;letter-spacing:1px;">Seguridad de la cuenta</div>
-<h1 style="margin:8px 0 0;padding:0;font-size:27px;line-height:36px;font-weight:700;color:#172033;">Restablece tu contraseña</h1>
-<p style="margin:18px 0 0;padding:0;font-size:15px;line-height:25px;color:#667085;">Recibimos una solicitud para restablecer la contraseña de tu cuenta de PALMYRA. Si fuiste tú, utiliza el botón para continuar.</p>
+<tr><td style="height:1px;background:#EFE8FF;font-size:0;line-height:0;">&nbsp;</td></tr>
+<tr><td style="padding:30px 28px 8px;">
+<div style="font-size:11px;line-height:18px;font-weight:800;color:#7C4DDE;text-transform:uppercase;letter-spacing:1.4px;">Seguridad de la cuenta</div>
+<h1 style="margin:8px 0 0;padding:0;font-size:26px;line-height:34px;font-weight:800;color:#3B1B78;letter-spacing:-0.4px;">Restablece tu contraseña</h1>
+<p style="margin:14px 0 0;padding:0;font-size:15px;line-height:25px;color:#5B5570;">Recibimos una solicitud para cambiar la contraseña de <strong style="color:#3B1B78;">{{ .Email }}</strong>. Si fuiste tú, usa el botón para continuar.</p>
 </td></tr>
-<tr><td style="padding:22px 44px 24px;">
-<a href="https://palmyracrm.onrender.com/auth/confirm?token_hash={{ .TokenHash }}&type=recovery" style="display:inline-block;padding:13px 22px;background:#6332c4;border:1px solid #6332c4;border-radius:7px;color:#fff;text-decoration:none;font-size:14px;line-height:20px;font-weight:700;">Restablecer contraseña</a>
+<tr><td style="padding:22px 28px 16px;">
+<a href="{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery" style="display:inline-block;padding:14px 26px;background:#5B2DBA;border:1px solid #5B2DBA;border-radius:12px;color:#ffffff;text-decoration:none;font-size:14px;line-height:20px;font-weight:800;">Crear nueva contraseña</a>
 </td></tr>
-<tr><td style="padding:0 44px 20px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#faf8ff;border:1px solid #e8defb;border-radius:8px;">
-<tr><td style="padding:15px 16px;">
-<div style="font-size:12px;line-height:19px;font-weight:700;color:#3f2a70;">Aviso de seguridad</div>
-<div style="margin-top:4px;font-size:12px;line-height:19px;color:#667085;">Tu contraseña actual no cambiará hasta que completes el proceso de recuperación.</div>
+<tr><td style="padding:0 28px 18px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#FBF8FF;border:1px solid #E8DEFB;border-radius:12px;">
+<tr><td style="padding:14px 16px;">
+<div style="font-size:12px;line-height:19px;font-weight:800;color:#3B1B78;">Aviso de seguridad</div>
+<div style="margin-top:4px;font-size:12px;line-height:19px;color:#5B5570;">Tu contraseña actual no cambia hasta que completes el proceso.</div>
 </td></tr></table>
 </td></tr>
-<tr><td style="padding:0 44px 34px;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#f8f9fb;border:1px solid #e5e7eb;border-radius:8px;">
-<tr><td style="padding:15px 16px;">
-<div style="font-size:11px;line-height:17px;font-weight:700;color:#667085;">Si el botón no funciona</div>
-<div style="margin-top:7px;font-size:11px;line-height:18px;color:#6332c4;word-break:break-all;">https://palmyracrm.onrender.com/auth/confirm?token_hash={{ .TokenHash }}&type=recovery</div>
+<tr><td style="padding:0 28px 28px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#F7F5FC;border:1px solid #EFE8FF;border-radius:12px;">
+<tr><td style="padding:14px 16px;">
+<div style="font-size:11px;line-height:17px;font-weight:800;color:#5B5570;">Si el botón no funciona</div>
+<div style="margin-top:6px;font-size:11px;line-height:18px;color:#6535C5;word-break:break-all;">{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery</div>
 </td></tr></table>
-<p style="margin:18px 0 0;padding:0;font-size:12px;line-height:19px;color:#98a2b3;">Si no solicitaste este cambio, no hagas clic en el enlace. Tu contraseña actual seguirá sin cambios.</p>
+<p style="margin:14px 0 0;padding:0;font-size:12px;line-height:19px;color:#8B85A0;">Si no solicitaste este cambio, ignora este correo: tu contraseña seguirá igual.</p>
 </td></tr>
-<tr><td style="padding:20px 44px;background:#f8f9fb;border-top:1px solid #eef0f3;">
-<p style="margin:0;font-size:11px;line-height:18px;color:#667085;">Este mensaje fue enviado automáticamente por PALMYRA.</p>
+<tr><td style="padding:18px 28px;background:#F7F5FC;border-top:1px solid #EFE8FF;">
+<p style="margin:0;font-size:11px;line-height:18px;color:#5B5570;">Este mensaje fue enviado automáticamente por PALMYRA.</p>
 </td></tr>
 </table>
-<div style="max-width:600px;padding:14px 10px 0;font-size:10px;line-height:16px;color:#98a2b3;text-align:center;">Gestión empresarial desde un solo lugar.</div>
+<div style="max-width:600px;padding:14px 12px 0;font-size:10px;line-height:16px;color:#9B95AF;text-align:center;">PALMYRA · Gestión empresarial desde un solo lugar</div>
 </td></tr></table>
 </body>
 </html>

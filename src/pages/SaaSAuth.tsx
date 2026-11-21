@@ -1,10 +1,13 @@
 import React, { useEffect, useState } from "react";
-import { ArrowRight, Check, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, Sparkles, Users, Warehouse, MonitorSmartphone } from "lucide-react";
+import { ArrowRight, Check, Eye, EyeOff, Loader2, LockKeyhole, Mail, MailCheck, Send, ShieldCheck, Sparkles, Users, Warehouse, MonitorSmartphone } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getSupabase } from "../lib/supabase";
+import { PalmyraWordmark } from "../components/PalmyraWordmark";
+import { getPlan } from "../config/saas";
 import {
   loadSaaSContext,
   requestSaaSPasswordReset,
+  resendSaaSSignupConfirmation,
   signInSaaSAccount,
   signUpSaaSAccount,
   updateSaaSPassword
@@ -18,7 +21,7 @@ import {
 import { isBrowserOffline, isTransientNetworkError } from "../services/offlineNetwork";
 import { rememberOfflinePosCredential, syncOfflinePosCredentials } from "../services/offlinePosAuth";
 
-type Mode = "signin" | "signup" | "reset" | "recovery";
+type Mode = "signin" | "signup" | "reset" | "recovery" | "sent";
 
 const PRODUCTION_APP_URL = "https://palmyracrm.onrender.com";
 
@@ -53,6 +56,23 @@ export default function SaaSAuth() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sentTo, setSentTo] = useState("");
+  const [resendIn, setResendIn] = useState(0);
+  const plannedPlan = (() => {
+    try {
+      const code = sessionStorage.getItem("palmyra_signup_plan") || localStorage.getItem("palmyra_signup_plan");
+      if (!code) return null;
+      const plan = getPlan(code);
+      return plan.code === code ? plan : null;
+    } catch { return null; }
+  })();
+
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const timer = window.setTimeout(() => setResendIn((value) => value - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [resendIn]);
+
   useEffect(() => {
     const supabase = getSupabase();
     if (!supabase) return;
@@ -136,6 +156,27 @@ export default function SaaSAuth() {
     window.location.replace("/");
   };
 
+  const resendConfirmation = async (address: string) => {
+    const clean = address.trim().toLowerCase();
+    setError("");
+    setMessage("");
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(clean)) {
+      setError("Escribe tu correo para reenviar la confirmación.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const { error: resendError } = await resendSaaSSignupConfirmation(clean);
+      if (resendError) throw resendError;
+      setMessage("Correo de confirmación reenviado. Revisa tu bandeja y la carpeta de spam.");
+      setResendIn(45);
+    } catch (err: any) {
+      setError(messageFor(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -178,15 +219,26 @@ export default function SaaSAuth() {
 
       if (mode === "signup") {
         if (name.trim().length < 2) throw new Error("Escribe tu nombre completo.");
-        if (email.trim().length < 5) throw new Error("Escribe un correo válido.");
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())) throw new Error("Escribe un correo válido.");
         if (password.length < 8) throw new Error("La contraseña debe tener al menos 8 caracteres.");
+        if (password !== confirmPassword) throw new Error("Las contraseñas no coinciden.");
 
         const result = await signUpSaaSAccount(name, email, password, "/auth");
         if (result.error) throw result.error;
         if (!result.data.user) throw new Error("No se pudo crear el usuario.");
+        // Supabase devuelve identities vacías cuando el correo ya está
+        // registrado: no creamos una cuenta nueva ni mostramos un falso éxito.
+        if (Array.isArray(result.data.user.identities) && result.data.user.identities.length === 0) {
+          throw new Error("Este correo ya tiene una cuenta PALMYRA. Inicia sesión o recupera tu contraseña.");
+        }
         if (!result.data.session) {
-          setMode("signin");
-          setMessage("Cuenta creada. Revisa tu correo para confirmar la cuenta y luego inicia sesión.");
+          setSentTo(email.trim().toLowerCase());
+          setMode("sent");
+          setResendIn(45);
+          setPassword("");
+          setConfirmPassword("");
+          setError("");
+          setMessage("");
           return;
         }
         if (typeof sessionStorage !== "undefined") {
@@ -234,10 +286,10 @@ export default function SaaSAuth() {
     <main className="min-h-[100dvh] bg-[#F7F5FC] overflow-y-auto flex items-start sm:items-center justify-center p-3 sm:p-5" data-keyboard-viewport="native">
       <div className="w-full max-w-4xl">
         <div className="flex items-center justify-between mb-3 px-1">
-          <button onClick={() => navigate("/landing")} className="flex items-center gap-2.5">
-            <img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="h-auto w-[230px] max-w-full object-contain object-left" />
+          <button onClick={() => navigate("/landing")} className="flex items-center gap-2.5" aria-label="Ir a la página de inicio de PALMYRA">
+            <PalmyraWordmark className="h-8 w-auto sm:h-10" />
           </button>
-          <button onClick={() => navigate("/landing")} className="text-[9px] font-black uppercase tracking-wider text-slate-400 hover:text-[#6535C5]">Volver al inicio</button>
+          <button onClick={() => navigate("/landing")} className="text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-[#6535C5]">Volver al inicio</button>
         </div>
 
         <div className="grid lg:grid-cols-[.9fr_1.1fr] bg-white border border-violet-100 rounded-[26px] overflow-hidden shadow-[0_30px_90px_-52px_rgba(59,27,110,.55)]">
@@ -261,21 +313,74 @@ export default function SaaSAuth() {
           <section className="p-4 sm:p-6">
             <div>
               <p className="text-[9px] uppercase tracking-[.18em] font-black text-[#7649D6]">
-                {mode === "recovery" ? "Recuperación" : mode === "signup" ? "Crear cuenta" : mode === "reset" ? "Recuperar acceso" : "Bienvenido"}
+                {mode === "recovery" ? "Recuperación" : mode === "signup" ? "Crear cuenta" : mode === "reset" ? "Recuperar acceso" : mode === "sent" ? "Confirma tu correo" : "Bienvenido"}
               </p>
               <h2 className="text-2xl font-black tracking-[-.04em] text-[#2A1938] mt-1">
-                {mode === "signup" ? "Crea tu cuenta PALMYRA" : mode === "reset" ? "Recupera tu contraseña" : mode === "recovery" ? "Crea una nueva contraseña" : "Entra a tu empresa"}
+                {mode === "signup" ? "Crea tu cuenta PALMYRA" : mode === "reset" ? "Recupera tu contraseña" : mode === "recovery" ? "Crea una nueva contraseña" : mode === "sent" ? "Revisa tu correo" : "Entra a tu empresa"}
               </h2>
               <p className="text-xs text-slate-500 mt-2 leading-5">
-                {mode === "signup" ? "Crea tu acceso en menos de un minuto. Después configurarás empresa, almacén y plan en un solo paso." : mode === "recovery" ? "Usa una contraseña nueva de al menos 8 caracteres." : "Tu sesión determina la empresa, rol y permisos que puedes utilizar."}
+                {mode === "signup" ? "Crea tu acceso en menos de un minuto. Después configurarás empresa, almacén y plan en un solo paso." : mode === "sent" ? "Enviamos un enlace seguro para activar tu cuenta." : mode === "recovery" ? "Usa una contraseña nueva de al menos 8 caracteres." : "Tu sesión determina la empresa, rol y permisos que puedes utilizar."}
               </p>
+              {mode === "signup" && plannedPlan ? (
+                <div className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-violet-100 bg-[#F7F5FC] px-3 py-2">
+                  <span className="text-[11px] leading-5 text-slate-500">
+                    Plan elegido: <strong className="text-[#3B1B78]">{plannedPlan.name}</strong>
+                    {plannedPlan.price === 0 ? " · Gratis" : ` · ${plannedPlan.price} USD/mes`}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigate("/landing");
+                      window.setTimeout(() => document.getElementById("planes")?.scrollIntoView({ behavior: "smooth" }), 350);
+                    }}
+                    className="text-[10px] font-black text-[#6535C5]"
+                  >
+                    Cambiar
+                  </button>
+                </div>
+              ) : null}
             </div>
 
-            {mode !== "recovery" && <div className="grid grid-cols-2 gap-1 p-1 bg-[#F7F5FC] rounded-xl mt-5">
+            {mode !== "recovery" && mode !== "sent" && <div className="grid grid-cols-2 gap-1 p-1 bg-[#F7F5FC] rounded-xl mt-5">
               <button onClick={() => {setMode("signin");setError("");setMessage("");}} className={"h-9 rounded-lg text-[10px] font-black " + (mode==="signin"?"bg-white text-[#3B1B6E] shadow-sm":"text-slate-400")}>Iniciar sesión</button>
               <button onClick={() => {setMode("signup");setError("");setMessage("");}} className={"h-9 rounded-lg text-[10px] font-black " + (mode==="signup"?"bg-white text-[#3B1B6E] shadow-sm":"text-slate-400")}>Crear cuenta</button>
             </div>}
 
+            {mode === "sent" ? (
+              <div className="mt-5 rounded-2xl border border-violet-100 bg-[#F7F5FC] p-4">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#EFE8FF] text-[#5B2DBA]"><MailCheck className="h-5 w-5" /></span>
+                  <div className="min-w-0">
+                    <p className="text-sm font-black text-[#3B1B78]">Confirma tu cuenta para continuar</p>
+                    <p className="mt-1 break-all text-[11px] leading-5 text-slate-500">Enviamos el enlace a <strong className="text-slate-700">{sentTo}</strong>. Ábrelo en este mismo dispositivo para activar tu acceso.</p>
+                  </div>
+                </div>
+                <ol className="mt-3 space-y-1.5 text-[11px] leading-5 text-slate-600">
+                  <li>1. Abre el correo de PALMYRA (revisa también Spam).</li>
+                  <li>2. Pulsa «Confirmar correo electrónico».</li>
+                  <li>3. Vuelve aquí y entra con tu contraseña si el enlace no abre la sesión.</li>
+                </ol>
+                {error ? <div role="alert" className="mt-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-[11px] font-bold text-rose-700">{error}</div> : null}
+                {message ? <div role="status" className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-[11px] font-bold text-emerald-700">{message}</div> : null}
+                <button
+                  type="button"
+                  disabled={busy || resendIn > 0}
+                  onClick={() => void resendConfirmation(sentTo)}
+                  className="mt-3 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#5B2DBA] text-xs font-black text-white disabled:opacity-50"
+                >
+                  {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  {resendIn > 0 ? `Reenviar en ${resendIn} s` : "Reenviar correo de confirmación"}
+                </button>
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <button type="button" onClick={() => { setMode("signin"); setError(""); setMessage("Bienvenido de nuevo. Si el enlace no abrió tu sesión, entra con tu contraseña."); }} className="h-10 rounded-xl border border-violet-200 bg-white text-[10px] font-black text-[#5B2DBA]">
+                    Ya confirmé · Entrar
+                  </button>
+                  <button type="button" onClick={() => { setMode("signup"); setSentTo(""); setError(""); setMessage(""); }} className="h-10 rounded-xl bg-[#EFE8FF] text-[10px] font-black text-[#5B2DBA]">
+                    Usar otro correo
+                  </button>
+                </div>
+              </div>
+            ) : (
             <form onSubmit={submit} className="space-y-3 mt-4">
               {mode === "signup" ? (
                 <label className="block">
@@ -316,7 +421,7 @@ export default function SaaSAuth() {
                 </div>
               </label>
 
-              {mode === "recovery" ? (
+              {mode === "recovery" || mode === "signup" ? (
                 <label className="block">
                   <span className="form-label">Confirmar contraseña</span>
                   <div className="relative">
@@ -335,10 +440,20 @@ export default function SaaSAuth() {
               ) : null}
 
               {error ? (
-                <div className="rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-[10px] font-bold p-3">{error}</div>
+                <div role="alert" className="rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-[11px] font-bold p-3">{error}</div>
+              ) : null}
+              {mode === "signin" && error && /confirma tu correo/i.test(error) ? (
+                <button
+                  type="button"
+                  disabled={busy || resendIn > 0}
+                  onClick={() => void resendConfirmation(email)}
+                  className="w-full h-10 rounded-xl border border-violet-200 bg-white text-[11px] font-black text-[#5B2DBA] disabled:opacity-50"
+                >
+                  {resendIn > 0 ? `Reenviar en ${resendIn} s` : "Reenviar correo de confirmación"}
+                </button>
               ) : null}
               {message ? (
-                <div className="rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold p-3">{message}</div>
+                <div role="status" className="rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold p-3">{message}</div>
               ) : null}
 
               <button disabled={busy} className="w-full h-11 mt-1 rounded-xl bg-[#6535C5] hover:bg-[#4F249D] text-white text-xs font-black flex items-center justify-center gap-2 disabled:opacity-50">
@@ -354,11 +469,12 @@ export default function SaaSAuth() {
                 {!busy && <ArrowRight className="w-4 h-4"/>}
               </button>
             </form>
+            )}
 
-            {mode === "signin" && <button type="button" onClick={()=>{setMode("reset");setError("");setMessage("");}} className="w-full mt-3 text-[9px] font-black text-[#6535C5]">¿Olvidaste tu contraseña?</button>}
-            {mode === "reset" && <button type="button" onClick={()=>{setMode("signin");setError("");setMessage("");}} className="w-full mt-3 text-[9px] font-black text-slate-400">Volver a iniciar sesión</button>}
+            {mode === "signin" && <button type="button" onClick={()=>{setMode("reset");setError("");setMessage("");}} className="w-full mt-3 text-[10px] font-black text-[#6535C5]">¿Olvidaste tu contraseña?</button>}
+            {mode === "reset" && <button type="button" onClick={()=>{setMode("signin");setError("");setMessage("");}} className="w-full mt-3 text-[10px] font-black text-slate-400">Volver a iniciar sesión</button>}
 
-            <div className="mt-5 pt-4 border-t border-violet-100 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[8px] text-slate-400">
+            <div className="mt-5 pt-4 border-t border-violet-100 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[10px] text-slate-400">
               <span className="inline-flex items-center gap-1"><Check className="w-3 h-3 text-emerald-600"/> Datos aislados</span>
               <span className="inline-flex items-center gap-1"><ShieldCheck className="w-3 h-3 text-[#6535C5]"/> Accesos por rol</span>
               <span className="inline-flex items-center gap-1"><MonitorSmartphone className="w-3 h-3 text-[#6535C5]"/> Multi-dispositivo</span>
