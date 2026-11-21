@@ -23,6 +23,8 @@ if (typeof crypto !== "undefined" && typeof crypto.randomUUID !== "function") {
   };
 }
 import { protectPwaStorage } from './services/pwaStorageHealth';
+import { isPalmyraApp } from './lib/install';
+import { installNativeUpdateHooks } from './lib/nativeApp';
 
 // Recover gracefully when a cached HTML/service-worker version references a
 // chunk removed by a newer deployment. Vite emits this event for failed
@@ -128,16 +130,27 @@ const PALMYRA_UPDATE_AVAILABLE_KEY = 'palmyra:update-available';
 const PALMYRA_UPDATE_VERSION_KEY = 'palmyra:update-version';
 const PALMYRA_BUILD_ID_KEY = 'palmyra:build-id';
 const PALMYRA_UPDATE_APPLY_KEY = 'palmyra:update-applying';
+const PALMYRA_UPDATE_RELOAD_GUARD_KEY = 'palmyra:update-reload-guard';
+// Un archivo de precarga no debe colgar la actualización completa: 40s por
+// petición y un reintento. Si aun así falla, el Service Worker lo buscará al
+// activarse y la app sigue operativa.
+const UPDATE_FILE_TIMEOUT_MS = 40_000;
+const UPDATE_FILE_RETRIES = 1;
+const UPDATE_MAX_CONCURRENCY = 4;
+const UPDATE_SIZE_PROBE_TIMEOUT_MS = 12_000;
+const UPDATE_RELOAD_GUARD_WINDOW_MS = 10 * 60_000;
 let swCheckTimer: ReturnType<typeof setInterval> | null = null;
 
-type PalmyraUpdatePhase = 'checking' | 'downloading' | 'installing' | 'reloading' | 'up-to-date';
+type PalmyraUpdatePhase = 'checking' | 'preparing' | 'downloading' | 'installing' | 'reloading' | 'up-to-date';
 
 export type PalmyraUpdateProgress = {
   phase: PalmyraUpdatePhase;
   percent: number;
   filesDone?: number;
   filesTotal?: number;
+  filesSkipped?: number;
   receivedBytes?: number;
+  totalBytes?: number;
   version?: string;
 };
 
@@ -248,75 +261,221 @@ const openPrecacheCaches = async (): Promise<Cache[]> => {
   }
 };
 
-const downloadUpdateAssets = async (version?: string) => {
+type PrecachePlanEntry = { url: string; cached: boolean; size: number };
+
+type PrecachePlan = {
+  entries: PrecachePlanEntry[];
+  filesTotal: number;
+  cachedTotal: number;
+  expectedBytes: number;
+};
+
+// El manifiesto de precarga se analiza UNA vez por actualización y se reutiliza
+// para decidir qué falta de verdad. Antes se volvía a descargar toda la app.
+let activeUpdatePlan: PrecachePlan | null = null;
+
+const fetchWithTimeout = async (input: string, init: RequestInit, timeoutMs: number): Promise<Response> => {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    window.clearTimeout(timer);
+  }
+};
+
+const buildPrecachePlan = async (): Promise<PrecachePlan> => {
   let targets: string[] = [];
   try {
     targets = await readPrecacheTargets();
   } catch {
     targets = [];
   }
-  const filesTotal = targets.length;
-  if (!filesTotal) return;
+  const cachesList = await openPrecacheCaches();
+  const entries: PrecachePlanEntry[] = [];
+  for (const url of targets) {
+    let cached = false;
+    for (const cache of cachesList) {
+      try {
+        if (await cache.match(url)) {
+          cached = true;
+          break;
+        }
+      } catch {
+        // Una caché ilegible no debe impedir calcular el resto del plan.
+      }
+    }
+    entries.push({ url, cached, size: 0 });
+  }
+  return {
+    entries,
+    filesTotal: entries.length,
+    cachedTotal: entries.filter((entry) => entry.cached).length,
+    expectedBytes: 0,
+  };
+};
 
-  let filesDone = 0;
+/** HEAD/Content-Length para mostrar MB reales; si el servidor no lo publica se usa el conteo de archivos. */
+const probeAssetSize = async (url: string): Promise<number> => {
+  try {
+    const response = await fetchWithTimeout(url, { method: 'HEAD', cache: 'no-store' }, 8_000);
+    if (!response.ok) return 0;
+    const declared = Number(response.headers.get('content-length') || 0);
+    return Number.isFinite(declared) && declared > 0 ? declared : 0;
+  } catch {
+    return 0;
+  }
+};
+
+const estimatePlanBytes = async (plan: PrecachePlan): Promise<void> => {
+  const missing = plan.entries.filter((entry) => !entry.cached);
+  if (!missing.length) {
+    plan.expectedBytes = 0;
+    return;
+  }
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < missing.length) {
+      const entry = missing[cursor++];
+      entry.size = await probeAssetSize(entry.url);
+    }
+  };
+  const sizing = Promise.all(Array.from({ length: Math.min(8, missing.length) }, worker));
+  // El tanteo de tamaños es informativo: nunca debe retrasar la descarga real.
+  await Promise.race([sizing, new Promise<void>((resolve) => window.setTimeout(resolve, UPDATE_SIZE_PROBE_TIMEOUT_MS))]);
+  plan.expectedBytes = plan.entries.reduce((sum, entry) => sum + (entry.cached ? 0 : entry.size), 0);
+};
+
+const ensureUpdatePlan = async (version?: string): Promise<PrecachePlan> => {
+  if (activeUpdatePlan) return activeUpdatePlan;
+  reportUpdateProgress({ phase: 'preparing', percent: 3, version });
+  const plan = await buildPrecachePlan();
+  activeUpdatePlan = plan;
+  reportUpdateProgress({
+    phase: 'preparing',
+    percent: 5,
+    version,
+    filesDone: plan.cachedTotal,
+    filesTotal: plan.filesTotal,
+    receivedBytes: 0,
+    totalBytes: 0,
+  });
+  await estimatePlanBytes(plan);
+  reportUpdateProgress({
+    phase: 'preparing',
+    percent: 8,
+    version,
+    filesDone: plan.cachedTotal,
+    filesTotal: plan.filesTotal,
+    receivedBytes: 0,
+    totalBytes: plan.expectedBytes,
+  });
+  return plan;
+};
+
+const downloadOneAsset = async (entry: PrecachePlanEntry, onBytes: (bytes: number) => void): Promise<boolean> => {
+  for (let attempt = 0; attempt <= UPDATE_FILE_RETRIES; attempt += 1) {
+    // El tiempo límite cubre la petición completa (cabeceras Y cuerpo): un
+    // enlace que se queda a medias se aborta y no bloquea la actualización.
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), UPDATE_FILE_TIMEOUT_MS);
+    let attemptError: unknown = null;
+    try {
+      const response = await fetch(entry.url, { cache: 'force-cache', signal: controller.signal });
+      if (!response.ok) throw new Error('HTTP ' + response.status);
+      if (response.body) {
+        const reader = response.body.getReader();
+        let readBytes = 0;
+        for (;;) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          if (chunk.value && chunk.value.byteLength > 0) {
+            readBytes += chunk.value.byteLength;
+            onBytes(chunk.value.byteLength);
+          }
+        }
+        if (readBytes === 0 && entry.size > 0) onBytes(entry.size);
+      } else {
+        const blob = await response.blob();
+        if (blob.size > 0) onBytes(blob.size);
+      }
+      return true;
+    } catch (error) {
+      attemptError = error;
+    } finally {
+      window.clearTimeout(timer);
+    }
+    if (attempt >= UPDATE_FILE_RETRIES) {
+      // Un archivo opcional caído no cancela la actualización: el nuevo
+      // Service Worker lo pedirá al activarse.
+      console.warn('[PWA] No se pudo precargar un archivo; el Service Worker lo reintentará:', entry.url, attemptError);
+      return false;
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 400 * (attempt + 1)));
+  }
+  return false;
+};
+
+const downloadUpdateAssets = async (version?: string): Promise<void> => {
+  const plan = activeUpdatePlan || await ensureUpdatePlan(version);
+  const pending = plan.entries.filter((entry) => !entry.cached);
+  const totalBytes = plan.expectedBytes;
+  let filesDone = plan.cachedTotal;
+  let filesSkipped = 0;
   let receivedBytes = 0;
   let lastReportAt = 0;
   let lastPercent = 8;
-  const cachesList = await openPrecacheCaches();
 
   const report = (force = false) => {
     const now = Date.now();
-    if (!force && now - lastReportAt < 120) return;
+    if (!force && now - lastReportAt < 200) return;
     lastReportAt = now;
-    const percent = Math.min(85, 8 + Math.round((filesDone / filesTotal) * 77));
-    lastPercent = Math.max(lastPercent, percent);
+    const fraction = totalBytes > 0
+      ? Math.min(1, receivedBytes / totalBytes)
+      : plan.filesTotal > 0 ? filesDone / plan.filesTotal : 1;
+    lastPercent = Math.max(lastPercent, Math.min(85, 8 + Math.round(fraction * 77)));
     reportUpdateProgress({
       phase: 'downloading',
       percent: lastPercent,
       filesDone,
-      filesTotal,
+      filesTotal: plan.filesTotal,
+      filesSkipped,
       receivedBytes,
+      totalBytes,
       version,
     });
   };
 
-  report(true);
+  if (!pending.length) {
+    // Todo el precache ya está en el dispositivo: no se vuelve a descargar.
+    reportUpdateProgress({
+      phase: 'downloading',
+      percent: 85,
+      filesDone: plan.filesTotal,
+      filesTotal: plan.filesTotal,
+      filesSkipped: 0,
+      receivedBytes: 0,
+      totalBytes: 0,
+      version,
+    });
+    return;
+  }
 
+  report(true);
   let cursor = 0;
-  const downloadOne = async () => {
-    while (cursor < targets.length) {
-      const target = targets[cursor++];
-      try {
-        let alreadyStored = false;
-        for (const cache of cachesList) {
-          if (await cache.match(target)) {
-            alreadyStored = true;
-            break;
-          }
-        }
-        if (!alreadyStored) {
-          const response = await fetch(target);
-          if (!response.ok) throw new Error('HTTP ' + response.status);
-          if (response.body) {
-            const reader = response.body.getReader();
-            for (;;) {
-              const chunk = await reader.read();
-              if (chunk.done) break;
-              if (chunk.value) receivedBytes += chunk.value.byteLength;
-            }
-          } else {
-            receivedBytes += (await response.blob()).size;
-          }
-        }
-      } catch {
-        // Si un archivo falla, el Service Worker lo reintenta al instalar.
-      }
+  const worker = async () => {
+    while (cursor < pending.length) {
+      const entry = pending[cursor++];
+      const ok = await downloadOneAsset(entry, (bytes) => {
+        receivedBytes += bytes;
+        report();
+      });
+      if (!ok) filesSkipped += 1;
       filesDone += 1;
       report();
     }
   };
-
-  await Promise.all(Array.from({ length: Math.min(4, filesTotal) }, downloadOne));
+  await Promise.all(Array.from({ length: Math.min(UPDATE_MAX_CONCURRENCY, pending.length) }, worker));
   report(true);
 };
 
@@ -360,15 +519,22 @@ const resetShellForFreshBuild = async () => {
 
 // La app de escritorio ya sirve todo desde el disco: un Service Worker allí
 // solo puede quedar obsoleto tras una actualización y devolver un shell viejo.
+// El APK también sirve desde 127.0.0.1 y se actualiza con su propio paquete
+// verificado: un Service Worker adicional solo serviría código viejo.
 const isDesktopShell = /\bElectron\//i.test(navigator.userAgent);
+const isPalmyraAndroidApp = isPalmyraApp();
+const usesNativeShell = isDesktopShell || isPalmyraAndroidApp;
 
-if (isDesktopShell) {
+// El shell Android necesita estos callbacks antes de cualquier actualización.
+installNativeUpdateHooks();
+
+if (usesNativeShell) {
   // Una marca heredada de una ejecución en navegador sobre el mismo puerto no
-  // debe mostrar el aviso de actualización dentro de la app de escritorio.
+  // debe mostrar el aviso de actualización PWA dentro de la app instalada.
   clearUpdateMarkers();
 }
 
-const updateSW = isDesktopShell
+const updateSW = usesNativeShell
   ? async (_reloadPage?: boolean) => { window.location.reload(); }
   : registerSW({
   immediate: true,
@@ -419,41 +585,85 @@ const updateSW = isDesktopShell
   },
 });
 
+// Cuando un Service Worker nuevo toma el control (por ejemplo, tras aplicar la
+// actualización o al cerrar todas las pestañas), el shell que corre ya es el
+// desplegado. Se actualiza la marca de build para no volver a avisar la misma
+// versión una y otra vez (aviso fantasma).
+if (!usesNativeShell && typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('controllerchange', () => {
+    void fetchServerManifest().then((manifest) => {
+      if (!manifest) return;
+      try { localStorage.setItem(PALMYRA_BUILD_ID_KEY, manifest.buildId); } catch {}
+      clearUpdateMarkers();
+    }).catch(() => {});
+  });
+}
+
+type UpdateReloadGuard = { buildId: string; at: number };
+
+const readReloadGuard = (): UpdateReloadGuard | null => {
+  try {
+    const raw = sessionStorage.getItem(PALMYRA_UPDATE_RELOAD_GUARD_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<UpdateReloadGuard>;
+    if (!parsed || typeof parsed.buildId !== 'string' || typeof parsed.at !== 'number') return null;
+    return { buildId: parsed.buildId, at: Number(parsed.at) };
+  } catch {
+    return null;
+  }
+};
+
+const writeReloadGuard = (buildId: string) => {
+  try {
+    sessionStorage.setItem(PALMYRA_UPDATE_RELOAD_GUARD_KEY, JSON.stringify({ buildId, at: Date.now() } satisfies UpdateReloadGuard));
+  } catch {}
+};
+
 const applyPalmyraUpdate = async (): Promise<'reloaded' | 'up-to-date'> => {
   if (!navigator.onLine) throw new Error('La actualización requiere conexión.');
+  // Un solo plan de precarga por intento (nunca se analiza dos veces /sw.js).
+  activeUpdatePlan = null;
   try {
     try { sessionStorage.setItem(PALMYRA_UPDATE_APPLY_KEY, String(Date.now())); } catch {}
-    reportUpdateProgress({ phase: 'checking', percent: 3 });
+    // Fase "Preparando" visible de inmediato mientras se planifica la descarga.
+    reportUpdateProgress({ phase: 'preparing', percent: 2 });
 
     const manifest = await fetchServerManifest();
     const localBuildId = localStorage.getItem(PALMYRA_BUILD_ID_KEY);
 
     if (manifest && localBuildId && manifest.buildId === localBuildId) {
+      // Nada nuevo en el servidor: se limpia el aviso en lugar de "no hacer nada".
+      activeUpdatePlan = null;
       clearUpdateMarkers();
+      try { sessionStorage.removeItem(PALMYRA_UPDATE_APPLY_KEY); } catch {}
       reportUpdateProgress({ phase: 'up-to-date', percent: 100, version: manifest.version });
       return 'up-to-date';
     }
 
+    // Descarga inmediata y solo de lo que falta en las cachés actuales.
+    await ensureUpdatePlan(manifest?.version);
     await downloadUpdateAssets(manifest?.version);
     reportUpdateProgress({ phase: 'installing', percent: 88, version: manifest?.version });
 
     const registration = await navigator.serviceWorker?.getRegistration();
     if (!registration) {
-      if (manifest) localStorage.setItem(PALMYRA_BUILD_ID_KEY, manifest.buildId);
-      reportUpdateProgress({ phase: 'reloading', percent: 100 });
+      if (manifest) { try { localStorage.setItem(PALMYRA_BUILD_ID_KEY, manifest.buildId); } catch {} }
+      reportUpdateProgress({ phase: 'reloading', percent: 100, version: manifest?.version });
       window.location.reload();
       return 'reloaded';
     }
 
-    // El plugin de PWA coordina SKIP_WAITING/controllerchange/reload. No se
-    // fuerza una recarga manual en paralelo para no dejar el shell en blanco.
+    // El plugin de PWA coordina SKIP_WAITING/controllerchange/reload.
     await registration.update().catch(() => {});
     let worker = registration.waiting || registration.installing;
-    if (worker) await waitForWorkerInstalled(worker, 15_000);
+    if (worker) await waitForWorkerInstalled(worker, 20_000);
 
     worker = registration.waiting || (registration.installing?.state === 'installed' ? registration.installing : null);
-    if (worker && worker.state !== 'activated') {
-      if (manifest) localStorage.setItem(PALMYRA_BUILD_ID_KEY, manifest.buildId);
+    if (worker && worker.state !== 'activated' && worker.state !== 'redundant') {
+      if (manifest) { try { localStorage.setItem(PALMYRA_BUILD_ID_KEY, manifest.buildId); } catch {} }
+      // Red de seguridad: si el controllerchange no ocurre, una única recarga
+      // toma el shell nuevo. La UI nunca queda "Actualizando" para siempre.
+      window.setTimeout(() => { window.location.reload(); }, 10_000);
       reportUpdateProgress({ phase: 'reloading', percent: 97, version: manifest?.version });
       // library-supported activation path: prompt flow + updateSW, never a
       // forced SKIP_WAITING postMessage mid-sale. The user already confirmed.
@@ -461,19 +671,36 @@ const applyPalmyraUpdate = async (): Promise<'reloaded' | 'up-to-date'> => {
       return 'reloaded';
     }
 
-    if (manifest) {
-      await resetShellForFreshBuild();
-      localStorage.setItem(PALMYRA_BUILD_ID_KEY, manifest.buildId);
-      reportUpdateProgress({ phase: 'reloading', percent: 100, version: manifest.version });
-      window.location.reload();
-      return 'reloaded';
+    // No hay worker esperando: el aviso pudo ser un falso positivo por rotación
+    // de buildId. Se verifica el servidor otra vez antes de recargar nada.
+    const confirmed = await fetchServerManifest();
+    const runningBuildId = localStorage.getItem(PALMYRA_BUILD_ID_KEY);
+    if (!confirmed || (runningBuildId && confirmed.buildId === runningBuildId)) {
+      activeUpdatePlan = null;
+      clearUpdateMarkers();
+      try { sessionStorage.removeItem(PALMYRA_UPDATE_APPLY_KEY); } catch {}
+      reportUpdateProgress({ phase: 'up-to-date', percent: 100, version: confirmed?.version });
+      return 'up-to-date';
     }
 
-    clearUpdateMarkers();
-    reportUpdateProgress({ phase: 'up-to-date', percent: 100 });
-    return 'up-to-date';
+    const guard = readReloadGuard();
+    if (guard && guard.buildId === confirmed.buildId && Date.now() - guard.at < UPDATE_RELOAD_GUARD_WINDOW_MS) {
+      // Ya se recargó una vez para este build y el shell sigue sin tomarlo:
+      // no se entra en un bucle de recargas. Se informa para reintentar.
+      throw new Error('La actualización no se pudo confirmar en este dispositivo. Cierra y abre PALMYRA para terminar de aplicarla.');
+    }
+    writeReloadGuard(confirmed.buildId);
+
+    // Recarga única y protegida: el shell cacheado serviría el HTML anterior,
+    // así que se reconstruye desde la red sin tocar IndexedDB/localStorage.
+    await resetShellForFreshBuild();
+    try { localStorage.setItem(PALMYRA_BUILD_ID_KEY, confirmed.buildId); } catch {}
+    reportUpdateProgress({ phase: 'reloading', percent: 100, version: confirmed.version });
+    window.location.reload();
+    return 'reloaded';
   } catch (error) {
     console.warn('[PALMYRA] No se pudo aplicar la actualización:', error);
+    activeUpdatePlan = null;
     try { localStorage.setItem(PALMYRA_UPDATE_AVAILABLE_KEY, '1'); } catch {}
     try { sessionStorage.removeItem(PALMYRA_UPDATE_APPLY_KEY); } catch {}
     throw error;

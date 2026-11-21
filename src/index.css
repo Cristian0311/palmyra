@@ -94,13 +94,15 @@ html, body, #root {
 }
 
 /* The POS uses an internal app shell with its own scroll regions.
-   The public landing is a document-length marketing page, so its route
-   temporarily opts the document root into normal vertical scrolling. */
-/* The marketing page must scroll even before React effects finish mounting.
-   This also makes /landing easy to preview while authenticated. */
-html:has(.landing-page),
-body:has(.landing-page),
-#root:has(.landing-page) {
+   Public routes (landing, auth, onboarding...) are document-length pages,
+   so they opt the document root into normal vertical scrolling. */
+/* Matches before React effects finish mounting, so no flash of clipped content. */
+html:has(.palmyra-landing-page),
+body:has(.palmyra-landing-page),
+#root:has(.palmyra-landing-page),
+html:has(.palmyra-scroll-page),
+body:has(.palmyra-scroll-page),
+#root:has(.palmyra-scroll-page) {
   height: auto !important;
   min-height: 100dvh;
   overflow-x: hidden !important;
@@ -111,7 +113,10 @@ body:has(.landing-page),
 
 html.palmyra-landing-active,
 body.palmyra-landing-active,
-#root.palmyra-landing-active {
+#root.palmyra-landing-active,
+html.palmyra-scroll-page,
+body.palmyra-scroll-page,
+#root.palmyra-scroll-page {
   height: auto;
   min-height: 100dvh;
   overflow-x: hidden;

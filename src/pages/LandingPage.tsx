@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PalmyraWordmark } from "../components/PalmyraWordmark";
+import { useDocumentScrollPage } from "../hooks/useDocumentScrollPage";
 
 const CITY_IMAGE = "/landing/palmyra-ruins.webp";
 const CITY_CREDIT = "Fotografía real de Palmyra, Siria · Vyacheslav Argenberg · Wikimedia Commons · CC BY 4.0";
@@ -184,7 +185,7 @@ function Brand({ compact = false }: { compact?: boolean }) {
     <img
       src="/palmyra-logo-exact.svg"
       alt="PALMYRA"
-      className={compact ? "w-[116px] h-[30px] object-contain object-left" : "w-[236px] h-[61px] object-contain object-left"}
+      className={compact ? "w-[100px] h-[26px] sm:w-[116px] sm:h-[30px] object-contain object-left" : "w-[236px] h-[61px] object-contain object-left"}
     />
   );
 }
@@ -503,60 +504,91 @@ function DownloadCenter() {
   );
 }
 
-export default function LandingPage() {
-  useEffect(() => {
-    const html = document.documentElement;
-    const body = document.body;
-    const root = document.getElementById("root");
-    const previous = {
-      htmlOverflow: html.style.overflow,
-      bodyOverflow: body.style.overflow,
-      bodyOverflowY: body.style.overflowY,
-      bodyTouchAction: body.style.touchAction,
-      rootOverflow: root?.style.overflow ?? "",
-      rootOverflowY: root?.style.overflowY ?? "",
-    };
-
-    html.style.overflow = "auto";
-    body.style.overflow = "visible";
-    body.style.overflowY = "auto";
-    body.style.touchAction = "pan-y";
-    if (root) {
-      root.style.overflow = "visible";
-      root.style.overflowY = "auto";
-    }
-
-    return () => {
-      html.style.overflow = previous.htmlOverflow;
-      body.style.overflow = previous.bodyOverflow;
-      body.style.overflowY = previous.bodyOverflowY;
-      body.style.touchAction = previous.bodyTouchAction;
-      if (root) {
-        root.style.overflow = previous.rootOverflow;
-        root.style.overflowY = previous.rootOverflowY;
-      }
-    };
-  }, []);
+export default function LandingPage({ signedIn = false }: { signedIn?: boolean } = {}) {
+  useDocumentScrollPage();
   const navigate = useNavigate();
   const [active, setActive] = useState("dashboard");
   const [mobileMenu, setMobileMenu] = useState(false);
+  const [pendingAuth, setPendingAuth] = useState<"signin" | "signup" | null>(null);
   const current = useMemo(() => areas.find(item => item.id === active) || areas[0], [active]);
+
+  // Si React Router no llega a cambiar de pantalla (por ejemplo, porque el
+  // arranque de la app quedó bloqueado), se fuerza la navegación real. Así el
+  // botón nunca queda "muerto" y el usuario no debe reiniciar el sistema.
+  // Si la URL ya cambió solo esperamos: React puede mantener el landing visible
+  // mientras descarga el chunk de /auth en un móvil lento.
+  useEffect(() => {
+    if (!pendingAuth) return;
+    const target = pendingAuth === "signup" ? "/auth?mode=signup" : "/auth?mode=signin";
+    const force = window.setTimeout(() => {
+      if (/^\/auth(\/|$)/i.test(window.location.pathname)) return;
+      window.location.assign(target);
+    }, 2500);
+    const reset = window.setTimeout(() => setPendingAuth(null), 6000);
+    return () => {
+      window.clearTimeout(force);
+      window.clearTimeout(reset);
+    };
+  }, [pendingAuth]);
+
+  const goAuth = (kind: "signin" | "signup") => {
+    const target = kind === "signup" ? "/auth?mode=signup" : "/auth?mode=signin";
+    setMobileMenu(false);
+    setPendingAuth(kind);
+    try {
+      navigate(target);
+    } catch (error) {
+      console.warn("[PALMYRA] La navegación interna al acceso falló; se abre la URL directa.", error);
+      window.location.assign(target);
+    }
+  };
+
+  const choosePlanAndSignup = (code: string) => {
+    try {
+      sessionStorage.setItem("palmyra_signup_plan", code);
+      localStorage.setItem("palmyra_signup_plan", code);
+    } catch (error) {
+      // Un almacenamiento bloqueado no puede impedir el registro.
+      console.warn("[PALMYRA] No se pudo recordar el plan elegido.", error);
+    }
+    goAuth("signup");
+  };
+
+  // Abrir un módulo sin sesión provocaba un salto a /pos y un rebote inmediato
+  // al landing: el botón parecía no responder. Sin sesión llevamos al acceso.
+  const openArea = (route: string) => {
+    if (signedIn) {
+      navigate(route);
+      return;
+    }
+    goAuth("signin");
+  };
 
   return (
     <div className="palmyra-landing-page min-h-screen bg-[#F7F5FC] text-[#21182F]">
       <header className="sticky top-0 z-50 border-b border-violet-100 bg-[#F7F5FC]/90 backdrop-blur-xl">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-[68px] flex items-center justify-between gap-4">
-          <button onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} aria-label="Ir al inicio"><Brand /></button>
+        <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 h-16 sm:h-[68px] flex items-center justify-between gap-2 sm:gap-4">
+          <button type="button" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })} aria-label="Ir al inicio" className="flex min-w-0 shrink items-center">
+            <span className="lg:hidden"><Brand compact /></span>
+            <span className="hidden lg:block"><Brand /></span>
+          </button>
           <nav className="hidden lg:flex items-center gap-7 text-[12px] font-bold text-slate-600">
             <a href="#producto">Producto</a><a href="#modulos">Módulos</a><a href="#descargas">Descargas</a><a href="#planes">Planes</a><a href="#historia">Historia</a>
           </nav>
-          <div className="flex items-center gap-2">
-            <button onClick={() => navigate("/auth")} className="hidden sm:inline-flex h-10 px-4 rounded-xl items-center justify-center text-xs font-black text-[#5B2DBA] hover:bg-white">Entrar</button>
-            <button onClick={() => navigate("/auth?mode=signup")} className="h-10 px-4 sm:px-5 rounded-xl bg-[#5B2DBA] text-white text-xs font-black shadow-[0_12px_28px_-12px_rgba(101,53,197,.65)]">Crear cuenta</button>
-            <button onClick={() => setMobileMenu(v => !v)} className="lg:hidden w-10 h-10 rounded-xl border border-violet-100 bg-white text-[#5B2DBA]" aria-label="Menú">{mobileMenu ? <X className="w-4 h-4 mx-auto" /> : <Menu className="w-4 h-4 mx-auto" />}</button>
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            <button type="button" onClick={() => goAuth("signin")} aria-label="Entrar a tu cuenta" className="inline-flex h-10 min-h-10 items-center justify-center gap-1 rounded-xl border border-violet-200 bg-white px-2.5 text-[11px] font-black text-[#5B2DBA] transition active:scale-95 sm:border-0 sm:bg-transparent sm:px-4 sm:text-xs sm:hover:bg-white">
+              {pendingAuth === "signin" ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null}
+              Entrar
+            </button>
+            <button type="button" onClick={() => goAuth("signup")} aria-label="Crear cuenta" className="inline-flex h-10 min-h-10 items-center justify-center gap-1 whitespace-nowrap rounded-xl bg-[#5B2DBA] px-3 text-[11px] font-black text-white shadow-[0_12px_28px_-12px_rgba(101,53,197,.65)] transition active:scale-95 sm:px-5 sm:text-xs">
+              {pendingAuth === "signup" ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null}
+              <span className="sm:hidden">Crear</span>
+              <span className="hidden sm:inline">Crear cuenta</span>
+            </button>
+            <button type="button" onClick={() => setMobileMenu(v => !v)} className="w-10 h-10 shrink-0 rounded-xl border border-violet-100 bg-white text-[#5B2DBA]" aria-label="Menú" aria-expanded={mobileMenu}>{mobileMenu ? <X className="w-4 h-4 mx-auto" /> : <Menu className="w-4 h-4 mx-auto" />}</button>
           </div>
         </div>
-        {mobileMenu && <div className="lg:hidden border-t border-violet-100 bg-white px-4 py-3"><div className="flex flex-col gap-3 text-xs font-bold text-slate-600"><a href="#producto" onClick={() => setMobileMenu(false)}>Producto</a><a href="#modulos" onClick={() => setMobileMenu(false)}>Módulos</a><a href="#descargas" onClick={() => setMobileMenu(false)}>Descargas</a><a href="#planes" onClick={() => setMobileMenu(false)}>Planes</a><a href="#historia" onClick={() => setMobileMenu(false)}>Historia</a></div></div>}
+        {mobileMenu && <div className="lg:hidden border-t border-violet-100 bg-white px-4 py-3"><div className="flex flex-col gap-3 text-xs font-bold text-slate-600"><a href="#producto" onClick={() => setMobileMenu(false)}>Producto</a><a href="#modulos" onClick={() => setMobileMenu(false)}>Módulos</a><a href="#descargas" onClick={() => setMobileMenu(false)}>Descargas</a><a href="#planes" onClick={() => setMobileMenu(false)}>Planes</a><a href="#historia" onClick={() => setMobileMenu(false)}>Historia</a></div><div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-violet-100"><button type="button" onClick={() => goAuth("signin")} className="h-11 rounded-xl border border-violet-200 bg-white text-[11px] font-black text-[#5B2DBA] active:scale-[.98]">Entrar</button><button type="button" onClick={() => goAuth("signup")} className="h-11 rounded-xl bg-[#5B2DBA] text-white text-[11px] font-black active:scale-[.98]">Crear cuenta</button></div></div>}
       </header>
 
       <main>
@@ -575,9 +607,10 @@ export default function LandingPage() {
                 PALMYRA reúne ventas, inventario, cajas, compras, clientes, almacenes, equipo y reportes en un solo sistema. Una cuenta pertenece a una sola empresa y crece con los almacenes permitidos por tu plan.
               </p>
               <div className="flex flex-col sm:flex-row gap-2.5 mt-7">
-                <button onClick={() => navigate("/auth?mode=signup")} className="h-12 px-5 rounded-2xl bg-[#5B2DBA] text-white font-black text-sm flex items-center justify-center gap-2 shadow-[0_18px_40px_-18px_rgba(101,53,197,.7)]">Crear mi cuenta <ArrowRight className="w-4 h-4"/></button>
-                <a href="#modulos" className="h-12 px-5 rounded-2xl bg-white border border-violet-200 text-[#5B2DBA] font-black text-sm flex items-center justify-center">Ver cómo funciona</a>
+                <button type="button" onClick={() => goAuth("signup")} className="h-12 px-5 rounded-2xl bg-[#5B2DBA] text-white font-black text-sm flex items-center justify-center gap-2 shadow-[0_18px_40px_-18px_rgba(101,53,197,.7)] active:scale-[.98]">{pendingAuth === "signup" ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true"/> : null}Crear mi cuenta <ArrowRight className="w-4 h-4"/></button>
+                <button type="button" onClick={() => goAuth("signin")} className="h-12 px-5 rounded-2xl bg-white border border-violet-200 text-[#5B2DBA] font-black text-sm flex items-center justify-center gap-2 active:scale-[.98]">{pendingAuth === "signin" ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true"/> : null}Ya tengo cuenta · Entrar</button>
               </div>
+              <button onClick={() => document.getElementById("modulos")?.scrollIntoView({ behavior: "smooth" })} className="mt-2.5 text-[11px] font-black text-[#7C4DDE] hover:text-[#5B2DBA]">Ver cómo funciona →</button>
               <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-x-5 gap-y-2.5 mt-6 text-[10px] font-bold text-slate-500">
                 <span><Check className="inline w-3.5 h-3.5 text-emerald-600 mr-1"/>1 cuenta = 1 empresa</span>
                 <span><Check className="inline w-3.5 h-3.5 text-emerald-600 mr-1"/>Almacenes por plan</span>
@@ -588,7 +621,7 @@ export default function LandingPage() {
 
             <div className="relative">
               <div className="palmyra-3d rounded-[28px] bg-white/60 p-2.5 border border-violet-100 shadow-[0_40px_90px_-42px_rgba(59,27,110,.48)]">
-                <AreaPanel area={current} compact onOpen={() => navigate(current.route)} />
+                <AreaPanel area={current} compact onOpen={() => openArea(current.route)} />
               </div>
               <div className="absolute -bottom-4 -left-2 sm:-left-4 px-3 py-2 rounded-2xl bg-white border border-violet-100 shadow-xl flex items-center gap-2">
                 <span className="w-8 h-8 rounded-xl bg-[#EFE8FF] text-[#5B2DBA] flex items-center justify-center"><WifiOff className="w-4 h-4"/></span>
@@ -641,7 +674,7 @@ export default function LandingPage() {
                   );
                 })}
               </nav>
-              <AreaPanel area={current} onOpen={() => navigate(current.route)} />
+              <AreaPanel area={current} onOpen={() => openArea(current.route)} />
             </div>
           </div>
         </section>
@@ -686,7 +719,7 @@ export default function LandingPage() {
                     <div className="grid grid-cols-3 gap-1.5 mt-4">{[plan.warehouses, plan.employees, plan.products].map((value, index) => <div key={index} className="rounded-lg bg-[#F7F5FC] border border-violet-50 px-2 py-2 text-center"><p className="text-[7px] text-slate-500 uppercase font-black">{["Almacenes","Empleados","Productos"][index]}</p><p className="text-[10px] font-black text-[#5B2DBA] mt-0.5">{value}</p></div>)}</div>
                     <p className="text-[9px] text-slate-500 leading-5 mt-3">{plan.description}</p>
                     <div className="space-y-1.5 mt-4">{plan.features.map(f => <div key={f} className="flex items-center gap-2 text-[9px] text-slate-500"><span className="w-4 h-4 rounded-md bg-[#EFE8FF] text-[#5B2DBA] flex items-center justify-center shrink-0"><Check className="w-2.5 h-2.5"/></span>{f}</div>)}</div>
-                    <button onClick={() => { sessionStorage.setItem("palmyra_signup_plan", plan.code); localStorage.setItem("palmyra_signup_plan", plan.code); navigate("/auth?mode=signup"); }} className={"w-full h-10 mt-5 rounded-xl text-[10px] font-black " + (plan.featured ? "bg-[#5B2DBA] text-white" : "bg-[#F0EBFA] text-[#5B2DBA]")}>{plan.code === "free" ? "Comenzar con Gratis" : "Elegir plan"}</button>
+                    <button type="button" onClick={() => choosePlanAndSignup(plan.code)} className={"w-full h-10 mt-5 rounded-xl text-[10px] font-black active:scale-[.98] " + (plan.featured ? "bg-[#5B2DBA] text-white" : "bg-[#F0EBFA] text-[#5B2DBA]")}>{plan.code === "free" ? "Comenzar con Gratis" : "Elegir plan"}</button>
                     <p className="text-[7px] text-center text-slate-500 mt-2">{plan.code === "free" ? "Gratis permanente · modo offline · respaldo comercial en la nube" : "CUP en efectivo o transferencia · USD en efectivo · confirmación manual"}</p>
                   </article>
                 );
@@ -747,7 +780,8 @@ export default function LandingPage() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div><PalmyraWordmark className="h-6 w-auto shrink-0 mb-1" /><h2 className="text-2xl sm:text-3xl font-black text-[#3B1B78] mt-2">Tu negocio merece un sistema que no estorbe.</h2><p className="text-xs text-slate-500 mt-2">Claro para trabajar. Potente para crecer.</p></div>
             <div className="flex flex-col sm:flex-row gap-2.5">
-              <button onClick={() => navigate("/auth?mode=signup")} className="h-12 px-5 rounded-2xl bg-[#5B2DBA] text-white font-black text-sm flex items-center justify-center gap-2 shadow-[0_18px_40px_-20px_rgba(101,53,197,.7)]">Crear cuenta <ArrowRight className="w-4 h-4"/></button>
+              <button type="button" onClick={() => goAuth("signup")} className="h-12 px-5 rounded-2xl bg-[#5B2DBA] text-white font-black text-sm flex items-center justify-center gap-2 shadow-[0_18px_40px_-20px_rgba(101,53,197,.7)] active:scale-[.98]">{pendingAuth === "signup" ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true"/> : null}Crear cuenta <ArrowRight className="w-4 h-4"/></button>
+              <button type="button" onClick={() => goAuth("signin")} className="h-12 px-5 rounded-2xl bg-white border border-violet-200 text-[#5B2DBA] font-black text-sm flex items-center justify-center gap-2 active:scale-[.98]">{pendingAuth === "signin" ? <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true"/> : null}Entrar</button>
               <a href="#descargas" className="h-12 px-5 rounded-2xl bg-white border border-violet-200 text-[#5B2DBA] font-black text-sm flex items-center justify-center gap-2"><Download className="w-4 h-4"/> Descargar app</a>
             </div>
           </div>

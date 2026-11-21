@@ -4,6 +4,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import { getSupabase } from "../lib/supabase";
 import { PalmyraWordmark } from "../components/PalmyraWordmark";
 import { getPlan } from "../config/saas";
+import { useDocumentScrollPage } from "../hooks/useDocumentScrollPage";
 import {
   loadSaaSContext,
   requestSaaSPasswordReset,
@@ -23,28 +24,37 @@ import { rememberOfflinePosCredential, syncOfflinePosCredentials } from "../serv
 
 type Mode = "signin" | "signup" | "reset" | "recovery" | "sent";
 
-const PRODUCTION_APP_URL = "https://palmyracrm.onrender.com";
-
-function getAuthAppUrl() {
-  const host = window.location.hostname;
-  return host === "localhost" || host === "127.0.0.1" || host === "[::1]"
-    ? window.location.origin
-    : PRODUCTION_APP_URL;
+// Supabase puede quedarse esperando el lock de auth (pestañas, PWA en segundo
+// plano, red del móvil). Ninguna petición de acceso debe dejar el botón en
+// "Procesando..." para siempre: al vencer, se libera el formulario con un
+// mensaje claro y el usuario puede reintentar.
+function withTimeout<T>(promise: Promise<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = window.setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => { window.clearTimeout(timer); resolve(value); },
+      (error) => { window.clearTimeout(timer); reject(error); }
+    );
+  });
 }
 
 function messageFor(error: any) {
   const raw = String(error?.message || error?.error_description || "");
+  if (/user already registered|already (been )?registered|email address.*already/i.test(raw)) return "Este correo ya tiene una cuenta. Inicia sesión o recupera tu contraseña.";
   if (/invalid login credentials/i.test(raw)) return "El correo o la contraseña no son correctos.";
   if (/email not confirmed/i.test(raw)) return "Confirma tu correo electrónico y vuelve a entrar.";
-  if (/user already registered/i.test(raw)) return "Este correo ya tiene una cuenta. Inicia sesión.";
+  if (/rate limit|too many requests|only request this after|for security purposes/i.test(raw)) return "Se alcanzó temporalmente el límite de intentos. Espera unos minutos e inténtalo de nuevo.";
   if (/password/i.test(raw) && /8/i.test(raw)) return "La contraseña debe tener al menos 8 caracteres.";
   if (/database error saving new user|error saving new user/i.test(raw)) return "No pudimos crear la cuenta en este momento. El registro no se completó; inténtalo nuevamente.";
-  if (/email rate limit|rate limit/i.test(raw)) return "Se alcanzó temporalmente el límite de registros. Espera unos minutos e inténtalo de nuevo.";
+  if (/failed to fetch|network ?error|network request failed|load failed/i.test(raw)) return "Sin conexión con PALMYRA. Revisa tu internet e inténtalo de nuevo.";
+  if (/auth session missing|session not found|not authenticated|jwt/i.test(raw)) return "Tu enlace de recuperación ya no está activo. Solicita uno nuevo desde «¿Olvidaste tu contraseña?».";
   if (/redirect.*url|not allowed.*redirect/i.test(raw)) return "La configuración de acceso no aceptó la dirección de retorno. Vuelve a intentarlo.";
+  if (/timed out|tiempo de espera|tardando demasiado/i.test(raw)) return "La conexión está tardando demasiado. Revisa tu internet e inténtalo de nuevo.";
   return raw || "No se pudo completar la operación.";
 }
 
 export default function SaaSAuth() {
+  useDocumentScrollPage();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const [mode, setMode] = useState<Mode>(params.get("mode") === "signup" ? "signup" : "signin");
@@ -73,6 +83,33 @@ export default function SaaSAuth() {
     return () => window.clearTimeout(timer);
   }, [resendIn]);
 
+  const modeParam = params.get("mode");
+  const recoveryParam = params.get("recovery") === "1";
+
+  // Llegar desde el landing con ?mode=signup / ?mode=signin debe cambiar la
+  // pestaña activa aunque el componente ya estuviera montado.
+  useEffect(() => {
+    if (recoveryParam) {
+      setMode("recovery");
+      return;
+    }
+    if (modeParam === "signup" || modeParam === "signin") {
+      setMode((current) => (current === "sent" ? current : modeParam));
+    }
+  }, [modeParam, recoveryParam]);
+
+  const switchMode = (next: "signin" | "signup") => {
+    setMode(next);
+    setError("");
+    setMessage("");
+    // Mantener la URL sincronizada para que recargar no vuelva a la otra pestaña.
+    try {
+      window.history.replaceState({}, "", next === "signup" ? "/auth?mode=signup" : "/auth?mode=signin");
+    } catch {
+      // Sin History API el formulario sigue funcionando igual.
+    }
+  };
+
   useEffect(() => {
     const supabase = getSupabase();
     if (!supabase) return;
@@ -90,7 +127,11 @@ export default function SaaSAuth() {
   }, [params]);
 
   const finishAuth = async (credentialEmail?: string, credentialPassword?: string) => {
-    const ctx = await loadSaaSContext(true);
+    const ctx = await withTimeout(
+      loadSaaSContext(true),
+      15000,
+      "Tu sesión se abrió, pero la verificación de la empresa está tardando demasiado. Vuelve a intentarlo."
+    );
     if (!ctx) {
       setError("La sesión no pudo ser verificada.");
       return;
@@ -194,7 +235,11 @@ export default function SaaSAuth() {
       if (mode === "recovery") {
         if (password.length < 8) throw new Error("La contraseña debe tener al menos 8 caracteres.");
         if (password !== confirmPassword) throw new Error("Las contraseñas no coinciden.");
-        const { error: updateError } = await updateSaaSPassword(password);
+        const { error: updateError } = await withTimeout(
+          updateSaaSPassword(password),
+          20000,
+          "La actualización de la contraseña está tardando demasiado. Inténtalo de nuevo."
+        );
         if (updateError) throw updateError;
         // A password change invalidates the old device-side verifier. The user
         // must next authenticate online with the new password to re-enable
@@ -209,11 +254,19 @@ export default function SaaSAuth() {
         } catch (offlineCredentialError) {
           console.warn("[PALMYRA] No se pudo invalidar la credencial offline anterior.", offlineCredentialError);
         }
+        // La contraseña ya cambió. Cerramos la sesión temporal del enlace para
+        // que el acceso quede protegido con la contraseña nueva y el usuario
+        // no entre con la sesión de recuperación.
+        try {
+          await getSupabase()?.auth.signOut();
+        } catch (signOutError) {
+          console.warn("[PALMYRA] No se pudo cerrar la sesión de recuperación.", signOutError);
+        }
+        window.history.replaceState({}, "", "/auth");
         setMode("signin");
         setPassword("");
         setConfirmPassword("");
-        setMessage("Contraseña actualizada. Inicia sesión con conexión usando la nueva contraseña para volver a habilitar el acceso sin conexión en este dispositivo.");
-        window.history.replaceState({}, "", "/auth");
+        setMessage("Contraseña actualizada. Inicia sesión con tu nueva contraseña.");
         return;
       }
 
@@ -223,7 +276,11 @@ export default function SaaSAuth() {
         if (password.length < 8) throw new Error("La contraseña debe tener al menos 8 caracteres.");
         if (password !== confirmPassword) throw new Error("Las contraseñas no coinciden.");
 
-        const result = await signUpSaaSAccount(name, email, password, "/auth");
+        const result = await withTimeout(
+          signUpSaaSAccount(name, email, password, "/auth"),
+          25000,
+          "El registro está tardando demasiado. Revisa tu conexión e inténtalo de nuevo."
+        );
         if (result.error) throw result.error;
         if (!result.data.user) throw new Error("No se pudo crear el usuario.");
         // Supabase devuelve identities vacías cuando el correo ya está
@@ -257,7 +314,11 @@ export default function SaaSAuth() {
         window.location.replace("/");
         return;
       }
-      const result = await signInSaaSAccount(email, password);
+      const result = await withTimeout(
+        signInSaaSAccount(email, password),
+        25000,
+        "El acceso está tardando demasiado. Revisa tu conexión e inténtalo de nuevo."
+      );
       if (result.error) throw result.error;
       await finishAuth(email, password);
     } catch (err: any) {
@@ -283,7 +344,7 @@ export default function SaaSAuth() {
   };
 
   return (
-    <main className="min-h-[100dvh] bg-[#F7F5FC] overflow-y-auto flex items-start sm:items-center justify-center p-3 sm:p-5" data-keyboard-viewport="native">
+    <main className="palmyra-scroll-page min-h-[100dvh] bg-[#F7F5FC] overflow-y-auto flex items-start sm:items-center justify-center px-3 pt-3 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:p-5" data-keyboard-viewport="native">
       <div className="w-full max-w-4xl">
         <div className="flex items-center justify-between mb-3 px-1">
           <button onClick={() => navigate("/landing")} className="flex items-center gap-2.5" aria-label="Ir a la página de inicio de PALMYRA">
@@ -342,8 +403,8 @@ export default function SaaSAuth() {
             </div>
 
             {mode !== "recovery" && mode !== "sent" && <div className="grid grid-cols-2 gap-1 p-1 bg-[#F7F5FC] rounded-xl mt-5">
-              <button onClick={() => {setMode("signin");setError("");setMessage("");}} className={"h-9 rounded-lg text-[10px] font-black " + (mode==="signin"?"bg-white text-[#3B1B6E] shadow-sm":"text-slate-400")}>Iniciar sesión</button>
-              <button onClick={() => {setMode("signup");setError("");setMessage("");}} className={"h-9 rounded-lg text-[10px] font-black " + (mode==="signup"?"bg-white text-[#3B1B6E] shadow-sm":"text-slate-400")}>Crear cuenta</button>
+              <button type="button" onClick={() => switchMode("signin")} className={"h-10 min-h-10 rounded-lg text-[10px] font-black " + (mode==="signin"?"bg-white text-[#3B1B6E] shadow-sm":"text-slate-400")}>Iniciar sesión</button>
+              <button type="button" onClick={() => switchMode("signup")} className={"h-10 min-h-10 rounded-lg text-[10px] font-black " + (mode==="signup"?"bg-white text-[#3B1B6E] shadow-sm":"text-slate-400")}>Crear cuenta</button>
             </div>}
 
             {mode === "sent" ? (
@@ -371,14 +432,9 @@ export default function SaaSAuth() {
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   {resendIn > 0 ? `Reenviar en ${resendIn} s` : "Reenviar correo de confirmación"}
                 </button>
-                <div className="mt-2 grid grid-cols-2 gap-2">
-                  <button type="button" onClick={() => { setMode("signin"); setError(""); setMessage("Bienvenido de nuevo. Si el enlace no abrió tu sesión, entra con tu contraseña."); }} className="h-10 rounded-xl border border-violet-200 bg-white text-[10px] font-black text-[#5B2DBA]">
-                    Ya confirmé · Entrar
-                  </button>
-                  <button type="button" onClick={() => { setMode("signup"); setSentTo(""); setError(""); setMessage(""); }} className="h-10 rounded-xl bg-[#EFE8FF] text-[10px] font-black text-[#5B2DBA]">
-                    Usar otro correo
-                  </button>
-                </div>
+                <button type="button" onClick={() => { setSentTo(""); switchMode("signup"); }} className="mt-2 h-10 w-full rounded-xl bg-[#EFE8FF] text-[10px] font-black text-[#5B2DBA]">
+                  Usar otro correo
+                </button>
               </div>
             ) : (
             <form onSubmit={submit} className="space-y-3 mt-4">
@@ -456,7 +512,7 @@ export default function SaaSAuth() {
                 <div role="status" className="rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold p-3">{message}</div>
               ) : null}
 
-              <button disabled={busy} className="w-full h-11 mt-1 rounded-xl bg-[#6535C5] hover:bg-[#4F249D] text-white text-xs font-black flex items-center justify-center gap-2 disabled:opacity-50">
+              <button type="submit" disabled={busy} className="w-full h-11 mt-1 rounded-xl bg-[#6535C5] hover:bg-[#4F249D] text-white text-xs font-black flex items-center justify-center gap-2 disabled:opacity-50 active:scale-[.98]">
                 {busy
                   ? "Procesando..."
                   : mode === "signup"
@@ -472,7 +528,7 @@ export default function SaaSAuth() {
             )}
 
             {mode === "signin" && <button type="button" onClick={()=>{setMode("reset");setError("");setMessage("");}} className="w-full mt-3 text-[10px] font-black text-[#6535C5]">¿Olvidaste tu contraseña?</button>}
-            {mode === "reset" && <button type="button" onClick={()=>{setMode("signin");setError("");setMessage("");}} className="w-full mt-3 text-[10px] font-black text-slate-400">Volver a iniciar sesión</button>}
+            {mode === "reset" && <button type="button" onClick={()=>switchMode("signin")} className="w-full mt-3 text-[10px] font-black text-slate-400">Volver a iniciar sesión</button>}
 
             <div className="mt-5 pt-4 border-t border-violet-100 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[10px] text-slate-400">
               <span className="inline-flex items-center gap-1"><Check className="w-3 h-3 text-emerald-600"/> Datos aislados</span>

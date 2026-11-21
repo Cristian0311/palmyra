@@ -4,6 +4,7 @@ import {
   Landmark, Loader2, Lock, Sparkles, Store, Users, Wallet
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { useDocumentScrollPage } from "../hooks/useDocumentScrollPage";
 import {
   ACQUISITION_PAYMENTS, BILLING_MONTHS, PALMYRA_PLANS, getPlan, isAcquisitionPaymentMethod,
   isBillingMonths, type AcquisitionPaymentMethod, type BillingMonths, type PlanCode
@@ -43,6 +44,7 @@ function readStoredPlan(): PlanCode {
 }
 
 export default function SaaSOnboarding() {
+  useDocumentScrollPage();
   const navigate = useNavigate();
   const [companyName, setCompanyName] = useState('');
   const [warehouseName, setWarehouseName] = useState('Almacén principal');
@@ -182,7 +184,7 @@ export default function SaaSOnboarding() {
   }
 
   return (
-    <main className="min-h-[100dvh] overflow-y-auto bg-[#F7F5FC] px-3 py-4 text-sm leading-6 text-slate-900 sm:px-5 sm:py-6" data-keyboard-viewport="native">
+    <main className="palmyra-scroll-page min-h-[100dvh] overflow-y-auto bg-[#F7F5FC] px-3 pt-4 pb-[calc(2rem+env(safe-area-inset-bottom))] text-sm leading-6 text-slate-900 scroll-pb-28 sm:px-5 sm:py-6" data-keyboard-viewport="native">
       <div className="mx-auto w-full max-w-6xl">
         <header className="flex items-center justify-between gap-3">
           <button type="button" onClick={() => navigate('/landing')} disabled={busy} aria-label="Ir a la página de inicio de PALMYRA">

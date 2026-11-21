@@ -5,10 +5,12 @@ import { getSupabase } from "../lib/supabase";
 import { signInSaaSAccount, signUpSaaSAccount, loadSaaSContext } from "../services/saas";
 import { acceptEmployeeInvitation } from "../services/team";
 import { useStore } from "../store/useStore";
+import { useDocumentScrollPage } from "../hooks/useDocumentScrollPage";
 
 type Mode = "signup" | "signin";
 
 export default function SaaSInvite() {
+  useDocumentScrollPage();
   const [params] = useSearchParams();
   const token = params.get("token") || "";
   const [mode, setMode] = useState<Mode>("signup");
@@ -118,7 +120,7 @@ export default function SaaSInvite() {
 
   if (accepted) {
     return (
-      <main className="min-h-screen bg-[#F7F5FC] flex items-center justify-center p-4">
+      <main className="palmyra-scroll-page min-h-screen bg-[#F7F5FC] flex items-center justify-center p-4">
         <div className="bg-white rounded-3xl border border-violet-100 shadow-xl p-8 text-center max-w-md">
           <CheckCircle2 className="w-12 h-12 text-emerald-500 mx-auto" />
           <h1 className="text-xl font-black text-[#21182F] mt-3">Acceso activado</h1>
@@ -130,7 +132,7 @@ export default function SaaSInvite() {
 
   if (checking) {
     return (
-      <main className="min-h-screen bg-[#F7F5FC] flex items-center justify-center p-4">
+      <main className="palmyra-scroll-page min-h-screen bg-[#F7F5FC] flex items-center justify-center p-4">
         <div className="palmyra-loading-bubble" aria-live="polite">
           <span className="palmyra-loading-icon"><span className="palmyra-loading-spinner" /></span>
           Comprobando invitación…
@@ -140,7 +142,7 @@ export default function SaaSInvite() {
   }
 
   return (
-    <main className="min-h-[100dvh] bg-[#F7F5FC] px-3 sm:px-5 py-5 flex items-center justify-center overflow-y-auto">
+    <main className="palmyra-scroll-page min-h-[100dvh] bg-[#F7F5FC] px-3 sm:px-5 py-5 flex items-center justify-center overflow-y-auto">
       <div className="w-full max-w-3xl bg-white rounded-[26px] border border-violet-100 shadow-[0_30px_90px_-52px_rgba(59,27,110,.55)] overflow-hidden">
         <div className="flex items-center justify-between gap-3 px-4 sm:px-6 py-4 border-b border-violet-100 bg-white">
           <img src="/palmyra-logo-exact.svg" alt="PALMYRA" className="h-auto w-[190px] object-contain object-left" />

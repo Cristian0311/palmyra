@@ -36,9 +36,10 @@ import { cn } from "../lib/utils";
 import { loadSaaSContext } from "../services/saas";
 import { useStore } from "../store/useStore";
 import { PalmyraWordmark } from "./PalmyraWordmark";
-import { getOfflineConflictCount, getOfflineQueueCount, getOfflineQueue } from "../services/offlineQueue";
+import { getOfflineConflictCount, getOfflineQueueCount, getOfflineQueue, refreshOfflineQueueCounts } from "../services/offlineQueue";
 import { runWithLoading } from "../lib/busy";
-import { ANDROID_APK_DOWNLOAD, APK_PROMO_DISMISSED_KEY, isAndroidDevice, isRunningStandalone } from "../lib/install";
+import { ANDROID_APK_DOWNLOAD, APK_PROMO_DISMISSED_KEY, PALMYRA_REMOTE_ORIGIN, REMOTE_APK_DOWNLOAD, getIosBrowserName, isAndroidDevice, isPalmyraApp, isRunningStandalone } from "../lib/install";
+import { getNativeAppInfo, startNativeUpdate, type NativeUpdateRequest } from "../lib/nativeApp";
 import { useAutoRateSync } from "../hooks/useAutoRateSync";
 import { useLanPresence } from "../hooks/useLanPresence";
 import { canUsePlanFeature, getPlanDisplayName, getPlanVisual, type PlanFeature } from "../services/planAccess";
@@ -105,25 +106,77 @@ function formatPlanExpiry(target: string | null | undefined) {
   });
 }
 const PALMYRA_PWA_INSTALLED_KEY = "palmyra:pwa-installed";
+const IOS_INSTALL_HINT_DISMISSED_KEY = "palmyra:ios-install-dismissed";
+const IOS_BROWSER = getIosBrowserName();
 const PALMYRA_UPDATE_AVAILABLE_KEY = "palmyra:update-available";
 const IS_DESKTOP_SHELL = typeof navigator !== "undefined" && /\bElectron\//i.test(navigator.userAgent);
+const IN_PALMYRA_APP = isPalmyraApp();
+const NATIVE_APP_INFO = getNativeAppInfo();
+const NATIVE_OTA_ENABLED = Boolean(NATIVE_APP_INFO?.ota);
+// Versión web instalada real: la release descargada por OTA o la que viene
+// empaquetada en este build (__APP_VERSION__). NUNCA shellVersion: el versionName
+// del APK no es la versión de la app web y comparar contra él hacía que el
+// aviso de actualización apareciera o desapareciera sin corresponder.
+const INSTALLED_WEB_VERSION = (NATIVE_APP_INFO?.webVersion || "").trim() || __APP_VERSION__;
+const OTA_DISMISSED_KEY = "palmyra:ota-dismissed-version";
 
+type OtaPhase = "idle" | "downloading" | "verifying" | "installing" | "reloading" | "error";
+
+const OTA_PHASE_LABELS: Record<OtaPhase, string> = {
+  idle: "Lista para descargar",
+  downloading: "Descargando actualización",
+  verifying: "Verificando paquete",
+  installing: "Instalando actualización",
+  reloading: "Reiniciando PALMYRA",
+  error: "Actualización detenida",
+};
+
+function formatOtaSize(received?: number, total?: number) {
+  if (!received || received <= 0) return "";
+  const receivedMb = (received / (1024 * 1024)).toFixed(1);
+  if (!total || total <= 0) return `${receivedMb} MB descargados`;
+  return `${receivedMb} de ${(total / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+const UPDATE_WATCHDOG_MS = 3 * 60_000;
 const UPDATE_PHASE_LABELS: Record<string, string> = {
   checking: "Verificando versión",
+  preparing: "Preparando descarga",
   downloading: "Descargando actualización",
   installing: "Preparando instalación",
   "reloading": "Reiniciando PALMYRA",
   "up-to-date": "Todo al día",
 };
 
-function formatUpdateBytes(bytes?: number) {
+function formatUpdateBytes(bytes?: number, totalBytes?: number) {
   if (!bytes || bytes <= 0) return "";
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB descargados`;
+  const toMb = (value: number) => (value / (1024 * 1024)).toFixed(1);
+  if (totalBytes && totalBytes > 0) return `${toMb(bytes)} MB de ${toMb(totalBytes)} MB`;
+  if (bytes >= 1024 * 1024) return `${toMb(bytes)} MB descargados`;
   return `${Math.max(1, Math.round(bytes / 1024))} KB descargados`;
+}
+
+function compareAppVersions(a: string, b: string) {
+  const pa = a.split(/[^0-9]+/).filter(Boolean).map(Number);
+  const pb = b.split(/[^0-9]+/).filter(Boolean).map(Number);
+  const len = Math.max(pa.length, pb.length);
+  for (let i = 0; i < len; i += 1) {
+    const x = pa[i] ?? 0;
+    const y = pb[i] ?? 0;
+    if (x !== y) return x > y ? 1 : -1;
+  }
+  return 0;
+}
+
+function isIosInstallHintDismissed() {
+  if (!IOS_BROWSER) return false;
+  try { return window.localStorage.getItem(IOS_INSTALL_HINT_DISMISSED_KEY) === "1"; } catch { return false; }
 }
 
 function isPALMYRAPWAInstalled() {
   if (typeof window === "undefined") return false;
+  // El APK ya es la app instalada: nunca debe ofrecerse la PWA.
+  if (IN_PALMYRA_APP) return true;
   const standalone = window.matchMedia?.("(display-mode: standalone)").matches;
   const fullscreen = window.matchMedia?.("(display-mode: fullscreen)").matches;
   const minimalUi = window.matchMedia?.("(display-mode: minimal-ui)").matches;
@@ -173,7 +226,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [isNavigating, setIsNavigating] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [isApplyingUpdate, setIsApplyingUpdate] = useState(false);
-  const [updateProgress, setUpdateProgress] = useState<{ phase: string; percent: number; filesDone?: number; filesTotal?: number; receivedBytes?: number; version?: string } | null>(null);
+  const [updateProgress, setUpdateProgress] = useState<{ phase: string; percent: number; filesDone?: number; filesTotal?: number; filesSkipped?: number; receivedBytes?: number; totalBytes?: number; version?: string } | null>(null);
   const [updateError, setUpdateError] = useState("");
   const [serverVersion, setServerVersion] = useState<string | null>(null);
   const [navigationTargetPath, setNavigationTargetPath] = useState<string | null>(null);
@@ -185,6 +238,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [pwaInstalling, setPwaInstalling] = useState(false);
   const [showApkPromo, setShowApkPromo] = useState(false);
   const [apkStandalone, setApkStandalone] = useState(false);
+  const [apkUpdateVersion, setApkUpdateVersion] = useState<string | null>(null);
+  const [otaUpdate, setOtaUpdate] = useState<NativeUpdateRequest | null>(null);
+  const [otaPhase, setOtaPhase] = useState<OtaPhase>("idle");
+  const [otaPercent, setOtaPercent] = useState(0);
+  const [otaReceived, setOtaReceived] = useState(0);
+  const [otaTotal, setOtaTotal] = useState(0);
+  const [otaError, setOtaError] = useState("");
   const [showOnlineCatalogInfo, setShowOnlineCatalogInfo] = useState(false);
   const { currentUser, logout, notifications, removeNotification, storeConfig, syncWithSupabase, addNotification, cart, currentBranchId, getCurrentSession } = useStore(useShallow((state) => ({ currentUser: state.currentUser, logout: state.logout, notifications: state.notifications, removeNotification: state.removeNotification, storeConfig: state.storeConfig, syncWithSupabase: state.syncWithSupabase, addNotification: state.addNotification, cart: state.cart, currentBranchId: state.currentBranchId, getCurrentSession: state.getCurrentSession })));
   const location = useLocation();
@@ -202,7 +262,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
 
   useEffect(() => {
-    if (!currentUser?.id || IS_DESKTOP_SHELL || !isAndroidDevice()) {
+    if (!currentUser?.id || IS_DESKTOP_SHELL || IN_PALMYRA_APP || !isAndroidDevice()) {
       setShowApkPromo(false);
       return;
     }
@@ -220,8 +280,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     try { window.localStorage.setItem(APK_PROMO_DISMISSED_KEY, '1'); } catch {}
   };
 
+  const dismissInstallPrompt = () => {
+    setShowInstallPwa(false);
+    if (!IOS_BROWSER) return;
+    try { window.localStorage.setItem(IOS_INSTALL_HINT_DISMISSED_KEY, "1"); } catch {}
+  };
+
   useEffect(() => {
-    if (!currentUser?.id || IS_DESKTOP_SHELL) {
+    if (!currentUser?.id || IS_DESKTOP_SHELL || IN_PALMYRA_APP) {
       setShowInstallPwa(false);
       setPwaInstallAvailable(false);
       return;
@@ -231,7 +297,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       const installed = isPALMYRAPWAInstalled();
       const available = !installed && Boolean(getDeferredPWAInstallPrompt());
       setPwaInstallAvailable(available);
-      setShowInstallPwa(!installed);
+      setShowInstallPwa(!installed && !isIosInstallHintDismissed());
       if (installed) {
         delete (window as typeof window & { __palmyraInstallPrompt?: unknown }).__palmyraInstallPrompt;
       }
@@ -349,7 +415,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       } catch {}
     };
     const onProgress = (event: Event) => {
-      const detail = (event as CustomEvent<{ phase: string; percent: number; filesDone?: number; filesTotal?: number; receivedBytes?: number; version?: string }>).detail;
+      const detail = (event as CustomEvent<{ phase: string; percent: number; filesDone?: number; filesTotal?: number; filesSkipped?: number; receivedBytes?: number; totalBytes?: number; version?: string }>).detail;
       if (!detail) return;
       setUpdateProgress(detail);
       if (detail.version) setServerVersion(detail.version);
@@ -381,6 +447,119 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
+  // Dentro del APK la app se actualiza sin instalar otro APK: el servidor
+  // publica un paquete web con versión, tamaño y SHA-256. Solo se avisa si la
+  // versión publicada es superior a la instalada.
+  useEffect(() => {
+    if (!IN_PALMYRA_APP || !currentUser?.id) {
+      setApkUpdateVersion(null);
+      setOtaUpdate(null);
+      return;
+    }
+    let active = true;
+    const checkRemoteVersion = async () => {
+      try {
+        const response = await fetch(`${PALMYRA_REMOTE_ORIGIN}/version.json?ts=${Date.now()}`, { cache: 'no-store' });
+        if (!response.ok) return;
+        const manifest = await response.json() as {
+          version?: string;
+          webBundle?: string;
+          webBundleSha256?: string;
+          webBundleBytes?: number;
+        };
+        if (!active) return;
+        const remote = String(manifest?.version || '').trim();
+        // Solo una versión estrictamente superior; igual o menor nunca avisa.
+        if (!remote || compareAppVersions(remote, INSTALLED_WEB_VERSION) <= 0) {
+          setApkUpdateVersion(null);
+          setOtaUpdate(null);
+          return;
+        }
+        let dismissed = "";
+        try { dismissed = sessionStorage.getItem(OTA_DISMISSED_KEY) || ""; } catch {}
+        if (dismissed === remote) return;
+
+        const bundlePath = String(manifest?.webBundle || '').trim();
+        const sha256 = String(manifest?.webBundleSha256 || '').trim();
+        const bundleBytes = Number(manifest?.webBundleBytes) || 0;
+        const bundleReady = Boolean(bundlePath) && /^[a-f0-9]{64}$/i.test(sha256) && bundleBytes > 0 && bundleBytes <= 300 * 1024 * 1024;
+        if (NATIVE_OTA_ENABLED) {
+          if (!bundleReady) {
+            // Manifiesto desplegado sin paquete OTA válido: NO se ofrece el APK
+            // (sería un aviso sin efecto). Se reintenta en el próximo ciclo.
+            console.warn('[OTA] version.json no publica un webBundle válido; se omite el aviso hasta el próximo despliegue.');
+            setOtaUpdate(null);
+            setApkUpdateVersion(null);
+            return;
+          }
+          setOtaUpdate({
+            version: remote,
+            url: new URL(bundlePath, PALMYRA_REMOTE_ORIGIN).toString(),
+            sha256,
+            bytes: bundleBytes,
+          });
+          setApkUpdateVersion(null);
+        } else {
+          // Instalador antiguo sin OTA: se mantiene la descarga del APK.
+          setOtaUpdate(null);
+          setApkUpdateVersion(remote);
+        }
+      } catch {
+        // Sin conexión: se reintenta al volver a la app o en el próximo ciclo.
+      }
+    };
+    void checkRemoteVersion();
+    const timer = window.setInterval(() => { void checkRemoteVersion(); }, 15 * 60 * 1000);
+    const onFocus = () => { void checkRemoteVersion(); };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onFocus);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onFocus);
+    };
+  }, [currentUser?.id]);
+
+  // Progreso real del shell Android mientras descarga, verifica e instala.
+  useEffect(() => {
+    const onProgress = (event: Event) => {
+      const detail = (event as CustomEvent<{ phase?: string; percent?: number; receivedBytes?: number; totalBytes?: number }>).detail;
+      if (!detail) return;
+      const phaseMap: Record<string, OtaPhase> = {
+        downloading: "downloading",
+        verifying: "verifying",
+        applying: "installing",
+        reloading: "reloading",
+      };
+      const nextPhase = detail.phase ? phaseMap[detail.phase] : undefined;
+      if (nextPhase) setOtaPhase(nextPhase);
+      if (typeof detail.percent === "number") setOtaPercent(Math.min(100, Math.max(0, Math.round(detail.percent))));
+      if (typeof detail.receivedBytes === "number") setOtaReceived(detail.receivedBytes);
+      if (typeof detail.totalBytes === "number" && detail.totalBytes > 0) setOtaTotal(detail.totalBytes);
+      setOtaError("");
+    };
+    const onInstalled = () => {
+      setOtaPhase("reloading");
+      setOtaPercent(100);
+      // El shell recarga solo; este respaldo cubre un reinicio nativo fallido.
+      window.setTimeout(() => window.location.reload(), 4000);
+    };
+    const onError = (event: Event) => {
+      const detail = (event as CustomEvent<{ message?: string }>).detail;
+      setOtaPhase("error");
+      setOtaError(detail?.message || "No se pudo descargar la actualización. Revisa la conexión e inténtalo de nuevo.");
+    };
+    window.addEventListener('palmyra:ota-progress', onProgress);
+    window.addEventListener('palmyra:ota-installed', onInstalled);
+    window.addEventListener('palmyra:ota-error', onError);
+    return () => {
+      window.removeEventListener('palmyra:ota-progress', onProgress);
+      window.removeEventListener('palmyra:ota-installed', onInstalled);
+      window.removeEventListener('palmyra:ota-error', onError);
+    };
+  }, []);
+
   useEffect(() => {
     // Solo cerramos la indicación después de confirmar que ya estamos en la
     // ruta que el usuario solicitó. La mantenemos visible un instante para
@@ -407,32 +586,140 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }, [storeConfig.darkMode]);
 
   useEffect(() => {
+    let active = true;
     const updateCount = () => {
+      if (!active) return;
       setPendingOfflineCount(getOfflineQueueCount());
       setConflictOfflineCount(getOfflineConflictCount());
+    };
+    // El contador en memoria puede quedar viejo: otra pestaña drenó la cola con
+    // el Web Lock, se cambió de empresa o una sincronización terminó sin emitir
+    // el evento. Releemos siempre desde IndexedDB (fuente de verdad).
+    const refreshCount = async () => {
+      try {
+        const counts = await refreshOfflineQueueCounts();
+        if (!active) return;
+        setPendingOfflineCount(counts.pending);
+        setConflictOfflineCount(counts.conflicts);
+      } catch {
+        updateCount();
+      }
     };
     const handleOnline = () => {
       setIsOnline(true);
       updateCount();
+      void refreshCount();
     };
     const handleOffline = () => {
       setIsOnline(false);
       updateCount();
+      void refreshCount();
     };
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    window.addEventListener('offline_queue_updated', updateCount);
+    const handleQueueUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ pendingCount?: number; count?: number; conflictCount?: number; origin?: string }>).detail;
+      if (detail && typeof detail.pendingCount === 'number') {
+        setPendingOfflineCount(detail.pendingCount);
+        setConflictOfflineCount(typeof detail.conflictCount === 'number' ? detail.conflictCount : 0);
+      } else {
+        updateCount();
+      }
+      // 'refresh' ya viene validado contra IndexedDB: no se repite la lectura
+      // (evitaría un bucle de eventos). Solo una mutación local pide confirmar.
+      if (detail?.origin === 'refresh') return;
+      // Confirma contra el almacén durable; así también se limpia el aviso si
+      // la operación ya no existe (por ejemplo, la drenó otra ventana).
+      window.setTimeout(() => { void refreshCount(); }, 200);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') void refreshCount();
+    };
     const handleStorageWarning = () => {
       addNotification('Almacenamiento local casi lleno', 'warning', 'PALMYRA detectó poco espacio disponible. No borres los datos del sitio mientras haya ventas offline pendientes. Sincroniza primero.');
     };
+
+    // Recomputar al montar (la hidratación de IndexedDB puede terminar después).
+    updateCount();
+    void refreshCount();
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('offline_queue_updated', handleQueueUpdated);
+    window.addEventListener('focus', handleVisibility);
+    document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('palmyra:storage-warning', handleStorageWarning);
+    // Intervalo acotado: mientras haya conexión comprobamos la cola durable
+    // para que el indicador nunca quede con un número viejo.
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') return;
+      if (!navigator.onLine) return;
+      void refreshCount();
+    }, 30_000);
     return () => {
+      active = false;
+      window.clearInterval(timer);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      window.removeEventListener('offline_queue_updated', updateCount);
+      window.removeEventListener('offline_queue_updated', handleQueueUpdated);
+      window.removeEventListener('focus', handleVisibility);
+      document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('palmyra:storage-warning', handleStorageWarning);
     };
-  }, []);
+  }, [addNotification]);
+
+  const otaBusy = otaPhase === "downloading" || otaPhase === "verifying" || otaPhase === "installing" || otaPhase === "reloading";
+  // El aviso de cola solo existe si hay trabajo real: pendientes o conflictos.
+  // Con 0/0 no se renderiza ninguna burbuja, para no sugerir una cola fantasma.
+  const safePendingOfflineCount = Number.isFinite(pendingOfflineCount) ? Math.max(0, Math.trunc(pendingOfflineCount)) : 0;
+  const safeConflictOfflineCount = Number.isFinite(conflictOfflineCount) ? Math.max(0, Math.trunc(conflictOfflineCount)) : 0;
+  const hasQueueBacklog = safePendingOfflineCount > 0 || safeConflictOfflineCount > 0;
+
+  const handleOtaDownload = () => {
+    if (!otaUpdate || otaBusy) return;
+    const activeSession = currentUser?.id ? getCurrentSession(currentBranchId, currentUser.id) : undefined;
+    if (isPosPage && activeSession && cart.length > 0) {
+      addNotification('Actualización preparada', 'info', 'Finaliza o limpia la venta actual antes de actualizar PALMYRA. La caja y los datos permanecen protegidos.');
+      return;
+    }
+    if (!navigator.onLine) {
+      setOtaPhase('error');
+      setOtaError('Sin conexión. Conéctate para descargar la actualización.');
+      return;
+    }
+    setOtaError('');
+    setOtaPercent(4);
+    setOtaReceived(0);
+    setOtaTotal(otaUpdate.bytes || 0);
+    // La fase se marca antes de cruzar el puente para que el primer evento de
+    // progreso nativo (que llega en milisegundos) no se pierda.
+    setOtaPhase('downloading');
+    if (!startNativeUpdate(otaUpdate)) {
+      setOtaPhase('error');
+      setOtaError('Este instalador no permite actualizar desde la app. Descarga el APK más reciente.');
+      return;
+    }
+  };
+
+  // Reintento manual: vuelve a lanzar startUpdate desde cero (el shell borra
+  // el archivo parcial y repite la descarga).
+  const handleOtaRetry = () => {
+    if (!otaUpdate) return;
+    setOtaError('');
+    setOtaPercent(0);
+    setOtaReceived(0);
+    setOtaPhase('idle');
+    handleOtaDownload();
+  };
+
+  const handleOtaLater = () => {
+    if (otaBusy) return;
+    try { if (otaUpdate) sessionStorage.setItem(OTA_DISMISSED_KEY, otaUpdate.version); } catch {}
+    setOtaUpdate(null);
+    setOtaPhase('idle');
+    setOtaError('');
+    setOtaPercent(0);
+    setOtaReceived(0);
+    setOtaTotal(0);
+  };
 
   const handleApplyUpdate = async () => {
     if (isApplyingUpdate) return;
@@ -442,8 +729,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       return;
     }
     setUpdateError("");
-    setUpdateProgress({ phase: 'checking', percent: 2 });
+    setUpdateProgress({ phase: 'preparing', percent: 2 });
     setIsApplyingUpdate(true);
+    // Vigilante: la UI nunca puede quedarse en "Actualizando" indefinidamente.
+    // A los 3 minutos se detiene y se ofrece reintentar.
+    const watchdog = window.setTimeout(() => {
+      setIsApplyingUpdate(false);
+      setUpdateProgress(null);
+      setUpdateError('La actualización está tardando demasiado. Revisa tu conexión y pulsa "Actualizar ahora" para reintentar.');
+      try { sessionStorage.removeItem('palmyra:update-applying'); } catch {}
+      try { localStorage.setItem(PALMYRA_UPDATE_AVAILABLE_KEY, '1'); } catch {}
+    }, UPDATE_WATCHDOG_MS);
     try {
       const apply = (window as typeof window & { __palmyraApplyUpdate?: () => Promise<'reloaded' | 'up-to-date'> }).__palmyraApplyUpdate;
       if (apply) {
@@ -468,10 +764,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       setUpdateProgress(null);
       const message = error instanceof Error ? error.message : '';
       setUpdateError(
-        /conexión|network|servidor|disponible/i.test(message)
+        /conexión|network|servidor|disponible|confirmar|tardando/i.test(message)
           ? message
           : 'No se pudo completar la actualización. Revisa la conexión y vuelve a intentarlo.'
       );
+    } finally {
+      window.clearTimeout(watchdog);
     }
   };
 
@@ -532,6 +830,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       const finalQueue = getOfflineQueue();
       const finalPendingCount = finalQueue.filter((item: any) => item?.status !== 'conflict').length;
       setPendingOfflineCount(finalPendingCount);
+      setConflictOfflineCount(finalQueue.filter((item: any) => item?.status === 'conflict').length);
       if (finalPendingCount > 0 || cloudResult?.success === false) {
         // Nunca ocultar la causa: cada operación pendiente debe quedar trazable
         // por tipo, actionId, estado, reintento y último error conocido.
@@ -580,6 +879,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       );
     } finally {
       setIsSyncingOffline(false);
+      // La cola pudo drenarse sin que este componente recibiera el evento
+      // (o con pendientes que ya no existen). Relee la fuente durable.
+      void refreshOfflineQueueCounts().then((counts) => {
+        setPendingOfflineCount(counts.pending);
+        setConflictOfflineCount(counts.conflicts);
+      }).catch(() => {});
     }
     });
   };
@@ -686,15 +991,36 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-[9px] font-black uppercase tracking-[0.11em] text-primary">Instala PALMYRA</p>
-                  <button type="button" onClick={() => setShowInstallPwa(false)} className="p-1 rounded-lg text-muted hover:bg-subtle" aria-label="Cerrar aviso">
+                  <p className="text-[9px] font-black uppercase tracking-[0.11em] text-primary">{IOS_BROWSER ? "Instala PALMYRA en iPhone / iPad" : "Instala PALMYRA"}</p>
+                  <button type="button" onClick={dismissInstallPrompt} className="p-1 rounded-lg text-muted hover:bg-subtle" aria-label="Cerrar aviso">
                     <X className="w-3 h-3" />
                   </button>
                 </div>
                 <p className="mt-1 text-[7px] font-bold leading-4 text-muted">
                   Instala PALMYRA como aplicación para abrirla directamente y trabajar a pantalla completa, incluso con conexión inestable.
                 </p>
-                {pwaInstallAvailable ? (
+                {IOS_BROWSER && (
+                  <div className="mt-2 rounded-xl bg-violet-50 dark:bg-violet-950/30 border border-violet-100 dark:border-violet-900/40 px-2.5 py-2">
+                    {IOS_BROWSER === "Safari" ? (
+                      <>
+                        <p className="text-[6.5px] font-black uppercase tracking-wider text-violet-700 dark:text-violet-300">Añádela a pantalla de inicio</p>
+                        <ol className="mt-1 space-y-1 text-[6.5px] font-bold leading-4 text-muted">
+                          <li><b className="text-violet-700 dark:text-violet-300">1.</b> Toca <b>Compartir</b> (el cuadro con la flecha) en Safari.</li>
+                          <li><b className="text-violet-700 dark:text-violet-300">2.</b> Elige <b>Añadir a pantalla de inicio</b>.</li>
+                          <li><b className="text-violet-700 dark:text-violet-300">3.</b> Pulsa <b>Añadir</b> y abre PALMYRA desde el nuevo icono.</li>
+                        </ol>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-[6.5px] font-black uppercase tracking-wider text-violet-700 dark:text-violet-300">Abre esta página en Safari</p>
+                        <p className="mt-0.5 text-[6.5px] font-bold leading-4 text-muted">
+                          Estás en {IOS_BROWSER}. En iPhone y iPad solo <b>Safari</b> puede instalar la app: abre PALMYRA en Safari y usa <b>Compartir → Añadir a pantalla de inicio</b>.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
+                {!IOS_BROWSER && (pwaInstallAvailable ? (
                   <button
                     type="button"
                     disabled={pwaInstalling}
@@ -727,7 +1053,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                       Abre el menú del navegador y elige <b>Instalar aplicación</b> o <b>Añadir a pantalla de inicio</b>.
                     </p>
                   </div>
-                )}
+                ))}
               </div>
             </div>
           </div>
@@ -794,15 +1120,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               )}
               title={
                 isOnline
-                  ? pendingOfflineCount > 0
-                    ? `${pendingOfflineCount} operación(es) pendientes de sincronizar`
+                  ? safePendingOfflineCount > 0
+                    ? `${safePendingOfflineCount} operación(es) pendientes de sincronizar`
                     : "Conectado a la nube"
                   : "Sin conexión: sigues trabajando y se sincroniza al volver el wifi"
               }
             >
               {isOnline ? <Wifi className="h-3 w-3 shrink-0" /> : <WifiOff className="h-3 w-3 shrink-0" />}
               <span className="tabular-nums">
-                {isOnline ? (pendingOfflineCount > 0 ? pendingOfflineCount : "Online") : "Offline"}
+                {isOnline ? (safePendingOfflineCount > 0 ? safePendingOfflineCount : "Online") : "Offline"}
               </span>
             </div>
             <button
@@ -971,11 +1297,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 "mx-auto mb-1.5 flex h-8 w-8 items-center justify-center rounded-lg border transition-colors",
                 !isOnline
                   ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
-                  : pendingOfflineCount > 0
+                  : hasQueueBacklog
                   ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20 hover:bg-rose-500/20"
                   : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
               )}
-              title={!isOnline ? "Sin conexión" : pendingOfflineCount > 0 ? `${pendingOfflineCount} operación(es) pendientes. Sincronizar.` : "Conectado"}
+              title={!isOnline ? "Sin conexión" : hasQueueBacklog ? `${safePendingOfflineCount} operación(es) pendientes. Sincronizar.` : "Conectado"}
               aria-label={!isOnline ? "Sin conexión" : "Sincronizar datos"}
             >
               {isSyncingOffline ? (
@@ -995,13 +1321,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 "w-full h-7 flex items-center justify-between gap-1.5 px-2 rounded-lg text-[7px] font-black uppercase tracking-wider transition-colors border mb-1.5",
                 !isOnline
                   ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
-                  : pendingOfflineCount > 0
+                  : hasQueueBacklog
                   ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20 hover:bg-rose-500/20"
                   : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
               )}
-              title={conflictOfflineCount > 0
-                ? `${conflictOfflineCount} operación(es) en conflicto. Revisa Configuración > Conectividad.`
-                : pendingOfflineCount > 0 ? "Sincronizar datos pendientes" : undefined}
+              title={safeConflictOfflineCount > 0
+                ? `${safeConflictOfflineCount} operación(es) en conflicto. Revisa Configuración > Conectividad.`
+                : safePendingOfflineCount > 0 ? "Sincronizar datos pendientes" : undefined}
             >
               <span className="flex items-center gap-1.5 min-w-0 truncate">
                 {isSyncingOffline ? (
@@ -1012,17 +1338,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   <WifiOff className="w-3 h-3 shrink-0" />
                 )}
                 <span className="truncate">
-                  {!isOnline ? "Offline" : (pendingOfflineCount > 0 ? (isSyncingOffline ? "Subiendo…" : "Sincronizar") : "Online")}
+                  {!isOnline ? "Offline" : (safePendingOfflineCount > 0 ? (isSyncingOffline ? "Subiendo…" : "Sincronizar") : "Online")}
                 </span>
               </span>
-              {conflictOfflineCount > 0 && (
+              {safeConflictOfflineCount > 0 && (
                 <span className="inline-flex min-w-[16px] shrink-0 items-center justify-center rounded-full bg-rose-600 px-1 py-0.5 text-[8px] font-black leading-none tabular-nums text-white">
-                  !{conflictOfflineCount > 99 ? "99+" : conflictOfflineCount}
+                  !{safeConflictOfflineCount > 99 ? "99+" : safeConflictOfflineCount}
                 </span>
               )}
-              {conflictOfflineCount === 0 && pendingOfflineCount > 0 && (
+              {safeConflictOfflineCount === 0 && safePendingOfflineCount > 0 && (
                 <span className="inline-flex min-w-[16px] shrink-0 items-center justify-center rounded-full bg-amber-500 px-1 py-0.5 text-[8px] font-black leading-none tabular-nums text-white">
-                  {pendingOfflineCount > 99 ? "99+" : pendingOfflineCount}
+                  {safePendingOfflineCount > 99 ? "99+" : safePendingOfflineCount}
                 </span>
               )}
             </button>
@@ -1151,7 +1477,167 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       })()}
 
       {/* Main Content */}
-      {updateAvailable && (
+      {otaUpdate && (
+        <div className="fixed inset-0 z-[301] flex items-center justify-center px-4 py-6 pointer-events-none bg-slate-950/20 dark:bg-slate-950/50 backdrop-blur-[3px]">
+          <div
+            className="pointer-events-auto w-full max-w-sm overflow-hidden rounded-[30px] border border-violet-200/70 bg-white shadow-[0_28px_90px_rgba(76,29,149,0.24)] dark:border-violet-900/60 dark:bg-slate-900 dark:shadow-[0_28px_90px_rgba(0,0,0,0.5)]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="palmyra-ota-title"
+          >
+            <div className="relative overflow-hidden bg-gradient-to-br from-violet-700 via-indigo-600 to-violet-500 px-5 pb-5 pt-5 text-white sm:px-6">
+              <div className="absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/15 blur-2xl" />
+              <div className="absolute -bottom-16 left-12 h-28 w-28 rounded-full bg-fuchsia-300/20 blur-2xl" />
+              <div className="relative flex items-center gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/15 shadow-lg backdrop-blur-sm">
+                  {otaBusy ? <Loader2 className="h-6 w-6 animate-spin" /> : <Download className="h-6 w-6" />}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-black uppercase tracking-[0.18em] text-violet-100">PALMYRA · Actualización</p>
+                  <h3 id="palmyra-ota-title" className="mt-1 text-xl font-black tracking-tight">Descargar actualización</h3>
+                </div>
+              </div>
+              <div className="relative mt-4 rounded-2xl border border-white/15 bg-black/10 px-3.5 py-3">
+                <p className="text-[10px] font-semibold leading-5 text-violet-50">
+                  La versión {otaUpdate.version} está lista. Se descarga e instala sin salir de la app; tu empresa, ventas e inventario se conservan.
+                </p>
+              </div>
+            </div>
+            <div className="border-t border-slate-100 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
+              <div className="flex items-center justify-between gap-2.5">
+                <span className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-400">Actualización del sistema</span>
+                <span className={cn(
+                  "inline-flex items-center gap-1 rounded-full px-2 py-1 text-[8px] font-black uppercase tracking-wider",
+                  otaPhase === "error"
+                    ? "bg-rose-50 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300"
+                    : otaBusy
+                      ? "bg-violet-50 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300"
+                      : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+                )}>
+                  <span className={cn("h-1.5 w-1.5 rounded-full", otaPhase === "error" ? "bg-rose-500" : otaBusy ? "bg-violet-500 animate-pulse" : "bg-emerald-500")} />
+                  {otaPhase === "error" ? "Detenida" : otaBusy ? `${otaPercent}%` : "Lista"}
+                </span>
+              </div>
+
+              {otaBusy && (
+                <div className="mt-3 rounded-xl border border-violet-100 bg-violet-50/70 px-3 py-2.5 dark:border-violet-900/60 dark:bg-violet-950/30" aria-live="polite">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[9px] font-black uppercase tracking-[0.1em] text-violet-700 dark:text-violet-300">
+                      {OTA_PHASE_LABELS[otaPhase]}
+                    </span>
+                    <span className="text-[9px] font-black tabular-nums text-violet-700 dark:text-violet-300">{otaPercent}%</span>
+                  </div>
+                  <div className="mt-2 h-2 overflow-hidden rounded-full bg-violet-100 dark:bg-violet-900/50" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={otaPercent}>
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-violet-600 to-indigo-500 transition-[width] duration-300"
+                      style={{ width: `${Math.min(100, Math.max(3, otaPercent))}%` }}
+                    />
+                  </div>
+                  <p className="mt-1.5 text-[8px] font-semibold text-violet-600/80 dark:text-violet-300/80">
+                    {otaPhase === "downloading"
+                      ? formatOtaSize(otaReceived, otaTotal) || "Conectando con el servidor…"
+                      : "No cierres PALMYRA durante la actualización. Tus datos están protegidos."}
+                  </p>
+                </div>
+              )}
+
+              {otaError && (
+                <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[9px] font-bold text-red-600 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300" role="alert">
+                  {otaError}
+                  <a href={REMOTE_APK_DOWNLOAD} download="PALMYRA-Android.apk" className="mt-1.5 block font-black text-violet-700 underline decoration-violet-300 underline-offset-2 dark:text-violet-300">
+                    Descargar el APK manualmente
+                  </a>
+                </div>
+              )}
+
+              <div className="mt-3 flex flex-col-reverse gap-2.5 sm:flex-row">
+                <button
+                  type="button"
+                  disabled={otaBusy}
+                  onClick={handleOtaLater}
+                  className="h-11 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 text-[9px] font-black uppercase tracking-[0.08em] text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                >
+                  Más tarde
+                </button>
+                <button
+                  type="button"
+                  disabled={otaBusy}
+                  onClick={otaPhase === "error" ? handleOtaRetry : handleOtaDownload}
+                  className="h-11 flex-1 rounded-xl bg-violet-600 px-4 text-[9px] font-black uppercase tracking-[0.08em] text-white shadow-lg shadow-violet-600/20 transition hover:bg-violet-700 disabled:cursor-wait disabled:opacity-80"
+                >
+                  {otaBusy
+                    ? `${OTA_PHASE_LABELS[otaPhase]}… ${otaPercent}%`
+                    : otaPhase === "error"
+                      ? "Reintentar descarga"
+                      : "Descargar actualización"}
+                </button>
+              </div>
+              <p className="mt-2 text-center text-[8px] font-semibold leading-4 text-slate-400 dark:text-slate-500">
+                Solo se descarga una vez la app. Las próximas versiones se instalan aquí mismo.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {apkUpdateVersion && (
+        <div className="fixed inset-0 z-[301] flex items-center justify-center px-4 py-6 pointer-events-none bg-slate-950/20 dark:bg-slate-950/50 backdrop-blur-[3px]">
+          <div
+            className="pointer-events-auto w-full max-w-sm overflow-hidden rounded-[30px] border border-violet-200/70 bg-white shadow-[0_28px_90px_rgba(76,29,149,0.24)] dark:border-violet-900/60 dark:bg-slate-900 dark:shadow-[0_28px_90px_rgba(0,0,0,0.5)]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="palmyra-apk-update-title"
+          >
+            <div className="relative overflow-hidden bg-gradient-to-br from-violet-700 via-indigo-600 to-violet-500 px-5 pb-5 pt-5 text-white sm:px-6">
+              <div className="absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/15 blur-2xl" />
+              <div className="relative flex items-center gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/15 shadow-lg backdrop-blur-sm">
+                  <Download className="h-6 w-6" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-black uppercase tracking-[0.18em] text-violet-100">PALMYRA · Android</p>
+                  <h3 id="palmyra-apk-update-title" className="mt-1 text-xl font-black tracking-tight">Nueva versión disponible</h3>
+                </div>
+              </div>
+              <div className="relative mt-4 rounded-2xl border border-white/15 bg-black/10 px-3.5 py-3">
+                <p className="text-[10px] font-semibold leading-5 text-violet-50">
+                  La versión {apkUpdateVersion} ya está lista. Descarga el APK e instálalo encima de esta app: tu empresa, ventas y datos se conservan.
+                </p>
+              </div>
+            </div>
+            <div className="border-t border-slate-100 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
+              <div className="flex items-center justify-between gap-2.5">
+                <span className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-400">Actualización de la app</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[8px] font-black uppercase tracking-wider text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  Lista
+                </span>
+              </div>
+              <div className="mt-3 flex flex-col-reverse gap-2.5 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={() => setApkUpdateVersion(null)}
+                  className="h-11 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 text-[9px] font-black uppercase tracking-[0.08em] text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                >
+                  Más tarde
+                </button>
+                <a
+                  href={REMOTE_APK_DOWNLOAD}
+                  download="PALMYRA-Android.apk"
+                  className="h-11 flex-1 rounded-xl bg-violet-600 px-4 text-center text-[9px] font-black uppercase leading-[2.75rem] tracking-[0.08em] text-white shadow-lg shadow-violet-600/20 transition hover:bg-violet-700"
+                >
+                  Descargar APK
+                </a>
+              </div>
+              <p className="mt-2 text-center text-[8px] font-semibold leading-4 text-slate-400 dark:text-slate-500">
+                Al terminar la descarga, abre el archivo y pulsa Instalar para actualizar PALMYRA.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {updateAvailable && !IN_PALMYRA_APP && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center px-4 py-6 pointer-events-none bg-slate-950/20 dark:bg-slate-950/50 backdrop-blur-[3px]">
           <div
             className="pointer-events-auto w-full max-w-sm overflow-hidden rounded-[30px] border border-violet-200/70 bg-white shadow-[0_28px_90px_rgba(76,29,149,0.24)] dark:border-violet-900/60 dark:bg-slate-900 dark:shadow-[0_28px_90px_rgba(0,0,0,0.5)]"
@@ -1211,7 +1697,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     />
                   </div>
                   <p className="mt-1.5 text-[8px] font-semibold text-violet-600/80 dark:text-violet-300/80">
-                    {formatUpdateBytes(updateProgress?.receivedBytes) || "No cierres PALMYRA durante la actualización. Tus datos están protegidos."}
+                    {formatUpdateBytes(updateProgress?.receivedBytes, updateProgress?.totalBytes)
+                      || (updateProgress?.phase === 'preparing'
+                        ? 'Preparando la descarga. No cierres PALMYRA.'
+                        : 'No cierres PALMYRA durante la actualización. Tus datos están protegidos.')}
                   </p>
                 </div>
               )}
@@ -1242,7 +1731,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   onClick={handleApplyUpdate}
                   className="h-11 flex-1 rounded-xl bg-violet-600 px-4 text-[9px] font-black uppercase tracking-[0.08em] text-white shadow-lg shadow-violet-600/20 transition hover:bg-violet-700 disabled:cursor-wait disabled:opacity-70"
                 >
-                  {isApplyingUpdate ? `Actualizando… ${updateProgress?.percent ?? 0}%` : "Actualizar ahora"}
+                  {isApplyingUpdate ? `Actualizando… ${updateProgress?.percent ?? 0}%` : updateError ? "Reintentar actualización" : "Actualizar ahora"}
                 </button>
               </div>
             </div>

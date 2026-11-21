@@ -4,6 +4,7 @@ import { useSearchParams } from "react-router-dom";
 import type { EmailOtpType, VerifyOtpParams } from "@supabase/supabase-js";
 import { getSupabase } from "../lib/supabase";
 import { PalmyraWordmark } from "../components/PalmyraWordmark";
+import { useDocumentScrollPage } from "../hooks/useDocumentScrollPage";
 
 type Phase = "verifying" | "success" | "error";
 
@@ -42,6 +43,7 @@ function friendlyVerifyError(message: string) {
 }
 
 export default function AuthConfirm() {
+  useDocumentScrollPage();
   const [params] = useSearchParams();
   const [phase, setPhase] = useState<Phase>("verifying");
   const [status, setStatus] = useState("Verificando tu enlace seguro…");
@@ -51,6 +53,8 @@ export default function AuthConfirm() {
   const [resendEmail, setResendEmail] = useState("");
   const [sending, setSending] = useState(false);
   const [resent, setResent] = useState("");
+  // Permite repetir la verificación cuando el enlace tardó o la red falló.
+  const [attempt, setAttempt] = useState(0);
 
   const type = useMemo(() => (params.get("type") || "email").toLowerCase(), [params]);
   const tokenHash = params.get("token_hash");
@@ -64,6 +68,25 @@ export default function AuthConfirm() {
     setPhase("success");
     window.setTimeout(() => window.location.replace(path), 900);
   }, []);
+
+  // La verificación nunca puede quedar girando para siempre: si Supabase no
+  // responde (red móvil, lock de auth), se libera la pantalla con salidas.
+  useEffect(() => {
+    if (phase !== "verifying") return;
+    const watchdog = window.setTimeout(() => {
+      setError("La verificación está tardando más de lo normal. Revisa tu conexión y vuelve a intentarlo; si ya confirmaste el correo, entra con tu contraseña.");
+      setPhase("error");
+    }, 15000);
+    return () => window.clearTimeout(watchdog);
+  }, [phase, attempt]);
+
+  const retryVerification = () => {
+    setError("");
+    setResent("");
+    setPhase("verifying");
+    setStatus("Verificando tu enlace seguro…");
+    setAttempt((value) => value + 1);
+  };
 
   useEffect(() => {
     let active = true;
@@ -199,7 +222,7 @@ export default function AuthConfirm() {
     });
 
     return () => { active = false; };
-  }, [params, type, tokenHash, rawToken, authCode, queryError, finishSuccess]);
+  }, [params, type, tokenHash, rawToken, authCode, queryError, finishSuccess, attempt]);
 
   useEffect(() => {
     const supabase = getSupabase();
@@ -233,16 +256,18 @@ export default function AuthConfirm() {
       setResent("Correo reenviado. Revisa tu bandeja de entrada y la carpeta de spam.");
     } catch (caught: any) {
       const raw = String(caught?.message || "");
-      setError(/rate limit/i.test(raw)
-        ? "Se enviaron varios correos seguidos. Espera unos minutos antes de reenviar."
-        : raw || "No pudimos reenviar el correo. Inténtalo de nuevo.");
+      setError(/for security purposes|only request this after/i.test(raw)
+        ? "Espera unos segundos antes de pedir otro correo de confirmación."
+        : /rate limit/i.test(raw)
+          ? "Se enviaron varios correos seguidos. Espera unos minutos antes de reenviar."
+          : raw || "No pudimos reenviar el correo. Inténtalo de nuevo.");
     } finally {
       setSending(false);
     }
   };
 
   return (
-    <main className="min-h-[100dvh] overflow-y-auto bg-[#F7F5FC] px-3 py-6 sm:px-5 sm:py-10" data-keyboard-viewport="native">
+    <main className="palmyra-scroll-page min-h-[100dvh] overflow-y-auto bg-[#F7F5FC] px-3 py-6 sm:px-5 sm:py-10" data-keyboard-viewport="native">
       <section className="mx-auto w-full max-w-lg overflow-hidden rounded-[26px] border border-violet-100 bg-white shadow-[0_30px_90px_-52px_rgba(59,27,110,.55)]">
         <div className="h-1 bg-gradient-to-r from-[#3B1B78] via-[#6535C5] to-[#9B7BE8]" />
         <div className="px-5 py-7 text-center sm:px-8 sm:py-9">
@@ -280,7 +305,17 @@ export default function AuthConfirm() {
               <h1 className="mt-4 text-xl font-black tracking-[-.02em] text-[#3B1B78] sm:text-2xl">El enlace no pudo confirmarse</h1>
               <p role="alert" className="mt-2 text-sm leading-6 text-slate-500">{error}</p>
 
-              <div className="mt-6 rounded-2xl border border-violet-100 bg-[#F7F5FC] p-4 text-left">
+              {!queryError ? (
+                <button
+                  type="button"
+                  onClick={retryVerification}
+                  className="mt-4 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-white text-xs font-black text-[#5B2DBA] active:scale-[.98]"
+                >
+                  Reintentar verificación
+                </button>
+              ) : null}
+
+              <div className="mt-4 rounded-2xl border border-violet-100 bg-[#F7F5FC] p-4 text-left">
                 <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-[#6535C5]"><MailCheck className="h-4 w-4" /> Reenviar confirmación</p>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
                   {target ? `Enviaremos un enlace nuevo a ${target}.` : "Escribe el correo con el que te registraste."}

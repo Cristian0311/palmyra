@@ -34,11 +34,21 @@ let persistenceChain: Promise<void> = Promise.resolve();
 let persistenceError: Error | null = null;
 let queueInitPromise: Promise<void>;
 let removedDuringQueueProcess = new Set<string>();
+// La copia en memoria solo puede reemplazarse por IndexedDB mientras se sepa
+// que el espejo durable está completo. Si una escritura falló, ocultar la cola
+// real sería peor que mostrar un contador viejo.
+let idbMirrorComplete = true;
+let queueChannel: BroadcastChannel | null | undefined;
+
+export type OfflineQueueCounts = { pending: number; conflicts: number; total: number };
 
 function refreshScopeKeys() {
   const scopeKey = getPalmyraLocalScopeKey();
   activeScopeKey = scopeKey;
   deviceSequenceCache = 0;
+  // Cada alcance tiene su propia base IndexedDB: al cambiarlo el espejo se
+  // reconstruye desde cero en migrateLegacyQueue.
+  idbMirrorComplete = true;
   if (!scopeKey) {
     STORAGE_KEY = 'palmyra-offline-queue__anonymous';
     TOMBSTONES_KEY = 'palmyra-offline-queue-tombstones__anonymous';
@@ -146,6 +156,7 @@ async function migrateLegacyQueue(): Promise<void> {
     // Never replace IndexedDB with an empty queue when a read itself failed.
     // The old behavior could erase durable pending sales during startup.
     console.error('[offlineSync] No se pudo leer la cola IndexedDB; se conserva sin sobrescribir:', e);
+    idbMirrorComplete = false;
     memoryQueue = (Array.isArray(legacy) ? legacy : [])
       .filter(item => !tombstones.has(String(item.id)));
     queueReady = true;
@@ -157,6 +168,8 @@ async function migrateLegacyQueue(): Promise<void> {
   const merged = new Map<string, OfflineQueueItem>();
   const mergeCandidate = (item: OfflineQueueItem) => {
     const normalized = normalizeOfflineQueueItem(item, { deviceId: item.deviceId || getDeviceId() });
+    // Un 'processing' persistido por un cierre abrupto no está en vuelo aquí.
+    if (normalized.status === 'processing') normalized.status = 'pending';
     const mergeKey = `${normalized.type}:${normalized.actionId}`;
     const previous = merged.get(mergeKey);
     if (!previous) { merged.set(mergeKey, normalized); return; }
@@ -183,9 +196,11 @@ async function migrateLegacyQueue(): Promise<void> {
   memoryQueue = sequenced.items.sort(compareOfflineQueueItems);
   try {
     await idbReplaceAll(DB_NAME, Boolean(activeScopeKey), memoryQueue);
+    idbMirrorComplete = true;
     if (legacyRaw) localStorage.removeItem(STORAGE_KEY);
     clearQueueTombstones();
   } catch (e) {
+    idbMirrorComplete = false;
     persistenceError = e instanceof Error ? e : new Error(String(e));
     // Si IndexedDB está dañado/bloqueado, conservamos una copia durable en
     // localStorage y NO eliminamos la cola heredada.
@@ -244,14 +259,118 @@ queueInitPromise = migrateLegacyQueue().catch(async (error) => {
   emitQueueEvent();
 });
 
-function emitQueueEvent() {
-  if (typeof window !== 'undefined') {
-    const pending = memoryQueue.filter(item => item.status !== 'conflict').length;
-    const conflicts = memoryQueue.filter(item => item.status === 'conflict').length;
-    window.dispatchEvent(new CustomEvent('offline_queue_updated', {
-      detail: { count: pending, pendingCount: pending, conflictCount: conflicts }
-    }));
+function countQueueItems(items: OfflineQueueItem[]): OfflineQueueCounts {
+  let pending = 0;
+  let conflicts = 0;
+  for (const item of items) {
+    if (!item || !item.id) continue;
+    if (item.status === 'conflict') conflicts += 1;
+    else pending += 1;
   }
+  return { pending, conflicts, total: pending + conflicts };
+}
+
+function getQueueChannel(): BroadcastChannel | null {
+  if (queueChannel !== undefined) return queueChannel;
+  if (typeof BroadcastChannel === 'undefined') {
+    queueChannel = null;
+    return queueChannel;
+  }
+  try {
+    queueChannel = new BroadcastChannel('palmyra-offline-queue');
+    // Otra pestaña/ventana drenó la cola (solo una puede sincronizar por el
+    // Web Lock). Releemos IndexedDB en lugar de conservar un contador viejo.
+    queueChannel.onmessage = (event: MessageEvent) => {
+      if (event?.data?.type !== 'queue-changed') return;
+      void refreshOfflineQueueCounts();
+    };
+  } catch {
+    queueChannel = null;
+  }
+  return queueChannel;
+}
+
+function emitQueueEvent(origin: 'local' | 'refresh' = 'local') {
+  if (typeof window === 'undefined') return;
+  const counts = countQueueItems(memoryQueue);
+  window.dispatchEvent(new CustomEvent('offline_queue_updated', {
+    detail: {
+      count: counts.pending,
+      pendingCount: counts.pending,
+      conflictCount: counts.conflicts,
+      totalCount: counts.total,
+      origin
+    }
+  }));
+  if (origin === 'local') {
+    try { getQueueChannel()?.postMessage({ type: 'queue-changed' }); } catch {}
+  }
+}
+
+function queuesEqual(a: OfflineQueueItem[], b: OfflineQueueItem[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let index = 0; index < a.length; index += 1) {
+    const x = a[index];
+    const y = b[index];
+    if (!x || !y) return false;
+    if (x.id !== y.id || x.status !== y.status || x.timestamp !== y.timestamp ||
+        Number(x.retryCount || 0) !== Number(y.retryCount || 0) || String(x.actionId) !== String(y.actionId)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Lectura autoritativa de la cola. IndexedDB es la fuente de verdad: la copia
+ * en memoria puede quedarse atrás cuando otra pestaña sincroniza, cuando se
+ * cambia de empresa/usuario o cuando un proceso anterior cerró a mitad de una
+ * sincronización. Devuelve los contadores ya separados (pendientes/conflictos)
+ * y emite `offline_queue_updated` para que cualquier vista se sincronice.
+ */
+export async function refreshOfflineQueueCounts(): Promise<OfflineQueueCounts> {
+  try {
+    await waitForOfflineQueueReady();
+    await persistenceChain.catch(() => {});
+  } catch {}
+  if (queueReady && idbMirrorComplete && typeof indexedDB !== 'undefined') {
+    // Nunca reemplazar la cola mientras ESTE proceso la está procesando: la
+    // instantánea durable refleja todavía el estado anterior al replay.
+    const syncInFlight = memoryQueue.some(item => item.status === 'processing');
+    if (syncInFlight) {
+      emitQueueEvent('refresh');
+      return countQueueItems(memoryQueue);
+    }
+    try {
+      const stored = await idbGetAll(DB_NAME, Boolean(activeScopeKey));
+      if (Array.isArray(stored)) {
+        const tombstones = readQueueTombstones();
+        const byId = new Map<string, OfflineQueueItem>();
+        for (const raw of stored) {
+          if (!raw || !raw.id) continue;
+          const id = String(raw.id);
+          if (tombstones.has(id) || removedDuringQueueProcess.has(id)) continue;
+          const normalized = normalizeOfflineQueueItem(raw);
+          // Un elemento 'processing' en el almacén significa que otra pestaña
+          // o un cierre abrupto lo dejó en vuelo: aquí no se está procesando,
+          // así que vuelve a pendiente (nunca se oculta trabajo real).
+          byId.set(id, normalized.status === 'processing' ? { ...normalized, status: 'pending' } : normalized);
+        }
+        // Fin de la cadena de persistencia ya esperado: todo lo que existe en
+        // memoria quedó escrito. Si IndexedDB ya no lo tiene fue drenado por
+        // otra ventana o pertenece a un alcance anterior, así que se descarta.
+        const next = Array.from(byId.values()).sort(compareOfflineQueueItems);
+        if (!queuesEqual(next, memoryQueue)) memoryQueue = next;
+        idbMirrorComplete = true;
+      }
+    } catch (error) {
+      // Si IndexedDB no responde conservamos la copia en memoria; mostrar
+      // operaciones reales es preferible a ocultarlas.
+      console.warn('[offlineSync] No se pudo releer la cola desde IndexedDB:', error);
+    }
+  }
+  emitQueueEvent('refresh');
+  return countQueueItems(memoryQueue);
 }
 
 export function getOfflineQueue(): OfflineQueueItem[] {
@@ -277,6 +396,7 @@ function persistQueueItem(item: OfflineQueueItem): Promise<void> {
         persistenceError = null;
         return;
       } catch (idbError) {
+        idbMirrorComplete = false;
         try {
           localStorage.setItem(STORAGE_KEY, JSON.stringify(memoryQueue));
           persistenceError = null;
@@ -315,6 +435,7 @@ function persistQueueDelete(id: string): Promise<void> {
         await idbDelete(DB_NAME, Boolean(activeScopeKey), id);
         return;
       } catch (idbError) {
+        idbMirrorComplete = false;
         try { localStorage.setItem(STORAGE_KEY, JSON.stringify(memoryQueue)); } catch {}
         throw idbError;
       }
@@ -343,9 +464,11 @@ function persistQueueClear(): void {
     if (typeof indexedDB !== 'undefined') {
       try {
         await idbClear(DB_NAME, Boolean(activeScopeKey));
+        idbMirrorComplete = true;
         clearQueueTombstones();
         return;
       } catch (idbError) {
+        idbMirrorComplete = false;
         try { localStorage.removeItem(STORAGE_KEY); } catch {}
         console.warn('[offlineSync] No se pudo limpiar IndexedDB; los tombstones evitarán la reaparición:', idbError);
         return;
@@ -429,10 +552,13 @@ export function clearOfflineQueue(): void {
 export function getOfflineQueueCount(): number {
   // Los conflictos definitivos ya no son operaciones pendientes y no deben
   // despertar el sincronizador cada 30s indefinidamente.
-  return memoryQueue.filter(item => item.status !== 'conflict').length;
+  return countQueueItems(memoryQueue).pending;
 }
 export function getOfflineConflictCount(): number {
-  return memoryQueue.filter(item => item.status === 'conflict').length;
+  return countQueueItems(memoryQueue).conflicts;
+}
+export function getOfflineQueueCounts(): OfflineQueueCounts {
+  return countQueueItems(memoryQueue);
 }
 
 export function getOfflineQueueHealth(): OfflineQueueHealth {
@@ -480,12 +606,14 @@ export async function persistOfflineQueueSnapshot(queue: OfflineQueueItem[]): Pr
     if (!queueReady && queueInitPromise) await queueInitPromise;
     if (typeof indexedDB !== 'undefined') {
       await idbReplaceAll(DB_NAME, Boolean(activeScopeKey), snapshot);
+      idbMirrorComplete = true;
       return;
     }
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
     }
   }).catch(async e => {
+    idbMirrorComplete = false;
     persistenceError = e instanceof Error ? e : new Error(String(e));
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));

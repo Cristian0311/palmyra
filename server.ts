@@ -125,9 +125,10 @@ async function startServer() {
   app.use('/api/ai-', requireAuthenticatedRequest);
 
   // PNG version of the official PALMYRA logo for email clients such as Gmail.
-  // The PNG is generated at build time (public/palmyra-email-logo-v2.png), so
-  // the packaged desktop server nunca necesita el módulo nativo sharp; solo se
-  // usa como respaldo si el archivo no estuviera disponible.
+  // Files are generated at build time, so the packaged desktop server never
+  // needs the native sharp module; sharp is only a fallback when the PNG is
+  // missing. La URL se cachea con un parámetro ?v= en las plantillas para
+  // evitar que un proxy de imágenes conserve un intento fallido anterior.
   let palmyraEmailLogoBuffer: Buffer | null = null;
   app.get('/palmyra-email-logo-v2.png', async (_req, res) => {
     try {
@@ -142,11 +143,14 @@ async function startServer() {
         const svg = await fs.readFile(path.join(moduleDir, '..', 'public', 'palmyra-logo-exact.svg'));
         palmyraEmailLogoBuffer = await sharp(svg)
           .resize({ width: 1200, withoutEnlargement: true })
+          .flatten({ background: '#ffffff' })
           .png()
           .toBuffer();
       }
       res.setHeader('Content-Type', 'image/png');
-      res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('Access-Control-Allow-Origin', '*');
       res.send(palmyraEmailLogoBuffer);
     } catch (error) {
       console.error('[PALMYRA] No se pudo generar el logo PNG de correo:', error);
@@ -1101,6 +1105,21 @@ Responde ESTRICTAMENTE con un objeto JSON:
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
+      next();
+    });
+    // El APK consulta la versión publicada desde 127.0.0.1 (otro origen), por
+    // eso version.json debe permitir CORS. Sigue sirviéndose desde dist.
+    app.get('/version.json', (_req, res, next) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      next();
+    });
+    // Paquetes de actualización del APK: inmutables por versión y descargables
+    // desde cualquier origen (la app los pide fuera del WebView).
+    app.get('/releases/*', (_req, res, next) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       next();
     });
     app.use(express.static(distPath, {

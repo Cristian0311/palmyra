@@ -1,19 +1,19 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const packagePath = path.resolve('package.json');
+const root = process.cwd();
 const publicDir = path.resolve('public');
-const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+const appVersion = JSON.parse(fs.readFileSync(path.resolve('app-version.json'), 'utf8')).version;
 
 const buildId =
   process.env.RENDER_GIT_COMMIT ||
   process.env.VITE_BUILD_ID ||
   process.env.GITHUB_SHA ||
-  `${packageJson.version}-${Date.now()}`;
+  `${appVersion}-${Date.now()}`;
 
 const payload = {
   app: 'PALMYRA',
-  version: packageJson.version,
+  version: appVersion,
   buildId: String(buildId),
   builtAt: new Date().toISOString(),
 };
@@ -25,4 +25,4 @@ fs.writeFileSync(
   'utf8',
 );
 
-console.log(`[PALMYRA] Build ${payload.buildId} · ${payload.builtAt}`);
+console.log(`[PALMYRA] Build ${payload.buildId} · ${payload.builtAt} · v${payload.version} (${root})`);

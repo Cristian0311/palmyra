@@ -18,8 +18,13 @@ AAPT2="$BT/aapt2.exe"
 ZIPALIGN="$BT/zipalign.exe"
 APKSIGNER="$BT/lib/apksigner.jar"
 
-VERSION_NAME="$(node -p "require('../package.json').version")"
-VERSION_CODE=$((10#$(printf '%s' "$VERSION_NAME" | awk -F. '{printf "%d%02d%02d", $1, $2, $3}')))
+# versionName es la versión visible del producto (app-version.json).
+# versionCode debe crecer siempre para el instalador de Android: se deriva de
+# package.json, que solo se toca cuando hay una nueva compilación instalable.
+APP_VERSION_NAME="$(node -p "require('../app-version.json').version")"
+PACKAGE_VERSION="$(node -p "require('../package.json').version")"
+VERSION_NAME="$APP_VERSION_NAME"
+VERSION_CODE=$((10#$(printf '%s' "$PACKAGE_VERSION" | awk -F. '{printf "%d%02d%02d", $1, $2, $3}')))
 
 rm -rf "$OUT"
 mkdir -p "$OUT/res" "$OUT/classes" "$OUT/dex" "$MAIN/assets" ../release
@@ -30,7 +35,10 @@ if [[ -f ../dist/index.html ]]; then
   echo "==> syncing ../dist -> $MAIN/assets/web"
   rm -rf "$MAIN/assets/web"
   cp -R ../dist "$MAIN/assets/web"
-  rm -f "$MAIN/assets/web/server.cjs"
+  # El paquete OTA y el servidor Node no viajan dentro del APK: el teléfono
+  # descarga el ZIP desde el servidor y conserva sus datos al actualizar.
+  rm -rf "$MAIN/assets/web/releases"
+  rm -f "$MAIN/assets/web/server.cjs" "$MAIN/assets/web/server.cjs.map" "$MAIN/assets/web/desktop-server.cjs"
 else
   echo "!! ../dist/index.html not found; packaging the existing $MAIN/assets/web"
 fi

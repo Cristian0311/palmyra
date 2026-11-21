@@ -5,18 +5,25 @@ import fs from 'fs';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-const packageVersion = (() => {
+// La versión visible de PALMYRA vive en app-version.json. package.json sigue
+// siendo la fuente del versionCode del APK (debe crecer siempre), pero la
+// versión que ve el cliente se cambia solo cuando el producto lo autoriza.
+const appVersion = (() => {
   try {
-    return JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8')).version || '0.0.0';
+    return JSON.parse(fs.readFileSync(path.resolve(__dirname, 'app-version.json'), 'utf8')).version || '0.0.0';
   } catch {
-    return '0.0.0';
+    try {
+      return JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8')).version || '0.0.0';
+    } catch {
+      return '0.0.0';
+    }
   }
 })();
 
 export default defineConfig(() => {
   return {
     define: {
-      __APP_VERSION__: JSON.stringify(packageVersion)
+      __APP_VERSION__: JSON.stringify(appVersion)
     },
     plugins: [
       react(), 
@@ -80,7 +87,7 @@ export default defineConfig(() => {
           clientsClaim: true,
           // Sin esta lista, cualquier navegación a /download/* la responde el
           // shell cacheado (200 text/html) y el instalador/APK nunca descarga.
-          navigateFallbackDenylist: [/^\/download(\/|$)/i, /^\/api(\/|$)/i, /^\/admin(\/|$)/i, /^\/version\.json$/i],
+          navigateFallbackDenylist: [/^\/download(\/|$)/i, /^\/api(\/|$)/i, /^\/admin(\/|$)/i, /^\/releases(\/|$)/i, /^\/version\.json$/i],
           // Keep the new worker waiting until the user applies the update. This avoids
           // switching the app shell mid-render and leaving a blank screen.
           skipWaiting: false,

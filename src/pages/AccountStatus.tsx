@@ -3,8 +3,10 @@ import { AlertTriangle, CheckCircle2, LogOut, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { loadSaaSContext, signOutSaaSAccount } from "../services/saas";
 import { useStore } from "../store/useStore";
+import { useDocumentScrollPage } from "../hooks/useDocumentScrollPage";
 
 export default function AccountStatus() {
+  useDocumentScrollPage();
   const navigate = useNavigate();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -39,7 +41,7 @@ export default function AccountStatus() {
   };
 
   return (
-    <main className="min-h-screen bg-[#F7F5FC] px-4 py-8 flex items-center justify-center">
+    <main className="palmyra-scroll-page min-h-screen bg-[#F7F5FC] px-4 py-8 flex items-center justify-center">
       <div className="w-full max-w-lg bg-white border border-violet-100 rounded-[2rem] shadow-xl p-7 sm:p-9 text-center">
         <div className="w-16 h-16 mx-auto rounded-2xl bg-[#F0EBFA] text-amber-600 flex items-center justify-center">
           <AlertTriangle className="w-8 h-8" />

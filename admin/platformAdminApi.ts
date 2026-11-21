@@ -91,8 +91,7 @@ export type PlatformPlan = {
   active: boolean;
 };
 
-export type PlatformCompanyDetail = {
-  company: {
+export type PlatformCompanyDetail = {  company: {
     id: string;
     name: string;
     slug?: string | null;
@@ -147,6 +146,38 @@ export type PlatformCompanyDetail = {
     paid_at?: string | null;
     created_at: string;
   }>;
+};
+
+export type PlatformCompanyConsole = {
+  company: {
+    id: string;
+    name: string;
+    slug?: string | null;
+    account_status?: string | null;
+    active?: boolean | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+    currency?: string | null;
+  };
+  subscription: PlatformCompanyDetail["subscription"];
+  plan: {
+    code: string;
+    name: string;
+    limits: Record<string, unknown>;
+    features: Record<string, unknown>;
+  } | null;
+  counts: { products: number; employees: number; warehouses: number; devices: number };
+  owner: { user_id: string; full_name?: string | null; email?: string | null; phone?: string | null } | null;
+  members: Array<{
+    user_id: string;
+    full_name?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    is_owner?: boolean | null;
+    status?: string | null;
+    roles?: string | null;
+  }>;
+  note: { text: string; updated_at?: string | null; updated_by?: string | null } | null;
 };
 
 export type PlatformAuditEntry = {
@@ -204,6 +235,16 @@ const ADMIN_ERRORS: Record<string, string> = {
   plan_warehouse_limit: "La empresa supera el límite de almacenes de ese plan.",
   plan_product_limit: "La empresa supera el límite de productos de ese plan.",
   plan_employee_limit: "La empresa supera el límite de empleados de ese plan.",
+  invalid_company_name: "El nombre debe tener entre 2 y 120 caracteres.",
+  invalid_company_slug: "El identificador solo admite minúsculas, números y guiones (2–61 caracteres).",
+  company_slug_taken: "Ese identificador ya lo usa otra empresa.",
+  invalid_currency: "La moneda debe ser CUP, USD, MLC o EUR.",
+  subscription_not_found: "La empresa no tiene suscripción configurada.",
+  invalid_subscription_status: "El estado de suscripción no es válido.",
+  trial_end_required: "Una suscripción en prueba necesita fecha de fin de prueba.",
+  period_end_required: "Una suscripción activa de pago necesita fecha de fin de período.",
+  invalid_subscription_dates: "El fin de prueba no puede ser posterior al fin del período.",
+  invalid_grace_date: "La gracia no puede terminar antes del fin del período.",
 };
 
 export function adminErrorMessage(error: unknown, fallback = "No se pudo completar la operación.") {
@@ -274,6 +315,64 @@ export async function loadCompanyDetail(companyId: string): Promise<PlatformComp
   const { data, error } = await supabase.rpc("get_platform_company_detail", { p_company_id: companyId });
   if (error) throw new Error(adminErrorMessage(error));
   return data as PlatformCompanyDetail;
+}
+
+export async function loadCompanyConsole(companyId: string): Promise<PlatformCompanyConsole> {
+  const supabase = await assertPlatformAdmin();
+  const { data, error } = await supabase.rpc("get_platform_company_console", { p_company_id: companyId });
+  if (error) throw new Error(adminErrorMessage(error));
+  return data as PlatformCompanyConsole;
+}
+
+export async function updateCompanyProfile(
+  companyId: string,
+  profile: { name: string; slug: string; currency: string },
+) {
+  const { data, error } = await getAdminSupabase().rpc("update_platform_company_profile", {
+    p_company_id: companyId,
+    p_name: profile.name.trim(),
+    p_slug: profile.slug.trim().toLowerCase(),
+    p_currency: profile.currency,
+  });
+  if (error) throw new Error(adminErrorMessage(error));
+  return data;
+}
+
+export async function saveCompanyNote(companyId: string, note: string) {
+  const { data, error } = await getAdminSupabase().rpc("set_platform_company_note", {
+    p_company_id: companyId,
+    p_note: note,
+  });
+  if (error) throw new Error(adminErrorMessage(error));
+  return data;
+}
+
+export async function updateCompanySubscriptionDates(
+  companyId: string,
+  input: {
+    status: string;
+    trialEndsAt: string | null;
+    currentPeriodEnd: string | null;
+    graceEndsAt: string | null;
+    note?: string;
+  },
+) {
+  const { data, error } = await getAdminSupabase().rpc("set_platform_company_subscription_dates", {
+    p_company_id: companyId,
+    p_status: input.status,
+    p_trial_ends_at: input.trialEndsAt,
+    p_current_period_end: input.currentPeriodEnd,
+    p_grace_ends_at: input.graceEndsAt,
+    p_note: input.note?.trim() || null,
+  });
+  if (error) throw new Error(adminErrorMessage(error));
+  return data as {
+    ok: boolean;
+    status: string;
+    trial_ends_at?: string | null;
+    current_period_end?: string | null;
+    grace_ends_at?: string | null;
+  };
 }
 
 export async function approveRequest(

@@ -8,7 +8,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ArrowLeftRight, PackagePlus, AlertCircle, Search, ShieldCheck, X, DollarSign, Trash2, Edit, History, Package, PackageCheck, TrendingUp, Filter, Download, Plus, ArrowRightLeft, LayoutGrid, List, Settings2, Tag, Building2, Save, RefreshCw, Minus, ChevronDown, ChevronUp, ChevronRight, Check } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { cn, generateId } from "../lib/utils";
-import { Product, Category, User } from "../types";
+import { Product, Category } from "../types";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { PrintLabels } from "../components/PrintLabels";
 import { ABCAnalysis } from "../components/ABCAnalysis";
@@ -21,28 +21,13 @@ import { canUsePlanFeature } from '../services/planAccess';
 import PlanFeatureGate from '../components/PlanFeatureGate';
 import "./team.css";
 
-function estimateUnitSalary(product: Pick<Product, "price" | "commissionValue">, employees: User[]) {
-  if (!employees.length) return 0;
-  const sale = Math.max(0, Number(product.price) || 0);
-  const fixed = Math.max(0, Number(product.commissionValue) || 0);
-  const average = employees.reduce((sum, employee) => {
-    const type = employee.compensationType || "fixed_product";
-    if (type === "sales_percentage") {
-      const rate = Math.max(0, Math.min(100, Number(employee.salesPercentage ?? employee.commissionRate) || 0));
-      return sum + (sale * rate / 100);
-    }
-    return sum + fixed;
-  }, 0) / employees.length;
-  return average;
-}
-
 export default function Inventory() {
   const { 
     products, inventory, branches, addProduct, updateProduct, 
     setInventoryQuantity, deleteProduct, deleteCategory,
-    categories, batchDeleteProducts, batchUpdateProducts, getBaseCurrency, currencies,
+    categories, batchDeleteProducts, batchUpdateProducts, getBaseCurrency,
     currentBranchId, addNotification, users, currentUser
-  } = useStore(useShallow((state) => ({ products: state.products, inventory: state.inventory, branches: state.branches, addProduct: state.addProduct, updateProduct: state.updateProduct, setInventoryQuantity: state.setInventoryQuantity, deleteProduct: state.deleteProduct, deleteCategory: state.deleteCategory, categories: state.categories, batchDeleteProducts: state.batchDeleteProducts, batchUpdateProducts: state.batchUpdateProducts, getBaseCurrency: state.getBaseCurrency, currencies: state.currencies, currentBranchId: state.currentBranchId, addNotification: state.addNotification, users: state.users, currentUser: state.currentUser })));
+  } = useStore(useShallow((state) => ({ products: state.products, inventory: state.inventory, branches: state.branches, addProduct: state.addProduct, updateProduct: state.updateProduct, setInventoryQuantity: state.setInventoryQuantity, deleteProduct: state.deleteProduct, deleteCategory: state.deleteCategory, categories: state.categories, batchDeleteProducts: state.batchDeleteProducts, batchUpdateProducts: state.batchUpdateProducts, getBaseCurrency: state.getBaseCurrency, currentBranchId: state.currentBranchId, addNotification: state.addNotification, users: state.users, currentUser: state.currentUser })));
   const baseCurrency = getBaseCurrency();
 
   // Un empleado solo opera sobre sus almacenes autorizados; el administrador ve todos.
@@ -702,38 +687,6 @@ export default function Inventory() {
     return `${currency.symbol} ${formatted}`;
   };
 
-  const MultiCurrencyDisplay = ({ amount }: { amount: number }) => {
-    const baseCurr = currencies.find(c => c.isBase) || baseCurrency;
-    const secondaryCurr = currencies.filter(c => !c.isBase);
-    const convertedBase = baseCurr.isBase ? amount : amount / (baseCurr.rateToBase || 1);
-    const formattedBase = convertedBase.toLocaleString('es-CU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-    return (
-      <div className="mt-0.5 space-y-0.5">
-        <div className="text-[11px] font-black text-primary leading-tight truncate flex items-center gap-1">
-          <span className="text-[7.5px] font-black px-1 py-0.2 rounded bg-indigo-100/70 dark:bg-indigo-900/50 text-indigo-700 dark:text-indigo-300 uppercase tracking-tighter">
-            {baseCurr.code}
-          </span>
-          <span>{baseCurr.symbol}{formattedBase}</span>
-        </div>
-        {secondaryCurr.length > 0 && (
-          <div className="text-[8px] font-bold text-muted flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
-            {secondaryCurr.map(c => {
-              const val = amount / (c.rateToBase || 1);
-              const formattedVal = val.toLocaleString('es-CU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-              return (
-                <span key={c.code} className="inline-flex items-center gap-0.5 whitespace-nowrap">
-                  <span className="text-[6.5px] font-black uppercase text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-0.5 py-0.2 rounded">{c.code}</span>
-                  <span className="text-[7.5px]">{c.symbol}{formattedVal}</span>
-                </span>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    );
-  };
-
   // Los indicadores reflejan la sucursal activa, no la búsqueda ni los filtros
   // de la tabla: buscar un producto no debe alterar las cifras globales.
   const stats = useMemo(() => {
@@ -754,33 +707,13 @@ export default function Inventory() {
 
     const totalProducts = targetProducts.length;
     let totalStock = 0;
-    let totalCostValue = 0;
-    let totalSaleValue = 0;
-    let totalEmployeeSalary = 0;
-    const unitProfitByProduct = new Map<string, number>();
-
-    const activeEmployees = (users || []).filter(user => user.isActive !== false);
 
     for (const product of targetProducts) {
-      const quantity = Math.max(0, Number(product.totalStock) || 0);
-      const unitCost = Math.max(0, Number(product.costPrice) || 0);
-      const unitSale = Math.max(0, Number(product.price) || 0);
-      totalStock += quantity;
-      totalCostValue += unitCost * quantity;
-      totalSaleValue += unitSale * quantity;
-
-      // Ganancia neta real por unidad: venta − costo − salario/comisión del
-      // personal. Es la misma regla que usa el total de la tarjeta superior.
-      const unitSalary = Math.max(0, estimateUnitSalary(product, activeEmployees));
-      const unitProfit = unitSale - unitCost - unitSalary;
-      totalEmployeeSalary += unitSalary * quantity;
-      unitProfitByProduct.set(product.id, unitProfit);
+      totalStock += Math.max(0, Number(product.totalStock) || 0);
     }
 
-    const totalProfit = totalSaleValue - totalEmployeeSalary - totalCostValue;
-
-    return { totalProducts, totalStock, lowStockCount: lowStockProductIds.size, totalCostValue, totalSaleValue, totalProfit, unitProfitByProduct };
-  }, [inventory, products, selectedBranch, users]);
+    return { totalProducts, totalStock, lowStockCount: lowStockProductIds.size };
+  }, [inventory, products, selectedBranch]);
 
   return (
     <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500 h-full flex flex-col min-h-0">
@@ -840,24 +773,14 @@ export default function Inventory() {
       </header>
 
       {/* Summary Cards Lineal - Responsive Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-1.5 sm:gap-2 px-1 shrink-0">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2 px-1 shrink-0">
         <div className="bg-secondary p-1.5 sm:p-2 rounded-xl border border-base shadow-xs flex flex-col justify-between">
           <span className="text-[7px] sm:text-[7.5px] font-black uppercase text-muted tracking-wider">Tipos</span>
           <div className="text-[11px] font-black text-primary mt-0.5">{stats.totalProducts.toLocaleString()}</div>
         </div>
         <div className="bg-secondary p-1.5 sm:p-2 rounded-xl border border-base shadow-xs flex flex-col justify-between">
-          <span className="text-[7px] sm:text-[7.5px] font-black uppercase text-muted tracking-wider">Costo</span>
-          <div className="mt-0.5"><MultiCurrencyDisplay amount={stats.totalCostValue} /></div>
-        </div>
-        <div className="bg-secondary p-1.5 sm:p-2 rounded-xl border border-base shadow-xs flex flex-col justify-between">
-          <span className="text-[7px] sm:text-[7.5px] font-black uppercase text-muted tracking-wider">Venta</span>
-          <div className="mt-0.5"><MultiCurrencyDisplay amount={stats.totalSaleValue} /></div>
-        </div>
-        <div className="bg-indigo-50/70 dark:bg-indigo-950/40 p-1.5 sm:p-2 rounded-xl border border-indigo-100 dark:border-indigo-900/40 shadow-xs flex flex-col justify-between">
-          <span className="text-[7px] sm:text-[7.5px] font-black uppercase text-indigo-600 dark:text-indigo-400 tracking-wider">Ganancia real</span>
-          <div className="mt-0.5" title="Ganancia real = Σ stock × (precio de venta − costo − salario/comisión por producto). No descuenta gastos fijos.">
-            <MultiCurrencyDisplay amount={stats.totalProfit} />
-          </div>
+          <span className="text-[7px] sm:text-[7.5px] font-black uppercase text-muted tracking-wider">Unidades</span>
+          <div className="text-[11px] font-black text-primary mt-0.5">{stats.totalStock.toLocaleString()}</div>
         </div>
         <div className="col-span-2 sm:col-span-1 bg-secondary p-1.5 sm:p-2 rounded-xl border border-base shadow-xs flex flex-col justify-between">
           <span className="text-[7px] sm:text-[7.5px] font-black uppercase text-rose-500 tracking-wider">Bajo Stock</span>
@@ -1260,24 +1183,6 @@ export default function Inventory() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-[10px] font-black text-primary whitespace-nowrap">{formatMoney(item.price)}</div>
-                      {(() => {
-                        const unitProfit = stats.unitProfitByProduct.get(item.id) ?? 0;
-                        const unitCost = Number(item.costPrice) || 0;
-                        const unitSalary = Math.max(0, (Number(item.price) || 0) - unitCost - unitProfit);
-                        return (
-                          <>
-                            <div
-                              className={cn(
-                                "text-[8px] font-black whitespace-nowrap",
-                                unitProfit >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"
-                              )}
-                              title={`Ganancia por unidad = venta ${formatMoney(Number(item.price) || 0)} − costo ${formatMoney(unitCost)} − salario/comisión ${formatMoney(unitSalary)}`}
-                            >
-                              Ganancia/u: {formatMoney(unitProfit)}
-                            </div>
-                          </>
-                        );
-                      })()}
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">

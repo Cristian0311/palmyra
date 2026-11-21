@@ -4,7 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useState, useRef, lazy, Suspense } from "react";
+import { useEffect, useState, useRef, lazy, Suspense, type ComponentType } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { canAccessSettingsSection, NOTIFICATIONS_PATH } from './utils/settingsAccess';
 import Layout from "./components/Layout";
@@ -20,31 +20,75 @@ import { setPalmyraLocalScope, clearPalmyraLocalScope, getPalmyraLocalScope } fr
 import { getCachedSaaSContext } from "./services/offlineAuthContext";
 import { registerCurrentDevice } from "./services/device";
 import { touchCurrentDevice } from "./services/security";
+import { confirmNativeBoot } from "./lib/nativeApp";
+
+// Recuperación de chunks perezosos: una PWA con caché vieja puede pedir un
+// archivo JS que ya no existe en el servidor. Sin esto, la navegación queda en
+// una pantalla vacía. Se reintenta el import una vez y, si vuelve a fallar, se
+// recarga una sola vez (protegido por sessionStorage) para reconciliar shell y
+// chunks. Nunca se recarga sin conexión: ahí el módulo no puede descargarse.
+const LAZY_RETRY_RELOAD_KEY = "palmyra-lazy-retry-reload";
+
+function guardedChunkReload() {
+  if (typeof window === "undefined") return false;
+  if (typeof navigator !== "undefined" && !navigator.onLine) return false;
+  try {
+    const last = Number(window.sessionStorage.getItem(LAZY_RETRY_RELOAD_KEY) || "0");
+    if (last && Date.now() - last < 60000) return false;
+    window.sessionStorage.setItem(LAZY_RETRY_RELOAD_KEY, String(Date.now()));
+  } catch {
+    return false;
+  }
+  window.location.reload();
+  return true;
+}
+
+function lazyWithRetry<T extends ComponentType<any>>(factory: () => Promise<{ default: T }>) {
+  return lazy(async () => {
+    try {
+      return await factory();
+    } catch (firstError) {
+      console.warn("[PALMYRA] Sección no cargada; reintentando una vez…", firstError);
+    }
+    await new Promise((resolve) => window.setTimeout(resolve, 300));
+    try {
+      return await factory();
+    } catch (retryError) {
+      console.error("[PALMYRA] La sección sigue sin cargar tras reintentar.", retryError);
+      if (guardedChunkReload()) {
+        // Se está recargando: mantener el fallback de Suspense mientras el
+        // navegador descarta esta página.
+        await new Promise((resolve) => window.setTimeout(resolve, 1500));
+      }
+      throw retryError;
+    }
+  });
+}
 
 // Code-splitting de rutas para acelerar inicio en tablets y reducir consumo de memoria
-const Dashboard = lazy(() => import("./pages/Dashboard"));
-const POS = lazy(() => import("./pages/POS"));
-const Inventory = lazy(() => import("./pages/Inventory"));
-const Returns = lazy(() => import("./pages/Returns"));
-const Settings = lazy(() => import("./pages/Settings"));
-const Customers = lazy(() => import("./pages/Customers"));
-const Quotes = lazy(() => import("./pages/Quotes"));
-const Transfers = lazy(() => import("./pages/Transfers"));
-const Reports = lazy(() => import("./pages/Reports"));
-const SaaSAuth = lazy(() => import("./pages/SaaSAuth"));
-const AuthConfirm = lazy(() => import("./pages/AuthConfirm"));
-const SaaSOnboarding = lazy(() => import("./pages/SaaSOnboarding"));
-const AccountStatus = lazy(() => import("./pages/AccountStatus"));
-const Subscription = lazy(() => import("./pages/Subscription"));
-const Team = lazy(() => import("./pages/Team"));
-const SaaSInvite = lazy(() => import("./pages/SaaSInvite"));
-const Suppliers = lazy(() => import("./pages/Suppliers"));
-const InventoryAudit = lazy(() => import("./pages/InventoryAudit"));
-const Banks = lazy(() => import("./pages/Banks"));
-const PlatformAdmin = lazy(() => import("./pages/PlatformAdmin"));
-const HelpCenter = lazy(() => import("./pages/HelpCenter"));
-const Tutorial = lazy(() => import("./pages/Tutorial"));
-const ExchangeRate = lazy(() => import("./pages/ExchangeRate"));
+const Dashboard = lazyWithRetry(() => import("./pages/Dashboard"));
+const POS = lazyWithRetry(() => import("./pages/POS"));
+const Inventory = lazyWithRetry(() => import("./pages/Inventory"));
+const Returns = lazyWithRetry(() => import("./pages/Returns"));
+const Settings = lazyWithRetry(() => import("./pages/Settings"));
+const Customers = lazyWithRetry(() => import("./pages/Customers"));
+const Quotes = lazyWithRetry(() => import("./pages/Quotes"));
+const Transfers = lazyWithRetry(() => import("./pages/Transfers"));
+const Reports = lazyWithRetry(() => import("./pages/Reports"));
+const SaaSAuth = lazyWithRetry(() => import("./pages/SaaSAuth"));
+const AuthConfirm = lazyWithRetry(() => import("./pages/AuthConfirm"));
+const SaaSOnboarding = lazyWithRetry(() => import("./pages/SaaSOnboarding"));
+const AccountStatus = lazyWithRetry(() => import("./pages/AccountStatus"));
+const Subscription = lazyWithRetry(() => import("./pages/Subscription"));
+const Team = lazyWithRetry(() => import("./pages/Team"));
+const SaaSInvite = lazyWithRetry(() => import("./pages/SaaSInvite"));
+const Suppliers = lazyWithRetry(() => import("./pages/Suppliers"));
+const InventoryAudit = lazyWithRetry(() => import("./pages/InventoryAudit"));
+const Banks = lazyWithRetry(() => import("./pages/Banks"));
+const PlatformAdmin = lazyWithRetry(() => import("./pages/PlatformAdmin"));
+const HelpCenter = lazyWithRetry(() => import("./pages/HelpCenter"));
+const Tutorial = lazyWithRetry(() => import("./pages/Tutorial"));
+const ExchangeRate = lazyWithRetry(() => import("./pages/ExchangeRate"));
 function SettingsRoute() {
   const user = useStore(state => state.currentUser);
   const location = useLocation();
@@ -53,7 +97,28 @@ function SettingsRoute() {
     ? <Settings />
     : <Navigate to={user ? NOTIFICATIONS_PATH : '/pos'} replace />;
 }
-const LandingPage = lazy(() => import("./pages/LandingPage"));
+const LandingPage = lazyWithRetry(() => import("./pages/LandingPage"));
+
+function AuthGateScreen({ onRetry, onUseForm }: { onRetry: () => void; onUseForm: () => void }) {
+  return (
+    <main className="min-h-[100dvh] bg-[#F7F5FC] flex items-center justify-center p-4">
+      <div className="w-full max-w-sm rounded-3xl border border-violet-100 bg-white p-6 text-center shadow-xl">
+        <img src="/palmyra-mark-exact.svg" alt="" aria-hidden="true" className="mx-auto h-11 w-11 object-contain" />
+        <h1 className="mt-3 text-lg font-black text-[#3B1B78]">Verificando tu sesión</h1>
+        <p className="mt-2 text-xs leading-5 text-slate-500" role="status">
+          Estamos comprobando si ya tienes una sesión activa. Puedes entrar igualmente; la comprobación termina sola.
+        </p>
+        <button type="button" onClick={onUseForm} className="mt-4 h-11 w-full rounded-xl bg-[#5B2DBA] text-xs font-black text-white active:scale-[.98]">
+          Entrar ahora
+        </button>
+        <button type="button" onClick={onRetry} className="mt-2 h-10 w-full rounded-xl border border-violet-200 bg-white text-[10px] font-black text-[#5B2DBA] active:scale-[.98]">
+          Reintentar verificación
+        </button>
+        <a href="/landing" className="mt-3 block text-[10px] font-black uppercase tracking-wider text-slate-400">Volver al inicio</a>
+      </div>
+    </main>
+  );
+}
 
 function PageLoading() {
   const location = window.location.pathname;
@@ -74,6 +139,9 @@ function PageLoading() {
     "/exchange-rate": "Cargando tasa de cambio…",
     "/help-center": "Cargando Centro de atención…",
     "/invite": "Cargando invitación…",
+    "/auth": "Cargando acceso…",
+    "/auth/confirm": "Confirmando tu cuenta…",
+    "/landing": "Cargando PALMYRA…",
   };
   const label = labels[location] || "Cargando sección…";
 
@@ -94,8 +162,31 @@ export default function App() {
   const [accessState, setAccessState] = useState<"loading" | "signed_out" | "needs_onboarding" | "ready" | "blocked" | "recovering">("loading");
   const can = (permission: string) => currentUser?.role === "admin" || currentUser?.permissions?.includes(permission) === true;
   const pendingOnboarding = typeof sessionStorage !== "undefined" && sessionStorage.getItem("palmyra_pending_onboarding") === "1";
+  // El enlace de recuperación abre una sesión temporal. Sin esta excepción,
+  // la ruta /auth redirigía al sistema antes de mostrar el formulario de
+  // nueva contraseña y la recuperación quedaba a medias.
+  const recoveringPassword = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("recovery") === "1";
   const [accessError, setAccessError] = useState("");
+  // La verificación de sesión (Supabase getSession) puede quedarse bloqueada por
+  // el lock de auth. /auth nunca debe esperar indefinidamente: si no hay usuario
+  // persistido se abre el formulario de inmediato y, en cualquier caso, a los
+  // 4 segundos se libera el acceso manualmente.
+  const [authGateOpen, setAuthGateOpen] = useState(false);
   const hydratePromiseRef = useRef<Promise<void> | null>(null);
+
+  // En el APK, confirmar arranque permite que el shell descarte una
+  // actualización defectuosa y vuelva a la versión anterior si esta no abre.
+  useEffect(() => { confirmNativeBoot(); }, []);
+
+  useEffect(() => {
+    if (authGateOpen || accessState !== "loading") return;
+    if (!currentUser?.id) {
+      setAuthGateOpen(true);
+      return;
+    }
+    const timer = window.setTimeout(() => setAuthGateOpen(true), 4000);
+    return () => window.clearTimeout(timer);
+  }, [accessState, currentUser?.id, authGateOpen]);
 
   const hydrateAuth = async () => {
     if (hydratePromiseRef.current) return hydratePromiseRef.current;
@@ -439,11 +530,30 @@ export default function App() {
   // curso. Sin esto, quien no ha iniciado sesión veía el login (o un loader)
   // antes de poder evaluar el producto y descargar las apps.
   const isLandingPath = typeof window !== "undefined" && /^\/landing\/?$/i.test(window.location.pathname);
+  // El flujo de acceso (/auth y /auth/confirm) es público por definición. Ni el
+  // splash de arranque ni la tarjeta de "recovering" deben taparlo: si la
+  // verificación de sesión se cuelga, el usuario quedaría viendo un loader
+  // infinito después de pulsar «Entrar» o «Crear cuenta».
+  const isAuthFlowPath = typeof window !== "undefined" && /^\/auth(\/confirm)?\/?$/i.test(window.location.pathname);
+  const authRouteOpen =
+    recoveringPassword ||
+    accessState === "signed_out" ||
+    accessState === "recovering" ||
+    (accessState === "loading" && authGateOpen);
+
   const earlyLanding = (
     <ErrorBoundary>
       <Router>
         <Suspense fallback={<PageLoading />}>
-          <LandingPage />
+          {/* Shell público: mientras la verificación de sesión está en curso, el
+              landing debe poder navegar a /auth sin depender de que App vuelva a
+              renderizarse (App está por encima del Router). */}
+          <Routes>
+            <Route path="/landing" element={<LandingPage signedIn={Boolean(currentUser?.id)} />} />
+            <Route path="/auth" element={<SaaSAuth />} />
+            <Route path="/auth/confirm" element={<AuthConfirm />} />
+            <Route path="*" element={<Navigate to="/landing" replace />} />
+          </Routes>
         </Suspense>
       </Router>
     </ErrorBoundary>
@@ -452,7 +562,7 @@ export default function App() {
     return earlyLanding;
   }
 
-  if (accessState === "recovering") {
+  if (accessState === "recovering" && !isAuthFlowPath) {
     return (
       <div className="min-h-screen bg-[#F7F5FC] flex items-center justify-center p-5">
         <div className="w-full max-w-md rounded-3xl border border-violet-100 bg-white p-7 text-center shadow-xl">
@@ -465,7 +575,7 @@ export default function App() {
       </div>
     );
   }
-  if (!isInitialized || (authBootstrapping && !currentUser?.id)) {
+  if (!isAuthFlowPath && (!isInitialized || (authBootstrapping && !currentUser?.id))) {
     return (
       <div className="min-h-screen bg-[#F7F5FC] flex items-center justify-center">
         <div className="palmyra-loading-bubble">Preparando PALMYRA… <span className="palmyra-loading-dots">•••</span></div>
@@ -476,7 +586,7 @@ export default function App() {
   // Con un usuario persistido, el router se monta antes de que la verificación
   // cloud termine. Redirigir en "loading" destruía los enlaces profundos
   // (p. ej. /pos o /reports abrían siempre el dashboard): esperamos aquí.
-  if (accessState === "loading") {
+  if (!isAuthFlowPath && accessState === "loading") {
     return (
       <div className="min-h-screen bg-[#F7F5FC] flex items-center justify-center">
         <div className="palmyra-loading-bubble">Preparando PALMYRA… <span className="palmyra-loading-dots">•••</span></div>
@@ -489,12 +599,21 @@ export default function App() {
       <Router>
         <Suspense fallback={<PageLoading />}>
           <Routes>
-          <Route path="/landing" element={<LandingPage />} />
+          <Route path="/landing" element={<LandingPage signedIn={Boolean(currentUser?.id)} />} />
           <Route path="/platform-admin" element={<PlatformAdmin />} />
           <Route path="/security" element={<Navigate to="/help-center?section=security" replace />} />
           <Route path="/invite" element={<SaaSInvite />} />
           <Route path="/auth/confirm" element={<AuthConfirm />} />
-          <Route path="/auth" element={accessState === "signed_out" ? <SaaSAuth /> : <Navigate to={accessState === "needs_onboarding" || pendingOnboarding ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/"} replace />} />
+          <Route path="/auth" element={
+            authRouteOpen
+              ? <SaaSAuth />
+              : accessState === "loading"
+                // Solo se llega aquí con un usuario persistido y la verificación
+                // aún en curso. Es una espera acotada (4 s) con salida manual,
+                // nunca un splash sin fin.
+                ? <AuthGateScreen onRetry={() => void hydrateAuth()} onUseForm={() => setAuthGateOpen(true)} />
+                : <Navigate to={accessState === "needs_onboarding" || pendingOnboarding ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/"} replace />
+          } />
           <Route path="/onboarding" element={(accessState === "needs_onboarding" || pendingOnboarding) ? <SaaSOnboarding /> : <Navigate to={accessState === "signed_out" ? "/auth" : accessState === "blocked" ? "/account-status" : "/"} replace />} />
           <Route path="/account-status" element={accessState === "blocked" ? <AccountStatus /> : <Navigate to={accessState === "signed_out" ? "/auth" : accessState === "needs_onboarding" ? "/onboarding" : "/"} replace />} />
           <Route path="/*" element={
