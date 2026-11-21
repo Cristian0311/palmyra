@@ -24,7 +24,9 @@ win:
       arch:
         - x64
   icon: build/icon.ico
-  artifactName: PALMYRA-POS-${version}-Setup.${ext}
+  # Nombre estable a propósito: /download/windows redirige a este asset fijo en
+  # GitHub Releases. Si cambia el nombre, la descarga de la landing devuelve 404.
+  artifactName: PALMYRA-POS-Setup.${ext}
 
 # Instalación por usuario (sin UAC). Sin la página "todos/yo" las
 # actualizaciones se pueden instalar en silencio con /S.
