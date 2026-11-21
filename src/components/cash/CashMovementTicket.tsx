@@ -1,6 +1,7 @@
 import React from "react";
 import { Wallet } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { documentCode } from "../../lib/documentCodes";
 import type { CashMovement } from "../../types";
 
 type Props = {
@@ -12,7 +13,7 @@ type Props = {
 
 export function CashMovementTicket({ movement, workerName, formatMoney, compact = false }: Props) {
   const isIncome = movement.type === "income";
-  const ticketId = `MOV-${String(movement.id).slice(0, 8).toUpperCase()}`;
+  const ticketId = documentCode("MOV", String(movement.id));
 
   return (
     <div className={cn(

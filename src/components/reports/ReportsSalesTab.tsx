@@ -10,6 +10,7 @@ import {
   Users,
 } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { ticketDisplay } from "../../lib/documentCodes";
 import type { CashRegisterSession, Transaction, User } from "../../types";
 
 type PayrollRow = {
@@ -498,7 +499,7 @@ export function ReportsSalesTab({
                             "bg-rose-50 text-rose-700 border-rose-200 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800"
                           )}
                         >
-                          {tx.id}
+                          {ticketDisplay(tx.ticketNumber, tx.id)}
                         </span>
                         {hiddenReportIds.includes(tx.id) && (
                           <span
@@ -633,7 +634,7 @@ export function ReportsSalesTab({
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-1.5">
                       <span className="inline-flex items-center rounded border border-rose-200 bg-rose-50 px-2 py-0.5 font-mono text-[11px] font-black tracking-wider text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
-                        {row.tx.id}
+                        {ticketDisplay(row.tx.ticketNumber, row.tx.id)}
                       </span>
                       {row.isHidden && (
                         <span className="inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-black uppercase tracking-wider text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">

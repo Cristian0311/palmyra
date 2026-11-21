@@ -29,7 +29,7 @@ import {
 type Toast = (message: string, type?: 'success' | 'error' | 'info') => void;
 type Props = { active: boolean; onToast: Toast };
 
-const EDITABLE_CODES = ['USD', 'EUR'];
+const EDITABLE_CODES = ['USD', 'EUR', 'MLC'];
 
 function money(value: number) {
   return new Intl.NumberFormat('es-CU', { maximumFractionDigits: 2 }).format(value);

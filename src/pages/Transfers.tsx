@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { cn } from "../lib/utils";
+import { documentCode } from "../lib/documentCodes";
 import PlanFeatureGate from "../components/PlanFeatureGate";
 import { ReportsStatBubbles } from "../components/reports/ReportsStatBubbles";
 import type { InventoryTransfer } from "../types";
@@ -571,6 +572,7 @@ export default function Transfers() {
                         <td className="whitespace-nowrap px-3 py-3 align-top">
                           <p className="text-[12px] font-black text-primary">{group.dateLabel}</p>
                           <p className="font-mono text-[11px] text-muted">{group.timeLabel}</p>
+                          <p className="font-mono text-[10px] font-black uppercase tracking-wide text-violet-600 dark:text-violet-300">{documentCode('TR', group.first.id)}</p>
                           {group.rows.length > 1 && (
                             <span className="mt-1 inline-block rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-black uppercase text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300">
                               Lote de {group.rows.length}
@@ -652,6 +654,7 @@ export default function Transfers() {
                         <p className="truncate text-[12px] font-black text-primary">
                           {group.dateLabel} · {group.timeLabel}
                         </p>
+                        <p className="font-mono text-[10px] font-black uppercase tracking-wide text-muted">{documentCode('TR', group.first.id)}</p>
                         {group.rows.length > 1 && (
                           <span className="mt-0.5 inline-block rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-black uppercase text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300">
                             Lote de {group.rows.length}

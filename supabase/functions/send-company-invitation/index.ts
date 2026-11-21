@@ -7,6 +7,33 @@ function getSecretKey() {
   return Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
 }
 
+function getPublishableKey() {
+  const direct = Deno.env.get("SUPABASE_ANON_KEY") || "";
+  if (direct) return direct;
+  const raw = Deno.env.get("SUPABASE_PUBLISHABLE_KEYS");
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as Record<string, string>;
+      return parsed.default || Object.values(parsed)[0] || "";
+    } catch { /* keys malformed: fall back to the secret key */ }
+  }
+  return "";
+}
+
+// El enlace de invitación debe abrir la web real: si la app de escritorio
+// invoca esta función, el Origin puede ser file://, localhost o venir vacío.
+const PRODUCTION_APP_URL = "https://palmyracrm.onrender.com";
+
+function resolveAppUrl(req: Request) {
+  const configured = (Deno.env.get("PALMYRA_APP_URL") || "").trim();
+  const origin = (req.headers.get("origin") || "").trim();
+  const candidate = configured || origin;
+  if (!candidate) return PRODUCTION_APP_URL;
+  if (!/^https?:\/\//i.test(candidate)) return PRODUCTION_APP_URL;
+  if (/^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:|\/|$)/i.test(candidate)) return PRODUCTION_APP_URL;
+  return candidate.replace(/\/+$/, "");
+}
+
 async function sha256Hex(value: string) {
   const bytes = new TextEncoder().encode(value);
   const hash = await crypto.subtle.digest("SHA-256", bytes);
@@ -41,7 +68,7 @@ Deno.serve(async (req: Request) => {
   if (!companyId || !employeeId || !email || !token) return json({ error: "invalid_request" }, { status: 400 });
 
   const url = Deno.env.get("SUPABASE_URL") || "";
-  const publishable = Deno.env.get("SUPABASE_ANON_KEY") || "";
+  const publishable = getPublishableKey();
   const secret = getSecretKey();
   if (!url || !secret) return json({ error: "server_not_configured" }, { status: 500 });
 
@@ -85,9 +112,8 @@ Deno.serve(async (req: Request) => {
     return json({ error: "employee_invalid" }, { status: 400 });
   }
 
-  const appUrl = Deno.env.get("PALMYRA_APP_URL") || req.headers.get("origin") || "";
-  if (!appUrl) return json({ error: "app_url_not_configured" }, { status: 500 });
-  const redirectTo = appUrl.replace(/\/$/, "") + "/invite?token=" + encodeURIComponent(token);
+  const appUrl = resolveAppUrl(req);
+  const redirectTo = appUrl + "/invite?token=" + encodeURIComponent(token);
 
   const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
     data: { full_name: name },

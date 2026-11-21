@@ -3,6 +3,7 @@ import { getClosureReceiptLines as getClosureReceiptLinesUtil } from "../utils/g
 import { getTransactionReceiptLines as getTransactionReceiptLinesUtil } from "../utils/getTransactionReceiptLines";
 import { formatMoney } from "../utils/paymentMath";
 import { printThermalReceipt as printThermalReceiptDirect } from "../../../lib/escpos";
+import { ticketDisplay } from "../../../lib/documentCodes";
 import { useStore } from "../../../store/useStore";
 import type { CashRegisterSession, Product, User, Transaction, Currency } from "../../../types";
 
@@ -225,7 +226,7 @@ export function usePOSPrinter({
       })
       .join("%0A");
 
-    const body = `Hola, gracias por tu compra en *${storeName}*.%0A%0A*Detalle del recibo ${tx.ticketNumber || tx.id}:*%0A${itemsText}%0A%0A*Total:* ${formatMoney(tx.total, baseCurrency.symbol)}%0A%0A¡Vuelve pronto!`;
+    const body = `Hola, gracias por tu compra en *${storeName}*.%0A%0A*Detalle del recibo ${ticketDisplay(tx.ticketNumber, tx.id)}:*%0A${itemsText}%0A%0A*Total:* ${formatMoney(tx.total, baseCurrency.symbol)}%0A%0A¡Vuelve pronto!`;
     window.open(`https://wa.me/${phone}?text=${body}`, "_blank");
   };
 

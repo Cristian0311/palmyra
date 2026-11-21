@@ -1,26 +1,31 @@
-import { lazy, Suspense, useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Activity, AlertCircle, BarChart3, Building2, ChevronRight, CreditCard, LogOut, Menu, RefreshCw, Settings2, Shield, ShieldCheck, TicketCheck } from "lucide-react";
-import { approveRequest, changeCompanyStatus, loadPlatformSnapshot, rejectRequest, type PlanRequest, type PlatformCompany, type PlatformSnapshot } from "./platformAdminApi";
+import { Activity, AlertCircle, BarChart3, Building2, ChevronRight, CreditCard, LogOut, Menu, RefreshCw, Settings2, ShieldCheck, TicketCheck } from "lucide-react";
+import { adminErrorMessage, loadPlatformSnapshot, type PlatformSnapshot } from "./platformAdminApi";
 import { adminSignOut } from "./supabase";
-import { Button } from "./shared";
 
 type View = "overview" | "companies" | "billing" | "support" | "audit" | "settings";
 
 const navItems: Array<{ id: View; label: string; icon: typeof BarChart3; hint: string }> = [
   { id: "overview", label: "Dashboard", icon: BarChart3, hint: "Estado global de PALMYRA" },
-  { id: "companies", label: "Empresas", icon: Building2, hint: "Clientes y cuentas" },
-  { id: "billing", label: "Planes y pagos", icon: CreditCard, hint: "Solicitudes y activaciones" },
+  { id: "companies", label: "Empresas", icon: Building2, hint: "Clientes, planes y estados" },
+  { id: "billing", label: "Planes y pagos", icon: CreditCard, hint: "Solicitudes, aprobaciones y cobros" },
   { id: "support", label: "Soporte", icon: TicketCheck, hint: "Atención operativa" },
-  { id: "audit", label: "Auditoría", icon: Activity, hint: "Acciones administrativas" },
-  { id: "settings", label: "Configuración", icon: Settings2, hint: "Seguridad de la plataforma" },
+  { id: "audit", label: "Auditoría", icon: Activity, hint: "Acciones administrativas registradas" },
+  { id: "settings", label: "Configuración", icon: Settings2, hint: "Canales oficiales de atención" },
 ];
 
 const Overview = lazy(() => import("./views/Overview"));
 const CompaniesView = lazy(() => import("./views/CompaniesView"));
 const BillingView = lazy(() => import("./views/BillingView"));
 const SupportView = lazy(() => import("./views/SupportView"));
+const AuditView = lazy(() => import("./views/AuditView"));
 const SettingsView = lazy(() => import("./views/SettingsView"));
+
+function viewFromHash(): View {
+  const raw = window.location.hash.replace(/^#\/?/, "");
+  return navItems.some((item) => item.id === raw) ? (raw as View) : "overview";
+}
 
 export default function AdminShell({
   snapshot,
@@ -29,54 +34,34 @@ export default function AdminShell({
   snapshot: PlatformSnapshot;
   onSnapshotChange: (snapshot: PlatformSnapshot) => void;
 }) {
-  const [view, setView] = useState<View>("overview");
+  const [view, setView] = useState<View>(viewFromHash);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
 
-  const act = async (operation: () => Promise<unknown>, successSnapshot?: boolean) => {
-    setBusy(true);
+  useEffect(() => {
+    const sync = () => setView(viewFromHash());
+    window.addEventListener("hashchange", sync);
+    if (!window.location.hash) window.history.replaceState(null, "", "#/overview");
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
+
+  const navigate = (next: View) => {
+    setMobileOpen(false);
+    if (viewFromHash() === next) setView(next);
+    else window.location.hash = `#/${next}`;
+  };
+
+  const refresh = async () => {
+    setRefreshing(true);
     setError("");
     try {
-      await operation();
-      if (successSnapshot !== false) onSnapshotChange(await loadPlatformSnapshot());
+      onSnapshotChange(await loadPlatformSnapshot());
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo completar la operación.");
+      setError(adminErrorMessage(err));
     } finally {
-      setBusy(false);
+      setRefreshing(false);
     }
-  };
-
-  const toggleCompany = async (company: PlatformCompany) => {
-    const next = company.account_status === "suspended" ? "active" : "suspended";
-    const ok = window.confirm(next === "suspended" ? `¿Suspender ${company.name}?` : `¿Reactivar ${company.name}?`);
-    if (!ok) return;
-    await act(() => changeCompanyStatus(company.id, next));
-  };
-
-  const approve = async (request: PlanRequest) => {
-    const currency: "CUP" | "USD" = String(request.payment_method || "").startsWith("cup_") ? "CUP" : "USD";
-    const suggested = request.quoted_amount ?? request.monthly_price ?? null;
-    const amountText = window.prompt(`Importe realmente recibido (${currency}):`, suggested != null ? String(suggested) : "");
-    if (amountText === null) return;
-    const amount = Number(amountText);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      setError("Indica el importe realmente recibido.");
-      return;
-    }
-    const reference = window.prompt("Referencia o comprobante del pago (obligatoria):", "");
-    if (reference === null) return;
-    if (!reference.trim()) {
-      setError("La referencia del pago es obligatoria.");
-      return;
-    }
-    await act(() => approveRequest(request.id, { amount, currency, reference }));
-  };
-
-  const reject = async (request: PlanRequest) => {
-    const note = window.prompt("Motivo del rechazo (opcional):", "");
-    if (note === null) return;
-    await act(() => rejectRequest(request.id, note));
   };
 
   const signOut = async () => {
@@ -85,6 +70,10 @@ export default function AdminShell({
   };
 
   const current = navItems.find((item) => item.id === view) || navItems[0];
+  const badges: Partial<Record<View, number>> = {
+    billing: snapshot.overview?.pending_plan_requests ?? snapshot.requests.length,
+    support: (snapshot.overview?.support_open || 0) + (snapshot.overview?.support_in_progress || 0),
+  };
 
   return (
     <div className="admin-app">
@@ -92,13 +81,17 @@ export default function AdminShell({
         <button type="button" aria-label="Cerrar menú" className="admin-mobile-backdrop" onClick={() => setMobileOpen(false)} />
         <nav className="admin-sidebar admin-sidebar--mobile">
           <BrandLockup />
-          <NavList current={view} onNavigate={(next) => { setView(next); setMobileOpen(false); }} />
+          <NavList current={view} onNavigate={navigate} badges={badges} />
+          <div className="admin-sidebar__foot">
+            <div className="admin-protection"><ShieldCheck size={15} /><div><strong>Zona protegida</strong><span>Autorización en Supabase</span></div></div>
+            <button type="button" onClick={() => void signOut()} className="admin-logout"><LogOut size={15} />Cerrar sesión</button>
+          </div>
         </nav>
       </div>
 
       <aside className="admin-sidebar admin-sidebar--desktop">
         <BrandLockup />
-        <NavList current={view} onNavigate={setView} />
+        <NavList current={view} onNavigate={navigate} badges={badges} />
         <div className="admin-sidebar__foot">
           <div className="admin-protection"><ShieldCheck size={15} /><div><strong>Zona protegida</strong><span>Autorización en Supabase</span></div></div>
           <button type="button" onClick={() => void signOut()} className="admin-logout"><LogOut size={15} />Cerrar sesión</button>
@@ -111,7 +104,7 @@ export default function AdminShell({
           <div><div className="admin-breadcrumb">PALMYRA ADMIN <ChevronRight size={13} /> {current.label}</div><span className="admin-topbar-hint">{current.hint}</span></div>
           <div className="admin-topbar__actions">
             <span className="admin-live"><i />Sistema operativo</span>
-            <button type="button" aria-label="Actualizar" onClick={() => void act(() => Promise.resolve(), true)} disabled={busy} className="admin-square-button"><RefreshCw size={15} className={busy ? "spin" : ""} /></button>
+            <button type="button" aria-label="Actualizar" onClick={() => void refresh()} disabled={refreshing} className="admin-square-button"><RefreshCw size={15} className={refreshing ? "spin" : ""} /></button>
           </div>
         </header>
 
@@ -121,12 +114,12 @@ export default function AdminShell({
           <Suspense fallback={<div className="admin-empty">Cargando área…</div>}>
           <AnimatePresence mode="wait">
             <motion.div key={view} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.18 }}>
-              {view === "overview" ? <Overview snapshot={snapshot} onRefresh={async () => onSnapshotChange(await loadPlatformSnapshot())} /> :
-                view === "companies" ? <CompaniesView companies={snapshot.companies} busy={busy} onToggle={(company) => void toggleCompany(company)} /> :
-                view === "billing" ? <BillingView requests={snapshot.requests} busy={busy} onApprove={(r) => void approve(r)} onReject={(r) => void reject(r)} /> :
-                view === "support" ? <SupportView /> :
-                view === "settings" ? <SettingsView /> :
-                <div className="admin-placeholder"><div className="admin-placeholder__icon"><Shield size={24}/></div><p className="admin-eyebrow">PRÓXIMAMENTE</p><h1>{current.label}</h1><p>Área preparada para ampliar el control de plataforma sobre el mismo núcleo seguro.</p></div>}
+              {view === "overview" ? <Overview snapshot={snapshot} onRefresh={refresh} /> :
+                view === "companies" ? <CompaniesView companies={snapshot.companies} onChanged={refresh} /> :
+                view === "billing" ? <BillingView onChanged={refresh} /> :
+                view === "support" ? <SupportView onChanged={refresh} /> :
+                view === "audit" ? <AuditView /> :
+                <SettingsView />}
             </motion.div>
           </AnimatePresence>
           </Suspense>
@@ -135,6 +128,7 @@ export default function AdminShell({
     </div>
   );
 }
+
 function BrandLockup() {
   return (
     <div className="admin-brand">
@@ -143,12 +137,14 @@ function BrandLockup() {
     </div>
   );
 }
-function NavList({ current, onNavigate }: { current: View; onNavigate: (view: View) => void }) {
+
+function NavList({ current, onNavigate, badges }: { current: View; onNavigate: (view: View) => void; badges: Partial<Record<View, number>> }) {
   return (
     <div className="admin-nav">
       {navItems.map(({ id, label, icon: Icon }) => (
         <button key={id} type="button" onClick={() => onNavigate(id)} className={current === id ? "is-active" : ""}>
-          <Icon size={16} /><span>{label}</span>{current === id ? <i /> : null}
+          <Icon size={16} /><span>{label}</span>
+          {badges[id] ? <b className="admin-nav__badge">{badges[id]}</b> : current === id ? <i /> : null}
         </button>
       ))}
     </div>

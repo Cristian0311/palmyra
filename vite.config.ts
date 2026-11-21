@@ -78,6 +78,9 @@ export default defineConfig(() => {
           // Keep the new worker waiting so registerType:'prompt' can
           // notify Layout through onNeedRefresh and show the update bubble.
           clientsClaim: true,
+          // Sin esta lista, cualquier navegación a /download/* la responde el
+          // shell cacheado (200 text/html) y el instalador/APK nunca descarga.
+          navigateFallbackDenylist: [/^\/download(\/|$)/i, /^\/api(\/|$)/i, /^\/admin(\/|$)/i, /^\/version\.json$/i],
           // Keep the new worker waiting until the user applies the update. This avoids
           // switching the app shell mid-render and leaving a blank screen.
           skipWaiting: false,

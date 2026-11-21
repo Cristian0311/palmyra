@@ -69,13 +69,16 @@ export function finalizeCheckoutPayments(
 
 export function buildTransactionTicketId(transactions: Transaction[], randomUuid = crypto.randomUUID()): string {
   const maxTicketNum = transactions.reduce((max, transaction) => {
-    const match = transaction.id?.match(/PALMYRA-TK(\d+)/i);
+    const source = `${transaction.ticketNumber || ''} ${transaction.id || ''}`;
+    const match = source.match(/(?:PALMYRA-)?TK(\d+)/i);
     return match ? Math.max(max, parseInt(match[1], 10)) : max;
   }, 0);
 
   const nextTicketNum = Math.max(transactions.length, maxTicketNum) + 1;
-  const serial = randomUuid.replace(/-/g, '').slice(0, 8).toUpperCase();
-  return `PALMYRA-TK${nextTicketNum.toString().padStart(2, '0')}-${serial}`;
+  // Código corto y legible (TK13-AABBCC). La unicidad real la da el UUID del
+  // registro; el sufijo evita colisiones entre cajas que reinician la serie.
+  const serial = randomUuid.replace(/-/g, '').slice(0, 6).toUpperCase();
+  return `TK${nextTicketNum.toString().padStart(2, '0')}-${serial}`;
 }
 
 export function aggregateTransferPayments(payments: Payment[]): Map<string, number> {

@@ -260,8 +260,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let active = true;
+    let lastRefreshAt = 0;
 
-    const refreshContext = async () => {
+    // Cada refresco hace getUser + varias consultas REST. Con muchas cajas
+    // abiertas eso agotaba el límite de Supabase Auth ("request rate limit
+    // reached"). 90 s + un mínimo de 30 s entre refrescos basta para enterarse
+    // de una aprobación de plan sin castigar la API.
+    const refreshContext = async (force = false) => {
+      const now = Date.now();
+      if (!force && now - lastRefreshAt < 30_000) return;
+      lastRefreshAt = now;
       try {
         const ctx = await loadSaaSContext(true);
         if (active) setSaaSContext(ctx);
@@ -271,17 +279,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       }
     };
 
-    void refreshContext();
+    void refreshContext(true);
 
-    // Una aprobación/rechazo del plan puede ocurrir desde la administración
-    // de PALMYRA mientras el usuario ya tiene el CRM abierto. Refrescamos el
-    // contexto periódicamente para que el plan y el contador cambien sin exigir
-    // cerrar sesión ni recargar manualmente.
     const timer = window.setInterval(() => {
-      void refreshContext();
-    }, 30_000);
+      if (document.visibilityState === 'visible') void refreshContext();
+    }, 90_000);
 
-    const handleFocus = () => void refreshContext();
+    const handleFocus = () => {
+      if (document.visibilityState === 'visible') void refreshContext();
+    };
     window.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleFocus);
 
@@ -773,11 +779,44 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </div>
       {/* Mobile / tablet top bar */}
       {(
-        <div className="lg:hidden bg-secondary text-primary p-2.5 flex justify-between items-center gap-2 shadow-sm border-b border-base shrink-0 min-w-0">
-          <div className="flex items-center gap-2 min-w-0"><PalmyraWordmark className="w-[clamp(104px,38vw,160px)] h-[34px] shrink-0" /><span className="rounded-full bg-violet-50 px-2 py-1 text-[9px] font-black text-violet-700 tracking-tight shrink-0">{APP_VERSION}</span></div><div className={cn("flex items-center gap-1.5 px-2 py-1.5 rounded-xl border text-[8px] font-black uppercase tracking-wider", isOnline ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700")} title="Estado de conexión">{isOnline ? <Wifi className="w-3 h-3 shrink-0" /> : <WifiOff className="w-3 h-3 shrink-0" />}<span>{isOnline ? (pendingOfflineCount > 0 ? pendingOfflineCount+" pendientes" : "Online") : "Offline"}</span></div>
-          <div className="flex items-center gap-1.5 shrink-0"><button data-palmy-menu-toggle type="button" onClick={() => setSidebarOpen(!sidebarOpen)} className="p-2 rounded-xl hover:bg-slate-100 transition" aria-label="Abrir menú principal" title="Abrir menú principal" aria-expanded={sidebarOpen}>
-            <Menu className="w-3.5 h-3.5" />
-          </button></div>
+        <div className="lg:hidden flex min-w-0 shrink-0 items-center justify-between gap-1.5 border-b border-base bg-secondary px-2 py-1.5 text-primary shadow-sm">
+          <div className="flex min-w-0 items-center gap-1.5">
+            <PalmyraWordmark className="h-[26px] w-[clamp(84px,30vw,128px)] shrink-0" />
+            <span className="hidden shrink-0 rounded-full bg-violet-50 px-1.5 py-0.5 text-[8px] font-black tracking-tight text-violet-700 min-[480px]:inline-flex">
+              {APP_VERSION}
+            </span>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            <div
+              className={cn(
+                "flex items-center gap-1 rounded-lg border px-1.5 py-1 text-[9px] font-black uppercase tracking-wide",
+                isOnline ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700",
+              )}
+              title={
+                isOnline
+                  ? pendingOfflineCount > 0
+                    ? `${pendingOfflineCount} operación(es) pendientes de sincronizar`
+                    : "Conectado a la nube"
+                  : "Sin conexión: sigues trabajando y se sincroniza al volver el wifi"
+              }
+            >
+              {isOnline ? <Wifi className="h-3 w-3 shrink-0" /> : <WifiOff className="h-3 w-3 shrink-0" />}
+              <span className="tabular-nums">
+                {isOnline ? (pendingOfflineCount > 0 ? pendingOfflineCount : "Online") : "Offline"}
+              </span>
+            </div>
+            <button
+              data-palmy-menu-toggle
+              type="button"
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="flex h-9 w-9 items-center justify-center rounded-lg transition hover:bg-slate-100 dark:hover:bg-slate-800"
+              aria-label="Abrir menú principal"
+              title="Abrir menú principal"
+              aria-expanded={sidebarOpen}
+            >
+              <Menu className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -977,13 +1016,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 </span>
               </span>
               {conflictOfflineCount > 0 && (
-                <span className="shrink-0 px-1 rounded-full text-[6px] font-black bg-rose-600 text-white">
-                  !{conflictOfflineCount}
+                <span className="inline-flex min-w-[16px] shrink-0 items-center justify-center rounded-full bg-rose-600 px-1 py-0.5 text-[8px] font-black leading-none tabular-nums text-white">
+                  !{conflictOfflineCount > 99 ? "99+" : conflictOfflineCount}
                 </span>
               )}
               {conflictOfflineCount === 0 && pendingOfflineCount > 0 && (
-                <span className="shrink-0 px-1 rounded-full text-[6px] font-black bg-amber-500 text-white">
-                  {pendingOfflineCount}
+                <span className="inline-flex min-w-[16px] shrink-0 items-center justify-center rounded-full bg-amber-500 px-1 py-0.5 text-[8px] font-black leading-none tabular-nums text-white">
+                  {pendingOfflineCount > 99 ? "99+" : pendingOfflineCount}
                 </span>
               )}
             </button>

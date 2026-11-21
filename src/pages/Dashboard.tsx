@@ -32,6 +32,7 @@ import {
 } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { cn } from "../lib/utils";
+import { ticketDisplay } from "../lib/documentCodes";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { getBusinessSummaryAI } from "../services/gemini";
 import { loadSaaSContext } from "../services/saas";
@@ -794,9 +795,9 @@ export default function Dashboard() {
                       <div>
                         <div className="flex items-center gap-1.5">
                           <p className="text-[10px] font-black text-primary uppercase tracking-tighter">
-                            #{tx.id.slice(-6)}
+                            {ticketDisplay(tx.ticketNumber, tx.id)}
                           </p>
-                          <span className="text-[7.5px] font-bold text-muted bg-secondary px-1 py-0.2 rounded border border-base">
+                          <span className="text-[7.5px] font-bold text-muted bg-secondary px-1 py-0.5 rounded border border-base">
                             {itemCount} {itemCount === 1 ? 'artículo' : 'artículos'}
                           </span>
                         </div>
@@ -904,7 +905,7 @@ export default function Dashboard() {
                 </div>
                 <div>
                   <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight">
-                    Detalle de Venta #{selectedTxForDetail.id.slice(-8)}
+                    Detalle de venta · {ticketDisplay(selectedTxForDetail.ticketNumber, selectedTxForDetail.id)}
                   </h3>
                   <p className="text-[8.5px] font-bold text-slate-500 uppercase">
                     {new Date(selectedTxForDetail.date).toLocaleString('es-CU')}
@@ -1084,7 +1085,7 @@ export default function Dashboard() {
                   >
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-black text-slate-900 dark:text-white">#{tx.id.slice(-8)}</span>
+                        <span className="text-xs font-black text-slate-900 dark:text-white">{ticketDisplay(tx.ticketNumber, tx.id)}</span>
                         <span className="text-[8px] font-bold text-slate-500 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
                           {new Date(tx.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>

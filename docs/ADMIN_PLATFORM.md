@@ -31,18 +31,30 @@ La aplicación usa Supabase Auth para iniciar sesión. La comprobación en naveg
 Acciones sensibles actuales (todas security definer + pertenencia a platform_admins):
 
 - get_platform_companies
-- get_pending_plan_requests
+- get_platform_overview (totales, MRR estimado, vencimientos, cobros y soporte)
+- get_platform_plans (catálogo activo para asignación manual)
+- get_pending_plan_requests (filtrable por estado; también incluye contacto y correo del propietario)
+- get_platform_company_detail (suscripción, conteos, últimas solicitudes, facturas y pagos)
+- get_platform_billing_payments
+- get_platform_admin_audit (registro con operador, empresa, acción y detalle)
 - approve_plan_request_v3 (importe recibido, moneda CUP/USD y referencia obligatoria)
 - reject_plan_request
+- set_platform_company_plan_v2 (asignación o extensión manual de plan, cancela solicitudes pendientes y anula facturas abiertas)
 - set_platform_company_status
 - set_platform_support_request_status (open / in_progress / resolved / closed)
+- get_platform_support_requests (filtrable por estado; incluye teléfono y correo)
 - load_platform_support_settings / set_platform_support_settings (WhatsApp, correo, privacidad, Facebook y canal de WhatsApp)
 
-Migraciones aplicadas en producción (2026-11-20):
+La renovación desde el CRM usa `request_company_plan_v3` y `cancel_my_plan_request`. Una solicitud pendiente ya no bloquea la renovación: si el dueño cambia de plan, método o duración, la anterior se marca como `cancelled` y su factura abierta se anula antes de crear la nueva.
+
+Migraciones aplicadas en producción (2026-11-20 y 2026-11-21):
 
 - 20261118130000_cuba_free_plans_manual_renewals.sql — catálogo free/starter/growth/pro sin PayPal y RPCs v3.
 - 20261120120000_free_plan_cloud_backup.sql — Gratis conserva límites y suma respaldo comercial en la nube.
 - 20261120121000_platform_admin_console.sql — get_platform_companies, set_platform_company_status, set_platform_support_request_status y retiro de la sobrecarga ambigua de settings.
+- 20261121150000_plan_admin_console_v2.sql — desbloqueo de renovaciones, cancelación por el dueño, métricas globales, detalle por empresa, pagos, auditoría (tabla platform_admin_audit y triggers), asignación manual de plan y consulta de soporte ampliada.
+
+`scripts/apply-sql.mjs` aplica un archivo SQL por la Management API leyendo las credenciales desde `.secrets/supabase.env`; nunca imprime el token.
 
 ## Regla de aislamiento
 
@@ -58,11 +70,19 @@ Implementado en 1.1.0:
 4. Centro de soporte con triage por estado
 5. Configuración de canales oficiales (WhatsApp, correo, privacidad, Facebook, canal)
 
+Implementado en 1.3.0:
+
+1. Dashboard con MRR estimado, vencimientos, cobros y alertas operativas
+2. Empresas con plan, vencimiento y detalle profundo (solicitudes, facturas y pagos por cuenta)
+3. Asignación y extensión manual de plan desde el panel, con auditoría
+4. Solicitudes filtrables por estado e historial de pagos
+5. Auditoría administrativa visible con operador, empresa y detalle
+6. Navegación con enlaces directos (`#/empresas`, `#/planes`, …) y contadores de pendientes
+7. Renovación desde el CRM sin bloqueos por solicitudes viejas, con cancelación por el dueño
+
 Pendiente:
 
-1. Detalle profundo por empresa (historial de pagos por cuenta)
-2. Sesiones de soporte temporales
-3. Auditoría administrativa visible en el panel
-4. Seguridad avanzada (2FA obligatorio, IP allowlist)
+1. Sesiones de soporte temporales
+2. Seguridad avanzada (2FA obligatorio, IP allowlist)
 
 Las nuevas tablas administrativas deben diseñarse con RLS y, cuando requieran elevación de privilegios, mediante funciones seguras con autenticación explícita del operador administrativo.

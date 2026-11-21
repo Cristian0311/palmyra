@@ -14,6 +14,7 @@ import { canUsePlanFeature } from '../services/planAccess';
 import { getOfflineQueue } from '../services/offlineQueue';
 import { runPendingOrderAction } from '../utils/operationsUi';
 import { cn } from '../lib/utils';
+import { documentCode } from '../lib/documentCodes';
 
 const inputClass = 'block mt-1 w-full min-w-0 rounded-xl border border-base bg-primary px-3 py-2.5 text-primary outline-none focus:border-violet-500';
 const secondaryButton = 'inline-flex items-center justify-center gap-2 rounded-xl border border-base bg-secondary px-4 py-2 font-bold text-primary transition-colors hover:bg-subtle disabled:opacity-50';
@@ -574,7 +575,7 @@ function SuppliersContent() {
                 <article key={order.id} className="flex flex-col rounded-2xl border border-base bg-secondary p-4 transition-all hover:-translate-y-0.5 hover:shadow-lg">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <h3 className="font-black text-primary">Orden #{order.id.slice(-8)}</h3>
+                      <h3 className="font-black text-primary">Orden {documentCode('OC', order.id)}</h3>
                       <p className="mt-0.5 truncate text-secondary">{supplierById.get(order.supplierId)?.name || 'Proveedor no disponible'}</p>
                     </div>
                     <span className={cn('inline-flex shrink-0 items-center gap-1 rounded-full border px-2 py-1 font-black uppercase', queued ? 'border-sky-300 bg-sky-50 text-sky-800 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-200' : meta.chip)} style={{ fontSize: 10, letterSpacing: '0.06em' }}>
@@ -591,7 +592,7 @@ function SuppliersContent() {
                       <span className="block font-black uppercase text-muted" style={{ fontSize: 10, letterSpacing: '0.08em' }}>Total con transporte</span>
                       <span className="block truncate text-lg font-black tabular-nums text-primary">{money(order.total + (order.transportCost || 0))}</span>
                     </div>
-                    <button type="button" onClick={() => setDetailOrderId(order.id)} aria-label={`Ver orden ${order.id.slice(-8)}`} className={secondaryButton} style={{ fontSize: 12 }}>
+                    <button type="button" onClick={() => setDetailOrderId(order.id)} aria-label={`Ver orden ${documentCode('OC', order.id)}`} className={secondaryButton} style={{ fontSize: 12 }}>
                       Ver orden
                     </button>
                   </div>
@@ -640,7 +641,7 @@ function SuppliersContent() {
       const meta = statusStyles[detailOrder.status] || statusStyles.pending;
       const StatusIcon = meta.icon;
       return (
-        <OperationsDialog title={`Orden #${detailOrder.id.slice(-8)}`} onClose={() => setDetailOrderId(null)}>
+        <OperationsDialog title={`Orden ${documentCode('OC', detailOrder.id)}`} onClose={() => setDetailOrderId(null)}>
           <div className="space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="font-black text-primary">{supplierById.get(detailOrder.supplierId)?.name || 'Proveedor no disponible'}</p>

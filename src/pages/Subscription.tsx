@@ -27,9 +27,11 @@ import {
   Wallet,
   Warehouse,
   WifiOff,
+  X,
   type LucideIcon,
 } from 'lucide-react';
-import { loadSubscriptionOverview, selectSubscriptionPlan } from '../services/subscription';
+import { cancelMyPlanRequest, loadSubscriptionOverview, selectSubscriptionPlan } from '../services/subscription';
+import { documentCode } from '../lib/documentCodes';
 import {
   ACQUISITION_PAYMENTS,
   BILLING_MONTHS,
@@ -94,6 +96,7 @@ export default function Subscription() {
   const [data, setData] = useState<Awaited<ReturnType<typeof loadSubscriptionOverview>> | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [planCode, setPlanCode] = useState<PaidPlanCode>('starter');
@@ -157,11 +160,25 @@ export default function Subscription() {
     if (!remotePlan || pending || !data?.ctx.isOwner) return;
     setBusy(true); setError(''); setNotice('');
     try {
-      await selectSubscriptionPlan(remotePlan.id, paymentMethod, months);
-      setNotice('Solicitud registrada. El plan actual y su vencimiento no cambian hasta la aprobación del pago.');
+      const result = await selectSubscriptionPlan(remotePlan.id, paymentMethod, months);
+      setNotice(result?.already_requested
+        ? 'Esa solicitud ya estaba pendiente. Puedes cancelarla si deseas cambiar de plan o duración.'
+        : `Solicitud ${documentCode('SOL', String(result?.request_id || ''))} registrada. El plan actual y su vencimiento no cambian hasta la aprobación del pago.`);
       await refresh();
     } catch (caught: any) { setError(caught?.message || 'No se pudo registrar la solicitud.'); }
     finally { setBusy(false); }
+  }
+
+  async function cancelRequest() {
+    if (!data?.ctx.companyId || !request?.id) return;
+    if (!window.confirm('¿Cancelar la solicitud pendiente? Después podrás enviar otra cuando quieras.')) return;
+    setCancelling(true); setError(''); setNotice('');
+    try {
+      await cancelMyPlanRequest(data.ctx.companyId);
+      setNotice('Solicitud cancelada. Ya puedes enviar una nueva.');
+      await refresh();
+    } catch (caught: any) { setError(caught?.message || 'No se pudo cancelar la solicitud.'); }
+    finally { setCancelling(false); }
   }
 
   const CurrentIcon = current ? PLAN_ICONS[current.code] || Sprout : Sprout;
@@ -288,7 +305,7 @@ export default function Subscription() {
                 </div>
                 <button type="submit" disabled={!remotePlan} className={cn(button, 'inline-flex w-full items-center justify-center gap-2 bg-violet-700 text-white hover:bg-violet-800 sm:w-auto')}>{busy ? 'Registrando…' : samePlanRenewal ? 'Solicitar extensión' : 'Enviar solicitud de pago'}</button>
               </fieldset>
-              {pending && <p className="text-muted">Ya tienes una solicitud pendiente. Coordina su confirmación o rechazo antes de crear otra.</p>}
+              {pending && <p className="text-muted">Ya tienes una solicitud pendiente. Cancélala desde la tarjeta de solicitud para cambiar de plan o duración.</p>}
             </form>
           </section>
 
@@ -296,10 +313,12 @@ export default function Subscription() {
             {request && <section className={panel} aria-labelledby="request-status">
               <div className="flex flex-wrap items-center justify-between gap-2"><h2 id="request-status" className="text-lg font-bold">Solicitud</h2><span className={cn('rounded-full border px-2.5 py-0.5 text-xs font-bold', statusTone(request.status))}>{statusName(request.status)}</span></div>
               <p className="mt-3 font-semibold">{request.plan_name || request.plan_code}</p>
+              <p className="font-mono text-xs text-muted">{documentCode('SOL', String(request.id))}</p>
               <p className="text-muted">{request.billing_months || 1} mes(es) · {date(request.requested_at)}</p>
               <p className="text-muted">{paymentMethodLabel(request.payment_method)}</p>
+              {request.quoted_amount != null && <p className="mt-2 font-semibold">{money(Number(request.quoted_amount))} {request.quoted_currency || 'USD'}<span className="ml-1 text-xs font-semibold text-muted">referencia a confirmar</span></p>}
               {request.note && <p className="mt-2 rounded-xl border border-base bg-subtle p-3 text-muted">{request.note}</p>}
-              {pending && <><p className="mt-3 text-sm text-muted">Pendiente no significa pagado. Esta solicitud no activa prestaciones ni extiende la vigencia actual.</p><a href={contactUrl} target="_blank" rel="noopener noreferrer" className={cn(button, 'mt-4 inline-flex w-full items-center justify-center bg-violet-700 text-white')}>Coordinar pago por WhatsApp</a><p className="mt-2 text-xs text-muted">Se abrirá WhatsApp con empresa, plan e identificador de solicitud.</p></>}
+              {pending && <><p className="mt-3 text-sm text-muted">Pendiente no significa pagado. Esta solicitud no activa prestaciones ni extiende la vigencia actual.</p><a href={contactUrl} target="_blank" rel="noopener noreferrer" className={cn(button, 'mt-4 inline-flex w-full items-center justify-center bg-violet-700 text-white')}>Coordinar pago por WhatsApp</a><p className="mt-2 text-xs text-muted">Se abrirá WhatsApp con empresa, plan e identificador de solicitud.</p><button type="button" disabled={cancelling} onClick={() => void cancelRequest()} className={cn(button, 'mt-2 inline-flex w-full items-center justify-center gap-2 border border-base bg-secondary text-secondary')}><X className="h-4 w-4" aria-hidden="true" />{cancelling ? 'Cancelando…' : 'Cancelar solicitud'}</button></>}
             </section>}
 
             <section className={cn(panel, 'space-y-4')} aria-labelledby="how-title">

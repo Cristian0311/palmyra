@@ -20,6 +20,8 @@ _unused/
 temp.txt
 # Generated at build time by scripts/write-version.mjs
 public/version.json
+# Supabase CLI local state
+supabase/.temp/
 # Android build outputs and generated web bundle
 android/.gradle/
 android/build/

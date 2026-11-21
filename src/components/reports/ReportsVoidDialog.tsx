@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, ArrowDownLeft, PackageCheck, X } from "lucide-react";
 import { cn } from "../../lib/utils";
+import { ticketDisplay } from "../../lib/documentCodes";
 import type { BankTransaction, ReturnItem, Transaction } from "../../types";
 import { getRemainingVoidItems } from "../../store/utils/localVoidTransaction";
 
@@ -74,7 +75,7 @@ export function ReportsVoidDialog({ transaction, returns = [], bankTransactions 
           <div className="min-w-0">
             <h2 id="reports-void-title" className="text-sm font-black text-primary">Eliminar venta</h2>
             <p className="mt-0.5 truncate text-[10px] font-bold uppercase tracking-wider text-muted">
-              Ticket {transaction.ticketNumber || transaction.id}
+              Ticket {ticketDisplay(transaction.ticketNumber, transaction.id)}
             </p>
           </div>
           <button

@@ -29,6 +29,33 @@ export async function loadSubscriptionOverview() {
   return { ctx, plans: (plans.data || []) as SubscriptionPlan[], request: request.data, subscription: subscription.data, invoices: (invoices.data || []) as any[] };
 }
 
+const PLAN_REQUEST_ERRORS: Record<string, string> = {
+  authentication_required: 'Tu sesión expiró. Inicia sesión de nuevo para solicitar el plan.',
+  owner_required: 'Solo el propietario de la empresa puede solicitar un plan.',
+  company_access_denied: 'La empresa está suspendida o sin acceso. Contacta al equipo de PALMYRA.',
+  invalid_billing_months: 'La duración elegida no es válida. Usa 1, 3, 6 o 12 meses.',
+  invalid_payment_method: 'La forma de pago elegida no está disponible.',
+  invalid_paid_plan: 'El plan elegido no está disponible en el catálogo.',
+  pending_plan_request_exists: 'Ya existe una solicitud pendiente. Cancélala antes de enviar otra.',
+  plan_warehouse_limit: 'Tu empresa supera el límite de almacenes de ese plan. Reduce almacenes activos o elige un plan mayor.',
+  plan_product_limit: 'Tu catálogo supera el límite de productos de ese plan. Archiva productos o elige un plan mayor.',
+  plan_employee_limit: 'Tu equipo supera el límite de empleados de ese plan. Desactiva empleados o elige un plan mayor.',
+  free_plan_not_deployed: 'El catálogo de planes aún no está publicado. Contacta al administrador de la plataforma.',
+};
+
+export function planRequestErrorMessage(error: unknown, fallback = 'No se pudo registrar la solicitud. Inténtalo de nuevo.') {
+  const message = String((error as any)?.message ?? error ?? '');
+  const code = String((error as any)?.code ?? '');
+  if (PLAN_REQUEST_ERRORS[message]) return PLAN_REQUEST_ERRORS[message];
+  if (code === 'PGRST202' || /could not find the function|schema cache/i.test(message)) {
+    return 'El servidor todavía no tiene activado el flujo de planes. Un administrador debe aplicar la actualización pendiente.';
+  }
+  if (/failed to fetch|network|load failed|timeout|timed out/i.test(message)) {
+    return 'No se pudo conectar con el servidor. Revisa tu conexión e inténtalo de nuevo.';
+  }
+  return fallback;
+}
+
 export async function selectSubscriptionPlan(planId: string, paymentMethod: AcquisitionPaymentMethod = 'cup_cash', months: BillingMonths = 1) {
   if (!isAcquisitionPaymentMethod(paymentMethod)) throw new Error('Método de pago no válido.');
   if (!isBillingMonths(months)) throw new Error('Selecciona 1, 3, 6 o 12 meses.');
@@ -41,8 +68,16 @@ export async function selectSubscriptionPlan(planId: string, paymentMethod: Acqu
     p_company_id: ctx.companyId, p_plan_id: planId, p_payment_method: paymentMethod,
     p_months: months,
   });
-  if (error) throw error;
-  return data;
+  if (error) throw new Error(planRequestErrorMessage(error));
+  return data as { status: string; request_id: string; already_requested?: boolean; billing_months?: number; quoted_amount?: number; quoted_currency?: string };
+}
+
+export async function cancelMyPlanRequest(companyId: string) {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error('Supabase no está configurado.');
+  const { data, error } = await supabase.rpc('cancel_my_plan_request', { p_company_id: companyId });
+  if (error) throw new Error(planRequestErrorMessage(error, 'No se pudo cancelar la solicitud.'));
+  return data as { ok: boolean; cancelled: boolean; request_id?: string };
 }
 
 export async function createCompanyAcquisition(input: {

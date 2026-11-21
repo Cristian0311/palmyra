@@ -761,8 +761,8 @@ export default function Reports() {
       </header>
 
       {/* Navigation Tabs - Dedicated full-width horizontal segmented bar */}
-      <div className="rounded-2xl border border-base bg-secondary p-1 shadow-xs sm:overflow-x-auto sm:scroll-smooth sm:custom-scrollbar">
-        <div className="grid grid-cols-3 gap-1.5 p-0.5 sm:flex sm:min-w-max sm:items-center">
+      <div className="rounded-2xl border border-base bg-secondary p-1 shadow-xs">
+        <div className="flex snap-x gap-1.5 overflow-x-auto p-0.5 custom-scrollbar sm:min-w-max sm:items-center sm:overflow-visible">
           {[
             { id: 'overview', label: 'Resumen', icon: BarChart3 },
             { id: 'sales', label: 'Ventas', icon: TrendingUp },
@@ -796,20 +796,20 @@ export default function Reports() {
                 key={tab.id} 
                 onClick={() => setActiveTab(tab.id as any)} 
                 className={cn(
-                  "btn-compact h-8 w-full min-w-0 !text-[11px] font-black sm:w-auto sm:shrink-0 sm:whitespace-nowrap",
+                  "btn-compact h-10 shrink-0 snap-start whitespace-nowrap !px-2.5 !text-[10px] font-black min-[420px]:!text-[11px] sm:h-8 sm:w-auto",
                   activeTab === tab.id 
                     ? "bg-[#6535C5] text-white shadow-md shadow-[#6535C5]/25" 
                     : "bg-subtle text-secondary hover:text-primary hover:bg-slate-200 dark:hover:bg-slate-800 border-none"
                 )}
               >
-                <Icon className="w-3 h-3" />
+                <Icon className="w-3 h-3 shrink-0" />
                 {tab.label}
                 {tab.badge !== undefined && tab.badge > 0 && (
                   <span className={cn(
-                    "px-1.5 py-0.2 text-[7px] font-black rounded-full ml-1",
+                    "ml-1 inline-flex min-w-[17px] shrink-0 items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-black leading-none tabular-nums",
                     activeTab === tab.id ? "bg-white/30 text-white" : (tab.badgeClass || "bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300")
                   )}>
-                    {tab.badge}
+                    {tab.badge > 99 ? '99+' : tab.badge}
                   </span>
                 )}
               </button>

@@ -567,7 +567,7 @@ export default function Notifications() {
           )}
         >
           Historial
-          {unread > 0 && <span className={cn("rounded-full px-1.5 py-0.5 text-xs font-bold tabular-nums", view === "history" ? "bg-white/20 text-white" : "bg-violet-600 text-white")}>{unread}</span>}
+          {unread > 0 && <span className={cn("inline-flex min-w-[18px] shrink-0 items-center justify-center rounded-full px-1.5 py-0.5 text-xs font-bold leading-none tabular-nums", view === "history" ? "bg-white/20 text-white" : "bg-violet-600 text-white")}>{unread > 99 ? "99+" : unread}</span>}
         </button>
         <button
           type="button"

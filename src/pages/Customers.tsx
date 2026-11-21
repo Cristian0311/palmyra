@@ -24,6 +24,7 @@ import {
 import { useStore } from "../store/useStore";
 import { Customer, Transaction } from "../types";
 import { cn } from "../lib/utils";
+import { ticketDisplay, documentCode } from "../lib/documentCodes";
 import { InfoTooltip } from "../components/InfoTooltip";
 import OperationsSurface from "../components/OperationsSurface";
 
@@ -43,9 +44,9 @@ const shortDate = (iso?: string) => {
   return date.toLocaleDateString("es-CU", { day: "2-digit", month: "short", year: "numeric" });
 };
 
-const ticketLabel = (tx: Transaction) => tx.ticketNumber || `#${tx.id.replace(/-/g, '').slice(-6).toUpperCase()}`;
+const ticketLabel = (tx: Transaction) => ticketDisplay(tx.ticketNumber, tx.id);
 
-const customerCode = (id: string) => `CLI-${id.replace(/-/g, '').slice(-6).toUpperCase()}`;
+const customerCode = (id: string) => documentCode('CLI', id);
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 

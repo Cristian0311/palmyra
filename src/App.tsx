@@ -435,6 +435,23 @@ export default function App() {
     };
   }, [currentUser?.id, currentBranchId, accessState]);
 
+  // La landing es pública: debe abrir aunque la verificación de sesión siga en
+  // curso. Sin esto, quien no ha iniciado sesión veía el login (o un loader)
+  // antes de poder evaluar el producto y descargar las apps.
+  const isLandingPath = typeof window !== "undefined" && /^\/landing\/?$/i.test(window.location.pathname);
+  const earlyLanding = (
+    <ErrorBoundary>
+      <Router>
+        <Suspense fallback={<PageLoading />}>
+          <LandingPage />
+        </Suspense>
+      </Router>
+    </ErrorBoundary>
+  );
+  if (isLandingPath && accessState !== "ready") {
+    return earlyLanding;
+  }
+
   if (accessState === "recovering") {
     return (
       <div className="min-h-screen bg-[#F7F5FC] flex items-center justify-center p-5">
@@ -509,7 +526,7 @@ export default function App() {
                 </Suspense>
               </Layout>
             ) : (
-              <Navigate to={accessState === "signed_out" ? "/auth" : accessState === "needs_onboarding" || pendingOnboarding ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/auth"} replace />
+              <Navigate to={accessState === "signed_out" || !currentUser ? "/landing" : accessState === "needs_onboarding" || pendingOnboarding ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/landing"} replace />
             )
           } />
         </Routes>

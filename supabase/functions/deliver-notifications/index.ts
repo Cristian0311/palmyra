@@ -47,12 +47,25 @@ function nextQuietEnd(date: Date, timezone: string, end: string) {
   return new Date(date.getTime() + 8 * 60 * 60_000).toISOString();
 }
 
+function serviceRoleKey() {
+  const direct = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
+  if (direct) return direct;
+  // Los proyectos nuevos exponen las claves en SUPABASE_SECRET_KEYS; sin este
+  // respaldo el worker respondería 503 y la cola crecería sin entregarse.
+  try {
+    const keys = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") || "{}") as Record<string, string>;
+    return keys.default || Object.values(keys)[0] || "";
+  } catch {
+    return "";
+  }
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return response({ error: "Method not allowed" }, 405);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const serviceKey = serviceRoleKey();
   if (!supabaseUrl || !serviceKey) return response({ error: "Supabase worker credentials are unavailable." }, 503);
   const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
   const { data: secrets, error: secretError } = await supabase.rpc("get_notification_worker_secrets");

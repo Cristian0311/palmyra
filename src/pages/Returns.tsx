@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { cn } from "../lib/utils";
+import { documentCode, ticketDisplay } from "../lib/documentCodes";
 import type { Customer, ReturnItem, Transaction, Warranty } from "../types";
 
 type ReturnFilter = 'all' | 'pending' | 'completed' | 'rejected';
@@ -63,9 +64,9 @@ const daysLeft = (iso: string) => {
   if (!date) return 0;
   return Math.ceil((date.getTime() - Date.now()) / MS_DAY);
 };
-const returnCode = (item: ReturnItem) => `RET-${item.id.replace(/-/g, '').slice(-8).toUpperCase()}`;
-const warrantyCode = (w: Warranty) => `GAR-${w.id.replace(/-/g, '').slice(-8).toUpperCase()}`;
-const ticketLabel = (tx: Transaction) => tx.ticketNumber || `#${tx.id.slice(-6).toUpperCase()}`;
+const returnCode = (item: ReturnItem) => documentCode('RET', item.id);
+const warrantyCode = (w: Warranty) => documentCode('GAR', w.id);
+const ticketLabel = (tx: Transaction) => ticketDisplay(tx.ticketNumber, tx.id);
 const fmtMoney = (value: number, currency: string) =>
   `${(Number(value) || 0).toLocaleString('es-CU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
 
@@ -461,7 +462,7 @@ function ReturnsContent() {
                         <div className="mt-0.5 whitespace-nowrap text-xs font-semibold text-muted">{shortDate(ret.date)}</div>
                       </td>
                       <td>
-                        <div className="whitespace-nowrap font-mono text-xs font-bold text-secondary">{tx ? ticketLabel(tx) : ret.transactionId.slice(-8)}</div>
+                        <div className="whitespace-nowrap font-mono text-xs font-bold text-secondary">{tx ? ticketLabel(tx) : ticketDisplay(null, ret.transactionId)}</div>
                         {customer ? (
                           <div className="mt-0.5">
                             <div className="text-xs font-black uppercase tracking-tight text-primary">{customer.name}</div>
@@ -687,7 +688,7 @@ function ReturnsContent() {
                         </span>
                       </td>
                       <td>
-                        <div className="whitespace-nowrap font-mono text-xs font-bold text-secondary">{tx ? ticketLabel(tx) : w.transactionId.slice(-6)}</div>
+                        <div className="whitespace-nowrap font-mono text-xs font-bold text-secondary">{tx ? ticketLabel(tx) : ticketDisplay(null, w.transactionId)}</div>
                       </td>
                       <td className="text-right">
                         {closed ? (

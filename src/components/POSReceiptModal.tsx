@@ -1,6 +1,7 @@
 import React from 'react';
 import { Printer, Receipt, MessageSquare, X, Banknote, CreditCard } from 'lucide-react';
 import { useStore } from '../store/useStore';
+import { ticketDisplay } from '../lib/documentCodes';
 import type { Currency, Product, Transaction } from '../types';
 
 interface POSReceiptModalProps {
@@ -39,7 +40,7 @@ export default function POSReceiptModal({
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="font-mono text-[10px] sm:text-[11px] font-black uppercase tracking-wider text-white truncate">
-                Ticket #{showReceiptModal.ticketNumber || showReceiptModal.id}
+                Ticket {ticketDisplay(showReceiptModal.ticketNumber, showReceiptModal.id)}
               </span>
               <span className="px-1.5 py-0.2 bg-indigo-500/20 text-indigo-300 text-[8px] font-black rounded-md border border-indigo-500/30 shrink-0">
                 {(showReceiptModal.items || []).reduce((s, i) => s + i.quantity, 0)} {((showReceiptModal.items || []).reduce((s, i) => s + i.quantity, 0)) === 1 ? 'artículo' : 'artículos'}
@@ -104,7 +105,7 @@ export default function POSReceiptModal({
           <div>
             <span className="font-bold text-slate-400 dark:text-slate-500 uppercase text-[7px] block">Comprobante</span>
             <span className="font-mono font-bold text-slate-800 dark:text-slate-200 print:text-black">
-              #{showReceiptModal.ticketNumber || showReceiptModal.id}
+              {ticketDisplay(showReceiptModal.ticketNumber, showReceiptModal.id)}
             </span>
           </div>
         </div>

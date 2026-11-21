@@ -45,6 +45,13 @@ async function startServer() {
 
   app.use(express.json({ limit: '15mb' }));
 
+  // Render termina TLS en su proxy: sin esto, req.ip es siempre la IP del
+  // balanceador y los límites por IP se vuelven un cupo GLOBAL compartido por
+  // todas las empresas (de ahí los "request rate limit reached").
+  if (process.env.RENDER || process.env.NODE_ENV === 'production') {
+    app.set('trust proxy', Number(process.env.TRUST_PROXY_HOPS) || 1);
+  }
+
   // Production security baseline without adding another runtime dependency.
   app.disable('x-powered-by');
   app.use((_req, res, next) => {
@@ -56,8 +63,16 @@ async function startServer() {
   });
 
   const requestRateLimit = new Map<string, { count: number; resetAt: number }>();
+  let rateLimitSweepAt = Date.now() + 60_000;
   const consumeRateLimit = (key: string, limit: number, windowMs: number) => {
     const now = Date.now();
+    // Sin poda, cada IP que pasa por /api queda en memoria para siempre.
+    if (now >= rateLimitSweepAt) {
+      for (const [entryKey, entry] of requestRateLimit) {
+        if (entry.resetAt <= now) requestRateLimit.delete(entryKey);
+      }
+      rateLimitSweepAt = now + 60_000;
+    }
     const current = requestRateLimit.get(key);
     if (!current || current.resetAt <= now) {
       requestRateLimit.set(key, { count: 1, resetAt: now + windowMs });

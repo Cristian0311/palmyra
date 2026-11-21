@@ -3,10 +3,10 @@ import { parseExchangeRates } from './exchangeRates';
 export const AUTO_RATE_THRESHOLD_DEFAULT = 5;
 export const AUTO_RATE_MIN_THRESHOLD = 1;
 export const AUTO_RATE_MAX_THRESHOLD = 500;
-export const AUTO_RATE_CODES = ['USD', 'EUR'] as const;
+export const AUTO_RATE_CODES = ['USD', 'EUR', 'MLC'] as const;
 export type AutoRateCode = typeof AUTO_RATE_CODES[number];
 
-const CODE_ALIASES: Record<string, string[]> = { EUR: ['EUR', 'ECU'], USD: ['USD'] };
+const CODE_ALIASES: Record<string, string[]> = { EUR: ['EUR', 'ECU'], USD: ['USD'], MLC: ['MLC'] };
 
 export function normalizeAutoRateThreshold(value: unknown): number {
   const numeric = typeof value === 'number' ? value : Number(value);

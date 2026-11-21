@@ -1,7 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
-const APP_RATES_URL = "https://palmyracrm.onrender.com/api/exchange-rates";
+const APP_BASE_URL = (Deno.env.get("PALMYRA_APP_URL") || "https://palmyracrm.onrender.com").replace(/\/+$/, "");
+const APP_RATES_URL = `${APP_BASE_URL}/api/exchange-rates`;
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-worker-secret",
@@ -105,7 +106,16 @@ Deno.serve(async (req: Request) => {
   if (req.method !== "POST") return respond({ error: "Method not allowed" }, 405);
 
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || (() => {
+    // Las instalaciones nuevas exponen SUPABASE_SECRET_KEYS en lugar de la
+    // service-role clásica; sin este respaldo el monitor falla en silencio.
+    try {
+      const keys = JSON.parse(Deno.env.get("SUPABASE_SECRET_KEYS") || "{}") as Record<string, string>;
+      return keys.default || Object.values(keys)[0];
+    } catch {
+      return undefined;
+    }
+  })();
   if (!supabaseUrl || !serviceKey) return respond({ error: "Worker credentials are unavailable." }, 503);
 
   const supabase = createClient(supabaseUrl, serviceKey, {
@@ -155,12 +165,23 @@ Deno.serve(async (req: Request) => {
       }];
     });
 
-    const { data: preferences, error: prefsError } = await supabase
+    const preferencesSelect = "company_id,user_id,exchange_currency_alerts_enabled,exchange_currency_codes,exchange_bitcoin_alerts_enabled,exchange_alert_mode,exchange_alert_min_change_pct,exchange_alert_min_change_abs";
+    let preferencesQuery = await supabase
       .from("notification_preferences")
-      .select("company_id,user_id,exchange_currency_alerts_enabled,exchange_currency_codes,exchange_bitcoin_alerts_enabled,exchange_alert_mode,exchange_alert_min_change_pct,exchange_alert_min_change_abs")
+      .select(preferencesSelect)
       .or("exchange_currency_alerts_enabled.eq.true,exchange_bitcoin_alerts_enabled.eq.true")
       .limit(1000);
-    if (prefsError) throw prefsError;
+    if (preferencesQuery.error) {
+      // Compatibilidad: si la migración de umbrales aún no está aplicada, el
+      // monitor debe seguir registrando historial en lugar de abortar.
+      preferencesQuery = await supabase
+        .from("notification_preferences")
+        .select("company_id,user_id,exchange_currency_alerts_enabled,exchange_currency_codes,exchange_bitcoin_alerts_enabled,exchange_alert_min_change_pct")
+        .or("exchange_currency_alerts_enabled.eq.true,exchange_bitcoin_alerts_enabled.eq.true")
+        .limit(1000);
+    }
+    if (preferencesQuery.error) throw preferencesQuery.error;
+    const preferences = (preferencesQuery.data || []) as Array<Record<string, any>>;
 
     const notifications: Array<Record<string, unknown>> = [];
     for (const preference of preferences || []) {

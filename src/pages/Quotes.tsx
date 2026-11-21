@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { formatMoney, cn } from '../lib/utils';
+import { documentCode } from '../lib/documentCodes';
 import { InfoTooltip } from '../components/InfoTooltip';
 import { getAuthorizedWarehouseIds } from '../modules/warehouse/warehouseScope';
 import type { CartItem, Customer, Product, Quote } from '../types';
@@ -128,7 +129,7 @@ const STATUS_CLASS: Record<QuoteStatus, string> = {
   expired: 'border-base bg-subtle text-muted',
 };
 
-const QUOTE_CODE = (id: string) => `COT-${id.replace(/-/g, '').slice(-8).toUpperCase()}`;
+const QUOTE_CODE = (id: string) => documentCode('COT', id);
 
 const quoteDerivedStatus = (quote: Quote): QuoteStatus => {
   if (

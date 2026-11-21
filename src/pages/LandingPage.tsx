@@ -5,7 +5,7 @@ import {
   Settings2, LineChart, Menu, X, UserRound,
   ShieldCheck, Sparkles, Globe2,
   CircleDollarSign, LockKeyhole, Landmark, Caravan, Castle,
-  Download, Smartphone, FileText, BookOpen, Headphones
+  Download, Smartphone, FileText, BookOpen, Headphones, Loader2
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PalmyraWordmark } from "../components/PalmyraWordmark";
@@ -244,6 +244,71 @@ function AreaPanel({ area, compact = false, onOpen }: { area: LandingArea; compa
 
 type InstallPlatform = "ios" | "android" | "desktop";
 
+function DownloadCta({
+  href,
+  label,
+  sizeLabel,
+  className,
+  onStarted,
+}: {
+  href: string;
+  label: string;
+  sizeLabel: string;
+  className?: string;
+  onStarted?: () => void;
+}) {
+  const [phase, setPhase] = useState<"idle" | "starting" | "sent">("idle");
+
+  useEffect(() => {
+    if (phase === "idle") return;
+    const toSent = phase === "starting" ? setTimeout(() => setPhase("sent"), 6000) : undefined;
+    return () => {
+      if (toSent) clearTimeout(toSent);
+    };
+  }, [phase]);
+
+  const started = phase !== "idle";
+
+  return (
+    <div>
+      <a
+        href={href}
+        onClick={() => {
+          setPhase("starting");
+          onStarted?.();
+        }}
+        className={`relative flex min-h-11 w-full items-center justify-center gap-2 overflow-hidden rounded-xl px-3 text-center text-xs font-black text-white shadow-[0_14px_30px_-16px_rgba(101,53,197,.8)] transition active:scale-[.99] ${
+          started ? "bg-[#3B1B78]" : "bg-[#5B2DBA]"
+        } ${className || ""}`}
+      >
+        {phase === "idle" ? <Download className="w-4 h-4 shrink-0" /> : <Loader2 className="w-4 h-4 shrink-0 animate-spin" />}
+        {phase === "idle" ? label : phase === "starting" ? "Iniciando descarga…" : "Descarga iniciada"}
+        {phase === "starting" && (
+          <span className="pointer-events-none absolute inset-x-0 bottom-0 h-1 overflow-hidden bg-white/20">
+            <span className="block h-full w-1/3 animate-[download-slide_1.1s_ease-in-out_infinite] rounded-full bg-white/90" />
+          </span>
+        )}
+      </a>
+      <div className="mt-2 flex items-start justify-between gap-2 text-[9px] leading-4 text-slate-600">
+        <span>
+          {started
+            ? "Revisa la barra de descargas de tu navegador. Si no aparece, vuelve a tocar el botón."
+            : sizeLabel}
+        </span>
+        {started && (
+          <button
+            type="button"
+            onClick={() => setPhase("idle")}
+            className="shrink-0 font-black text-[#5B2DBA] underline decoration-dotted underline-offset-2"
+          >
+            Ocultar
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function DownloadCenter() {
   const [installPromptReady, setInstallPromptReady] = useState(false);
   const [installed, setInstalled] = useState(false);
@@ -361,13 +426,12 @@ function DownloadCenter() {
                   <p className="text-[10px] font-black text-[#3B1B78]">Versión actual · v{__APP_VERSION__}</p>
                   <p className="mt-0.5 text-[9px] font-semibold text-slate-600">Siempre la última versión publicada</p>
                 </div>
-                <a
+                <DownloadCta
                   href={DESKTOP_DOWNLOAD_URL}
-                  className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#5B2DBA] text-xs font-black text-white shadow-[0_14px_30px_-16px_rgba(101,53,197,.8)]"
-                >
-                  <Download className="w-4 h-4" />
-                  Descargar instalador
-                </a>
+                  label="Descargar instalador"
+                  sizeLabel="Instalador para Windows · aprox. 84 MB"
+                  className="mt-2"
+                />
                 <p className="mt-2 text-[9px] leading-4 text-slate-600">
                   Si Windows muestra el aviso de SmartScreen por ser un instalador nuevo, elige «Más información →
                   Ejecutar de todas formas».
@@ -407,18 +471,13 @@ function DownloadCenter() {
               <div className="mt-auto space-y-2 pt-5">
                 {platform !== "ios" ? (
                   <>
-                    <a
+                    <DownloadCta
                       href={ANDROID_APK_URL}
-                      className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#5B2DBA] px-3 text-center text-xs font-black text-white shadow-[0_14px_30px_-16px_rgba(101,53,197,.8)]"
-                    >
-                      <Download className="w-4 h-4 shrink-0" />
-                      Descargar APK para Android
-                    </a>
+                      label="Descargar APK para Android"
+                      sizeLabel="APK para Android 7 o superior · aprox. 2 MB"
+                    />
                     <p className="text-[9px] font-semibold leading-4 text-slate-600">
-                      Android 7 o superior · Instala sin tienda de aplicaciones.
-                    </p>
-                    <p className="text-[9px] leading-4 text-slate-600">
-                      Si Android lo solicita, activa «Instalar apps desconocidas» para tu navegador.
+                      Instala sin tienda de aplicaciones. Si Android lo solicita, activa «Instalar apps desconocidas».
                     </p>
                     <div className="pt-1">{pwaInstallFallback}</div>
                   </>

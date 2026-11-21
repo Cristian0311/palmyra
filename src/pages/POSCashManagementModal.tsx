@@ -1,5 +1,6 @@
 import { Search, Wifi, WifiOff, RefreshCw, Plus, Minus, CreditCard, Receipt, Trash2, ShoppingCart, ShieldCheck, DollarSign, Banknote, QrCode, ArrowLeftRight, UserPlus, X, Lock, Unlock, Camera, AlertCircle, TrendingUp, Wallet, MessageSquare, Mail, HelpCircle, Calculator, ArrowRight, Package, User, RotateCcw, Printer, Bluetooth, Usb, Smartphone, Send, Copy, Check, CheckCircle, Share2, Store, ChevronDown, ChevronUp, Filter } from "lucide-react";
 import { cn, generateId } from "../lib/utils";
+import { ticketDisplay } from "../lib/documentCodes";
 import { useStore } from "../store/useStore";
 import { Product, Payment, Transaction, CashRegisterSession, Currency } from "../types";
 import { formatMoney } from "../modules/pos/utils/paymentMath";
@@ -564,7 +565,7 @@ export default function POSCashManagementModal(props: ModalProps) {
                                       <div>
                                         <div className="flex items-center gap-1.5 flex-wrap">
                                           <span className="font-mono text-[9px] font-black text-violet-700 bg-violet-50 px-1.5 py-0.5 rounded-md border border-violet-100">
-                                            {tx.ticketNumber || `#${tx.id.slice(0, 8).toUpperCase()}`}
+                                            {ticketDisplay(tx.ticketNumber, tx.id)}
                                           </span>
                                           {tx.offlinePending && (
                                             <span className="text-[8px] font-black uppercase tracking-wide text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-100">

@@ -1547,12 +1547,18 @@ export default function Banks() {
                 const isIncome = t.type === 'deposit' || t.type === 'payment_received';
                 const link = bankMovementLink.get(t.id);
                 return (
-                  <li key={t.id} className="flex items-start justify-between gap-2.5 px-3 py-2.5">
+                  <li key={t.id} className="px-3 py-2.5">
+                    <div className="flex items-start justify-between gap-2.5">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-[13px] font-black text-primary" title={card?.name || card?.bankName || card?.bank || 'Desconocida'}>
-                        {card?.name || card?.bankName || card?.bank || 'Desconocida'} <span className="font-bold text-muted">****{card ? lastFourOf(card) : '····'}</span>
-                      </p>
-                      <p className="truncate text-[12px] font-semibold text-secondary" title={t.description}>{t.description}</p>
+                      <div className="flex min-w-0 items-center gap-1.5">
+                        <p className="min-w-0 truncate text-[13px] font-black text-primary" title={card?.name || card?.bankName || card?.bank || 'Desconocida'}>
+                          {card?.name || card?.bankName || card?.bank || 'Desconocida'}
+                        </p>
+                        <span className="shrink-0 rounded-md bg-subtle px-1.5 py-0.5 font-mono text-[10px] font-bold tabular-nums text-secondary">
+                          ••••{card ? lastFourOf(card) : '····'}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 truncate text-[12px] font-semibold text-secondary" title={t.description}>{t.description}</p>
                       {link && (
                         <p className="truncate text-[11px] font-bold text-violet-700 dark:text-violet-300">
                           Venta #{String(link.sale.id).slice(0, 8)}{link.turnLabel ? ` · ${link.turnLabel}` : ''}
@@ -1579,7 +1585,9 @@ export default function Banks() {
                           ) : null}
                         </div>
                       ) : null}
-                      <p className="text-[11px] font-bold tabular-nums text-muted">{new Date(t.date).toLocaleString('es-CU')}</p>
+                      <p className="text-[10px] font-bold tabular-nums text-muted">
+                        {new Date(t.date).toLocaleString('es-CU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </p>
                     </div>
                     <div className="flex shrink-0 flex-col items-end gap-1">
                       <span className={cn('text-[13px] font-black tabular-nums whitespace-nowrap', isIncome ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>
@@ -1606,6 +1614,7 @@ export default function Banks() {
                           <Trash2 size={15} aria-hidden="true" />
                         </button>
                       )}
+                    </div>
                     </div>
                   </li>
                 );
@@ -1796,26 +1805,26 @@ export default function Banks() {
               </button>
             </div>
 
-            <form onSubmit={handleSave} className="space-y-3 p-4">
+            <form onSubmit={handleSave} className="space-y-2.5 p-4">
               <div>
-                <label className="mb-1 block font-black uppercase tracking-wider text-muted">Nombre o titular</label>
+                <label className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-muted">Nombre o titular</label>
                 <input
                   type="text"
                   required
                   value={formData.name || ''}
                   onChange={e => setFormData({...formData, name: e.target.value})}
-                  className="w-full rounded-xl border border-base bg-secondary px-3 py-2 font-bold text-primary"
+                  className="w-full rounded-lg border border-base bg-secondary px-3 py-1.5 text-sm font-bold text-primary"
                   placeholder="Ej: Juan Pérez"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-2.5 min-[420px]:grid-cols-2">
                 <div>
-                  <label className="mb-1 block font-black uppercase tracking-wider text-muted">Banco</label>
+                  <label className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-muted">Banco</label>
                   <select
                     value={formData.bank}
                     onChange={e => setFormData({...formData, bank: e.target.value})}
-                    className="w-full rounded-xl border border-base bg-secondary px-3 py-2 font-bold text-primary"
+                    className="w-full rounded-lg border border-base bg-secondary px-3 py-1.5 text-sm font-bold text-primary"
                   >
                     <option value="BPA">BPA - Banco Popular de Ahorro</option>
                     <option value="BANDEC">BANDEC - Banco de Crédito y Comercio</option>
@@ -1824,7 +1833,10 @@ export default function Banks() {
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block font-black uppercase tracking-wider text-muted" htmlFor="bank-card-type">Tipo de tarjeta</label>
+                  <label className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-muted" htmlFor="bank-card-type">
+                    Tipo de tarjeta
+                    <InfoTooltip text="El tipo ajusta la moneda de la cuenta: MN → CUP, MLC → MLC y Clásica USD → USD." position="top" />
+                  </label>
                   <select
                     id="bank-card-type"
                     value={normalizeCardType(formData as BankCard)}
@@ -1832,20 +1844,20 @@ export default function Banks() {
                       const cardType = e.target.value;
                       setFormData(prev => ({ ...prev, cardType, currency: cardTypeCurrency(cardType) }));
                     }}
-                    className="w-full rounded-xl border border-base bg-secondary px-3 py-2 font-bold text-primary"
+                    className="w-full rounded-lg border border-base bg-secondary px-3 py-1.5 text-sm font-bold text-primary"
                   >
                     {CARD_TYPE_OPTIONS.map(type => (
                       <option key={type} value={type}>{type}</option>
                     ))}
                   </select>
-                  <span className="mt-1 block font-semibold text-muted" style={{ fontSize: 12 }}>
-                    El tipo ajusta la moneda: MN → CUP, MLC → MLC, Clásica USD → USD.
-                  </span>
                 </div>
               </div>
 
               <div>
-                <label className="mb-1 block font-black uppercase tracking-wider text-muted">Número de tarjeta (16 dígitos)</label>
+                <label className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-muted">
+                  Número de tarjeta (16 dígitos)
+                  <InfoTooltip text="Prefijos de referencia: BPA 9204 / 9205 / 9224 / 9225 / 9227 / 9235 y BANDEC 9240 (Tropical). Es una guía, no una validación estricta." position="top" />
+                </label>
                 <input
                   type="text"
                   inputMode="numeric"
@@ -1860,17 +1872,14 @@ export default function Banks() {
                       accountNumber: formatted,
                     });
                   }}
-                  className="w-full rounded-xl border border-base bg-secondary px-3 py-2 font-bold text-primary"
+                  className="w-full rounded-lg border border-base bg-secondary px-3 py-1.5 text-sm font-bold text-primary"
                   style={{ fontFamily: 'ui-monospace, monospace', letterSpacing: '0.04em' }}
                 />
-                <span className="mt-1 block font-semibold text-muted" style={{ fontSize: 12 }}>
-                  Prefijos de referencia: BPA 9204 / 9205 / 9224 / 9225 / 9227 / 9235 y BANDEC 9240 (Tropical). Es una guía, no una validación estricta.
-                </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-2.5 min-[420px]:grid-cols-2">
                 <div>
-                  <label className="mb-1 block font-black uppercase tracking-wider text-muted">Vence (MM/AA)</label>
+                  <label className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-muted">Vence (MM/AA)</label>
                   <input
                     type="text"
                     maxLength={5}
@@ -1883,52 +1892,58 @@ export default function Banks() {
                       else if (raw.length === 2) formatted = raw + '/';
                       setFormData({ ...formData, expiryDate: formatted });
                     }}
-                    className="w-full rounded-xl border border-base bg-secondary px-3 py-2 font-bold text-primary"
+                    className="w-full rounded-lg border border-base bg-secondary px-3 py-1.5 text-sm font-bold text-primary"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block font-black uppercase tracking-wider text-muted">Teléfono (Transfermóvil)</label>
+                  <label className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-muted">
+                    Teléfono
+                    <InfoTooltip text="Número asociado a Transfermóvil para recibir transferencias a esta cuenta." position="top" />
+                  </label>
                   <input
                     type="text"
                     inputMode="tel"
                     placeholder="Ej: 5351234567"
                     value={formData.phone || ''}
                     onChange={e => setFormData({...formData, phone: e.target.value})}
-                    className="w-full rounded-xl border border-base bg-secondary px-3 py-2 font-bold text-primary"
+                    className="w-full rounded-lg border border-base bg-secondary px-3 py-1.5 text-sm font-bold text-primary"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-2.5 min-[420px]:grid-cols-2">
                 <div>
-                  <label className="mb-1 block font-black uppercase tracking-wider text-muted">Titular de la tarjeta</label>
+                  <label className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-muted">Titular de la tarjeta</label>
                   <input
                     type="text"
                     placeholder="Ej: JUAN PEREZ GARCIA"
                     value={formData.cardHolder || ''}
                     onChange={e => setFormData({...formData, cardHolder: e.target.value.toUpperCase()})}
-                    className="w-full rounded-xl border border-base bg-secondary px-3 py-2 font-bold text-primary"
+                    className="w-full rounded-lg border border-base bg-secondary px-3 py-1.5 text-sm font-bold text-primary"
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block font-black uppercase tracking-wider text-muted">Saldo inicial</label>
+                  <label className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-muted">
+                    Saldo inicial
+                    <InfoTooltip text="Saldo que ya tiene la cuenta al registrarla. Solo sirve para el arqueo local; no mueve dinero en el banco." position="top" />
+                  </label>
                   <input
                     type="number"
                     required
                     value={formData.balance ?? 0}
                     onChange={e => setFormData({...formData, balance: Number(e.target.value)})}
-                    className="w-full rounded-xl border border-base bg-secondary px-3 py-2 font-bold tabular-nums text-primary"
+                    className="w-full rounded-lg border border-base bg-secondary px-3 py-1.5 text-sm font-bold tabular-nums text-primary"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-2.5 min-[420px]:grid-cols-2">
                 <div>
-                  <label className="mb-1 block font-black uppercase tracking-wider text-muted">Moneda</label>
+                  <label className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-muted">Moneda</label>
                   <select
                     value={formData.currency}
                     onChange={e => setFormData({...formData, currency: e.target.value})}
-                    className="w-full rounded-xl border border-base bg-secondary px-3 py-2 font-bold text-primary"
+                    className="w-full rounded-lg border border-base bg-secondary px-3 py-1.5 text-sm font-bold text-primary"
                   >
                     {Array.from(new Set([...useStore.getState().currencies.map(c => c.code), 'MLC'])).map(code => (
                       <option key={code} value={code}>{code}</option>
@@ -1936,11 +1951,11 @@ export default function Banks() {
                   </select>
                 </div>
                 <div>
-                  <label className="mb-1 block font-black uppercase tracking-wider text-muted">Estado</label>
+                  <label className="mb-1 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-muted">Estado</label>
                   <select
                     value={formData.isActive ? 'true' : 'false'}
                     onChange={e => setFormData({...formData, isActive: e.target.value === 'true'})}
-                    className="w-full rounded-xl border border-base bg-secondary px-3 py-2 font-bold text-primary"
+                    className="w-full rounded-lg border border-base bg-secondary px-3 py-1.5 text-sm font-bold text-primary"
                   >
                     <option value="true">Activa</option>
                     <option value="false">Congelada / inactiva</option>

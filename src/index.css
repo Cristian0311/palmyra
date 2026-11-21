@@ -722,6 +722,11 @@ body {
   to { transform: rotate(360deg); }
 }
 
+@keyframes download-slide {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(320%); }
+}
+
 html[data-perf-tier="ultra"] .palmyra-loading-bubble {
   box-shadow: 0 6px 16px rgb(15 23 42 / 0.12);
 }

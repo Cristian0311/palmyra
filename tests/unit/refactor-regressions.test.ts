@@ -262,5 +262,7 @@ test('checkout helpers normalize currencies, ticket ids and bank transfers', () 
     { id: 'PALMYRA-TK05-OLD', total: 1 } as any,
     { id: 'PALMYRA-TK12-OLD', total: 1 } as any,
   ], 'aabbccdd-1111-2222-3333-444444444444');
-  assert.equal(ticket, 'PALMYRA-TK13-AABBCCDD');
+  assert.equal(ticket, 'TK13-AABBCC');
+  assert.equal(buildTransactionTicketId([], 'aabbccdd-1111-2222-3333-444444444444'), 'TK01-AABBCC');
+  assert.equal(buildTransactionTicketId([{ id: 'TK07-XYZ', total: 1 } as any], 'aabbccdd-1111-2222-3333-444444444444'), 'TK08-AABBCC');
 });

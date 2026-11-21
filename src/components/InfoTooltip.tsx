@@ -45,16 +45,37 @@ export function InfoTooltip({
     };
   }, [isVisible]);
 
+  useEffect(() => {
+    if (!isVisible) return;
+    const closeOnOutside = (event: PointerEvent) => {
+      if (triggerRef.current && !triggerRef.current.parentElement?.contains(event.target as Node)) {
+        setIsVisible(false);
+      }
+    };
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsVisible(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutside);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutside);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isVisible]);
+
   return (
     <div className={cn("relative inline-flex items-center", className)}>
       <div
         ref={triggerRef}
         onMouseEnter={() => setIsVisible(true)}
         onMouseLeave={() => setIsVisible(false)}
-        onClick={() => setIsVisible(prev => !prev)}
+        onClick={(event) => {
+          event.stopPropagation();
+          setIsVisible(prev => !prev);
+        }}
         onFocus={() => setIsVisible(true)}
         onBlur={() => setIsVisible(false)}
-        className="cursor-help text-slate-400 hover:text-indigo-500 transition-colors p-0.5"
+        className="-m-1.5 flex h-9 w-9 cursor-help items-center justify-center rounded-full text-slate-400 transition-colors hover:text-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
         aria-label="Ver información"
         role="button"
         tabIndex={0}

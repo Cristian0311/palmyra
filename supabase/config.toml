@@ -1,0 +1,13 @@
+project_id = "hmcvujyqloyjdvngpdxz"
+
+# Los workers se autentican con x-worker-secret contra Vault y son llamados por
+# pg_cron/pg_net sin JWT: deben desplegarse con verify_jwt desactivado.
+[functions.deliver-notifications]
+verify_jwt = false
+
+[functions.monitor-exchange-rates]
+verify_jwt = false
+
+# Requiere el JWT del dueño/encargado que invita al trabajador.
+[functions.send-company-invitation]
+verify_jwt = true

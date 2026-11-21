@@ -1,5 +1,5 @@
-import type { ReactNode } from "react";
-import { BarChart3, Sparkles } from "lucide-react";
+import { useEffect, type ReactNode } from "react";
+import { BarChart3, Sparkles, X } from "lucide-react";
 
 export function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -7,6 +7,16 @@ export function formatDate(value?: string | null) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+export function formatDay(value?: string | null) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("es-CU", { dateStyle: "medium" }).format(new Date(value));
+}
+
+export function formatMoney(value?: number | null, currency = "USD") {
+  if (value == null || !Number.isFinite(Number(value))) return "—";
+  return `${Number(value).toLocaleString("es-CU", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
 }
 
 export function statusLabel(status?: string | null) {
@@ -17,8 +27,37 @@ export function statusLabel(status?: string | null) {
     pending_payment: "Pago pendiente",
     trialing: "Prueba",
     cancelled: "Cancelada",
+    pending: "Pendiente",
+    approved: "Aprobada",
+    rejected: "Rechazada",
+    open: "Abierta",
+    in_progress: "En atención",
+    resolved: "Resuelta",
+    closed: "Cerrada",
+    paid: "Pagada",
+    void: "Anulada",
+    past_due: "En gracia",
+    expired: "Vencida",
+    free: "Gratis",
+    starter: "Starter",
+    growth: "Growth",
+    pro: "Pro",
   };
   return map[status || ""] || status || "Sin estado";
+}
+
+export function methodLabel(method?: string | null) {
+  const map: Record<string, string> = {
+    cup_cash: "Efectivo CUP",
+    cup_bank_transfer: "Transferencia CUP",
+    usd_cash: "Efectivo USD",
+    manual_cash: "Efectivo (manual)",
+    bank_transfer: "Transferencia",
+    card: "Tarjeta",
+    online: "En línea",
+    paypal_abroad: "PayPal (exterior)",
+  };
+  return map[method || ""] || method || "Pago manual";
 }
 
 export function isToday(value?: string | null) {
@@ -83,9 +122,9 @@ export function StatCard({
 export function StatusBadge({ status }: { status?: string | null }) {
   const normalized = String(status || "").toLowerCase();
   const tone =
-    normalized === "active" ? "green" :
-    normalized === "suspended" ? "red" :
-    normalized === "pending_payment" ? "amber" :
+    normalized === "active" || normalized === "paid" || normalized === "approved" || normalized === "resolved" ? "green" :
+    normalized === "suspended" || normalized === "rejected" ? "red" :
+    normalized === "pending_payment" || normalized === "pending" || normalized === "open" || normalized === "past_due" || normalized === "in_progress" ? "amber" :
     "slate";
   return <span className={`admin-status admin-status--${tone}`}><span />{statusLabel(status)}</span>;
 }
@@ -102,3 +141,50 @@ export function EmptyPanel({ title, description, action }: { title: string; desc
 }
 
 export function FileTextIcon(){return <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M6 2h9l3 3v17H6V2Zm8 1.5V6h3.5L14 3.5ZM8 8h8V6.5H8V8Zm0 4h8v-1.5H8V12Zm0 4h6v-1.5H8V16Z"/></svg>}
+
+export function Modal({
+  title,
+  description,
+  onClose,
+  children,
+  footer,
+  wide = false,
+}: {
+  title: string;
+  description?: string;
+  onClose: () => void;
+  children: ReactNode;
+  footer?: ReactNode;
+  wide?: boolean;
+}) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKey);
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previous;
+    };
+  }, [onClose]);
+
+  return (
+    <div className="admin-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className={`admin-modal ${wide ? "admin-modal--wide" : ""}`} role="dialog" aria-modal="true" aria-label={title}>
+        <header className="admin-modal__head">
+          <div>
+            <h2>{title}</h2>
+            {description ? <p>{description}</p> : null}
+          </div>
+          <button type="button" className="admin-modal__close" onClick={onClose} aria-label="Cerrar">
+            <X size={16} />
+          </button>
+        </header>
+        <div className="admin-modal__body">{children}</div>
+        {footer ? <footer className="admin-modal__foot">{footer}</footer> : null}
+      </section>
+    </div>
+  );
+}

@@ -103,14 +103,13 @@ export const useStore = create<AppState>()(
   currencies: INITIAL_CURRENCIES,
   
   updateCurrencyRate: async (code, newRate) => {
-    if (!['CUP', 'USD', 'EUR'].includes(code) || !Number.isFinite(newRate) || newRate <= 0) {
-      return false;
-    }
+    if (!Number.isFinite(newRate) || newRate <= 0) return false;
 
-    const currencies = (get().currencies || INITIAL_CURRENCIES)
-      .filter(c => ['CUP', 'USD', 'EUR'].includes(c.code));
+    // Se actualiza SOLO la moneda indicada. Filtrar la lista a CUP/USD/EUR
+    // borraba MLC, ZELLE y cualquier divisa extra al guardar una tasa.
+    const currencies = get().currencies || INITIAL_CURRENCIES;
     const current = currencies.find(c => c.code === code);
-    if (!current) return false;
+    if (!current || current.isBase) return false;
 
     const updatedCurrency = { ...current, rateToBase: newRate };
     // Actualizar inmediatamente el estado local conserva el trabajo offline.
@@ -123,7 +122,7 @@ export const useStore = create<AppState>()(
   },
 
   getBaseCurrency: () => {
-    const list = (get().currencies || INITIAL_CURRENCIES).filter(c => ['CUP', 'USD', 'EUR'].includes(c.code));
+    const list = get().currencies || INITIAL_CURRENCIES;
     return list.find(c => c.isBase) || list.find(c => c.code === 'CUP') || INITIAL_CURRENCIES[0];
   },
   

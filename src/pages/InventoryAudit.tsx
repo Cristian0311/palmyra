@@ -26,6 +26,7 @@ import {
 import { useStore } from "../store/useStore";
 import type { InventoryAudit } from "../types";
 import { cn } from "../lib/utils";
+import { documentCode } from "../lib/documentCodes";
 import PlanFeatureGate from "../components/PlanFeatureGate";
 import OperationsSurface from "../components/OperationsSurface";
 import { InfoTooltip } from "../components/InfoTooltip";
@@ -40,7 +41,7 @@ const reviewLabel: Record<string, string> = {
   approved: "Aprobada y ajustada",
 };
 
-const auditCode = (id: string) => `AUD-${id.replace(/-/g, "").slice(-8).toUpperCase()}`;
+const auditCode = (id: string) => documentCode("AUD", id);
 
 const reviewOf = (audit: InventoryAudit): Exclude<AuditFilter, "all"> =>
   (audit.reviewStatus || (audit.status === "completed" ? "approved" : "counting")) as Exclude<AuditFilter, "all">;

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { AlertTriangle, ArrowRight, BarChart3, Coins, Package, Receipt, TrendingUp } from "lucide-react";
 import type { Transaction } from "../../types";
 import type { ReportSalesSummary } from "../../modules/reports/utils/reportSalesSummary";
+import { ticketDisplay } from "../../lib/documentCodes";
 import { ReportsStatBubbles } from "./ReportsStatBubbles";
 
 type Props = {
@@ -145,7 +146,7 @@ export function ReportsOverview({ summary, formatMoney, onOpenSales, onOpenTrans
                   const when = new Date(tx.date);
                   return (
                     <tr key={tx.id} className="hover:bg-subtle/60">
-                      <td className="px-3 py-1.5 font-mono text-[9px] font-black text-rose-700 dark:text-rose-300">{tx.ticketNumber || tx.id}</td>
+                      <td className="px-3 py-1.5 font-mono text-[9px] font-black text-rose-700 dark:text-rose-300">{ticketDisplay(tx.ticketNumber, tx.id)}</td>
                       <td className="whitespace-nowrap px-3 py-1.5 text-[9px] font-bold text-secondary">
                         {Number.isFinite(when.getTime())
                           ? when.toLocaleString('es-CU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
