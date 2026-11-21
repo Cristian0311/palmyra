@@ -64,19 +64,49 @@ echo "==> package"
 cp "$OUT/base.apk" "$OUT/unsigned.apk"
 (cd "$OUT/dex" && "$JBR/bin/jar" uf ../unsigned.apk classes.dex)
 
-echo "==> normalize entry separators"
+# targetSdk 34 exige resources.arsc sin comprimir y alineado a 4 bytes; con
+# `jar uf` y una recompresión completa el instalador de Android rechaza el APK
+# con "No se pudo analizar el paquete". Se reconstruye el zip conservando
+# STORED para .arsc/.so y DEFLATE solo para el resto.
+echo "==> normalize entries (resources.arsc STORED)"
 python - "$OUT/unsigned.apk" <<'PY'
-import os, sys, zipfile
+import sys, zipfile
 src = sys.argv[1]
 tmp = src + '.fixed'
-with zipfile.ZipFile(src) as zin, zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as zout:
+with zipfile.ZipFile(src) as zin, zipfile.ZipFile(tmp, 'w') as zout:
     for item in zin.infolist():
-        zout.writestr(item.filename.replace('\\', '/'), zin.read(item))
+        name = item.filename.replace('\\', '/')
+        if not name or name.endswith('/'):
+            continue
+        data = zin.read(item)
+        uncompressed = name.endswith('.arsc') or name.endswith('.so')
+        info = zipfile.ZipInfo(name, date_time=item.date_time)
+        info.external_attr = item.external_attr
+        info.create_system = item.create_system
+        info.compress_type = zipfile.ZIP_STORED if uncompressed else zipfile.ZIP_DEFLATED
+        zout.writestr(info, data)
+import os
 os.replace(tmp, src)
 PY
 
-echo "==> zipalign"
-"$ZIPALIGN" -f -p 4 "$OUT/unsigned.apk" "$OUT/aligned.apk"
+echo "==> zipalign (4-byte / 16 KB pages)"
+"$ZIPALIGN" -f -P 16 4 "$OUT/unsigned.apk" "$OUT/aligned.apk"
+
+# Comprobación: un resources.arsc comprimido rompe la instalación en Android.
+python - "$OUT/aligned.apk" <<'PY'
+import sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as z:
+    arsc = [i for i in z.infolist() if i.filename == 'resources.arsc']
+    if not arsc:
+        sys.exit('Falta resources.arsc en el APK')
+    if arsc[0].compress_type != zipfile.ZIP_STORED:
+        sys.exit('resources.arsc quedó comprimido; Android rechazará la instalación')
+    try:
+        z.testzip()
+    except Exception:
+        pass
+print('resources.arsc: STORED y verificable')
+PY
 
 echo "==> sign"
 if [ ! -f "$HOME/.android/debug.keystore" ]; then
@@ -84,7 +114,8 @@ if [ ! -f "$HOME/.android/debug.keystore" ]; then
     -storepass android -keypass android -alias androiddebugkey \
     -dname "CN=Android Debug,O=Android,C=US" -keyalg RSA -keysize 2048 -validity 10000
 fi
-APK="../release/PALMYRA-$VERSION_NAME.apk"
+APK="../release/PALMYRA-Android.apk"
+rm -f "$APK"
 "$JAVA" -jar "$APKSIGNER" sign \
   --ks "$HOME/.android/debug.keystore" --ks-pass pass:android --key-pass pass:android \
   --ks-key-alias androiddebugkey \
@@ -92,4 +123,4 @@ APK="../release/PALMYRA-$VERSION_NAME.apk"
 
 "$JAVA" -jar "$APKSIGNER" verify --print-certs "$APK" | head -3
 ls -l "$APK"
-echo "APK listo: $APK"
+echo "APK listo: $APK (v$VERSION_NAME, versionCode $VERSION_CODE)"

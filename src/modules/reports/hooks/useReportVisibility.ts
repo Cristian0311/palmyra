@@ -63,6 +63,32 @@ export function useReportVisibility(transactions: Transaction[], addNotification
     );
   }, [hiddenReportIds, addNotification, writeHiddenReportIds, pushReportVisibility]);
 
+  // Whole-shift visibility: the same contract as a single ticket, applied to all
+  // completed sales of the turn. Never voids anything; only the report listing
+  // changes.
+  const setSessionReportVisibility = useCallback(async (sessionTransactions: Transaction[], hidden: boolean) => {
+    if (!sessionTransactions.length) return;
+    const ids = sessionTransactions.map(tx => tx.id);
+    writeHiddenReportIds(hidden
+      ? Array.from(new Set([...hiddenReportIds, ...ids]))
+      : hiddenReportIds.filter(id => !ids.includes(id)));
+    const results = await Promise.all(sessionTransactions.map(tx => pushReportVisibility(tx, hidden)));
+    const failed = results.filter(result => !result.success).length;
+    if (!failed) {
+      addNotification(
+        hidden
+          ? 'Turno completo ocultado de la lista de reportes en todos los dispositivos. Las ventas, los cobros y el inventario permanecen intactos.'
+          : 'Turno completo restaurado en la lista de reportes. Las ventas originales no fueron modificadas.',
+        'success',
+      );
+      return;
+    }
+    addNotification(
+      `Turno ${hidden ? 'ocultado' : 'restaurado'} solo en este dispositivo (${failed} ticket(s) sin confirmar en la nube). Las ventas siguen intactas.`,
+      'warning',
+    );
+  }, [hiddenReportIds, addNotification, writeHiddenReportIds, pushReportVisibility]);
+
   const restoreTransactionReport = useCallback(async (transaction: Transaction) => {
     writeHiddenReportIds(hiddenReportIds.filter(id => id !== transaction.id));
     const result = await pushReportVisibility(transaction, false);
@@ -74,5 +100,5 @@ export function useReportVisibility(transactions: Transaction[], addNotification
     );
   }, [hiddenReportIds, addNotification, writeHiddenReportIds, pushReportVisibility]);
 
-  return { hiddenReportIds, hideTransactionReport, restoreTransactionReport };
+  return { hiddenReportIds, hideTransactionReport, restoreTransactionReport, setSessionReportVisibility };
 }

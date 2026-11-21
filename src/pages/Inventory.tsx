@@ -757,7 +757,6 @@ export default function Inventory() {
     let totalCostValue = 0;
     let totalSaleValue = 0;
     let totalEmployeeSalary = 0;
-    const netProfitByProduct = new Map<string, number>();
     const unitProfitByProduct = new Map<string, number>();
 
     const activeEmployees = (users || []).filter(user => user.isActive !== false);
@@ -776,12 +775,11 @@ export default function Inventory() {
       const unitProfit = unitSale - unitCost - unitSalary;
       totalEmployeeSalary += unitSalary * quantity;
       unitProfitByProduct.set(product.id, unitProfit);
-      netProfitByProduct.set(product.id, unitProfit * quantity);
     }
 
     const totalProfit = totalSaleValue - totalEmployeeSalary - totalCostValue;
 
-    return { totalProducts, totalStock, lowStockCount: lowStockProductIds.size, totalCostValue, totalSaleValue, totalProfit, netProfitByProduct, unitProfitByProduct };
+    return { totalProducts, totalStock, lowStockCount: lowStockProductIds.size, totalCostValue, totalSaleValue, totalProfit, unitProfitByProduct };
   }, [inventory, products, selectedBranch, users]);
 
   return (
@@ -1276,12 +1274,6 @@ export default function Inventory() {
                               title={`Ganancia por unidad = venta ${formatMoney(Number(item.price) || 0)} − costo ${formatMoney(unitCost)} − salario/comisión ${formatMoney(unitSalary)}`}
                             >
                               Ganancia/u: {formatMoney(unitProfit)}
-                            </div>
-                            <div
-                              className="text-[7px] font-bold text-muted whitespace-nowrap"
-                              title={`Ganancia de todo el stock: ${item.totalStock} ${item.unit || 'uds'} × ${formatMoney(unitProfit)}`}
-                            >
-                              Total stock: {formatMoney(stats.netProfitByProduct.get(item.id) || 0)}
                             </div>
                           </>
                         );

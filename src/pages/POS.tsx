@@ -96,6 +96,7 @@ export default function POS() {
     inventory,
     addCustomer,
     bankCards,
+    bankTransactions,
     addBankTransaction,
     customers,
     users,
@@ -133,6 +134,7 @@ export default function POS() {
     inventory: state.inventory,
     addCustomer: state.addCustomer,
     bankCards: state.bankCards,
+    bankTransactions: state.bankTransactions,
     addBankTransaction: state.addBankTransaction,
     customers: state.customers,
     users: state.users,
@@ -2269,7 +2271,7 @@ export default function POS() {
       )}
       {showSalarySummary && lastClosedSession && (
         <Suspense fallback={null}>
-          <POSSalarySummaryModal {...{ activeTransactions, baseCurrency, companyCompensation, currentUser, formatSalaryCUP, handlePrintClosureThermal, lastClosedSession, navigate, products, salarySettlements, setShowSalarySummary, showSalarySummary, users }} />
+          <POSSalarySummaryModal {...{ activeTransactions, bankCards, bankTransactions, baseCurrency, companyCompensation, currentUser, formatSalaryCUP, handlePrintClosureThermal, lastClosedSession, navigate, products, salarySettlements, setShowSalarySummary, showSalarySummary, users }} />
         </Suspense>
       )}
 

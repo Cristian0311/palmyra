@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   TrendingDown,
   TrendingUp,
+  Trash2,
   Unlock,
   X,
 } from "lucide-react";
@@ -77,7 +78,7 @@ export default function InventoryAuditPage() {
   const {
     products, inventory, inventoryAudits, branches, currentBranchId, currentUser, getBaseCurrency,
     createInventoryAudit, completeInventoryAudit, requestInventoryAuditRecount,
-    approveInventoryAudit, addNotification,
+    approveInventoryAudit, deleteInventoryAudit, addNotification,
   } = useStore(useShallow(state => ({
     products: state.products,
     inventory: state.inventory,
@@ -90,6 +91,7 @@ export default function InventoryAuditPage() {
     completeInventoryAudit: state.completeInventoryAudit,
     requestInventoryAuditRecount: state.requestInventoryAuditRecount,
     approveInventoryAudit: state.approveInventoryAudit,
+    deleteInventoryAudit: state.deleteInventoryAudit,
     addNotification: state.addNotification,
   })));
 
@@ -99,7 +101,6 @@ export default function InventoryAuditPage() {
   const [selectedAuditId, setSelectedAuditId] = useState<string | null>(null);
   const [auditBranchId, setAuditBranchId] = useState(currentBranchId);
   const [mode, setMode] = useState<"physical" | "cycle_count">("cycle_count");
-  const [blindCount, setBlindCount] = useState(true);
   const [notes, setNotes] = useState("");
   const [countSearch, setCountSearch] = useState("");
   const [onlyPending, setOnlyPending] = useState(false);
@@ -109,6 +110,7 @@ export default function InventoryAuditPage() {
   const [historyBranch, setHistoryBranch] = useState("all");
   const [countDraft, setCountDraft] = useState<AuditItem[]>([]);
   const [isBusy, setIsBusy] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState<InventoryAudit | null>(null);
 
   const productById = useMemo(() => new Map(products.map(p => [p.id, p])), [products]);
   const branchName = (id: string) => branches.find(b => b.id === id)?.name || "Sucursal";
@@ -249,7 +251,7 @@ export default function InventoryAuditPage() {
 
     setIsBusy(true);
     try {
-      const audit = buildLocalSnapshot(auditBranchId, blindCount);
+      const audit = buildLocalSnapshot(auditBranchId, false);
       const res = await createInventoryAudit(audit);
       if (!res.success) {
         addNotification(res.error || "No se pudo iniciar la auditoría.", "error");
@@ -414,6 +416,29 @@ export default function InventoryAuditPage() {
     }
   };
 
+  const confirmDelete = async () => {
+    if (!pendingDelete) return;
+    setIsBusy(true);
+    try {
+      const res = await deleteInventoryAudit(pendingDelete.id);
+      if (!res.success) {
+        addNotification(res.error || "No se pudo eliminar la auditoría.", "error");
+        return;
+      }
+      if (selectedAuditId === pendingDelete.id) {
+        setShowModal(false);
+        setSelectedAuditId(null);
+      }
+      addNotification(
+        res.pending ? "Auditoría eliminada; se confirmará al reconectar." : "Auditoría eliminada.",
+        res.pending ? "info" : "success"
+      );
+      setPendingDelete(null);
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
   const selectedCurrentSystemChanges = useMemo(() => {
     if (!selectedAudit || selectedAudit.reviewStatus !== "pending_approval") return 0;
     let changed = 0;
@@ -454,7 +479,7 @@ export default function InventoryAuditPage() {
         const value = counted === null ? 0 : Math.abs(diff) * Number(productById.get(item.productId)?.costPrice || 0);
         return `<tr>
           <td>${escapeHtml(item.productName)}${item.variantLabel ? `<div class="muted">${escapeHtml(item.variantLabel)}</div>` : ""}</td>
-          <td class="num">${audit.blindCount ? "—" : fmtNum(Number(item.expected || 0))}</td>
+          <td class="num">${fmtNum(Number(item.expected || 0))}</td>
           <td class="num">${counted === null ? "Pendiente" : fmtNum(counted)}</td>
           <td class="num ${diff === 0 ? "" : diff > 0 ? "pos" : "neg"}">${counted === null ? "—" : `${diff > 0 ? "+" : ""}${fmtNum(diff)}`}</td>
           <td class="num">${value ? fmtMoney(value, baseCurrency.code) : "—"}</td>
@@ -496,7 +521,7 @@ export default function InventoryAuditPage() {
           <div class="muted">${escapeHtml(auditCode(audit.id))} · ${escapeHtml(shortDate(audit.date))}</div></div>
         <div style="text-align:right;font-size:10px">
           <div><b>Sucursal:</b> ${escapeHtml(branchName(audit.branchId))}</div>
-          <div><b>Tipo:</b> ${audit.mode === "physical" ? "Inventario físico" : "Conteo cíclico"}${audit.blindCount ? " (ciego)" : ""}</div>
+          <div><b>Tipo:</b> ${audit.mode === "physical" ? "Inventario físico" : "Conteo cíclico"}</div>
           <div><b>Estado:</b> ${escapeHtml(reviewLabel[review] || review)}</div>
         </div>
       </div>
@@ -549,7 +574,6 @@ export default function InventoryAuditPage() {
             onClick={() => {
               setAuditBranchId(currentBranchId);
               setMode("cycle_count");
-              setBlindCount(true);
               setNotes("");
               setStep("setup");
               setShowModal(true);
@@ -561,62 +585,62 @@ export default function InventoryAuditPage() {
         </header>
 
         <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-2xl border border-base bg-secondary p-4 shadow-2xs">
+          <div className="min-w-0 rounded-2xl border border-base bg-secondary p-3 sm:p-4 shadow-2xs">
             <div className="flex items-center gap-2.5">
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-violet-700 text-white shadow-sm" aria-hidden="true">
                 <ClipboardCheck size={16} />
               </span>
-              <span className="block font-black uppercase text-muted" style={{ fontSize: 11, letterSpacing: "0.12em" }}>Auditorías totales</span>
+              <span className="block min-w-0 font-black uppercase text-muted text-[10px] leading-tight tracking-[0.06em] break-words">Auditorías totales</span>
             </div>
             <div className="mt-2.5 flex items-baseline gap-1.5">
-              <span className="text-2xl font-black tabular-nums leading-none text-primary">{inventoryAudits.length}</span>
-              <span className="font-bold text-muted" style={{ fontSize: 11 }}>registradas</span>
+              <span className="text-lg sm:text-xl font-black tabular-nums leading-none text-primary">{inventoryAudits.length}</span>
+              <span className="font-bold text-muted text-[10px]">registradas</span>
             </div>
-            <span className="mt-1 block font-semibold text-muted" style={{ fontSize: 12 }}>{historyCounts.approved} aprobadas con ajuste aplicado</span>
+            <span className="mt-1 block text-[11px] font-semibold text-muted break-words">{historyCounts.approved} aprobadas con ajuste aplicado</span>
           </div>
 
-          <div className="rounded-2xl border border-base bg-secondary p-4 shadow-2xs">
+          <div className="min-w-0 rounded-2xl border border-base bg-secondary p-3 sm:p-4 shadow-2xs">
             <div className="flex items-center gap-2.5">
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-amber-500 to-orange-600 text-white shadow-sm" aria-hidden="true">
                 <Clock3 size={16} />
               </span>
-              <span className="block font-black uppercase text-muted" style={{ fontSize: 11, letterSpacing: "0.12em" }}>En conteo</span>
+              <span className="block min-w-0 font-black uppercase text-muted text-[10px] leading-tight tracking-[0.06em] break-words">En conteo</span>
             </div>
             <div className="mt-2.5 flex items-baseline gap-1.5">
-              <span className="text-2xl font-black tabular-nums leading-none text-amber-600 dark:text-amber-400">{historyCounts.counting}</span>
-              <span className="font-bold text-muted" style={{ fontSize: 11 }}>abiertas</span>
+              <span className="text-lg sm:text-xl font-black tabular-nums leading-none text-amber-600 dark:text-amber-400">{historyCounts.counting}</span>
+              <span className="font-bold text-muted text-[10px]">abiertas</span>
             </div>
-            <span className="mt-1 block font-semibold text-muted" style={{ fontSize: 12 }}>
+            <span className="mt-1 block text-[11px] font-semibold text-muted break-words">
               {historyCounts.recount_requested ? `${historyCounts.recount_requested} con recuento solicitado` : "Sin recuentos pendientes"}
             </span>
           </div>
 
-          <div className="rounded-2xl border border-base bg-secondary p-4 shadow-2xs">
+          <div className="min-w-0 rounded-2xl border border-base bg-secondary p-3 sm:p-4 shadow-2xs">
             <div className="flex items-center gap-2.5">
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-sky-500 to-indigo-700 text-white shadow-sm" aria-hidden="true">
                 <ShieldCheck size={16} />
               </span>
-              <span className="block font-black uppercase text-muted" style={{ fontSize: 11, letterSpacing: "0.12em" }}>Pendientes revisión</span>
+              <span className="block min-w-0 font-black uppercase text-muted text-[10px] leading-tight tracking-[0.06em] break-words">Pendientes revisión</span>
             </div>
             <div className="mt-2.5 flex items-baseline gap-1.5">
-              <span className="text-2xl font-black tabular-nums leading-none text-sky-600 dark:text-sky-400">{historyCounts.pending_approval}</span>
-              <span className="font-bold text-muted" style={{ fontSize: 11 }}>por aprobar</span>
+              <span className="text-lg sm:text-xl font-black tabular-nums leading-none text-sky-600 dark:text-sky-400">{historyCounts.pending_approval}</span>
+              <span className="font-bold text-muted text-[10px]">por aprobar</span>
             </div>
-            <span className="mt-1 block font-semibold text-muted" style={{ fontSize: 12 }}>El stock espera aprobación del supervisor</span>
+            <span className="mt-1 block text-[11px] font-semibold text-muted break-words">El stock espera aprobación del supervisor</span>
           </div>
 
-          <div className="rounded-2xl border border-base bg-secondary p-4 shadow-2xs">
+          <div className="min-w-0 rounded-2xl border border-base bg-secondary p-3 sm:p-4 shadow-2xs">
             <div className="flex items-center gap-2.5">
               <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-emerald-700 text-white shadow-sm" aria-hidden="true">
                 <CheckCircle2 size={16} />
               </span>
-              <span className="block font-black uppercase text-muted" style={{ fontSize: 11, letterSpacing: "0.12em" }}>Exactitud histórica</span>
+              <span className="block min-w-0 font-black uppercase text-muted text-[10px] leading-tight tracking-[0.06em] break-words">Exactitud histórica</span>
             </div>
             <div className="mt-2.5 flex items-baseline gap-1.5">
-              <span className="text-2xl font-black tabular-nums leading-none text-emerald-600 dark:text-emerald-400">{overallAccuracy == null ? "—" : `${overallAccuracy}%`}</span>
-              <span className="font-bold text-muted" style={{ fontSize: 11 }}>líneas exactas</span>
+              <span className="text-lg sm:text-xl font-black tabular-nums leading-none text-emerald-600 dark:text-emerald-400">{overallAccuracy == null ? "—" : `${overallAccuracy}%`}</span>
+              <span className="font-bold text-muted text-[10px]">líneas exactas</span>
             </div>
-            <span className="mt-1 block font-semibold text-muted" style={{ fontSize: 12 }}>Medida sobre auditorías aprobadas</span>
+            <span className="mt-1 block text-[11px] font-semibold text-muted break-words">Medida sobre auditorías aprobadas</span>
           </div>
         </section>
 
@@ -684,7 +708,7 @@ export default function InventoryAuditPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1040px] text-left text-sm [&_td]:px-3 [&_td]:py-3 [&_th]:px-3 [&_th]:py-2.5">
+            <table className="w-full min-w-[760px] text-left text-sm [&_td]:px-3 [&_td]:py-3 [&_th]:px-3 [&_th]:py-2.5">
               <thead className="border-b border-base bg-subtle text-[11px] font-black uppercase tracking-wider text-muted">
                 <tr>
                   <th>Auditoría</th>
@@ -704,16 +728,15 @@ export default function InventoryAuditPage() {
                   return (
                     <tr key={audit.id} className="align-top transition-colors hover:bg-subtle/60">
                       <td>
-                        <div className="whitespace-nowrap font-mono text-xs font-black text-primary">{auditCode(audit.id)}</div>
-                        <div className="mt-0.5 whitespace-nowrap text-[11px] font-semibold text-muted">{shortDate(audit.date)}</div>
+                        <div className="break-words font-mono text-xs font-black text-primary">{auditCode(audit.id)}</div>
+                        <div className="mt-0.5 break-words text-[11px] font-semibold text-muted">{shortDate(audit.date)}</div>
                       </td>
                       <td>
                         <div className="font-bold text-primary">{branchName(audit.branchId)}</div>
                         <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] font-semibold text-muted">
                           <span>{audit.mode === "physical" ? "Inventario físico" : "Conteo cíclico"}</span>
                           <span className="rounded bg-subtle px-1.5 py-0.5 font-bold text-secondary">
-                            {audit.blindCount ? <Lock size={9} className="mr-0.5 inline" /> : null}
-                            {audit.blindCount ? "Ciego" : "Con referencia"}
+                            Con referencia
                           </span>
                         </div>
                       </td>
@@ -743,7 +766,7 @@ export default function InventoryAuditPage() {
                         )}
                       </td>
                       <td className="text-right">
-                        <span className={cn("whitespace-nowrap text-xs font-black tabular-nums", stats.value > 0 ? "text-primary" : "text-muted")}>
+                        <span className={cn("break-words text-xs font-black tabular-nums", stats.value > 0 ? "text-primary" : "text-muted")}>
                           {fmtMoney(stats.value, baseCurrency.code)}
                         </span>
                       </td>
@@ -763,13 +786,24 @@ export default function InventoryAuditPage() {
                         </span>
                       </td>
                       <td className="text-right">
-                        <button
-                          type="button"
-                          onClick={() => openAudit(audit)}
-                          className="ml-auto flex min-h-[34px] items-center gap-1 rounded-lg border border-base px-2.5 text-xs font-bold text-secondary transition-colors hover:bg-subtle hover:text-primary"
-                        >
-                          <Eye size={12} /> {review === "counting" ? "Continuar" : "Abrir"}
-                        </button>
+                        <div className="flex justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => openAudit(audit)}
+                            className="flex min-h-[34px] items-center gap-1 rounded-lg border border-base px-2.5 text-xs font-bold text-secondary transition-colors hover:bg-subtle hover:text-primary"
+                          >
+                            <Eye size={12} /> {review === "counting" ? "Continuar" : "Abrir"}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={review === "approved"}
+                            onClick={() => setPendingDelete(audit)}
+                            title={review === "approved" ? "Las auditorías aprobadas conservan el ajuste de stock" : "Eliminar auditoría"}
+                            className="flex min-h-[34px] items-center gap-1 rounded-lg border border-base px-2.5 text-xs font-bold text-muted transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-rose-950/40"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -866,18 +900,6 @@ export default function InventoryAuditPage() {
                       </div>
                     </div>
 
-                    <button type="button" onClick={() => setBlindCount(v => !v)} className={cn("w-full rounded-2xl border p-3.5 text-left transition-colors", blindCount ? "border-violet-300 bg-violet-50/70 dark:border-violet-500/40 dark:bg-violet-500/10" : "border-base bg-subtle")}>
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-xs font-black uppercase tracking-wide text-primary">Conteo ciego</p>
-                          <p className="mt-0.5 text-[11px] font-semibold text-muted">Oculta la cantidad esperada al operador durante el conteo.</p>
-                        </div>
-                        <span className={cn("flex h-6 w-10 items-center rounded-full p-1", blindCount ? "justify-end bg-violet-600" : "justify-start bg-slate-300 dark:bg-slate-700")}>
-                          <span className="h-4 w-4 rounded-full bg-white shadow-sm" />
-                        </span>
-                      </div>
-                    </button>
-
                     <textarea
                       value={notes}
                       onChange={e => setNotes(e.target.value)}
@@ -953,8 +975,8 @@ export default function InventoryAuditPage() {
                         <Equal size={14} /> Completar con esperado
                       </button>
                       <span className="flex min-h-[42px] items-center gap-1.5 rounded-xl border border-base bg-secondary px-3 text-[11px] font-black uppercase text-secondary">
-                        {selectedAudit.blindCount ? <Lock size={13} /> : <Unlock size={13} />}
-                        {selectedAudit.blindCount ? "Ciego" : "Referencia visible"}
+                        <Unlock size={13} />
+                        Referencia visible
                       </span>
                     </div>
 
@@ -980,8 +1002,8 @@ export default function InventoryAuditPage() {
                                     <div className="text-[11px] font-semibold text-muted">{item.variantLabel || "Base"}</div>
                                   </td>
                                   <td className="text-center">
-                                    <span className={cn("text-sm font-black tabular-nums", selectedAudit.blindCount ? "rounded bg-subtle px-2 text-transparent select-none" : "text-muted")}>
-                                      {selectedAudit.blindCount ? String(item.expected).padStart(3, "0") : item.expected}
+                                    <span className="text-sm font-black tabular-nums text-muted">
+                                      {item.expected}
                                     </span>
                                   </td>
                                   <td className="text-center">
@@ -1012,16 +1034,14 @@ export default function InventoryAuditPage() {
                                       >
                                         +
                                       </button>
-                                      {!selectedAudit.blindCount && (
-                                        <button
-                                          type="button"
-                                          onClick={() => updateCount(idx, Number(item.expected || 0))}
-                                          className="ml-1 flex h-8 items-center rounded-lg border border-base px-2 text-[10px] font-black uppercase text-muted transition-colors hover:bg-subtle hover:text-primary"
-                                          title="Usar la cantidad del sistema"
-                                        >
-                                          = esperado
-                                        </button>
-                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => updateCount(idx, Number(item.expected || 0))}
+                                        className="ml-1 flex h-8 items-center rounded-lg border border-base px-2 text-[10px] font-black uppercase text-muted transition-colors hover:bg-subtle hover:text-primary"
+                                        title="Usar la cantidad del sistema"
+                                      >
+                                        = esperado
+                                      </button>
                                     </div>
                                   </td>
                                   <td className="text-right">
@@ -1061,7 +1081,7 @@ export default function InventoryAuditPage() {
 
                 {step === "review" && selectedAudit && (
                   <div className="space-y-3">
-                    <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-5">
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-5">
                       <div className="rounded-2xl border border-base bg-subtle p-3">
                         <span className="text-[10px] font-black uppercase tracking-wider text-muted">Faltante</span>
                         <p className="mt-0.5 text-xl font-black text-red-600 tabular-nums dark:text-red-400">−{fmtNum(varianceSummary.shortage)}</p>
@@ -1084,9 +1104,9 @@ export default function InventoryAuditPage() {
                         </p>
                         <span className="text-[10px] font-bold uppercase text-muted">del conteo</span>
                       </div>
-                      <div className="col-span-2 rounded-2xl border border-base bg-subtle p-3 lg:col-span-1">
+                      <div className="min-w-0 rounded-2xl border border-base bg-subtle p-3">
                         <span className="text-[10px] font-black uppercase tracking-wider text-muted">Valor de diferencia</span>
-                        <p className="mt-0.5 whitespace-nowrap text-base font-black text-primary tabular-nums">{fmtMoney(totalValue, baseCurrency.code)}</p>
+                        <p className="mt-0.5 break-words text-base font-black text-primary tabular-nums">{fmtMoney(totalValue, baseCurrency.code)}</p>
                         <span className="text-[10px] font-bold uppercase text-muted">a costo</span>
                       </div>
                     </div>
@@ -1132,7 +1152,7 @@ export default function InventoryAuditPage() {
 
                     <div className="overflow-hidden rounded-2xl border border-base">
                       <div className="overflow-x-auto">
-                        <table className="w-full min-w-[760px] text-sm [&_td]:px-3 [&_td]:py-2.5 [&_th]:px-3 [&_th]:py-2">
+                        <table className="w-full min-w-[600px] text-sm [&_td]:px-3 [&_td]:py-2.5 [&_th]:px-3 [&_th]:py-2">
                           <thead className="border-b border-base bg-subtle text-[11px] font-black uppercase tracking-wider text-muted">
                             <tr>
                               <th>Producto</th>
@@ -1247,6 +1267,41 @@ export default function InventoryAuditPage() {
             </div>
           </div>
         )}
+      {pendingDelete && (
+        <div className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-950/70 p-3 backdrop-blur-sm sm:items-center">
+          <div className="w-full max-w-md rounded-t-3xl border border-base bg-secondary p-4 shadow-2xl sm:rounded-3xl sm:p-5">
+            <div className="flex items-start gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400">
+                <Trash2 size={18} />
+              </span>
+              <div className="min-w-0">
+                <p className="text-base font-black text-primary">Eliminar auditoría</p>
+                <p className="mt-1 break-words text-sm font-semibold text-muted">
+                  Se borrará {auditCode(pendingDelete.id)} y su conteo. El stock no cambia porque todavía no se aprobó ningún ajuste.
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+              <button
+                type="button"
+                onClick={() => setPendingDelete(null)}
+                className="min-h-[44px] flex-1 rounded-xl border border-base bg-secondary px-4 text-sm font-bold text-secondary transition-colors hover:bg-subtle hover:text-primary"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isBusy}
+                onClick={confirmDelete}
+                className="flex min-h-[44px] flex-1 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-4 text-sm font-bold text-white transition-colors hover:bg-rose-700 disabled:opacity-60"
+              >
+                {isBusy ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
+                {isBusy ? "Eliminando…" : "Eliminar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       </OperationsSurface>
     </PlanFeatureGate>
   );

@@ -24,7 +24,7 @@ import {
   Wrench,
   X,
 } from 'lucide-react';
-import { BankCard, BankTransaction } from '../types';
+import { BankCard, BankTransaction, Transaction } from '../types';
 import { InfoTooltip } from '../components/InfoTooltip';
 import PlanFeatureGate from '../components/PlanFeatureGate';
 import BankLogo, { getBankWordmark } from '../components/bank/BankLogo';
@@ -751,7 +751,8 @@ export default function Banks() {
       if (entry.type !== 'payment_received') continue;
       if (selectedCardId && entry.cardId !== selectedCardId) continue;
       const card = bankCardById.get(entry.cardId);
-      const sale = entry.transactionId ? saleById.get(entry.transactionId) : undefined;
+      const sale = (entry.transactionId ? saleById.get(entry.transactionId) : undefined)
+        || saleById.get(String(entry.reference || '').trim());
       const sessionId = sale?.sessionId || '';
       const session = sessionId ? sessionById.get(sessionId) : undefined;
       const key = session ? session.id : 'no-turno';
@@ -781,6 +782,30 @@ export default function Banks() {
       .map(group => ({ ...group, totalsList: Array.from(group.totals.entries()).sort((a, b) => b[1] - a[1]) }))
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [bankTransactions, transactions, cashSessions, users, branches, selectedCardId, bankCardById]);
+
+  // Link each bank receipt back to its POS sale and shift so the movement detail
+  // reads "Venta … · Turno …" instead of a bare UUID.
+  const bankMovementLink = useMemo(() => {
+    const saleById = new Map<string, Transaction>();
+    for (const sale of transactions) {
+      if (sale.deletedAt) continue;
+      saleById.set(sale.id, sale);
+      if (sale.remoteId) saleById.set(sale.remoteId, sale);
+    }
+    const activeSessions = cashSessions.filter(session => !session.deletedAt);
+    const sessionById = new Map(activeSessions.map(session => [session.id, session]));
+    const turnLabels = buildSessionTurnMap(activeSessions);
+    const links = new Map<string, { sale: Transaction; turnLabel: string }>();
+    for (const entry of bankTransactions) {
+      if (entry.type !== 'payment_received') continue;
+      const sale = (entry.transactionId ? saleById.get(entry.transactionId) : undefined)
+        || saleById.get(String(entry.reference || '').trim());
+      if (!sale) continue;
+      const session = sale.sessionId ? sessionById.get(sale.sessionId) : undefined;
+      links.set(entry.id, { sale, turnLabel: session ? (turnLabels.get(session.id) || 'Turno') : '' });
+    }
+    return links;
+  }, [transactions, cashSessions, bankTransactions]);
   const [cardToDelete, setCardToDelete] = useState<string | null>(null);
   const [movementToDelete, setMovementToDelete] = useState<BankTransaction | null>(null);
 
@@ -1520,6 +1545,7 @@ export default function Banks() {
               {filteredTransactions.map(t => {
                 const card = bankCardById.get(t.cardId);
                 const isIncome = t.type === 'deposit' || t.type === 'payment_received';
+                const link = bankMovementLink.get(t.id);
                 return (
                   <li key={t.id} className="flex items-start justify-between gap-2.5 px-3 py-2.5">
                     <div className="min-w-0 flex-1">
@@ -1527,6 +1553,11 @@ export default function Banks() {
                         {card?.name || card?.bankName || card?.bank || 'Desconocida'} <span className="font-bold text-muted">****{card ? lastFourOf(card) : '····'}</span>
                       </p>
                       <p className="truncate text-[12px] font-semibold text-secondary" title={t.description}>{t.description}</p>
+                      {link && (
+                        <p className="truncate text-[11px] font-bold text-violet-700 dark:text-violet-300">
+                          Venta #{String(link.sale.id).slice(0, 8)}{link.turnLabel ? ` · ${link.turnLabel}` : ''}
+                        </p>
+                      )}
                       {t.reference ? (
                         <div className="flex min-w-0 items-baseline gap-1.5">
                           <p
@@ -1598,6 +1629,7 @@ export default function Banks() {
                 {filteredTransactions.map(t => {
                   const card = bankCardById.get(t.cardId);
                   const isIncome = t.type === 'deposit' || t.type === 'payment_received';
+                  const link = bankMovementLink.get(t.id);
                   return (
                     <tr key={t.id} className="transition-colors hover:bg-subtle">
                       <td className="text-sm font-semibold tabular-nums text-secondary whitespace-nowrap">
@@ -1624,10 +1656,33 @@ export default function Banks() {
                         <p className="truncate text-sm font-semibold text-secondary" title={t.description}>
                           {t.description}
                         </p>
-                        {t.reference ? (
-                          <p className="truncate text-[11px] font-bold uppercase text-muted" style={{ fontFamily: 'ui-monospace, monospace' }}>
-                            Ref. {t.reference}
+                        {link && (
+                          <p className="truncate text-[11px] font-bold text-violet-700 dark:text-violet-300" title={`Venta #${link.sale.id}`}>
+                            Venta #{String(link.sale.id).slice(0, 8)}{link.turnLabel ? ` · ${link.turnLabel}` : ''}
                           </p>
+                        )}
+                        {t.reference ? (
+                          <div className="flex min-w-0 items-baseline gap-1.5">
+                            <p
+                              className={cn('min-w-0 text-[11px] font-bold uppercase text-muted', expandedRefs.has(t.id) ? 'break-all' : 'truncate')}
+                              style={{ fontFamily: 'ui-monospace, monospace' }}
+                              title={t.reference}
+                            >
+                              Ref. {expandedRefs.has(t.id) || t.reference.length <= 30
+                                ? t.reference
+                                : `${t.reference.slice(0, 14)}…${t.reference.slice(-10)}`}
+                            </p>
+                            {t.reference.length > 30 ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleRef(t.id)}
+                                aria-expanded={expandedRefs.has(t.id)}
+                                className="shrink-0 text-[11px] font-black text-primary underline-offset-2 hover:underline"
+                              >
+                                {expandedRefs.has(t.id) ? 'Ver menos' : 'Ver más'}
+                              </button>
+                            ) : null}
+                          </div>
                         ) : null}
                       </td>
                       <td className={cn('text-right text-sm font-black tabular-nums whitespace-nowrap', isIncome ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')}>

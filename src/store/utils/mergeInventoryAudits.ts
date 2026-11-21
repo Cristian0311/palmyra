@@ -1,5 +1,17 @@
 import type { InventoryAudit } from '../../types';
 
+// Auditorías borradas localmente cuya eliminación remota aún no se confirmó.
+// Evita que un refresco/realtime vuelva a insertarlas en la lista.
+const pendingDeletions = new Set<string>();
+
+export function markAuditPendingDeletion(id: string) {
+  if (id) pendingDeletions.add(id);
+}
+
+export function clearAuditPendingDeletion(id: string) {
+  pendingDeletions.delete(id);
+}
+
 // El servidor guarda auditorías a nivel de producto, sin variantes. Un refresco
 // remoto no debe borrar los conteos por variante ni una aprobación hecha
 // offline que todavía no llegó a la nube.
@@ -8,9 +20,13 @@ export function mergeInventoryAudits(
   remote: InventoryAudit[] = []
 ): InventoryAudit[] {
   const byId = new Map<string, InventoryAudit>();
-  for (const audit of remote) byId.set(audit.id, audit);
+  for (const audit of remote) {
+    if (pendingDeletions.has(audit.id)) continue;
+    byId.set(audit.id, audit);
+  }
 
   for (const current of local) {
+    if (pendingDeletions.has(current.id)) continue;
     const incoming = byId.get(current.id);
     if (!incoming) {
       byId.set(current.id, current);

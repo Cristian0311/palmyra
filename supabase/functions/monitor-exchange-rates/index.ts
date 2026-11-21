@@ -157,7 +157,7 @@ Deno.serve(async (req: Request) => {
 
     const { data: preferences, error: prefsError } = await supabase
       .from("notification_preferences")
-      .select("company_id,user_id,exchange_currency_alerts_enabled,exchange_currency_codes,exchange_bitcoin_alerts_enabled,exchange_alert_min_change_pct")
+      .select("company_id,user_id,exchange_currency_alerts_enabled,exchange_currency_codes,exchange_bitcoin_alerts_enabled,exchange_alert_mode,exchange_alert_min_change_pct,exchange_alert_min_change_abs")
       .or("exchange_currency_alerts_enabled.eq.true,exchange_bitcoin_alerts_enabled.eq.true")
       .limit(1000);
     if (prefsError) throw prefsError;
@@ -169,9 +169,14 @@ Deno.serve(async (req: Request) => {
           .map((value: unknown) => compactCode(String(value)))
           .filter((code: string) => code && !isCrypto(code)),
       );
-      const threshold = Math.max(0, Number(preference.exchange_alert_min_change_pct || 0));
+      const absoluteMode = String(preference.exchange_alert_mode || "percent") === "absolute";
+      const threshold = absoluteMode
+        ? Math.max(0, Number(preference.exchange_alert_min_change_abs || 0))
+        : Math.max(0, Number(preference.exchange_alert_min_change_pct || 0));
       const matched = changes.filter((change) => {
-        if (Math.abs(change.pct) <= threshold + 1e-9) return false;
+        const delta = change.value - change.oldValue;
+        const magnitude = absoluteMode ? Math.abs(delta) : Math.abs(change.pct);
+        if (magnitude <= threshold + 1e-9) return false;
         if (isBitcoin(change.code)) return preference.exchange_bitcoin_alerts_enabled === true;
         return preference.exchange_currency_alerts_enabled === true && selectedCurrencies.has(change.code) && !isCrypto(change.code);
       });
@@ -185,9 +190,11 @@ Deno.serve(async (req: Request) => {
           ? "📊 Cambios en divisas y Bitcoin"
           : "💱 Cambios en tus divisas";
       const lines = matched.map((change) => {
-        const direction = change.pct > 0 ? "subió" : "bajó";
-        const sign = change.pct > 0 ? "+" : "";
-        return change.name + " (" + change.code + "): " + formatValue(change.oldValue) + " → " + formatValue(change.value) + " (" + sign + change.pct.toFixed(2) + "%). El precio " + direction + ".";
+        const delta = change.value - change.oldValue;
+        const direction = delta > 0 ? "subió" : "bajó";
+        const sign = delta > 0 ? "+" : "";
+        const absText = " (" + sign + delta.toFixed(2) + ")";
+        return change.name + " (" + change.code + "): " + formatValue(change.oldValue) + " → " + formatValue(change.value) + absText + " · " + sign + change.pct.toFixed(2) + "%. El precio " + direction + ".";
       });
       notifications.push({
         company_id: preference.company_id,

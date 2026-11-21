@@ -9,7 +9,7 @@ import {
   pushSupplierToSupabase, deleteSupplierFromSupabase, pushSupplierOrderToSupabase, pushCustomerToSupabase,
   applyInventoryAdjustmentToSupabase, reconcileInventoryToSupabase,
   pushReceiptConfigToSupabase, pushStoreConfigToSupabase, deleteTransactionFromSupabase, deleteCustomerFromSupabase, callReserveNCFRangeRPC, callTransferInventoryBulkRPC,
-  deleteBankTransactionFromSupabase, clearSelectedDataFromSupabase, callOpenSessionRPCWithId, callProcessTransactionRPC, callVoidTransactionRPC, callCompleteReturnRPC, callTransferInventoryRPC, callReceiveSupplierOrderRPC, callStartInventoryAuditRPC, callSaveInventoryAuditCountRPC, callRequestInventoryAuditRecountRPC, callApproveInventoryAuditRPC, callCompleteInventoryAuditRPC, callCloseSessionRPC, callCancelSessionRPC, callDeleteBankInternalTransferRPC, callDeleteBankTransactionRPC, callDeleteBankCardRPC, callProcessBankTransactionRPC
+  deleteBankTransactionFromSupabase, clearSelectedDataFromSupabase, callOpenSessionRPCWithId, callProcessTransactionRPC, callVoidTransactionRPC, callCompleteReturnRPC, callTransferInventoryRPC, callReceiveSupplierOrderRPC, callStartInventoryAuditRPC, callSaveInventoryAuditCountRPC, callRequestInventoryAuditRecountRPC, callApproveInventoryAuditRPC, callDeleteInventoryAuditRPC, callCompleteInventoryAuditRPC, callCloseSessionRPC, callCancelSessionRPC, callDeleteBankInternalTransferRPC, callDeleteBankTransactionRPC, callDeleteBankCardRPC, callProcessBankTransactionRPC
 } from '../../services/supabaseSync';
 import { getSupabaseCredentials } from '../../lib/supabase';
 import { loadSaaSContext, signInSaaSAccount, signOutSaaSAccount } from '../../services/saas';
@@ -342,6 +342,37 @@ export function createOperationsActions(set: StoreSet, get: StoreGet): any {
     }
 
     get().addNotification('Auditoría aprobada offline; el ajuste de stock se sincronizará al reconectar.', 'info');
+    return { success: true, pending: true };
+  },
+  deleteInventoryAudit: async (id) => {
+    const audit = get().inventoryAudits.find(a => a.id === id);
+    if (!audit) return { success: true };
+    if (audit.reviewStatus === 'approved' || audit.status === 'completed') {
+      return { success: false, error: 'Las auditorías aprobadas conservan el ajuste de stock y no se pueden eliminar.' };
+    }
+
+    const { markAuditPendingDeletion, clearAuditPendingDeletion } = await import('../utils/mergeInventoryAudits');
+    markAuditPendingDeletion(id);
+    set(state => ({ inventoryAudits: state.inventoryAudits.filter(a => a.id !== id) }));
+
+    const actionId = 'audit-delete:' + id;
+    const queueDelete = () => enqueueOfflineItem('audit_delete', { id }, actionId).catch(() => undefined);
+
+    if (typeof navigator !== 'undefined' && navigator.onLine) {
+      try {
+        const res = await callDeleteInventoryAuditRPC(id);
+        if (!res.success) throw new Error(res.error || 'No se pudo eliminar la auditoría');
+        clearAuditPendingDeletion(id);
+        return { success: true };
+      } catch (err: any) {
+        console.warn('[deleteInventoryAudit] Eliminación no confirmada; queda durable:', err);
+        await queueDelete();
+        get().addNotification('Auditoría eliminada localmente; se confirmará al reconectar.', 'info');
+        return { success: true, pending: true };
+      }
+    }
+
+    await queueDelete();
     return { success: true, pending: true };
   },
   };

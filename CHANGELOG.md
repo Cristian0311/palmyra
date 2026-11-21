@@ -1,5 +1,49 @@
 # CHANGELOG — PALMYRA POS
 
+## 1.2.0 — Turnos, auditorías, bancos y Android
+
+### Inventario
+- La tarjeta de producto ya no muestra el «total de stock en dinero» bajo el
+  precio; queda solo precio y ganancia por unidad.
+
+### Auditoría de inventario
+- Se puede **eliminar una auditoría** que aún no aplicó ajustes (desde la
+  lista y desde el detalle), también offline: la operación viaja en la cola y
+  la RPC `palmyra_delete_audit` conserva las auditorías aprobadas.
+- Se retira el **conteo a ciego**: el conteo siempre muestra la referencia.
+  Las auditorías antiguas también se abren con la referencia visible.
+- La cabecera y los textos de la pantalla ya no se cortan en pantallas
+  pequeñas: tipografía adaptativa y nombres con salto de línea.
+
+### Reportes y nómina
+- «Ocultar» y «Eliminar» en el detalle del turno aplican al **turno completo**,
+  no a un ticket suelto; cada ticket conserva solo «Ver comprobante».
+- Corregido «Se requiere actualizar el RPC de anulación de turno»: la RPC
+  acepta turnos abiertos y cerrados y devuelve `voided_sale_ids` para que el
+  POS purgue exactamente las ventas anuladas y reponga el stock.
+- La pestaña **Nómina** ya no muestra información de descuadre ni botones de
+  ocultar/eliminar turno.
+
+### Bancos y POS
+- «Detalle» ya no parte códigos largos: la referencia se trunca en el medio
+  con «Ver más» y cada movimiento enlaza a su **venta del POS** y turno.
+- Al cerrar la caja, el POS muestra automáticamente el resumen del turno con
+  los **cobros bancarios** (banco, referencia y total por moneda).
+- Alertas de divisas: umbral configurable en **porcentaje o monto fijo**
+  (por ejemplo, avisar si la tasa sube o baja 5 pesos).
+
+### Red local, rendimiento y Android
+- «Máquinas conectadas» muestra el **nombre real**: modelo del móvil
+  (p. ej. SM-A536B), nombre de la PC (hostname/DNS inverso) y su plataforma.
+  El nombre manual sigue mandando y se marca «Detectado» el automático.
+- En Android se recomienda instalar el **APK** al entrar desde la web, incluso
+  con la PWA instalada, con opción «Más tarde» y «No volver a mostrar».
+- Burbujas de carga: las operaciones lentas (sincronización manual, cierre de
+  turno, procesos de nube) muestran «Cargando…» con spinner hasta terminar.
+- APK reparado: `resources.arsc` se empaqueta sin comprimir y alineado, el
+  artefacto se firma tras zipalign 16 KB y se publica como
+  `PALMYRA-Android.apk` para que la descarga del landing instale sin errores.
+
 ## 1.1.0 — Auditoría total de los 7 frentes y correcciones solicitadas
 
 ### Inventario

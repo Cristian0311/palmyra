@@ -347,6 +347,10 @@ async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
           if (candidate.type === 'audit_recount' && candidate.data?.id === data.id) add(candidate);
         }
         break;
+      case 'audit_delete':
+        add(dep('audit_start', 'audit-start:' + data.id));
+        add(dep('audit_complete', 'audit:' + data.id));
+        break;
       case 'branch_delete':
       case 'category_delete':
       case 'supplier_delete':

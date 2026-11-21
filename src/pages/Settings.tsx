@@ -15,6 +15,7 @@ import { SettingsSectionNav } from "../components/settings/SettingsSectionNav";
 import OfflineHealthSection from "../components/settings/OfflineHealthSection";
 import { Branch, Category } from "../types";
 import { cn } from "../lib/utils";
+import { runWithLoading } from "../lib/busy";
 import { connectBluetoothPrinter, connectPrinter, getConnectedDeviceName, printESCPOS, isInsideIframe, isThermalPrinterAutoConnectEnabled, setThermalPrinterAutoConnect } from "../lib/escpos";
 import { getSupabase } from "../lib/supabase";
 import { loadSaaSContext } from "../services/saas";
@@ -387,12 +388,12 @@ function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
     if (isSyncing) return;
     setIsSyncing(true);
     let syncRes: Awaited<ReturnType<typeof import('../services/offlineSync').processOfflineQueue>> | null = null;
+    await runWithLoading('Sincronizando con la nube…', async () => {
     try {
       const { processOfflineQueue } = await import('../services/offlineSync');
       const { getOfflineQueueCount } = await import('../services/offlineQueue');
       const count = getOfflineQueueCount();
       if (count > 0) {
-        addNotification(`Sincronizando ${count} operaciones pendientes...`, 'info');
         syncRes = await processOfflineQueue();
         if (syncRes.processed) addNotification(`Cola procesada: ${syncRes.processed} operaciones.`, 'success');
         if (syncRes.failed) addNotification(`Error en ${syncRes.failed} operaciones.`, 'error');
@@ -413,6 +414,7 @@ function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
     } finally {
       setIsSyncing(false);
     }
+    });
   };
 
   return (

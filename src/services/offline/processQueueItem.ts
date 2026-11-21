@@ -489,6 +489,15 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       if (!res.success) throw new Error(res.error || 'No se pudo aprobar la auditoría');
       return true;
     }
+    case 'audit_delete': {
+      const id = String(data?.id || '');
+      if (!id) throw new PermanentSyncError('Eliminación de auditoría sin ID');
+      const res = await (await import('../supabaseSync')).callDeleteInventoryAuditRPC(id);
+      if (!res.success) throw new Error(res.error || 'No se pudo eliminar la auditoría');
+      const { clearAuditPendingDeletion } = await import('../../store/utils/mergeInventoryAudits');
+      clearAuditPendingDeletion(id);
+      return true;
+    }
     case 'branch_delete': {
       const id = String(data?.id || '');
       if (!id) throw new PermanentSyncError('Eliminación de almacén sin ID');

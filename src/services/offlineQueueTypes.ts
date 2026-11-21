@@ -8,7 +8,7 @@ export type OfflineActionType =
   | 'warranty' | 'time_shift' | 'quote' | 'bank_internal_transfer'
   | 'bank_internal_transfer_delete' | 'bank_transaction_delete' | 'bank_card_delete'
   | 'bank_card' | 'bank_card_balance' | 'currency_rate' | 'supplier' | 'supplier_order'
-  | 'inventory_audit' | 'audit_start' | 'audit_recount' | 'audit_approve'
+  | 'inventory_audit' | 'audit_start' | 'audit_recount' | 'audit_approve' | 'audit_delete'
   | 'cash_movement' | 'cash_movement_delete' | 'employee_create' | 'employee_update' | 'employee_status' | 'employee_delete' | 'invitation_revoke' | 'team_compensation_settings' | 'team_role_upsert'
   | 'branch_delete' | 'category_delete' | 'supplier_delete' | 'user_delete' | 'quote_delete';
 

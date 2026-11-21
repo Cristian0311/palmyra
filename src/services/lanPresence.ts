@@ -14,6 +14,9 @@ export type LanDevice = {
   firstSeen: string;
   online: boolean;
   warehouseName?: string | null;
+  platform?: string | null;
+  model?: string | null;
+  nameSource?: 'auto' | 'manual';
 };
 
 export type LanStatus = {
@@ -50,10 +53,47 @@ export function detectDeviceKind(): LanDeviceKind {
   return 'browser';
 }
 
+function devicePlatform(): string {
+  if (typeof navigator === 'undefined') return '';
+  const ua = navigator.userAgent;
+  if (/Windows Phone/i.test(ua)) return 'Windows Phone';
+  if (/Windows/i.test(ua)) return 'Windows';
+  if (/Android/i.test(ua)) return 'Android';
+  if (/iPhone|iPad|iPod/i.test(ua)) return 'iOS';
+  if (/Mac OS X|Macintosh/i.test(ua)) return 'macOS';
+  if (/CrOS/i.test(ua)) return 'ChromeOS';
+  if (/Linux/i.test(ua)) return 'Linux';
+  return '';
+}
+
+/** Modelo real del equipo cuando el navegador lo expone (Android suele incluirlo en el UA). */
+function deviceModel(): string {
+  if (typeof navigator === 'undefined') return '';
+  const ua = navigator.userAgent;
+  const android = ua.match(/Android[^;]*;\s*([^;)]+?)(?:\s+Build[/:][^);]*)?[;)]/i);
+  const model = android?.[1]?.replace(/\s*(Build|wv).*$/i, '').trim();
+  if (model && !/^(K|Android|Linux|Mobile|Tablet)/i.test(model)) return model;
+  if (/iPhone/i.test(ua)) return 'iPhone';
+  if (/iPad/i.test(ua)) return 'iPad';
+  return '';
+}
+
+/** Descripción corta y legible: "SM-A536B" (móvil Android), "iPhone", "PC Windows". */
+export function describeThisDevice(): string {
+  const model = deviceModel();
+  const platform = devicePlatform();
+  if (model) return model;
+  if (platform) return `PC ${platform}`;
+  return detectDeviceKind() === 'desktop' ? 'PC' : 'Equipo';
+}
+
 export function defaultDeviceName(): string {
-  const kind = detectDeviceKind();
-  const label = kind === 'desktop' ? 'Caja' : kind === 'mobile' ? 'Móvil' : kind === 'tablet' ? 'Tablet' : 'Equipo';
-  return `${label} ${getDeviceId().replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase()}`;
+  const described = describeThisDevice();
+  if (described === 'Equipo' || described === 'PC') {
+    const label = detectDeviceKind() === 'tablet' ? 'Tablet' : detectDeviceKind() === 'mobile' ? 'Móvil' : 'Caja';
+    return `${label} ${getDeviceId().replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase()}`;
+  }
+  return described;
 }
 
 export function getDeviceName(): string {
@@ -99,6 +139,8 @@ export async function sendLanPresence(warehouseName?: string | null): Promise<vo
       id: getDeviceId(),
       name: getDeviceName(),
       kind: detectDeviceKind(),
+      platform: devicePlatform(),
+      model: deviceModel(),
       warehouseName: warehouseName || null
     })
   });

@@ -60,15 +60,13 @@ export function ReportsPayrollTab({
   const totalSalary = payroll.reduce((sum, item) => sum + item.totalSalary, 0);
   const totalCommissions = payroll.reduce((sum, item) => sum + item.commissions, 0);
   const totalBase = payroll.reduce((sum, item) => sum + item.baseSalary, 0);
-  const totalDeductions = payroll.reduce((sum, item) => sum + item.discrepancyDeduction, 0);
 
   return (
     <div className="space-y-4 animate-in fade-in duration-200">
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <KPI label="Total Nómina Neta" value={formatMoney(totalSalary)} tone="text-violet-600 dark:text-violet-300" />
         <KPI label="Total Comisiones" value={formatMoney(totalCommissions)} tone="text-emerald-600 dark:text-emerald-400" />
         <KPI label="Total Salarios Base" value={formatMoney(totalBase)} tone="text-primary" />
-        <KPI label="Deducciones por Descuadre" value={formatMoney(totalDeductions)} tone={totalDeductions > 0 ? "text-red-600 dark:text-red-400" : "text-primary"} />
         <KPI label="Turnos Computados" value={`${payroll.length} Turnos`} tone="text-primary" />
       </div>
 
@@ -89,7 +87,7 @@ export function ReportsPayrollTab({
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1020px] text-left border-collapse">
+          <table className="w-full min-w-[940px] text-left border-collapse">
             <thead>
               <tr className="bg-subtle border-b border-base text-[8px] font-black text-muted uppercase tracking-[0.15em]">
                 <th className="px-3 py-2.5">Turno</th>
@@ -98,7 +96,6 @@ export function ReportsPayrollTab({
                 <th className="px-3 py-2.5 text-right">Ventas Turno</th>
                 <th className="px-3 py-2.5 text-right">Salario Base</th>
                 <th className="px-3 py-2.5 text-right">Comisión</th>
-                <th className="px-3 py-2.5 text-right">Deducción</th>
                 <th className="px-3 py-2.5 text-right">Total a Liquidar</th>
                 <th className="px-3 py-2.5 text-center">Estado</th>
                 <th className="px-3 py-2.5 text-center">Acciones</th>
@@ -141,12 +138,7 @@ export function ReportsPayrollTab({
                     <td className="px-3 py-2 text-right text-[10px] font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
                       +{formatMoney(item.commissions)}
                     </td>
-                    <td className="px-3 py-2 text-right text-[10px] font-bold whitespace-nowrap">
-                      {item.discrepancyDeduction > 0.01
-                        ? <span className="font-black text-red-600 dark:text-red-400">−{formatMoney(item.discrepancyDeduction)}</span>
-                        : <span className="text-muted">—</span>}
-                    </td>
-                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                    <td className="px-3 py-2 text-right">
                       <span className="text-xs font-black text-emerald-700 dark:text-emerald-400 tracking-tight bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-lg border border-emerald-100 dark:border-emerald-900/30">
                         {formatMoney(item.totalSalary)}
                       </span>
@@ -201,7 +193,7 @@ export function ReportsPayrollTab({
 
               {payroll.length === 0 && (
                 <tr>
-                  <td colSpan={10} className="px-6 py-10 text-center text-muted font-bold uppercase text-[10px]">
+                  <td colSpan={9} className="px-6 py-10 text-center text-muted font-bold uppercase text-[10px]">
                     No hay turnos cerrados con nómina calculada para el filtro seleccionado.
                   </td>
                 </tr>
@@ -227,7 +219,6 @@ export function ReportsPayrollTab({
                 <th className="px-3 py-2.5 text-right">Ventas Totales</th>
                 <th className="px-3 py-2.5 text-right">Salario Base Acumulado</th>
                 <th className="px-3 py-2.5 text-right">Comisiones Totales</th>
-                <th className="px-3 py-2.5 text-right">Deducciones</th>
                 <th className="px-3 py-2.5 text-right">Total Ganado</th>
                 <th className="px-3 py-2.5 text-right">Pendiente de Pago</th>
               </tr>
@@ -266,7 +257,7 @@ export function ReportsPayrollTab({
 
               {aggregatedByWorker.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-6 py-6 text-center text-muted text-[10px] font-bold uppercase">
+                  <td colSpan={7} className="px-6 py-6 text-center text-muted text-[10px] font-bold uppercase">
                     No hay acumulación registrada de trabajadores.
                   </td>
                 </tr>

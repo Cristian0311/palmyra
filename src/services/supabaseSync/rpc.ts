@@ -285,6 +285,9 @@ export async function callRequestInventoryAuditRecountRPC(auditId:string,userId:
 export async function callApproveInventoryAuditRPC(auditId:string,userId:string,notes?:string){
   try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_approve_audit',{p_audit_id:auditId,p_company_id:companyId,p_notes:notes||''});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);}
 }
+export async function callDeleteInventoryAuditRPC(auditId:string){
+  try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_delete_audit',{p_audit_id:auditId,p_company_id:companyId});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);}
+}
 export async function callCompleteInventoryAuditRPC(auditId:string,branchId:string,userId:string,items:any[],notes?:string){
   try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_complete_audit',{p_audit_id:auditId,p_company_id:companyId,p_warehouse_id:branchId,p_items:items,p_notes:notes||''});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);}
 }
@@ -387,12 +390,14 @@ export async function callCancelSessionRPC(sessionId:string,userId:string,reason
       session_employee_required: 'Este turno no tiene un empleado de apertura asociado.',
       permission_denied: 'No tienes permiso para cancelar turnos de caja.',
       cash_session_not_found: 'El turno de caja ya no existe o no pertenece a esta empresa.',
+      cash_session_not_open: 'El turno ya está anulado o no se puede cancelar en su estado actual.',
       authentication_required: 'La sesión expiró. Inicia sesión nuevamente.'
     };
     const key=Object.keys(friendly).find(k=>raw.includes(k));
+    const missingRpc=raw.includes('Could not find the function')||raw.includes('schema cache');
     return {
       success:false as const,
-      error:key ? friendly[key] : (raw || 'No se pudo cancelar el turno.'),
+      error:key ? friendly[key] : missingRpc ? 'La base de datos no tiene la versión actual del RPC de anulación de turnos. Aplica la migración 20261121091000.' : (raw || 'No se pudo cancelar el turno.'),
       errorCode:e?.code||e?.status||undefined,
       data:undefined
     };

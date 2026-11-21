@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import os from 'os';
+import dns from 'dns';
 import fs from 'fs/promises';
 import { existsSync } from 'fs';
 import dotenv from 'dotenv';
@@ -438,6 +439,9 @@ async function startServer() {
     ip: string;
     firstSeen: string;
     lastSeen: string;
+    platform?: string | null;
+    model?: string | null;
+    nameSource?: 'auto' | 'manual';
   };
 
   const lanBound = HOST !== '127.0.0.1' && HOST !== 'localhost';
@@ -450,6 +454,9 @@ async function startServer() {
     if (!record?.id || !record?.name) continue;
     lanDevices.set(record.id, {
       ...record,
+      nameSource: record.nameSource === 'manual' ? 'manual' : 'auto',
+      platform: record.platform || null,
+      model: record.model || null,
       lastSeen: Number.isFinite(Date.parse(record.lastSeen || '')) ? record.lastSeen : new Date(0).toISOString(),
       firstSeen: record.firstSeen || new Date().toISOString(),
       ip: ''
@@ -458,7 +465,7 @@ async function startServer() {
 
   const persistLanDevices = () => {
     lastLanPersistAt = Date.now();
-    const records = [...lanDevices.values()].map(({ id, name, kind, warehouseName, firstSeen, lastSeen }) => ({ id, name, kind, warehouseName, firstSeen, lastSeen, ip: '' }));
+    const records = [...lanDevices.values()].map(({ id, name, kind, warehouseName, firstSeen, lastSeen, platform, model, nameSource }) => ({ id, name, kind, warehouseName, firstSeen, lastSeen, platform, model, nameSource, ip: '' }));
     void writeJsonFile(lanDevicesPath, records.slice(-200));
   };
   let lastLanPersistAt = 0;
@@ -498,7 +505,10 @@ async function startServer() {
         firstSeen: device.firstSeen,
         lastSeen: device.lastSeen,
         online: now - Date.parse(device.lastSeen || '') < 90_000,
-        warehouseName: device.warehouseName
+        warehouseName: device.warehouseName,
+        platform: device.platform || null,
+        model: device.model || null,
+        nameSource: device.nameSource || 'auto'
       }))
       .sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name, 'es'));
     return { devices, status: lanStatus(), serverNow: new Date(now).toISOString() };
@@ -506,6 +516,23 @@ async function startServer() {
 
   const cleanLanText = (value: unknown, max = 60) => String(value ?? '').replace(/\s+/g, ' ').trim().slice(0, max);
   const cleanLanIp = (value: unknown) => String(value || '').replace(/^::ffff:/, '');
+  const isLoopbackIp = (ip: string) => !ip || ip === '::1' || ip.startsWith('127.');
+  const serverHostName = os.hostname().replace(/\.local$/i, '');
+  // El nombre de una PC en la red solo se puede conocer por DNS inverso; si la
+  // red no lo resuelve se usa el nombre detectado por el propio navegador.
+  const reverseLanHost = async (ip: string): Promise<string> => {
+    if (isLoopbackIp(ip)) return serverHostName;
+    try {
+      const names = await Promise.race([
+        dns.promises.reverse(ip),
+        new Promise<string[]>((resolve) => setTimeout(() => resolve([]), 1200))
+      ]);
+      const host = names.map(name => String(name || '').split('.')[0]).find(name => name && !/^localhost$/i.test(name));
+      return host ? host.toUpperCase() : '';
+    } catch {
+      return '';
+    }
+  };
   const requireLanAdmin = async (req: any, res: any, next: any) => {
     const { ok } = await verifyAccessToken(req);
     if (!ok) return res.status(401).json({ error: 'Se requiere una sesión autenticada para administrar la red local.' });
@@ -517,7 +544,7 @@ async function startServer() {
     res.json(lanStatus());
   });
 
-  app.post('/api/lan/presence', (req: any, res) => {
+  app.post('/api/lan/presence', async (req: any, res) => {
     const key = 'lan-presence:' + (req.ip || req.socket?.remoteAddress || 'unknown');
     if (!consumeRateLimit(key, 240, 60_000).allowed) return res.status(429).json({ error: 'Demasiados latidos de presencia.' });
     const id = cleanLanText(req.body?.id, 64);
@@ -525,12 +552,28 @@ async function startServer() {
     const now = new Date().toISOString();
     const existing = lanDevices.get(id);
     const kind = ['desktop', 'mobile', 'tablet', 'browser'].includes(req.body?.kind) ? req.body.kind as LanRecord['kind'] : 'browser';
+    const ip = cleanLanIp(req.ip || req.socket?.remoteAddress);
+    const platform = cleanLanText(req.body?.platform, 24) || null;
+    const model = cleanLanText(req.body?.model, 40) || null;
+    const payloadName = cleanLanText(req.body?.name);
+    const fallbackName = `Equipo ${id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase()}`;
+
+    // Un nombre puesto a mano por el dueño manda siempre. Si no, se usa el
+    // nombre real del equipo (hostname del PC o modelo del móvil).
+    let name = existing?.nameSource === 'manual' ? existing.name : '';
+    if (!name) name = await reverseLanHost(ip);
+    if (!name) name = existing?.name || '';
+    if (!name || /^equipo\s/i.test(name)) name = payloadName || name || fallbackName;
+
     lanDevices.set(id, {
       id,
-      name: existing?.name || cleanLanText(req.body?.name) || `Equipo ${id.replace(/[^a-zA-Z0-9]/g, '').slice(0, 4).toUpperCase()}`,
+      name,
       kind,
+      platform,
+      model,
+      nameSource: existing?.nameSource === 'manual' ? 'manual' : 'auto',
       warehouseName: cleanLanText(req.body?.warehouseName, 80) || null,
-      ip: cleanLanIp(req.ip || req.socket?.remoteAddress),
+      ip,
       firstSeen: existing?.firstSeen || now,
       lastSeen: now
     });
@@ -559,7 +602,7 @@ async function startServer() {
     if (!device) return res.status(404).json({ error: 'Ese equipo ya no está registrado.' });
     const name = cleanLanText(req.body?.name);
     if (!name) return res.status(400).json({ error: 'El nombre no puede quedar vacío.' });
-    lanDevices.set(id, { ...device, name });
+    lanDevices.set(id, { ...device, name, nameSource: 'manual' });
     persistLanDevices();
     res.setHeader('Cache-Control', 'no-store');
     return res.json(lanSnapshot());

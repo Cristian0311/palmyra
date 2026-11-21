@@ -37,6 +37,8 @@ import { loadSaaSContext } from "../services/saas";
 import { useStore } from "../store/useStore";
 import { PalmyraWordmark } from "./PalmyraWordmark";
 import { getOfflineConflictCount, getOfflineQueueCount, getOfflineQueue } from "../services/offlineQueue";
+import { runWithLoading } from "../lib/busy";
+import { ANDROID_APK_DOWNLOAD, APK_PROMO_DISMISSED_KEY, isAndroidDevice, isRunningStandalone } from "../lib/install";
 import { useAutoRateSync } from "../hooks/useAutoRateSync";
 import { useLanPresence } from "../hooks/useLanPresence";
 import { canUsePlanFeature, getPlanDisplayName, getPlanVisual, type PlanFeature } from "../services/planAccess";
@@ -45,7 +47,8 @@ import {
   AlertTriangle, 
   X, 
   Info, 
-  AlertCircle 
+  AlertCircle,
+  Loader2
 } from "lucide-react";
 
 const adminNavItems = [
@@ -180,6 +183,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [showInstallPwa, setShowInstallPwa] = useState(false);
   const [pwaInstallAvailable, setPwaInstallAvailable] = useState(false);
   const [pwaInstalling, setPwaInstalling] = useState(false);
+  const [showApkPromo, setShowApkPromo] = useState(false);
+  const [apkStandalone, setApkStandalone] = useState(false);
   const [showOnlineCatalogInfo, setShowOnlineCatalogInfo] = useState(false);
   const { currentUser, logout, notifications, removeNotification, storeConfig, syncWithSupabase, addNotification, cart, currentBranchId, getCurrentSession } = useStore(useShallow((state) => ({ currentUser: state.currentUser, logout: state.logout, notifications: state.notifications, removeNotification: state.removeNotification, storeConfig: state.storeConfig, syncWithSupabase: state.syncWithSupabase, addNotification: state.addNotification, cart: state.cart, currentBranchId: state.currentBranchId, getCurrentSession: state.getCurrentSession })));
   const location = useLocation();
@@ -195,6 +200,25 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     } catch {}
   }, [sidebarCollapsed]);
 
+
+  useEffect(() => {
+    if (!currentUser?.id || IS_DESKTOP_SHELL || !isAndroidDevice()) {
+      setShowApkPromo(false);
+      return;
+    }
+    // En Android el APK nativo es más rápido y confiable que la PWA, incluso si
+    // ya existe una PWA instalada: se recomienda el APK al entrar desde la web.
+    setApkStandalone(isRunningStandalone());
+    let dismissed = false;
+    try { dismissed = window.localStorage.getItem(APK_PROMO_DISMISSED_KEY) === '1'; } catch {}
+    setShowApkPromo(!dismissed);
+  }, [currentUser?.id]);
+
+  const dismissApkPromo = (remember: boolean) => {
+    setShowApkPromo(false);
+    if (!remember) return;
+    try { window.localStorage.setItem(APK_PROMO_DISMISSED_KEY, '1'); } catch {}
+  };
 
   useEffect(() => {
     if (!currentUser?.id || IS_DESKTOP_SHELL) {
@@ -456,6 +480,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const handleManualSync = async () => {
     if (!isOnline || isSyncingOffline) return;
     setIsSyncingOffline(true);
+    await runWithLoading('Sincronizando con la nube…', async () => {
     try {
       const { processOfflineQueue } = await import("../services/offlineSync");
       // Primero vaciamos la cola durable. El motor ya realiza una comprobación
@@ -550,6 +575,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     } finally {
       setIsSyncingOffline(false);
     }
+    });
   };
 
   useEffect(() => {
@@ -596,7 +622,56 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="h-[100dvh] w-full min-h-[100dvh] max-h-[100dvh] overflow-hidden bg-primary text-primary flex flex-col lg:flex-row relative overscroll-none transition-colors duration-200">
 
-      {showInstallPwa && currentUser && (
+      {showApkPromo && currentUser && (
+        <div className="fixed inset-x-3 bottom-3 sm:inset-auto sm:right-4 sm:bottom-4 z-[10001]">
+          <div className="w-full sm:w-[min(23rem,calc(100vw-2rem))] rounded-2xl border border-emerald-200/80 bg-white/95 dark:bg-slate-900/95 dark:border-emerald-900/50 shadow-2xl backdrop-blur-md p-3">
+            <div className="flex items-start gap-2.5">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
+                <Smartphone className="w-4 h-4" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[9px] font-black uppercase tracking-[0.11em] text-primary"> Mejor en Android con el APK</p>
+                  <button type="button" onClick={() => dismissApkPromo(false)} className="p-1 rounded-lg text-muted hover:bg-subtle" aria-label="Cerrar aviso">
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+                <p className="mt-1 text-[7.5px] font-bold leading-4 text-muted">
+                  {apkStandalone
+                    ? "Estás usando la versión web instalada. El APK oficial abre más rápido, trabaja 100% offline y evita recargas del navegador."
+                    : "Estás entrando desde el navegador. Instala el APK oficial de Android para abrir más rápido y trabajar 100% offline, incluso con la PWA ya instalada."}
+                </p>
+                <div className="mt-2 flex flex-col sm:flex-row gap-1.5">
+                  <a
+                    href={ANDROID_APK_DOWNLOAD}
+                    download
+                    onClick={() => dismissApkPromo(true)}
+                    className="h-9 flex-1 rounded-xl bg-emerald-600 text-white text-[8px] font-black uppercase tracking-[0.08em] flex items-center justify-center gap-1.5 hover:bg-emerald-700"
+                  >
+                    <Download className="w-3 h-3" /> Descargar APK
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => dismissApkPromo(false)}
+                    className="h-9 px-3 rounded-xl border border-base bg-primary text-[8px] font-black uppercase tracking-[0.08em] text-muted hover:bg-subtle"
+                  >
+                    Más tarde
+                  </button>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => dismissApkPromo(true)}
+                  className="mt-1.5 w-full text-[7px] font-bold uppercase tracking-wider text-muted/80 hover:text-primary"
+                >
+                  No volver a mostrar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showInstallPwa && !showApkPromo && currentUser && (
         <div className="fixed inset-x-3 bottom-3 sm:inset-auto sm:right-4 sm:bottom-4 z-[10000]">
           <div className="w-full sm:w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-violet-200/80 bg-white/95 dark:bg-slate-900/95 dark:border-violet-900/50 shadow-2xl backdrop-blur-md p-3">
             <div className="flex items-start gap-2.5">
@@ -663,6 +738,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               n.type === 'success' ? "bg-emerald-50 border-emerald-100 text-emerald-800" :
               n.type === 'error' ? "bg-rose-50 border-rose-100 text-rose-800" :
               n.type === 'warning' ? "bg-amber-50 border-amber-100 text-amber-800" :
+              n.type === 'loading' ? "bg-violet-50 border-violet-100 text-violet-800 dark:bg-violet-950/40 dark:border-violet-900/50 dark:text-violet-200" :
               "bg-rose-50 border-rose-100 text-rose-800"
             )}
           >
@@ -671,6 +747,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               {n.type === 'error' && <AlertCircle className="w-5 h-5 text-rose-500" />}
               {n.type === 'warning' && <AlertTriangle className="w-5 h-5 text-amber-500" />}
               {n.type === 'info' && <Info className="w-5 h-5 text-rose-500" />}
+              {n.type === 'loading' && <Loader2 className="w-5 h-5 animate-spin text-violet-600 dark:text-violet-300" />}
             </div>
             <button
               type="button"

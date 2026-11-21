@@ -494,11 +494,15 @@ transfers: [],
     set(state => ({
       notifications: [...state.notifications, { id, message, type, ...(details ? { details } : {}) }]
     }));
-    setTimeout(() => {
-      set(state => ({
-        notifications: state.notifications.filter(n => n.id !== id)
-      }));
-    }, details ? 15000 : 4000);
+    // Las burbujas de carga permanecen hasta que la operación termine.
+    if (type !== 'loading') {
+      setTimeout(() => {
+        set(state => ({
+          notifications: state.notifications.filter(n => n.id !== id)
+        }));
+      }, details ? 15000 : 4000);
+    }
+    return id;
   },
   removeNotification: (id) => {
     set(state => ({

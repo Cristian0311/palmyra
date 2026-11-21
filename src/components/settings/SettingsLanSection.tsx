@@ -278,7 +278,7 @@ export default function SettingsLanSection({ active, onToast }: Props) {
         <SettingsSectionHeader
           icon={Server}
           title="Máquinas conectadas"
-          subtitle="Renombra cada equipo para reconocerlo en el negocio."
+          subtitle="PALMYRA detecta el nombre real del móvil o de la PC. Puedes renombrarlo para reconocerlo en el negocio."
           action={
             <button
               type="button"
@@ -342,6 +342,11 @@ export default function SettingsLanSection({ active, onToast }: Props) {
                       ) : (
                         <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                           <span className="text-xs font-black text-primary break-words min-w-0">{device.name}</span>
+                          {device.nameSource === 'auto' && (
+                            <span className="rounded-full border border-base bg-subtle px-2 py-0.5 text-[10px] font-semibold text-muted" title="Nombre detectado automáticamente del equipo. Puedes cambiarlo con Renombrar.">
+                              Detectado
+                            </span>
+                          )}
                           {isCurrent && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-sm font-semibold text-violet-700 dark:bg-violet-950/40 dark:text-violet-300">Este equipo</span>}
                           <span className={cn('rounded-full px-2 py-0.5 text-sm font-semibold', device.online ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300')}>
                             {device.online ? 'En línea' : 'Desconectado'}
@@ -349,6 +354,7 @@ export default function SettingsLanSection({ active, onToast }: Props) {
                         </div>
                       )}
                       <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-sm font-medium text-muted">
+                        {device.platform && <span>{device.platform}{device.model && device.model !== device.name ? ` · ${device.model}` : ''}</span>}
                         {device.ip && <span className="break-all">{device.ip}</span>}
                         <span className={device.online ? 'inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-300' : ''}>
                           {device.online ? <Wifi size={11} /> : null}{relative(device.lastSeen)}

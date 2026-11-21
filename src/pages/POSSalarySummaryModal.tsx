@@ -5,7 +5,7 @@ import { findSessionEmployeeUser } from "../services/employeeCompensation";
 type ModalProps = Record<string, any>;
 
 export default function POSSalarySummaryModal(props: ModalProps) {
-  const { activeTransactions, baseCurrency, companyCompensation, currentUser, formatSalaryCUP, handlePrintClosureThermal, lastClosedSession, navigate, products, salarySettlements, setShowSalarySummary, showSalarySummary, users } = props;
+  const { activeTransactions, bankCards, bankTransactions, baseCurrency, companyCompensation, currentUser, formatSalaryCUP, handlePrintClosureThermal, lastClosedSession, navigate, products, salarySettlements, setShowSalarySummary, showSalarySummary, users } = props;
   return (
     <>
       {showSalarySummary && lastClosedSession && (
@@ -69,6 +69,25 @@ export default function POSSalarySummaryModal(props: ModalProps) {
                 
                 const totalSales = sessionTransactions.reduce((sum, tx) => sum + (tx.total || 0), 0);
                 const totalItems = sessionTransactions.reduce((sum, tx) => sum + (tx.items || []).reduce((s, i) => s + (i.quantity || 0), 0), 0);
+
+                // Bank receipts anchored to this shift's sales (POS stores the sale id
+                // in transactionId; legacy rows used the sale id as reference).
+                const saleIds = new Set<string>();
+                sessionTransactions.forEach(tx => {
+                  saleIds.add(tx.id);
+                  if (tx.remoteId) saleIds.add(tx.remoteId);
+                });
+                const bankReceipts: any[] = (bankTransactions || []).filter((entry: any) => {
+                  if (entry.type !== 'payment_received') return false;
+                  const anchor = String(entry.transactionId || entry.reference || '').trim();
+                  return anchor ? saleIds.has(anchor) : false;
+                });
+                const cardById = new Map<string, any>((bankCards || []).map((card: any): [string, any] => [card.id, card]));
+                const bankTotals = new Map<string, number>();
+                for (const receipt of bankReceipts) {
+                  const currency = cardById.get(receipt.cardId)?.currency || baseCurrency.code;
+                  bankTotals.set(currency, (bankTotals.get(currency) || 0) + Number(receipt.amount || 0));
+                }
 
                 // Group products for display
                 const groupedProducts: { [name: string]: number } = {};                sessionTransactions.forEach(tx => {
@@ -146,6 +165,41 @@ export default function POSSalarySummaryModal(props: ModalProps) {
                         <p className="text-xs sm:text-sm font-black font-mono">{sessionTransactions.length} Tickets</p>
                       </div>
                     </div>
+
+                    {/* Cobros bancarios del turno: el detalle que antes había que buscar en Bancos */}
+                    {bankReceipts.length > 0 && (
+                      <div className="bg-white dark:bg-slate-900 rounded-xl sm:rounded-2xl p-3 border border-emerald-100 dark:border-emerald-900/50 space-y-1.5">
+                        <div className="flex justify-between items-center text-[9px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-widest border-b border-emerald-50 dark:border-emerald-950 pb-1.5">
+                          <span>Cobros bancarios del turno</span>
+                          <span className="text-slate-400 font-bold">{bankReceipts.length} cobro(s)</span>
+                        </div>
+                        {Array.from(bankTotals.entries()).map(([currency, total]) => (
+                          <div key={currency} className="flex justify-between items-center text-[11px]">
+                            <span className="font-semibold text-slate-500 dark:text-slate-400 uppercase">{currency} · transferencia</span>
+                            <span className="font-mono font-black text-emerald-600 dark:text-emerald-400">{formatMoney(total, currency)}</span>
+                          </div>
+                        ))}
+                        <div className="max-h-24 overflow-y-auto space-y-1 pt-1 border-t border-dashed border-slate-100 dark:border-slate-800 custom-scrollbar">
+                          {bankReceipts.slice(0, 8).map((receipt: any) => {
+                            const card = cardById.get(receipt.cardId);
+                            const reference = String(receipt.reference || '');
+                            return (
+                              <div key={receipt.id} className="flex justify-between items-center gap-2 text-[9px]">
+                                <span className="min-w-0 truncate font-semibold text-slate-600 dark:text-slate-300" title={reference || receipt.description}>
+                                  {card?.bankName || card?.bank || card?.name || 'Banco'} · {reference ? `Ref. ${reference.length > 16 ? `${reference.slice(0, 8)}…${reference.slice(-6)}` : reference}` : receipt.description}
+                                </span>
+                                <span className="shrink-0 font-mono font-black text-slate-800 dark:text-slate-100">
+                                  {formatMoney(Number(receipt.amount || 0), card?.currency || baseCurrency.code)}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <p className="text-[8px] font-semibold text-slate-400 uppercase tracking-wide">
+                          También disponibles en Bancos → Ingresos por turno.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 );
               })()}

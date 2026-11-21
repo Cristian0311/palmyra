@@ -28,7 +28,9 @@ type Preferences = {
   exchange_currency_alerts_enabled: boolean;
   exchange_currency_codes: string[];
   exchange_bitcoin_alerts_enabled: boolean;
+  exchange_alert_mode: "percent" | "absolute";
   exchange_alert_min_change_pct: number;
+  exchange_alert_min_change_abs: number;
 };
 type RateOption = { code: string; name: string };
 const DEFAULT_RATE_OPTIONS: RateOption[] = [
@@ -110,7 +112,9 @@ const defaults: Preferences = {
   exchange_currency_alerts_enabled: false,
   exchange_currency_codes: ["USD", "EUR", "MLC"],
   exchange_bitcoin_alerts_enabled: false,
+  exchange_alert_mode: "percent",
   exchange_alert_min_change_pct: 0,
+  exchange_alert_min_change_abs: 0,
 };
 
 function decodeVapidKey(value: string) {
@@ -280,7 +284,9 @@ export default function Notifications() {
           exchange_currency_alerts_enabled: prefResult.data.exchange_currency_alerts_enabled ?? false,
           exchange_currency_codes: Array.isArray(prefResult.data.exchange_currency_codes) ? prefResult.data.exchange_currency_codes.map((code: unknown) => normalizedRateCode(code)) : defaults.exchange_currency_codes,
           exchange_bitcoin_alerts_enabled: prefResult.data.exchange_bitcoin_alerts_enabled ?? false,
+          exchange_alert_mode: prefResult.data.exchange_alert_mode === "absolute" ? "absolute" : "percent",
           exchange_alert_min_change_pct: Number(prefResult.data.exchange_alert_min_change_pct ?? 0),
+          exchange_alert_min_change_abs: Number(prefResult.data.exchange_alert_min_change_abs ?? 0),
         });
       }
     } catch (e: any) {
@@ -714,7 +720,54 @@ export default function Notifications() {
             <p className="mt-2 text-sm font-medium text-muted">La lista depende de las divisas que publique la fuente de tasas.</p>
           </div>
         </details>
-        <label className="block min-w-0"><span className="block text-sm font-semibold text-muted">Variación mínima (%)</span><input className="mt-1 block h-11 w-full min-w-0 rounded-xl border border-base bg-primary px-3 text-sm font-semibold text-primary outline-none focus:ring-1 focus:ring-violet-500" type="number" min="0" max="100" step="0.01" value={prefs.exchange_alert_min_change_pct} onChange={(e) => update("exchange_alert_min_change_pct", Math.min(100, Math.max(0, Number(e.target.value) || 0)))} /><span className="mt-1 block text-sm font-medium leading-5 text-muted">0 = cualquier cambio detectado; un porcentaje mayor reduce avisos pequeños.</span></label>
+        <div className="min-w-0 space-y-2 rounded-xl border border-base bg-primary p-3">
+          <span className="block text-sm font-semibold text-muted">Umbral de aviso</span>
+          <div className="grid grid-cols-2 gap-1.5" role="tablist" aria-label="Tipo de umbral para alertas de tasas">
+            {([
+              { id: 'percent', label: 'Por porcentaje (%)' },
+              { id: 'absolute', label: 'Por monto fijo' },
+            ] as const).map(option => (
+              <button
+                key={option.id}
+                type="button"
+                role="tab"
+                aria-selected={prefs.exchange_alert_mode === option.id}
+                onClick={() => update('exchange_alert_mode', option.id)}
+                className={cn(
+                  'min-h-10 rounded-xl border px-2 text-sm font-semibold transition-colors',
+                  prefs.exchange_alert_mode === option.id
+                    ? 'border-violet-300 bg-violet-50 text-violet-700 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-300'
+                    : 'border-base bg-subtle text-secondary hover:text-primary',
+                )}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          {prefs.exchange_alert_mode === 'percent' ? (
+            <label className="block min-w-0">
+              <span className="block text-sm font-semibold text-muted">Variación mínima (%)</span>
+              <input
+                className="mt-1 block h-11 w-full min-w-0 rounded-xl border border-base bg-subtle px-3 text-sm font-semibold text-primary outline-none focus:ring-1 focus:ring-violet-500"
+                type="number" min="0" max="100" step="0.01"
+                value={prefs.exchange_alert_min_change_pct}
+                onChange={(e) => update('exchange_alert_min_change_pct', Math.min(100, Math.max(0, Number(e.target.value) || 0)))}
+              />
+              <span className="mt-1 block text-sm font-medium leading-5 text-muted">Ejemplo: 2 avisa cuando la tasa sube o baja 2 % o más. 0 = cualquier cambio detectado.</span>
+            </label>
+          ) : (
+            <label className="block min-w-0">
+              <span className="block text-sm font-semibold text-muted">Variación mínima (importe de la tasa)</span>
+              <input
+                className="mt-1 block h-11 w-full min-w-0 rounded-xl border border-base bg-subtle px-3 text-sm font-semibold text-primary outline-none focus:ring-1 focus:ring-violet-500"
+                type="number" min="0" step="0.01"
+                value={prefs.exchange_alert_min_change_abs}
+                onChange={(e) => update('exchange_alert_min_change_abs', Math.max(0, Number(e.target.value) || 0))}
+              />
+              <span className="mt-1 block text-sm font-medium leading-5 text-muted">Ejemplo: 5 avisa solo si la tasa sube o baja 5 pesos o más, sea cual sea el porcentaje. 0 = cualquier cambio detectado.</span>
+            </label>
+          )}
+        </div>
         <p className="text-sm font-medium text-muted">Se revisa cada cinco minutos. Los cambios se aplican al guardar.</p>
       </section>
 

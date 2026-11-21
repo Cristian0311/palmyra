@@ -159,6 +159,7 @@ export interface AppState {
   completeInventoryAudit: (id: string, items: any[], notes?: string) => Promise<{ success: boolean; error?: string }>;
   requestInventoryAuditRecount: (id: string, notes?: string) => Promise<{ success: boolean; error?: string }>;
   approveInventoryAudit: (id: string, notes?: string) => Promise<{ success: boolean; error?: string; pending?: boolean }>;
+  deleteInventoryAudit: (id: string) => Promise<{ success: boolean; error?: string; pending?: boolean }>;
   
   fiscalConfigs: FiscalConfig[];
   updateFiscalConfig: (id: string, config: Partial<FiscalConfig>) => void;
@@ -200,7 +201,7 @@ export interface AppState {
   isInitialized: boolean;
   
   // Notificaciones Globales
-  notifications: { id: string; message: string; type: 'success' | 'error' | 'warning' | 'info'; details?: string }[];
-  addNotification: (message: string, type?: 'success' | 'error' | 'warning' | 'info', details?: string) => void;
+  notifications: { id: string; message: string; type: 'success' | 'error' | 'warning' | 'info' | 'loading'; details?: string }[];
+  addNotification: (message: string, type?: 'success' | 'error' | 'warning' | 'info' | 'loading', details?: string) => string;
   removeNotification: (id: string) => void;
 }

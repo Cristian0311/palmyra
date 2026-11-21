@@ -17,7 +17,7 @@ import { CashMovementTicket } from "../components/cash/CashMovementTicket";
 import { ReportsTransactionDetailModal } from "../components/reports/ReportsTransactionDetailModal";
 import { buildCashMovementReceiptLines, buildDiscrepancyReceiptLines, buildShiftReceiptLines, buildTransferReceiptLines } from '../modules/reports/utils/reportReceiptLines';
 import { getSessionDiscrepancyInfo as getSessionDiscrepancyInfoUtil } from '../modules/reports/utils/getSessionDiscrepancyInfo';
-import { buildDetailedMovements, calculatePerfectSessionBalances } from '../modules/reports/utils/reportSessionCalculations';
+import { buildDetailedMovements, calculatePerfectSessionBalances, getCompletedTransactionsForSession } from '../modules/reports/utils/reportSessionCalculations';
 import { useReportsPrinting } from '../modules/reports/hooks/useReportsPrinting';
 import { cn } from "../lib/utils";
 import { InfoTooltip } from "../components/InfoTooltip";
@@ -78,6 +78,7 @@ export default function Reports() {
     bankCards: state.bankCards,
     bankTransactions: state.bankTransactions,
     branches: state.branches,
+    cancelSession: state.cancelSession,
     cashSessions: state.cashSessions,
     categories: state.categories,
     currencies: state.currencies,
@@ -192,6 +193,11 @@ export default function Reports() {
     setSelectedDirectTxModal(null);
   };
 
+  const openSessionDetail = (sessionId: string, origin: 'sales' | 'payroll' | 'sessions') => {
+    setSessionDetailOrigin(origin);
+    setExpandedSession(sessionId);
+  };
+
   const handleVoidTransaction = (transaction: import('../types').Transaction) => {
     if (!canVoidSales(store.currentUser, transaction.branchId)) {
       addNotification('No tienes permiso para anular ventas en este almacén.', 'warning');
@@ -226,7 +232,7 @@ export default function Reports() {
   // Reports visibility lives in modules/reports/hooks/useReportVisibility:
   // Supabase (sales.metadata.report_visibility) is the source of truth and the
   // local list only mirrors the last known state for offline use.
-  const { hiddenReportIds, hideTransactionReport, restoreTransactionReport } = useReportVisibility(transactions, addNotification);
+  const { hiddenReportIds, hideTransactionReport, restoreTransactionReport, setSessionReportVisibility } = useReportVisibility(transactions, addNotification);
   const [transferFromFilter, setTransferFromFilter] = useState<string>('all');
   const [transferToFilter, setTransferToFilter] = useState<string>('all');
   const [transferSearch, setTransferSearch] = useState<string>('');
@@ -234,11 +240,16 @@ export default function Reports() {
   const [selectedDirectTxModal, setSelectedDirectTxModal] = useState<import('../types').Transaction | null>(null);
   const [voidTarget, setVoidTarget] = useState<import('../types').Transaction | null>(null);
   const [isVoiding, setIsVoiding] = useState(false);
+  const [shiftVoidTarget, setShiftVoidTarget] = useState<CashRegisterSession | null>(null);
+  const [shiftVoidReason, setShiftVoidReason] = useState('');
+  const [isVoidingShift, setIsVoidingShift] = useState(false);
+  const [isTogglingShiftVisibility, setIsTogglingShiftVisibility] = useState(false);
   const [discrepancyTypeFilter, setDiscrepancyTypeFilter] = useState<'all' | 'shortage' | 'overage' | 'deducted' | 'pending'>('all');
   const [movementTypeFilter, setMovementTypeFilter] = useState<'all' | 'expense' | 'income'>('all');
   const [movementCurrencyFilter, setMovementCurrencyFilter] = useState<string>('all');
   const [selectedDiscrepancyDetailSession, setSelectedDiscrepancyDetailSession] = useState<CashRegisterSession | null>(null);
   const [expandedSession, setExpandedSession] = useState<string | null>(null);
+  const [sessionDetailOrigin, setSessionDetailOrigin] = useState<'sales' | 'payroll' | 'sessions'>('sales');
   const [sessionFilter, setSessionFilter] = useState<'all' | 'today' | 'yesterday' | 'custom'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed' | 'cancelled'>('all');
   const [selectedWorkerFilter, setSelectedWorkerFilter] = useState<string>('all');
@@ -574,6 +585,14 @@ export default function Reports() {
     ? cashSessions.find(s => s.id === expandedSession) || null
     : null;
 
+  const expandedSessionTickets = useMemo(
+    () => (expandedSessionRecord ? getCompletedTransactionsForSession(expandedSessionRecord, transactions) : []),
+    [expandedSessionRecord, transactions],
+  );
+  const expandedSessionHidden = expandedSessionTickets.length > 0 &&
+    expandedSessionTickets.every(tx => hiddenReportIds.includes(tx.id));
+  const shiftActionsAvailable = sessionDetailOrigin !== 'payroll';
+
   const handleSaveSessionDate = useCallback(async () => {
     if (!editingSessionDateId || !/^\d{4}-\d{2}-\d{2}$/.test(newSessionDate)) {
       addNotification('Selecciona una fecha válida para el turno.', 'warning');
@@ -612,6 +631,45 @@ export default function Reports() {
       setIsUpdatingSessionDate(false);
     }
   }, [editingSessionDateId, newSessionDate, addNotification, store.updateCashSessionDateCascade]);
+
+  const handleToggleSessionVisibility = async () => {
+    if (!expandedSessionRecord || isTogglingShiftVisibility) return;
+    setIsTogglingShiftVisibility(true);
+    try {
+      await setSessionReportVisibility(expandedSessionTickets, !expandedSessionHidden);
+    } finally {
+      setIsTogglingShiftVisibility(false);
+    }
+  };
+
+  const handleRequestVoidShift = () => {
+    if (!expandedSessionRecord) return;
+    if (!canVoidSales(store.currentUser, expandedSessionRecord.branchId)) {
+      addNotification('No tienes permiso para eliminar turnos en este almacén.', 'warning');
+      return;
+    }
+    setShiftVoidReason('');
+    setShiftVoidTarget(expandedSessionRecord);
+  };
+
+  const confirmVoidShift = async () => {
+    if (!shiftVoidTarget || isVoidingShift) return;
+    if (shiftVoidReason.trim().length < 3) {
+      addNotification('Escribe un motivo de al menos 3 caracteres para eliminar el turno.', 'warning');
+      return;
+    }
+    setIsVoidingShift(true);
+    try {
+      const ok = await store.cancelSession(shiftVoidTarget.id, shiftVoidReason.trim());
+      if (ok) {
+        setShiftVoidTarget(null);
+        setShiftVoidReason('');
+        setExpandedSession(current => (current === shiftVoidTarget.id ? null : current));
+      }
+    } finally {
+      setIsVoidingShift(false);
+    }
+  };
 
   return (
     <div className="reportes-page space-y-3 sm:space-y-4 animate-in fade-in duration-300 w-full min-w-0 max-w-[1400px] mx-auto pb-12 overflow-x-hidden">
@@ -794,7 +852,7 @@ export default function Reports() {
           salesViewMode={salesViewMode}
           setSalesViewMode={setSalesViewMode}
           formatMoney={formatMoney}
-          onOpenSessionDetail={setExpandedSession}
+          onOpenSessionDetail={sessionId => openSessionDetail(sessionId, 'sales')}
           onPrintShiftTicket={handlePrintShiftTicket}
           onOpenTransactionDetail={setSelectedDirectTxModal}
           onVoidTransaction={handleVoidTransaction}
@@ -812,7 +870,7 @@ export default function Reports() {
           branches={branches}
           formatMoney={formatMoney}
           onTogglePayment={handleTogglePayment}
-          onOpenSession={setExpandedSession}
+          onOpenSession={sessionId => openSessionDetail(sessionId, 'payroll')}
           onPrintShiftTicket={handlePrintShiftTicket}
         />
       )}
@@ -897,7 +955,7 @@ export default function Reports() {
                   <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-2.5">
                     <button
                       type="button"
-                      onClick={() => setExpandedSession(session.id)}
+                      onClick={() => openSessionDetail(session.id, 'sessions')}
                       className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-base bg-subtle px-3 py-2 font-black uppercase text-primary transition-colors hover:bg-secondary"
                       style={{ fontSize: 11, letterSpacing: '0.06em' }}
                     >
@@ -1445,6 +1503,77 @@ export default function Reports() {
         />
       )}
 
+      {/* Modal: Eliminar turno completo (motivo auditado + reposición de stock) */}
+      {shiftVoidTarget && (
+        <div
+          className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm animate-in fade-in duration-150"
+          role="presentation"
+          onMouseDown={event => {
+            if (event.target === event.currentTarget && !isVoidingShift) setShiftVoidTarget(null);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="void-shift-title"
+            className="w-full max-w-md overflow-hidden rounded-3xl border border-base bg-secondary shadow-2xl"
+          >
+            <div className="flex items-start gap-2.5 border-b border-base bg-rose-50/60 px-4 py-3.5 dark:bg-rose-950/30">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
+                <Trash2 size={18} aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <h3 id="void-shift-title" className="text-sm font-black uppercase tracking-tight text-primary">Eliminar turno completo</h3>
+                <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-muted">
+                  Turno {sessionTurnMap.get(shiftVoidTarget.id) || shiftVoidTarget.id} · {shiftVoidTarget.workerName || 'Cajero'}
+                </p>
+              </div>
+            </div>
+            <div className="space-y-3 px-4 py-3.5">
+              <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] font-bold text-rose-800 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200">
+                Se anularán todas las ventas del turno, el stock volverá al inventario y se eliminará la liquidación salarial asociada. Esta acción no se puede deshacer.
+              </p>
+              <label className="block">
+                <span className="mb-1 block text-[9px] font-black uppercase tracking-widest text-muted">Motivo (queda auditado)</span>
+                <textarea
+                  value={shiftVoidReason}
+                  onChange={event => setShiftVoidReason(event.target.value)}
+                  rows={3}
+                  maxLength={500}
+                  disabled={isVoidingShift}
+                  placeholder="Ej: turno duplicado por error de apertura"
+                  className="w-full resize-none rounded-xl border border-base bg-subtle px-3 py-2 text-[12px] font-semibold text-primary outline-none focus:border-rose-400 disabled:opacity-60"
+                />
+              </label>
+              {!navigator.onLine && (
+                <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                  Sin conexión: necesitas Internet para que la nube confirme la eliminación del turno.
+                </p>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-base bg-subtle px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setShiftVoidTarget(null)}
+                disabled={isVoidingShift}
+                className="min-h-10 rounded-xl border border-base bg-secondary px-3 text-[10px] font-black uppercase tracking-wider text-primary hover:bg-subtle disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmVoidShift()}
+                disabled={isVoidingShift || shiftVoidReason.trim().length < 3}
+                className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-3 text-[10px] font-black uppercase tracking-wider text-white hover:bg-rose-700 disabled:opacity-50"
+              >
+                {isVoidingShift ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Trash2 size={14} aria-hidden="true" />}
+                {isVoidingShift ? 'Eliminando…' : 'Eliminar turno'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
       {/* Modal: Detalle del Turno (horario, cobros, movimientos y productos) */}
       {expandedSessionRecord && (
         <ReportsSessionDetailModal
@@ -1456,6 +1585,11 @@ export default function Reports() {
           sessionTurnLabel={sessionTurnMap.get(expandedSessionRecord.id) || expandedSessionRecord.id}
           payrollItem={payrollList.find(item => item.sessionId === expandedSessionRecord.id) || null}
           discrepancyInfo={getSessionDiscrepancyInfo(expandedSessionRecord)}
+          showDiscrepancy={shiftActionsAvailable}
+          showShiftActions={shiftActionsAvailable}
+          sessionHidden={expandedSessionHidden}
+          onHideSession={shiftActionsAvailable ? handleToggleSessionVisibility : undefined}
+          onVoidSession={shiftActionsAvailable ? handleRequestVoidShift : undefined}
           onClose={() => setExpandedSession(null)}
           onOpenDiscrepancy={session => {
             setExpandedSession(null);
@@ -1467,8 +1601,6 @@ export default function Reports() {
           }}
           onPrint={sessionId => void handlePrintShiftTicket(sessionId)}
           onOpenTransaction={setSelectedDirectTxModal}
-          onHideTransaction={handleHideTransactionFromDetail}
-          onVoidTransaction={handleVoidTransaction}
         />
       )}
 

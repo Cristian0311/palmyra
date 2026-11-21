@@ -24,13 +24,16 @@ type Props = {
   sessionTurnLabel: string;
   payrollItem?: { baseSalary?: number; commissions?: number; totalSalary?: number; status?: 'paid' | 'pending' } | null;
   discrepancyInfo: DiscrepancyInfo;
+  showDiscrepancy?: boolean;
+  showShiftActions?: boolean;
+  sessionHidden?: boolean;
   onClose: () => void;
+  onHideSession?: () => void | Promise<void>;
+  onVoidSession?: () => void;
   onOpenDiscrepancy: (session: CashRegisterSession) => void;
   onEditDate: (session: CashRegisterSession) => void;
   onPrint: (sessionId: string) => void;
   onOpenTransaction: (transaction: Transaction) => void;
-  onHideTransaction: (transaction: Transaction) => void | Promise<void>;
-  onVoidTransaction: (transaction: Transaction) => void;
 };
 
 const STATUS_LABEL: Record<string, string> = { open: 'Abierto', closed: 'Cerrado', cancelled: 'Anulado' };
@@ -58,8 +61,9 @@ function havanaTime(value?: string) {
  */
 export function ReportsSessionDetailModal({
   session, transactions, currencies, formatMoney, sessionTurnLabel,
-  payrollItem, discrepancyInfo, onClose, onOpenDiscrepancy, onEditDate, onPrint,
-  onOpenTransaction, onHideTransaction, onVoidTransaction,
+  payrollItem, discrepancyInfo, showDiscrepancy = true, showShiftActions = true, sessionHidden = false,
+  onClose, onHideSession, onVoidSession, onOpenDiscrepancy, onEditDate, onPrint,
+  onOpenTransaction, 
 }: Props) {
   const sessionTx = useMemo(() => getCompletedTransactionsForSession(session, transactions), [session, transactions]);
   const summary = useMemo(() => summarizeReportSales(sessionTx), [sessionTx]);
@@ -124,7 +128,7 @@ export function ReportsSessionDetailModal({
         </header>
 
         <div className="flex-1 space-y-4 overflow-y-auto px-4 py-3.5 text-primary custom-scrollbar">
-          {discrepancyInfo && (
+          {showDiscrepancy && discrepancyInfo && (
             <div className="flex items-center justify-between gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-2.5 dark:border-amber-900/60 dark:bg-amber-950/40">
               <div className="flex min-w-0 items-center gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
@@ -166,7 +170,7 @@ export function ReportsSessionDetailModal({
               <p className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-widest text-muted">
                 <Eye className="h-3 w-3" /> Tickets del turno ({sessionTickets.length})
               </p>
-              <span className="text-[8px] font-bold text-muted">Oculta o elimina una venta</span>
+              <span className="text-[8px] font-bold text-muted">Toca Ver para abrir el comprobante</span>
             </div>
             {sessionTickets.length === 0 ? (
               <p className="rounded-xl border border-dashed border-base px-2.5 py-2 text-center text-[10px] font-bold text-muted">
@@ -185,30 +189,14 @@ export function ReportsSessionDetailModal({
                       </div>
                       <span className="shrink-0 text-[10px] font-black text-primary">{formatMoney(tx.total)}</span>
                     </div>
-                    <div className="mt-1.5 grid grid-cols-3 gap-1">
+                    <div className="mt-1.5">
                       <button
                         type="button"
                         onClick={() => onOpenTransaction(tx)}
-                        className="inline-flex min-h-7 items-center justify-center gap-1 rounded-lg border border-base bg-secondary px-1.5 text-[8px] font-black uppercase tracking-wide text-primary hover:bg-subtle"
+                        className="inline-flex min-h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-base bg-secondary px-2 text-[9px] font-black uppercase tracking-wide text-primary hover:bg-subtle"
                         title="Ver el comprobante completo de este ticket"
                       >
-                        <Eye className="h-3 w-3" /> Ver
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => void onHideTransaction(tx)}
-                        className="inline-flex min-h-7 items-center justify-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-1.5 text-[8px] font-black uppercase tracking-wide text-amber-700 hover:bg-amber-100 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
-                        title="Quitar esta venta de la lista de reportes sin borrarla ni tocar el inventario"
-                      >
-                        <EyeOff className="h-3 w-3" /> Ocultar
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onVoidTransaction(tx)}
-                        className="inline-flex min-h-7 items-center justify-center gap-1 rounded-lg border border-rose-200 bg-rose-50 px-1.5 text-[8px] font-black uppercase tracking-wide text-rose-700 hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300"
-                        title="Eliminar la venta, devolver el stock y guardar el motivo"
-                      >
-                        <Trash2 className="h-3 w-3" /> Eliminar
+                        <Eye className="h-3.5 w-3.5" /> Ver comprobante
                       </button>
                     </div>
                   </div>
@@ -333,28 +321,60 @@ export function ReportsSessionDetailModal({
           </p>
         </div>
 
-        <footer className="flex shrink-0 items-center justify-between gap-2 border-t border-base bg-subtle px-4 py-3">
-          <div>
-            <span className="block text-[8px] font-black uppercase tracking-widest text-muted">Total ventas turno</span>
-            <span className="text-base font-black text-rose-600 dark:text-rose-400">{formatMoney(summary.total)}</span>
+        <footer className="shrink-0 border-t border-base bg-subtle px-4 py-3">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <span className="block text-[8px] font-black uppercase tracking-widest text-muted">Total ventas turno</span>
+              <span className="text-base font-black text-rose-600 dark:text-rose-400">{formatMoney(summary.total)}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => onEditDate(session)}
+                className="inline-flex items-center gap-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[9px] font-black uppercase tracking-wider text-amber-700 hover:bg-amber-100 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-400"
+                title="Editar fecha del turno"
+              >
+                <Calendar className="h-4 w-4" /> Fecha
+              </button>
+              <button
+                type="button"
+                onClick={() => onPrint(session.id)}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3 py-2 text-[9px] font-black uppercase tracking-wider text-white hover:bg-rose-700 active:scale-95"
+              >
+                <Printer className="h-4 w-4" /> Imprimir
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => onEditDate(session)}
-              className="inline-flex items-center gap-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[9px] font-black uppercase tracking-wider text-amber-700 hover:bg-amber-100 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-400"
-              title="Editar fecha del turno"
-            >
-              <Calendar className="h-4 w-4" /> Fecha
-            </button>
-            <button
-              type="button"
-              onClick={() => onPrint(session.id)}
-              className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3 py-2 text-[9px] font-black uppercase tracking-wider text-white hover:bg-rose-700 active:scale-95"
-            >
-              <Printer className="h-4 w-4" /> Imprimir
-            </button>
-          </div>
+          {showShiftActions && (onHideSession || onVoidSession) && (
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              {onHideSession && (
+                <button
+                  type="button"
+                  onClick={() => void onHideSession()}
+                  className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-2 text-[9px] font-black uppercase tracking-wider text-amber-700 hover:bg-amber-100 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+                  title="Oculta o restaura el turno completo en la lista de reportes. No borra ventas ni toca el inventario."
+                >
+                  {sessionHidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                  {sessionHidden ? 'Mostrar turno' : 'Ocultar turno'}
+                </button>
+              )}
+              {onVoidSession && (
+                <button
+                  type="button"
+                  onClick={onVoidSession}
+                  className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-rose-300 bg-rose-50 px-2 text-[9px] font-black uppercase tracking-wider text-rose-700 hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300"
+                  title="Elimina el turno completo, devuelve el stock y guarda el motivo"
+                >
+                  <Trash2 className="h-4 w-4" /> Eliminar turno
+                </button>
+              )}
+            </div>
+          )}
+          {showShiftActions && (onHideSession || onVoidSession) && (
+            <p className="mt-1.5 text-center text-[8px] font-bold uppercase tracking-wide text-muted">
+              Estas acciones aplican al turno completo, no a un ticket suelto.
+            </p>
+          )}
         </footer>
       </div>
     </div>
