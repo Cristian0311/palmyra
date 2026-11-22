@@ -11,6 +11,7 @@ import {
 import { useNavigate } from "react-router-dom";
 import { PalmyraWordmark } from "../components/PalmyraWordmark";
 import { useDocumentScrollPage } from "../hooks/useDocumentScrollPage";
+import { PRODUCT_VERSION } from "../lib/productVersion";
 
 const CITY_IMAGE = "/landing/palmyra-ruins.webp";
 const CITY_CREDIT = "Fotografía real de Palmyra, Siria · Vyacheslav Argenberg · Wikimedia Commons · CC BY 4.0";
@@ -425,7 +426,7 @@ function DownloadCenter() {
               </div>
               <div className="mt-auto pt-5">
                 <div className="rounded-xl border border-violet-100 bg-white px-3 py-2">
-                  <p className="text-[10px] font-black text-[#3B1B78]">Versión actual · v{__APP_VERSION__}</p>
+                  <p className="text-[10px] font-black text-[#3B1B78]">Versión actual · v{PRODUCT_VERSION}</p>
                   <p className="mt-0.5 text-[9px] font-semibold text-slate-600">Siempre la última versión publicada</p>
                 </div>
                 <DownloadCta

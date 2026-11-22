@@ -10,6 +10,7 @@ import { loadSaaSContext } from "../services/saas";
 import { buildWhatsAppUrl, createSupportRequest, loadPlatformSupportSettings, type PlatformSupportSettings } from "../services/platformSupport";
 import { getOfflineQueueCount } from "../services/offlineQueue";
 import Security from "./Security";
+import { PRODUCT_VERSION } from "../lib/productVersion";
 import "./helpCenter.css";
 
 type CenterSection = "overview" | "tutorial" | "support" | "security" | "privacy";
@@ -82,7 +83,7 @@ export default function HelpCenter(){
   const section = (params.get("section") as CenterSection) || "overview";
   const online = useOnline();
   const pending = getOfflineQueueCount();
-  const version = __APP_VERSION__;
+  const version = PRODUCT_VERSION;
 
   useEffect(()=>{
     let active = true;

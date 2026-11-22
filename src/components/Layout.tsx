@@ -36,6 +36,7 @@ import { useStore } from "../store/useStore";
 import { PalmyraWordmark } from "./PalmyraWordmark";
 import { getOfflineConflictCount, getOfflineQueueCount, getOfflineQueue, refreshOfflineQueueCounts } from "../services/offlineQueue";
 import { runWithLoading } from "../lib/busy";
+import { PRODUCT_VERSION_LABEL, PRODUCT_VERSION_SHORT } from "../lib/productVersion";
 import { ANDROID_APK_DOWNLOAD, APK_PROMO_DISMISSED_KEY, PALMYRA_REMOTE_ORIGIN, REMOTE_APK_DOWNLOAD, getIosBrowserName, isAndroidDevice, isPalmyraApp, isRunningStandalone } from "../lib/install";
 import { getNativeAppInfo, startNativeUpdate, type NativeUpdateRequest } from "../lib/nativeApp";
 import { useDesktopUpdate } from "../hooks/useDesktopUpdate";
@@ -72,11 +73,11 @@ const adminNavItems = [
   { name: "Tutorial", href: "/tutorial", icon: BookOpen, public: true },
 ];
 
-// Rótulo acordado con el dueño para el sidebar. Es solo texto visible: la
-// versión real del build sigue siendo __APP_VERSION__ y es la que comparan
-// el detector de actualizaciones y el shell nativo.
-const APP_VERSION_LABEL = "Versión 1.1.0";
-const APP_VERSION_SHORT = "V 1.1.0";
+// Etiqueta visible acordada con el dueño. La versión real del build sigue
+// siendo __APP_VERSION__ y es la que comparan el detector de actualizaciones
+// y el shell nativo.
+const APP_VERSION_LABEL = PRODUCT_VERSION_LABEL;
+const APP_VERSION_SHORT = PRODUCT_VERSION_SHORT;
 const cashierNavItems = [
   { name: "Configuración", href: "/settings", icon: Settings, public: true },
   { name: "Soporte", href: "/help-center", icon: Headphones, public: true },
