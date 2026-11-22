@@ -1547,7 +1547,7 @@ export default function Reports() {
               </label>
               {!navigator.onLine && (
                 <p className="text-[10px] font-bold text-amber-700 dark:text-amber-300">
-                  Sin conexión: necesitas Internet para que la nube confirme la eliminación del turno.
+                  Sin conexión: el turno se elimina en este equipo y la nube lo confirmará al reconectar, después de sincronizar sus ventas.
                 </p>
               )}
             </div>

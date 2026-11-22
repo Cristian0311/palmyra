@@ -273,6 +273,12 @@ async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
             // Un cierre/cancelación debe esperar a TODA operación de venta/liquidación
             // del turno que esté encolada. No dependemos del reloj local porque una
             // operación puede reintentarse horas después y recibir un timestamp nuevo.
+            // Devoluciones y anulaciones individuales de ventas del turno deben
+            // resolverse antes del cierre/cancelación: en orden inverso el
+            // servidor rechazaría la devolución por una venta ya anulada.
+            const localState = useStore.getState();
+            const saleBelongsToSession = (saleId: unknown) => (localState.transactions || [])
+              .some(t => (t.id === saleId || t.remoteId === saleId) && t.sessionId === data.id);
             for (const candidate of queueAtStart) {
               const candidateData = candidate.data || {};
               const candidateTransactionTime = new Date(candidateData.date).getTime();
@@ -286,11 +292,16 @@ async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
                 Number.isFinite(sessionOpenTime) &&
                 candidateTransactionTime >= sessionOpenTime &&
                 candidateTransactionTime <= sessionCloseTime;
+              const returnBelongsToSession = candidate.type === 'return_complete' &&
+                (localState.returns || []).some(r =>
+                  r.id === candidateData.id && saleBelongsToSession(r.transactionId));
               if (
                 (candidate.type === 'transaction' &&
                   (candidateData.sessionId === data.id || legacyUnlinkedSaleBelongsToSession)) ||
                 (candidate.type === 'cash_movement' && candidateData.sessionId === data.id) ||
-                (candidate.type === 'cash_movement_delete' && candidateData.sessionId === data.id)
+                (candidate.type === 'cash_movement_delete' && candidateData.sessionId === data.id) ||
+                (candidate.type === 'void_transaction' && saleBelongsToSession(candidateData.id)) ||
+                returnBelongsToSession
               ) add(candidate);
             }
           }

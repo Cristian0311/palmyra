@@ -42,6 +42,19 @@ type StoreGet = () => AppState;
 /** Evita repetir el mismo aviso fiscal en cada venta de la sesión. */
 const offlineNcfWarned = new Set<string>();
 
+/**
+ * Envuelve la reserva fiscal: un fallo de NCF nunca debe romper ni retrasar el
+ * cobro. Si algo falla se devuelve undefined en silencio (solo traza en consola).
+ */
+async function guardNcf<T>(run: () => Promise<T | undefined>): Promise<T | undefined> {
+  try {
+    return await run();
+  } catch (fiscalError) {
+    console.warn('[NCF] Reserva fiscal no disponible; la venta continúa sin NCF:', fiscalError);
+    return undefined;
+  }
+}
+
 type ReservedNcfBlock = { start: number; end: number; prefix: string; rangeId: string };
 type ReserveNcfOutcome =
   | { ok: true; block: ReservedNcfBlock; error?: undefined }
@@ -97,7 +110,7 @@ export function createSupportActions(set: StoreSet, get: StoreGet): any {
     pushStoreConfigToSupabase(nextStoreConfig as any).catch(() => {});
   },
   getNextNCF: async (type) => {
-    const ncf = await withNcfLock(async () => {
+    const ncf = await guardNcf(() => withNcfLock(async () => {
       const config = get().fiscalConfigs.find(c => c.type === type && c.active);
       if (!config) return undefined;
 
@@ -128,21 +141,30 @@ export function createSupportActions(set: StoreSet, get: StoreGet): any {
             storeConfig: { ...state.storeConfig, fiscalConfigs: nextFiscalConfigs } as any
           };
         });
-        // Aviso preventivo: sin conexión, un bloque agotado bloquea el NCF de
-        // las próximas ventas. Se avisa al cruzar el umbral y al agotarse.
+        // Aviso preventivo: sin conexión, un bloque agotado deja las próximas
+        // ventas sin NCF. Se avisa al cruzar el umbral y al agotarse, una sola
+        // vez por bloque y sesión.
         const remaining = local.end - number;
         if (remaining === 10) {
-          get().addNotification(
-            'Quedan 10 folios fiscales en este equipo',
-            'warning',
-            'Conecta el equipo para reservar el siguiente bloque y seguir vendiendo sin internet.'
-          );
+          const lowKey = `${type}:low:${local.rangeId || 'local'}`;
+          if (!offlineNcfWarned.has(lowKey)) {
+            offlineNcfWarned.add(lowKey);
+            get().addNotification(
+              'Quedan 10 folios fiscales en este equipo',
+              'warning',
+              'Conecta el equipo para reservar el siguiente bloque y seguir vendiendo sin internet.'
+            );
+          }
         } else if (remaining === 0) {
-          get().addNotification(
-            'Se agotó el bloque fiscal de este equipo',
-            'warning',
-            'La próxima venta sin conexión no podrá generar NCF. Conecta para renovar el bloque.'
-          );
+          const exhaustedKey = `${type}:exhausted:${local.rangeId || 'local'}`;
+          if (!offlineNcfWarned.has(exhaustedKey)) {
+            offlineNcfWarned.add(exhaustedKey);
+            get().addNotification(
+              'Se agotó el bloque fiscal de este equipo',
+              'warning',
+              'La próxima venta sin conexión se guardará sin NCF. Conecta para renovar el bloque.'
+            );
+          }
         }
         return `${local.prefix}${number.toString().padStart(8, '0')}`;
       }
@@ -150,13 +172,14 @@ export function createSupportActions(set: StoreSet, get: StoreGet): any {
       // Sin un rango reservado no inventamos folios localmente. Una tablet que
       // entra offline con su rango agotado simplemente esperará a tener red;
       // esto evita duplicados fiscales entre terminales.
+      // La venta ya está en la cola durable: el aviso es informativo, no un error.
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        if (!offlineNcfWarned.has(type)) {
-          offlineNcfWarned.add(type);
+        if (!offlineNcfWarned.has(`${type}:offline`)) {
+          offlineNcfWarned.add(`${type}:offline`);
           get().addNotification(
-            'Sin rango fiscal reservado en este equipo',
-            'warning',
-            'La venta puede continuar. Conecta el equipo para reservar folios NCF y que las próximas ventas offline los incluyan.'
+            'Venta guardada sin NCF',
+            'info',
+            'Modo offline: el folio fiscal se asignará al sincronizar. La venta no se ve afectada.'
           );
         }
         return undefined;
@@ -167,11 +190,14 @@ export function createSupportActions(set: StoreSet, get: StoreGet): any {
 
       const outcome = await reserveNcfBlock({ fiscalType: type, userId });
       if (!outcome.ok) {
-        get().addNotification(
-          'No se pudo reservar un rango fiscal para la venta.',
-          'warning',
-          outcome.error || 'Intente de nuevo con conexión disponible.'
-        );
+        if (!offlineNcfWarned.has(`${type}:reserve`)) {
+          offlineNcfWarned.add(`${type}:reserve`);
+          get().addNotification(
+            'Venta guardada sin NCF',
+            'info',
+            'No se pudo reservar el folio fiscal en este momento. La venta se guardó y el folio se asignará al sincronizar.'
+          );
+        }
         return undefined;
       }
 
@@ -200,7 +226,7 @@ export function createSupportActions(set: StoreSet, get: StoreGet): any {
       });
 
       return `${prefix}${start.toString().padStart(8, '0')}`;
-    });
+    }));
 
     // Fuera del lock: si el bloque quedó agotado, intentamos renovarlo en
     // segundo plano. La venta actual no espera por esta reserva.

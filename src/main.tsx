@@ -152,6 +152,8 @@ export type PalmyraUpdateProgress = {
   receivedBytes?: number;
   totalBytes?: number;
   version?: string;
+  /** Mensaje corto en español listo para mostrar al usuario. */
+  message?: string;
 };
 
 const reportUpdateProgress = (detail: PalmyraUpdateProgress) => {
@@ -162,6 +164,7 @@ const clearUpdateMarkers = () => {
   try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
   try { localStorage.removeItem(PALMYRA_UPDATE_VERSION_KEY); } catch {}
   try { sessionStorage.removeItem(PALMYRA_UPDATE_APPLY_KEY); } catch {}
+  window.dispatchEvent(new CustomEvent('palmyra:update-cleared'));
 };
 
 const markUpdateAvailable = (version?: string) => {
@@ -190,25 +193,42 @@ const fetchServerManifest = async (): Promise<ServerManifest | null> => {
   }
 };
 
-const checkServerVersion = async () => {
-  if (!navigator.onLine) return;
-  try {
-    const manifest = await fetchServerManifest();
-    if (!manifest) return;
+type ServerVersionCheckResult = 'checked' | 'offline' | 'failed';
 
-    const localBuildId = localStorage.getItem(PALMYRA_BUILD_ID_KEY);
-    if (!localBuildId) {
-      localStorage.setItem(PALMYRA_BUILD_ID_KEY, manifest.buildId);
-      return;
+// Un único chequeo de versión a la vez: arranque, reintentos, focus, online,
+// visibilidad e intervalo comparten esta promesa. Así nunca hay dos peticiones
+// a /version.json compitiendo ni avisos duplicados.
+let serverVersionCheckInFlight: Promise<ServerVersionCheckResult> | null = null;
+
+const checkServerVersion = (): Promise<ServerVersionCheckResult> => {
+  if (serverVersionCheckInFlight) return serverVersionCheckInFlight;
+  if (!navigator.onLine) return Promise.resolve('offline');
+
+  const run = (async (): Promise<ServerVersionCheckResult> => {
+    try {
+      const manifest = await fetchServerManifest();
+      if (!manifest) return 'failed';
+
+      const localBuildId = localStorage.getItem(PALMYRA_BUILD_ID_KEY);
+      if (!localBuildId) {
+        // Primer arranque en este dispositivo: se fija la referencia sin avisar.
+        try { localStorage.setItem(PALMYRA_BUILD_ID_KEY, manifest.buildId); } catch {}
+        return 'checked';
+      }
+      if (localBuildId !== manifest.buildId) {
+        markUpdateAvailable(manifest.version || undefined);
+      } else {
+        clearUpdateMarkers();
+      }
+      return 'checked';
+    } catch {
+      // Las interrupciones de red nunca deben afectar al POS ni al modo offline.
+      return 'failed';
     }
-    if (localBuildId !== manifest.buildId) {
-      markUpdateAvailable(manifest.version || undefined);
-    } else {
-      clearUpdateMarkers();
-    }
-  } catch {
-    // Network interruptions must never affect POS/offline operation.
-  }
+  })();
+
+  serverVersionCheckInFlight = run;
+  return run.finally(() => { serverVersionCheckInFlight = null; });
 };
 
 /**
@@ -348,7 +368,7 @@ const estimatePlanBytes = async (plan: PrecachePlan): Promise<void> => {
 
 const ensureUpdatePlan = async (version?: string): Promise<PrecachePlan> => {
   if (activeUpdatePlan) return activeUpdatePlan;
-  reportUpdateProgress({ phase: 'preparing', percent: 3, version });
+  reportUpdateProgress({ phase: 'preparing', percent: 3, version, message: 'Preparando la actualización…' });
   const plan = await buildPrecachePlan();
   activeUpdatePlan = plan;
   reportUpdateProgress({
@@ -359,6 +379,7 @@ const ensureUpdatePlan = async (version?: string): Promise<PrecachePlan> => {
     filesTotal: plan.filesTotal,
     receivedBytes: 0,
     totalBytes: 0,
+    message: 'Preparando la actualización…',
   });
   await estimatePlanBytes(plan);
   reportUpdateProgress({
@@ -369,6 +390,7 @@ const ensureUpdatePlan = async (version?: string): Promise<PrecachePlan> => {
     filesTotal: plan.filesTotal,
     receivedBytes: 0,
     totalBytes: plan.expectedBytes,
+    message: 'Preparando la actualización…',
   });
   return plan;
 };
@@ -416,7 +438,13 @@ const downloadOneAsset = async (entry: PrecachePlanEntry, onBytes: (bytes: numbe
   return false;
 };
 
-const downloadUpdateAssets = async (version?: string): Promise<void> => {
+type UpdateDownloadResult = {
+  failed: number;
+  receivedBytes: number;
+  totalBytes: number;
+};
+
+const downloadUpdateAssets = async (version?: string): Promise<UpdateDownloadResult> => {
   const plan = activeUpdatePlan || await ensureUpdatePlan(version);
   const pending = plan.entries.filter((entry) => !entry.cached);
   const totalBytes = plan.expectedBytes;
@@ -425,6 +453,7 @@ const downloadUpdateAssets = async (version?: string): Promise<void> => {
   let receivedBytes = 0;
   let lastReportAt = 0;
   let lastPercent = 8;
+  const toMb = (bytes: number) => (bytes / (1024 * 1024)).toFixed(1);
 
   const report = (force = false) => {
     const now = Date.now();
@@ -443,6 +472,10 @@ const downloadUpdateAssets = async (version?: string): Promise<void> => {
       receivedBytes,
       totalBytes,
       version,
+      // Mensaje listo para la UI: tamaño real cuando el servidor lo publica.
+      message: totalBytes > 0
+        ? `Descargando actualización ${toMb(Math.min(receivedBytes, totalBytes))} MB de ${toMb(totalBytes)} MB…`
+        : `Descargando actualización ${lastPercent}%…`,
     });
   };
 
@@ -457,8 +490,9 @@ const downloadUpdateAssets = async (version?: string): Promise<void> => {
       receivedBytes: 0,
       totalBytes: 0,
       version,
+      message: 'Archivos ya disponibles en este dispositivo.',
     });
-    return;
+    return { failed: 0, receivedBytes: 0, totalBytes: 0 };
   }
 
   report(true);
@@ -477,6 +511,7 @@ const downloadUpdateAssets = async (version?: string): Promise<void> => {
   };
   await Promise.all(Array.from({ length: Math.min(UPDATE_MAX_CONCURRENCY, pending.length) }, worker));
   report(true);
+  return { failed: filesSkipped, receivedBytes, totalBytes };
 };
 
 const waitForWorkerInstalled = (worker: ServiceWorker, timeoutMs: number) =>
@@ -619,14 +654,16 @@ const writeReloadGuard = (buildId: string) => {
   } catch {}
 };
 
-const applyPalmyraUpdate = async (): Promise<'reloaded' | 'up-to-date'> => {
+type PalmyraUpdateApplyResult = 'reloaded' | 'up-to-date';
+
+const runPalmyraUpdate = async (): Promise<PalmyraUpdateApplyResult> => {
   if (!navigator.onLine) throw new Error('La actualización requiere conexión.');
   // Un solo plan de precarga por intento (nunca se analiza dos veces /sw.js).
   activeUpdatePlan = null;
   try {
     try { sessionStorage.setItem(PALMYRA_UPDATE_APPLY_KEY, String(Date.now())); } catch {}
     // Fase "Preparando" visible de inmediato mientras se planifica la descarga.
-    reportUpdateProgress({ phase: 'preparing', percent: 2 });
+    reportUpdateProgress({ phase: 'preparing', percent: 2, message: 'Preparando la actualización…' });
 
     const manifest = await fetchServerManifest();
     const localBuildId = localStorage.getItem(PALMYRA_BUILD_ID_KEY);
@@ -636,19 +673,40 @@ const applyPalmyraUpdate = async (): Promise<'reloaded' | 'up-to-date'> => {
       activeUpdatePlan = null;
       clearUpdateMarkers();
       try { sessionStorage.removeItem(PALMYRA_UPDATE_APPLY_KEY); } catch {}
-      reportUpdateProgress({ phase: 'up-to-date', percent: 100, version: manifest.version });
+      reportUpdateProgress({ phase: 'up-to-date', percent: 100, version: manifest.version, message: 'PALMYRA ya está actualizada.' });
       return 'up-to-date';
     }
 
     // Descarga inmediata y solo de lo que falta en las cachés actuales.
     await ensureUpdatePlan(manifest?.version);
-    await downloadUpdateAssets(manifest?.version);
-    reportUpdateProgress({ phase: 'installing', percent: 88, version: manifest?.version });
+    let download = await downloadUpdateAssets(manifest?.version);
+
+    // Si la red se cayó a mitad de la descarga (ningún byte recibido), se
+    // reintenta una vez con un plan nuevo en lugar de dejar la UI colgada.
+    if (download.failed > 0 && download.receivedBytes === 0 && navigator.onLine) {
+      reportUpdateProgress({
+        phase: 'downloading',
+        percent: 10,
+        version: manifest?.version,
+        message: 'No se pudo descargar. Reintentando…',
+      });
+      await new Promise((resolve) => window.setTimeout(resolve, 1_500));
+      activeUpdatePlan = null;
+      await ensureUpdatePlan(manifest?.version);
+      download = await downloadUpdateAssets(manifest?.version);
+    }
+
+    // Todo falló y seguimos sin datos: se informa en vez de recargar a ciegas.
+    if (download.failed > 0 && download.receivedBytes === 0 && !navigator.onLine) {
+      throw new Error('Sin conexión durante la descarga. La actualización se reintentará al recuperar la red.');
+    }
+
+    reportUpdateProgress({ phase: 'installing', percent: 88, version: manifest?.version, message: 'Instalando la actualización…' });
 
     const registration = await navigator.serviceWorker?.getRegistration();
     if (!registration) {
       if (manifest) { try { localStorage.setItem(PALMYRA_BUILD_ID_KEY, manifest.buildId); } catch {} }
-      reportUpdateProgress({ phase: 'reloading', percent: 100, version: manifest?.version });
+      reportUpdateProgress({ phase: 'reloading', percent: 100, version: manifest?.version, message: 'Actualización instalada. Reiniciando…' });
       window.location.reload();
       return 'reloaded';
     }
@@ -664,7 +722,7 @@ const applyPalmyraUpdate = async (): Promise<'reloaded' | 'up-to-date'> => {
       // Red de seguridad: si el controllerchange no ocurre, una única recarga
       // toma el shell nuevo. La UI nunca queda "Actualizando" para siempre.
       window.setTimeout(() => { window.location.reload(); }, 10_000);
-      reportUpdateProgress({ phase: 'reloading', percent: 97, version: manifest?.version });
+      reportUpdateProgress({ phase: 'reloading', percent: 97, version: manifest?.version, message: 'Actualización instalada. Reiniciando…' });
       // library-supported activation path: prompt flow + updateSW, never a
       // forced SKIP_WAITING postMessage mid-sale. The user already confirmed.
       await updateSW(true);
@@ -679,7 +737,7 @@ const applyPalmyraUpdate = async (): Promise<'reloaded' | 'up-to-date'> => {
       activeUpdatePlan = null;
       clearUpdateMarkers();
       try { sessionStorage.removeItem(PALMYRA_UPDATE_APPLY_KEY); } catch {}
-      reportUpdateProgress({ phase: 'up-to-date', percent: 100, version: confirmed?.version });
+      reportUpdateProgress({ phase: 'up-to-date', percent: 100, version: confirmed?.version, message: 'PALMYRA ya está actualizada.' });
       return 'up-to-date';
     }
 
@@ -695,7 +753,7 @@ const applyPalmyraUpdate = async (): Promise<'reloaded' | 'up-to-date'> => {
     // así que se reconstruye desde la red sin tocar IndexedDB/localStorage.
     await resetShellForFreshBuild();
     try { localStorage.setItem(PALMYRA_BUILD_ID_KEY, confirmed.buildId); } catch {}
-    reportUpdateProgress({ phase: 'reloading', percent: 100, version: confirmed.version });
+    reportUpdateProgress({ phase: 'reloading', percent: 100, version: confirmed.version, message: 'Actualización instalada. Reiniciando…' });
     window.location.reload();
     return 'reloaded';
   } catch (error) {
@@ -707,7 +765,59 @@ const applyPalmyraUpdate = async (): Promise<'reloaded' | 'up-to-date'> => {
   }
 };
 
-(window as typeof window & { __palmyraApplyUpdate?: () => Promise<'reloaded' | 'up-to-date'> }).__palmyraApplyUpdate = applyPalmyraUpdate;
+// Una sola instalación a la vez: si Layout y el aviso público (o dos toques
+// seguidos) piden actualizar, todos esperan la misma promesa en lugar de lanzar
+// dos descargas en paralelo sobre la misma caché.
+let applyInFlight: Promise<PalmyraUpdateApplyResult> | null = null;
+
+const applyPalmyraUpdate = (): Promise<PalmyraUpdateApplyResult> => {
+  if (applyInFlight) return applyInFlight;
+  const run = runPalmyraUpdate().finally(() => { applyInFlight = null; });
+  applyInFlight = run;
+  return run;
+};
+
+(window as typeof window & { __palmyraApplyUpdate?: () => Promise<PalmyraUpdateApplyResult> }).__palmyraApplyUpdate = applyPalmyraUpdate;
+
+// Chequeo de versión inmediato, independiente del registro del Service Worker.
+// Arranca con el propio bundle (antes de montar React), reintenta rápido si la
+// red falla (0 s / 3 s / 10 s) y sigue vigilando cada 60 s mientras la pestaña
+// está visible y en línea. La landing pública también lo ejecuta.
+const UPDATE_BOOT_RETRY_DELAYS_MS = [0, 3_000, 10_000];
+const UPDATE_VISIBLE_CHECK_INTERVAL_MS = 60_000;
+let updateWatchStarted = false;
+
+const runBootVersionCheck = (attempt: number) => {
+  void checkServerVersion().then((result) => {
+    if (result !== 'failed') return;
+    const nextDelay = UPDATE_BOOT_RETRY_DELAYS_MS[attempt + 1];
+    if (nextDelay === undefined) return;
+    const wait = Math.max(0, nextDelay - UPDATE_BOOT_RETRY_DELAYS_MS[attempt]);
+    window.setTimeout(() => runBootVersionCheck(attempt + 1), wait);
+  }).catch(() => {});
+};
+
+const startImmediateUpdateWatch = () => {
+  if (updateWatchStarted) return;
+  updateWatchStarted = true;
+
+  const tick = () => {
+    if (document.visibilityState !== 'visible' || !navigator.onLine) return;
+    void checkServerVersion();
+  };
+
+  runBootVersionCheck(0);
+  window.setInterval(tick, UPDATE_VISIBLE_CHECK_INTERVAL_MS);
+  window.addEventListener('focus', tick);
+  window.addEventListener('online', tick);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') tick();
+  });
+};
+
+// El shell nativo (Electron/APK) se actualiza con su propio paquete OTA: este
+// vigilante web solo aplica al navegador/PWA.
+if (!usesNativeShell) startImmediateUpdateWatch();
 
 // Storage protection is best-effort and never blocks application startup.
 void protectPwaStorage().then((health) => {
@@ -724,3 +834,9 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 );
+
+// Refuerzo tras el primer render: cubre un despliegue ocurrido mientras se
+// descargaba el propio bundle. Comparte el guard de in-flight con el resto.
+if (!usesNativeShell) {
+  window.setTimeout(() => { void checkServerVersion(); }, 1_500);
+}

@@ -391,7 +391,42 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
       return false;
     }
     await waitForOfflineQueueReady();
-    if (getOfflineQueue().some(item => ['transaction', 'void_transaction', 'return_complete', 'cash_session'].includes(item.type))) {
+    // Un turno se puede anular sin conexión aunque su cola aún contenga ventas,
+    // devoluciones, cobros o la apertura de ESE mismo turno: el grafo de
+    // dependencias de offlineSync ordena todo eso antes de `cash-cancel` y el
+    // RPC de anulación es idempotente. Solo bloqueamos lo que el replay no puede
+    // resolver de forma segura: operaciones en conflicto (nunca se reintentan) y
+    // operaciones de OTROS turnos, que no pueden reordenarse detrás de esta
+    // cancelación sin alterar el historial de ese otro turno.
+    const belongsToThisSession = (item: { type: string; data?: any }): boolean => {
+      const data = item.data || {};
+      if (item.type === 'cash_session') return String(data.id || '') === sessionId;
+      if (item.type === 'transaction') {
+        if (data.sessionId) return String(data.sessionId) === sessionId;
+        // Ventas antiguas sin turno: el grafo las vincula por sucursal y fecha.
+        const saleTime = new Date(data.date).getTime();
+        const openTime = new Date(session.openedAt).getTime();
+        const closeTime = session.closedAt ? new Date(session.closedAt).getTime() : Infinity;
+        return (data.branchId || data.warehouseId) === session.branchId &&
+          Number.isFinite(saleTime) && Number.isFinite(openTime) &&
+          saleTime >= openTime && saleTime <= closeTime;
+      }
+      if (item.type === 'void_transaction') {
+        const sale = (state.transactions || []).find(tx => tx.id === data.id || tx.remoteId === data.remoteId);
+        return !!sale && sale.sessionId === sessionId;
+      }
+      if (item.type === 'return_complete') {
+        const returnRequest = (state.returns || []).find(r => r.id === data.id);
+        return !!returnRequest &&
+          (state.transactions || []).some(tx => tx.id === returnRequest.transactionId && tx.sessionId === sessionId);
+      }
+      return false;
+    };
+    const blockingItems = getOfflineQueue().filter(item =>
+      ['transaction', 'void_transaction', 'return_complete', 'cash_session'].includes(item.type) &&
+      (item.status === 'conflict' || !belongsToThisSession(item))
+    );
+    if (blockingItems.length) {
       state.addNotification('Sincroniza las ventas, devoluciones y turnos pendientes antes de anular el turno completo.', 'warning');
       return false;
     }
@@ -417,12 +452,49 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
     // La sesión autenticada y el permiso cash.close se validan en Supabase.
     // No se requiere una contraseña adicional del empleado para esta acción.
     if (typeof navigator === 'undefined' || !navigator.onLine) {
-      get().addNotification(
-        'Conexión necesaria para cancelar el turno',
-        'warning',
-        'Conéctate a Internet para que PALMYRA confirme la cancelación con los permisos de tu empresa.'
-      );
-      return false;
+      // Sin conexión: se aplica la misma cancelación integral en este equipo y la
+      // intención queda en la cola durable. Al reconectar, el grafo de
+      // dependencias empuja primero ventas/devoluciones del turno y después
+      // `cash-cancel`, que ejecuta el RPC idempotente de anulación.
+      const cancelReason = reason.trim().slice(0, 500);
+      const audit = { userId, reason: cancelReason, date: cancelledAt };
+      const sessionSales = get().transactions.filter(tx => tx.sessionId === sessionId && !tx.deletedAt);
+      cancellingSessions.add(sessionId);
+      try {
+        await enqueueOfflineItem(
+          'cash_session',
+          { ...session, __operation: 'cancel', cancelReason, cancelUserId: userId, cancelledAt },
+          'cash-cancel:' + sessionId
+        );
+        try {
+          applyCancelledShiftPatch(set, get, sessionId, sessionSales, audit);
+          await flushLocalStateStorage();
+        } catch (patchError) {
+          // La intención ya es durable: se conserva y se reconcilia al reconectar.
+          console.warn('[cancelSession] Anulación encolada; limpieza local pendiente:', patchError);
+          get().addNotification(
+            'Turno anulado; limpieza local pendiente.',
+            'warning',
+            'La cancelación se confirmará en la nube al reconectar.'
+          );
+          return true;
+        }
+        get().addNotification(
+          'Turno anulado en este equipo. Se confirmará en la nube al reconectar.',
+          'success',
+          `Se reintegraron ${sessionSales.length} venta(s) al inventario local y el turno quedó fuera de este dispositivo.`
+        );
+        return true;
+      } catch (error) {
+        get().addNotification(
+          'No se pudo anular el turno en este equipo.',
+          'error',
+          error instanceof Error ? error.message : 'Error de persistencia local.'
+        );
+        return false;
+      } finally {
+        cancellingSessions.delete(sessionId);
+      }
     }
 
     cancellingSessions.add(sessionId);

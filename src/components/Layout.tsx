@@ -109,6 +109,40 @@ const PALMYRA_PWA_INSTALLED_KEY = "palmyra:pwa-installed";
 const IOS_INSTALL_HINT_DISMISSED_KEY = "palmyra:ios-install-dismissed";
 const IOS_BROWSER = getIosBrowserName();
 const PALMYRA_UPDATE_AVAILABLE_KEY = "palmyra:update-available";
+// "Ahora no" silencia esa versión concreta durante un rato. Sin esto, el
+// chequeo periódico (60 s) volvería a abrir el aviso que el usuario cerró.
+const PALMYRA_UPDATE_SNOOZE_KEY = "palmyra:update-snoozed";
+const UPDATE_SNOOZE_TTL_MS = 30 * 60_000;
+
+type UpdateSnooze = { version: string; at: number };
+
+function readUpdateSnooze(): UpdateSnooze | null {
+  try {
+    const raw = window.sessionStorage.getItem(PALMYRA_UPDATE_SNOOZE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<UpdateSnooze>;
+    if (typeof parsed?.at !== "number") return null;
+    if (Date.now() - parsed.at > UPDATE_SNOOZE_TTL_MS) return null;
+    return { version: String(parsed.version || "__unknown__"), at: parsed.at };
+  } catch {
+    return null;
+  }
+}
+
+function isUpdateSnoozed(version: string) {
+  const snoozed = readUpdateSnooze();
+  if (!snoozed) return false;
+  return snoozed.version === (version || "__unknown__");
+}
+
+function writeUpdateSnooze(version: string) {
+  try {
+    window.sessionStorage.setItem(
+      PALMYRA_UPDATE_SNOOZE_KEY,
+      JSON.stringify({ version: version || "__unknown__", at: Date.now() } satisfies UpdateSnooze)
+    );
+  } catch {}
+}
 const IS_DESKTOP_SHELL = typeof navigator !== "undefined" && /\bElectron\//i.test(navigator.userAgent);
 const IN_PALMYRA_APP = isPalmyraApp();
 const NATIVE_APP_INFO = getNativeAppInfo();
@@ -226,7 +260,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [isNavigating, setIsNavigating] = useState(false);
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [isApplyingUpdate, setIsApplyingUpdate] = useState(false);
-  const [updateProgress, setUpdateProgress] = useState<{ phase: string; percent: number; filesDone?: number; filesTotal?: number; filesSkipped?: number; receivedBytes?: number; totalBytes?: number; version?: string } | null>(null);
+  const [updateProgress, setUpdateProgress] = useState<{ phase: string; percent: number; filesDone?: number; filesTotal?: number; filesSkipped?: number; receivedBytes?: number; totalBytes?: number; version?: string; message?: string } | null>(null);
   const [updateError, setUpdateError] = useState("");
   const [serverVersion, setServerVersion] = useState<string | null>(null);
   const [navigationTargetPath, setNavigationTargetPath] = useState<string | null>(null);
@@ -407,15 +441,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const onUpdate = () => {
+    const onUpdate = (event: Event) => {
+      const detail = (event as CustomEvent<{ version?: string }>).detail;
+      let version = detail?.version || "";
+      if (!version) {
+        try { version = window.localStorage.getItem("palmyra:update-version") || ""; } catch {}
+      }
+      // El usuario ya dijo "Ahora no" a esta misma versión.
+      if (isUpdateSnoozed(version)) return;
       setUpdateAvailable(true);
-      try {
-        const version = window.localStorage.getItem("palmyra:update-version");
-        if (version) setServerVersion(version);
-      } catch {}
+      if (version) setServerVersion(version);
     };
     const onProgress = (event: Event) => {
-      const detail = (event as CustomEvent<{ phase: string; percent: number; filesDone?: number; filesTotal?: number; filesSkipped?: number; receivedBytes?: number; totalBytes?: number; version?: string }>).detail;
+      const detail = (event as CustomEvent<{ phase: string; percent: number; filesDone?: number; filesTotal?: number; filesSkipped?: number; receivedBytes?: number; totalBytes?: number; version?: string; message?: string }>).detail;
       if (!detail) return;
       setUpdateProgress(detail);
       if (detail.version) setServerVersion(detail.version);
@@ -423,8 +461,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     const checkPersistedUpdate = () => {
       try {
         if (window.localStorage.getItem(PALMYRA_UPDATE_AVAILABLE_KEY) === '1') {
+          const version = window.localStorage.getItem("palmyra:update-version") || "";
+          if (isUpdateSnoozed(version)) return;
           setUpdateAvailable(true);
-          const version = window.localStorage.getItem("palmyra:update-version");
           if (version) setServerVersion(version);
         }
       } catch {}
@@ -729,10 +768,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       return;
     }
     setUpdateError("");
-    setUpdateProgress({ phase: 'preparing', percent: 2 });
+    setUpdateProgress({ phase: 'preparing', percent: 2, message: 'Preparando la actualización…' });
     setIsApplyingUpdate(true);
     // Vigilante: la UI nunca puede quedarse en "Actualizando" indefinidamente.
-    // A los 3 minutos se detiene y se ofrece reintentar.
+    // A los 3 minutos se detiene y se ofrece reintentar. NO se cancela al
+    // terminar: si la recarga no ocurre, el botón vuelve a estar disponible.
     const watchdog = window.setTimeout(() => {
       setIsApplyingUpdate(false);
       setUpdateProgress(null);
@@ -745,20 +785,27 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       if (apply) {
         const result = await apply();
         if (result === 'up-to-date') {
+          window.clearTimeout(watchdog);
           setIsApplyingUpdate(false);
           setUpdateProgress(null);
           setUpdateAvailable(false);
           try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
           addNotification('PALMYRA está actualizada', 'info', 'Ya tienes la última versión disponible en este dispositivo.');
+          return;
         }
+        // Instalada: el navegador recargará en breve. Se muestra el estado final
+        // por si el usuario alcanza a verlo antes del reinicio.
+        setUpdateProgress({ phase: 'reloading', percent: 100, message: 'Actualización instalada. Reiniciando…' });
         return;
       }
 
       // Último respaldo: si la acción global no estuviera disponible todavía,
       // recargamos directamente. El navegador/PWA conserva los datos locales.
+      window.clearTimeout(watchdog);
       try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
       window.location.reload();
     } catch (error) {
+      window.clearTimeout(watchdog);
       console.warn('[PALMYRA] No se pudo aplicar la actualización:', error);
       setIsApplyingUpdate(false);
       setUpdateProgress(null);
@@ -768,8 +815,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           ? message
           : 'No se pudo completar la actualización. Revisa la conexión y vuelve a intentarlo.'
       );
-    } finally {
-      window.clearTimeout(watchdog);
     }
   };
 
@@ -1696,8 +1741,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                       style={{ width: `${Math.min(100, Math.max(3, updateProgress?.percent ?? 3))}%` }}
                     />
                   </div>
-                  <p className="mt-1.5 text-[8px] font-semibold text-violet-600/80 dark:text-violet-300/80">
-                    {formatUpdateBytes(updateProgress?.receivedBytes, updateProgress?.totalBytes)
+                  <p className="mt-1.5 text-[8px] font-semibold text-violet-600/80 dark:text-violet-300/80" aria-live="polite">
+                    {updateProgress?.message
+                      || formatUpdateBytes(updateProgress?.receivedBytes, updateProgress?.totalBytes)
                       || (updateProgress?.phase === 'preparing'
                         ? 'Preparando la descarga. No cierres PALMYRA.'
                         : 'No cierres PALMYRA durante la actualización. Tus datos están protegidos.')}
@@ -1716,6 +1762,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   type="button"
                   disabled={isApplyingUpdate}
                   onClick={() => {
+                    try {
+                      const snoozedVersion = serverVersion
+                        || window.localStorage.getItem("palmyra:update-version")
+                        || "";
+                      writeUpdateSnooze(snoozedVersion);
+                    } catch {}
                     try { localStorage.removeItem(PALMYRA_UPDATE_AVAILABLE_KEY); } catch {}
                     setUpdateAvailable(false);
                     setUpdateError("");

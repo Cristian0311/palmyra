@@ -15,6 +15,7 @@ import {
   callCompleteReturnRPC, callTransferInventoryRPC, callTransferInventoryBulkRPC, callReceiveSupplierOrderRPC,
   callReceiveTransferRPC, callCancelTransferRPC,
   callStartInventoryAuditRPC, callSaveInventoryAuditCountRPC, callRequestInventoryAuditRecountRPC, callApproveInventoryAuditRPC,
+  callCancelSessionRPC,
   callBankInternalTransferRPC, callDeleteBankInternalTransferRPC, callDeleteBankTransactionRPC, callDeleteBankCardRPC, callProcessBankTransactionRPC,
   setBankCardBalanceToSupabase, pullBranchInventoryFromSupabase,
   pushCashSessionToSupabase, deleteProductFromSupabase, pullTransferHistoryFromSupabase,
@@ -269,6 +270,40 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
           });
         }
       };
+      if (session.__operation === 'cancel' || String(item.actionId).startsWith('cash-cancel:')) {
+        // La cancelación se aplicó por completo en el dispositivo cuando se
+        // encoló; aquí solo se confirma en la nube. Nunca se reaplican parches
+        // locales ni se restauran cantidades, así que el replay es idempotente.
+        const tenant = await getActiveTenant();
+        const { data: remoteSession, error: remoteReadError } = await supabase
+          .from('cash_sessions')
+          .select('id,status')
+          .eq('id', session.id)
+          .eq('company_id', tenant.companyId)
+          .maybeSingle();
+        if (remoteReadError) throw remoteReadError;
+        // Turno inexistente o ya anulado en la nube: rechazo definitivo que se
+        // trata como éxito para no reintentar eternamente algo ya resuelto.
+        if (!remoteSession) return true;
+        const remoteStatus = String(remoteSession.status || '');
+        if (remoteStatus === 'voided' || remoteStatus === 'cancelled') return true;
+
+        const cancelData = session as CashRegisterSession & { cancelUserId?: string; cancelReason?: string };
+        const res = await callCancelSessionRPC(
+          session.id,
+          String(cancelData.cancelUserId || session.userId || ''),
+          String(cancelData.cancelReason || '').trim() || 'Cancelación de turno'
+        );
+        if (res.success) return true;
+        const rejection = String(res.error || '');
+        // El servidor ya lo considera anulado/no encontrado: misma idempotencia.
+        if (/ya no existe|ya está anulado/i.test(rejection)) return true;
+        // Permisos insuficientes o RPC ausente no se arreglan reintentando.
+        if (/No tienes permiso|no tiene la versión actual del RPC/i.test(rejection)) {
+          throw new PermanentSyncError(rejection);
+        }
+        throw new Error(rejection || 'No se pudo cancelar el turno');
+      }
       if (session.__operation === 'close') {
         const settlement = session.settlement;
         if (!settlement) throw new Error('Cierre offline sin liquidación asociada');

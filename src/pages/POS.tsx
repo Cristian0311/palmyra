@@ -1156,22 +1156,26 @@ export default function POS() {
     );
 
     // Generate NCF if customer is selected or if config requires it.
-    // El NCF es complementario al cobro. Nunca debe bloquear indefinidamente
-    // una venta si la reserva fiscal está lenta o temporalmente no disponible.
+    // El NCF es complementario al cobro. Nunca debe bloquear una venta.
+    // En offline getNextNCF responde de inmediato (cola durable ya escrita);
+    // en online damos una espera máxima corta y jamás avisamos por un undefined.
     let nextNcf: string | undefined;
+    const isOfflineCheckout = typeof navigator !== 'undefined' && !navigator.onLine;
     try {
-      nextNcf = await Promise.race([
-        useStore.getState().getNextNCF('B01'),
-        new Promise<string | undefined>(resolve => setTimeout(() => resolve(undefined), 7000))
-      ]);
+      nextNcf = isOfflineCheckout
+        ? await useStore.getState().getNextNCF('B01')
+        : await Promise.race([
+            useStore.getState().getNextNCF('B01'),
+            new Promise<string | undefined>(resolve => setTimeout(() => resolve(undefined), 3000))
+          ]);
     } catch (ncfError: any) {
-      // Fiscal numbering is supplemental to the sale. A temporary fiscal
-      // configuration error must not cancel a valid checkout.
-      console.warn('[POS] No se pudo reservar el NCF; la venta continuará sin NCF:', ncfError);
+      // La numeración fiscal es complementaria: un fallo temporal no cancela
+      // ni bloquea un cobro válido.
+      console.warn('[POS] No se pudo obtener el NCF; la venta continúa sin NCF:', ncfError);
       addNotification(
-        'No se pudo reservar el rango fiscal. La venta continuará sin NCF y quedará pendiente de configuración fiscal.',
-        'warning',
-        ncfError?.message || 'Error al reservar NCF.'
+        'Venta guardada sin NCF',
+        'info',
+        'El folio fiscal se asignará al sincronizar. La venta no se ve afectada.'
       );
     }
     if (nextNcf) {

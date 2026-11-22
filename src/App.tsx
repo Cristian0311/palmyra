@@ -8,6 +8,7 @@ import { useEffect, useState, useRef, lazy, Suspense, type ComponentType } from 
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { canAccessSettingsSection, NOTIFICATIONS_PATH } from './utils/settingsAccess';
 import Layout from "./components/Layout";
+import PublicUpdateBanner from "./components/PublicUpdateBanner";
 import { loadSaaSContext, signOutSaaSAccount } from "./services/saas";
 import { getSupabase } from "./lib/supabase";
 import { useStore } from "./store/useStore";
@@ -555,6 +556,8 @@ export default function App() {
             <Route path="*" element={<Navigate to="/landing" replace />} />
           </Routes>
         </Suspense>
+        {/* El aviso de actualización también debe verse sin sesión. */}
+        <PublicUpdateBanner signedIn={Boolean(currentUser?.id)} />
       </Router>
     </ErrorBoundary>
   );
@@ -650,6 +653,8 @@ export default function App() {
           } />
         </Routes>
         </Suspense>
+        {/* Visible en landing/auth; se oculta solo cuando Layout ya lo muestra. */}
+        <PublicUpdateBanner signedIn={Boolean(currentUser?.id)} />
       </Router>
     </ErrorBoundary>
   );

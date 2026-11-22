@@ -39,9 +39,13 @@ export function createVoidTransactionAction(deps: Dependencies) {
         return false;
       }
       // Unlinked bank payments cannot be reversed safely: never guess an account.
-      if (tx.payments.some(p => p.method === 'transfer') && !state.bankTransactions.some(b =>
+      // Only real transfer payments (positive amount) are considered; cash-only
+      // sales — and legacy records without `payments` — must never be blocked.
+      const transferPaid = (Array.isArray(tx.payments) ? tx.payments : [])
+        .some(p => p?.method === 'transfer' && Number(p.amount) > 0);
+      if (transferPaid && !state.bankTransactions.some(b =>
         [tx.id, tx.remoteId].includes(b.transactionId) && b.type === 'payment_received')) {
-        state.addNotification('La venta bancaria no tiene un cobro vinculado verificable. Requiere conciliación administrativa antes de anular.', 'warning');
+        state.addNotification('La venta tiene un pago por transferencia sin cobro bancario vinculado. Requiere conciliación administrativa antes de anular.', 'warning');
         return false;
       }
       const audit = { userId: state.currentUser!.id, reason: finalReason.slice(0, 500), date: new Date().toISOString() };

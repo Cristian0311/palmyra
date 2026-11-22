@@ -5,7 +5,8 @@ import {
   Settings2, LineChart, Menu, X, UserRound,
   ShieldCheck, Sparkles, Globe2,
   CircleDollarSign, LockKeyhole, Landmark, Caravan, Castle,
-  Download, Smartphone, FileText, BookOpen, Headphones, Loader2
+  Download, Smartphone, FileText, BookOpen, Headphones, Loader2,
+  Mail, MailCheck
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PalmyraWordmark } from "../components/PalmyraWordmark";
@@ -772,6 +773,21 @@ export default function LandingPage({ signedIn = false }: { signedIn?: boolean }
                 [2, "Configura el negocio", "Selecciona plan, crea el primer almacén y organiza el equipo."],
                 [3, "Empieza a operar", "Vende, controla inventario, cierra cajas y trabaja online u offline."]
               ].map(([n,t,d]) => <div key={String(n)} className="rounded-2xl border border-violet-100 bg-[#F7F5FC] p-5"><span className="w-8 h-8 rounded-xl bg-[#5B2DBA] text-white flex items-center justify-center text-xs font-black">{n}</span><h3 className="text-sm font-black text-[#3B1B78] mt-4">{t}</h3><p className="text-[10px] text-slate-500 mt-1.5 leading-5">{d}</p></div>)}
+            </div>
+            <div className="mt-3 flex max-w-3xl items-start gap-3 rounded-2xl border border-violet-200 bg-white p-4 shadow-[0_18px_44px_-36px_rgba(59,27,110,.5)] sm:p-5">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[#EFE8FF] text-[#5B2DBA]">
+                <MailCheck className="h-4 w-4" aria-hidden="true" />
+              </span>
+              <div className="min-w-0">
+                <p className="text-sm font-black text-[#3B1B78]">Después de crear tu cuenta</p>
+                <p className="mt-1.5 break-words text-[11px] leading-5 text-slate-600">
+                  Te enviaremos un correo para confirmar tu cuenta. Suele llegar a <strong className="font-black text-[#5B2DBA]">Spam</strong> o <strong className="font-black text-[#5B2DBA]">Promociones</strong>: si no lo ves en Principal en 1-2 minutos, búscalo allí, marca «No es spam» y pulsa «Confirmar correo electrónico».
+                </p>
+                <p className="mt-2 flex items-start gap-1.5 break-words text-[10px] font-semibold leading-4 text-slate-500">
+                  <Mail className="mt-0.5 h-3 w-3 shrink-0 text-[#7C4DDE]" aria-hidden="true" />
+                  <span className="min-w-0">Márcalo como seguro para que los próximos avisos lleguen a Principal.</span>
+                </p>
+              </div>
             </div>
           </div>
         </section>
