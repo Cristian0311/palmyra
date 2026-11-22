@@ -300,7 +300,7 @@ function OfflineStatusPill({
       <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", tone.dot)} aria-hidden="true" />
       <span className="min-w-0 truncate">{label}</span>
       {badge && (
-        <span className={cn("inline-flex min-w-[1.15rem] shrink-0 items-center justify-center rounded-full px-1 py-0.5 text-[8px] font-black leading-none tabular-nums", badge.className)}>
+        <span className={cn("ml-auto inline-flex min-w-[1.15rem] shrink-0 items-center justify-center rounded-full px-1 py-0.5 text-[8px] font-black leading-none tabular-nums", badge.className)}>
           {badge.text}
         </span>
       )}
@@ -1449,7 +1449,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 state={offlineIndicatorState}
                 pending={safePendingOfflineCount}
                 conflicts={safeConflictOfflineCount}
-                className="w-full justify-between"
+                className="w-full"
               />
             </button>
           )}
