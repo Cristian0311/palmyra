@@ -1,5 +1,39 @@
 # CHANGELOG — PALMYRA POS
 
+## 1.3.3 — Consola administrativa, avisos al dueño y Excel corporativo
+
+### Panel administrativo
+- Navegación agrupada (Operación / Negocio / Sistema), empresas en formato de
+  lista con filtros y consola por empresa en pestañas (resumen, plan,
+  suscripción, equipo, facturación, notas).
+- Módulo de **Usuarios** con búsqueda, detalle y membresías por empresa.
+- Facturación y Auditoría con filtros y exportación CSV; Configuración con
+  validación de canales y datos de compilación.
+- El panel se puede **instalar como PWA**, detecta una compilación nueva y
+  muestra un banner para recargar; campana de **notificaciones** para empresas
+  nuevas, tickets de plan, soporte abierto y usuarios registrados.
+
+### Avisos al dueño
+- Las solicitudes de soporte, las solicitudes/rechazos de plan y las altas de
+  empresa llegan solas al WhatsApp 55581669 con el mensaje ya redactado.
+- Endpoint protegido con sesión, deduplicación por referencia y límites de
+  frecuencia; si el canal automático no está configurado, el cliente conserva
+  el botón de WhatsApp con el texto preparado.
+
+### Exportaciones Excel
+- Reportes e Inventario generan libros corporativos con ExcelJS: portada con
+  indicadores, gráficas PNG, tablas con estilo, filtros, paneles congelados,
+  totales y hoja de diagnóstico IA.
+- La librería se carga solo al exportar, sin afectar el arranque de la app.
+
+### Estabilidad
+- Un error benigno del navegador (por ejemplo, al pulsar una gráfica) ya no
+  sustituye la aplicación por la pantalla de bloqueo.
+
+### Actualización
+- Nueva versión para que los equipos con 1.3.2 detecten y descarguen la
+  actualización automáticamente.
+
 ## 1.3.2 — Actualización automática en PC, instalador y conexión
 
 ### Actualización automática (Windows)
