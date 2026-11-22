@@ -16,13 +16,22 @@ PALMYRA Admin es la consola privada del dueño/operador del SaaS. Se mantiene co
 
 El servicio administrativo puede crearse como un servicio estático separado:
 
+- Branch: `main` (el servicio debe seguir la rama principal; una rama antigua sirve código de octubre)
 - Root directory: vacío
 - Build command: npm install --no-audit --no-fund && npm run build:admin
 - Publish directory: dist-admin
 - VITE_SUPABASE_URL: URL pública de Supabase
 - VITE_SUPABASE_ANON_KEY o VITE_SUPABASE_PUBLISHABLE_KEY: clave publicable
+- Auto-Deploy: activado, o Manual Deploy → «Clear build cache & deploy» cuando se cambie configuración
 
 El servicio no necesita service_role.
+
+Una publicación correcta debe exponer `https://palmyra-admin.onrender.com/version.json` y cargar `assets/AdminShell-*.js`. Si `/version.json` responde 404 o los assets no cambian tras un push, Render está compilando otra rama, otro directorio o una caché vieja: corregir branch/build/publish y redesplegar sin caché.
+
+## Dos consolas, una sola fuente
+
+- `admin/` + `dist-admin` es la consola real del SaaS en `palmyra-admin.onrender.com`. Todos los cambios de diseño y funcionalidad se hacen aquí.
+- `src/pages/PlatformAdmin.tsx` (ruta `/platform-admin` del CRM) es una consola heredada que se conserva por compatibilidad; no recibe el rediseño y no es lo que publica Render.
 
 ## Acceso
 

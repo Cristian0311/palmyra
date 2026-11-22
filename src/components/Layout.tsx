@@ -1698,7 +1698,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <p className="mt-1 text-[10px] font-semibold leading-4 text-slate-600 dark:text-slate-300">
                 {desktopUpdateFailed
                   ? desktopUpdateState?.error || "No se pudo descargar la actualización. Se reintentará automáticamente."
-                  : `Versión ${desktopUpdateVersion || "nueva"} · se descarga sola, sin interrumpir la caja.`}
+                  : `${APP_VERSION_LABEL} · se descarga sola, sin interrumpir la caja.`}
               </p>
               {!desktopUpdateFailed && (
                 <div
@@ -1766,7 +1766,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </div>
               <div className="relative mt-4 rounded-2xl border border-white/15 bg-black/10 px-3.5 py-3">
                 <p className="text-[10px] font-semibold leading-5 text-violet-50">
-                  La versión {desktopUpdateVersion || "nueva"} ya está descargada. Reinicia PALMYRA para aplicarla; tu empresa, ventas e inventario se conservan.
+                  {APP_VERSION_LABEL} ya está descargada. Reinicia PALMYRA para aplicarla; tu empresa, ventas e inventario se conservan.
                 </p>
               </div>
             </div>
@@ -1830,7 +1830,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </div>
               <div className="relative mt-4 rounded-2xl border border-white/15 bg-black/10 px-3.5 py-3">
                 <p className="text-[10px] font-semibold leading-5 text-violet-50">
-                  La versión {otaUpdate.version} está lista. Se descarga e instala sin salir de la app; tu empresa, ventas e inventario se conservan.
+                  {APP_VERSION_LABEL} está lista. Se descarga e instala sin salir de la app; tu empresa, ventas e inventario se conservan.
                 </p>
               </div>
             </div>
@@ -1932,7 +1932,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </div>
               <div className="relative mt-4 rounded-2xl border border-white/15 bg-black/10 px-3.5 py-3">
                 <p className="text-[10px] font-semibold leading-5 text-violet-50">
-                  La versión {apkUpdateVersion} ya está lista. Descarga el APK e instálalo encima de esta app: tu empresa, ventas y datos se conservan.
+                  {APP_VERSION_LABEL} ya está lista. Descarga el APK e instálalo encima de esta app: tu empresa, ventas y datos se conservan.
                 </p>
               </div>
             </div>
@@ -1991,7 +1991,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <div className="relative mt-4 rounded-2xl border border-white/15 bg-black/10 px-3.5 py-3">
                 <p className="text-[10px] font-semibold leading-5 text-violet-50">
                   {serverVersion
-                    ? `La versión ${serverVersion} está lista. Actualiza ahora para continuar con la experiencia más reciente de PALMYRA.`
+                    ? `${APP_VERSION_LABEL} está lista. Actualiza ahora para continuar con la experiencia más reciente de PALMYRA.`
                     : 'Una nueva versión del sistema está lista. Actualiza ahora para continuar con la experiencia más reciente de PALMYRA.'}
                 </p>
               </div>

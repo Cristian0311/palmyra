@@ -1,3 +1,5 @@
+import { ADMIN_PRODUCT_VERSION } from "./productVersion";
+
 declare const __ADMIN_BUILD__: string;
 declare const __ADMIN_BUILT_AT__: string;
 
@@ -72,7 +74,7 @@ export function mountAdminUpdateBanner(build: string): void {
   banner.className = "admin-update-banner";
   banner.setAttribute("role", "status");
   banner.innerHTML = [
-    '<div class="admin-update-banner__copy"><strong>Nueva versión del panel disponible</strong>',
+    `<div class="admin-update-banner__copy"><strong>Nueva versión ${ADMIN_PRODUCT_VERSION} del panel disponible</strong>`,
     "<span>Se publicó una actualización de la consola administrativa.</span></div>",
     '<div class="admin-update-banner__actions">',
     '<button type="button" data-action="reload">Recargar ahora</button>',

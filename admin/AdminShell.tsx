@@ -1,9 +1,10 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
 import { Activity, AlertCircle, BarChart3, Building2, ChevronRight, CreditCard, LogOut, Menu, RefreshCw, Settings2, ShieldCheck, TicketCheck, Users } from "lucide-react";
 import { adminErrorMessage, loadPlatformSnapshot, type PlatformSnapshot } from "./platformAdminApi";
 import { adminSignOut } from "./supabase";
 import AdminNotifications from "./adminNotifications";
+import { lazyWithRetry } from "./chunkRecovery";
 
 type View = "overview" | "companies" | "users" | "billing" | "support" | "audit" | "settings";
 
@@ -36,13 +37,13 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
 
 const navItems = navGroups.flatMap((group) => group.items);
 
-const Overview = lazy(() => import("./views/Overview"));
-const CompaniesView = lazy(() => import("./views/CompaniesView"));
-const UsersView = lazy(() => import("./views/UsersView"));
-const BillingView = lazy(() => import("./views/BillingView"));
-const SupportView = lazy(() => import("./views/SupportView"));
-const AuditView = lazy(() => import("./views/AuditView"));
-const SettingsView = lazy(() => import("./views/SettingsView"));
+const Overview = lazyWithRetry(() => import("./views/Overview"));
+const CompaniesView = lazyWithRetry(() => import("./views/CompaniesView"));
+const UsersView = lazyWithRetry(() => import("./views/UsersView"));
+const BillingView = lazyWithRetry(() => import("./views/BillingView"));
+const SupportView = lazyWithRetry(() => import("./views/SupportView"));
+const AuditView = lazyWithRetry(() => import("./views/AuditView"));
+const SettingsView = lazyWithRetry(() => import("./views/SettingsView"));
 
 function viewFromHash(): View {
   const raw = window.location.hash.replace(/^#\/?/, "");

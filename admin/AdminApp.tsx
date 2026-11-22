@@ -1,11 +1,12 @@
-import { lazy, Suspense, useEffect, useState, type FormEvent } from "react";
-import { AlertCircle, RefreshCw, Shield, ShieldCheck } from "lucide-react";
-import { loadPlatformSnapshot, type PlatformSnapshot } from "./platformAdminApi";
+import { Suspense, useEffect, useState, type FormEvent } from "react";
+import { AlertCircle, LogOut, RefreshCw, Shield, ShieldCheck } from "lucide-react";
+import { adminErrorMessage, loadPlatformSnapshot, type PlatformSnapshot } from "./platformAdminApi";
 import { adminSignIn, adminSignOut, adminUser, getAdminSupabase } from "./supabase";
 import { Button } from "./shared";
+import { lazyWithRetry } from "./chunkRecovery";
 import "./admin.css";
 
-const AdminShell = lazy(() => import("./AdminShell"));
+const AdminShell = lazyWithRetry(() => import("./AdminShell"));
 
 function LoginScreen({ onAuthenticated }: { onAuthenticated: (snapshot: PlatformSnapshot) => void }) {
   const [email, setEmail] = useState("");
@@ -78,20 +79,65 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (snapshot: Platform
     </main>
   );
 }
+function BootErrorScreen({
+  message,
+  onRetry,
+  onSignOut,
+}: {
+  message: string;
+  onRetry: () => void;
+  onSignOut: () => void;
+}) {
+  return (
+    <main className="admin-auth">
+      <section className="admin-auth-card" role="alert">
+        <div className="admin-brand-mark"><AlertCircle size={22} /></div>
+        <p className="admin-eyebrow">PALMYRA · CONTROL CENTER</p>
+        <h1>No pudimos cargar los datos</h1>
+        <p className="admin-auth-copy">
+          La sesión sigue abierta. Reintenta la carga o vuelve a entrar si el problema continúa.
+        </p>
+        <div className="admin-alert admin-alert--error"><AlertCircle size={16} />{message}</div>
+        <div className="admin-error-actions">
+          <Button variant="primary" onClick={onRetry}><RefreshCw size={15} />Reintentar carga</Button>
+          <Button variant="ghost" onClick={onSignOut}><LogOut size={15} />Cerrar sesión</Button>
+        </div>
+      </section>
+    </main>
+  );
+}
+
 export default function AdminApp() {
   const [booting, setBooting] = useState(true);
+  const [bootError, setBootError] = useState("");
   const [snapshot, setSnapshot] = useState<PlatformSnapshot | null>(null);
 
   const authenticateExistingSession = async () => {
+    setBooting(true);
+    setBootError("");
     try {
-      await adminUser();
-      setSnapshot(await loadPlatformSnapshot());
+      const user = await adminUser();
+      if (!user) {
+        setSnapshot(null);
+        return;
+      }
+      try {
+        setSnapshot(await loadPlatformSnapshot());
+      } catch (error) {
+        setBootError(adminErrorMessage(error, "No se pudieron cargar los datos administrativos."));
+      }
     } catch {
       await adminSignOut().catch(() => undefined);
       setSnapshot(null);
     } finally {
       setBooting(false);
     }
+  };
+
+  const closeSession = async () => {
+    await adminSignOut().catch(() => undefined);
+    setSnapshot(null);
+    setBootError("");
   };
 
   useEffect(() => {
@@ -105,6 +151,10 @@ export default function AdminApp() {
 
   if (booting) {
     return <main className="admin-auth admin-auth--boot"><div className="admin-brand-mark admin-brand-mark--pulse"><span>✦</span></div><p>Validando sesión administrativa…</p></main>;
+  }
+
+  if (bootError) {
+    return <BootErrorScreen message={bootError} onRetry={() => void authenticateExistingSession()} onSignOut={() => void closeSession()} />;
   }
 
   if (!snapshot) {
