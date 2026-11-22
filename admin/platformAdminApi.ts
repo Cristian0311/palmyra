@@ -323,7 +323,7 @@ export async function loadPlatformSnapshot(): Promise<PlatformSnapshot> {
   const supabase = await assertPlatformAdmin();
   const [companies, requests, overview] = await Promise.all([
     supabase.rpc("get_platform_companies"),
-    supabase.rpc("get_pending_plan_requests"),
+    supabase.rpc("get_pending_plan_requests", { p_status: "pending", p_limit: 200 }),
     supabase.rpc("get_platform_overview"),
   ]);
   if (companies.error) throw new Error(adminErrorMessage(companies.error));

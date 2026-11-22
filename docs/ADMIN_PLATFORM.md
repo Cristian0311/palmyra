@@ -62,6 +62,7 @@ Migraciones aplicadas en producción (2026-11-20 y 2026-11-21):
 - 20261120120000_free_plan_cloud_backup.sql — Gratis conserva límites y suma respaldo comercial en la nube.
 - 20261120121000_platform_admin_console.sql — get_platform_companies, set_platform_company_status, set_platform_support_request_status y retiro de la sobrecarga ambigua de settings.
 - 20261121150000_plan_admin_console_v2.sql — desbloqueo de renovaciones, cancelación por el dueño, métricas globales, detalle por empresa, pagos, auditoría (tabla platform_admin_audit y triggers), asignación manual de plan y consulta de soporte ampliada.
+- 20261122120000_fix_plan_requests_overload.sql — retira la sobrecarga vacía de `get_pending_plan_requests` que hacía ambigua la llamada sin argumentos en PostgREST.
 
 `scripts/apply-sql.mjs` aplica un archivo SQL por la Management API leyendo las credenciales desde `.secrets/supabase.env`; nunca imprime el token.
 
