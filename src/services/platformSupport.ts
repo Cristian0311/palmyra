@@ -2,6 +2,10 @@ import { getSupabase } from "../lib/supabase";
 
 export const DEFAULT_FACEBOOK_URL = "https://www.facebook.com/share/18E6USqhUn/";
 
+// Número oficial de atención. Se usa cuando la configuración de la plataforma
+// aún no tiene un canal guardado, para que ninguna solicitud quede sin destino.
+export const DEFAULT_SUPPORT_WHATSAPP = "5355581669";
+
 export type PlatformSupportSettings = {
   whatsapp_number: string | null;
   support_email: string | null;
@@ -21,7 +25,9 @@ export function getCachedPlatformSupportSettings(): PlatformSupportSettings | nu
   if (typeof localStorage === "undefined") return null;
   try {
     const raw = localStorage.getItem(SUPPORT_CACHE_KEY);
-    return raw ? JSON.parse(raw) as PlatformSupportSettings : null;
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as PlatformSupportSettings;
+    return { ...parsed, whatsapp_number: parsed.whatsapp_number || DEFAULT_SUPPORT_WHATSAPP };
   } catch {
     return null;
   }
@@ -37,7 +43,7 @@ export type SupportRequestInput = {
 export async function loadPlatformSupportSettings(): Promise<PlatformSupportSettings> {
   const supabase = getSupabase();
   if (!supabase) return getCachedPlatformSupportSettings() || {
-    whatsapp_number: null,
+    whatsapp_number: DEFAULT_SUPPORT_WHATSAPP,
     support_email: null,
     privacy_url: null,
     facebook_url: DEFAULT_FACEBOOK_URL,
@@ -51,7 +57,7 @@ export async function loadPlatformSupportSettings(): Promise<PlatformSupportSett
   }
   const value = (data || {}) as Record<string, unknown>;
   const settings: PlatformSupportSettings = {
-    whatsapp_number: value.whatsapp_number ? String(value.whatsapp_number) : null,
+    whatsapp_number: value.whatsapp_number ? String(value.whatsapp_number) : DEFAULT_SUPPORT_WHATSAPP,
     support_email: value.support_email ? String(value.support_email) : null,
     privacy_url: value.privacy_url ? String(value.privacy_url) : null,
     facebook_url: value.facebook_url ? String(value.facebook_url) : DEFAULT_FACEBOOK_URL,

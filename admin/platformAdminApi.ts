@@ -200,6 +200,47 @@ export type PlatformSupportSettings = {
   whatsapp_channel_url: string | null;
 };
 
+export type PlatformUser = {
+  user_id: string;
+  email?: string | null;
+  full_name?: string | null;
+  phone?: string | null;
+  locale?: string | null;
+  created_at?: string | null;
+  last_sign_in_at?: string | null;
+  email_confirmed?: boolean | null;
+  is_platform_admin?: boolean | null;
+  company_id?: string | null;
+  company_name?: string | null;
+  membership_status?: string | null;
+  is_owner?: boolean | null;
+  active_company_id?: string | null;
+};
+
+export type PlatformUserMembership = {
+  company_id: string;
+  company_name?: string | null;
+  account_status?: string | null;
+  is_owner?: boolean | null;
+  status?: string | null;
+  joined_at?: string | null;
+};
+
+export type PlatformUserEmployee = {
+  id: string;
+  company_name?: string | null;
+  employee_code?: string | null;
+  full_name?: string | null;
+  active?: boolean | null;
+  created_at?: string | null;
+};
+
+export type PlatformUserDetail = {
+  user: PlatformUser;
+  memberships: PlatformUserMembership[];
+  employees: PlatformUserEmployee[];
+};
+
 export type PlatformSupportRequest = {
   id: string;
   company_id: string;
@@ -245,6 +286,7 @@ const ADMIN_ERRORS: Record<string, string> = {
   period_end_required: "Una suscripción activa de pago necesita fecha de fin de período.",
   invalid_subscription_dates: "El fin de prueba no puede ser posterior al fin del período.",
   invalid_grace_date: "La gracia no puede terminar antes del fin del período.",
+  user_not_found: "El usuario ya no existe.",
 };
 
 export function adminErrorMessage(error: unknown, fallback = "No se pudo completar la operación.") {
@@ -308,6 +350,26 @@ export function loadAdminAudit(limit = 150, companyId?: string) {
 
 export function loadPlatformPlans() {
   return rpcArray<PlatformPlan>("get_platform_plans");
+}
+
+export function loadPlatformUsers(search?: string, limit = 200) {
+  return rpcArray<PlatformUser>("get_platform_users", {
+    p_search: search?.trim() || null,
+    p_limit: limit,
+  });
+}
+
+export async function loadPlatformUserDetail(userId: string): Promise<PlatformUserDetail> {
+  const supabase = await assertPlatformAdmin();
+  const { data, error } = await supabase.rpc("get_platform_user_detail", { p_user_id: userId });
+  if (error) throw new Error(adminErrorMessage(error));
+  const value = (data || {}) as Partial<PlatformUserDetail>;
+  if (!value.user) throw new Error("No se encontró ese usuario.");
+  return {
+    user: value.user,
+    memberships: Array.isArray(value.memberships) ? value.memberships : [],
+    employees: Array.isArray(value.employees) ? value.employees : [],
+  };
 }
 
 export async function loadCompanyDetail(companyId: string): Promise<PlatformCompanyDetail> {

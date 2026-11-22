@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ExcelExportData } from '../../../utils/excelExport';
+import type { ExcelExportData, SectionKey } from '../../../utils/excelExport';
 
 export function useReportsExport(getExportData: () => ExcelExportData) {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -16,21 +17,42 @@ export function useReportsExport(getExportData: () => ExcelExportData) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const runExport = async (task: () => Promise<void>) => {
+    if (isExporting) return;
+    setIsExporting(true);
+    try {
+      await task();
+      setExportSuccess(true);
+      setTimeout(() => setExportSuccess(false), 2500);
+    } catch (error) {
+      console.error('[Reports] No se pudo generar el libro de Excel:', error);
+    } finally {
+      setIsExporting(false);
+      setShowExportMenu(false);
+    }
+  };
+
   const handleExportFullExcel = async () => {
-    const { exportFullReportsToExcel } = await import('../../../utils/excelExport');
-    exportFullReportsToExcel(getExportData());
-    setShowExportMenu(false);
-    setExportSuccess(true);
-    setTimeout(() => setExportSuccess(false), 2500);
+    await runExport(async () => {
+      const { exportFullReportsToExcel } = await import('../../../utils/excelExport');
+      await exportFullReportsToExcel(getExportData());
+    });
   };
 
-  const handleExportSectionExcel = async (sec: 'summary' | 'sales' | 'items' | 'sessions' | 'payroll' | 'products' | 'returns' | 'banks' | 'discrepancies' | 'movements' | 'transfers') => {
-    const { exportSingleSectionToExcel } = await import('../../../utils/excelExport');
-    exportSingleSectionToExcel(sec, getExportData());
-    setShowExportMenu(false);
-    setExportSuccess(true);
-    setTimeout(() => setExportSuccess(false), 2500);
+  const handleExportSectionExcel = async (sec: SectionKey) => {
+    await runExport(async () => {
+      const { exportSingleSectionToExcel } = await import('../../../utils/excelExport');
+      await exportSingleSectionToExcel(sec, getExportData());
+    });
   };
 
-  return { exportMenuRef, showExportMenu, setShowExportMenu, exportSuccess, handleExportFullExcel, handleExportSectionExcel };
+  return {
+    exportMenuRef,
+    showExportMenu,
+    setShowExportMenu,
+    exportSuccess,
+    isExporting,
+    handleExportFullExcel,
+    handleExportSectionExcel,
+  };
 }

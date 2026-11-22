@@ -175,6 +175,145 @@ async function startServer() {
     res.status(200).end('{"status":"ok"}');
   });
 
+  // Avisos operativos al WhatsApp del dueño del SaaS (soporte, solicitudes de
+  // plan, cancelaciones y altas). El mensaje se entrega desde el servidor:
+  // el cliente solo aporta el texto. Sin credencial configurada devuelve
+  // sent:false para que la interfaz muestre el botón manual de WhatsApp.
+  const OWNER_ALERT_KINDS: Record<string, string> = {
+    support: 'SOPORTE',
+    plan_request: 'SOLICITUD DE PLAN',
+    plan_cancelled: 'SOLICITUD CANCELADA',
+    company_new: 'NUEVA EMPRESA',
+    test: 'PRUEBA DE AVISOS',
+  };
+  const ownerAlertDedupe = new Map<string, number>();
+  const OWNER_ALERT_TARGET = String(process.env.WHATSAPP_ALERT_TO || '5355581669').replace(/[^0-9]/g, '');
+  let globalOwnerAlerts = 0;
+  let globalOwnerAlertsResetAt = Date.now() + 60 * 60 * 1000;
+
+  const cleanAlertText = (value: unknown, max: number) =>
+    String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
+
+  const deliverOwnerWhatsApp = async (text: string): Promise<{ sent: boolean; provider: string | null; error: string | null }> => {
+    const callMeBotKey = String(process.env.CALLMEBOT_APIKEY || '').trim();
+    if (callMeBotKey) {
+      const phone = String(process.env.CALLMEBOT_PHONE || OWNER_ALERT_TARGET).replace(/[^0-9]/g, '');
+      try {
+        const response = await fetch(
+          `https://api.callmebot.com/whatsapp.php?phone=${encodeURIComponent('+' + phone)}&text=${encodeURIComponent(text)}&apikey=${encodeURIComponent(callMeBotKey)}`,
+          { signal: AbortSignal.timeout(9_000) }
+        );
+        const body = (await response.text().catch(() => '')).slice(0, 240);
+        const queued = response.ok && /queued|sent|enviado/i.test(body);
+        return { sent: queued, provider: 'callmebot', error: queued ? null : body || `HTTP ${response.status}` };
+      } catch (error: any) {
+        return { sent: false, provider: 'callmebot', error: error?.message || 'callmebot_unreachable' };
+      }
+    }
+    const cloudToken = String(process.env.WHATSAPP_CLOUD_TOKEN || '').trim();
+    const cloudPhoneId = String(process.env.WHATSAPP_CLOUD_PHONE_ID || '').trim();
+    if (cloudToken && cloudPhoneId) {
+      try {
+        const response = await fetch(`https://graph.facebook.com/v19.0/${encodeURIComponent(cloudPhoneId)}/messages`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${cloudToken}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messaging_product: 'whatsapp',
+            to: OWNER_ALERT_TARGET,
+            type: 'text',
+            text: { preview_url: false, body: text },
+          }),
+          signal: AbortSignal.timeout(9_000),
+        });
+        if (response.ok) return { sent: true, provider: 'whatsapp_cloud', error: null };
+        const body = (await response.text().catch(() => '')).slice(0, 240);
+        return { sent: false, provider: 'whatsapp_cloud', error: body || `HTTP ${response.status}` };
+      } catch (error: any) {
+        return { sent: false, provider: 'whatsapp_cloud', error: error?.message || 'whatsapp_cloud_unreachable' };
+      }
+    }
+    return { sent: false, provider: null, error: 'not_configured' };
+  };
+
+  app.options('/api/notify/owner', (_req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Max-Age', '86400');
+    res.status(204).end();
+  });
+
+  app.get('/api/notify/owner/status', (_req, res) => {
+    const provider = String(process.env.CALLMEBOT_APIKEY || '').trim()
+      ? 'callmebot'
+      : (process.env.WHATSAPP_CLOUD_TOKEN && process.env.WHATSAPP_CLOUD_PHONE_ID ? 'whatsapp_cloud' : null);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({
+      configured: provider !== null,
+      provider,
+      targetMasked: OWNER_ALERT_TARGET.replace(/^(\d{2})(\d+)(\d{3})$/, '$1****$3'),
+    });
+  });
+
+  app.post('/api/notify/owner', async (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const { ok } = await verifyAccessToken(req);
+      if (!ok) return res.status(401).json({ sent: false, reason: 'authentication_required' });
+
+      const payload = (req.body || {}) as Record<string, unknown>;
+      const kind = String(payload.kind || '');
+      if (!OWNER_ALERT_KINDS[kind]) return res.status(400).json({ sent: false, reason: 'invalid_kind' });
+
+      const refId = cleanAlertText(payload.refId, 80);
+      const dedupeKey = refId ? `${kind}:${refId}` : '';
+      const now = Date.now();
+      if (now >= globalOwnerAlertsResetAt) {
+        globalOwnerAlerts = 0;
+        globalOwnerAlertsResetAt = now + 60 * 60 * 1000;
+      }
+      if (dedupeKey) {
+        const previous = ownerAlertDedupe.get(dedupeKey);
+        if (previous && now - previous < 30 * 60 * 1000) return res.json({ sent: false, reason: 'duplicate' });
+      }
+      const perIp = consumeRateLimit('owner-alert:' + (req.ip || 'unknown'), 6, 10 * 60 * 1000);
+      if (!perIp.allowed || globalOwnerAlerts >= 60) {
+        res.setHeader('Retry-After', String(perIp.retryAfter || 600));
+        return res.status(429).json({ sent: false, reason: 'rate_limited' });
+      }
+
+      const rawLines = Array.isArray(payload.lines) ? payload.lines : [];
+      const lines = rawLines
+        .slice(0, 18)
+        .map((line) => cleanAlertText(line, 400))
+        .filter(Boolean);
+      if (!lines.length) return res.status(400).json({ sent: false, reason: 'empty_message' });
+
+      const text = [
+        `PALMYRA · ${OWNER_ALERT_KINDS[kind]}`,
+        ...lines,
+      ].join('\n');
+
+      const result = await deliverOwnerWhatsApp(text);
+      if (result.sent) {
+        globalOwnerAlerts += 1;
+        if (dedupeKey) {
+          if (ownerAlertDedupe.size > 500) ownerAlertDedupe.clear();
+          ownerAlertDedupe.set(dedupeKey, now);
+        }
+      }
+      if (!result.sent && result.error && result.error !== 'not_configured') {
+        console.error('[PALMYRA] Aviso al dueño no entregado:', result.provider, result.error);
+      }
+      return res.json({ sent: result.sent, provider: result.provider, reason: result.sent ? null : (result.error === 'not_configured' ? 'not_configured' : 'provider_error') });
+    } catch (error: any) {
+      console.error('[PALMYRA] Notificación al dueño:', error);
+      return res.status(500).json({ sent: false, reason: 'unexpected_error' });
+    }
+  });
+
 
 
 

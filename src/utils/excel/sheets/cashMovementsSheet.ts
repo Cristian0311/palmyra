@@ -1,50 +1,53 @@
 import type { ExcelExportData } from "../types";
 
 export function generateCashMovementsSheet(data: ExcelExportData): any[][] {
-  const { cashSessions, branches, currencies, baseCurrency } = data;
+  const { cashSessions = [], branches = [], currencies = [], baseCurrency } = data;
+  const baseCode = baseCurrency?.code || 'CUP';
+  const branchById = new Map(branches.map(branch => [branch.id, branch]));
+  const rateByCode = new Map<string, number>(currencies.map(currency => [currency.code, Number(currency.rateToBase) || 1]));
 
   const rows: any[][] = [
     [
       'ID Movimiento',
       'Fecha y Hora',
-      'ID Turno',
-      'Sucursal',
+      'Turno',
+      'Sucursal / Almacén',
       'Cajero Responsable',
       'Tipo de Operación',
       'Concepto / Descripción',
-      'Importe Moneda Original',
+      'Importe Original',
       'Moneda',
-      'Equivalente Moneda Base (' + baseCurrency.code + ')',
-      'Estado del Turno'
-    ]
+      `Equivalente Base (${baseCode})`,
+      'Estado del Turno',
+    ],
   ];
 
-  cashSessions.forEach(session => {
-    const branchName = branches.find(b => b.id === session.branchId)?.name || 'Sucursal';
+  for (const session of cashSessions) {
+    const branchName = branchById.get(session.branchId)?.name || 'Sucursal';
     const workerName = session.workerName || 'Cajero';
+    const turnLabel = session.turnNumber ? `#${session.turnNumber}` : session.id;
 
-    (session.movements || []).forEach(m => {
-      const dateStr = new Date(m.date).toLocaleString('es-CU');
-      const rate = currencies.find(c => c.code === m.currencyCode)?.rateToBase || 1;
-      const cupEquiv = m.amount * rate;
+    for (const movement of session.movements || []) {
+      const date = movement.date ? new Date(movement.date) : null;
+      const amount = Number(movement.amount) || 0;
+      const rate = rateByCode.get(movement.currencyCode) || 1;
+      const equivalent = amount * rate;
 
       rows.push([
-        m.id,
-        dateStr,
-        session.id,
+        movement.id,
+        date && !Number.isNaN(date.getTime()) ? date : null,
+        turnLabel,
         branchName,
-        m.workerName || workerName,
-        m.type === 'income' ? 'INGRESO (ENTRADA)' : 'EGRESO (GASTO)',
-        m.description,
-        Number(m.amount.toFixed(2)),
-        m.currencyCode,
-        Number(cupEquiv.toFixed(2)),
-        session.status === 'cancelled' ? 'Turno Cancelado' : (session.status === 'closed' ? 'Turno Cerrado' : 'Turno Abierto')
+        movement.workerName || workerName,
+        movement.type === 'income' ? 'INGRESO (ENTRADA)' : 'EGRESO (GASTO)',
+        movement.description || (movement.category ? `Movimiento de ${movement.category}` : 'Sin descripción'),
+        Number(amount.toFixed(2)),
+        movement.currencyCode || baseCode,
+        Number(equivalent.toFixed(2)),
+        session.status === 'cancelled' ? 'Turno Cancelado' : session.status === 'closed' ? 'Turno Cerrado' : 'Turno Abierto',
       ]);
-    });
-  });
+    }
+  }
 
   return rows;
 }
-
-// SHEET: TRANSFERENCIAS DE INVENTARIO ENTRE SUCURSALES

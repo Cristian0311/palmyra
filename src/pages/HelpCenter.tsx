@@ -7,7 +7,8 @@ import {
 import { Link, useSearchParams } from "react-router-dom";
 import { useStore } from "../store/useStore";
 import { loadSaaSContext } from "../services/saas";
-import { buildWhatsAppUrl, createSupportRequest, loadPlatformSupportSettings, type PlatformSupportSettings } from "../services/platformSupport";
+import { buildWhatsAppUrl, createSupportRequest, DEFAULT_SUPPORT_WHATSAPP, loadPlatformSupportSettings, type PlatformSupportSettings } from "../services/platformSupport";
+import { sendOwnerAlert, supportAlertLines } from "../services/ownerAlerts";
 import { getOfflineQueueCount } from "../services/offlineQueue";
 import Security from "./Security";
 import { PRODUCT_VERSION } from "../lib/productVersion";
@@ -70,7 +71,7 @@ export default function HelpCenter(){
   const fallbackCompanyName = useStore(s=>s.storeConfig.storeName || "Mi empresa");
   const [companyName,setCompanyName] = useState(fallbackCompanyName);
   const [support,setSupport] = useState<PlatformSupportSettings>({
-    whatsapp_number:null, support_email:null, privacy_url:null, facebook_url:null, whatsapp_channel_url:null
+    whatsapp_number:DEFAULT_SUPPORT_WHATSAPP, support_email:null, privacy_url:null, facebook_url:null, whatsapp_channel_url:null
   });
   const [settingsLoaded,setSettingsLoaded] = useState(false);
   const [loading,setLoading] = useState(true);
@@ -166,13 +167,31 @@ export default function HelpCenter(){
         "",
         "Enviado desde el Centro de atención de PALMYRA."
       ].filter(Boolean).join("\n");
-      const url=whatsappUrl ? buildWhatsAppUrl(support.whatsapp_number!, whatsappMessage) : null;
+      // El servidor entrega el aviso al WhatsApp del equipo sin que el cliente
+      // tenga que pulsar «enviar». Si el canal aún no está configurado, se
+      // conserva el envío manual como respaldo para no perder la solicitud.
+      const alert = await sendOwnerAlert("support", supportAlertLines({
+        companyName,
+        requestType: form.requestType,
+        subject: form.subject,
+        message: form.message,
+        contactPhone: form.contactPhone,
+        requestId: saved.request_id,
+        version,
+        online,
+        pendingOperations: pending,
+      }), saved.request_id);
       setForm(prev=>({...prev,subject:"",message:""}));
-      if(url){
-        setSent("Solicitud "+saved.request_id+" registrada. Abriendo WhatsApp para continuar la conversación…");
-        window.location.assign(url);
+      if (alert.sent) {
+        setSent("Solicitud "+saved.request_id+" registrada. El aviso llegó al WhatsApp del equipo; puedes seguir la conversación desde el botón de WhatsApp.");
       } else {
-        setSent("Solicitud "+saved.request_id+" registrada. El equipo la recibirá aunque el canal de WhatsApp todavía no esté configurado; puedes usar el correo de soporte mientras tanto.");
+        const url=whatsappUrl ? buildWhatsAppUrl(support.whatsapp_number!, whatsappMessage) : null;
+        if(url){
+          setSent("Solicitud "+saved.request_id+" registrada. Abriendo WhatsApp para continuar la conversación…");
+          window.location.assign(url);
+        } else {
+          setSent("Solicitud "+saved.request_id+" registrada. El equipo la recibirá aunque el canal de WhatsApp todavía no esté configurado; puedes usar el correo de soporte mientras tanto.");
+        }
       }
     }catch(e:any){
       setError(e?.message || "No se pudo enviar la solicitud.");

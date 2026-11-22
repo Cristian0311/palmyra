@@ -1,94 +1,106 @@
 import type { ExcelExportData } from './types';
+import { completedSales } from './summarySheet';
+
+function formatMoneyLabel(amount: number, currencyCode: string): string {
+  return `${(Number(amount) || 0).toLocaleString('es-CU', { maximumFractionDigits: 2 })} ${currencyCode}`;
+}
 
 export function generateSalesSheet(data: ExcelExportData): any[][] {
-  const { transactions, customers, users, branches, baseCurrency, currencies } = data;
+  const { customers = [], users = [], branches = [], baseCurrency, currencies = [], cashSessions = [] } = data;
+  const baseCode = baseCurrency?.code || 'CUP';
+  const branchById = new Map(branches.map(branch => [branch.id, branch]));
+  const userById = new Map(users.map(user => [user.id, user]));
+  const customerById = new Map(customers.map(customer => [customer.id, customer]));
+  const sessionById = new Map(cashSessions.map(session => [session.id, session]));
+  const rateByCode = new Map(currencies.map(currency => [currency.code, Number(currency.rateToBase) || 1]));
 
   const rows: any[][] = [
     [
-      'ID Ticket',
-      'Fecha',
-      'Hora',
-      'Sucursal',
+      'Ticket',
+      'Fecha y Hora',
+      'Sucursal / Almacén',
       'Turno / Sesión',
       'Vendedor / Cajero',
       'Cliente',
       'Teléfono Cliente',
-      'Cantidad Items',
-      'Subtotal Venta',
-      'Impuestos',
-      'Descuento Venta (' + baseCurrency.code + ')',
-      'Total Venta (' + baseCurrency.code + ')',
-      'Cobrado en Efectivo (' + baseCurrency.code + ')',
-      'Cobrado en Transferencia (' + baseCurrency.code + ')',
-      'Vuelto Entregado (' + baseCurrency.code + ')',
-      'Detalle de Pagos Utilizados',
+      'NCF',
+      'Unidades',
+      `Subtotal (${baseCode})`,
+      `Impuestos (${baseCode})`,
+      `Descuento (${baseCode})`,
+      `Total Venta (${baseCode})`,
+      `Cobrado Efectivo (${baseCode})`,
+      `Cobrado Transferencia (${baseCode})`,
+      `Vuelto Entregado (${baseCode})`,
+      'Detalle de Pagos',
       'Estado',
-      'Notas / Observaciones'
-    ]
+      'Notas / Observaciones',
+    ],
   ];
 
-  transactions.forEach(t => {
-    const branchName = branches.find(b => b.id === t.branchId)?.name || 'Sucursal Principal';
-    const seller = users.find(u => u.id === t.userId)?.name || 'Cajero';
-    const customer = customers.find(c => c.id === t.customerId);
-    const customerName = customer?.name || 'Consumidor Final';
-    const customerPhone = customer?.phone || 'N/A';
+  // Solo ventas completadas vigentes: los ajustes de auditoría y los tickets
+  // anulados viven en sus propias hojas para que los totales reconcilien.
+  const sales = completedSales(data).slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    const tDate = new Date(t.date);
-    const dateStr = tDate.toLocaleDateString('es-CU');
-    const timeStr = tDate.toLocaleTimeString('es-CU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  for (const transaction of sales) {
+    const branchName = branchById.get(transaction.branchId)?.name || 'Sucursal Principal';
+    const seller = userById.get(transaction.userId)?.name || transaction.cashierName || 'Cajero';
+    const customer = transaction.customerId ? customerById.get(transaction.customerId) : undefined;
+    const session = transaction.sessionId ? sessionById.get(transaction.sessionId) : undefined;
+    const sessionLabel = session
+      ? `Turno ${session.turnNumber ? `#${session.turnNumber}` : session.id}`
+      : transaction.sessionId || 'Sin turno';
 
-    // Calculate cash and transfer received in base currency
+    const date = new Date(transaction.date);
+    const safeDate = Number.isNaN(date.getTime()) ? null : date;
+
     let cashPaidInBase = 0;
     let transferPaidInBase = 0;
+    for (const payment of transaction.payments || []) {
+      const recordedRate = Number(payment.exchangeRate);
+      const rate = recordedRate > 0 ? recordedRate : rateByCode.get(payment.currencyCode) || 1;
+      const amountInBase = (Number(payment.amount) || 0) * rate;
+      if (payment.method === 'cash') cashPaidInBase += amountInBase;
+      else if (payment.method === 'transfer') transferPaidInBase += amountInBase;
+    }
 
-    (t.payments || []).forEach(p => {
-      // Prefer the rate saved with this payment: a report for a historical sale
-      // must not change when the company's current currency rate is edited.
-      const recordedRate = Number(p.exchangeRate);
-      const rate = recordedRate > 0 ? recordedRate : (currencies.find(c => c.code === p.currencyCode)?.rateToBase || 1);
-      const amtBase = p.amount * rate;
-      if (p.method === 'cash') cashPaidInBase += amtBase;
-      else if (p.method === 'transfer') transferPaidInBase += amtBase;
-    });
-
-    let changeGivenInBase = t.changeGiven || 0;
-    if (t.changePayments && t.changePayments.length > 0) {
-      changeGivenInBase = t.changePayments.reduce((s, cp) => {
-        const recordedRate = Number(cp.exchangeRate);
-        const rate = recordedRate > 0 ? recordedRate : (currencies.find(c => c.code === cp.currencyCode)?.rateToBase || 1);
-        return s + (cp.amount * rate);
+    let changeGivenInBase = Number(transaction.changeGiven) || 0;
+    if (transaction.changePayments && transaction.changePayments.length > 0) {
+      changeGivenInBase = transaction.changePayments.reduce((sum, change) => {
+        const recordedRate = Number(change.exchangeRate);
+        const rate = recordedRate > 0 ? recordedRate : rateByCode.get(change.currencyCode) || 1;
+        return sum + (Number(change.amount) || 0) * rate;
       }, 0);
     }
 
-    const paymentsSummary = (t.payments || []).map(p => 
-      `${p.method === 'cash' ? 'Efectivo' : 'Transferencia'}: ${p.amount.toLocaleString('es-CU')} ${p.currencyCode}`
-    ).join(' | ');
+    const paymentsSummary = (transaction.payments || [])
+      .map(payment => `${payment.method === 'cash' ? 'Efectivo' : 'Transferencia'}: ${formatMoneyLabel(payment.amount, payment.currencyCode)}`)
+      .join(' | ');
 
-    const itemsCount = t.items.reduce((s, i) => s + (i.quantity || 0), 0);
+    const units = (transaction.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
 
     rows.push([
-      t.id,
-      dateStr,
-      timeStr,
+      transaction.ticketNumber || transaction.id,
+      safeDate,
       branchName,
-      t.sessionId || 'Sin Turno',
+      sessionLabel,
       seller,
-      customerName,
-      customerPhone,
-      itemsCount,
-      Number((t.subtotal || 0).toFixed(2)),
-      Number((t.tax || 0).toFixed(2)),
-      Number((t.discount || 0).toFixed(2)),
-      Number((t.total || 0).toFixed(2)),
+      customer?.name || 'Consumidor Final',
+      customer?.phone || 'N/A',
+      transaction.ncf || 'N/A',
+      units,
+      Number((Number(transaction.subtotal) || 0).toFixed(2)),
+      Number((Number(transaction.tax) || 0).toFixed(2)),
+      Number((Number(transaction.discount) || 0).toFixed(2)),
+      Number((Number(transaction.total) || 0).toFixed(2)),
       Number(cashPaidInBase.toFixed(2)),
       Number(transferPaidInBase.toFixed(2)),
       Number(changeGivenInBase.toFixed(2)),
       paymentsSummary,
-      t.status === 'completed' ? 'Completada' : (t.status === 'refunded' ? 'Reembolsada' : 'Parcial'),
-      (t as any).notes || (t as any).receiptNotes || ''
+      transaction.status === 'completed' ? 'Completada' : transaction.status === 'refunded' ? 'Reembolsada' : 'Parcial',
+      transaction.notes || '',
     ]);
-  });
+  }
 
   return rows;
 }

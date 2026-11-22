@@ -44,6 +44,7 @@ import {
   type PaidPlanCode,
 } from '../config/saas';
 import { buildWhatsAppPaymentUrl, paymentMethodLabel } from '../utils/whatsapp';
+import { planCancelledAlertLines, planRequestAlertLines, sendOwnerAlert } from '../services/ownerAlerts';
 import { cn } from '../lib/utils';
 
 const button = 'min-h-11 rounded-xl px-4 py-2 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600 disabled:opacity-50 disabled:cursor-not-allowed';
@@ -161,9 +162,23 @@ export default function Subscription() {
     setBusy(true); setError(''); setNotice('');
     try {
       const result = await selectSubscriptionPlan(remotePlan.id, paymentMethod, months);
+      let alertSent = false;
+      if (!result?.already_requested) {
+        const amountLabel = result?.quoted_amount == null ? undefined
+          : `${Number(result.quoted_amount).toLocaleString('es-CU', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${result.quoted_currency || 'USD'}`;
+        const alert = await sendOwnerAlert('plan_request', planRequestAlertLines({
+          companyName: data?.ctx?.company?.name || 'Empresa',
+          planName: remotePlan.name,
+          months,
+          paymentMethodLabel: paymentMethodLabel(paymentMethod),
+          amountLabel,
+          requestId: String(result?.request_id || ''),
+        }), String(result?.request_id || ''));
+        alertSent = alert.sent;
+      }
       setNotice(result?.already_requested
         ? 'Esa solicitud ya estaba pendiente. Puedes cancelarla si deseas cambiar de plan o duración.'
-        : `Solicitud ${documentCode('SOL', String(result?.request_id || ''))} registrada. El plan actual y su vencimiento no cambian hasta la aprobación del pago.`);
+        : `Solicitud ${documentCode('SOL', String(result?.request_id || ''))} registrada. El plan actual y su vencimiento no cambian hasta la aprobación del pago.${alertSent ? ' El equipo recibió el aviso por WhatsApp.' : ''}`);
       await refresh();
     } catch (caught: any) { setError(caught?.message || 'No se pudo registrar la solicitud.'); }
     finally { setBusy(false); }
@@ -175,7 +190,12 @@ export default function Subscription() {
     setCancelling(true); setError(''); setNotice('');
     try {
       await cancelMyPlanRequest(data.ctx.companyId);
-      setNotice('Solicitud cancelada. Ya puedes enviar una nueva.');
+      const alert = await sendOwnerAlert('plan_cancelled', planCancelledAlertLines({
+        companyName: data.ctx.company?.name || 'Empresa',
+        planName: request.plan_name || request.plan_code,
+        requestId: request.id,
+      }), request.id);
+      setNotice(`Solicitud cancelada. Ya puedes enviar una nueva.${alert.sent ? ' El equipo recibió el aviso por WhatsApp.' : ''}`);
       await refresh();
     } catch (caught: any) { setError(caught?.message || 'No se pudo cancelar la solicitud.'); }
     finally { setCancelling(false); }

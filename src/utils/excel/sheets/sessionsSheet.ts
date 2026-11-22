@@ -1,84 +1,88 @@
-import type { ExcelExportData } from "../types";
+import type { ExcelExportData } from '../types';
 
 export function generateSessionsSheet(data: ExcelExportData): any[][] {
-  const { cashSessions, branches, transactions, baseCurrency, currencies } = data;
+  const { cashSessions = [], branches = [], transactions = [], baseCurrency, currencies = [] } = data;
+  const baseCode = baseCurrency?.code || 'CUP';
+  const branchById = new Map(branches.map(branch => [branch.id, branch]));
+  const rateByCode = new Map(currencies.map(currency => [currency.code, Number(currency.rateToBase) || 1]));
+
+  const salesBySession = new Map<string, number>();
+  for (const transaction of transactions) {
+    if (transaction?.status !== 'completed' || transaction.deletedAt || String(transaction.notes || '').startsWith('AJUSTE_')) continue;
+    if (!transaction.sessionId) continue;
+    salesBySession.set(transaction.sessionId, (salesBySession.get(transaction.sessionId) || 0) + (Number(transaction.total) || 0));
+  }
 
   const rows: any[][] = [
     [
-      'ID Turno',
-      'Sucursal',
+      'Turno',
+      'Sucursal / Almacén',
       'Cajero Responsable',
-      'Fecha y Hora Apertura',
-      'Fecha y Hora Cierre',
-      'Fondo Inicial (' + baseCurrency.code + ')',
-      'Ventas en Turno (' + baseCurrency.code + ')',
-      'Efectivo Físico Declarado (' + baseCurrency.code + ')',
-      'Saldo Teórico Esperado (' + baseCurrency.code + ')',
-      'Diferencia / Descuadre (' + baseCurrency.code + ')',
+      'Apertura',
+      'Cierre',
+      `Fondo Inicial (${baseCode})`,
+      `Ventas del Turno (${baseCode})`,
+      `Efectivo Físico Declarado (${baseCode})`,
+      `Saldo Teórico Esperado (${baseCode})`,
+      `Diferencia / Descuadre (${baseCode})`,
       'Estado del Arqueo',
       'Estado del Turno',
       'Desglose por Moneda',
-      'Movimientos de Caja (Ingresos/Gastos)'
-    ]
+      'Movimientos de Caja',
+    ],
   ];
 
-  cashSessions.forEach(s => {
-    const branchName = branches.find(b => b.id === s.branchId)?.name || 'Sucursal';
-    const worker = s.workerName || 'Vendedor';
-    const openDate = new Date(s.openedAt).toLocaleString('es-CU');
-    const closeDate = s.closedAt ? new Date(s.closingDate || s.closedAt).toLocaleString('es-CU') : 'En curso (Abierta)';
+  for (const session of cashSessions) {
+    const branchName = branchById.get(session.branchId)?.name || 'Sucursal';
+    const worker = session.workerName || 'Vendedor';
+    const opened = new Date(session.openedAt);
+    const openedDate = Number.isNaN(opened.getTime()) ? null : opened;
+    const closedRaw = session.closingDate || session.closedAt;
+    const closed = closedRaw ? new Date(closedRaw) : null;
+    const closedDate = closed && !Number.isNaN(closed.getTime()) ? closed : null;
 
-    const sessionTx = transactions.filter(t =>
-      t.branchId === s.branchId &&
-      t.sessionId === s.id &&
-      t.status === 'completed' &&
-      !t.deletedAt &&
-      !String(t.notes || '').startsWith('AJUSTE_')
-    );
-    const sessionSales = sessionTx.reduce((sum, tx) => sum + (tx.total || 0), 0);
+    const sessionSales = salesBySession.get(session.id) || 0;
 
-    const declaredBreakdown = (s.closingBalances || []).map(b => 
-      `${b.amount.toLocaleString('es-CU')} ${b.currencyCode}`
-    ).join(' | ') || 'Sin declarar';
+    const declaredBreakdown = (session.closingBalances || [])
+      .map(balance => `${(Number(balance.amount) || 0).toLocaleString('es-CU')} ${balance.currencyCode}`)
+      .join(' | ') || 'Sin declarar';
 
-    const declaredTotalBase = (s.closingBalances || []).reduce((sum, b) => {
-      const rate = currencies.find(c => c.code === b.currencyCode)?.rateToBase || 1;
-      return sum + (b.amount * rate);
+    const declaredTotalBase = (session.closingBalances || []).reduce((sum, balance) => {
+      const recordedRate = Number(balance.exchangeRate);
+      const rate = recordedRate > 0 ? recordedRate : rateByCode.get(balance.currencyCode) || 1;
+      return sum + (Number(balance.amount) || 0) * rate;
     }, 0);
 
-    const movementsText = (s.movements || []).map(m => 
-      `${m.type === 'income' ? '+Ingreso' : '-Egreso'}: ${m.amount} ${m.currencyCode} (${m.description || 'Sin nota'})`
-    ).join('; ') || 'Ninguno';
+    const movementsText = (session.movements || [])
+      .map(movement => `${movement.type === 'income' ? '+Ingreso' : '-Egreso'}: ${movement.amount} ${movement.currencyCode} (${movement.description || 'Sin nota'})`)
+      .join('; ') || 'Ninguno';
 
-    let diff = 0;
-    let diffStatus = 'Normal';
-
-    if (s.expectedBalance !== undefined && s.status === 'closed') {
-      diff = declaredTotalBase - s.expectedBalance;
-      if (Math.abs(diff) < 0.05) diffStatus = 'Cuadrado Perfecto';
-      else if (diff > 0) diffStatus = `Sobrante (+${diff.toFixed(2)})`;
-      else diffStatus = `Faltante (${diff.toFixed(2)})`;
+    let difference = 0;
+    let differenceStatus = 'Normal';
+    if (session.expectedBalance !== undefined && session.status === 'closed') {
+      difference = declaredTotalBase - session.expectedBalance;
+      if (Math.abs(difference) < 0.05) differenceStatus = 'Cuadrado Perfecto';
+      else if (difference > 0) differenceStatus = `Sobrante (+${difference.toFixed(2)})`;
+      else differenceStatus = `Faltante (${difference.toFixed(2)})`;
     }
 
     rows.push([
-      s.id,
+      session.turnNumber ? `#${session.turnNumber}` : session.id,
       branchName,
       worker,
-      openDate,
-      closeDate,
-      Number((s.openingBalance || 0).toFixed(2)),
+      openedDate,
+      closedDate,
+      Number((Number(session.openingBalance) || 0).toFixed(2)),
       Number(sessionSales.toFixed(2)),
-      s.status === 'closed' ? Number(declaredTotalBase.toFixed(2)) : 0,
-      s.expectedBalance !== undefined ? Number(s.expectedBalance.toFixed(2)) : 0,
-      Number(diff.toFixed(2)),
-      diffStatus,
-      s.status === 'cancelled' ? 'CANCELADA' : (s.status === 'closed' ? 'CERRADA' : 'ABIERTA'),
+      session.status === 'closed' ? Number(declaredTotalBase.toFixed(2)) : 0,
+      session.expectedBalance !== undefined ? Number((Number(session.expectedBalance) || 0).toFixed(2)) : 0,
+      Number(difference.toFixed(2)),
+      differenceStatus,
+      session.status === 'cancelled' ? 'CANCELADA' : session.status === 'closed' ? 'CERRADA' : 'ABIERTA',
       declaredBreakdown,
-      movementsText
+      movementsText,
     ]);
-  });
+  }
 
   return rows;
 }
-
-// 5. SHEET: NÓMINA Y LIQUIDACIÓN SALARIAL

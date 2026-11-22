@@ -634,7 +634,12 @@ export default function Dashboard() {
                   }}
                   itemStyle={{ color: 'var(--text-primary)' }}
                   labelStyle={{ color: 'var(--text-muted)', marginBottom: '4px' }}
-                  formatter={(value: number) => [`${baseCurrency.code} ${formatMoney(value)}`, 'Ventas']}
+                  formatter={(value) => {
+                    // recharts entrega ValueType (puede ser string o array);
+                    // sin normalizar, tocar la gráfica rompía el formateo.
+                    const amount = Number(Array.isArray(value) ? value[0] : value);
+                    return [`${baseCurrency.code} ${formatMoney(Number.isFinite(amount) ? amount : 0)}`, 'Ventas'];
+                  }}
                 />
                 <Area type="monotone" dataKey="total" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorTotal)" />
               </AreaChart>

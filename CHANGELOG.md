@@ -29,6 +29,18 @@
 - Menos recálculos por render en Inventario, POS, Reportes y Dashboard; un
   fallo de una página ya no tumba todo el shell («Recargar sección»).
 
+### Estabilidad y avisos al dueño
+- Tocar una gráfica del dashboard ya no muestra «datos locales
+  desactualizados»: un error aislado (observador de tamaño, promesa de fondo)
+  queda registrado sin cerrar la aplicación, y el tooltip de ventas formatea
+  valores inesperados sin romper la página.
+- Las solicitudes del Centro de ayuda (errores, mejoras y otras) y las
+  solicitudes de plan —alta, renovación, extensión o cancelación— se envían
+  automáticamente al WhatsApp oficial con el detalle completo; si el canal
+  automático aún no está configurado, se conserva el envío manual de siempre.
+- El número oficial de atención queda como respaldo cuando la configuración
+  de la plataforma no tiene canal guardado.
+
 ## 1.3.1 — Registro y confirmación de correo sin errores
 
 ### Confirmación por correo

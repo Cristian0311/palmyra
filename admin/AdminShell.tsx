@@ -1,22 +1,44 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Activity, AlertCircle, BarChart3, Building2, ChevronRight, CreditCard, LogOut, Menu, RefreshCw, Settings2, ShieldCheck, TicketCheck } from "lucide-react";
+import { Activity, AlertCircle, BarChart3, Building2, ChevronRight, CreditCard, LogOut, Menu, RefreshCw, Settings2, ShieldCheck, TicketCheck, Users } from "lucide-react";
 import { adminErrorMessage, loadPlatformSnapshot, type PlatformSnapshot } from "./platformAdminApi";
 import { adminSignOut } from "./supabase";
+import AdminNotifications from "./adminNotifications";
 
-type View = "overview" | "companies" | "billing" | "support" | "audit" | "settings";
+type View = "overview" | "companies" | "users" | "billing" | "support" | "audit" | "settings";
 
-const navItems: Array<{ id: View; label: string; icon: typeof BarChart3; hint: string }> = [
-  { id: "overview", label: "Dashboard", icon: BarChart3, hint: "Estado global de PALMYRA" },
-  { id: "companies", label: "Empresas", icon: Building2, hint: "Clientes, planes y estados" },
-  { id: "billing", label: "Planes y pagos", icon: CreditCard, hint: "Solicitudes, aprobaciones y cobros" },
-  { id: "support", label: "Soporte", icon: TicketCheck, hint: "Atención operativa" },
-  { id: "audit", label: "Auditoría", icon: Activity, hint: "Acciones administrativas registradas" },
-  { id: "settings", label: "Configuración", icon: Settings2, hint: "Canales oficiales de atención" },
+type NavItem = { id: View; label: string; icon: typeof BarChart3; hint: string };
+
+const navGroups: Array<{ label: string; items: NavItem[] }> = [
+  {
+    label: "Operación",
+    items: [
+      { id: "overview", label: "Dashboard", icon: BarChart3, hint: "Estado global de PALMYRA" },
+      { id: "companies", label: "Empresas", icon: Building2, hint: "Clientes, planes y estados" },
+      { id: "users", label: "Usuarios", icon: Users, hint: "Directorio de personas" },
+    ],
+  },
+  {
+    label: "Negocio",
+    items: [
+      { id: "billing", label: "Planes y pagos", icon: CreditCard, hint: "Solicitudes, cobros y catálogo" },
+      { id: "support", label: "Soporte", icon: TicketCheck, hint: "Bandeja de atención" },
+    ],
+  },
+  {
+    label: "Sistema",
+    items: [
+      { id: "audit", label: "Auditoría", icon: Activity, hint: "Acciones administrativas" },
+      { id: "settings", label: "Configuración", icon: Settings2, hint: "Canales y sistema" },
+    ],
+  },
 ];
+
+const navItems = navGroups.flatMap((group) => group.items);
 
 const Overview = lazy(() => import("./views/Overview"));
 const CompaniesView = lazy(() => import("./views/CompaniesView"));
+const UsersView = lazy(() => import("./views/UsersView"));
 const BillingView = lazy(() => import("./views/BillingView"));
 const SupportView = lazy(() => import("./views/SupportView"));
 const AuditView = lazy(() => import("./views/AuditView"));
@@ -71,6 +93,7 @@ export default function AdminShell({
 
   const current = navItems.find((item) => item.id === view) || navItems[0];
   const badges: Partial<Record<View, number>> = {
+    companies: snapshot.overview?.companies_suspended || 0,
     billing: snapshot.overview?.pending_plan_requests ?? snapshot.requests.length,
     support: (snapshot.overview?.support_open || 0) + (snapshot.overview?.support_in_progress || 0),
   };
@@ -79,7 +102,7 @@ export default function AdminShell({
     <div className="admin-app">
       <div className={`admin-mobile-drawer ${mobileOpen ? "is-open" : ""}`}>
         <button type="button" aria-label="Cerrar menú" className="admin-mobile-backdrop" onClick={() => setMobileOpen(false)} />
-        <nav className="admin-sidebar admin-sidebar--mobile">
+        <nav className="admin-sidebar admin-sidebar--mobile" aria-label="Navegación administrativa">
           <BrandLockup />
           <NavList current={view} onNavigate={navigate} badges={badges} />
           <div className="admin-sidebar__foot">
@@ -104,18 +127,20 @@ export default function AdminShell({
           <div><div className="admin-breadcrumb">PALMYRA ADMIN <ChevronRight size={13} /> {current.label}</div><span className="admin-topbar-hint">{current.hint}</span></div>
           <div className="admin-topbar__actions">
             <span className="admin-live"><i />Sistema operativo</span>
-            <button type="button" aria-label="Actualizar" onClick={() => void refresh()} disabled={refreshing} className="admin-square-button"><RefreshCw size={15} className={refreshing ? "spin" : ""} /></button>
+            <AdminNotifications />
+            <button type="button" aria-label="Actualizar datos" onClick={() => void refresh()} disabled={refreshing} className="admin-square-button"><RefreshCw size={15} className={refreshing ? "spin" : ""} /></button>
           </div>
         </header>
 
-        {error ? <div className="admin-global-error"><AlertCircle size={16} />{error}<button type="button" onClick={() => setError("")}>×</button></div> : null}
+        {error ? <div className="admin-global-error" role="alert"><AlertCircle size={16} />{error}<button type="button" aria-label="Descartar error" onClick={() => setError("")}>×</button></div> : null}
 
         <main className="admin-page">
           <Suspense fallback={<div className="admin-empty">Cargando área…</div>}>
           <AnimatePresence mode="wait">
             <motion.div key={view} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -6 }} transition={{ duration: 0.18 }}>
-              {view === "overview" ? <Overview snapshot={snapshot} onRefresh={refresh} /> :
+              {view === "overview" ? <Overview snapshot={snapshot} onRefresh={refresh} onNavigate={navigate} /> :
                 view === "companies" ? <CompaniesView companies={snapshot.companies} onChanged={refresh} /> :
+                view === "users" ? <UsersView /> :
                 view === "billing" ? <BillingView onChanged={refresh} /> :
                 view === "support" ? <SupportView onChanged={refresh} /> :
                 view === "audit" ? <AuditView /> :
@@ -141,11 +166,24 @@ function BrandLockup() {
 function NavList({ current, onNavigate, badges }: { current: View; onNavigate: (view: View) => void; badges: Partial<Record<View, number>> }) {
   return (
     <div className="admin-nav">
-      {navItems.map(({ id, label, icon: Icon }) => (
-        <button key={id} type="button" onClick={() => onNavigate(id)} className={current === id ? "is-active" : ""}>
-          <Icon size={16} /><span>{label}</span>
-          {badges[id] ? <b className="admin-nav__badge">{badges[id]}</b> : current === id ? <i /> : null}
-        </button>
+      {navGroups.map((group) => (
+        <div key={group.label} className="admin-nav__group">
+          <p className="admin-nav__group-label">{group.label}</p>
+          {group.items.map(({ id, label, icon: Icon, hint }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => onNavigate(id)}
+              className={current === id ? "is-active" : ""}
+              aria-current={current === id ? "page" : undefined}
+              title={hint}
+            >
+              <Icon size={16} className="admin-nav__icon" />
+              <span className="admin-nav__text"><strong>{label}</strong><small>{hint}</small></span>
+              {badges[id] ? <b className="admin-nav__badge" aria-label={`${badges[id]} pendientes`}>{badges[id]}</b> : null}
+            </button>
+          ))}
+        </div>
       ))}
     </div>
   );

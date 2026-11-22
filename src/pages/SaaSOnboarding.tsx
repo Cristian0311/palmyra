@@ -10,6 +10,8 @@ import {
   isBillingMonths, type AcquisitionPaymentMethod, type BillingMonths, type PlanCode
 } from '../config/saas';
 import { createCompanyAcquisition } from '../services/subscription';
+import { companyCreatedAlertLines, sendOwnerAlert } from '../services/ownerAlerts';
+import { paymentMethodLabel } from '../utils/whatsapp';
 import { loadSaaSContext } from '../services/saas';
 import { loadPlatformSupportSettings, type PlatformSocialLinks } from '../services/platformSupport';
 import { consumePendingOfflineCredential } from '../services/offlineSaaSAuth';
@@ -176,6 +178,12 @@ export default function SaaSOnboarding() {
         sessionStorage.setItem('palmyra_onboarding_completed', '1');
       } catch {}
       // Paid selections remain requests; the company starts on Gratis until manual approval.
+      await sendOwnerAlert('company_new', companyCreatedAlertLines({
+        companyName,
+        planName: getPlan(planCode).name,
+        paymentMethodLabel: paymentMethodLabel(paymentMethod),
+        months,
+      }), result.company_id);
       window.location.replace(result.request_id ? '/subscription' : '/');
     } catch (caught: any) {
       setError(caught?.message || 'No se pudo crear la empresa. Comprueba tu conexión e inténtalo de nuevo.');

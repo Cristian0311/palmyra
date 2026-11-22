@@ -67,6 +67,115 @@ export function isToday(value?: string | null) {
   return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
 }
 
+export function daysUntil(value?: string | null) {
+  if (!value) return null;
+  const target = new Date(value).getTime();
+  if (Number.isNaN(target)) return null;
+  return Math.ceil((target - Date.now()) / 86400000);
+}
+
+export const FEATURE_LABELS: Record<string, string> = {
+  pos: "Punto de venta",
+  cash: "Caja",
+  inventory: "Inventario",
+  offline: "Modo offline",
+  basic_reports: "Reportes básicos",
+  cloud_backup: "Respaldo en la nube",
+  custom_roles: "Roles personalizados",
+  transfers: "Transferencias",
+  purchases: "Compras",
+  inventory_audit: "Auditoría de inventario",
+  advanced_reports: "Reportes avanzados",
+  banking: "Bancos",
+  multi_warehouse: "Multi-almacén",
+  advanced_analytics: "Analítica avanzada",
+  customers_suppliers: "Clientes y proveedores",
+  visual_style: "Estilo visual",
+  excel_exports: "Exportar a Excel",
+  ai_dashboard: "Dashboard IA",
+  warranty_returns: "Devoluciones y garantías",
+  abc_analysis: "Análisis ABC",
+  labels: "Etiquetas",
+  payroll: "Nómina",
+};
+
+export const ACTION_LABELS: Record<string, string> = {
+  "plan_request.created": "Solicitud creada",
+  "plan_request.approved": "Plan aprobado",
+  "plan_request.rejected": "Solicitud rechazada",
+  "plan_request.cancelled": "Solicitud cancelada",
+  "company.status_changed": "Cambio de estado",
+  "company.plan_assigned": "Plan asignado manualmente",
+  "company.profile_updated": "Datos de la empresa",
+  "company.note_updated": "Nota interna",
+  "company.subscription_dates_updated": "Fechas de suscripción",
+  "subscription.created": "Suscripción creada",
+  "subscription.updated": "Suscripción actualizada",
+  "support.status_changed": "Soporte actualizado",
+};
+
+export const DETAIL_LABELS: Record<string, string> = {
+  from: "antes",
+  to: "después",
+  plan_code: "plan",
+  plan_id: "plan",
+  months: "meses",
+  billing_months: "meses",
+  quoted_amount: "cotizado",
+  note: "nota",
+  subject: "asunto",
+  status: "estado",
+  trial_ends_at: "fin de prueba",
+  current_period_end: "vence",
+  grace_ends_at: "fin de gracia",
+  name: "nombre",
+  slug: "identificador",
+  currency: "moneda",
+  length: "caracteres",
+  active: "activa",
+  period_end: "vence",
+  from_plan: "plan anterior",
+  to_plan: "plan nuevo",
+  from_status: "estado anterior",
+  to_status: "estado nuevo",
+};
+
+export function auditDetailText(detail?: Record<string, unknown> | null) {
+  if (!detail) return "";
+  return Object.entries(detail)
+    .filter(([, value]) => value != null && value !== "" && typeof value !== "object")
+    .slice(0, 6)
+    .map(([key, value]) => `${DETAIL_LABELS[key] || key}: ${String(value)}`)
+    .join(" · ");
+}
+
+export function downloadCsv(filename: string, rows: Array<Array<string | number | boolean | null | undefined>>) {
+  if (!rows.length) return;
+  const escape = (cell: string | number | boolean | null | undefined) => {
+    const value = cell == null ? "" : String(cell);
+    return /[",\r\n;]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
+  };
+  const body = rows.map((row) => row.map(escape).join(",")).join("\r\n");
+  const blob = new Blob([`\uFEFF${body}`], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+export function LoadingBlock({ label = "Cargando…" }: { label?: string }) {
+  return (
+    <div className="admin-loading" role="status" aria-live="polite">
+      <span className="admin-loading__bar" aria-hidden="true" />
+      <span>{label}</span>
+    </div>
+  );
+}
+
 export function Button({
   children,
   variant = "secondary",
@@ -74,6 +183,7 @@ export function Button({
   disabled,
   className = "",
   type = "button",
+  ariaLabel,
 }: {
   children: ReactNode;
   variant?: "primary" | "secondary" | "ghost" | "danger";
@@ -81,6 +191,7 @@ export function Button({
   disabled?: boolean;
   className?: string;
   type?: "button" | "submit";
+  ariaLabel?: string;
 }) {
   return (
     <button
@@ -88,6 +199,7 @@ export function Button({
       onClick={onClick}
       disabled={disabled}
       className={`admin-btn admin-btn--${variant} ${className}`}
+      aria-label={ariaLabel}
     >
       {children}
     </button>

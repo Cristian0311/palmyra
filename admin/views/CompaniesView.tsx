@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import {
+  ArrowRight,
+  Building2,
   CalendarClock,
   Check,
   Copy,
   Gauge,
   History,
+  Lock,
+  RefreshCw,
   Search,
   ShieldCheck,
   SlidersHorizontal,
@@ -29,13 +33,33 @@ import {
   type PlatformCompanyDetail,
   type PlatformPlan,
 } from "../platformAdminApi";
-import { Button, EmptyPanel, Modal, StatusBadge, formatDate, formatDay, formatMoney, methodLabel, statusLabel } from "../shared";
+import {
+  ACTION_LABELS,
+  Button,
+  EmptyPanel,
+  FEATURE_LABELS,
+  LoadingBlock,
+  Modal,
+  StatusBadge,
+  auditDetailText,
+  daysUntil,
+  formatDate,
+  formatDay,
+  formatMoney,
+  methodLabel,
+  statusLabel,
+} from "../shared";
 
 const STATUS_OPTIONS: Array<{ value: string; label: string }> = [
   { value: "active", label: "Activa" },
   { value: "pending_payment", label: "Pago pendiente" },
   { value: "setup", label: "En configuración" },
   { value: "suspended", label: "Suspendida" },
+];
+
+const ACCOUNT_STATUS_FILTERS: Array<{ value: string; label: string }> = [
+  { value: "all", label: "Todos los estados" },
+  ...STATUS_OPTIONS,
 ];
 
 const SUBSCRIPTION_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
@@ -47,70 +71,6 @@ const SUBSCRIPTION_STATUS_OPTIONS: Array<{ value: string; label: string }> = [
 ];
 
 const CURRENCIES = ["CUP", "USD", "MLC", "EUR"];
-
-const FEATURE_LABELS: Record<string, string> = {
-  pos: "Punto de venta",
-  cash: "Caja",
-  inventory: "Inventario",
-  offline: "Modo offline",
-  basic_reports: "Reportes básicos",
-  cloud_backup: "Respaldo en la nube",
-  custom_roles: "Roles personalizados",
-  transfers: "Transferencias",
-  purchases: "Compras",
-  inventory_audit: "Auditoría de inventario",
-  advanced_reports: "Reportes avanzados",
-  banking: "Bancos",
-  multi_warehouse: "Multi-almacén",
-  advanced_analytics: "Analítica avanzada",
-  customers_suppliers: "Clientes y proveedores",
-  visual_style: "Estilo visual",
-  excel_exports: "Exportar a Excel",
-  ai_dashboard: "Dashboard IA",
-  warranty_returns: "Devoluciones y garantías",
-  abc_analysis: "Análisis ABC",
-  labels: "Etiquetas",
-};
-
-const ACTION_LABELS: Record<string, string> = {
-  "plan_request.created": "Solicitud creada",
-  "plan_request.approved": "Plan aprobado",
-  "plan_request.rejected": "Solicitud rechazada",
-  "plan_request.cancelled": "Solicitud cancelada",
-  "company.status_changed": "Cambio de estado",
-  "company.plan_assigned": "Plan asignado manualmente",
-  "company.profile_updated": "Datos de la empresa",
-  "company.note_updated": "Nota interna",
-  "company.subscription_dates_updated": "Fechas de suscripción",
-  "subscription.created": "Suscripción creada",
-  "subscription.updated": "Suscripción actualizada",
-  "support.status_changed": "Soporte actualizado",
-};
-
-const DETAIL_LABELS: Record<string, string> = {
-  from: "antes",
-  to: "después",
-  plan_code: "plan",
-  months: "meses",
-  note: "nota",
-  status: "estado",
-  trial_ends_at: "fin de prueba",
-  current_period_end: "vence",
-  grace_ends_at: "fin de gracia",
-  name: "nombre",
-  slug: "identificador",
-  currency: "moneda",
-  length: "caracteres",
-};
-
-function renderDetail(detail?: Record<string, unknown>) {
-  if (!detail) return "";
-  return Object.entries(detail)
-    .filter(([, value]) => value != null && value !== "" && typeof value !== "object")
-    .slice(0, 6)
-    .map(([key, value]) => `${DETAIL_LABELS[key] || key}: ${String(value)}`)
-    .join(" · ");
-}
 
 function toDateTimeInput(value?: string | null) {
   if (!value) return "";
@@ -138,13 +98,6 @@ function addDays(date: Date, days: number) {
   return next;
 }
 
-function daysUntil(value?: string | null) {
-  if (!value) return null;
-  const target = new Date(value).getTime();
-  if (Number.isNaN(target)) return null;
-  return Math.ceil((target - Date.now()) / 86400000);
-}
-
 function usagePercent(used: number, limit: unknown) {
   const max = Number(limit);
   if (!Number.isFinite(max) || max <= 0) return null;
@@ -159,7 +112,16 @@ function planFeatureKeys(plan: PlatformCompanyConsole["plan"]) {
   return Array.isArray(features.features) ? features.features.filter((item): item is string => typeof item === "string") : [];
 }
 
-function CompanyRow({
+function expiryText(company: PlatformCompany) {
+  if (company.plan_code === "free") return "Sin vencimiento";
+  const days = daysUntil(company.period_end);
+  if (days == null) return company.plan_status ? statusLabel(company.plan_status) : "Sin fecha";
+  if (days < 0) return `Vencida hace ${Math.abs(days)} día(s)`;
+  if (days === 0) return "Vence hoy";
+  return `Vence en ${days} día(s)`;
+}
+
+function CompanyListRow({
   company,
   busy,
   onToggle,
@@ -174,6 +136,7 @@ function CompanyRow({
   const free = company.plan_code === "free";
   const days = daysUntil(company.period_end);
   const expiringSoon = !free && days != null && days >= 0 && days <= 7;
+  const overdue = !free && days != null && days < 0;
   const [copied, setCopied] = useState(false);
 
   const copyId = async () => {
@@ -186,25 +149,37 @@ function CompanyRow({
     }
   };
 
+  const openRow = () => onOpen(company);
+
   return (
-    <article className="admin-company-row">
+    <article
+      className={`admin-company-row${suspended ? " is-suspended" : ""}`}
+      role="button"
+      tabIndex={0}
+      aria-label={`Abrir ficha de ${company.name}`}
+      onClick={openRow}
+      onKeyDown={(event) => {
+        if (event.target !== event.currentTarget) return;
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openRow();
+        }
+      }}
+    >
       <div className="admin-company-row__identity">
         <div className="admin-company-avatar">{company.name.slice(0, 1).toUpperCase()}</div>
         <div className="min-w-0">
           <h3>{company.name}</h3>
-          <p>{company.slug || company.id}</p>
+          <p title={company.id}>{company.slug ? `/${company.slug}` : company.id}</p>
         </div>
       </div>
-      <div><StatusBadge status={company.account_status} /></div>
+      <div className="admin-company-row__status"><StatusBadge status={company.account_status} /></div>
       <div className="admin-company-row__plan">
         <span className="admin-plan-chip">{company.plan_name || "Sin plan"}</span>
-        <span className={`admin-company-row__sub${expiringSoon ? " admin-expiry" : ""}`}>
-          {free
-            ? "Sin vencimiento"
-            : company.period_end
-              ? `Vence ${formatDay(company.period_end)}${expiringSoon ? ` · ${days === 0 ? "hoy" : `${days} día(s)`}` : ""}`
-              : statusLabel(company.plan_status)}
+        <span className={`admin-company-row__sub${expiringSoon ? " admin-expiry" : ""}${overdue ? " admin-overdue" : ""}`}>
+          {expiryText(company)}
         </span>
+        {company.plan_status && !free ? <span className="admin-company-row__meta">{statusLabel(company.plan_status)}</span> : null}
       </div>
       <div className="admin-company-row__usage">
         <span><strong>{company.products ?? "—"}</strong>prod.</span>
@@ -212,14 +187,14 @@ function CompanyRow({
         <span><strong>{company.warehouses ?? "—"}</strong>almacenes</span>
       </div>
       <div className="admin-company-row__created">Creada {formatDay(company.created_at)}</div>
-      <div className="admin-company-row__actions">
-        <Button variant="ghost" onClick={() => void copyId()} disabled={busy} className="admin-company-row__copy">
+      <div className="admin-company-row__actions" onClick={(event) => event.stopPropagation()}>
+        <Button variant="ghost" onClick={() => void copyId()} disabled={busy} ariaLabel={`Copiar ID de ${company.name}`}>
           <Copy size={13} />{copied ? "Copiado" : "ID"}
         </Button>
         <Button variant="primary" disabled={busy} onClick={() => onOpen(company)}>
-          <SlidersHorizontal size={13} />Configurar
+          <SlidersHorizontal size={13} />Ficha
         </Button>
-        <Button disabled={busy} variant={suspended ? "secondary" : "secondary"} onClick={() => onToggle(company)}>
+        <Button disabled={busy} variant="secondary" onClick={() => onToggle(company)}>
           {suspended ? <Check size={13} /> : <XCircle size={13} />}
           {suspended ? "Reactivar" : "Suspender"}
         </Button>
@@ -228,18 +203,31 @@ function CompanyRow({
   );
 }
 
-type ConsoleTab = "cuenta" | "plan" | "uso" | "acceso" | "historial";
+type ConsoleTab = "resumen" | "plan" | "uso" | "configuracion" | "historial" | "notas";
+
+const CONSOLE_TABS: Array<[ConsoleTab, string]> = [
+  ["resumen", "Resumen"],
+  ["plan", "Plan y suscripción"],
+  ["uso", "Uso"],
+  ["configuracion", "Configuración"],
+  ["historial", "Historial"],
+  ["notas", "Notas internas"],
+];
 
 function CompanyConsoleModal({
   company,
   plans,
+  plansError,
   onClose,
   onChanged,
+  onReloadPlans,
 }: {
   company: PlatformCompany;
   plans: PlatformPlan[];
+  plansError: string;
   onClose: () => void;
   onChanged: () => Promise<void>;
+  onReloadPlans: () => Promise<void>;
 }) {
   const [consoleData, setConsoleData] = useState<PlatformCompanyConsole | null>(null);
   const [detail, setDetail] = useState<PlatformCompanyDetail | null>(null);
@@ -247,7 +235,7 @@ function CompanyConsoleModal({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
-  const [tab, setTab] = useState<ConsoleTab>("cuenta");
+  const [tab, setTab] = useState<ConsoleTab>("resumen");
 
   const [name, setName] = useState(company.name);
   const [slug, setSlug] = useState(company.slug || "");
@@ -322,6 +310,14 @@ function CompanyConsoleModal({
 
   const saveAccount = async () => {
     if (!consoleData) return;
+    const statusChanged = accountStatus !== (consoleData.company.account_status || "active");
+    if (statusChanged && accountStatus === "suspended") {
+      const confirmed = window.confirm(`¿Suspender ${consoleData.company.name}? Se cortará el acceso de todo el equipo hasta que la reactives.`);
+      if (!confirmed) {
+        setAccountStatus(consoleData.company.account_status || "active");
+        return;
+      }
+    }
     setSavingAccount(true);
     setError("");
     setMessage("");
@@ -331,7 +327,7 @@ function CompanyConsoleModal({
         slug.trim().toLowerCase() !== (consoleData.company.slug || "") ||
         currency !== (consoleData.company.currency || "CUP");
       if (profileChanged) await updateCompanyProfile(company.id, { name, slug, currency });
-      if (accountStatus !== (consoleData.company.account_status || "active")) {
+      if (statusChanged) {
         await changeCompanyStatus(company.id, accountStatus as "active" | "suspended" | "setup" | "pending_payment");
       }
       await afterChange();
@@ -422,17 +418,22 @@ function CompanyConsoleModal({
   };
 
   const daysLeft = daysUntil(subscription?.trial_ends_at || subscription?.current_period_end);
+  const included = new Set(planFeatures);
+  const featureKeys = useMemo(
+    () => [...new Set([...planFeatures, ...Object.keys(FEATURE_LABELS)])],
+    [planFeatures],
+  );
 
   return (
     <Modal
       title={consoleData?.company.name || company.name}
-      description="Cuenta, plan, fechas, uso, acceso y auditoría de esta empresa en un solo lugar."
+      description="Cuenta, plan, fechas, uso, configuración, historial y notas de esta empresa en un solo lugar."
       onClose={onClose}
       wide
     >
-      {loading && !consoleData ? <p className="admin-muted">Cargando configuración de la empresa…</p> : null}
-      {error ? <div className="admin-alert admin-alert--error">{error}</div> : null}
-      {message ? <div className="admin-settings-message admin-settings-message--success">{message}</div> : null}
+      {loading && !consoleData ? <LoadingBlock label="Cargando ficha de la empresa…" /> : null}
+      {error ? <div className="admin-alert admin-alert--error" role="alert">{error}</div> : null}
+      {message ? <div className="admin-settings-message admin-settings-message--success" role="status">{message}</div> : null}
 
       {consoleData ? (
         <>
@@ -452,70 +453,92 @@ function CompanyConsoleModal({
             <span>Moneda {consoleData.company.currency || "CUP"}</span>
           </div>
 
-          <nav className="admin-console-tabs" role="tablist" aria-label="Configuración de la empresa">
-            {([
-              ["cuenta", "Cuenta"],
-              ["plan", "Plan y fechas"],
-              ["uso", "Uso y límites"],
-              ["acceso", "Acceso"],
-              ["historial", "Historial"],
-            ] as Array<[ConsoleTab, string]>).map(([value, label]) => (
+          <nav className="admin-console-tabs" role="tablist" aria-label="Ficha de la empresa">
+            {CONSOLE_TABS.map(([value, label]) => (
               <button key={value} type="button" role="tab" aria-selected={tab === value} className={tab === value ? "is-active" : ""} onClick={() => setTab(value)}>
                 {label}
               </button>
             ))}
           </nav>
 
-          {tab === "cuenta" ? (
+          {tab === "resumen" ? (
             <>
-              <section className="admin-console-section">
-                <div><p className="admin-kicker">IDENTIDAD</p><h3>Datos de la empresa</h3></div>
-                <div className="admin-console-form">
-                  <label>Nombre
-                    <input value={name} maxLength={120} onChange={(event) => setName(event.target.value)} />
-                  </label>
-                  <label>Identificador (slug)
-                    <input value={slug} maxLength={61} onChange={(event) => setSlug(event.target.value.toLowerCase())} placeholder="mi-empresa" />
-                  </label>
-                  <label>Moneda base
-                    <select value={currency} onChange={(event) => setCurrency(event.target.value)}>
-                      {CURRENCIES.map((code) => <option key={code} value={code}>{code}</option>)}
-                    </select>
-                  </label>
-                  <label>Estado de la cuenta
-                    <select value={accountStatus} onChange={(event) => setAccountStatus(event.target.value)}>
-                      {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                    </select>
-                  </label>
-                  <div className="admin-console-form__wide admin-console-actions">
-                    <Button variant="primary" disabled={savingAccount} onClick={() => void saveAccount()}>
-                      {savingAccount ? "Guardando…" : "Guardar cambios"}
-                    </Button>
+              <section className="admin-detail-grid">
+                <div className="admin-detail-block">
+                  <p className="admin-kicker">IDENTIDAD</p>
+                  <h3>{consoleData.company.name}</h3>
+                  <dl className="admin-kv">
+                    <div><dt>Identificador</dt><dd>{consoleData.company.slug ? `/${consoleData.company.slug}` : "Sin slug"}</dd></div>
+                    <div><dt>Moneda base</dt><dd>{consoleData.company.currency || "CUP"}</dd></div>
+                    <div><dt>Estado</dt><dd>{statusLabel(consoleData.company.account_status)}</dd></div>
+                    <div><dt>Creada</dt><dd>{formatDay(consoleData.company.created_at)}</dd></div>
+                    <div className="admin-kv__wide"><dt>ID de empresa</dt><dd className="admin-mono admin-break">{consoleData.company.id}</dd></div>
+                  </dl>
+                </div>
+                <div className="admin-detail-block">
+                  <p className="admin-kicker">PLAN ACTUAL</p>
+                  <h3>{subscription?.plan_name || "Sin plan asignado"}</h3>
+                  <dl className="admin-kv">
+                    <div><dt>Estado</dt><dd>{statusLabel(subscription?.status)}</dd></div>
+                    <div><dt>Precio</dt><dd>{formatMoney(subscription?.monthly_price, "USD")}/mes</dd></div>
+                    <div><dt>Vence</dt><dd>{subscription?.current_period_end ? formatDay(subscription.current_period_end) : "Sin vencimiento"}</dd></div>
+                    <div><dt>Fin de gracia</dt><dd>{subscription?.grace_ends_at ? formatDay(subscription.grace_ends_at) : "—"}</dd></div>
+                  </dl>
+                  <div className="admin-quick-actions admin-quick-actions--tight">
+                    <Button variant="ghost" onClick={() => setTab("plan")}>Gestionar plan <ArrowRight size={13} /></Button>
+                    <Button variant="ghost" onClick={() => setTab("configuracion")}>Editar datos</Button>
                   </div>
                 </div>
-                <p className="admin-form-hint">
-                  Suspender corta el acceso de toda la empresa sin borrar datos; reactivarla lo restaura. La moneda base afecta cómo se muestran los importes en el CRM. Todo queda registrado en Auditoría.
-                </p>
               </section>
 
               <section className="admin-console-section">
-                <div><p className="admin-kicker"><StickyNote size={12} /> NOTAS INTERNAS</p><h3>Solo visibles para el equipo PALMYRA</h3></div>
-                <div className="admin-console-form">
-                  <label className="admin-console-form__wide">Nota
-                    <textarea rows={3} maxLength={2000} value={noteDraft} onChange={(event) => setNoteDraft(event.target.value)} placeholder="Acuerdos de pago, incidencias, contexto de la cuenta…" />
-                  </label>
-                  <div className="admin-console-form__wide admin-console-actions">
-                    <Button disabled={savingNote} onClick={() => void persistNote()}>
-                      {savingNote ? "Guardando…" : "Guardar nota"}
-                    </Button>
+                <div><p className="admin-kicker"><Users size={12} /> EQUIPO</p><h3>Propietario y miembros</h3></div>
+                {consoleData.owner ? (
+                  <div className="admin-owner-card">
+                    <div>
+                      <strong>{consoleData.owner.full_name || consoleData.owner.email || "Propietario"}</strong>
+                      <span>{consoleData.owner.email || "Sin correo"}</span>
+                    </div>
+                    <div><span>{consoleData.owner.phone || "Sin teléfono"}</span></div>
+                    <span className="admin-plan-chip">Propietario</span>
                   </div>
+                ) : <p className="admin-muted">No se encontró un propietario registrado.</p>}
+                <div className="admin-member-list">
+                  {consoleData.members.length === 0 ? <p className="admin-muted">Sin miembros registrados.</p> : consoleData.members.map((member) => (
+                    <div key={member.user_id} className="admin-member-row">
+                      <div>
+                        <strong>{member.full_name || member.email || "Usuario"}</strong>
+                        <span>{member.email || "Sin correo"}</span>
+                      </div>
+                      <div><span>{member.roles || (member.is_owner ? "Propietario" : "Sin rol")}</span></div>
+                      <div><StatusBadge status={member.status} /></div>
+                    </div>
+                  ))}
                 </div>
-                {consoleData.note ? (
-                  <p className="admin-form-hint">
-                    Actualizada {formatDate(consoleData.note.updated_at)} por {consoleData.note.updated_by || "administrador"}.
-                  </p>
-                ) : null}
+                <p className="admin-form-hint">
+                  Las contraseñas y el doble factor se gestionan desde el correo del propietario; el administrador no puede verlas ni cambiarlas.
+                </p>
               </section>
+
+              {detail ? (
+                <section className="admin-console-section">
+                  <div><p className="admin-kicker">RESUMEN DE COBRO</p><h3>Actividad reciente</h3></div>
+                  <div className="admin-detail-grid">
+                    <div className="admin-detail-block">
+                      <p className="admin-kicker">ÚLTIMA SOLICITUD</p>
+                      {detail.requests[0] ? (
+                        <p className="admin-inline-note">{detail.requests[0].plan_name || detail.requests[0].plan_code} · <StatusBadge status={detail.requests[0].status} /> · {formatDate(detail.requests[0].requested_at)}</p>
+                      ) : <p className="admin-muted">Sin solicitudes.</p>}
+                    </div>
+                    <div className="admin-detail-block">
+                      <p className="admin-kicker">ÚLTIMO PAGO</p>
+                      {detail.payments[0] ? (
+                        <p className="admin-inline-note">{formatMoney(detail.payments[0].amount, detail.payments[0].currency)} · {methodLabel(detail.payments[0].payment_method)} · {formatDate(detail.payments[0].paid_at || detail.payments[0].created_at)}</p>
+                      ) : <p className="admin-muted">Sin pagos registrados.</p>}
+                    </div>
+                  </div>
+                </section>
+              ) : null}
             </>
           ) : null}
 
@@ -528,10 +551,10 @@ function CompanyConsoleModal({
                   <dl className="admin-kv">
                     <div><dt>Estado</dt><dd>{statusLabel(subscription?.status)}</dd></div>
                     <div><dt>Precio</dt><dd>{formatMoney(subscription?.monthly_price, "USD")}/mes</dd></div>
+                    <div><dt>Inicio</dt><dd>{subscription?.starts_at ? formatDay(subscription.starts_at) : "—"}</dd></div>
                     <div><dt>Fin de prueba</dt><dd>{subscription?.trial_ends_at ? formatDay(subscription.trial_ends_at) : "—"}</dd></div>
                     <div><dt>Vence</dt><dd>{subscription?.current_period_end ? formatDay(subscription.current_period_end) : "Sin vencimiento"}</dd></div>
                     <div><dt>Fin de gracia</dt><dd>{subscription?.grace_ends_at ? formatDay(subscription.grace_ends_at) : "—"}</dd></div>
-                    <div><dt>Cancelada</dt><dd>{subscription?.cancelled_at ? formatDay(subscription.cancelled_at) : "—"}</dd></div>
                   </dl>
                 </div>
                 <div className="admin-detail-block">
@@ -551,26 +574,33 @@ function CompanyConsoleModal({
                   <div><p className="admin-kicker">ADMINISTRACIÓN</p><h3>Asignar o extender plan</h3></div>
                   <CalendarClock size={17} />
                 </div>
-                <div className="admin-plan-form">
-                  <label>Plan
-                    <select value={planCode} onChange={(event) => setPlanCode(event.target.value)}>
-                      {plans.map((item) => <option key={item.code} value={item.code}>{item.name} · {formatMoney(item.monthly_price, "USD")}/mes</option>)}
-                    </select>
-                  </label>
-                  <label>Duración
-                    <select value={months} disabled={planCode === "free"} onChange={(event) => setMonths(Number(event.target.value))}>
-                      {[1, 3, 6, 12].map((value) => <option key={value} value={value}>{value} mes(es)</option>)}
-                    </select>
-                  </label>
-                  <Button variant="primary" disabled={applyingPlan || plans.length === 0} onClick={() => void applyPlan()}>
-                    {applyingPlan ? "Aplicando…" : "Asignar plan"}
-                  </Button>
-                  <label className="admin-plan-form__note">Nota interna (opcional)
-                    <input value={planNote} onChange={(event) => setPlanNote(event.target.value)} placeholder="Ej.: pago recibido en efectivo" />
-                  </label>
-                </div>
+                {plans.length === 0 ? (
+                  <div className="admin-empty">
+                    <p>{plansError || "No se pudo cargar el catálogo de planes."}</p>
+                    <Button onClick={() => void onReloadPlans()}><RefreshCw size={13} />Reintentar planes</Button>
+                  </div>
+                ) : (
+                  <div className="admin-plan-form">
+                    <label>Plan
+                      <select value={planCode} onChange={(event) => setPlanCode(event.target.value)}>
+                        {plans.map((item) => <option key={item.code} value={item.code}>{item.name} · {formatMoney(item.monthly_price, "USD")}/mes</option>)}
+                      </select>
+                    </label>
+                    <label>Duración
+                      <select value={months} disabled={planCode === "free"} onChange={(event) => setMonths(Number(event.target.value))}>
+                        {[1, 3, 6, 12].map((value) => <option key={value} value={value}>{value} mes(es)</option>)}
+                      </select>
+                    </label>
+                    <Button variant="primary" disabled={applyingPlan || plans.length === 0} onClick={() => void applyPlan()}>
+                      {applyingPlan ? "Aplicando…" : "Asignar plan"}
+                    </Button>
+                    <label className="admin-plan-form__note">Nota interna (opcional)
+                      <input value={planNote} onChange={(event) => setPlanNote(event.target.value)} placeholder="Ej.: pago recibido en efectivo" />
+                    </label>
+                  </div>
+                )}
                 <p className="admin-form-hint">
-                  La asignación manual activa la empresa, extiende desde el vencimiento actual si es el mismo plan y anula facturas abiertas.
+                  La asignación manual activa la empresa, extiende desde el vencimiento actual si es el mismo plan y anula facturas abiertas. Se pedirá confirmación antes de aplicar.
                 </p>
               </section>
 
@@ -642,10 +672,13 @@ function CompanyConsoleModal({
               </section>
 
               <section className="admin-console-section">
-                <div><p className="admin-kicker"><ShieldCheck size={12} /> FUNCIONES INCLUIDAS</p><h3>Lo que este plan habilita</h3></div>
+                <div><p className="admin-kicker"><ShieldCheck size={12} /> FUNCIONES DEL PLAN</p><h3>Incluidas y bloqueadas</h3></div>
                 <div className="admin-feature-list">
-                  {planFeatures.length === 0 ? <p className="admin-muted">Este plan no declara funciones específicas.</p> :
-                    planFeatures.map((key) => <span key={key} className="admin-feature-chip"><Check size={11} />{FEATURE_LABELS[key] || key}</span>)}
+                  {featureKeys.map((key) => included.has(key) ? (
+                    <span key={key} className="admin-feature-chip"><Check size={11} />{FEATURE_LABELS[key] || key}</span>
+                  ) : (
+                    <span key={key} className="admin-feature-chip admin-feature-chip--locked"><Lock size={11} />{FEATURE_LABELS[key] || key}</span>
+                  ))}
                 </div>
                 <p className="admin-form-hint">
                   Reportes: {String(plan?.limits?.reports || "básicos")} · Soporte: {String(plan?.limits?.support || "estándar")} · Almacenamiento: {FEATURE_LABELS[String(plan?.features?.storage_mode || "cloud_backup")] || String(plan?.features?.storage_mode || "cloud_backup")}
@@ -654,37 +687,48 @@ function CompanyConsoleModal({
             </>
           ) : null}
 
-          {tab === "acceso" ? (
-            <section className="admin-console-section">
-              <div><p className="admin-kicker"><Users size={12} /> EQUIPO</p><h3>Propietario y miembros</h3></div>
-              {consoleData.owner ? (
-                <div className="admin-detail-block">
-                  <p className="admin-kicker">PROPIETARIO</p>
-                  <dl className="admin-kv">
-                    <div><dt>Nombre</dt><dd>{consoleData.owner.full_name || "—"}</dd></div>
-                    <div><dt>Correo</dt><dd>{consoleData.owner.email || "—"}</dd></div>
-                    <div><dt>Teléfono</dt><dd>{consoleData.owner.phone || "—"}</dd></div>
-                    <div><dt>Estado</dt><dd>{statusLabel(consoleData.company.account_status)}</dd></div>
-                  </dl>
-                </div>
-              ) : <p className="admin-muted">No se encontró un propietario registrado.</p>}
-
-              <div className="admin-member-list">
-                {consoleData.members.length === 0 ? <p className="admin-muted">Sin miembros registrados.</p> : consoleData.members.map((member) => (
-                  <div key={member.user_id} className="admin-member-row">
-                    <div>
-                      <strong>{member.full_name || member.email || "Usuario"}</strong>
-                      <span>{member.email || "Sin correo"}</span>
-                    </div>
-                    <div><span>{member.roles || (member.is_owner ? "Propietario" : "Sin rol")}</span></div>
-                    <div><StatusBadge status={member.status} /></div>
+          {tab === "configuracion" ? (
+            <>
+              <section className="admin-console-section">
+                <div><p className="admin-kicker"><Building2 size={12} /> DATOS DE LA EMPRESA</p><h3>Identidad y moneda</h3></div>
+                <div className="admin-console-form">
+                  <label>Nombre
+                    <input value={name} maxLength={120} onChange={(event) => setName(event.target.value)} />
+                  </label>
+                  <label>Identificador (slug)
+                    <input value={slug} maxLength={61} onChange={(event) => setSlug(event.target.value.toLowerCase())} placeholder="mi-empresa" />
+                  </label>
+                  <label>Moneda base
+                    <select value={currency} onChange={(event) => setCurrency(event.target.value)}>
+                      {CURRENCIES.map((code) => <option key={code} value={code}>{code}</option>)}
+                    </select>
+                  </label>
+                  <label>Estado de la cuenta
+                    <select value={accountStatus} onChange={(event) => setAccountStatus(event.target.value)}>
+                      {STATUS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </label>
+                  <div className="admin-console-form__wide admin-console-actions">
+                    <Button variant="primary" disabled={savingAccount} onClick={() => void saveAccount()}>
+                      {savingAccount ? "Guardando…" : "Guardar cambios"}
+                    </Button>
                   </div>
-                ))}
-              </div>
-              <p className="admin-form-hint">
-                Las contraseñas y el doble factor se gestionan desde el correo del propietario; el administrador no puede verlas ni cambiarlas. Suspender la cuenta corta el acceso de todo el equipo.
-              </p>
-            </section>
+                </div>
+                <p className="admin-form-hint">
+                  Suspender corta el acceso de toda la empresa sin borrar datos; reactivarla lo restaura. La moneda base afecta cómo se muestran los importes en el CRM. Todo queda registrado en Auditoría.
+                </p>
+              </section>
+
+              <section className="admin-console-section">
+                <div><p className="admin-kicker"><ShieldCheck size={12} /> ACCESO</p><h3>Estado y equipo</h3></div>
+                <dl className="admin-kv admin-kv--boxed">
+                  <div><dt>Cuenta</dt><dd><StatusBadge status={consoleData.company.account_status} /></dd></div>
+                  <div><dt>Miembros</dt><dd>{consoleData.members.length}</dd></div>
+                  <div><dt>Propietario</dt><dd>{consoleData.owner?.email || "—"}</dd></div>
+                  <div><dt>Moneda</dt><dd>{consoleData.company.currency || "CUP"}</dd></div>
+                </dl>
+              </section>
+            </>
           ) : null}
 
           {tab === "historial" ? (
@@ -737,7 +781,7 @@ function CompanyConsoleModal({
                         <div className="admin-audit-main">
                           <strong>{ACTION_LABELS[entry.action] || entry.action}</strong>
                           <span>{formatDate(entry.created_at)}</span>
-                          {renderDetail(entry.detail) ? <span className="admin-audit-detail">{renderDetail(entry.detail)}</span> : null}
+                          {auditDetailText(entry.detail) ? <span className="admin-audit-detail">{auditDetailText(entry.detail)}</span> : null}
                         </div>
                         <span className="admin-audit-actor">{entry.actor_email || "Sistema"}</span>
                       </article>
@@ -746,6 +790,27 @@ function CompanyConsoleModal({
                 )}
               </section>
             </>
+          ) : null}
+
+          {tab === "notas" ? (
+            <section className="admin-console-section">
+              <div><p className="admin-kicker"><StickyNote size={12} /> NOTAS INTERNAS</p><h3>Solo visibles para el equipo PALMYRA</h3></div>
+              <div className="admin-console-form">
+                <label className="admin-console-form__wide">Nota
+                  <textarea rows={6} maxLength={2000} value={noteDraft} onChange={(event) => setNoteDraft(event.target.value)} placeholder="Acuerdos de pago, incidencias, contexto de la cuenta…" />
+                </label>
+                <div className="admin-console-form__wide admin-console-actions">
+                  <Button disabled={savingNote} onClick={() => void persistNote()}>
+                    {savingNote ? "Guardando…" : "Guardar nota"}
+                  </Button>
+                </div>
+              </div>
+              {consoleData.note ? (
+                <p className="admin-form-hint">
+                  Actualizada {formatDate(consoleData.note.updated_at)} por {consoleData.note.updated_by || "administrador"}.
+                </p>
+              ) : <p className="admin-form-hint">Aún no hay notas internas para esta empresa.</p>}
+            </section>
           ) : null}
         </>
       ) : null}
@@ -768,6 +833,7 @@ export default function CompaniesView({
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<PlatformCompany | null>(null);
   const [plans, setPlans] = useState<PlatformPlan[]>([]);
+  const [plansError, setPlansError] = useState("");
 
   const planCodes = useMemo(() => {
     const codes = new Set<string>();
@@ -794,6 +860,14 @@ export default function CompaniesView({
     });
   }, [companies, query, filter, planFilter, sort]);
 
+  const hasFilters = Boolean(query.trim()) || filter !== "all" || planFilter !== "all";
+
+  const clearFilters = () => {
+    setQuery("");
+    setFilter("all");
+    setPlanFilter("all");
+  };
+
   const toggle = async (company: PlatformCompany) => {
     const next = company.account_status === "suspended" ? "active" : "suspended";
     if (!window.confirm(next === "suspended" ? `¿Suspender ${company.name}? Se cortará el acceso de todo el equipo.` : `¿Reactivar ${company.name}?`)) return;
@@ -809,15 +883,23 @@ export default function CompaniesView({
     }
   };
 
-  const open = async (company: PlatformCompany) => {
-    setSelected(company);
-    setError("");
-    if (plans.length) return;
+  const loadPlans = async () => {
+    setPlansError("");
     try {
       setPlans(await loadPlatformPlans());
     } catch (err) {
-      setError(adminErrorMessage(err));
+      setPlansError(adminErrorMessage(err));
     }
+  };
+
+  const open = (company: PlatformCompany) => {
+    setSelected(company);
+    setError("");
+    if (!plans.length) void loadPlans();
+  };
+
+  const reloadPlans = async () => {
+    await loadPlans();
   };
 
   return (
@@ -825,15 +907,26 @@ export default function CompaniesView({
       <section className="admin-page-head">
         <div>
           <p className="admin-eyebrow">EMPRESAS</p>
-          <h1>Todos tus clientes, sin perder el contexto.</h1>
-          <p>Lista operativa de cada cuenta. Abre <b>Configurar</b> para administrar datos, plan, fechas, límites, acceso e historial sin tocar su operación interna.</p>
+          <h1>Todos tus clientes, en una lista operativa.</h1>
+          <p>Una fila por empresa con plan, vencimiento, estado y consumo. Abre <b>Ficha</b> para administrar datos, plan, fechas, límites, acceso, historial y notas sin tocar su operación interna.</p>
         </div>
-        <div className="admin-page-count"><strong>{filtered.length}</strong><span>visibles</span></div>
+        <div className="admin-page-count"><strong>{filtered.length}</strong><span>de {companies.length} empresas</span></div>
       </section>
 
       <section className="admin-toolbar admin-toolbar--companies">
-        <div className="admin-search"><Search size={16} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar empresa, slug, plan o ID…" /></div>
+        <div className="admin-search">
+          <Search size={16} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar por nombre, slug, plan o ID…"
+            aria-label="Buscar empresas"
+          />
+        </div>
         <div className="admin-toolbar__extra">
+          <select value={filter} onChange={(event) => setFilter(event.target.value)} aria-label="Filtrar por estado de cuenta">
+            {ACCOUNT_STATUS_FILTERS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
           <select value={planFilter} onChange={(event) => setPlanFilter(event.target.value)} aria-label="Filtrar por plan">
             <option value="all">Todos los planes</option>
             {planCodes.map((code) => <option key={code} value={code}>{statusLabel(code)}</option>)}
@@ -843,30 +936,45 @@ export default function CompaniesView({
             <option value="created">Más recientes</option>
             <option value="expiry">Próximas a vencer</option>
           </select>
-        </div>
-        <div className="admin-filter-row admin-toolbar__span">
-          {[
-            ["all", "Todas"],
-            ["active", "Activas"],
-            ["suspended", "Suspendidas"],
-            ["pending_payment", "Pago pendiente"],
-            ["setup", "Configuración"],
-          ].map(([value, label]) => (
-            <button key={value} type="button" onClick={() => setFilter(value)} className={filter === value ? "active" : ""}>{label}</button>
-          ))}
+          {hasFilters ? <button type="button" className="admin-clear-filters" onClick={clearFilters}>Limpiar filtros</button> : null}
         </div>
       </section>
 
-      {error ? <div className="admin-global-error">{error}<button type="button" onClick={() => setError("")}>×</button></div> : null}
+      {error ? (
+        <div className="admin-global-error" role="alert">
+          {error}
+          <button type="button" aria-label="Descartar error" onClick={() => setError("")}>×</button>
+        </div>
+      ) : null}
 
       <section className="admin-company-list">
+        {filtered.length > 0 ? (
+          <div className="admin-company-list__head" aria-hidden="true">
+            <span>Empresa</span><span>Cuenta</span><span>Plan y vencimiento</span><span>Uso</span><span>Creada</span><span>Acciones</span>
+          </div>
+        ) : null}
         {filtered.map((company) => (
-          <CompanyRow key={company.id} company={company} busy={busyId === company.id} onToggle={(item) => void toggle(item)} onOpen={(item) => void open(item)} />
+          <CompanyListRow key={company.id} company={company} busy={busyId === company.id} onToggle={(item) => void toggle(item)} onOpen={open} />
         ))}
-        {filtered.length === 0 ? <EmptyPanel title="No encontramos esa empresa" description="Prueba con otro nombre, plan, slug o estado." /> : null}
+        {filtered.length === 0 ? (
+          <EmptyPanel
+            title={companies.length === 0 ? "Todavía no hay empresas registradas" : "No encontramos esa empresa"}
+            description={companies.length === 0 ? "Cuando una empresa se registre aparecerá aquí con su plan y estado." : "Prueba con otro nombre, slug, plan o estado, o limpia los filtros."}
+            action={hasFilters ? <Button onClick={clearFilters}>Limpiar filtros</Button> : undefined}
+          />
+        ) : null}
       </section>
 
-      {selected ? <CompanyConsoleModal company={selected} plans={plans} onClose={() => setSelected(null)} onChanged={onChanged} /> : null}
+      {selected ? (
+        <CompanyConsoleModal
+          company={selected}
+          plans={plans}
+          plansError={plansError}
+          onClose={() => setSelected(null)}
+          onChanged={onChanged}
+          onReloadPlans={reloadPlans}
+        />
+      ) : null}
     </div>
   );
 }

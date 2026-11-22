@@ -14,7 +14,6 @@ import { PrintLabels } from "../components/PrintLabels";
 import { ABCAnalysis } from "../components/ABCAnalysis";
 import { RestockAlerts } from "../components/RestockAlerts";
 import { useBarcodeScanner } from "../hooks/useBarcodeScanner";
-import * as XLSX from 'xlsx';
 import { loadSaaSContext } from '../services/saas';
 import { pushProductToSupabase } from '../services/supabaseSync';
 import { canUsePlanFeature } from '../services/planAccess';
@@ -26,8 +25,8 @@ export default function Inventory() {
     products, inventory, branches, addProduct, updateProduct, 
     setInventoryQuantity, deleteProduct, deleteCategory,
     categories, batchDeleteProducts, batchUpdateProducts, getBaseCurrency,
-    currentBranchId, addNotification, users, currentUser
-  } = useStore(useShallow((state) => ({ products: state.products, inventory: state.inventory, branches: state.branches, addProduct: state.addProduct, updateProduct: state.updateProduct, setInventoryQuantity: state.setInventoryQuantity, deleteProduct: state.deleteProduct, deleteCategory: state.deleteCategory, categories: state.categories, batchDeleteProducts: state.batchDeleteProducts, batchUpdateProducts: state.batchUpdateProducts, getBaseCurrency: state.getBaseCurrency, currentBranchId: state.currentBranchId, addNotification: state.addNotification, users: state.users, currentUser: state.currentUser })));
+    currentBranchId, addNotification, users, currentUser, receiptConfig
+  } = useStore(useShallow((state) => ({ products: state.products, inventory: state.inventory, branches: state.branches, addProduct: state.addProduct, updateProduct: state.updateProduct, setInventoryQuantity: state.setInventoryQuantity, deleteProduct: state.deleteProduct, deleteCategory: state.deleteCategory, categories: state.categories, batchDeleteProducts: state.batchDeleteProducts, batchUpdateProducts: state.batchUpdateProducts, getBaseCurrency: state.getBaseCurrency, currentBranchId: state.currentBranchId, addNotification: state.addNotification, users: state.users, currentUser: state.currentUser, receiptConfig: state.receiptConfig })));
   const baseCurrency = getBaseCurrency();
 
   // Un empleado solo opera sobre sus almacenes autorizados; el administrador ve todos.
@@ -603,12 +602,13 @@ export default function Inventory() {
   };
 
   const exportToCSV = () => {
-    const csvContent = buildInventoryCsv(inventoryView, categories);
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    // Se exporta el inventario filtrado completo, no solo la página visible.
+    const csvContent = buildInventoryCsv(inventoryData.full, categories);
+    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement("a");
     const url = URL.createObjectURL(blob);
     link.setAttribute("href", url);
-    link.setAttribute("download", `inventario_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `PALMYRA_Inventario_${new Date().toISOString().split('T')[0]}.csv`);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
@@ -616,22 +616,35 @@ export default function Inventory() {
     URL.revokeObjectURL(url);
   };
 
-  const exportToExcel = () => {
-    const rows = inventoryView.map((item: any) => ({
-      Producto: item.name || '',
-      SKU: item.sku || '',
-      'Código de barras': item.barcode || '',
-      Categoría: categoryById.get(item.categoryId)?.name || '',
-      'Precio de costo': Number(item.costPrice || 0),
-      'Precio de venta': Number(item.price || 0),
-      'Stock actual': Number(item.totalStock ?? item.quantity ?? 0),
-      'Stock mínimo': Number(item.minQuantity || 0),
-      'Valor de inventario': Number(item.costPrice || 0) * Number(item.totalStock ?? item.quantity ?? 0),
-    }));
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(rows);
-    XLSX.utils.book_append_sheet(wb, ws, 'Inventario');
-    XLSX.writeFile(wb, `Inventario_PALMYRA_${new Date().toISOString().split('T')[0]}.xlsx`);
+  const exportToExcel = async () => {
+    const rows = inventoryData.full.map((item: any) => {
+      const levels = Array.isArray(item.levels) ? item.levels : [];
+      const minFromLevels = levels.reduce((min: number, level: any) => Math.max(min, Number(level.minQuantity) || 0), 0);
+      return {
+        id: item.id,
+        name: item.name || '',
+        sku: item.sku || '',
+        barcode: item.barcode || '',
+        categoryId: item.categoryId,
+        categoryName: categoryById.get(item.categoryId)?.name || 'Sin categoría',
+        unit: item.unit || 'uds',
+        price: Number(item.price) || 0,
+        costPrice: Number(item.costPrice) || 0,
+        totalStock: Number(item.totalStock ?? item.quantity ?? 0),
+        minQuantity: minFromLevels || Number(item.minStockAlert) || 0,
+        status: item.status,
+      };
+    });
+    try {
+      const { exportInventoryToExcel } = await import('../utils/excelExport');
+      await exportInventoryToExcel(rows, {
+        businessName: receiptConfig?.businessName || 'PALMYRA',
+        currencyCode: baseCurrency.code,
+      });
+    } catch (error) {
+      console.error('[Inventory] No se pudo exportar el inventario a Excel:', error);
+      addNotification('No se pudo generar el Excel de inventario. Intenta nuevamente.', 'error');
+    }
   };
 
   const canExcel = canUsePlanFeature(planCode, 'excel_exports');

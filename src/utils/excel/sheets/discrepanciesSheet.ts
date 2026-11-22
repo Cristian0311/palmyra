@@ -1,160 +1,178 @@
 import type { ExcelExportData } from "../types";
 
+interface DiscrepancyDetail {
+  currencyCode: string;
+  method: 'cash' | 'transfer';
+  expected: number;
+  actual: number;
+  difference: number;
+}
+
 export function generateDiscrepanciesSheet(data: ExcelExportData): any[][] {
-  const { cashSessions, transactions, branches, currencies, baseCurrency } = data;
+  const { cashSessions = [], transactions = [], branches = [], baseCurrency, currencies = [] } = data;
+  const baseCode = baseCurrency?.code || 'CUP';
+  const branchById = new Map(branches.map(branch => [branch.id, branch]));
+  const rateByCode = new Map<string, number>(currencies.map(currency => [currency.code, Number(currency.rateToBase) || 1]));
+  const rateFor = (code: string): number => (code === baseCode ? 1 : rateByCode.get(code) || 1);
+
+  const transactionsBySession = new Map<string, typeof transactions>();
+  for (const transaction of transactions) {
+    if (transaction?.status !== 'completed' || transaction.deletedAt || String(transaction.notes || '').startsWith('AJUSTE_')) continue;
+    if (!transaction.sessionId) continue;
+    const bucket = transactionsBySession.get(transaction.sessionId);
+    if (bucket) bucket.push(transaction);
+    else transactionsBySession.set(transaction.sessionId, [transaction]);
+  }
 
   const rows: any[][] = [
     [
-      'ID Turno',
-      'Sucursal',
+      'Turno',
+      'Sucursal / Almacén',
       'Cajero / Responsable',
-      'Fecha Cierre',
+      'Fecha de Cierre',
       'Tipo de Cierre',
       'Estado Auditoría',
       'Moneda',
-      'Método Pago',
+      'Método de Pago',
       'Monto Teórico Esperado',
       'Monto Físico Declarado',
       'Diferencia / Descuadre',
+      `Diferencia Equivalente Base (${baseCode})`,
       'Tipo Descuadre',
-      'Deducción Salarial Aplicada (' + baseCurrency.code + ')',
+      `Deducción Salarial (${baseCode})`,
       'Productos Coincidentes Detectados',
-      'Diagnóstico / Notas Operativas'
-    ]
+      'Diagnóstico / Notas Operativas',
+    ],
   ];
 
-  cashSessions.forEach(session => {
+  for (const session of cashSessions) {
     const isForced = Boolean(session.isForcedClose);
-    let details: { currencyCode: string; method: 'cash' | 'transfer'; expected: number; actual: number; difference: number }[] = [...(session.discrepancyDetails || [])];
+    const details: DiscrepancyDetail[] = [...(session.discrepancyDetails || [])];
 
-    // If details are empty but session is closed and has closingBalances, compute expected on the fly
     if (details.length === 0 && session.status === 'closed' && session.closingBalances && session.closingBalances.length > 0) {
-      const openDate = new Date(session.openedAt).getTime();
-      const closeDate = session.closedAt ? new Date(session.closedAt).getTime() : Date.now();
-      const sessionTx = (transactions || []).filter(t =>
-        t.branchId === session.branchId &&
-        t.sessionId === session.id &&
-        t.status === 'completed' &&
-        !t.deletedAt &&
-        !String(t.notes || '').startsWith('AJUSTE_')
-      );
+      const sessionTransactions = transactionsBySession.get(session.id) || [];
+      const expected: { currencyCode: string; method: 'cash' | 'transfer'; amount: number }[] = [
+        { currencyCode: baseCode, method: 'cash', amount: Number(session.openingBalance) || 0 },
+      ];
 
-      const expected: { currencyCode: string; method: 'cash' | 'transfer'; amount: number }[] = [];
-      const baseCode = baseCurrency?.code || 'CUP';
-      expected.push({ currencyCode: baseCode, method: 'cash', amount: session.openingBalance || 0 });
-
-      sessionTx.forEach(tx => {
-        (tx.payments || []).forEach(p => {
-          const ex = expected.find(e => e.currencyCode === p.currencyCode && e.method === p.method);
-          if (ex) ex.amount += p.amount;
-          else expected.push({ currencyCode: p.currencyCode, method: p.method, amount: p.amount });
-        });
-        if (tx.changePayments && tx.changePayments.length > 0) {
-          tx.changePayments.forEach(cp => {
-            const ex = expected.find(e => e.currencyCode === cp.currencyCode && e.method === cp.method);
-            if (ex) ex.amount -= cp.amount;
-            else expected.push({ currencyCode: cp.currencyCode, method: cp.method, amount: -cp.amount });
-          });
-        } else if (tx.changeGiven && tx.changeGiven > 0) {
-          // The legacy field is a base-currency cash return when there are no
-          // detailed per-currency change entries.
-          const ex = expected.find(e => e.currencyCode === baseCode && e.method === 'cash');
-          if (ex) ex.amount -= tx.changeGiven;
-          else expected.push({ currencyCode: baseCode, method: 'cash', amount: -tx.changeGiven });
+      for (const transaction of sessionTransactions) {
+        for (const payment of transaction.payments || []) {
+          const entry = expected.find(item => item.currencyCode === payment.currencyCode && item.method === payment.method);
+          if (entry) entry.amount += Number(payment.amount) || 0;
+          else expected.push({ currencyCode: payment.currencyCode, method: payment.method, amount: Number(payment.amount) || 0 });
         }
-      });
-
-      (session.movements || []).forEach(m => {
-        const ex = expected.find(e => e.currencyCode === m.currencyCode && e.method === 'cash');
-        if (ex) ex.amount += (m.type === 'income' ? m.amount : -m.amount);
-        else expected.push({ currencyCode: m.currencyCode, method: 'cash', amount: m.type === 'income' ? m.amount : -m.amount });
-      });
-
-      expected.forEach(eb => {
-        const act = session.closingBalances?.find(cb => cb.currencyCode === eb.currencyCode && cb.method === eb.method)?.amount || 0;
-        const diff = act - eb.amount;
-        if (Math.abs(diff) > 0.01) {
-          details.push({
-            currencyCode: eb.currencyCode,
-            method: eb.method,
-            expected: eb.amount,
-            actual: act,
-            difference: diff
-          });
-        }
-      });
-
-      session.closingBalances.forEach(cb => {
-        if (!expected.some(eb => eb.currencyCode === cb.currencyCode && eb.method === cb.method)) {
-          if (cb.amount > 0.01) {
-            details.push({
-              currencyCode: cb.currencyCode,
-              method: cb.method as any,
-              expected: 0,
-              actual: cb.amount,
-              difference: cb.amount
-            });
+        if (transaction.changePayments && transaction.changePayments.length > 0) {
+          for (const change of transaction.changePayments) {
+            const entry = expected.find(item => item.currencyCode === change.currencyCode && item.method === change.method);
+            if (entry) entry.amount -= Number(change.amount) || 0;
+            else expected.push({ currencyCode: change.currencyCode, method: change.method, amount: -(Number(change.amount) || 0) });
           }
+        } else if (transaction.changeGiven && transaction.changeGiven > 0) {
+          const entry = expected.find(item => item.currencyCode === baseCode && item.method === 'cash');
+          if (entry) entry.amount -= transaction.changeGiven;
+          else expected.push({ currencyCode: baseCode, method: 'cash', amount: -transaction.changeGiven });
         }
-      });
+      }
+
+      for (const movement of session.movements || []) {
+        const signed = movement.type === 'income' ? Number(movement.amount) || 0 : -(Number(movement.amount) || 0);
+        const entry = expected.find(item => item.currencyCode === movement.currencyCode && item.method === 'cash');
+        if (entry) entry.amount += signed;
+        else expected.push({ currencyCode: movement.currencyCode, method: 'cash', amount: signed });
+      }
+
+      for (const entry of expected) {
+        const actual = Number(
+          session.closingBalances.find(balance => balance.currencyCode === entry.currencyCode && balance.method === entry.method)?.amount || 0,
+        );
+        const difference = actual - entry.amount;
+        if (Math.abs(difference) > 0.01) {
+          details.push({ currencyCode: entry.currencyCode, method: entry.method, expected: entry.amount, actual, difference });
+        }
+      }
+
+      for (const balance of session.closingBalances) {
+        if (expected.some(entry => entry.currencyCode === balance.currencyCode && entry.method === balance.method)) continue;
+        if ((Number(balance.amount) || 0) > 0.01) {
+          details.push({
+            currencyCode: balance.currencyCode,
+            method: balance.method,
+            expected: 0,
+            actual: Number(balance.amount) || 0,
+            difference: Number(balance.amount) || 0,
+          });
+        }
+      }
     }
 
     const hasDiscrepancy = Boolean(session.hasDiscrepancy) || details.length > 0;
-    if (!isForced && !hasDiscrepancy) return;
+    if (!isForced && !hasDiscrepancy) continue;
 
-    const branchName = branches.find(b => b.id === session.branchId)?.name || 'Sucursal';
+    const branchName = branchById.get(session.branchId)?.name || 'Sucursal';
     const workerName = session.workerName || 'Cajero';
-    const closeDate = session.closingDate || session.closedAt || session.openedAt;
-    const dateStr = new Date(closeDate).toLocaleString('es-CU');
-    const auditStatus = session.auditStatus === 'resolved' ? 'Resuelto' : session.auditStatus === 'reviewed' ? 'Auditado' : 'Pendiente Revisión';
-    const deduction = session.discrepancyDeductionApplied || 0;
+    const closeDateRaw = session.closingDate || session.closedAt || session.openedAt;
+    const closeDate = closeDateRaw ? new Date(closeDateRaw) : null;
+    const auditStatus = session.auditStatus === 'resolved' ? 'Resuelto' : session.auditStatus === 'reviewed' ? 'Auditado' : 'Pendiente de Revisión';
+    const deduction = Number(session.discrepancyDeductionApplied) || 0;
+    const turnLabel = session.turnNumber ? `#${session.turnNumber}` : session.id;
 
     if (details.length > 0) {
-      details.forEach(d => {
-        const matchingForCurrency = session.matchingProductsAnalysis?.find(m => m.currencyCode === d.currencyCode);
-        const matchStr = matchingForCurrency?.matchedProducts?.map(p => `${p.name} ($${p.price})`).join('; ') || 'Ninguno';
-        const aiNote = session.aiDiagnostic?.analysis || session.notes || session.auditNotes || (isForced ? `Cierre forzado: ${session.forcedCloseReason || 'Diferencia registrada'}` : 'Cierre con descuadre registrado');
+      details.forEach((detail, detailIndex) => {
+        const matchingForCurrency = session.matchingProductsAnalysis?.find(match => match.currencyCode === detail.currencyCode);
+        const matchText = matchingForCurrency?.matchedProducts
+          ?.map(product => `${product.name} (${baseCode} ${Number(product.price).toFixed(2)})`)
+          .join('; ') || 'Ninguno';
+        const aiNote =
+          session.aiDiagnostic?.analysis ||
+          session.auditNotes ||
+          session.notes ||
+          (isForced ? `Cierre forzado: ${session.forcedCloseReason || 'Diferencia registrada'}` : 'Cierre con descuadre registrado');
+
+        const difference = Number(detail.difference) || 0;
+        const baseDifference = Number((difference * rateFor(detail.currencyCode)).toFixed(2));
 
         rows.push([
-          session.id,
+          turnLabel,
           branchName,
           workerName,
-          dateStr,
+          closeDate && !Number.isNaN(closeDate.getTime()) ? closeDate : null,
           isForced ? 'Cierre Forzado' : 'Cierre Normal',
           auditStatus,
-          d.currencyCode,
-          d.method === 'cash' ? 'Efectivo' : 'Transferencia',
-          Number(d.expected.toFixed(2)),
-          Number(d.actual.toFixed(2)),
-          Number(d.difference.toFixed(2)),
-          d.difference < 0 ? 'FALTANTE' : 'SOBRANTE',
-          Number(deduction.toFixed(2)),
-          matchStr,
-          aiNote
+          detail.currencyCode,
+          detail.method === 'cash' ? 'Efectivo' : 'Transferencia',
+          Number((Number(detail.expected) || 0).toFixed(2)),
+          Number((Number(detail.actual) || 0).toFixed(2)),
+          Number(difference.toFixed(2)),
+          baseDifference,
+          detail.difference < 0 ? 'FALTANTE' : detail.difference > 0 ? 'SOBRANTE' : 'CUADRADO',
+          // La deducción pertenece al turno, no a cada moneda: se declara una
+          // sola vez para que la fila de totales no la multiplique.
+          detailIndex === 0 ? Number(deduction.toFixed(2)) : 0,
+          matchText,
+          aiNote,
         ]);
       });
     } else {
       rows.push([
-        session.id,
+        turnLabel,
         branchName,
         workerName,
-        dateStr,
+        closeDate && !Number.isNaN(closeDate.getTime()) ? closeDate : null,
         isForced ? 'Cierre Forzado' : 'Cierre Normal',
         auditStatus,
-        baseCurrency.code,
+        baseCode,
         'General',
+        0,
         0,
         0,
         0,
         'DESCUADRE REPORTADO',
         Number(deduction.toFixed(2)),
         'N/A',
-        session.forcedCloseReason || session.notes || session.auditNotes || 'Cierre forzado registrado sin detalle granular'
+        session.forcedCloseReason || session.auditNotes || session.notes || 'Cierre forzado registrado sin detalle granular',
       ]);
     }
-  });
+  }
 
   return rows;
 }
-
-// SHEET: MOVIMIENTOS DE CAJA POS (EGRESOS E INGRESOS)

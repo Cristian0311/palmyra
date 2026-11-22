@@ -1,27 +1,30 @@
 import type { ExcelExportData } from "../types";
+import { reportLineTotal } from "../../../modules/reports/utils/reportSalesSummary";
 
 export function generateProductsPerformanceSheet(data: ExcelExportData): any[][] {
-  const { products, categories, transactions, inventory, baseCurrency } = data;
+  const { products = [], categories = [], transactions = [], inventory = [], baseCurrency } = data;
+  const baseCode = baseCurrency?.code || 'CUP';
+  const categoryById = new Map(categories.map(category => [category.id, category]));
 
-  const salesMap = new Map<string, { qty: number, totalRevenue: number }>();
+  const salesMap = new Map<string, { qty: number; totalRevenue: number }>();
+  for (const transaction of transactions) {
+    if (transaction?.status !== 'completed' || transaction.deletedAt || String(transaction.notes || '').startsWith('AJUSTE_')) continue;
+    for (const item of transaction.items || []) {
+      const productId = typeof item.product === 'string' ? item.product : item.product?.id;
+      if (!productId) continue;
+      const current = salesMap.get(productId) || { qty: 0, totalRevenue: 0 };
+      current.qty += Number(item.quantity) || 0;
+      current.totalRevenue += reportLineTotal(item);
+      salesMap.set(productId, current);
+    }
+  }
 
-  transactions.forEach(tx => {
-    // Match the revenue KPIs: voided, refunded, pending and audit-adjustment
-    // records are not completed product sales and must not inflate performance.
-    if (tx.status !== 'completed' || tx.deletedAt || String(tx.notes || '').startsWith('AJUSTE_')) return;
-    tx.items.forEach(item => {
-      const prodId = typeof item.product === 'string' ? item.product : item.product?.id;
-      if (!prodId) return;
-      const current = salesMap.get(prodId) || { qty: 0, totalRevenue: 0 };
-      const price = typeof item.product === 'object' ? (item.price ?? item.product.price ?? 0) : (item.price ?? 0);
-      const itemTotal = typeof item.total === 'number' && Number.isFinite(item.total)
-        ? item.total
-        : (Number(price) || 0) * (Number(item.quantity) || 0);
-      current.qty += (item.quantity || 0);
-      current.totalRevenue += itemTotal;
-      salesMap.set(prodId, current);
-    });
-  });
+  // Stock por producto en una sola pasada: antes se filtraba el inventario
+  // completo por cada producto (O(n²) con catálogos grandes).
+  const stockByProduct = new Map<string, number>();
+  for (const level of inventory || []) {
+    stockByProduct.set(level.productId, (stockByProduct.get(level.productId) || 0) + (Number(level.quantity) || 0));
+  }
 
   const rows: any[][] = [
     [
@@ -29,66 +32,62 @@ export function generateProductsPerformanceSheet(data: ExcelExportData): any[][]
       'Código de Barras',
       'Nombre del Producto',
       'Categoría',
-      'Precio Venta (' + baseCurrency.code + ')',
-      'Costo Compra (' + baseCurrency.code + ')',
-      'Margen Unitario (' + baseCurrency.code + ')',
+      `Precio Venta (${baseCode})`,
+      `Costo Compra (${baseCode})`,
+      `Margen Unitario (${baseCode})`,
       '% Margen Comercial',
       'Stock Físico Actual',
-      'Valor Stock a Costo (' + baseCurrency.code + ')',
-      'Valor Stock a Venta (' + baseCurrency.code + ')',
-      'Ganancia Potencial en Stock (' + baseCurrency.code + ')',
+      `Valor Stock a Costo (${baseCode})`,
+      `Valor Stock a Venta (${baseCode})`,
+      `Ganancia Potencial en Stock (${baseCode})`,
       'Unidades Vendidas Históricas',
-      'Ingresos Totales Generados (' + baseCurrency.code + ')',
-      'Beneficio Bruto Generado (' + baseCurrency.code + ')',
+      `Ingresos Totales Generados (${baseCode})`,
+      `Beneficio Bruto Generado (${baseCode})`,
       'Días de Garantía',
-      'Estado'
-    ]
+      'Estado',
+    ],
   ];
 
   const sortedProducts = [...products].sort((a, b) => {
-    const revA = salesMap.get(a.id)?.totalRevenue || 0;
-    const revB = salesMap.get(b.id)?.totalRevenue || 0;
-    return revB - revA;
+    const revenueA = salesMap.get(a.id)?.totalRevenue || 0;
+    const revenueB = salesMap.get(b.id)?.totalRevenue || 0;
+    return revenueB - revenueA || String(a.name || '').localeCompare(String(b.name || ''));
   });
 
-  sortedProducts.forEach(p => {
-    const catName = categories.find(c => c.id === p.categoryId)?.name || 'General';
-    const s = salesMap.get(p.id) || { qty: 0, totalRevenue: 0 };
-    const unitCost = p.costPrice || 0;
-    const unitPrice = p.price || 0;
+  for (const product of sortedProducts) {
+    const categoryName = categoryById.get(product.categoryId)?.name || 'General';
+    const sold = salesMap.get(product.id) || { qty: 0, totalRevenue: 0 };
+    const unitCost = Number(product.costPrice) || 0;
+    const unitPrice = Number(product.price) || 0;
     const unitMargin = unitPrice - unitCost;
     const marginPct = unitPrice > 0 ? (unitMargin / unitPrice) * 100 : 0;
-    // Gross profit must use the actual recorded line revenue, which can include
-    // per-line discounts or negotiated prices, rather than list price × quantity.
-    const totalGrossProfit = s.totalRevenue - (unitCost * s.qty);
+    const totalGrossProfit = sold.totalRevenue - unitCost * sold.qty;
 
-    const totalStock = (inventory || []).filter(inv => inv.productId === p.id).reduce((sum, inv) => sum + (inv.quantity || 0), 0);
-    const stockValCost = totalStock * unitCost;
-    const stockValPrice = totalStock * unitPrice;
-    const potentialProfit = stockValPrice - stockValCost;
+    const totalStock = stockByProduct.get(product.id) || 0;
+    const stockValueCost = totalStock * unitCost;
+    const stockValuePrice = totalStock * unitPrice;
+    const potentialProfit = stockValuePrice - stockValueCost;
 
     rows.push([
-      p.sku || 'S/SKU',
-      p.barcode || 'S/C',
-      p.name,
-      catName,
+      product.sku || 'S/SKU',
+      product.barcode || 'S/C',
+      product.name || 'Producto',
+      categoryName,
       Number(unitPrice.toFixed(2)),
       Number(unitCost.toFixed(2)),
       Number(unitMargin.toFixed(2)),
       Number(marginPct.toFixed(1)),
       totalStock,
-      Number(stockValCost.toFixed(2)),
-      Number(stockValPrice.toFixed(2)),
+      Number(stockValueCost.toFixed(2)),
+      Number(stockValuePrice.toFixed(2)),
       Number(potentialProfit.toFixed(2)),
-      s.qty,
-      Number(s.totalRevenue.toFixed(2)),
+      sold.qty,
+      Number(sold.totalRevenue.toFixed(2)),
       Number(totalGrossProfit.toFixed(2)),
-      p.warrantyDays ? `${p.warrantyDays} días` : 'Sin garantía',
-      p.status === 'active' ? 'Activo' : (p.status === 'draft' ? 'Borrador' : 'Descontinuado')
+      product.warrantyDays ? `${product.warrantyDays} días` : 'Sin garantía',
+      product.status === 'active' ? 'Activo' : product.status === 'draft' ? 'Borrador' : 'Descontinuado',
     ]);
-  });
+  }
 
   return rows;
 }
-
-// 7. SHEET: MOVIMIENTOS BANCARIOS Y CUENTAS

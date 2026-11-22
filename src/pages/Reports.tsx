@@ -576,7 +576,7 @@ export default function Reports() {
     return { businessName: receiptConfig?.businessName || 'PALMYRA', transactions: visibleTransactions, cashSessions: filteredCashSessions, salarySettlements, products, categories, currencies, branches, users, customers, bankTransactions, bankCards, inventory, transfers, returns: returns.filter(r => visibleIds.has(r.transactionId)), warranties: warranties.filter(w => visibleIds.has(w.transactionId)), baseCurrency, dateFilterLabel };
   };
 
-  const { exportMenuRef, showExportMenu, setShowExportMenu, exportSuccess, handleExportFullExcel, handleExportSectionExcel } = useReportsExport(getExportData);
+  const { exportMenuRef, showExportMenu, setShowExportMenu, exportSuccess, isExporting, handleExportFullExcel, handleExportSectionExcel } = useReportsExport(getExportData);
 
   // Find printable shift data
   const printSession = cashSessions.find(s => s.id === printSessionId);
@@ -704,7 +704,7 @@ export default function Reports() {
                 title="Exportar todo el reporte completo a Excel (.xlsx) con tablas estructuradas"
               >
                 {exportSuccess ? <Check className="w-3.5 h-3.5" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
-                <span>{exportSuccess ? '¡Listo!' : 'Excel'}</span>
+                <span>{exportSuccess ? '¡Listo!' : isExporting ? 'Generando…' : 'Excel'}</span>
               </button>
               <button
                 type="button"
@@ -730,7 +730,7 @@ export default function Reports() {
                 >
                   <span className="flex items-center gap-2">
                     <FileSpreadsheet className="w-4 h-4 text-emerald-600 dark:text-emerald-500" />
-                    <span>Reporte completo (8 hojas)</span>
+                    <span>Reporte completo (todas las hojas)</span>
                   </span>
                   <span className="text-[8px] bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-200 font-bold px-1.5 py-0.5 rounded">Todo</span>
                 </button>

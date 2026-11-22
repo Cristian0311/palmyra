@@ -18,6 +18,33 @@ interface State {
   resetCount: number;
 }
 
+// Errores que no indican que la app esté rota: observadores de tamaño,
+// cancelaciones de fetch y scripts de terceros sin información. Sustituir la
+// pantalla completa por cualquiera de ellos cierra la sesión de trabajo del
+// usuario sin motivo (p. ej. al tocar una gráfica de recharts).
+const BENIGN_GLOBAL_ERROR_PATTERNS = [
+  /ResizeObserver loop/i,
+  /^Script error\.?$/i,
+  /AbortError/i,
+  /The operation was aborted/i,
+  /The user aborted a request/i,
+  /^NotAllowedError/i,
+  /Non-Error promise rejection/i,
+];
+
+function isBenignGlobalError(message: string): boolean {
+  return BENIGN_GLOBAL_ERROR_PATTERNS.some((pattern) => pattern.test(message));
+}
+
+// React montado = el árbol sigue vivo en pantalla. Un fallo global (handler de
+// click, promesa de fondo, callback de una gráfica) no justifica reemplazar la
+// aplicación: React solo desmonta el árbol cuando un render se rompe sin
+// boundary, y entonces #root queda vacío.
+function isReactStillMounted(): boolean {
+  const root = document.getElementById("root");
+  return !!root && root.childElementCount > 0;
+}
+
 export class ErrorBoundary extends React.Component<Props, State> {
   override state: State = {
     hasError: false,
@@ -52,7 +79,10 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   private handleWindowError = (event: ErrorEvent) => {
+    const message = event.error instanceof Error ? event.error.message : event.message;
     console.error("[PALMYRA] Error global de ejecución:", event.error || event.message);
+    if (isBenignGlobalError(message || "")) return;
+    if (isReactStillMounted()) return;
     this.setState((state) => state.hasError ? null : {
       hasError: true,
       error: event.error instanceof Error ? event.error : new Error(event.message || "Error inesperado de ejecución"),
@@ -60,11 +90,14 @@ export class ErrorBoundary extends React.Component<Props, State> {
   };
 
   private handleUnhandledRejection = (event: PromiseRejectionEvent) => {
-    console.error("[PALMYRA] Promesa sin manejar:", event.reason);
     const reason = event.reason;
+    const message = reason instanceof Error ? reason.message : String(reason ?? "");
+    console.error("[PALMYRA] Promesa sin manejar:", reason);
+    // Un rechazo de fondo no rompe la interfaz: ya está montada y operativa.
+    if (isBenignGlobalError(message) || isReactStillMounted()) return;
     this.setState((state) => state.hasError ? null : {
       hasError: true,
-      error: reason instanceof Error ? reason : new Error(String(reason || "Operación inesperada")),
+      error: reason instanceof Error ? reason : new Error(message || "Operación inesperada"),
     });
   };
 

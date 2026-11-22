@@ -1,14 +1,28 @@
 import type { ExcelExportData } from './types';
+import { reportLineTotal, resolveUnitCost } from '../../modules/reports/utils/reportSalesSummary';
 
 export function generateItemsSoldDetailSheet(data: ExcelExportData): any[][] {
-  const { transactions, products, categories, branches, users, customers, baseCurrency } = data;
+  const {
+    products = [],
+    categories = [],
+    branches = [],
+    users = [],
+    customers = [],
+    baseCurrency,
+  } = data;
+  const baseCode = baseCurrency?.code || 'CUP';
+  const productById = new Map(products.map(product => [product.id, product]));
+  const categoryById = new Map(categories.map(category => [category.id, category]));
+  const branchById = new Map(branches.map(branch => [branch.id, branch]));
+  const userById = new Map(users.map(user => [user.id, user]));
+  const customerById = new Map(customers.map(customer => [customer.id, customer]));
 
   const rows: any[][] = [
     [
-      'ID Ticket',
+      'Ticket',
       'Fecha',
       'Hora',
-      'Sucursal',
+      'Sucursal / Almacén',
       'Cajero / Vendedor',
       'Cliente',
       'SKU Producto',
@@ -17,86 +31,88 @@ export function generateItemsSoldDetailSheet(data: ExcelExportData): any[][] {
       'Categoría',
       'Variante / Talla',
       'Cantidad',
-      'Precio Unitario Venta (' + baseCurrency.code + ')',
-      'Costo Unitario Compra (' + baseCurrency.code + ')',
-      'Subtotal Línea Venta (' + baseCurrency.code + ')',
-      'Costo Total Línea (' + baseCurrency.code + ')',
-      'Margen Bruto Ganancia (' + baseCurrency.code + ')',
+      `Precio Unitario Venta (${baseCode})`,
+      `Costo Unitario Compra (${baseCode})`,
+      `Subtotal Línea Venta (${baseCode})`,
+      `Costo Total Línea (${baseCode})`,
+      `Margen Bruto Ganancia (${baseCode})`,
       '% Margen Ganancia',
       'Número de Serie',
       'Código de Garantía',
-      'Total Factura (' + baseCurrency.code + ')',
-      'Diferencia Factura - Detalle (' + baseCurrency.code + ')'
-    ]
+      `Total Factura (${baseCode})`,
+      `Diferencia Factura - Detalle (${baseCode})`,
+      'Costo Verificado',
+    ],
   ];
 
-  transactions.forEach(t => {
-    // This sheet measures completed sales, not refunds, deleted tickets or audit adjustments.
-    if (t?.status !== 'completed' || t.deletedAt || String(t.notes || '').startsWith('AJUSTE_')) return;
-    const branchName = branches.find(b => b.id === t.branchId)?.name || 'Sucursal Principal';
-    const seller = users.find(u => u.id === t.userId)?.name || 'Cajero';
-    const customer = customers.find(c => c.id === t.customerId)?.name || 'Consumidor Final';
-    const tDate = new Date(t.date);
-    const dateStr = tDate.toLocaleDateString('es-CU');
-    const timeStr = tDate.toLocaleTimeString('es-CU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-    const ticketDetailTotal = (t.items || []).reduce((sum, line) => {
-      const lineProductId = typeof line.product === 'string' ? line.product : line.product?.id;
-      const lineCatalogProduct = products.find(p => p.id === lineProductId);
-      const linePrice = Number(line.price ?? (typeof line.product === 'object' ? line.product.price : lineCatalogProduct?.price) ?? 0) || 0;
-      const storedTotal = line.total;
-      const actualLineTotal = typeof storedTotal === 'number' && Number.isFinite(storedTotal)
-        ? storedTotal
-        : linePrice * (Number(line.quantity) || 0);
-      return sum + actualLineTotal;
-    }, 0);
-    const invoiceTotal = Number(t.total) || 0;
-    const invoiceDetailDifference = invoiceTotal - ticketDetailTotal;
+  const sales = (data.transactions || [])
+    .filter(transaction => transaction?.status === 'completed' && !transaction.deletedAt && !String(transaction.notes || '').startsWith('AJUSTE_'))
+    .slice()
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    t.items.forEach(item => {
-      const prodId = typeof item.product === 'string' ? item.product : item.product?.id;
-      const catalogProd = products.find(p => p.id === prodId);
-      const prodName = typeof item.product === 'object' ? item.product.name : (catalogProd?.name || 'Producto');
-      const sku = catalogProd?.sku || 'S/SKU';
-      const barcode = catalogProd?.barcode || 'S/C';
-      const categoryName = categories.find(c => c.id === catalogProd?.categoryId)?.name || 'General';
+  for (const transaction of sales) {
+    const branchName = branchById.get(transaction.branchId)?.name || 'Sucursal Principal';
+    const seller = userById.get(transaction.userId)?.name || transaction.cashierName || 'Cajero';
+    const customer = transaction.customerId ? customerById.get(transaction.customerId) : undefined;
+    const date = new Date(transaction.date);
+    const safeDate = Number.isNaN(date.getTime()) ? null : date;
+    const timeStr = Number.isNaN(date.getTime())
+      ? ''
+      : date.toLocaleTimeString('es-CU', { hour: '2-digit', minute: '2-digit' });
 
-      const rawUnitPrice = item.price ?? (typeof item.product === 'object' ? item.product.price : catalogProd?.price) ?? 0;
+    const items = transaction.items || [];
+    // Un solo recorrido por ticket: antes cada línea recalculaba todas las
+    // líneas y buscaba en el catálogo, lo que hacía O(n²) un reporte grande.
+    const ticketDetailTotal = items.reduce((sum, line) => sum + reportLineTotal(line), 0);
+    const invoiceTotal = Number(transaction.total) || 0;
+    const invoiceDetailDifference = Number((invoiceTotal - ticketDetailTotal).toFixed(2));
+
+    for (const item of items) {
+      const productId = typeof item.product === 'string' ? item.product : item.product?.id;
+      const catalogProduct = productId ? productById.get(productId) : undefined;
+      const snapshot = typeof item.product === 'object' ? item.product : undefined;
+      const productName = snapshot?.name || catalogProduct?.name || 'Producto';
+      const categoryName = categoryById.get(catalogProduct?.categoryId || snapshot?.categoryId || '')?.name || 'General';
+      const variant = item.variantLabel || item.selectedSize || item.selectedColor || 'Estándar';
+
+      const rawUnitPrice = item.price ?? snapshot?.price ?? catalogProduct?.price ?? 0;
       const unitPrice = Number(rawUnitPrice) || 0;
-      const unitCost = catalogProd?.costPrice || 0;
-      const qty = item.quantity || 0;
-      const lineTotal = typeof item.total === 'number' && Number.isFinite(item.total)
-        ? item.total
-        : unitPrice * qty;
-      const lineCost = unitCost * qty;
-      const grossMargin = lineTotal - lineCost;
-      const marginPct = lineTotal > 0 ? (grossMargin / lineTotal) : 0;
+      const quantity = Number(item.quantity) || 0;
+      const lineTotal = reportLineTotal(item);
+      const cost = resolveUnitCost(item, productById);
+      const unitCost = cost.cost;
+      const lineCost = unitCost * quantity;
+      // Si no existe un costo confiable no se declara utilidad ficticia.
+      const grossMargin = cost.missing ? 0 : lineTotal - lineCost;
+      const marginPct = !cost.missing && lineTotal > 0 ? (grossMargin / lineTotal) * 100 : 0;
 
       rows.push([
-        t.id,
-        dateStr,
+        transaction.ticketNumber || transaction.id,
+        safeDate,
         timeStr,
         branchName,
         seller,
-        customer,
-        sku,
-        barcode,
-        prodName,
+        customer?.name || 'Consumidor Final',
+        catalogProduct?.sku || snapshot?.sku || 'S/SKU',
+        catalogProduct?.barcode || snapshot?.barcode || 'S/C',
+        productName,
         categoryName,
-        item.variantLabel || 'Estándar',
-        qty,
+        variant,
+        quantity,
         Number(unitPrice.toFixed(2)),
         Number(unitCost.toFixed(2)),
         Number(lineTotal.toFixed(2)),
         Number(lineCost.toFixed(2)),
         Number(grossMargin.toFixed(2)),
-        Number((marginPct * 100).toFixed(1)),
+        Number(marginPct.toFixed(1)),
         item.serialNumber || 'N/A',
         item.warrantyCode || 'Sin garantía',
         Number(invoiceTotal.toFixed(2)),
-        Number(invoiceDetailDifference.toFixed(2))
+        invoiceDetailDifference,
+        cost.missing ? 'Sin costo' : 'Sí',
       ]);
-    });
-  });
+    }
+  }
 
   return rows;
 }
