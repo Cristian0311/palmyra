@@ -83,6 +83,63 @@ export function appendRateSnapshot(history: RateSnapshot[], payload: ExchangePay
   return [...history, { capturedAt: payload.capturedAt, rates }].sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt)).slice(-2500);
 }
 
+/**
+ * elTOQUE publishes the euro under the code `ECU` while the rest of PALMYRA
+ * (currencies, auto-rate policy and the verified server history) speaks `EUR`.
+ * The raw payload is kept untouched; only presentation keys are canonicalized.
+ */
+const RATE_CODE_ALIASES: Record<string, string> = { ECU: 'EUR' };
+
+export function canonicalRateCode(code: string): string {
+  const normalized = String(code ?? '').trim().toUpperCase();
+  return RATE_CODE_ALIASES[normalized] || normalized;
+}
+
+function isAliasRateCode(code: string): boolean {
+  return canonicalRateCode(code) !== code;
+}
+
+/**
+ * Merge rows the source quotes under an alias (ECU -> EUR) so one currency
+ * renders one card. A live canonical row wins over the alias for shared fields.
+ */
+export function canonicalizeRates(rates: ExchangeRate[]): ExchangeRate[] {
+  const groups = new Map<string, { firstIndex: number; canonical?: ExchangeRate; alias?: ExchangeRate }>();
+  rates.forEach((rate, index) => {
+    const code = canonicalRateCode(rate.code);
+    const group = groups.get(code) || { firstIndex: index };
+    if (isAliasRateCode(rate.code)) group.alias = group.alias ?? rate;
+    else group.canonical = group.canonical ?? rate;
+    groups.set(code, group);
+  });
+  return [...groups.entries()]
+    .sort((a, b) => a[1].firstIndex - b[1].firstIndex)
+    .map(([code, group]) => ({
+      code,
+      value: group.canonical?.value ?? group.alias?.value,
+      buy: group.canonical?.buy ?? group.alias?.buy,
+      sell: group.canonical?.sell ?? group.alias?.sell
+    }));
+}
+
+/**
+ * Rewrite historical snapshots so ECU observations feed the EUR series.
+ * When a snapshot carries both codes, the explicitly quoted EUR value wins.
+ */
+export function canonicalizeRateSnapshots(snapshots: RateSnapshot[]): RateSnapshot[] {
+  return snapshots.map(snapshot => {
+    const rates: Record<string, number> = {};
+    const entries = Object.entries(snapshot.rates);
+    for (const [code, value] of entries) {
+      if (isAliasRateCode(code) && Number.isFinite(value)) rates[canonicalRateCode(code)] = value;
+    }
+    for (const [code, value] of entries) {
+      if (!isAliasRateCode(code) && Number.isFinite(value)) rates[code] = value;
+    }
+    return { capturedAt: snapshot.capturedAt, rates };
+  });
+}
+
 export function isCryptoRate(code: string): boolean {
   return /^(BTC|ETH|BNB|TRX|USDT(?:TRC20?|ERC20)?|USDC|LTC|DOGE|SOL|XRP|TON|ADA|BCH|DOT|AVAX|SHIB|LINK|XMR|MATIC|POL)$/.test(code.replace(/[-_\s]/g, ''));
 }

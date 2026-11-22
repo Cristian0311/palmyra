@@ -1386,7 +1386,11 @@ function RefundModal({ returnItem, defaultAmount, currencies, baseCurrency, onCl
 
 export default function Returns() {
   return (
-    <PlanFeatureGate feature="warranty_returns" title="Sistema de garantías y devoluciones" description="Esta función está incluida en Caravana para negocios que necesitan ampliar el control de su operación.">
+    <PlanFeatureGate feature="warranty_returns" title="Sistema de garantías y devoluciones" description="Esta función está incluida en Caravana para negocios que necesitan ampliar el control de su operación." highlights={[
+      "Garantías y devoluciones con motivo y responsable",
+      "Reposición de stock vinculada a la venta original",
+      "Historial completo para cuidar la trazabilidad"
+    ]}>
       <ReturnsContent />
     </PlanFeatureGate>
   );

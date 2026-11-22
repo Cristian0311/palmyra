@@ -18,7 +18,7 @@ import {
   removeFromOfflineQueue,
   requeueOfflineQueueItem
 } from "../../services/offlineQueue";
-import { evaluateOfflineFreshness, type OfflineQueueHealth } from "../../services/offline/syncContract";
+import { evaluateOfflineFreshness, listPendingOfflineOperations, type OfflinePendingOperation, type OfflineQueueHealth } from "../../services/offline/syncContract";
 import { getLastSyncMoment, SYNC_LEDGER_EVENT } from "../../services/offline/syncLedger";
 import {
   formatStorageBytes,
@@ -36,6 +36,9 @@ export default function OfflineHealthSection() {
   const [conflicts, setConflicts] = useState<OfflineQueueItem[]>(() =>
     getOfflineQueue().filter(item => item.status === "conflict")
   );
+  const [pendingOps, setPendingOps] = useState<OfflinePendingOperation[]>(() =>
+    listPendingOfflineOperations(getOfflineQueue(), 5)
+  );
   const [storage, setStorage] = useState<PwaStorageHealth | null>(null);
   const [isOnline, setIsOnline] = useState(() =>
     typeof navigator === "undefined" ? true : navigator.onLine
@@ -45,8 +48,10 @@ export default function OfflineHealthSection() {
   const [message, setMessage] = useState("");
 
   const refresh = useCallback(async () => {
+    const queue = getOfflineQueue();
     setHealth(getOfflineQueueHealth());
-    setConflicts(getOfflineQueue().filter(item => item.status === "conflict"));
+    setConflicts(queue.filter(item => item.status === "conflict"));
+    setPendingOps(listPendingOfflineOperations(queue, 5));
     setLedgerLastSync(getLastSyncMoment());
     try {
       setStorage(await inspectPwaStorageHealth());
@@ -119,6 +124,17 @@ export default function OfflineHealthSection() {
   const storagePercent = storage && storage.quotaBytes > 0
     ? Math.min(100, Math.round(storage.usageRatio * 100))
     : null;
+  const formatQueuedAt = (value: string | null) => {
+    if (!value) return "hora desconocida";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "hora desconocida";
+    return date.toLocaleString("es-CU", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit"
+    });
+  };
 
   return (
     <section className="rounded-2xl border border-base bg-secondary p-3 sm:p-5 shadow-sm space-y-4 min-w-0">
@@ -204,6 +220,38 @@ export default function OfflineHealthSection() {
               ? "Este dispositivo todavía no ha sincronizado una vez. Puedes seguir trabajando offline; los datos se enviarán cuando haya conexión."
               : "Han pasado varios días sin sincronizar. Los datos locales siguen intactos, pero conviene conectar el equipo para respaldarlos y actualizar catálogo, precios y stock."}
           </p>
+        </div>
+      )}
+
+      {pendingOps.length > 0 && (
+        <div className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-bold text-primary">Operaciones pendientes</p>
+            <span className="text-sm font-medium text-muted">Las más antiguas primero</span>
+          </div>
+          <ul className="space-y-1.5">
+            {pendingOps.map(op => (
+              <li key={op.id} className="min-w-0 rounded-xl border border-base bg-primary p-3">
+                <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <p className="min-w-0 text-sm font-semibold text-primary break-words">{op.label}</p>
+                  <span className="shrink-0 text-sm font-medium text-muted tabular-nums">
+                    En cola {formatQueuedAt(op.queuedAt)}
+                  </span>
+                </div>
+                <p className="mt-0.5 truncate text-sm font-medium text-muted" title={op.actionId}>{op.actionId}</p>
+                {op.status === "failed" && op.lastError && (
+                  <p className="mt-1 text-sm font-medium leading-6 text-amber-700 dark:text-amber-300 break-words">
+                    Se reintentará automáticamente: {op.lastError}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+          {health.pending > pendingOps.length && (
+            <p className="text-sm font-medium text-muted">
+              Hay {health.pending - pendingOps.length} operación(es) más en cola.
+            </p>
+          )}
         </div>
       )}
 

@@ -17,7 +17,8 @@ import {
   isOfflineQueueItemRemoved,
   clearOfflineQueueRemovalMark,
   setOfflineQueueMemory,
-  persistOfflineQueueSnapshot
+  persistOfflineQueueSnapshot,
+  refreshOfflineQueueCounts
 } from './offlineQueue';
 import {
   callOpenSessionRPCWithId, callProcessTransactionRPC, callVoidTransactionRPC, callCancelSessionRPC,
@@ -39,7 +40,7 @@ import { reconcileBankCanonical } from './offline/reconcileBank';
 import { replaceWarehouseInventory, replaceWarehousesInventory } from './offline/reconcileInventory';
 import { processQueueItem } from './offline/processQueueItem';
 import { reconcileSupplierReceiveCanonical } from './offline/reconcileSupplierReceive';
-import { compareOfflineQueueItems } from './offline/syncContract';
+import { compareOfflineQueueItems, summarizeOfflineQueue } from './offline/syncContract';
 import { recordSyncMoment } from './offline/syncLedger';
 
 
@@ -82,6 +83,11 @@ export async function processOfflineQueue(): Promise<OfflineQueueRunResult> {
     if (!lock) return;
     result = await processOfflineQueueLocked();
   });
+  if (!result) {
+    // Otra ventana pudo drenar la cola: releer IndexedDB evita conservar un
+    // contador que esta pestaña ya no puede justificar.
+    void refreshOfflineQueueCounts();
+  }
   return result ?? idleQueueResult();
 }
 
@@ -528,7 +534,11 @@ async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
     }
   }
 
-  const finalQueue = Array.from(finalById.values()).sort(compareOfflineQueueItems);
+  const finalQueue = Array.from(finalById.values())
+    // Ningún elemento puede quedar "en vuelo" al terminar la ejecución: el
+    // badge debe caer a cero en cuanto la cola se reconcilia.
+    .map(item => item.status === 'processing' ? { ...item, status: 'pending' as const } : item)
+    .sort(compareOfflineQueueItems);
   for (const item of sorted) clearOfflineQueueRemovalMark(item.id);
   // Reconciliamos contra el estado final, no contra la instantánea inicial.
   // Esto evita que un enqueue concurrente sea borrado por el commit de la cola.
@@ -557,7 +567,8 @@ async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
   // Un reintento fallido no debe reiniciar la ventana de frescura offline.
   if (processed > 0) recordSyncMoment('push');
 
-  return { processed, failed, remaining: finalQueue.filter(item => item.status !== 'conflict').length, conflicts: finalQueue.filter(item => item.status === 'conflict').length, errors };
+  const finalCounts = summarizeOfflineQueue(finalQueue);
+  return { processed, failed, remaining: finalCounts.pending, conflicts: finalCounts.conflicts, errors };
   } finally {
     isProcessingQueue = false;
   }
@@ -610,6 +621,10 @@ export function initOfflineSyncWatcher(): () => void {
       }
     } catch (e: any) {
       useStore.getState().addNotification(`No se pudo completar la sincronización: ${e?.message || 'error desconocido'}.`, 'error');
+    } finally {
+      // Ruta automática: el badge debe reflejar el estado durable aunque el
+      // drenaje haya fallado o lo haya hecho otra pestaña.
+      void refreshOfflineQueueCounts();
     }
   };
   const handleOffline = () => useStore.getState().addNotification('Sin conexión. El POS continúa trabajando offline.', 'warning');
@@ -617,10 +632,12 @@ export function initOfflineSyncWatcher(): () => void {
   window.addEventListener('offline', handleOffline);
   intervalId = setInterval(() => { 
     if (navigator.onLine && getOfflineQueueCount() && !isProcessingQueue && !isManualOfflineSyncEnabled()) {
-      processOfflineQueue().catch(() => {}); 
+      processOfflineQueue().catch(() => {}).finally(() => { void refreshOfflineQueueCounts(); }); 
     }
   }, 30000);
-  if (navigator.onLine && getOfflineQueueCount() && !isManualOfflineSyncEnabled()) processOfflineQueue().catch(() => {});
+  if (navigator.onLine && getOfflineQueueCount() && !isManualOfflineSyncEnabled()) {
+    processOfflineQueue().catch(() => {}).finally(() => { void refreshOfflineQueueCounts(); });
+  }
   if (navigator.onLine) useStore.getState().refreshNcfRangeIfExhausted?.().catch(() => {});
   return () => { window.removeEventListener('online', handleOnline); window.removeEventListener('offline', handleOffline); if (intervalId) clearInterval(intervalId); };
 }

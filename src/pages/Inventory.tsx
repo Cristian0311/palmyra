@@ -922,10 +922,22 @@ export default function Inventory() {
 
       {/* Tab Content */}
       {activeTab === 'excel' && !canExcel && (
-        <PlanFeatureGate feature="excel_exports" title="Descarga de inventario en Excel" description="Exporta tu inventario completo a Microsoft Excel con información de productos, precios y existencias. Disponible desde Ciudadela." />
+        <PlanFeatureGate feature="excel_exports" title="Descarga de inventario en Excel" description="Exporta tu inventario completo a Microsoft Excel con información de productos, precios y existencias. Disponible desde Ciudadela." highlights={[
+          "Existencias, precios y costos en un solo archivo",
+          "Compatible con Microsoft Excel",
+          "Ideal para análisis externo o respaldo"
+        ]} />
       )}
-      {activeTab === 'labels' && (canLabels ? <PrintLabels /> : <PlanFeatureGate feature="labels" title="Etiquetas de inventario" description="Genera e imprime etiquetas de productos desde PALMYRA. Esta herramienta avanzada está disponible desde Ciudadela." />)}
-      {activeTab === 'abc' && (canABC ? <ABCAnalysis /> : <PlanFeatureGate feature="abc_analysis" title="Análisis ABC" description="Clasifica tus productos por importancia y rendimiento para tomar mejores decisiones de inventario. Disponible desde Ciudadela." />)}
+      {activeTab === 'labels' && (canLabels ? <PrintLabels /> : <PlanFeatureGate feature="labels" title="Etiquetas de inventario" description="Genera e imprime etiquetas de productos desde PALMYRA. Esta herramienta avanzada está disponible desde Ciudadela." highlights={[
+        "Etiquetas con código de barras y precio",
+        "Elige producto, presentación y cantidad",
+        "Ahorra tiempo en la reposición"
+      ]} />)}
+      {activeTab === 'abc' && (canABC ? <ABCAnalysis /> : <PlanFeatureGate feature="abc_analysis" title="Análisis ABC" description="Clasifica tus productos por importancia y rendimiento para tomar mejores decisiones de inventario. Disponible desde Ciudadela." highlights={[
+        "Clasifica productos A, B y C por rotación",
+        "Detecta qué artículos concentran tus ventas",
+        "Prioriza compras y capital de trabajo"
+      ]} />)}
       {activeTab === 'restock' && <RestockAlerts />}
 
       {activeTab === 'bulk' && (

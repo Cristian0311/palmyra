@@ -441,7 +441,11 @@ export default function Dashboard() {
       {showAIGate && planCode !== "pro" && (
         <div className="relative">
           <button type="button" onClick={() => setShowAIGate(false)} className="absolute right-3 top-3 z-10 text-xs font-black text-muted hover:text-primary">Cerrar</button>
-          <PlanFeatureGate feature="ai_dashboard" title="Inteligencia artificial en el Dashboard" description="Obtén una lectura inteligente de ventas, categorías, inventario y señales importantes de tu negocio. Esta función está disponible desde Ciudadela." />
+          <PlanFeatureGate feature="ai_dashboard" title="Inteligencia artificial en el Dashboard" description="Obtén una lectura inteligente de ventas, categorías, inventario y señales importantes de tu negocio. Esta función está disponible desde Ciudadela." highlights={[
+            "Resumen inteligente de ventas e inventario",
+            "Detecta señales y oportunidades del negocio",
+            "Lectura en lenguaje claro, sin hojas de cálculo"
+          ]} />
         </div>
       )}
 

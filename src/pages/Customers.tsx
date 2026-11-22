@@ -836,7 +836,11 @@ function CustomersContent() {
 
 export default function Customers() {
   return (
-    <PlanFeatureGate feature="customers_suppliers" title="Clientes" description="Esta función está incluida en Caravana para negocios que necesitan ampliar el control de su operación.">
+    <PlanFeatureGate feature="customers_suppliers" title="Clientes" description="Esta función está incluida en Caravana para negocios que necesitan ampliar el control de su operación." highlights={[
+      "Directorio con historial de compras y ticket promedio",
+      "Total gastado y valor acumulado por cliente",
+      "Alta y edición desde el POS o desde la ficha"
+    ]}>
       <CustomersContent />
     </PlanFeatureGate>
   );

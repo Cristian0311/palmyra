@@ -6,6 +6,7 @@ import {
 import { cn } from "../lib/utils";
 import type { Currency, Transaction } from "../types";
 import { calculateExpectedBalances } from "../services/cash/expectedCash";
+import { getSessionTurnLabel } from "../modules/reports/utils/sessionTurnLabels";
 
 type ModalProps = {
   baseCurrency: Currency;
@@ -124,17 +125,17 @@ export default function ReportsCloseSessionModal({
       );
 
       if (res.success) {
-        const turnLabel = sessionTurnMap.get(sessionToCloseModal.id) || sessionToCloseModal.id;
+        const turnLabel = getSessionTurnLabel(sessionToCloseModal, sessionTurnMap);
         if (res.pending) {
           store.addNotification(
-            `Turno ${turnLabel} cerrado en este dispositivo. Quedó guardado para sincronizarse cuando la nube responda.`,
+            `${turnLabel} cerrado en este dispositivo. Quedó guardado para sincronizarse cuando la nube responda.`,
             'info',
           );
         } else {
           store.addNotification(
             hasDifference
-              ? `Turno ${turnLabel} cerrado. El descuadre quedó registrado para conciliación.`
-              : `Turno ${turnLabel} cerrado. La caja cuadra con lo esperado.`,
+              ? `${turnLabel} cerrado. El descuadre quedó registrado para conciliación.`
+              : `${turnLabel} cerrado. La caja cuadra con lo esperado.`,
             'success',
           );
         }
@@ -167,7 +168,7 @@ export default function ReportsCloseSessionModal({
                 Cerrar Turno desde Reportes
               </h2>
               <p className="font-bold text-muted uppercase" style={{ fontSize: 10 }}>
-                {sessionTurnMap.get(sessionToCloseModal.id) || sessionToCloseModal.id} · {sessionToCloseModal.workerName || 'Vendedor'}
+                {getSessionTurnLabel(sessionToCloseModal, sessionTurnMap)} · {sessionToCloseModal.workerName || 'Vendedor'}
               </p>
             </div>
           </div>

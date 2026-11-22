@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { matchesReportDateFilter } from './utils/reportDateFilter';
 import { findSessionEmployeeUser } from '../../services/employeeCompensation';
+import { getSessionTurnLabel } from './utils/sessionTurnLabels';
 import type {
   CashRegisterSession,
   Product,
@@ -74,7 +75,7 @@ export function useReportsPayroll(params: {
     const allUsers = Array.from(userById.values());
 
     return closedSessions.map(session => {
-      const turnLabel = sessionTurnMap.get(session.id) || session.id;
+      const turnLabel = getSessionTurnLabel(session, sessionTurnMap);
       // Payroll must never count voided/refunded/pending tickets as completed sales.
       // Reports can contain a broader transaction cache than the active POS.
       const sessionOpenMs = new Date(session.openedAt).getTime();

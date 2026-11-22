@@ -13,6 +13,7 @@ import {
   OFFLINE_ITEM_SCHEMA_VERSION,
   assignMissingDeviceSequences,
   compareOfflineQueueItems,
+  dedupeOfflineQueueItems,
   normalizeOfflineQueueItem,
   summarizeOfflineQueue,
   type OfflineQueueHealth
@@ -262,8 +263,9 @@ queueInitPromise = migrateLegacyQueue().catch(async (error) => {
 function countQueueItems(items: OfflineQueueItem[]): OfflineQueueCounts {
   let pending = 0;
   let conflicts = 0;
-  for (const item of items) {
-    if (!item || !item.id) continue;
+  // Contamos operaciones distintas (type+actionId), no filas: una fila
+  // repetida heredada de una migración no debe inflar el número del sidebar.
+  for (const item of dedupeOfflineQueueItems(items)) {
     if (item.status === 'conflict') conflicts += 1;
     else pending += 1;
   }
@@ -359,7 +361,7 @@ export async function refreshOfflineQueueCounts(): Promise<OfflineQueueCounts> {
         // Fin de la cadena de persistencia ya esperado: todo lo que existe en
         // memoria quedó escrito. Si IndexedDB ya no lo tiene fue drenado por
         // otra ventana o pertenece a un alcance anterior, así que se descarta.
-        const next = Array.from(byId.values()).sort(compareOfflineQueueItems);
+        const next = dedupeOfflineQueueItems(Array.from(byId.values())).sort(compareOfflineQueueItems);
         if (!queuesEqual(next, memoryQueue)) memoryQueue = next;
         idbMirrorComplete = true;
       }

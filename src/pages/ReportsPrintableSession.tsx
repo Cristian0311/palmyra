@@ -1,6 +1,7 @@
 type ModalProps = Record<string, any>;
 
 import { PalmyraWordmark } from "../components/PalmyraWordmark";
+import { getSessionTurnLabel } from "../modules/reports/utils/sessionTurnLabels";
 
 export default function ReportsPrintableSession(props: ModalProps) {
   const { String, formatMoney, getProductName, printBranch, printPayrollItem, printSession, products, sessionTurnMap, transactions, users } = props;
@@ -19,7 +20,7 @@ export default function ReportsPrintableSession(props: ModalProps) {
             const totalSales = sessionTx.reduce((sum, tx) => sum + Math.max(0, Number(tx.total) || 0), 0);
             const totalItems = sessionTx.reduce((sum, tx) => sum + (tx.items || []).reduce((s, i) => s + (i.quantity || 0), 0), 0);
             const workerName = printSession.workerName || users.find(u => u.id === printSession.userId)?.name || 'Vendedor';
-            const sequentialTurn = sessionTurnMap.get(printSession.id) || printSession.id;
+            const sequentialTurn = getSessionTurnLabel(printSession, sessionTurnMap);
 
             return (
               <>

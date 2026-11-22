@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { ticketDisplay } from "../../lib/documentCodes";
+import { getSessionTurnLabel } from "../../modules/reports/utils/sessionTurnLabels";
 import type { CashRegisterSession, Transaction, User } from "../../types";
 
 type PayrollRow = {
@@ -82,9 +83,9 @@ export function ReportsSalesTab({
       const payrollItem = payroll.find(item => item.sessionId === session.id);
       switch (sortState.key) {
         case "turn": {
-          const turn = sessionTurnMap.get(session.id);
+          const turn = getSessionTurnLabel(session, sessionTurnMap);
           const numeric = Number(String(turn ?? "").replace(/[^0-9.-]/g, ""));
-          return Number.isFinite(numeric) && String(turn ?? "").match(/\d/) ? numeric : String(turn ?? session.id).toLocaleLowerCase();
+          return Number.isFinite(numeric) && String(turn ?? "").match(/\d/) ? numeric : String(turn ?? "").toLocaleLowerCase();
         }
         case "status": return session.status;
         case "date": return new Date(session.closingDate || session.closedAt || session.openedAt || 0).getTime() || 0;
@@ -152,7 +153,7 @@ export function ReportsSalesTab({
         const dateToDisplay = new Date(session.closingDate || session.closedAt || session.openedAt);
         return {
           session,
-          sequentialTurn: sessionTurnMap.get(session.id) || session.id,
+          sequentialTurn: getSessionTurnLabel(session, sessionTurnMap),
           statusLabel: session.status === "open" ? "Abierto" : session.status === "cancelled" ? "Cancelado" : "Cerrado",
           dateLabel: dateToDisplay.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" }),
           timeLabel: dateToDisplay.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + (session.status === "open" ? " (En curso)" : ""),

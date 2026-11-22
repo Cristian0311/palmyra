@@ -1,4 +1,5 @@
 import type { Branch, CashRegisterSession, Currency, Transaction, User } from '../../../types';
+import { getSessionTurnLabel } from './sessionTurnLabels';
 
 type TurnSorter = (a: CashRegisterSession, b: CashRegisterSession) => number;
 
@@ -29,7 +30,7 @@ export function buildDetailedMovements(
   const list: DetailedMovement[] = [];
 
   cashSessions.forEach(session => {
-    const turnLabel = sessionTurnMap.get(session.id) || session.id;
+    const turnLabel = getSessionTurnLabel(session, sessionTurnMap);
     const branchName = branchById.get(session.branchId) || 'Sucursal';
     const workerName = session.workerName || userById.get(session.userId) || 'Cajero';
 

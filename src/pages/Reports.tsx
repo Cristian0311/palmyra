@@ -30,6 +30,7 @@ import { flushLocalStateStorage } from "../services/localStateStorage";
 import { useReportsContext } from "../modules/reports/useReportsContext";
 import { useReportsPayroll } from "../modules/reports/useReportsPayroll";
 import { useReportsSessions } from "../modules/reports/useReportsSessions";
+import { getSessionTurnLabel } from "../modules/reports/utils/sessionTurnLabels";
 import { useReportsAnalytics } from "../hooks/useReportsAnalytics";
 import type { ExcelExportData } from "../utils/excelExport";
 import { pullPosBootstrapFromSupabase } from "../services/supabaseSync/pull";
@@ -675,7 +676,11 @@ export default function Reports() {
     <div className="reportes-page space-y-3 sm:space-y-4 animate-in fade-in duration-300 w-full min-w-0 max-w-[1400px] mx-auto pb-12 overflow-x-hidden">
       {showExcelGate && !canExcelExport && (
         <div className="mb-2">
-          <PlanFeatureGate feature="excel_exports" title="Descargas de reportes en Excel" description="Descarga reportes completos y por secciones en formato Microsoft Excel para análisis y control externo. Disponible desde Ciudadela." />
+          <PlanFeatureGate feature="excel_exports" title="Descargas de reportes en Excel" description="Descarga reportes completos y por secciones en formato Microsoft Excel para análisis y control externo. Disponible desde Ciudadela." highlights={[
+            "Reportes completos y por secciones en Excel",
+            "Archivos listos para análisis externo",
+            "Compatible con Microsoft Excel"
+          ]} />
         </div>
       )}
 
@@ -899,7 +904,7 @@ export default function Reports() {
                 <article key={session.id} className="flex flex-col rounded-2xl border border-base bg-secondary p-3.5">
                   <div className="flex items-start justify-between gap-2">
                     <span className="inline-flex items-center rounded-lg border border-base bg-subtle px-2 py-0.5 font-black text-primary" style={{ fontSize: 12 }}>
-                      {sessionTurnMap.get(session.id) || session.id}
+                      {getSessionTurnLabel(session, sessionTurnMap)}
                     </span>
                     <span className={cn(
                       'rounded-lg px-2 py-0.5 font-black uppercase',
@@ -1046,7 +1051,7 @@ export default function Reports() {
                 const branch = branches.find(b => b.id === session.branchId);
                 const worker = findSessionEmployeeUser(session, users)?.name || session.workerName || 'Cajero';
                 const initials = (worker.match(/\b\w/g) || []).slice(0, 2).join('').toUpperCase() || 'CA';
-                const turnLabel = sessionTurnMap.get(session.id) || session.id;
+                const turnLabel = getSessionTurnLabel(session, sessionTurnMap);
                 const dateObj = new Date(session.closingDate || session.closedAt || session.openedAt);
                 const whenLabel = `${branch?.name || 'Sucursal principal'} · ${dateObj.toLocaleDateString('es-CU', { day: '2-digit', month: 'short', year: 'numeric' })} ${dateObj.toLocaleTimeString('es-CU', { hour: '2-digit', minute: '2-digit' })}`;
                 return (
@@ -1525,7 +1530,7 @@ export default function Reports() {
               <div className="min-w-0">
                 <h3 id="void-shift-title" className="text-sm font-black uppercase tracking-tight text-primary">Eliminar turno completo</h3>
                 <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-muted">
-                  Turno {sessionTurnMap.get(shiftVoidTarget.id) || shiftVoidTarget.id} · {shiftVoidTarget.workerName || 'Cajero'}
+                  {getSessionTurnLabel(shiftVoidTarget, sessionTurnMap)} · {shiftVoidTarget.workerName || 'Cajero'}
                 </p>
               </div>
             </div>
@@ -1582,7 +1587,7 @@ export default function Reports() {
           users={users}
           currencies={currencies}
           formatMoney={formatMoney}
-          sessionTurnLabel={sessionTurnMap.get(expandedSessionRecord.id) || expandedSessionRecord.id}
+          sessionTurnLabel={getSessionTurnLabel(expandedSessionRecord, sessionTurnMap)}
           payrollItem={payrollList.find(item => item.sessionId === expandedSessionRecord.id) || null}
           discrepancyInfo={getSessionDiscrepancyInfo(expandedSessionRecord)}
           showDiscrepancy={shiftActionsAvailable}

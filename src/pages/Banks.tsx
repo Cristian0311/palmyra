@@ -1198,7 +1198,11 @@ export default function Banks() {
     .reduce((sum, t) => sum + t.amount, 0);
 
   return (
-    <PlanFeatureGate feature="banking" title="Cuentas bancarias" description="La gestión bancaria y sus movimientos están disponibles desde el plan Caravana." >
+    <PlanFeatureGate feature="banking" title="Cuentas bancarias" description="La gestión bancaria y sus movimientos están disponibles desde el plan Caravana." highlights={[
+      "Cuentas y tarjetas organizadas por sucursal",
+      "Depósitos, pagos y transferencias internas",
+      "Saldos y movimientos con historial completo"
+    ]} >
     {/* Márgenes negativos: la sección ocupa todo el ancho útil que Layout recorta con su padding.
         Se usa flex+gap (no space-y) para que los modales fixed no hereden márgenes. */}
     <OperationsSurface className="flex flex-col gap-4 -mx-3 -mt-3 px-3 pb-10 pt-3 sm:-mx-4 sm:-mt-4 sm:px-4 sm:pt-4 lg:-mx-6 lg:-mt-6 lg:px-6">

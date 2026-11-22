@@ -591,7 +591,11 @@ function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
 
         {/* Estilo visual */}
         {activeTab === 'visual' && visualStyleLocked && (
-          <PlanFeatureGate feature="visual_style" title="Estilo visual del software" description="Personaliza la experiencia visual de PALMYRA y adapta la lectura de la interfaz a tu equipo. Disponible desde Caravana." />
+          <PlanFeatureGate feature="visual_style" title="Estilo visual del software" description="Personaliza la experiencia visual de PALMYRA y adapta la lectura de la interfaz a tu equipo. Disponible desde Caravana." highlights={[
+            "Ajusta el tamaño de lectura de toda la interfaz",
+            "Los cambios se aplican al instante, sin recargar",
+            "Se conservan en este dispositivo"
+          ]} />
         )}
 
         {activeTab === 'visual' && !visualStyleLocked && (

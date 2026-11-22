@@ -867,5 +867,9 @@ function SuppliersContent() {
 }
 
 export default function Suppliers() {
-  return <PlanFeatureGate feature="customers_suppliers" title="Proveedores" description="Esta función está incluida en Caravana para negocios que necesitan ampliar el control de su operación."><SuppliersContent /></PlanFeatureGate>;
+  return <PlanFeatureGate feature="customers_suppliers" title="Proveedores" description="Esta función está incluida en Caravana para negocios que necesitan ampliar el control de su operación." highlights={[
+    "Directorio de proveedores y productos vinculados",
+    "Órdenes de compra con fecha de entrega y transporte",
+    "Recepción de mercancía y costos por proveedor"
+  ]}><SuppliersContent /></PlanFeatureGate>;
 }

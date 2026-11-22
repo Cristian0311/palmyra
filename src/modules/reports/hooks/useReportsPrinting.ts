@@ -3,6 +3,7 @@ import type { CashRegisterSession, InventoryTransfer, Product, Transaction, User
 import { printThermalReceipt, format58mmLine } from '../../../lib/escpos';
 import { findSessionEmployeeUser } from '../../../services/employeeCompensation';
 import type { SessionDiscrepancyInfo } from '../utils/getSessionDiscrepancyInfo';
+import { getSessionTurnLabel } from '../utils/sessionTurnLabels';
 import {
   buildCashMovementReceiptLines,
   buildDiscrepancyReceiptLines,
@@ -65,7 +66,7 @@ export function useReportsPrinting(deps: {
     try {
       const branch = branches.find(b => b.id === session.branchId);
       const payrollItem = payrollList.find(p => p.sessionId === session.id);
-      const sequentialTurn = sessionTurnMap.get(session.id) || session.id;
+      const sequentialTurn = getSessionTurnLabel(session, sessionTurnMap);
       const workerName = findSessionEmployeeUser(session, users)?.name || session.workerName || 'Vendedor';
       const sessionTx = transactions.filter(t => t.branchId === session.branchId && t.sessionId === session.id);
       const lines = buildShiftReceiptLines(session, {
@@ -101,7 +102,7 @@ export function useReportsPrinting(deps: {
 
     try {
       const branch = branches.find(b => b.id === session.branchId);
-      const sequentialTurn = sessionTurnMap.get(session.id) || session.id;
+      const sequentialTurn = getSessionTurnLabel(session, sessionTurnMap);
       const workerName = findSessionEmployeeUser(session, users)?.name || session.workerName || 'Cajero';
       const lines = buildDiscrepancyReceiptLines(session, info, {
         branchName: branch?.name || 'Sucursal Principal',

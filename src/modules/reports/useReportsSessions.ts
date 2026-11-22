@@ -2,6 +2,9 @@ import { useCallback, useMemo } from 'react';
 import type { CashRegisterSession, Transaction, User } from '../../types';
 import { getLocalDateYMD } from '../../utils/dateUtils';
 import { findSessionEmployeeUser } from '../../services/employeeCompensation';
+import { buildSessionTurnLabelMap, persistedTurnNumber } from './utils/sessionTurnLabels';
+
+export { getSessionTurnLabel } from './utils/sessionTurnLabels';
 
 /**
  * Supabase stores a voided turn as `voided` while the POS type and UI speak
@@ -18,16 +21,9 @@ export function normalizeSessionStatus(status: string | null | undefined): CashR
 export function buildSessionTurnMap(
   sessions: CashRegisterSession[],
 ): Map<string, string> {
-  const map = new Map<string, string>();
-  sessions.forEach(session => {
-    const turnNumber = Number(session.turnNumber);
-    if (Number.isFinite(turnNumber) && turnNumber > 0) {
-      map.set(session.id, `Turno-${Math.trunc(turnNumber)}`);
-    } else {
-      map.set(session.id, session.id);
-    }
-  });
-  return map;
+  // Una sesión offline o recuperada aún no tiene turnNumber: se numera por
+  // posición cronológica en lugar de mostrar su UUID en reportes e impresiones.
+  return buildSessionTurnLabelMap(sessions);
 }
 
 export function useReportsSessions(params: {
@@ -94,8 +90,8 @@ export function useReportsSessions(params: {
 
   const getSessionTurnNumber = useCallback(
     (session: CashRegisterSession) => {
-      const persisted = Number(session.turnNumber);
-      if (Number.isFinite(persisted) && persisted > 0) return Math.trunc(persisted);
+      const persisted = persistedTurnNumber(session);
+      if (persisted !== null) return persisted;
       return Number.MAX_SAFE_INTEGER;
     },
     []

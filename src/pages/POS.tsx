@@ -30,6 +30,7 @@ import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath"
 import { aggregateTransferPayments, buildTransactionTicketId, finalizeCheckoutPayments } from '../modules/pos/utils/checkoutUtils';
 import { rememberOfflinePosCredential, verifyOfflinePosCredential, rememberOfflinePosResumeGrant, verifyOfflinePosResumeGrant } from "../services/offlinePosAuth";
 import { findSessionEmployeeUser } from "../services/employeeCompensation";
+import { buildSessionTurnLabelMap, getSessionTurnLabel } from "../modules/reports/utils/sessionTurnLabels";
 import { usePendingQuote, setPendingQuoteId } from "../modules/pos/hooks/usePendingQuote";
 import PendingQuoteBanner from "../components/pos/PendingQuoteBanner";
 const POSStartupScreen = lazy(() => import("./POSStartupScreen"));
@@ -162,6 +163,13 @@ export default function POS() {
     ) || null;
   }, [activeCashSessions]);
   const activeTransactions = useMemo(() => transactions.filter(t => !t.deletedAt), [transactions]);
+  // Etiqueta legible del turno para el comprobante de cierre: nunca el UUID.
+  const closureTurnLabel = useMemo(
+    () => lastClosedSession
+      ? buildSessionTurnLabelMap(activeCashSessions).get(lastClosedSession.id) || getSessionTurnLabel(lastClosedSession)
+      : undefined,
+    [lastClosedSession, activeCashSessions]
+  );
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [showReceiptModal, setShowReceiptModal] = useState<Transaction | null>(null);
   const [returnConfirm, setReturnConfirm] = useState<{ tx: Transaction, item: any } | null>(null);
@@ -2368,6 +2376,7 @@ export default function POS() {
 
       <POSClosurePrintArea
         session={lastClosedSession}
+        sessionTurnLabel={closureTurnLabel}
         transactions={activeTransactions}
         products={products}
         users={users}

@@ -3,7 +3,21 @@ import { Activity, AlertCircle, ArrowDownRight, ArrowUpRight, BarChart3, Clock3,
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import OperationsSurface from '../components/OperationsSurface';
 import { getSupabase } from '../lib/supabase';
-import { appendRateSnapshot, EXCHANGE_RATE_CACHE_KEY, isCryptoRate, isElToquePayload, parseExchangeRates, RATE_NAMES, readRateSnapshots, type ExchangePayload, type ExchangeRate, type RateSnapshot } from '../lib/exchangeRates';
+import {
+  appendRateSnapshot,
+  canonicalizeRates,
+  canonicalizeRateSnapshots,
+  canonicalRateCode,
+  EXCHANGE_RATE_CACHE_KEY,
+  isCryptoRate,
+  isElToquePayload,
+  parseExchangeRates,
+  RATE_NAMES,
+  readRateSnapshots,
+  type ExchangePayload,
+  type ExchangeRate,
+  type RateSnapshot
+} from '../lib/exchangeRates';
 
 const CACHE_KEY = EXCHANGE_RATE_CACHE_KEY;
 const HISTORY_KEY = 'palmyra.eltoque-observations.v2';
@@ -35,7 +49,8 @@ function rateNumber(rate: ExchangeRate): number | undefined {
   return rate.value ?? rate.sell ?? rate.buy;
 }
 function rateTitle(rate: ExchangeRate): string {
-  return RATE_NAMES[rate.code] || rate.code;
+  const code = canonicalRateCode(rate.code);
+  return RATE_NAMES[code] || code;
 }
 
 type Delta = { absolute: number; percent: number } | null;
@@ -195,7 +210,7 @@ export default function ExchangeRate() {
     return () => { cancelled = true; };
   }, [period, payload?.capturedAt]);
 
-  const rates = useMemo(() => parseExchangeRates(payload?.data), [payload]);
+  const rates = useMemo(() => canonicalizeRates(parseExchangeRates(payload?.data)), [payload]);
   const visibleRates = useMemo(() => {
     const filtered = rates.filter(rate => isCryptoRate(rate.code) === (market === 'crypto'));
     return filtered.slice().sort((a, b) => {
@@ -210,7 +225,8 @@ export default function ExchangeRate() {
   const snapshots = useMemo(() => {
     const entries = new Map(history.map(item => [item.capturedAt, item]));
     remoteHistory.forEach(item => entries.set(item.capturedAt, item));
-    return [...entries.values()].sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt));
+    // ECU observations are stored raw but must feed the EUR chart and deltas.
+    return canonicalizeRateSnapshots([...entries.values()]).sort((a, b) => Date.parse(a.capturedAt) - Date.parse(b.capturedAt));
   }, [history, remoteHistory]);
 
   const since = useMemo(() => {
@@ -218,15 +234,19 @@ export default function ExchangeRate() {
     return days === null ? 0 : Date.now() - days * 86400000;
   }, [period]);
 
-  const seriesFor = useCallback((code: string) => snapshots
-    .filter(item => Date.parse(item.capturedAt) >= since && item.rates[code] !== undefined)
-    .map(item => ({ timestamp: item.capturedAt, label: dateLabel(item.capturedAt, period === '24h'), value: item.rates[code] })), [snapshots, since, period]);
+  const seriesFor = useCallback((rawCode: string) => {
+    const code = canonicalRateCode(rawCode);
+    return snapshots
+      .filter(item => Date.parse(item.capturedAt) >= since && item.rates[code] !== undefined)
+      .map(item => ({ timestamp: item.capturedAt, label: dateLabel(item.capturedAt, period === '24h'), value: item.rates[code] }));
+  }, [snapshots, since, period]);
 
   const deltaFor = (rate: ExchangeRate): Delta => {
-    const values = seriesFor(rate.code);
+    const code = canonicalRateCode(rate.code);
+    const values = seriesFor(code);
     if (values.length >= 2) return computeDelta(values[values.length - 1].value, values[0].value);
     const current = rateNumber(rate);
-    const previous = [...snapshots].reverse().find(item => item.capturedAt < (payload?.capturedAt || '') && item.rates[rate.code] !== undefined)?.rates[rate.code];
+    const previous = [...snapshots].reverse().find(item => item.capturedAt < (payload?.capturedAt || '') && item.rates[code] !== undefined)?.rates[code];
     return computeDelta(current, previous);
   };
 

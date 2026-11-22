@@ -30,6 +30,149 @@ export type OfflineFreshness = {
   state: 'fresh' | 'warning' | 'stale' | 'unknown';
 };
 
+export type OfflinePendingOperation = {
+  id: string;
+  actionId: string;
+  type: string;
+  label: string;
+  status: 'pending' | 'processing' | 'failed';
+  queuedAt: string | null;
+  lastError: string | null;
+};
+
+const QUEUE_TYPE_LABELS: Record<string, string> = {
+  transaction: 'Venta',
+  void_transaction: 'Anulación de venta',
+  return: 'Devolución',
+  return_complete: 'Cierre de devolución',
+  cash_session: 'Turno de caja',
+  cash_movement: 'Movimiento de caja',
+  cash_movement_delete: 'Borrado de movimiento de caja',
+  salary_settlement: 'Liquidación de salario',
+  product: 'Producto',
+  product_delete: 'Borrado de producto',
+  inventory: 'Inventario',
+  inventory_adjustment: 'Ajuste de inventario',
+  inventory_reconcile: 'Conciliación de inventario',
+  inventory_audit: 'Auditoría de inventario',
+  audit_start: 'Inicio de auditoría',
+  audit_complete: 'Conteo de auditoría',
+  audit_recount: 'Recuento de auditoría',
+  audit_approve: 'Aprobación de auditoría',
+  audit_delete: 'Borrado de auditoría',
+  transfer: 'Transferencia',
+  transfer_bulk: 'Transferencia múltiple',
+  transfer_receive: 'Recepción de transferencia',
+  transfer_cancel: 'Cancelación de transferencia',
+  supplier: 'Proveedor',
+  supplier_order: 'Orden de compra',
+  supplier_receive: 'Recepción de compra',
+  customer: 'Cliente',
+  customer_delete: 'Borrado de cliente',
+  bank_card: 'Cuenta o tarjeta',
+  bank_card_balance: 'Saldo bancario',
+  bank_transaction: 'Movimiento bancario',
+  bank_transaction_delete: 'Borrado de movimiento bancario',
+  bank_internal_transfer: 'Transferencia bancaria',
+  bank_internal_transfer_delete: 'Borrado de transferencia bancaria',
+  branch: 'Sucursal',
+  category: 'Categoría',
+  user: 'Usuario',
+  employee_create: 'Alta de empleado',
+  employee_update: 'Edición de empleado',
+  employee_status: 'Estado de empleado',
+  employee_delete: 'Baja de empleado',
+  team_role_upsert: 'Rol del equipo',
+  team_compensation_settings: 'Compensación del equipo',
+  quote: 'Cotización',
+  warranty: 'Garantía',
+  time_shift: 'Turno de personal',
+  currency: 'Moneda',
+  currency_rate: 'Tasa de cambio'
+};
+
+export function describeOfflineQueueType(type: string): string {
+  const key = String(type || '');
+  if (QUEUE_TYPE_LABELS[key]) return QUEUE_TYPE_LABELS[key];
+  const readable = key.replace(/_/g, ' ').trim();
+  if (!readable) return 'Operación';
+  return readable.charAt(0).toUpperCase() + readable.slice(1);
+}
+
+function queueStatusRank(status: OfflineQueueItem['status']): number {
+  if (status === 'conflict') return 4;
+  if (status === 'processing') return 3;
+  if (status === 'failed') return 2;
+  return 1;
+}
+
+function queueItemTime(item: OfflineQueueItem): number {
+  const parsed = Date.parse(String(item.queuedAt || item.timestamp || ''));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/** El actionId es la clave idempotente; dos filas con la misma clave son la misma operación. */
+export function offlineQueueItemKey(item: Pick<OfflineQueueItem, 'id' | 'type' | 'actionId'>): string {
+  const actionId = String(item.actionId || '');
+  return actionId ? `${item.type}:${actionId}` : `${item.type}:id:${item.id}`;
+}
+
+function preferredQueueItem(candidate: OfflineQueueItem, current: OfflineQueueItem): boolean {
+  const rankDiff = queueStatusRank(candidate.status) - queueStatusRank(current.status);
+  if (rankDiff !== 0) return rankDiff > 0;
+  const timeDiff = queueItemTime(candidate) - queueItemTime(current);
+  if (timeDiff !== 0) return timeDiff > 0;
+  const retryDiff = Number(candidate.retryCount || 0) - Number(current.retryCount || 0);
+  if (retryDiff !== 0) return retryDiff > 0;
+  return String(candidate.id) > String(current.id);
+}
+
+/**
+ * Clave idempotente de la operación. `enqueueOfflineItem` actualiza por
+ * `type+actionId`, pero la cola también se reconcilia desde IndexedDB y el
+ * respaldo localStorage; si una migración interrumpida o una carrera entre
+ * pestañas deja filas repetidas, el contador debe medir operaciones y no filas.
+ */
+export function dedupeOfflineQueueItems(items: OfflineQueueItem[]): OfflineQueueItem[] {
+  const byKey = new Map<string, OfflineQueueItem>();
+  const order: string[] = [];
+  for (const item of items) {
+    if (!item || !item.id) continue;
+    const key = offlineQueueItemKey(item);
+    const current = byKey.get(key);
+    if (!current) {
+      byKey.set(key, item);
+      order.push(key);
+      continue;
+    }
+    if (preferredQueueItem(item, current)) byKey.set(key, item);
+  }
+  return order.map(key => byKey.get(key)).filter((item): item is OfflineQueueItem => Boolean(item));
+}
+
+export function listPendingOfflineOperations(
+  items: OfflineQueueItem[],
+  limit = 5
+): OfflinePendingOperation[] {
+  const pending = dedupeOfflineQueueItems(items)
+    .filter(item => item.status !== 'conflict')
+    .sort((a, b) => queueItemTime(a) - queueItemTime(b));
+  const safeLimit = Math.max(0, Math.trunc(Number(limit) || 0));
+  return pending.slice(0, safeLimit).map(item => {
+    const queuedAt = item.queuedAt || item.timestamp || null;
+    const queuedMs = queuedAt ? Date.parse(String(queuedAt)) : NaN;
+    return {
+      id: item.id,
+      actionId: item.actionId,
+      type: item.type,
+      label: describeOfflineQueueType(item.type),
+      status: item.status === 'conflict' ? 'pending' : (item.status || 'pending'),
+      queuedAt: Number.isFinite(queuedMs) ? new Date(queuedMs).toISOString() : null,
+      lastError: item.lastError ? String(item.lastError) : null
+    };
+  });
+}
+
 function timestampOf(item: Pick<OfflineQueueItem, 'timestamp'>): number {
   const parsed = Date.parse(String(item.timestamp || ''));
   return Number.isFinite(parsed) ? parsed : 0;
@@ -104,9 +247,10 @@ export function assignMissingDeviceSequences(
 }
 
 export function summarizeOfflineQueue(items: OfflineQueueItem[]): OfflineQueueHealth {
-  const conflicts = items.filter(item => item.status === 'conflict');
+  const distinct = dedupeOfflineQueueItems(items);
+  const conflicts = distinct.filter(item => item.status === 'conflict');
   // Un conflicto no se reintenta solo; por eso no cuenta como pendiente.
-  const pendingItems = items.filter(item => item.status !== 'conflict');
+  const pendingItems = distinct.filter(item => item.status !== 'conflict');
   const failed = pendingItems.filter(item => item.status === 'failed');
 
   let oldest = Number.POSITIVE_INFINITY;
@@ -118,7 +262,7 @@ export function summarizeOfflineQueue(items: OfflineQueueItem[]): OfflineQueueHe
   const diagnostic = conflicts[0] || failed[0] || null;
 
   return {
-    total: items.length,
+    total: distinct.length,
     pending: pendingItems.length,
     failed: failed.length,
     conflicts: conflicts.length,

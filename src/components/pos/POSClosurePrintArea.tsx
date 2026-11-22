@@ -1,8 +1,10 @@
 import type { CashRegisterSession, Currency, Product, ReceiptConfig, Transaction, User, SalarySettlement } from "../../types";
 import { findSessionEmployeeUser } from "../../services/employeeCompensation";
+import { getSessionTurnLabel } from "../../modules/reports/utils/sessionTurnLabels";
 
 type Props = {
   session: CashRegisterSession | null;
+  sessionTurnLabel?: string;
   transactions: Transaction[];
   products: Product[];
   users: User[];
@@ -18,6 +20,7 @@ type Props = {
 
 export function POSClosurePrintArea({
   session,
+  sessionTurnLabel,
   transactions,
   products,
   users,
@@ -31,6 +34,9 @@ export function POSClosurePrintArea({
   salarySettlement,
 }: Props) {
   if (!session) return null;
+
+  // El UUID de la sesión nunca debe imprimirse como número de turno.
+  const turnLabel = sessionTurnLabel || getSessionTurnLabel(session);
 
   const sessionTransactions = transactions.filter(
     (transaction) =>
@@ -113,7 +119,7 @@ export function POSClosurePrintArea({
 
         <div className="flex justify-between text-[10px]">
           <span>TURNO:</span>
-          <span className="font-bold">{session.id}</span>
+          <span className="font-bold">{turnLabel}</span>
         </div>
         <div className="flex justify-between text-[10px]">
           <span>FECHA:</span>

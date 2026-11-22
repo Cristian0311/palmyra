@@ -376,6 +376,11 @@ export default function Transfers() {
       feature="transfers"
       title="Transferencias entre almacenes"
       description="Esta función mueve mercancía entre almacenes. Un plan Oasis tiene un solo almacén, por lo que no necesita transferencias. Puedes explorar la función y actualizar el plan cuando tengas varios puntos."
+      highlights={[
+        "Mueve mercancía entre almacenes sin perder trazabilidad",
+        "Despacho, recepción y cancelación en dos fases",
+        "Historial por sucursal con el stock siempre al día"
+      ]}
     >
     <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500">
 

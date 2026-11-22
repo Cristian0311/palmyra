@@ -15,8 +15,6 @@ import {
   LogOut,
   Truck,
   ClipboardCheck,
-  Wifi,
-  WifiOff,
   CreditCard,
   FileText,
   ChevronLeft,
@@ -247,6 +245,67 @@ function readSidebarCollapsed() {
   } catch {
     return false;
   }
+}
+
+type OfflineIndicatorState = "online" | "offline" | "syncing";
+
+function formatOfflineCount(value: number): string {
+  return value > 99 ? "99+" : String(value);
+}
+
+function offlineStatusSpeech(state: OfflineIndicatorState, pending: number, conflicts: number): string {
+  const backlog = conflicts > 0
+    ? `${conflicts} operación(es) en conflicto y ${pending} pendiente(s).`
+    : pending > 0
+      ? `${pending} operación(es) pendientes de sincronizar.`
+      : "No hay operaciones pendientes.";
+  if (state === "offline") return `Sin conexión. ${backlog}`;
+  if (state === "syncing") return `Sincronizando con la nube. ${backlog}`;
+  return `En línea. ${backlog}`;
+}
+
+function offlineStatusTitle(state: OfflineIndicatorState, pending: number, conflicts: number): string {
+  if (state === "offline") return "Sin conexión: sigues trabajando y se sincroniza al volver el wifi";
+  if (state === "syncing") return "Sincronizando operaciones con la nube…";
+  if (conflicts > 0) return `${conflicts} operación(es) en conflicto. Revisa Configuración > Conectividad.`;
+  if (pending > 0) return `${pending} operación(es) pendientes de sincronizar`;
+  return "Conectado a la nube. Todo sincronizado";
+}
+
+function OfflineStatusPill({
+  state,
+  pending,
+  conflicts,
+  className
+}: {
+  state: OfflineIndicatorState;
+  pending: number;
+  conflicts: number;
+  className?: string;
+}) {
+  const label = state === "offline" ? "Offline" : state === "syncing" ? "Sincronizando" : "Online";
+  const tone = state === "offline"
+    ? { shell: "border-amber-300/80 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300", dot: "bg-amber-500" }
+    : state === "syncing"
+      ? { shell: "border-violet-300/80 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300", dot: "bg-violet-500 animate-pulse" }
+      : { shell: "border-emerald-300/80 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300", dot: "bg-emerald-500" };
+  // Sin trabajo real no se muestra burbuja: solo el estado, sin números fantasma.
+  const badge = conflicts > 0
+    ? { text: `!${formatOfflineCount(conflicts)}`, className: "bg-rose-600 text-white" }
+    : pending > 0
+      ? { text: formatOfflineCount(pending), className: "bg-amber-500 text-white" }
+      : null;
+  return (
+    <span className={cn("inline-flex min-w-0 items-center gap-1.5 rounded-full border py-1 pl-1.5 pr-2 text-[9px] font-black uppercase tracking-wide", tone.shell, className)}>
+      <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", tone.dot)} aria-hidden="true" />
+      <span className="min-w-0 truncate">{label}</span>
+      {badge && (
+        <span className={cn("inline-flex min-w-[1.15rem] shrink-0 items-center justify-center rounded-full px-1 py-0.5 text-[8px] font-black leading-none tabular-nums", badge.className)}>
+          {badge.text}
+        </span>
+      )}
+    </span>
+  );
 }
 
 export default function Layout({ children }: { children: React.ReactNode }) {
@@ -711,6 +770,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const safePendingOfflineCount = Number.isFinite(pendingOfflineCount) ? Math.max(0, Math.trunc(pendingOfflineCount)) : 0;
   const safeConflictOfflineCount = Number.isFinite(conflictOfflineCount) ? Math.max(0, Math.trunc(conflictOfflineCount)) : 0;
   const hasQueueBacklog = safePendingOfflineCount > 0 || safeConflictOfflineCount > 0;
+  const offlineIndicatorState: OfflineIndicatorState = !isOnline ? "offline" : isSyncingOffline ? "syncing" : "online";
+  const offlineStatusSpeechText = offlineStatusSpeech(offlineIndicatorState, safePendingOfflineCount, safeConflictOfflineCount);
+  const offlineStatusTitleText = offlineStatusTitle(offlineIndicatorState, safePendingOfflineCount, safeConflictOfflineCount);
 
   const handleOtaDownload = () => {
     if (!otaUpdate || otaBusy) return;
@@ -977,6 +1039,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="h-[100dvh] w-full min-h-[100dvh] max-h-[100dvh] overflow-hidden bg-primary text-primary flex flex-col lg:flex-row relative overscroll-none transition-colors duration-200">
+      <span className="sr-only" aria-live="polite">{offlineStatusSpeechText}</span>
 
       {showApkPromo && currentUser && (
         <div className="fixed inset-x-3 bottom-3 sm:inset-auto sm:right-4 sm:bottom-4 z-[10001]">
@@ -1158,23 +1221,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <div
-              className={cn(
-                "flex items-center gap-1 rounded-lg border px-1.5 py-1 text-[9px] font-black uppercase tracking-wide",
-                isOnline ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-amber-200 bg-amber-50 text-amber-700",
-              )}
-              title={
-                isOnline
-                  ? safePendingOfflineCount > 0
-                    ? `${safePendingOfflineCount} operación(es) pendientes de sincronizar`
-                    : "Conectado a la nube"
-                  : "Sin conexión: sigues trabajando y se sincroniza al volver el wifi"
-              }
-            >
-              {isOnline ? <Wifi className="h-3 w-3 shrink-0" /> : <WifiOff className="h-3 w-3 shrink-0" />}
-              <span className="tabular-nums">
-                {isOnline ? (safePendingOfflineCount > 0 ? safePendingOfflineCount : "Online") : "Offline"}
-              </span>
+            <div title={offlineStatusTitleText}>
+              <OfflineStatusPill
+                state={offlineIndicatorState}
+                pending={safePendingOfflineCount}
+                conflicts={safeConflictOfflineCount}
+              />
             </div>
             <button
               data-palmy-menu-toggle
@@ -1261,12 +1313,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <div className="space-y-0.5">
                 {section.items.map((item) => {
                   const Icon = item.icon;
+                  const locked = isPlanLocked(item as { requiredFeature?: PlanFeature });
+                  const requiredCode = getRequiredPlanCode((item as { requiredFeature?: PlanFeature }).requiredFeature);
+                  const requiredPlanName = getPlanDisplayName(requiredCode);
+                  const planVisual = getPlanVisual(requiredCode);
+                  const comingSoon = Boolean((item as any).comingSoon);
                   return (
                     <NavLink
                       key={item.href}
                       to={item.href}
                       onClick={(event) => {
-                        if ((item as any).comingSoon) {
+                        if (comingSoon) {
                           event.preventDefault();
                           setShowOnlineCatalogInfo(true);
                           setSidebarOpen(false);
@@ -1275,52 +1332,62 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                         setSidebarOpen(false);
                         startNavigationFeedback(item.href);
                       }}
-                      title={sidebarCollapsed ? item.name : undefined}
+                      title={sidebarCollapsed ? (locked ? `${item.name} · Requiere plan ${requiredPlanName}` : item.name) : undefined}
                     >
-                      {({ isActive }) => (
-                        <div
-                          className={cn(
-                            "flex items-center rounded-lg transition-colors duration-150 group min-w-0",
-                            sidebarCollapsed ? "justify-center p-2 my-0.5" : "gap-2 px-2.5 py-1.5",
-                            isActive && !(item as any).comingSoon
-                              ? "bg-[#6535C5] text-white shadow-sm"
-                              : "text-muted hover:bg-subtle hover:text-[#6535C5]"
-                          )}
-                        >
-                          <Icon className={cn(
-                            "w-4 h-4 shrink-0 transition-colors",
-                            isActive && !(item as any).comingSoon ? "text-white" : "text-muted group-hover:text-[#6535C5]"
-                          )} />
-                          {!sidebarCollapsed && (
-                            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                      {({ isActive }) => {
+                        const active = isActive && !comingSoon;
+                        return (
+                          <div
+                            className={cn(
+                              "group relative flex min-w-0 items-center rounded-lg transition-colors duration-150",
+                              sidebarCollapsed ? "justify-center p-2 my-0.5" : "gap-2 px-2.5 py-1.5",
+                              active
+                                ? "bg-[#6535C5] text-white shadow-sm"
+                                : "text-muted hover:bg-subtle hover:text-[#6535C5]"
+                            )}
+                          >
+                            <Icon className={cn(
+                              "w-4 h-4 shrink-0 transition-colors",
+                              active ? "text-white" : "text-muted group-hover:text-[#6535C5]"
+                            )} />
+                            {sidebarCollapsed && locked && (
                               <span
-                                className="min-w-0 font-black text-[10px] uppercase tracking-[-0.005em] leading-[1.2] whitespace-normal break-normal"
-                                title={item.name}
+                                className="pointer-events-none absolute right-1 top-1 flex h-3 w-3 items-center justify-center rounded-full border border-white bg-[#6535C5] text-white shadow-sm dark:border-slate-900"
+                                title={`Requiere plan ${requiredPlanName}`}
                               >
-                                {item.name}
+                                <Lock className="h-2 w-2" aria-hidden="true" />
                               </span>
-                              {isPlanLocked(item as { requiredFeature?: PlanFeature }) && (() => {
-                                const requiredCode = getRequiredPlanCode((item as { requiredFeature?: PlanFeature }).requiredFeature);
-                                const visual = getPlanVisual(requiredCode);
-                                return (
+                            )}
+                            {!sidebarCollapsed && (
+                              <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                                <span
+                                  className="min-w-0 flex-1 truncate font-black text-[10px] uppercase tracking-[-0.005em] leading-[1.2]"
+                                  title={item.name}
+                                >
+                                  {item.name}
+                                </span>
+                                {locked && (
                                   <span
-                                    className={cn("inline-flex w-fit items-center gap-1 rounded-full border px-1.5 py-[1px] text-[7px] font-black uppercase leading-tight tracking-tight", visual.badge)}
-                                    title={`Requiere plan ${getPlanDisplayName(requiredCode)}`}
+                                    className={cn(
+                                      "inline-flex shrink-0 items-center gap-0.5 rounded-full border px-1.5 py-[1px] text-[7px] font-black uppercase leading-tight tracking-tight",
+                                      active ? "border-white/30 bg-white/15 text-white" : planVisual.badge
+                                    )}
+                                    title={`Requiere plan ${requiredPlanName}`}
                                   >
                                     <Lock className="h-2 w-2 shrink-0" aria-hidden="true" />
-                                    {getPlanDisplayName(requiredCode)}
+                                    {requiredPlanName}
                                   </span>
-                                );
-                              })()}
-                              {!isPlanLocked(item as { requiredFeature?: PlanFeature }) && (item as any).comingSoon && (
-                                <span className="inline-flex w-fit rounded-full border border-rose-200 bg-rose-50 px-1.5 py-[1px] text-[7px] font-black uppercase leading-tight tracking-tight text-rose-700">
-                                  Próximamente
-                                </span>
-                              )}
-                            </span>
-                          )}
-                        </div>
-                      )}
+                                )}
+                                {!locked && comingSoon && (
+                                  <span className="inline-flex shrink-0 rounded-full border border-rose-200 bg-rose-50 px-1.5 py-[1px] text-[7px] font-black uppercase leading-tight tracking-tight text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300">
+                                    Próximamente
+                                  </span>
+                                )}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      }}
                     </NavLink>
                   );
                 })}
@@ -1339,22 +1406,34 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               onClick={handleManualSync}
               disabled={isSyncingOffline || !isOnline}
               className={cn(
-                "mx-auto mb-1.5 flex h-8 w-8 items-center justify-center rounded-lg border transition-colors",
+                "relative mx-auto mb-1.5 flex h-8 w-8 items-center justify-center rounded-full border transition-colors disabled:opacity-70",
                 !isOnline
-                  ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
-                  : hasQueueBacklog
-                  ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20 hover:bg-rose-500/20"
-                  : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                  ? "border-amber-300/80 bg-amber-50 dark:border-amber-900/60 dark:bg-amber-950/40"
+                  : isSyncingOffline
+                  ? "border-violet-300/80 bg-violet-50 dark:border-violet-900/60 dark:bg-violet-950/40"
+                  : "border-emerald-300/80 bg-emerald-50 dark:border-emerald-900/60 dark:bg-emerald-950/40"
               )}
-              title={!isOnline ? "Sin conexión" : hasQueueBacklog ? `${safePendingOfflineCount} operación(es) pendientes. Sincronizar.` : "Conectado"}
-              aria-label={!isOnline ? "Sin conexión" : "Sincronizar datos"}
+              title={offlineStatusTitleText}
+              aria-label={`${offlineStatusTitleText}.${isOnline && hasQueueBacklog ? " Pulsa para sincronizar." : ""}`}
             >
-              {isSyncingOffline ? (
-                <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-              ) : isOnline ? (
-                <Wifi className="h-3.5 w-3.5" />
-              ) : (
-                <WifiOff className="h-3.5 w-3.5" />
+              <span
+                className={cn(
+                  "h-2 w-2 rounded-full",
+                  !isOnline ? "bg-amber-500" : isSyncingOffline ? "bg-violet-500 animate-pulse" : "bg-emerald-500"
+                )}
+                aria-hidden="true"
+              />
+              {hasQueueBacklog && (
+                <span
+                  className={cn(
+                    "absolute -right-1 -top-1 inline-flex min-w-[15px] items-center justify-center rounded-full px-1 py-0.5 text-[8px] font-black leading-none tabular-nums text-white",
+                    safeConflictOfflineCount > 0 ? "bg-rose-600" : "bg-amber-500"
+                  )}
+                >
+                  {safeConflictOfflineCount > 0
+                    ? `!${formatOfflineCount(safeConflictOfflineCount)}`
+                    : formatOfflineCount(safePendingOfflineCount)}
+                </span>
               )}
             </button>
           ) : (
@@ -1362,40 +1441,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={handleManualSync}
               disabled={isSyncingOffline || !isOnline}
-              className={cn(
-                "w-full h-7 flex items-center justify-between gap-1.5 px-2 rounded-lg text-[7px] font-black uppercase tracking-wider transition-colors border mb-1.5",
-                !isOnline
-                  ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
-                  : hasQueueBacklog
-                  ? "bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-500/20 hover:bg-rose-500/20"
-                  : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
-              )}
-              title={safeConflictOfflineCount > 0
-                ? `${safeConflictOfflineCount} operación(es) en conflicto. Revisa Configuración > Conectividad.`
-                : safePendingOfflineCount > 0 ? "Sincronizar datos pendientes" : undefined}
+              className="mb-1.5 flex w-full min-w-0 items-center rounded-full text-left transition-opacity hover:opacity-90 disabled:opacity-70"
+              title={offlineStatusTitleText}
+              aria-label={`${offlineStatusTitleText}.${isOnline && hasQueueBacklog ? " Pulsa para sincronizar." : ""}`}
             >
-              <span className="flex items-center gap-1.5 min-w-0 truncate">
-                {isSyncingOffline ? (
-                  <RefreshCw className="w-3 h-3 animate-spin shrink-0" />
-                ) : isOnline ? (
-                  <Wifi className="w-3 h-3 shrink-0" />
-                ) : (
-                  <WifiOff className="w-3 h-3 shrink-0" />
-                )}
-                <span className="truncate">
-                  {!isOnline ? "Offline" : (safePendingOfflineCount > 0 ? (isSyncingOffline ? "Subiendo…" : "Sincronizar") : "Online")}
-                </span>
-              </span>
-              {safeConflictOfflineCount > 0 && (
-                <span className="inline-flex min-w-[16px] shrink-0 items-center justify-center rounded-full bg-rose-600 px-1 py-0.5 text-[8px] font-black leading-none tabular-nums text-white">
-                  !{safeConflictOfflineCount > 99 ? "99+" : safeConflictOfflineCount}
-                </span>
-              )}
-              {safeConflictOfflineCount === 0 && safePendingOfflineCount > 0 && (
-                <span className="inline-flex min-w-[16px] shrink-0 items-center justify-center rounded-full bg-amber-500 px-1 py-0.5 text-[8px] font-black leading-none tabular-nums text-white">
-                  {safePendingOfflineCount > 99 ? "99+" : safePendingOfflineCount}
-                </span>
-              )}
+              <OfflineStatusPill
+                state={offlineIndicatorState}
+                pending={safePendingOfflineCount}
+                conflicts={safeConflictOfflineCount}
+                className="w-full justify-between"
+              />
             </button>
           )}
 

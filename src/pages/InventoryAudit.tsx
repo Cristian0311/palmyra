@@ -556,7 +556,11 @@ export default function InventoryAuditPage() {
   const countedPct = countDraft.length ? Math.round((varianceSummary.counted / countDraft.length) * 100) : 0;
 
   return (
-    <PlanFeatureGate feature="inventory_audit" title="Auditoría de inventario" description="El conteo y ajuste formal de inventario requiere un plan con funciones de control avanzado.">
+    <PlanFeatureGate feature="inventory_audit" title="Auditoría de inventario" description="El conteo y ajuste formal de inventario requiere un plan con funciones de control avanzado." highlights={[
+      "Conteo físico por almacén y responsable",
+      "Recuento y aprobación con diferencias controladas",
+      "Ajuste de stock con trazabilidad completa"
+    ]}>
       <OperationsSurface className="flex flex-col gap-4 -mx-3 -mt-3 px-3 pb-10 pt-3 sm:-mx-4 sm:-mt-4 sm:px-4 sm:pt-4 lg:-mx-6 lg:-mt-6 lg:px-6">
         <header className="flex flex-col justify-between gap-3 lg:flex-row lg:items-center">
           <div>

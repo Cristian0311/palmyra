@@ -7,6 +7,7 @@ import {
 import { cn } from '../lib/utils';
 import type { CashRegisterSession, Transaction } from '../types';
 import type { SessionDiscrepancyDetail, SessionDiscrepancyInfo } from '../modules/reports/utils/getSessionDiscrepancyInfo';
+import { getSessionTurnLabel } from '../modules/reports/utils/sessionTurnLabels';
 
 type Props = {
   addNotification?: (message: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
@@ -114,7 +115,7 @@ export default function ReportsDiscrepancyDetailModal({
 
   const branch = branches.find(b => b.id === session.branchId);
   const worker = session.workerName || users.find(u => u.id === session.userId)?.name || 'Cajero';
-  const turnLabel = sessionTurnMap.get(session.id) || session.id;
+  const turnLabel = getSessionTurnLabel(session, sessionTurnMap);
   const isReconciled = info.auditStatus === 'resolved';
   const netBase = info.totalOverageBase - info.totalShortageBase;
   const hasShortage = info.totalShortageBase > 0.01;
