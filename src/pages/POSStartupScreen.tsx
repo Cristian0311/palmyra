@@ -27,7 +27,7 @@ export default function POSStartupScreen(props: StartupProps) {
         <div
           className={cn("pos-keyboard-overlay pos-modal-layer fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex flex-col items-center justify-center px-3 py-5 sm:px-4 sm:py-6", "overflow-y-auto overscroll-contain")}
           style={{ paddingBottom: '28px' }}>
-          <POSOpenSessionsModal {...{ branches, isRefreshingOpenSessions, joiningSessionId, openSessionsForResume, refreshOpenSessions, setJoiningSessionId, setJoiningSessionPassword, setPosError, setShowOpenSessionsModal, showOpenSessionsModal }} />
+          <POSOpenSessionsModal {...{ branches, isOnline, isRefreshingOpenSessions, joiningSessionId, openSessionsForResume, refreshOpenSessions, setJoiningSessionId, setJoiningSessionPassword, setPosError, setShowOpenSessionsModal, showOpenSessionsModal }} />
           {joiningSessionId ? (
             /* Modal Formulario de Ingreso a Turno Abierto Existente */
             <div

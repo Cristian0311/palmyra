@@ -15,8 +15,25 @@ npmRebuild: false
 files:
   - "dist/**/*"
   - "main.electron.cjs"
+  - "electron/preload.cjs"
   - "!**/*.map"
   - "!node_modules/**/*"
+
+# El proceso principal empaquetado es el bundle de esbuild
+# (dist/desktop-main.cjs), que ya incluye electron-updater. En desarrollo
+# `electron .` sigue usando main.electron.cjs con node_modules.
+extraMetadata:
+  main: dist/desktop-main.cjs
+
+# Origen de las actualizaciones automáticas. electron-builder escribe
+# resources/app-update.yml con estos datos; electron-updater consulta
+# latest.yml del último Release y descarga el Setup del mismo Release.
+# Publicar es manual (desktop:dist usa --publish never).
+publish:
+  provider: github
+  owner: Cristian0311
+  repo: palmyra
+  releaseType: release
 
 win:
   target:
@@ -26,6 +43,7 @@ win:
   icon: build/icon.ico
   # Nombre estable a propósito: /download/windows redirige a este asset fijo en
   # GitHub Releases. Si cambia el nombre, la descarga de la landing devuelve 404.
+  # electron-updater también depende de este nombre: latest.yml apunta a él.
   artifactName: PALMYRA-POS-Setup.${ext}
 
 # Instalación por usuario (sin UAC). Sin la página "todos/yo" las
@@ -36,7 +54,10 @@ nsis:
   allowElevation: false
   include: build/installer.nsh
   allowToChangeInstallationDirectory: false
-  createDesktopShortcut: true
+  # "always" (no `true`): además de la instalación nueva, recrea el acceso
+  # directo en reinstalaciones y actualizaciones aunque el usuario lo haya
+  # borrado. Con `true` electron-builder solo lo crea en instalación limpia.
+  createDesktopShortcut: "always"
   createStartMenuShortcut: true
   shortcutName: PALMYRA POS
   uninstallDisplayName: PALMYRA POS

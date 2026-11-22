@@ -666,14 +666,20 @@ export default function Inventory() {
 
   const [displayLimit, setDisplayLimit] = useState(200);
 
-  const inventoryData = buildInventoryViewData(
-    products || [],
-    inventory || [],
-    debouncedSearchQuery,
-    selectedBranch,
-    selectedCategory,
-    stockFilter,
-    displayLimit
+  // Memoizado: sin esto la vista completa (filtro + cálculo de stock por
+  // producto) se recalculaba en cada render, incluido cada carácter escrito en
+  // el formulario de alta o en cualquier modal abierto.
+  const inventoryData = useMemo(
+    () => buildInventoryViewData(
+      products || [],
+      inventory || [],
+      debouncedSearchQuery,
+      selectedBranch,
+      selectedCategory,
+      stockFilter,
+      displayLimit
+    ),
+    [products, inventory, debouncedSearchQuery, selectedBranch, selectedCategory, stockFilter, displayLimit]
   );
 
   const inventoryView = inventoryData.paginated;

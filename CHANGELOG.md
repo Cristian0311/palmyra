@@ -1,5 +1,34 @@
 # CHANGELOG — PALMYRA POS
 
+## 1.3.2 — Actualización automática en PC, instalador y conexión
+
+### Actualización automática (Windows)
+- La app instalada detecta una versión nueva, la **descarga sola** en segundo
+  plano con barra de progreso y la aplica al reiniciar o al cerrar PALMYRA:
+  ya no hay que volver a bajar ni ejecutar el Setup a mano.
+- Busca al abrir (20 s después), cada 5 horas y al volver a la ventana, sin
+  interrumpir una venta. Un fallo de red no borra una descarga ya hecha.
+- Mensajes en español y un único aviso: el aviso web/PWA no aparece dentro de
+  la app de escritorio.
+
+### Instalador
+- El acceso directo del **Escritorio** y del menú Inicio se crea siempre al
+  terminar la instalación, también en reinstalaciones y actualizaciones, y el
+  Escritorio se refresca al instante (antes podía requerir cerrar sesión).
+
+### Conexión y rendimiento
+- El servidor gratuito de Render se suspende por inactividad: un latido cada
+  10 minutos desde GitHub Actions lo mantiene despierto y la app muestra
+  «El servidor está despertando…» en lugar de un error cuando tarda.
+- Los assets con hash se cachean un año (`immutable`) y ya no se revalidan
+  ~4 MB de JS/CSS en cada arranque; las rutas inexistentes devuelven 404 en
+  lugar del HTML de la app.
+- Timeouts y reintentos con backoff en las consultas de red, sin duplicar
+  peticiones al recuperar el foco, y mensajes recuperables en vez de errores
+  duros. La tasa de cambio responde con la caché en ≤4 s si elTOQUE tarda.
+- Menos recálculos por render en Inventario, POS, Reportes y Dashboard; un
+  fallo de una página ya no tumba todo el shell («Recargar sección»).
+
 ## 1.3.1 — Registro y confirmación de correo sin errores
 
 ### Confirmación por correo

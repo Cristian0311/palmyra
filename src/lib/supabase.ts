@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { fetchWithRetry, retryDelayMs } from './http';
 
 const STORAGE_URL_KEY = 'palmyra_supabase_url';
 const STORAGE_ANON_KEY = 'palmyra_supabase_anon_key';
@@ -42,7 +43,15 @@ const supabaseFetch: typeof fetch = (input, init) => {
   requestInit.headers = headers;
   requestInit.cache = 'no-store';
 
-  return fetch(input, requestInit);
+  // Antes no había límite: una RPC colgada dejaba la caja esperando sin fin.
+  // Las lecturas se pueden reintentar (son idempotentes); las escrituras no:
+  // su reintento lo decide la cola offline, que usa IDs idempotentes.
+  const method = String(requestInit.method || 'GET').toUpperCase();
+  const readable = method === 'GET' || method === 'HEAD';
+  return fetchWithRetry(input, requestInit, {
+    timeoutMs: readable ? 15_000 : 30_000,
+    retries: readable ? 1 : 0
+  });
 };
 
 export function getSupabase(): SupabaseClient | null {
@@ -89,15 +98,23 @@ export async function checkSupabaseReachability(timeoutMs = 8000): Promise<{ ok:
   try {
     // Probe a tiny, RLS-protected table. This is only a connectivity check;
     // it never mutates data and never becomes a dependency for the durable queue.
-    const probe = client.from('products').select('id').limit(1);
-    const timeout = new Promise<{ data: any; error: any }>(resolve =>
-      setTimeout(() => resolve({
-        data: null,
-        error: { message: 'Tiempo de espera agotado al contactar Supabase.', code: 'NETWORK_TIMEOUT' }
-      }), timeoutMs)
-    );
+    // El timeout aborta la consulta de verdad: antes quedaba viva hasta 15 s
+    // mientras la UI ya había recibido el resultado.
+    const controller = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const probe = client.from('products').select('id').limit(1).abortSignal(controller.signal);
+    const timeout = new Promise<{ data: any; error: any }>(resolve => {
+      timer = setTimeout(() => {
+        controller.abort();
+        resolve({
+          data: null,
+          error: { message: 'Tiempo de espera agotado al contactar Supabase.', code: 'NETWORK_TIMEOUT' }
+        });
+      }, timeoutMs);
+    });
 
     const { error } = await Promise.race([probe, timeout]);
+    if (timer) clearTimeout(timer);
 
     if (!error) return { ok: true };
 
@@ -140,7 +157,9 @@ export async function waitForSupabaseReachability(
     if (result.ok) return { ok: true, attempts: attempt };
     lastMessage = result.message || lastMessage;
     if (attempt < attempts) {
-      await new Promise(resolve => setTimeout(resolve, 450 * Math.pow(2, attempt - 1)));
+      // 450 ms → 900 ms con jitter: varias cajas que recuperan la red a la vez
+      // no deben golpear Supabase en el mismo instante.
+      await new Promise(resolve => setTimeout(resolve, retryDelayMs(attempt, 450, 2_000)));
     }
   }
   return { ok: false, message: lastMessage, attempts: Math.max(1, attempts) };

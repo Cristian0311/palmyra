@@ -463,7 +463,10 @@ async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
     } catch (err:any) {
       failed++;
       item.retryCount = (item.retryCount || 0) + 1;
-      const retryDelayMs = Math.min(15 * 60_000, 30_000 * (2 ** Math.min(5, item.retryCount - 1)));
+      const baseDelay = Math.min(15 * 60_000, 30_000 * (2 ** Math.min(5, item.retryCount - 1)));
+      // ±20 % de jitter: tras un apagón, todas las cajas reintentaban el mismo
+      // segundo y formaban una tormenta contra Supabase.
+      const retryDelayMs = Math.round(baseDelay * (0.8 + Math.random() * 0.4));
       item.nextRetryAt = Date.now() + retryDelayMs;
       const code = err?.code ? ` [${err.code}]` : '';
       const status = err?.status || err?.statusCode ? ` HTTP ${err?.status || err?.statusCode}` : '';
@@ -590,8 +593,9 @@ export function initOfflineSyncWatcher(): () => void {
     if (isManualOfflineSyncEnabled()) return;
     // Chrome can emit 'online' before DNS/TLS/Internet access to Supabase is
     // actually usable. Give the connection a short settling window and probe
-    // the REST endpoint before touching the durable queue.
-    await new Promise(resolve => setTimeout(resolve, 1200));
+    // the REST endpoint before touching the durable queue. El jitter evita que
+    // todas las cajas que recuperan la red a la vez golpeen Supabase juntas.
+    await new Promise(resolve => setTimeout(resolve, 1_200 + Math.round(Math.random() * 900)));
     const reachability = await checkSupabaseReachability(12000);
     if (!reachability.ok) return;
     // Renovar folios fiscales en segundo plano para que el próximo corte de

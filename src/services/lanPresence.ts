@@ -1,4 +1,5 @@
 import { getSupabase } from '../lib/supabase';
+import { fetchWithRetry } from '../lib/http';
 
 const DEVICE_ID_KEY = 'palmyra:device-id';
 const DEVICE_NAME_KEY = 'palmyra:device-name';
@@ -119,15 +120,16 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, {
+  // Los endpoints LAN son idempotentes (heartbeat/rename/delete), así que un
+  // reintento es seguro si el equipo servidor está ocupado o despertando.
+  const response = await fetchWithRetry(path, {
     ...init,
     headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(init.headers || {}) },
-    cache: 'no-store',
-    signal: AbortSignal.timeout(6000)
-  });
+    cache: 'no-store'
+  }, { timeoutMs: 6_000, retries: 1 });
   const body = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(body?.error || `La solicitud LAN falló (${response.status}).`);
+    throw new Error(body?.error || `No se pudo completar la operación en la red local (${response.status}).`);
   }
   return body as T;
 }

@@ -1,4 +1,5 @@
 import { useStore } from '../store/useStore';
+import { describeNetworkError, fetchJsonWithRetry } from '../lib/http';
 import {
   EXCHANGE_RATE_CACHE_KEY,
   isElToquePayload,
@@ -57,23 +58,19 @@ function readCachedPayload(): ExchangePayload | null {
 
 async function fetchLatestPayload(): Promise<{ payload?: ExchangePayload; error?: string }> {
   try {
-    const response = await fetch('/api/exchange-rates', {
+    // Un reintento cubre el cold start de Render sin duplicar el trabajo del
+    // usuario: la consulta corre en segundo plano cada 5 minutos.
+    const { response, body } = await fetchJsonWithRetry<any>('/api/exchange-rates', {
       headers: { Accept: 'application/json' },
-      cache: 'no-store',
-      signal: AbortSignal.timeout(12000)
-    });
-    const body = await response.json();
+      cache: 'no-store'
+    }, { timeoutMs: 12_000, retries: 1 });
     if (!response.ok) {
-      return { error: typeof body?.error === 'string' ? body.error : 'La consulta a elTOQUE no pudo completarse.' };
+      return { error: typeof body?.error === 'string' ? body.error : 'No se pudo consultar la tasa de cambio. Se reintentará automáticamente.' };
     }
-    if (!isElToquePayload(body)) return { error: 'elTOQUE respondió sin cotizaciones válidas.' };
+    if (!isElToquePayload(body)) return { error: 'La fuente de tasas respondió sin cotizaciones válidas. Se conservan las últimas guardadas.' };
     return { payload: body };
   } catch (error) {
-    return {
-      error: error instanceof Error && error.name === 'TimeoutError'
-        ? 'La consulta a elTOQUE agotó el tiempo de espera.'
-        : 'Sin conexión con el servicio de tasas.'
-    };
+    return { error: describeNetworkError(error) };
   }
 }
 

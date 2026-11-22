@@ -5,7 +5,10 @@ import EmployeeAvatar from "../components/team/EmployeeAvatar";
 type ModalProps = Record<string, any>;
 
 export default function POSOpenSessionsModal(props: ModalProps) {
-  const { branches, isRefreshingOpenSessions, joiningSessionId, openSessionsForResume, refreshOpenSessions, setJoiningSessionId, setJoiningSessionPassword, setPosError, setShowOpenSessionsModal, showOpenSessionsModal } = props;
+  const { branches, isOnline, isRefreshingOpenSessions, joiningSessionId, openSessionsForResume, refreshOpenSessions, setJoiningSessionId, setJoiningSessionPassword, setPosError, setShowOpenSessionsModal, showOpenSessionsModal } = props;
+  // Sin red no podemos distinguir «no hay turnos» de «no se pudo consultar»:
+  // mostramos un estado recuperable en lugar de una lista vacía engañosa.
+  const offlineEmptyState = isOnline === false && (openSessionsForResume || []).length === 0;
   return (
     <>
       {showOpenSessionsModal && !joiningSessionId && (
@@ -24,9 +27,9 @@ export default function POSOpenSessionsModal(props: ModalProps) {
                   {openSessionsForResume.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/70 px-4 py-7 text-center">
                       <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-xl bg-white border border-slate-200 text-slate-400 shadow-sm"><Wallet className="w-4 h-4" /></div>
-                      <p className="mt-2 text-[8px] font-black uppercase tracking-[0.1em] text-slate-600">No hay turnos visibles</p>
-                      <p className="mt-1 text-[6.5px] font-bold leading-4 text-slate-400">Actualiza para volver a consultar las cajas abiertas.</p>
-                      <button type="button" onClick={() => void refreshOpenSessions()} disabled={isRefreshingOpenSessions} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[7px] font-black uppercase tracking-tight text-white disabled:opacity-50"><RefreshCw className={cn("w-3 h-3", isRefreshingOpenSessions && "animate-spin")} />{isRefreshingOpenSessions ? "Buscando…" : "Actualizar"}</button>
+                      <p className="mt-2 text-[8px] font-black uppercase tracking-[0.1em] text-slate-600">{offlineEmptyState ? "Sin conexión, reintentando…" : "No hay turnos visibles"}</p>
+                      <p className="mt-1 text-[6.5px] font-bold leading-4 text-slate-400">{offlineEmptyState ? "Este dispositivo no puede consultar las cajas abiertas ahora. Las que ya estaban guardadas siguen disponibles al reconectar." : "Actualiza para volver a consultar las cajas abiertas."}</p>
+                      <button type="button" onClick={() => void refreshOpenSessions()} disabled={isRefreshingOpenSessions} className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-[7px] font-black uppercase tracking-tight text-white disabled:opacity-50"><RefreshCw className={cn("w-3 h-3", isRefreshingOpenSessions && "animate-spin")} />{isRefreshingOpenSessions ? "Reintentando…" : offlineEmptyState ? "Reintentar" : "Actualizar"}</button>
                     </div>
                   ) : (
                     <div className="space-y-1.5">

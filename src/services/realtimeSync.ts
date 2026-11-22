@@ -120,6 +120,9 @@ async function refresh(force = false): Promise<void> {
 
 function schedule(kind: 'operational' | 'global' | 'all' = 'operational', delay = 500): void {
   if (refreshTimeout) clearTimeout(refreshTimeout);
+  // Jitter corto: varias cajas reciben el mismo evento Realtime o recuperan el
+  // foco a la vez; sin él todas pedían el catálogo en el mismo instante.
+  const wait = delay + Math.round(Math.random() * 300);
   refreshTimeout = setTimeout(() => {
     refreshTimeout = null;
     if (isBrowserOffline()) return;
@@ -147,7 +150,7 @@ function schedule(kind: 'operational' | 'global' | 'all' = 'operational', delay 
         warnNetworkOnly('[PALMYRA] Realtime refresh deferred until connectivity returns.', error);
       }
     })();
-  }, delay);
+  }, wait);
 }
 
 export function triggerBackgroundSync(force = false): Promise<void> {

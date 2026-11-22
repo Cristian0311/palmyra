@@ -4,7 +4,7 @@ import { Search, Wifi, WifiOff, RefreshCw, Plus, Minus, CreditCard, Receipt, Tra
 import { useNavigate } from "react-router-dom";
 import { cn, generateId } from "../lib/utils";
 import { useStore } from "../store/useStore";
-import { Product, Payment, Transaction, CashRegisterSession } from "../types";
+import { Product, Payment, Transaction, CashRegisterSession, BankTransaction, SalarySettlement } from "../types";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { getOfflineQueue, waitForOfflineQueueReady } from "../services/offlineQueue";
 import { getActiveTenant } from "../services/tenant";
@@ -43,6 +43,8 @@ const POSSalarySummaryModal = lazy(() => import("./POSSalarySummaryModal"));
 
 const EMPTY_TRANSACTIONS: Transaction[] = [];
 const EMPTY_CASH_SESSIONS: CashRegisterSession[] = [];
+const EMPTY_BANK_TRANSACTIONS: BankTransaction[] = [];
+const EMPTY_SALARY_SETTLEMENTS: SalarySettlement[] = [];
 
 export default function POS() {
   const [showCashManagementModal, setShowCashManagementModal] = useState(false);
@@ -97,7 +99,6 @@ export default function POS() {
     inventory,
     addCustomer,
     bankCards,
-    bankTransactions,
     addBankTransaction,
     customers,
     users,
@@ -107,7 +108,6 @@ export default function POS() {
     receiptConfig,
     addNotification,
     joinOpenSession,
-    salarySettlements,
   } = useStore(useShallow((state) => ({
     products: state.products,
     cart: state.cart,
@@ -135,7 +135,6 @@ export default function POS() {
     inventory: state.inventory,
     addCustomer: state.addCustomer,
     bankCards: state.bankCards,
-    bankTransactions: state.bankTransactions,
     addBankTransaction: state.addBankTransaction,
     customers: state.customers,
     users: state.users,
@@ -145,7 +144,6 @@ export default function POS() {
     receiptConfig: state.receiptConfig,
     addNotification: state.addNotification,
     joinOpenSession: state.joinOpenSession,
-    salarySettlements: state.salarySettlements,
   })));
 
   // Heavy administrative collections subscribe only while their UI is visible.
@@ -208,7 +206,9 @@ export default function POS() {
   const [showMobileCart, setShowMobileCart] = useState(false);
   const [isBottomBarMinimized, setIsBottomBarMinimized] = useState(false);
   
-  const queryParams = new URLSearchParams(window.location.search);
+  // Un URLSearchParams nuevo en cada render volvía a disparar el efecto de
+  // carga de cotización en cada repintado del POS. La consulta se lee una vez.
+  const queryParams = useMemo(() => new URLSearchParams(window.location.search), []);
   
   
   const navigate = useNavigate();
@@ -422,6 +422,12 @@ export default function POS() {
 
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [showSalarySummary, setShowSalarySummary] = useState(false);
+  // Movimientos bancarios y liquidaciones solo se consumen en el resumen salarial
+  // y en el comprobante de cierre. Suscribirse siempre hacía que cada cambio de
+  // banco o de nómina re-renderizara el POS durante una venta normal.
+  const needsSalaryCollections = showSalarySummary || !!lastClosedSession;
+  const bankTransactions = useStore((state) => showSalarySummary ? state.bankTransactions : EMPTY_BANK_TRANSACTIONS);
+  const salarySettlements = useStore((state) => needsSalaryCollections ? state.salarySettlements : EMPTY_SALARY_SETTLEMENTS);
   const [isSubmittingCheckout, setIsSubmittingCheckout] = useState(false);
   const [salesFilter, setSalesFilter] = useState<'all' | 'usd' | 'transfer' | 'cash_cup' | 'mixed'>('all');
   const [salesSubTab, setSalesSubTab] = useState<'tickets' | 'products' | 'movements'>('tickets');
@@ -2102,7 +2108,9 @@ export default function POS() {
               </div>
             ) : (
               cart.map(item => {
-                const prodObj = typeof (item.product as any) === 'object' && item.product !== null ? item.product : (products.find(p => p.id === (item.product as any)) || null);
+                // El producto se resuelve con el índice memoizado: buscar en el
+                // catálogo completo por cada fila del ticket era O(filas × catálogo).
+                const prodObj = typeof (item.product as any) === 'object' && item.product !== null ? item.product : (productById.get(String(item.product)) || null);
                 const prodName = (prodObj?.name || (typeof (item.product as any) === 'string' ? (item.product as any) : 'Producto')) as string;
                 // A cart row keeps the price captured when it was added. The
                 // product catalog may refresh in the background while the sale

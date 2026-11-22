@@ -43,7 +43,7 @@ import type { Transaction, CartItem, Payment } from "../types";
 export default function Dashboard() {
   const navigate = useNavigate();
   const { branches, currentBranchId, setCurrentBranch, transactions, getBaseCurrency, currencies, inventory, products, customers, users, categories, currentUser } = useStore(useShallow((state) => ({ branches: state.branches, currentBranchId: state.currentBranchId, setCurrentBranch: state.setCurrentBranch, transactions: state.transactions, getBaseCurrency: state.getBaseCurrency, currencies: state.currencies, inventory: state.inventory, products: state.products, customers: state.customers, users: state.users, categories: state.categories, currentUser: state.currentUser })));
-  const baseCurrency = getBaseCurrency();
+  const baseCurrency = useMemo(() => getBaseCurrency(), [getBaseCurrency, currencies]);
   const productById = useMemo(() => new Map(products.map(product => [product.id, product])), [products]);
   const categoryById = useMemo(() => new Map(categories.map(category => [category.id, category])), [categories]);
   const currencyByCode = useMemo(() => new Map(currencies.map(currency => [currency.code, currency])), [currencies]);
@@ -118,8 +118,38 @@ export default function Dashboard() {
     [filteredTransactions]
   );
 
-  const totalSalesToday = todayTransactions.reduce((sum, t) => sum + (t.total || 0), 0);
+  const totalSalesToday = useMemo(
+    () => todayTransactions.reduce((sum, t) => sum + (t.total || 0), 0),
+    [todayTransactions]
+  );
   const averageTicketToday = todayTransactions.length > 0 ? totalSalesToday / todayTransactions.length : 0;
+
+  // El desempeño por sucursal se recalcula solo cuando cambian los datos.
+  // Antes se filtraba y sumaba el histórico completo por cada sucursal y en
+  // cada render (incluido el total global), lo que crecía con branches × ventas.
+  const branchPerformance = useMemo(() => {
+    const allTxSum = transactions.reduce((sum, t) => sum + (t.total || 0), 0) || 1;
+    const totalsByBranch = new Map<string, { total: number; count: number }>();
+    for (const tx of transactions) {
+      const entry = totalsByBranch.get(tx.branchId);
+      if (entry) {
+        entry.total += tx.total || 0;
+        entry.count += 1;
+      } else {
+        totalsByBranch.set(tx.branchId, { total: tx.total || 0, count: 1 });
+      }
+    }
+    const map = new Map<string, { total: number; count: number; percentage: number }>();
+    for (const branch of branches) {
+      const entry = totalsByBranch.get(branch.id) || { total: 0, count: 0 };
+      map.set(branch.id, {
+        total: entry.total,
+        count: entry.count,
+        percentage: Math.min(100, Math.round((entry.total / allTxSum) * 100)),
+      });
+    }
+    return map;
+  }, [branches, transactions]);
 
   const topCategories = useMemo(() => {
     const data: Record<string, number> = {};
@@ -715,11 +745,10 @@ export default function Dashboard() {
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
             {branches.map(branch => {
-              const branchTx = transactions.filter(t => t.branchId === branch.id);
-              const branchTotal = branchTx.reduce((sum, t) => sum + (t.total || 0), 0);
-              const branchSalesCount = branchTx.length;
-              const allTxSum = transactions.reduce((s,t) => s + (t.total || 0), 0) || 1;
-              const percentage = Math.min(100, Math.round((branchTotal / allTxSum) * 100));
+              const performance = branchPerformance.get(branch.id) || { total: 0, count: 0, percentage: 0 };
+              const branchTotal = performance.total;
+              const branchSalesCount = performance.count;
+              const percentage = performance.percentage;
               
               return (
                 <div key={branch.id} className="p-4 bg-subtle rounded-2xl border border-base group hover:border-indigo-500/50 transition-all flex flex-col justify-between">

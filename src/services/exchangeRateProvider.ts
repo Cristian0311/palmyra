@@ -2,6 +2,12 @@ import { parseExchangeRates, type ExchangePayload } from '../lib/exchangeRates';
 
 type Result = { status: number; body: ExchangePayload | { provider: 'eltoque'; source: 'elTOQUE API'; configured: boolean; error: string } };
 
+// Una instancia gratuita de Render tarda 30-60 s en despertar. Si ya existe una
+// consulta anterior, no tiene sentido retener la respuesta (ni al cliente) los
+// 10 s completos: a los 4 s se devuelve la última tasa con `stale: true`.
+const CACHED_UPSTREAM_TIMEOUT_MS = 4_000;
+const UPSTREAM_TIMEOUT_MS = 10_000;
+
 export function createExchangeRateProvider(fetcher: typeof fetch = fetch, now = Date.now) {
   let cached: ExchangePayload | null = null;
   let pending: Promise<Result> | null = null;
@@ -9,12 +15,12 @@ export function createExchangeRateProvider(fetcher: typeof fetch = fetch, now = 
     ? { status: 200, body: { ...cached, stale: true, notice: `${error} Se conserva la última consulta; no es una tasa en vivo.` } }
     : { status, body: { provider: 'eltoque', source: 'elTOQUE API', configured, error } };
 
-  async function request(token: string): Promise<Result> {
+  async function request(token: string, timeoutMs: number): Promise<Result> {
     if (!token.trim()) return failure(false, 503, 'Falta configurar la credencial de elTOQUE en el servidor. No se sustituyen sus tasas por las de otra fuente.');
     try {
       const response = await fetcher('https://tasas.eltoque.com/v1/trmi', {
         headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(timeoutMs)
       });
       if (!response.ok) {
         const message = response.status === 401 || response.status === 403
@@ -34,7 +40,10 @@ export function createExchangeRateProvider(fetcher: typeof fetch = fetch, now = 
 
   return (token: string): Promise<Result> => {
     if (cached && now() - Date.parse(cached.capturedAt) < 5 * 60 * 1000) return Promise.resolve({ status: 200, body: cached });
-    if (!pending) pending = request(token).finally(() => { pending = null; });
+    if (!pending) {
+      const timeoutMs = cached ? CACHED_UPSTREAM_TIMEOUT_MS : UPSTREAM_TIMEOUT_MS;
+      pending = request(token, timeoutMs).finally(() => { pending = null; });
+    }
     return pending;
   };
 }

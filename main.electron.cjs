@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell, session } = require('electron');
+const { app, BrowserWindow, dialog, shell, session, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -46,6 +46,239 @@ function logLine(message) {
     }
     fs.appendFileSync(logPath, line + '\n');
   } catch { /* el log es best-effort */ }
+}
+
+// ─── Actualización automática (electron-updater) ─────────────────────────────
+// La app se instala con NSIS por usuario. Al detectar una versión nueva se
+// descarga en segundo plano el Setup publicado en el Release de GitHub y se
+// aplica al reiniciar o al cerrar PALMYRA: el usuario nunca vuelve a bajar ni a
+// ejecutar un instalador a mano. `publish` vive en electron-builder.yml; de ahí
+// sale resources/app-update.yml, que electron-updater lee en cada equipo.
+const UPDATE_STATE_CHANNEL = 'palmyra:update:state';
+const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 60 * 1000; // cada 5 h
+const UPDATE_BOOT_DELAY_MS = 20 * 1000; // 20 s: primero abre la caja
+const UPDATE_FOCUS_MIN_GAP_MS = 30 * 60 * 1000; // al volver al foco, máx. 1/30 min
+
+let autoUpdater = null;
+let updateCheckInFlight = null;
+let updatePollTimer = null;
+let lastUpdateCheckAt = 0;
+
+const updateState = {
+  status: 'idle',
+  currentVersion: app.getVersion(),
+  version: '',
+  percent: 0,
+  transferred: 0,
+  total: 0,
+  message: '',
+  error: '',
+  updatedAt: 0
+};
+
+const snapshotUpdateState = () => ({ ...updateState });
+
+function broadcastUpdateState() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    mainWindow.webContents.send(UPDATE_STATE_CHANNEL, snapshotUpdateState());
+  } catch (error) {
+    logLine(`No se pudo enviar el estado de actualización: ${error && error.message ? error.message : error}`);
+  }
+}
+
+function setUpdateState(patch) {
+  const previousStatus = updateState.status;
+  Object.assign(updateState, patch, { updatedAt: Date.now() });
+  if (patch.status && patch.status !== previousStatus) {
+    logLine(`Actualización: ${patch.status}${updateState.version ? ` · v${updateState.version}` : ''}`);
+  }
+  broadcastUpdateState();
+}
+
+// Mensaje corto y en español: la UI nunca muestra rutas ni URLs internas.
+function describeUpdateError(error) {
+  const raw = String(error && error.message ? error.message : error || '');
+  if (/ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNREFUSED|ECONNRESET|net::|getaddrinfo/i.test(raw)) {
+    return 'Sin conexión con el servidor de actualizaciones. Se reintentará automáticamente.';
+  }
+  if (/app-update\.yml/i.test(raw)) {
+    return 'Esta instalación no tiene configurado el origen de actualizaciones. Reinstala PALMYRA POS con el Setup oficial.';
+  }
+  if (/404|latest\.yml|Cannot find|ENOENT/i.test(raw)) {
+    return 'El servidor todavía no publica esta actualización. Se reintentará automáticamente.';
+  }
+  if (/signature|code signature/i.test(raw)) {
+    return 'La actualización descargada no superó la verificación de firma.';
+  }
+  return 'No se pudo aplicar la actualización. Se reintentará automáticamente.';
+}
+
+function checkForUpdatesNow(reason) {
+  if (!autoUpdater) return Promise.resolve(snapshotUpdateState());
+  if (updateCheckInFlight) return updateCheckInFlight;
+  lastUpdateCheckAt = Date.now();
+  logLine(`Buscando actualizaciones (${reason}).`);
+  updateCheckInFlight = autoUpdater
+    .checkForUpdates()
+    .catch((error) => {
+      const message = error && error.message ? error.message : String(error);
+      logLine(`Falló la búsqueda de actualizaciones (${reason}): ${message}`);
+      // Una descarga en curso o ya terminada no se degrada por un reintento.
+      if (updateState.status !== 'downloading' && updateState.status !== 'downloaded') {
+        setUpdateState({ status: 'error', error: describeUpdateError(error) });
+      }
+      return snapshotUpdateState();
+    })
+    .finally(() => {
+      updateCheckInFlight = null;
+    });
+  return updateCheckInFlight;
+}
+
+function downloadUpdateNow() {
+  if (!autoUpdater) return Promise.resolve(snapshotUpdateState());
+  if (updateState.status === 'downloaded') return Promise.resolve(snapshotUpdateState());
+  setUpdateState({ status: 'downloading', error: '', message: 'Descargando la actualización…' });
+  return autoUpdater
+    .downloadUpdate()
+    .catch((error) => {
+      logLine(`No se pudo descargar la actualización: ${error && error.message ? error.message : error}`);
+      setUpdateState({ status: 'error', percent: 0, error: describeUpdateError(error) });
+      return null;
+    })
+    .then(() => snapshotUpdateState());
+}
+
+// Reinicia e instala con el Setup ya descargado. isSilent=true aplica la
+// actualización NSIS sin mostrar páginas; isForceRunAfter=true vuelve a abrir
+// PALMYRA al terminar.
+function installDownloadedUpdate() {
+  if (!autoUpdater || updateState.status !== 'downloaded') {
+    return { ok: false, error: 'No hay una actualización descargada.' };
+  }
+  setUpdateState({ message: 'Reiniciando PALMYRA para aplicar la actualización…' });
+  setTimeout(() => {
+    try {
+      autoUpdater.quitAndInstall(true, true);
+    } catch (error) {
+      logLine(`No se pudo iniciar el instalador: ${error && error.message ? error.message : error}`);
+      setUpdateState({ error: 'No se pudo iniciar el instalador. Cierra y abre PALMYRA para reintentarlo.' });
+    }
+  }, 500);
+  return { ok: true };
+}
+
+function isTrustedRenderer(event) {
+  try {
+    if (!mainWindow || mainWindow.isDestroyed()) return false;
+    if (event.sender !== mainWindow.webContents) return false;
+    const url = event.senderFrame && event.senderFrame.url ? event.senderFrame.url : event.sender.getURL();
+    return typeof url === 'string' && url.startsWith(BASE_URL);
+  } catch {
+    return false;
+  }
+}
+
+function registerUpdateIpc() {
+  ipcMain.handle('palmyra:update:get-state', (event) => (isTrustedRenderer(event) ? snapshotUpdateState() : null));
+  ipcMain.handle('palmyra:update:check', async (event) => {
+    if (!isTrustedRenderer(event)) return null;
+    await checkForUpdatesNow('manual');
+    return snapshotUpdateState();
+  });
+  ipcMain.handle('palmyra:update:download', async (event) => {
+    if (!isTrustedRenderer(event)) return null;
+    await downloadUpdateNow();
+    return snapshotUpdateState();
+  });
+  ipcMain.handle('palmyra:update:install', (event) => {
+    if (!isTrustedRenderer(event)) return { ok: false, error: 'Origen no autorizado.' };
+    return installDownloadedUpdate();
+  });
+}
+
+function initAutoUpdater() {
+  // En desarrollo no hay app-update.yml ni instalación NSIS: se informa y la UI
+  // no muestra ningún aviso.
+  if (!app.isPackaged) {
+    setUpdateState({ status: 'unsupported', message: 'Las actualizaciones automáticas se aplican en la versión instalada.' });
+    return;
+  }
+
+  try {
+    ({ autoUpdater } = require('electron-updater'));
+  } catch (error) {
+    logLine(`electron-updater no está disponible: ${error && error.message ? error.message : error}`);
+    setUpdateState({ status: 'unsupported', message: 'Este instalador no incluye el actualizador automático.' });
+    return;
+  }
+
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowPrerelease = false;
+  autoUpdater.allowDowngrade = false;
+  autoUpdater.logger = {
+    info: (message) => logLine(`updater: ${typeof message === 'string' ? message : JSON.stringify(message)}`),
+    warn: (message) => logLine(`updater aviso: ${typeof message === 'string' ? message : JSON.stringify(message)}`),
+    error: (message) => logLine(`updater error: ${typeof message === 'string' ? message : JSON.stringify(message)}`),
+    debug: () => {}
+  };
+
+  autoUpdater.on('checking-for-update', () => setUpdateState({ status: 'checking', error: '' }));
+  autoUpdater.on('update-available', (info) => {
+    setUpdateState({
+      status: 'available',
+      version: String((info && info.version) || ''),
+      percent: 0,
+      transferred: 0,
+      total: 0,
+      error: '',
+      message: 'Descargando la actualización en segundo plano…'
+    });
+  });
+  autoUpdater.on('update-not-available', (info) => {
+    setUpdateState({
+      status: 'not-available',
+      version: String((info && info.version) || ''),
+      percent: 0,
+      transferred: 0,
+      total: 0,
+      error: '',
+      message: 'PALMYRA POS ya está actualizado.'
+    });
+  });
+  autoUpdater.on('download-progress', (progress) => {
+    const rawPercent = Number(progress && progress.percent);
+    setUpdateState({
+      status: 'downloading',
+      percent: Number.isFinite(rawPercent) ? Math.min(100, Math.max(0, Math.round(rawPercent))) : updateState.percent,
+      transferred: Math.max(0, Number(progress && progress.transferred) || 0),
+      total: Math.max(0, Number(progress && progress.total) || 0),
+      error: ''
+    });
+  });
+  autoUpdater.on('update-downloaded', (info) => {
+    setUpdateState({
+      status: 'downloaded',
+      version: String((info && info.version) || updateState.version),
+      percent: 100,
+      error: '',
+      message: 'La actualización está lista. Reinicia PALMYRA para aplicarla.'
+    });
+  });
+  autoUpdater.on('error', (error) => {
+    logLine(`Error de actualización: ${error && error.stack ? error.stack : error}`);
+    // Si el paquete ya está descargado, un fallo posterior no lo invalida.
+    if (updateState.status === 'downloaded') return;
+    setUpdateState({ status: 'error', percent: 0, error: describeUpdateError(error) });
+  });
+
+  // El reloj del foco arranca aquí: así la primera ventana al abrirse no
+  // dispara un chequeo antes del retardo de arranque.
+  lastUpdateCheckAt = Date.now();
+  setTimeout(() => { void checkForUpdatesNow('arranque'); }, UPDATE_BOOT_DELAY_MS);
+  updatePollTimer = setInterval(() => { void checkForUpdatesNow('intervalo'); }, UPDATE_CHECK_INTERVAL_MS);
 }
 
 function loadingPage(status) {
@@ -166,11 +399,22 @@ function createWindow() {
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
-      sandbox: true
+      sandbox: true,
+      // Único puente permitido hacia Node: estado de actualización y la orden de
+      // reiniciar para instalar (ver electron/preload.cjs).
+      preload: path.join(app.getAppPath(), 'electron', 'preload.cjs')
     }
   });
 
   mainWindow.once('ready-to-show', () => mainWindow.show());
+
+  // Volver a PALMYRA (alt-tab) es el mejor momento para buscar actualizaciones:
+  // el usuario ya está frente al equipo y el aviso no interrumpe una venta.
+  mainWindow.on('focus', () => {
+    if (!autoUpdater) return;
+    if (Date.now() - lastUpdateCheckAt < UPDATE_FOCUS_MIN_GAP_MS) return;
+    void checkForUpdatesNow('foco');
+  });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/i.test(url)) void shell.openExternal(url);
@@ -201,6 +445,9 @@ function createWindow() {
     logLine(`Ventana cargada: ${url}`);
     if (!url.startsWith(BASE_URL)) return;
     appLoaded = true;
+    // Una recarga (o la recuperación de la interfaz) pierde el último estado:
+    // se reenvía para que el banner de actualización no desaparezca.
+    broadcastUpdateState();
     mainWindow.webContents
       .executeJavaScript(
         `(() => {
@@ -307,7 +554,9 @@ if (!hasSingleInstanceLock) {
       logLine(`Error al iniciar el servidor empaquetado: ${error && error.stack ? error.stack : error}`);
       dialog.showErrorBox('PALMYRA no pudo iniciar', String(error && error.message ? error.message : error));
     }
+    registerUpdateIpc();
     createWindow();
+    initAutoUpdater();
   });
 }
 
@@ -331,5 +580,9 @@ app.on('will-quit', () => {
   if (devServerProcess) {
     try { devServerProcess.kill(); } catch { /* ya terminó */ }
     devServerProcess = null;
+  }
+  if (updatePollTimer) {
+    clearInterval(updatePollTimer);
+    updatePollTimer = null;
   }
 });

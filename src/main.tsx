@@ -25,6 +25,8 @@ if (typeof crypto !== "undefined" && typeof crypto.randomUUID !== "function") {
 import { protectPwaStorage } from './services/pwaStorageHealth';
 import { isPalmyraApp } from './lib/install';
 import { installNativeUpdateHooks } from './lib/nativeApp';
+import { fetchWithTimeout as fetchWithLimit } from './lib/http';
+import { beginServerWarmup, SERVER_WAKE_EVENT } from './lib/serverWake';
 
 // Recover gracefully when a cached HTML/service-worker version references a
 // chunk removed by a newer deployment. Vite emits this event for failed
@@ -126,6 +128,8 @@ if (isPALMYRAPWAInstalledAtBoot()) {
 import { registerSW } from 'virtual:pwa-register';
 
 const SW_CHECK_INTERVAL_MS = 5 * 60_000;
+const SW_FRESH_CHECK_MIN_GAP_MS = 20_000;
+const SERVER_VERSION_CHECK_MIN_GAP_MS = 10_000;
 const PALMYRA_UPDATE_AVAILABLE_KEY = 'palmyra:update-available';
 const PALMYRA_UPDATE_VERSION_KEY = 'palmyra:update-version';
 const PALMYRA_BUILD_ID_KEY = 'palmyra:build-id';
@@ -177,12 +181,16 @@ const markUpdateAvailable = (version?: string) => {
 
 type ServerManifest = { buildId: string; version: string };
 
+// 8 s: justo el umbral que distingue "servidor despertando" de una red caída.
+// Sin límite, un cold start de Render dejaba este fetch colgado 60 s.
+const SERVER_PROBE_TIMEOUT_MS = 8_000;
+
 const fetchServerManifest = async (): Promise<ServerManifest | null> => {
   try {
-    const response = await fetch('/version.json?ts=' + Date.now(), {
+    const response = await fetchWithLimit('/version.json?ts=' + Date.now(), {
       cache: 'no-store',
       headers: { 'cache-control': 'no-cache', pragma: 'no-cache' },
-    });
+    }, SERVER_PROBE_TIMEOUT_MS);
     if (!response.ok) return null;
     const payload = await response.json() as { buildId?: string; version?: string };
     const buildId = String(payload?.buildId || '');
@@ -199,10 +207,12 @@ type ServerVersionCheckResult = 'checked' | 'offline' | 'failed';
 // visibilidad e intervalo comparten esta promesa. Así nunca hay dos peticiones
 // a /version.json compitiendo ni avisos duplicados.
 let serverVersionCheckInFlight: Promise<ServerVersionCheckResult> | null = null;
+let lastServerVersionCheckAt = 0;
 
 const checkServerVersion = (): Promise<ServerVersionCheckResult> => {
   if (serverVersionCheckInFlight) return serverVersionCheckInFlight;
   if (!navigator.onLine) return Promise.resolve('offline');
+  lastServerVersionCheckAt = Date.now();
 
   const run = (async (): Promise<ServerVersionCheckResult> => {
     try {
@@ -294,16 +304,6 @@ type PrecachePlan = {
 // para decidir qué falta de verdad. Antes se volvía a descargar toda la app.
 let activeUpdatePlan: PrecachePlan | null = null;
 
-const fetchWithTimeout = async (input: string, init: RequestInit, timeoutMs: number): Promise<Response> => {
-  const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(input, { ...init, signal: controller.signal });
-  } finally {
-    window.clearTimeout(timer);
-  }
-};
-
 const buildPrecachePlan = async (): Promise<PrecachePlan> => {
   let targets: string[] = [];
   try {
@@ -338,7 +338,7 @@ const buildPrecachePlan = async (): Promise<PrecachePlan> => {
 /** HEAD/Content-Length para mostrar MB reales; si el servidor no lo publica se usa el conteo de archivos. */
 const probeAssetSize = async (url: string): Promise<number> => {
   try {
-    const response = await fetchWithTimeout(url, { method: 'HEAD', cache: 'no-store' }, 8_000);
+    const response = await fetchWithLimit(url, { method: 'HEAD', cache: 'no-store' }, 8_000);
     if (!response.ok) return 0;
     const declared = Number(response.headers.get('content-length') || 0);
     return Number.isFinite(declared) && declared > 0 ? declared : 0;
@@ -538,7 +538,7 @@ const waitForWorkerInstalled = (worker: ServiceWorker, timeoutMs: number) =>
 // cacheado no tiene worker nuevo, se reconstruye desde la red. Solo se limpian
 // caches del shell; IndexedDB y localStorage del negocio quedan intactos.
 const resetShellForFreshBuild = async () => {
-  const probe = await fetch('/?ts=' + Date.now(), { method: 'HEAD', cache: 'no-store' });
+  const probe = await fetchWithLimit('/?ts=' + Date.now(), { method: 'HEAD', cache: 'no-store' }, SERVER_PROBE_TIMEOUT_MS);
   if (!probe.ok) throw new Error('El servidor no está disponible para descargar la nueva versión.');
   try {
     const registrations = await navigator.serviceWorker?.getRegistrations?.() || [];
@@ -579,12 +579,19 @@ const updateSW = usesNativeShell
   onRegisteredSW(swUrl, registration) {
     if (!registration) return;
 
+    let lastFreshWorkerCheckAt = 0;
     const checkForFreshWorker = async () => {
+      // focus, visibilitychange y online pueden dispararse juntos al volver a
+      // la pestaña. Sin este límite se pedían /sw.js y /version.json dos veces
+      // seguidas contra una instancia que puede estar despertando.
+      const now = Date.now();
+      if (now - lastFreshWorkerCheckAt < SW_FRESH_CHECK_MIN_GAP_MS) return;
+      lastFreshWorkerCheckAt = now;
       try {
-        await fetch(swUrl, {
+        await fetchWithLimit(swUrl, {
           cache: 'no-store',
           headers: { 'cache-control': 'no-cache', pragma: 'no-cache' },
-        });
+        }, SERVER_PROBE_TIMEOUT_MS);
         await registration.update();
       } catch (error) {
         console.debug('[PWA] Service Worker update check deferred:', error);
@@ -793,7 +800,9 @@ const runBootVersionCheck = (attempt: number) => {
     const nextDelay = UPDATE_BOOT_RETRY_DELAYS_MS[attempt + 1];
     if (nextDelay === undefined) return;
     const wait = Math.max(0, nextDelay - UPDATE_BOOT_RETRY_DELAYS_MS[attempt]);
-    window.setTimeout(() => runBootVersionCheck(attempt + 1), wait);
+    // Jitter: si el servidor despierta, muchas cajas no deben reintentar a la vez.
+    const jittered = Math.round(wait * (0.9 + Math.random() * 0.2));
+    window.setTimeout(() => runBootVersionCheck(attempt + 1), jittered);
   }).catch(() => {});
 };
 
@@ -801,8 +810,12 @@ const startImmediateUpdateWatch = () => {
   if (updateWatchStarted) return;
   updateWatchStarted = true;
 
+  let lastTickAt = 0;
   const tick = () => {
     if (document.visibilityState !== 'visible' || !navigator.onLine) return;
+    const now = Date.now();
+    if (now - lastTickAt < SERVER_VERSION_CHECK_MIN_GAP_MS) return;
+    lastTickAt = now;
     void checkServerVersion();
   };
 
@@ -818,6 +831,19 @@ const startImmediateUpdateWatch = () => {
 // El shell nativo (Electron/APK) se actualiza con su propio paquete OTA: este
 // vigilante web solo aplica al navegador/PWA.
 if (!usesNativeShell) startImmediateUpdateWatch();
+
+// Sondeo de "servidor despertando" en paralelo al primer render: si la instancia
+// de Render está suspendida, la sonda espera 8 s, publica el estado y reintenta
+// una sola vez sin bloquear la UI ni el trabajo offline.
+if (!usesNativeShell) void beginServerWarmup();
+
+// Si el chequeo de versión falló durante el cold start, se repite en cuanto la
+// sonda confirma que el servidor despertó (con el mismo límite anti-duplicados).
+window.addEventListener(SERVER_WAKE_EVENT, (event) => {
+  if ((event as CustomEvent<{ state?: string }>).detail?.state !== 'awake') return;
+  if (Date.now() - lastServerVersionCheckAt < SERVER_VERSION_CHECK_MIN_GAP_MS) return;
+  void checkServerVersion();
+});
 
 // Storage protection is best-effort and never blocks application startup.
 void protectPwaStorage().then((health) => {
@@ -836,7 +862,11 @@ createRoot(document.getElementById('root')!).render(
 );
 
 // Refuerzo tras el primer render: cubre un despliegue ocurrido mientras se
-// descargaba el propio bundle. Comparte el guard de in-flight con el resto.
+// descargaba el propio bundle. Comparte el guard de in-flight con el resto y se
+// omite si el chequeo de arranque acaba de ejecutarse (evita el duplicado).
 if (!usesNativeShell) {
-  window.setTimeout(() => { void checkServerVersion(); }, 1_500);
+  window.setTimeout(() => {
+    if (Date.now() - lastServerVersionCheckAt < SERVER_VERSION_CHECK_MIN_GAP_MS) return;
+    void checkServerVersion();
+  }, 1_500);
 }

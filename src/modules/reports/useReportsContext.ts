@@ -91,68 +91,96 @@ export function useReportsContext({
     currencies[0] ||
     { code: 'CUP', name: 'Peso Cubano', symbol: '$', rateToBase: 1, isBase: true };
 
-  // Los KPIs comerciales solo deben contar ventas realmente completadas.
-  // Los AJUSTE_* son regularizaciones de auditoría/inventario y nunca representan
-  // una venta nueva; las operaciones anuladas o pendientes tampoco deben inflar
-  // ingresos, flujo neto ni el contador de tickets.
-  const validSalesTransactions = transactions.filter(
-    t =>
-      t?.status === 'completed' &&
-      !t.deletedAt &&
-      !String(t.notes || '').startsWith('AJUSTE_')
-  );
-  const totalSales = validSalesTransactions.reduce(
-    (sum, t) => sum + Math.max(0, Number(t?.total) || 0),
-    0
-  );
-  const allMovements = cashSessions.flatMap(s => s.movements || []);
+  // Los agregados se memoizan: Reports re-renderiza al abrir un modal o al
+  // cambiar un filtro, y recalcular las ventas y los flujos en cada render
+  // recorría todo el histórico. Además, el tipo de cambio y la tarjeta se
+  // resuelven por índice en lugar de con `.find` dentro de cada reducción.
+  const aggregates = useMemo(() => {
+    // Los KPIs comerciales solo deben contar ventas realmente completadas.
+    // Los AJUSTE_* son regularizaciones de auditoría/inventario y nunca representan
+    // una venta nueva; las operaciones anuladas o pendientes tampoco deben inflar
+    // ingresos, flujo neto ni el contador de tickets.
+    const validSalesTransactions = transactions.filter(
+      t =>
+        t?.status === 'completed' &&
+        !t.deletedAt &&
+        !String(t.notes || '').startsWith('AJUSTE_')
+    );
+    const totalSales = validSalesTransactions.reduce(
+      (sum, t) => sum + Math.max(0, Number(t?.total) || 0),
+      0
+    );
+    const allMovements = cashSessions.flatMap(s => s.movements || []);
 
-  const totalCashIncomes = allMovements
-    .filter(m => m.type === 'income')
-    .reduce((sum, movement) => sum + movement.amount * (currencyByCode.get(movement.currencyCode)?.rateToBase || 1), 0);
+    const totalCashIncomes = allMovements
+      .filter(m => m.type === 'income')
+      .reduce((sum, movement) => sum + movement.amount * (currencyByCode.get(movement.currencyCode)?.rateToBase || 1), 0);
 
-  const totalCashExpenses = allMovements
-    .filter(m => m.type === 'expense')
-    .reduce((sum, movement) => sum + movement.amount * (currencyByCode.get(movement.currencyCode)?.rateToBase || 1), 0);
+    const totalCashExpenses = allMovements
+      .filter(m => m.type === 'expense')
+      .reduce((sum, movement) => sum + movement.amount * (currencyByCode.get(movement.currencyCode)?.rateToBase || 1), 0);
 
-  const bankPaymentsReceived = bankTransactions
-    .filter(t => t.type === 'payment_received')
-    .reduce((sum, transaction) => {
-      const card = bankCardById.get(transaction.cardId);
-      const rate = currencyByCode.get(card?.currency || '')?.rateToBase || 1;
-      return sum + transaction.amount * rate;
-    }, 0);
+    const bankRateFor = (transaction: BankTransaction) =>
+      currencyByCode.get(bankCardById.get(transaction.cardId)?.currency || '')?.rateToBase || 1;
 
-  const bankOtherDeposits = bankTransactions
-    .filter(t => t.type === 'deposit')
-    .reduce((sum, transaction) => {
-      const card = bankCards.find(c => c.id === transaction.cardId);
-      const rate = currencies.find(c => c.code === card?.currency)?.rateToBase || 1;
-      return sum + transaction.amount * rate;
-    }, 0);
+    const bankPaymentsReceived = bankTransactions
+      .filter(t => t.type === 'payment_received')
+      .reduce((sum, transaction) => sum + transaction.amount * bankRateFor(transaction), 0);
 
-  const bankSupplierPayments = bankTransactions
-    .filter(t => t.type === 'supplier_payment')
-    .reduce((sum, transaction) => {
-      const card = bankCards.find(c => c.id === transaction.cardId);
-      const rate = currencies.find(c => c.code === card?.currency)?.rateToBase || 1;
-      return sum + transaction.amount * rate;
-    }, 0);
+    const bankOtherDeposits = bankTransactions
+      .filter(t => t.type === 'deposit')
+      .reduce((sum, transaction) => sum + transaction.amount * bankRateFor(transaction), 0);
 
-  const bankOtherWithdrawals = bankTransactions
-    .filter(t => t.type === 'withdrawal')
-    .reduce((sum, transaction) => {
-      const card = bankCards.find(c => c.id === transaction.cardId);
-      const rate = currencies.find(c => c.code === card?.currency)?.rateToBase || 1;
-      return sum + transaction.amount * rate;
-    }, 0);
+    const bankSupplierPayments = bankTransactions
+      .filter(t => t.type === 'supplier_payment')
+      .reduce((sum, transaction) => sum + transaction.amount * bankRateFor(transaction), 0);
 
-  const totalBankDeposits = bankPaymentsReceived + bankOtherDeposits;
-  const totalBankWithdrawals = bankSupplierPayments + bankOtherWithdrawals;
-  const totalIncomes = totalCashIncomes + bankOtherDeposits;
-  const totalExpenses = totalCashExpenses + totalBankWithdrawals;
-  const netFlow = totalSales + totalIncomes - totalExpenses;
-  const txCount = validSalesTransactions.length;
+    const bankOtherWithdrawals = bankTransactions
+      .filter(t => t.type === 'withdrawal')
+      .reduce((sum, transaction) => sum + transaction.amount * bankRateFor(transaction), 0);
+
+    const totalBankDeposits = bankPaymentsReceived + bankOtherDeposits;
+    const totalBankWithdrawals = bankSupplierPayments + bankOtherWithdrawals;
+    const totalIncomes = totalCashIncomes + bankOtherDeposits;
+    const totalExpenses = totalCashExpenses + totalBankWithdrawals;
+    const netFlow = totalSales + totalIncomes - totalExpenses;
+
+    return {
+      validSalesTransactions,
+      totalSales,
+      allMovements,
+      totalCashIncomes,
+      totalCashExpenses,
+      bankPaymentsReceived,
+      bankOtherDeposits,
+      bankSupplierPayments,
+      bankOtherWithdrawals,
+      totalBankDeposits,
+      totalBankWithdrawals,
+      totalIncomes,
+      totalExpenses,
+      netFlow,
+      txCount: validSalesTransactions.length,
+    };
+  }, [transactions, cashSessions, bankTransactions, bankCardById, currencyByCode]);
+
+  const {
+    validSalesTransactions,
+    totalSales,
+    allMovements,
+    totalCashIncomes,
+    totalCashExpenses,
+    bankPaymentsReceived,
+    bankOtherDeposits,
+    bankSupplierPayments,
+    bankOtherWithdrawals,
+    totalBankDeposits,
+    totalBankWithdrawals,
+    totalIncomes,
+    totalExpenses,
+    netFlow,
+    txCount,
+  } = aggregates;
 
   const formatMoney = (amount: number, code: string = baseCurrency.code) => {
     const currency = currencyByCode.get(code) || baseCurrency;

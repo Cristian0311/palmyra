@@ -1,4 +1,5 @@
 import {getSupabase} from "../lib/supabase";
+import { fetchWithRetry } from "../lib/http";
 
 export interface PlatformSupportSettings {
   whatsapp_number: string | null;
@@ -130,10 +131,10 @@ export async function loadPlatformUsage() {
   const { data: sessionData } = await supabase.auth.getSession();
   const token = sessionData.session?.access_token;
   if (!token) throw new Error("La sesión administrativa no está disponible.");
-  const response = await fetch("/api/platform-usage", {
+  const response = await fetchWithRetry("/api/platform-usage", {
     headers: { Authorization: `Bearer ${token}` },
     cache: "no-store"
-  });
+  }, { timeoutMs: 20_000, retries: 1 });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload?.error || "No se pudo consultar el consumo de infraestructura.");
   return payload;

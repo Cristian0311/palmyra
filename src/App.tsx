@@ -622,6 +622,9 @@ export default function App() {
           <Route path="/*" element={
             accessState === "ready" && currentUser ? (
               <Layout>
+                {/* Aislamiento por sección: un fallo de render de una página
+                    muestra una tarjeta recuperable y no desmonta la navegación. */}
+                <ErrorBoundary variant="content">
                 <Suspense fallback={<PageLoading />}>
                   <Routes>
                     <Route path="/" element={can("reports.view") ? <Dashboard /> : <Navigate to="/pos" replace />} />
@@ -646,6 +649,7 @@ export default function App() {
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>
                 </Suspense>
+                </ErrorBoundary>
               </Layout>
             ) : (
               <Navigate to={accessState === "signed_out" || !currentUser ? "/landing" : accessState === "needs_onboarding" || pendingOnboarding ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/landing"} replace />

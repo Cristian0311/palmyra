@@ -1,7 +1,7 @@
 {
   "name": "palmyra",
   "private": true,
-  "version": "1.3.1",
+  "version": "1.3.2",
   "main": "main.electron.cjs",
   "type": "module",
   "scripts": {
@@ -19,8 +19,8 @@
     "test:pwa:offline": "node scripts/pwa-offline-smoke.mjs",
     "desktop:dev": "npm run build && electron .",
     "desktop:pack": "npm run build:desktop && electron-builder --dir",
-    "desktop:dist": "npm run build:desktop && electron-builder --win nsis",
-    "build:desktop": "npm run build && esbuild server.ts --bundle --platform=node --format=cjs --external:sharp --external:vite --outfile=dist/desktop-server.cjs"
+    "desktop:dist": "npm run build:desktop && electron-builder --win nsis --publish never",
+    "build:desktop": "npm run build && esbuild server.ts --bundle --platform=node --format=cjs --external:sharp --external:vite --outfile=dist/desktop-server.cjs && esbuild main.electron.cjs --bundle --platform=node --format=cjs --target=node20 --external:electron --external:sharp --external:vite --outfile=dist/desktop-main.cjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -29,6 +29,7 @@
     "@vitejs/plugin-react": "^5.0.4",
     "clsx": "^2.1.1",
     "dotenv": "^17.2.3",
+    "electron-updater": "^6.8.11",
     "express": "^4.21.2",
     "html5-qrcode": "^2.3.8",
     "lucide-react": "^0.546.0",

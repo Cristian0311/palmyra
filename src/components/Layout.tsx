@@ -38,6 +38,8 @@ import { getOfflineConflictCount, getOfflineQueueCount, getOfflineQueue, refresh
 import { runWithLoading } from "../lib/busy";
 import { ANDROID_APK_DOWNLOAD, APK_PROMO_DISMISSED_KEY, PALMYRA_REMOTE_ORIGIN, REMOTE_APK_DOWNLOAD, getIosBrowserName, isAndroidDevice, isPalmyraApp, isRunningStandalone } from "../lib/install";
 import { getNativeAppInfo, startNativeUpdate, type NativeUpdateRequest } from "../lib/nativeApp";
+import { useDesktopUpdate } from "../hooks/useDesktopUpdate";
+import { DESKTOP_UPDATE_STATUS_LABELS } from "../lib/desktopUpdate";
 import { useAutoRateSync } from "../hooks/useAutoRateSync";
 import { useLanPresence } from "../hooks/useLanPresence";
 import { canUsePlanFeature, getPlanDisplayName, getPlanVisual, type PlanFeature } from "../services/planAccess";
@@ -70,7 +72,11 @@ const adminNavItems = [
   { name: "Tutorial", href: "/tutorial", icon: BookOpen, public: true },
 ];
 
-const APP_VERSION = `V ${__APP_VERSION__}`;
+// Rótulo acordado con el dueño para el sidebar. Es solo texto visible: la
+// versión real del build sigue siendo __APP_VERSION__ y es la que comparan
+// el detector de actualizaciones y el shell nativo.
+const APP_VERSION_LABEL = "Versión 1.1.0";
+const APP_VERSION_SHORT = "V 1.1.0";
 const cashierNavItems = [
   { name: "Configuración", href: "/settings", icon: Settings, public: true },
   { name: "Soporte", href: "/help-center", icon: Headphones, public: true },
@@ -151,6 +157,9 @@ const NATIVE_OTA_ENABLED = Boolean(NATIVE_APP_INFO?.ota);
 // aviso de actualización apareciera o desapareciera sin corresponder.
 const INSTALLED_WEB_VERSION = (NATIVE_APP_INFO?.webVersion || "").trim() || __APP_VERSION__;
 const OTA_DISMISSED_KEY = "palmyra:ota-dismissed-version";
+// "Ocultar"/"Más tarde" silencia solo la fase actual (versión + estado): si la
+// descarga termina y queda lista para instalar, el aviso reaparece.
+const DESKTOP_UPDATE_DISMISSED_KEY = "palmyra:desktop-update-dismissed";
 
 type OtaPhase = "idle" | "downloading" | "verifying" | "installing" | "reloading" | "error";
 
@@ -338,6 +347,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [otaReceived, setOtaReceived] = useState(0);
   const [otaTotal, setOtaTotal] = useState(0);
   const [otaError, setOtaError] = useState("");
+  const [desktopUpdateDismissed, setDesktopUpdateDismissed] = useState("");
+  const [desktopInstalling, setDesktopInstalling] = useState(false);
   const [showOnlineCatalogInfo, setShowOnlineCatalogInfo] = useState(false);
   const { currentUser, logout, notifications, removeNotification, storeConfig, syncWithSupabase, addNotification, cart, currentBranchId, getCurrentSession } = useStore(useShallow((state) => ({ currentUser: state.currentUser, logout: state.logout, notifications: state.notifications, removeNotification: state.removeNotification, storeConfig: state.storeConfig, syncWithSupabase: state.syncWithSupabase, addNotification: state.addNotification, cart: state.cart, currentBranchId: state.currentBranchId, getCurrentSession: state.getCurrentSession })));
   const location = useLocation();
@@ -346,12 +357,21 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const activeWarehouseName = useStore(state => state.branches.find(branch => branch.id === state.currentBranchId)?.name || null);
   useAutoRateSync();
   useLanPresence(activeWarehouseName);
+  // Actualización de escritorio (Electron + electron-updater por IPC). Fuera del
+  // shell Electron el controlador queda inerte y manda el flujo web/Android.
+  const desktopUpdate = useDesktopUpdate();
 
   useEffect(() => {
     try {
       window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed ? "1" : "0");
     } catch {}
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    // El descarte sobrevive a recargas internas de la ventana, pero no a un
+    // reinicio: si la actualización sigue pendiente, se vuelve a avisar.
+    try { setDesktopUpdateDismissed(window.sessionStorage.getItem(DESKTOP_UPDATE_DISMISSED_KEY) || ""); } catch {}
+  }, []);
 
 
   useEffect(() => {
@@ -500,6 +520,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // En el shell de escritorio la ÚNICA actualización válida es la de
+    // electron-updater (IPC). El aviso PWA del servidor local queda apagado
+    // aquí para que nunca aparezcan dos avisos de actualización.
+    if (IS_DESKTOP_SHELL) {
+      setUpdateAvailable(false);
+      setUpdateProgress(null);
+      setUpdateError("");
+      return;
+    }
+
     const onUpdate = (event: Event) => {
       const detail = (event as CustomEvent<{ version?: string }>).detail;
       let version = detail?.version || "";
@@ -765,6 +795,26 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   }, [addNotification]);
 
   const otaBusy = otaPhase === "downloading" || otaPhase === "verifying" || otaPhase === "installing" || otaPhase === "reloading";
+
+  // ─── Actualización de escritorio (electron-updater por IPC) ───
+  // Solo existe dentro del shell Electron; en navegador/APK queda inerte.
+  const desktopUpdateState = IS_DESKTOP_SHELL ? desktopUpdate.state : null;
+  const desktopUpdateStatus = desktopUpdateState?.status ?? "idle";
+  const desktopUpdateVersion = desktopUpdateState?.version || desktopUpdateState?.currentVersion || "";
+  const desktopUpdatePercent = Math.min(100, Math.max(0, Math.round(desktopUpdateState?.percent ?? 0)));
+  const desktopUpdateReady = desktopUpdateStatus === "downloaded";
+  const desktopUpdateFailed = desktopUpdateStatus === "error";
+  // Fase actual descartada por el usuario (versión + estado). Una fase nueva,
+  // por ejemplo "descargada", vuelve a mostrar el aviso.
+  const desktopUpdateDismissKey = `${desktopUpdateVersion}|${desktopUpdateStatus}`;
+  const desktopUpdateIsDismissed = desktopUpdateDismissed === desktopUpdateDismissKey;
+  const desktopUpdateProgressVisible =
+    Boolean(desktopUpdateState) &&
+    !desktopUpdateReady &&
+    !desktopUpdateIsDismissed &&
+    (desktopUpdateStatus === "available" || desktopUpdateStatus === "downloading" || desktopUpdateFailed);
+  const desktopUpdateReadyVisible = Boolean(desktopUpdateState) && desktopUpdateReady && !desktopUpdateIsDismissed;
+
   // El aviso de cola solo existe si hay trabajo real: pendientes o conflictos.
   // Con 0/0 no se renderiza ninguna burbuja, para no sugerir una cola fantasma.
   const safePendingOfflineCount = Number.isFinite(pendingOfflineCount) ? Math.max(0, Math.trunc(pendingOfflineCount)) : 0;
@@ -820,6 +870,53 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     setOtaPercent(0);
     setOtaReceived(0);
     setOtaTotal(0);
+  };
+
+  // Ocultar el aviso de escritorio sin frenar la descarga: el Setup se sigue
+  // bajando en segundo plano y se aplicará al cerrar PALMYRA.
+  const handleDesktopUpdateLater = () => {
+    if (desktopInstalling) return;
+    try { window.sessionStorage.setItem(DESKTOP_UPDATE_DISMISSED_KEY, desktopUpdateDismissKey); } catch {}
+    setDesktopUpdateDismissed(desktopUpdateDismissKey);
+  };
+
+  const handleDesktopUpdateRetry = () => {
+    void desktopUpdate.retry();
+  };
+
+  const handleDesktopUpdateInstall = async () => {
+    if (desktopInstalling) return;
+    // Igual que el OTA Android: nunca reiniciar en medio de una venta.
+    const activeSession = currentUser?.id ? getCurrentSession(currentBranchId, currentUser.id) : undefined;
+    if (isPosPage && activeSession && cart.length > 0) {
+      addNotification(
+        'Actualización preparada',
+        'info',
+        'Finaliza o limpia la venta actual antes de reiniciar PALMYRA. La caja y los datos permanecen protegidos.'
+      );
+      return;
+    }
+    setDesktopInstalling(true);
+    const result = await desktopUpdate.install();
+    if (result.ok) {
+      // La app se reinicia sola con la versión nueva. Si el instalador no
+      // llegara a arrancar, el botón no puede quedar bloqueado para siempre.
+      window.setTimeout(() => {
+        setDesktopInstalling(false);
+        addNotification(
+          'Actualización pendiente',
+          'info',
+          'Cierra y vuelve a abrir PALMYRA para aplicar la actualización ya descargada.'
+        );
+      }, 90_000);
+      return;
+    }
+    setDesktopInstalling(false);
+    addNotification(
+      'No se pudo aplicar la actualización',
+      'error',
+      result.error || 'Cierra y vuelve a abrir PALMYRA para aplicar la actualización descargada.'
+    );
   };
 
   const handleApplyUpdate = async () => {
@@ -1217,7 +1314,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex min-w-0 items-center gap-1.5">
             <PalmyraWordmark className="h-[26px] w-[clamp(84px,30vw,128px)] shrink-0" />
             <span className="hidden shrink-0 rounded-full bg-violet-50 px-1.5 py-0.5 text-[8px] font-black tracking-tight text-violet-700 min-[480px]:inline-flex">
-              {APP_VERSION}
+              {APP_VERSION_SHORT}
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -1266,7 +1363,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         )}>
           <div className={cn("flex items-center gap-1 min-w-0 flex-1 pr-0", sidebarCollapsed && "lg:hidden")}>
             <PalmyraWordmark className="w-[84px] h-[23px] max-w-[calc(100%-2rem)] shrink-0" />
-            <span className="hidden shrink-0 rounded-full bg-subtle px-1.5 py-1 text-[8px] font-black text-primary tracking-tight leading-none xl:inline-flex">{APP_VERSION}</span>
+            <span className="hidden shrink-0 rounded-full bg-subtle px-1.5 py-1 text-[8px] font-black text-primary tracking-tight leading-none xl:inline-flex">{APP_VERSION_LABEL}</span>
           </div>
 
           <div className={cn("hidden items-center justify-center", sidebarCollapsed && "lg:flex")}>
@@ -1576,6 +1673,139 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         );
       })()}
 
+      {/* Actualización de escritorio (electron-updater): durante la descarga el
+          aviso es discreto y no bloquea la caja. */}
+      {desktopUpdateProgressVisible && (
+        <div
+          className="fixed bottom-4 right-4 z-[299] w-[min(92vw,20rem)] rounded-2xl border border-violet-200/80 bg-white p-3.5 shadow-[0_18px_50px_rgba(76,29,149,0.18)] dark:border-violet-900/60 dark:bg-slate-900"
+          role="status"
+          aria-live="polite"
+        >
+          <div className="flex items-start gap-2.5">
+            <div className={cn(
+              "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border",
+              desktopUpdateFailed
+                ? "border-rose-200 bg-rose-50 text-rose-600 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-300"
+                : "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300"
+            )}>
+              {desktopUpdateFailed ? <AlertTriangle className="h-4 w-4" /> : <Loader2 className="h-4 w-4 animate-spin" />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="text-[9px] font-black uppercase tracking-[0.14em] text-violet-700 dark:text-violet-300">
+                {DESKTOP_UPDATE_STATUS_LABELS[desktopUpdateStatus]}
+              </p>
+              <p className="mt-1 text-[10px] font-semibold leading-4 text-slate-600 dark:text-slate-300">
+                {desktopUpdateFailed
+                  ? desktopUpdateState?.error || "No se pudo descargar la actualización. Se reintentará automáticamente."
+                  : `Versión ${desktopUpdateVersion || "nueva"} · se descarga sola, sin interrumpir la caja.`}
+              </p>
+              {!desktopUpdateFailed && (
+                <div
+                  className="mt-2 h-1.5 overflow-hidden rounded-full bg-violet-100 dark:bg-violet-900/50"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={desktopUpdatePercent}
+                >
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-violet-600 to-indigo-500 transition-[width] duration-300"
+                    style={{ width: `${Math.min(100, Math.max(3, desktopUpdatePercent))}%` }}
+                  />
+                </div>
+              )}
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <span className="text-[8px] font-black tabular-nums text-violet-600 dark:text-violet-300">
+                  {desktopUpdateFailed ? "" : `${desktopUpdatePercent}%`}
+                </span>
+                <div className="flex items-center gap-2">
+                  {desktopUpdateFailed && (
+                    <button
+                      type="button"
+                      onClick={handleDesktopUpdateRetry}
+                      className="rounded-lg bg-violet-600 px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[0.08em] text-white transition hover:bg-violet-700"
+                    >
+                      Reintentar
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleDesktopUpdateLater}
+                    className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[0.08em] text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                  >
+                    Ocultar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* La actualización de escritorio ya está descargada: el usuario decide
+          cuándo reiniciar (autoInstallOnAppQuit la aplica al cerrar). */}
+      {desktopUpdateReadyVisible && (
+        <div className="fixed inset-0 z-[301] flex items-center justify-center px-4 py-6 pointer-events-none bg-slate-950/20 dark:bg-slate-950/50 backdrop-blur-[3px]">
+          <div
+            className="pointer-events-auto w-full max-w-sm overflow-hidden rounded-[30px] border border-violet-200/70 bg-white shadow-[0_28px_90px_rgba(76,29,149,0.24)] dark:border-violet-900/60 dark:bg-slate-900 dark:shadow-[0_28px_90px_rgba(0,0,0,0.5)]"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="palmyra-desktop-update-title"
+          >
+            <div className="relative overflow-hidden bg-gradient-to-br from-violet-700 via-indigo-600 to-violet-500 px-5 pb-5 pt-5 text-white sm:px-6">
+              <div className="absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/15 blur-2xl" />
+              <div className="absolute -bottom-16 left-12 h-28 w-28 rounded-full bg-fuchsia-300/20 blur-2xl" />
+              <div className="relative flex items-center gap-3">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/15 shadow-lg backdrop-blur-sm">
+                  {desktopInstalling ? <Loader2 className="h-6 w-6 animate-spin" /> : <Download className="h-6 w-6" />}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[9px] font-black uppercase tracking-[0.18em] text-violet-100">PALMYRA POS · Escritorio</p>
+                  <h3 id="palmyra-desktop-update-title" className="mt-1 text-xl font-black tracking-tight">Actualización lista</h3>
+                </div>
+              </div>
+              <div className="relative mt-4 rounded-2xl border border-white/15 bg-black/10 px-3.5 py-3">
+                <p className="text-[10px] font-semibold leading-5 text-violet-50">
+                  La versión {desktopUpdateVersion || "nueva"} ya está descargada. Reinicia PALMYRA para aplicarla; tu empresa, ventas e inventario se conservan.
+                </p>
+              </div>
+            </div>
+            <div className="border-t border-slate-100 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
+              <div className="flex items-center justify-between gap-2.5">
+                <span className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-400">Actualización del sistema</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[8px] font-black uppercase tracking-wider text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
+                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                  {desktopInstalling ? "Reiniciando" : DESKTOP_UPDATE_STATUS_LABELS.downloaded}
+                </span>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-violet-100 dark:bg-violet-900/50" aria-hidden="true">
+                <div className="h-full w-full rounded-full bg-gradient-to-r from-violet-600 to-indigo-500" />
+              </div>
+              <p className="mt-2 text-[8px] font-semibold leading-4 text-slate-500 dark:text-slate-400">
+                No se descarga nada más: ya está en este equipo. Si prefieres no reiniciar ahora, se aplicará sola la próxima vez que cierres PALMYRA.
+              </p>
+              <div className="mt-3 flex flex-col-reverse gap-2.5 sm:flex-row">
+                <button
+                  type="button"
+                  disabled={desktopInstalling}
+                  onClick={handleDesktopUpdateLater}
+                  className="h-11 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 text-[9px] font-black uppercase tracking-[0.08em] text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+                >
+                  Más tarde
+                </button>
+                <button
+                  type="button"
+                  disabled={desktopInstalling}
+                  onClick={() => { void handleDesktopUpdateInstall(); }}
+                  className="h-11 flex-1 rounded-xl bg-violet-600 px-4 text-[9px] font-black uppercase tracking-[0.08em] text-white shadow-lg shadow-violet-600/20 transition hover:bg-violet-700 disabled:cursor-wait disabled:opacity-70"
+                >
+                  {desktopInstalling ? "Reiniciando…" : "Reiniciar e instalar"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Content */}
       {otaUpdate && (
         <div className="fixed inset-0 z-[301] flex items-center justify-center px-4 py-6 pointer-events-none bg-slate-950/20 dark:bg-slate-950/50 backdrop-blur-[3px]">
@@ -1737,7 +1967,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      {updateAvailable && !IN_PALMYRA_APP && (
+      {updateAvailable && !IN_PALMYRA_APP && !IS_DESKTOP_SHELL && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center px-4 py-6 pointer-events-none bg-slate-950/20 dark:bg-slate-950/50 backdrop-blur-[3px]">
           <div
             className="pointer-events-auto w-full max-w-sm overflow-hidden rounded-[30px] border border-violet-200/70 bg-white shadow-[0_28px_90px_rgba(76,29,149,0.24)] dark:border-violet-900/60 dark:bg-slate-900 dark:shadow-[0_28px_90px_rgba(0,0,0,0.5)]"

@@ -3,24 +3,37 @@ import { AlertTriangle, RefreshCw } from "lucide-react";
 
 interface Props {
   children: ReactNode;
+  /**
+   * "app" (por defecto) = pantalla completa de recuperación del shell.
+   * "content" = aisla el fallo de una página para que la navegación y el resto
+   * del shell sigan operativos; ofrece «Recargar sección» sin recargar la app.
+   */
+  variant?: "app" | "content";
+  title?: string;
 }
 
 interface State {
   hasError: boolean;
   error: Error | null;
+  resetCount: number;
 }
 
 export class ErrorBoundary extends React.Component<Props, State> {
   override state: State = {
     hasError: false,
     error: null,
+    resetCount: 0,
   };
 
-  public static getDerivedStateFromError(error: Error): State {
+  public static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error };
   }
 
   public override componentDidMount() {
+    // El ámbito de contenido no escucha eventos globales: esos fallos los
+    // centraliza la instancia de nivel de aplicación. Escucharlos aquí haría
+    // que un rechazo de una promesa de fondo sustituyera la página actual.
+    if (this.props.variant === "content") return;
     // React Error Boundaries no capturan errores fuera del render (por ejemplo,
     // fallos globales de ejecución o promesas rechazadas sin manejar). Mostrar
     // una pantalla recuperable evita dejar la ventana aparentemente en blanco.
@@ -29,6 +42,7 @@ export class ErrorBoundary extends React.Component<Props, State> {
   }
 
   public override componentWillUnmount() {
+    if (this.props.variant === "content") return;
     window.removeEventListener("error", this.handleWindowError);
     window.removeEventListener("unhandledrejection", this.handleUnhandledRejection);
   }
@@ -63,7 +77,48 @@ export class ErrorBoundary extends React.Component<Props, State> {
     window.location.reload();
   };
 
+  // Recuperación sin recargar: vuelve a montar el contenido de la sección.
+  // El estado del store (carrito, cola offline, turno) se conserva intacto.
+  private handleResetSection = () => {
+    this.setState((state) => ({
+      hasError: false,
+      error: null,
+      resetCount: state.resetCount + 1,
+    }));
+  };
+
   public override render() {
+    if (this.state.hasError && this.props.variant === "content") {
+      return (
+        <div className="flex min-h-[40vh] w-full items-center justify-center p-4" role="alert" aria-live="assertive">
+          <div className="w-full max-w-md rounded-2xl border border-rose-100 bg-white p-5 text-center shadow-sm">
+            <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-xl bg-rose-50 text-rose-600">
+              <AlertTriangle className="h-5 w-5" />
+            </div>
+            <h2 className="mt-3 text-sm font-black uppercase tracking-tight text-slate-900">
+              {this.props.title || "Esta sección encontró un problema"}
+            </h2>
+            <p className="mt-1.5 text-[10px] font-bold leading-4 text-slate-500">
+              El resto de PALMYRA sigue funcionando. No se perdió ninguna venta ni operación pendiente.
+            </p>
+            {this.state.error?.message && (
+              <div className="mt-2 max-h-20 overflow-y-auto break-words rounded-xl border border-slate-200 bg-slate-50 p-2 text-left font-mono text-[9px] text-rose-700">
+                {this.state.error.message}
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={this.handleResetSection}
+              className="mt-3 inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-xl bg-[#6535C5] text-[10px] font-black uppercase tracking-wider text-white active:scale-[.98]"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Recargar sección
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     if (this.state.hasError) {
       return (
         <div className="min-h-screen bg-slate-900 text-white flex items-center justify-center p-6">
@@ -109,6 +164,12 @@ export class ErrorBoundary extends React.Component<Props, State> {
       );
     }
 
-    return this.props.children;
+    // La clave solo cambia en el ámbito de contenido tras «Recargar sección»,
+    // para forzar un montaje limpio de la página sin recargar la aplicación.
+    return (
+      <React.Fragment key={this.props.variant === "content" ? this.state.resetCount : "app"}>
+        {this.props.children}
+      </React.Fragment>
+    );
   }
 }

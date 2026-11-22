@@ -89,8 +89,11 @@ async function startServer() {
     const supabaseUrl = process.env.SUPABASE_URL || 'https://hmcvujyqloyjdvngpdxz.supabase.co';
     const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
     if (!accessToken || !supabaseAnonKey) return { ok: false };
+    // 8 s: si Supabase no responde, la ruta de IA debe fallar rápido en vez de
+    // dejar la petición del usuario abierta indefinidamente.
     const userResponse = await fetch(supabaseUrl + '/auth/v1/user', {
-      headers: { apikey: supabaseAnonKey, Authorization: 'Bearer ' + accessToken }
+      headers: { apikey: supabaseAnonKey, Authorization: 'Bearer ' + accessToken },
+      signal: AbortSignal.timeout(8_000)
     }).catch(() => null);
     if (!userResponse?.ok) return { ok: false };
     return { ok: true, user: await userResponse.json().catch(() => null) };
@@ -163,6 +166,15 @@ async function startServer() {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
   });
 
+  // Sonda barata para el keepalive (.github/workflows/keepalive.yml) y para que
+  // el cliente detecte el cold start de Render. Sin auth, sin BD y con un
+  // cuerpo fijo de 15 bytes: cada visita despierta la instancia sin coste extra.
+  app.get(['/healthz', '/api/healthz'], (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.status(200).end('{"status":"ok"}');
+  });
+
 
 
 
@@ -198,7 +210,8 @@ async function startServer() {
       if (!accessToken || !supabaseAnonKey) return res.status(401).json({ error: 'Sesión administrativa no disponible.' });
 
       const userResponse = await fetch(`${supabaseUrl}/auth/v1/user`, {
-        headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${accessToken}` }
+        headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${accessToken}` },
+        signal: AbortSignal.timeout(8_000)
       });
       if (!userResponse.ok) return res.status(401).json({ error: 'Sesión administrativa inválida.' });
 
@@ -580,8 +593,14 @@ async function startServer() {
     // Un nombre puesto a mano por el dueño manda siempre. Si no, se usa el
     // nombre real del equipo (hostname del PC o modelo del móvil).
     let name = existing?.nameSource === 'manual' ? existing.name : '';
-    if (!name) name = await reverseLanHost(ip);
     if (!name) name = existing?.name || '';
+    // El DNS inverso puede tardar 1,2 s y se hacía en CADA latido. Solo se
+    // consulta para equipos nuevos o que vuelven tras varios minutos callados.
+    const returningAfterPause = !existing || Date.now() - Date.parse(existing.lastSeen || '') > 5 * 60_000;
+    if (!name || returningAfterPause) {
+      const resolved = await reverseLanHost(ip);
+      if (resolved) name = resolved;
+    }
     if (!name || /^equipo\s/i.test(name)) name = payloadName || name || fallbackName;
 
     lanDevices.set(id, {
@@ -1112,6 +1131,9 @@ Responde ESTRICTAMENTE con un objeto JSON:
     app.get('/version.json', (_req, res, next) => {
       res.setHeader('Access-Control-Allow-Origin', '*');
       res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
       next();
     });
     // Paquetes de actualización del APK: inmutables por versión y descargables
@@ -1122,6 +1144,11 @@ Responde ESTRICTAMENTE con un objeto JSON:
       res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
       next();
     });
+    // Vite nombra cada archivo con el hash de su contenido. Sin `immutable`,
+    // express.static responde max-age=0 y cada arranque revalida ~4 MB de JS
+    // contra la instancia (que además puede estar dormida). Con immutable el
+    // navegador y Cloudflare reutilizan el archivo hasta que cambie el hash.
+    const HASHED_ASSET = /-[A-Za-z0-9_-]{8,}\.(?:js|css|woff2?|ttf|otf|png|jpe?g|webp|avif|svg|map)$/i;
     app.use(express.static(distPath, {
       setHeaders(res, filePath) {
         // Never pin the HTML shell or version metadata: stale HTML can refer to
@@ -1132,10 +1159,23 @@ Responde ESTRICTAMENTE con un objeto JSON:
           res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
           res.setHeader('Pragma', 'no-cache');
           res.setHeader('Expires', '0');
+          return;
+        }
+        const relative = path.relative(distPath, filePath).replace(/\\/g, '/');
+        if ((relative.startsWith('assets/') || relative.startsWith('releases/')) && HASHED_ASSET.test(fileName)) {
+          res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
         }
       },
     }));
     app.get('*', (req, res) => {
+      // Un chunk eliminado por un despliegue nuevo no debe recibir el shell:
+      // el navegador lo interpretaría como JavaScript y la sección fallaría.
+      const looksLikeFile = req.path.startsWith('/assets/') || req.path.startsWith('/releases/')
+        || req.path.startsWith('/fonts/') || /\.[a-z0-9]{2,5}$/i.test(req.path);
+      if (looksLikeFile) {
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(404).type('text/plain').send('Recurso no encontrado.');
+      }
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
@@ -1146,6 +1186,12 @@ Responde ESTRICTAMENTE con un objeto JSON:
   const httpServer = app.listen(PORT, HOST, () => {
     console.log(`[PALMYRA API] Server running on http://${HOST}:${PORT}`);
   });
+  // Node cierra las conexiones keep-alive a los 5 s por defecto. Cloudflare
+  // (delante de Render) reutiliza sockets durante más tiempo y puede recibir un
+  // reset justo al reenviar una petición: el usuario lo ve como "sin conexión".
+  // Se deja el socket inactivo más tiempo del que espera el proxy.
+  httpServer.keepAliveTimeout = 65_000;
+  httpServer.headersTimeout = 66_000;
   httpServer.on('error', (error: NodeJS.ErrnoException) => {
     // Un puerto ocupado era invisible en la app de escritorio: quedaba una
     // ventana sin contenido. Dejamos el motivo explícito en consola/log.
