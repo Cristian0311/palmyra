@@ -1,11 +1,13 @@
 begin;
 
--- PROPUESTA (no aplicada): idempotencia de líneas de devolución e índices de
--- camino caliente.
+-- APLICADA el 2026-11-22. El índice parcial creado aquí
+-- (sales_return_items_return_sale_item_unique) se eliminó después por ser
+-- redundante frente al índice único completo (20261122150000); el RPC que
+-- aprovecha la idempotencia está en 20261122140000.
 --
--- Contexto: palmyra_create_return inserta las líneas con
+-- Contexto: palmyra_create_return insertaba las líneas con
 -- gen_random_uuid() y un `on conflict do nothing` sin destino (20261003040000),
--- por lo que un replay de la misma devolución duplica líneas y, con ellas, el
+-- por lo que un replay de la misma devolución duplicaba líneas y, con ellas, el
 -- stock devuelto y el importe reembolsado. El índice único de abajo convierte ese
 -- replay en un conflicto real (el RPC debe pasar a usar
 -- `on conflict (return_id, sale_item_id) do update` o `do nothing` con destino).

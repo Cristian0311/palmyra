@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { ArrowRight, CheckCircle2, LockKeyhole, Mail, ShieldCheck, UserRound } from "lucide-react";
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { getSupabase } from "../lib/supabase";
 import { signInSaaSAccount, signUpSaaSAccount, loadSaaSContext } from "../services/saas";
 import { acceptEmployeeInvitation } from "../services/team";
@@ -139,6 +139,30 @@ export default function SaaSInvite() {
         <div className="palmyra-loading-bubble" aria-live="polite">
           <span className="palmyra-loading-icon"><span className="palmyra-loading-spinner" /></span>
           Comprobando invitación…
+        </div>
+      </main>
+    );
+  }
+
+  // Sin token el formulario nunca podría completarse; mostrarlo obligaba a
+  // escribir nombre, correo y contraseña para recibir el error al final.
+  if (!token) {
+    return (
+      <main className="palmyra-scroll-page min-h-screen bg-[#F7F5FC] flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl border border-violet-100 shadow-xl p-8 text-center max-w-md">
+          <ShieldCheck className="w-12 h-12 text-[#6535C5] mx-auto" />
+          <h1 className="text-xl font-black text-[#21182F] mt-3">Invitación incompleta</h1>
+          <p className="text-sm text-[#6F647B] mt-2 leading-6">
+            Este enlace no incluye el código de invitación. Pide al administrador de tu empresa que reenvíe la invitación o inicia sesión si ya tienes cuenta.
+          </p>
+          <div className="mt-5 flex flex-col gap-2">
+            <Link to="/auth" className="h-11 rounded-xl bg-[#6535C5] hover:bg-[#4F249D] text-white text-xs font-black flex items-center justify-center">
+              Ir a iniciar sesión
+            </Link>
+            <Link to="/landing" className="h-10 rounded-xl bg-[#EFE8FF] text-[10px] font-black text-[#5B2DBA] flex items-center justify-center">
+              Volver a PALMYRA
+            </Link>
+          </div>
         </div>
       </main>
     );

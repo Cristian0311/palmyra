@@ -4,6 +4,7 @@ import type { ExportRows, KpiDefinition } from './analytics';
 import type { ChartSpec } from './chartRenderer';
 import { addCoverSheet, addDataSheet, createWorkbook, downloadWorkbookBuffer, writeWorkbookBuffer, type ChartRenderer, type DataSheetDefinition } from './workbook';
 import { buildFileName, reportStamp } from './theme';
+import { isLowStockQuantity } from '../../modules/inventory/utils/lowStock';
 
 export interface InventoryExportRow {
   id?: string;
@@ -17,6 +18,8 @@ export interface InventoryExportRow {
   costPrice: number;
   totalStock: number;
   minQuantity?: number;
+  /** Umbral efectivo de alerta (producto → nivel → 5 por defecto). */
+  lowStockThreshold?: number;
   status?: string;
 }
 
@@ -38,9 +41,8 @@ interface CategoryAggregate {
 
 function statusFor(row: InventoryExportRow): string {
   const stock = Number(row.totalStock) || 0;
-  const minimum = Number(row.minQuantity) || 0;
   if (stock <= 0) return 'Agotado';
-  if (minimum > 0 && stock < minimum) return 'Bajo mínimo';
+  if (isLowStockQuantity(stock, undefined, row.lowStockThreshold ?? row.minQuantity)) return 'Bajo mínimo';
   return 'Disponible';
 }
 
@@ -106,9 +108,8 @@ export async function buildInventoryWorkbook(
   const valueCost = rows.reduce((sum, row) => sum + (Number(row.costPrice) || 0) * (Number(row.totalStock) || 0), 0);
   const valueSale = rows.reduce((sum, row) => sum + (Number(row.price) || 0) * (Number(row.totalStock) || 0), 0);
   const lowStock = rows.filter(row => {
-    const minimum = Number(row.minQuantity) || 0;
     const stock = Number(row.totalStock) || 0;
-    return stock > 0 && minimum > 0 && stock < minimum;
+    return stock > 0 && isLowStockQuantity(stock, undefined, row.lowStockThreshold ?? row.minQuantity);
   }).length;
   const outOfStock = rows.filter(row => (Number(row.totalStock) || 0) <= 0).length;
 

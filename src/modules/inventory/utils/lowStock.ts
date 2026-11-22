@@ -20,3 +20,24 @@ export function isLowStockQuantity(
 ): boolean {
   return Number(quantity) <= getLowStockThreshold(product, levelMinQuantity);
 }
+
+type StockLevelQuantity = { quantity?: number | null };
+
+/** Stock disponible de un producto: suma de todos sus almacenes/niveles. */
+export function sumAvailableStock(
+  levels: readonly StockLevelQuantity[] | null | undefined
+): number {
+  if (!levels) return 0;
+  return levels.reduce((total, level) => total + (Number(level.quantity) || 0), 0);
+}
+
+/**
+ * Regla de bajo stock a nivel de producto: se evalúa el total disponible
+ * (nunca una fila aislada) contra el umbral del producto.
+ */
+export function isLowStockProduct(
+  levels: readonly StockLevelQuantity[] | null | undefined,
+  product?: { minStockAlert?: number } | null
+): boolean {
+  return isLowStockQuantity(sumAvailableStock(levels), product);
+}

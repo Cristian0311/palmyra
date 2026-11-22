@@ -83,7 +83,7 @@ async function startServer() {
     return { allowed: true, remaining: limit - current.count, retryAfter: 0 };
   };
 
-  const verifyAccessToken = async (req: any): Promise<{ ok: boolean; user?: any }> => {
+  const verifyAccessToken = async (req: any): Promise<{ ok: boolean; user?: any; accessToken?: string }> => {
     const authHeader = String(req.headers.authorization || '');
     const accessToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
     const supabaseUrl = process.env.SUPABASE_URL || 'https://hmcvujyqloyjdvngpdxz.supabase.co';
@@ -96,7 +96,7 @@ async function startServer() {
       signal: AbortSignal.timeout(8_000)
     }).catch(() => null);
     if (!userResponse?.ok) return { ok: false };
-    return { ok: true, user: await userResponse.json().catch(() => null) };
+    return { ok: true, user: await userResponse.json().catch(() => null), accessToken };
   };
 
   const requireAuthenticatedRequest = async (req: any, res: any, next: any) => {
@@ -610,13 +610,18 @@ async function startServer() {
     ip: string;
     firstSeen: string;
     lastSeen: string;
+    companyId?: string | null;
     platform?: string | null;
     model?: string | null;
     nameSource?: 'auto' | 'manual';
   };
 
   const lanBound = HOST !== '127.0.0.1' && HOST !== 'localhost';
-  const lanConfig = (await readJsonFile<{ enabled?: boolean }>(lanConfigPath)) || {};
+  const lanConfig = (await readJsonFile<{ enabled?: boolean; companyId?: string }>(lanConfigPath)) || {};
+  // El servidor local queda vinculado a la empresa del primer propietario o
+  // administrador que lo configura; así ninguna otra empresa puede leer ni
+  // administrar los equipos de esta instalación.
+  let lanCompanyId = typeof lanConfig.companyId === 'string' ? lanConfig.companyId : '';
   // En escritorio el interruptor manda; en desarrollo el enlace depende del host.
   let lanDesired = lanDesktopManaged ? lanConfig.enabled === true : lanBound;
   const lanDevices = new Map<string, LanRecord>();
@@ -636,7 +641,7 @@ async function startServer() {
 
   const persistLanDevices = () => {
     lastLanPersistAt = Date.now();
-    const records = [...lanDevices.values()].map(({ id, name, kind, warehouseName, firstSeen, lastSeen, platform, model, nameSource }) => ({ id, name, kind, warehouseName, firstSeen, lastSeen, platform, model, nameSource, ip: '' }));
+    const records = [...lanDevices.values()].map(({ id, name, kind, warehouseName, firstSeen, lastSeen, companyId, platform, model, nameSource }) => ({ id, name, kind, warehouseName, firstSeen, lastSeen, companyId: companyId || null, platform, model, nameSource, ip: '' }));
     void writeJsonFile(lanDevicesPath, records.slice(-200));
   };
   let lastLanPersistAt = 0;
@@ -663,11 +668,12 @@ async function startServer() {
       requiresRestart: lanDesktopManaged && lanDesired !== lanBound
     };
   };
-  const lanSnapshot = () => {
+  const lanSnapshot = (companyId?: string) => {
     const now = Date.now();
     const weekAgo = now - 7 * 86400000;
     const devices = [...lanDevices.values()]
       .filter(device => Date.parse(device.lastSeen || '') > weekAgo)
+      .filter(device => !companyId || !device.companyId || device.companyId === companyId)
       .map(device => ({
         id: device.id,
         name: device.name,
@@ -704,13 +710,73 @@ async function startServer() {
       return '';
     }
   };
+  // La red local expone los equipos del negocio: solo el propietario o un
+  // administrador de la empresa dueña de esta instalación puede consultarlos
+  // o administrarlos. Toda respuesta denegada mantiene el formato del resto
+  // del servidor (401/403 con mensaje en español).
+  const lanRestGet = async (accessToken: string, path: string) => {
+    const supabaseUrl = process.env.SUPABASE_URL || 'https://hmcvujyqloyjdvngpdxz.supabase.co';
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+    if (!supabaseAnonKey) return null;
+    const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+      headers: { apikey: supabaseAnonKey, Authorization: 'Bearer ' + accessToken, Accept: 'application/json' },
+      signal: AbortSignal.timeout(8_000)
+    }).catch(() => null);
+    if (!response?.ok) return null;
+    return response.json().catch(() => null);
+  };
+
   const requireLanAdmin = async (req: any, res: any, next: any) => {
-    const { ok } = await verifyAccessToken(req);
-    if (!ok) return res.status(401).json({ error: 'Se requiere una sesión autenticada para administrar la red local.' });
+    const { ok, user, accessToken } = await verifyAccessToken(req);
+    if (!ok || !accessToken) return res.status(401).json({ error: 'Se requiere una sesión autenticada para administrar la red local.' });
+
+    const userId = String(user?.id || '');
+    if (!userId) return res.status(401).json({ error: 'La sesión no identifica un usuario válido.' });
+
+    const memberships = await lanRestGet(accessToken, `company_memberships?select=company_id,is_owner&user_id=eq.${encodeURIComponent(userId)}&status=eq.active&limit=1`);
+    const membership = Array.isArray(memberships) ? memberships[0] : null;
+    if (!membership?.company_id) return res.status(403).json({ error: 'Tu cuenta no tiene una empresa activa para administrar la red local.' });
+
+    const companyId = String(membership.company_id);
+    let roleKey = '';
+    if (membership.is_owner !== true) {
+      const userRoles = await lanRestGet(accessToken, `user_roles?select=role_id&user_id=eq.${encodeURIComponent(userId)}&company_id=eq.${encodeURIComponent(companyId)}`);
+      const roleIds = Array.isArray(userRoles)
+        ? userRoles.map((row: any) => String(row?.role_id || '')).filter(Boolean)
+        : [];
+      if (roleIds.length) {
+        const roles = await lanRestGet(accessToken, `roles?select=key&id=in.(${roleIds.map(encodeURIComponent).join(',')})`);
+        if (Array.isArray(roles) && roles.some((row: any) => String(row?.key || '') === 'admin')) roleKey = 'admin';
+      }
+    }
+    if (membership.is_owner !== true && roleKey !== 'admin') {
+      return res.status(403).json({ error: 'Solo el propietario o un administrador de la empresa puede administrar la red local.' });
+    }
+
+    // La empresa solicitada nunca puede ser distinta de la empresa de la sesión.
+    const requestedCompany = String(req.headers['x-company-id'] || req.query?.companyId || req.body?.companyId || '').trim();
+    if (requestedCompany && requestedCompany !== companyId) {
+      return res.status(403).json({ error: 'La empresa de tu sesión no coincide con la empresa de este servidor local.' });
+    }
+
+    // Vincula la instalación local con la empresa autorizada y rechaza a
+    // cualquier otra empresa, aunque tenga un propietario autenticado.
+    if (lanCompanyId && lanCompanyId !== companyId) {
+      return res.status(403).json({ error: 'Este servidor local pertenece a otra empresa.' });
+    }
+    if (!lanCompanyId) {
+      lanCompanyId = companyId;
+      for (const device of lanDevices.values()) device.companyId = device.companyId || companyId;
+      lanConfig.companyId = companyId;
+      await writeJsonFile(lanConfigPath, { ...lanConfig, companyId });
+      persistLanDevices();
+    }
+
+    req.lanCompanyId = companyId;
     return next();
   };
 
-  app.get('/api/lan/status', (_req, res) => {
+  app.get('/api/lan/status', requireLanAdmin, (_req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.json(lanStatus());
   });
@@ -750,6 +816,7 @@ async function startServer() {
       model,
       nameSource: existing?.nameSource === 'manual' ? 'manual' : 'auto',
       warehouseName: cleanLanText(req.body?.warehouseName, 80) || null,
+      companyId: existing?.companyId || lanCompanyId || null,
       ip,
       firstSeen: existing?.firstSeen || now,
       lastSeen: now
@@ -768,28 +835,32 @@ async function startServer() {
     return res.json({ ok: true });
   });
 
-  app.get('/api/lan/devices', requireLanAdmin, (_req, res) => {
+  app.get('/api/lan/devices', requireLanAdmin, (req: any, res) => {
     res.setHeader('Cache-Control', 'no-store');
-    res.json(lanSnapshot());
+    res.json(lanSnapshot(req.lanCompanyId));
   });
 
   app.patch('/api/lan/devices/:id', requireLanAdmin, (req: any, res) => {
     const id = String(req.params.id || '');
     const device = lanDevices.get(id);
     if (!device) return res.status(404).json({ error: 'Ese equipo ya no está registrado.' });
+    if (device.companyId && device.companyId !== req.lanCompanyId) return res.status(403).json({ error: 'Ese equipo pertenece a otra empresa.' });
     const name = cleanLanText(req.body?.name);
     if (!name) return res.status(400).json({ error: 'El nombre no puede quedar vacío.' });
     lanDevices.set(id, { ...device, name, nameSource: 'manual' });
     persistLanDevices();
     res.setHeader('Cache-Control', 'no-store');
-    return res.json(lanSnapshot());
+    return res.json(lanSnapshot(req.lanCompanyId));
   });
 
   app.delete('/api/lan/devices/:id', requireLanAdmin, (req: any, res) => {
-    lanDevices.delete(String(req.params.id || ''));
+    const id = String(req.params.id || '');
+    const device = lanDevices.get(id);
+    if (device?.companyId && device.companyId !== req.lanCompanyId) return res.status(403).json({ error: 'Ese equipo pertenece a otra empresa.' });
+    lanDevices.delete(id);
     persistLanDevices();
     res.setHeader('Cache-Control', 'no-store');
-    return res.json(lanSnapshot());
+    return res.json(lanSnapshot(req.lanCompanyId));
   });
 
   app.put('/api/lan/settings', requireLanAdmin, async (req: any, res) => {
@@ -798,7 +869,7 @@ async function startServer() {
     }
     const enabled = req.body?.enabled === true;
     lanDesired = enabled;
-    await writeJsonFile(lanConfigPath, { enabled });
+    await writeJsonFile(lanConfigPath, { ...lanConfig, enabled });
     res.setHeader('Cache-Control', 'no-store');
     return res.json({ status: lanStatus() });
   });

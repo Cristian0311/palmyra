@@ -81,13 +81,23 @@ export default function SaaSOnboarding() {
     if (guardRef.current) return;
     guardRef.current = true;
     void (async () => {
+      let context = null;
       try {
-        const context = await loadSaaSContext();
-        if (context?.companyId) {
-          try { sessionStorage.removeItem('palmyra_pending_onboarding'); } catch {}
-          window.location.replace('/');
-        }
+        context = await loadSaaSContext();
       } catch { /* La comprobación se reintenta al hidratar la sesión. */ }
+      if (context?.companyId) {
+        try { sessionStorage.removeItem('palmyra_pending_onboarding'); } catch {}
+        window.location.replace('/');
+        return;
+      }
+      // Sin sesión no hay forma de crear la empresa. Antes, una marca vieja en
+      // sessionStorage abría el formulario y el usuario lo perdía todo al enviar.
+      if (!context && (typeof navigator === 'undefined' || navigator.onLine)) {
+        try {
+          const { data } = (await getSupabase()?.auth.getSession()) || { data: { session: null } };
+          if (!data?.session) window.location.replace('/auth?mode=signin');
+        } catch { /* Si no se puede comprobar, el formulario seguirá disponible. */ }
+      }
     })();
   }, []);
 

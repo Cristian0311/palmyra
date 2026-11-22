@@ -1,6 +1,6 @@
 import { buildInventoryViewData } from '../modules/inventory/utils/buildInventoryViewData';
 import { getWarehouseId, getAuthorizedWarehouseIds } from "../modules/warehouse/warehouseScope";
-import { isLowStockQuantity } from "../modules/inventory/utils/lowStock";
+import { getLowStockThreshold, isLowStockProduct, sumAvailableStock } from "../modules/inventory/utils/lowStock";
 import { buildInventoryCsv } from '../modules/inventory/utils/buildInventoryCsv';
 import { resizeProductImage } from '../modules/inventory/utils/resizeProductImage';
 import { useShallow } from 'zustand/react/shallow';
@@ -632,6 +632,7 @@ export default function Inventory() {
         costPrice: Number(item.costPrice) || 0,
         totalStock: Number(item.totalStock ?? item.quantity ?? 0),
         minQuantity: minFromLevels || Number(item.minStockAlert) || 0,
+        lowStockThreshold: getLowStockThreshold(item, minFromLevels),
         status: item.status,
       };
     });
@@ -709,29 +710,27 @@ export default function Inventory() {
   // Los indicadores reflejan la sucursal activa, no la búsqueda ni los filtros
   // de la tabla: buscar un producto no debe alterar las cifras globales.
   const stats = useMemo(() => {
-    const totalsByProduct = new Map<string, number>();
-    const lowStockProductIds = new Set<string>();
-    const productById = new Map((products || []).map(product => [product.id, product]));
+    const levelsByProduct = new Map<string, Array<{ quantity: number }>>();
     for (const level of inventory || []) {
       if (selectedBranch !== 'all' && level.branchId !== selectedBranch) continue;
-      totalsByProduct.set(level.productId, (totalsByProduct.get(level.productId) || 0) + level.quantity);
-      const product = productById.get(level.productId);
-      if (product && isLowStockQuantity(level.quantity, product, level.minQuantity)) lowStockProductIds.add(level.productId);
+      const existing = levelsByProduct.get(level.productId);
+      if (existing) existing.push(level);
+      else levelsByProduct.set(level.productId, [level]);
     }
 
-    const targetProducts = (products || []).map(product => ({
-      ...product,
-      totalStock: totalsByProduct.get(product.id) || 0
-    }));
-
-    const totalProducts = targetProducts.length;
+    let totalProducts = 0;
     let totalStock = 0;
+    let lowStockCount = 0;
 
-    for (const product of targetProducts) {
-      totalStock += Math.max(0, Number(product.totalStock) || 0);
+    // El contador usa la misma regla que la lista: total del producto, no filas.
+    for (const product of products || []) {
+      const levels = levelsByProduct.get(product.id) || [];
+      totalProducts += 1;
+      totalStock += Math.max(0, sumAvailableStock(levels));
+      if (isLowStockProduct(levels, product)) lowStockCount += 1;
     }
 
-    return { totalProducts, totalStock, lowStockCount: lowStockProductIds.size };
+    return { totalProducts, totalStock, lowStockCount };
   }, [inventory, products, selectedBranch]);
 
   return (

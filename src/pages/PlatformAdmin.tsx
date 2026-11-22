@@ -8,6 +8,7 @@ import {
   type PlatformSupportRequest, type PlatformSupportSettings,
 } from "../services/platformAdmin";
 import { loadPlatformOverview, loadPlatformPlans, type PlatformOverview, type PlatformPlan } from "../services/platformAdminConsole";
+import { getSupabase } from "../lib/supabase";
 import { useStore } from "../store/useStore";
 import { useDocumentScrollPage } from "../hooks/useDocumentScrollPage";
 import OverviewPanel from "../components/platformAdmin/OverviewPanel";
@@ -82,6 +83,18 @@ export default function PlatformAdmin() {
 
   useEffect(() => { void load(false); }, [load]);
 
+  // Sin sesión el error del servidor ("sin permisos") confunde: no hay cuenta.
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  useEffect(() => {
+    let active = true;
+    const supabase = getSupabase();
+    if (!supabase) { setSignedIn(false); return; }
+    supabase.auth.getSession()
+      .then(({ data }) => { if (active) setSignedIn(Boolean(data.session)); })
+      .catch(() => { if (active) setSignedIn(null); });
+    return () => { active = false; };
+  }, []);
+
   const refresh = useCallback(async () => {
     await load(true);
     setVersion((value) => value + 1);
@@ -130,10 +143,18 @@ export default function PlatformAdmin() {
         <div className="w-full max-w-md rounded-3xl border border-base bg-secondary p-7 text-center">
           <ShieldAlert className="mx-auto h-9 w-9 text-rose-500" />
           <h1 className="mt-3 text-lg font-black text-primary">Acceso restringido</h1>
-          <p className="mt-2 text-xs leading-5 text-muted">{fatal}</p>
+          <p className="mt-2 text-xs leading-5 text-muted">
+            {signedIn === false
+              ? "Inicia sesión con una cuenta de administración para usar la consola de plataforma."
+              : fatal}
+          </p>
           <div className="mt-5 flex flex-col gap-2 sm:flex-row sm:justify-center">
             <button type="button" onClick={() => void load(false)} className="h-10 rounded-xl bg-violet-600 px-4 text-xs font-black text-white">Reintentar</button>
-            <button type="button" onClick={() => navigate("/")} className="h-10 rounded-xl border border-base px-4 text-xs font-black text-primary">Volver al CRM</button>
+            {signedIn === false ? (
+              <button type="button" onClick={() => navigate("/auth")} className="h-10 rounded-xl border border-base px-4 text-xs font-black text-primary">Iniciar sesión</button>
+            ) : (
+              <button type="button" onClick={() => navigate("/")} className="h-10 rounded-xl border border-base px-4 text-xs font-black text-primary">Volver al CRM</button>
+            )}
           </div>
         </div>
       </div>

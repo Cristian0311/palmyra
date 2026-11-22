@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PalmyraWordmark } from "../components/PalmyraWordmark";
+import { SocialLinks } from "../components/SocialLinks";
 import { useDocumentScrollPage } from "../hooks/useDocumentScrollPage";
 import { PRODUCT_VERSION } from "../lib/productVersion";
 
@@ -810,6 +811,7 @@ export default function LandingPage({ signedIn = false }: { signedIn?: boolean }
           <Brand />
           <PalmyraWordmark className="h-4 w-auto shrink-0 mr-1" />
           <p className="text-[9px] text-slate-500 text-center">· Business OS · Gestión empresarial simple y profesional</p>
+          <SocialLinks variant="footer" />
           <p className="text-[9px] text-slate-500">© {new Date().getFullYear()} PALMYRA</p>
         </div>
       </footer>

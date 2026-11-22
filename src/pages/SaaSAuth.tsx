@@ -197,6 +197,12 @@ export default function SaaSAuth() {
     window.location.replace("/");
   };
 
+  // El error anterior se queda en pantalla aunque el usuario ya corrigió el
+  // campo, así que se descarta en cuanto vuelve a escribir.
+  const clearError = () => {
+    if (error) setError("");
+  };
+
   const resendConfirmation = async (address: string) => {
     const clean = address.trim().toLowerCase();
     setError("");
@@ -444,7 +450,7 @@ export default function SaaSAuth() {
                   <span className="form-label">Nombre completo</span>
                   <div className="relative">
                     <Users className="field-icon" />
-                    <input className="field-input pl-10 h-11" value={name} onChange={e=>setName(e.target.value)} disabled={busy} autoComplete="name" placeholder="Tu nombre"/>
+                    <input className="field-input pl-10 h-11" value={name} onChange={e=>{setName(e.target.value); clearError();}} disabled={busy} autoComplete="name" placeholder="Tu nombre"/>
                   </div>
                 </label>
               ) : null}
@@ -454,7 +460,7 @@ export default function SaaSAuth() {
                   <span className="form-label">Correo</span>
                   <div className="relative">
                     <Mail className="field-icon" />
-                    <input type="email" className="field-input pl-10 h-11" value={email} onChange={e=>setEmail(e.target.value)} disabled={busy} autoComplete="email" placeholder="nombre@empresa.com"/>
+                    <input type="email" className="field-input pl-10 h-11" value={email} onChange={e=>{setEmail(e.target.value); clearError();}} disabled={busy} autoComplete="email" placeholder="nombre@empresa.com"/>
                   </div>
                 </label>
               ) : null}
@@ -470,12 +476,17 @@ export default function SaaSAuth() {
                     type={showPassword ? "text" : "password"}
                     className="field-input pl-10 pr-10 h-11"
                     value={password}
-                    onChange={e=>setPassword(e.target.value)}
+                    onChange={e=>{setPassword(e.target.value); clearError();}}
                     disabled={busy}
                     autoComplete={mode==="signin" ? "current-password" : "new-password"}
                     placeholder="Mínimo 8 caracteres"
                   />
-                  <button type="button" onClick={()=>setShowPassword(v=>!v)} className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 text-slate-400">
+                  <button
+                    type="button"
+                    onClick={()=>setShowPassword(v=>!v)}
+                    aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 text-slate-400"
+                  >
                     {showPassword ? <EyeOff className="w-4 h-4 mx-auto"/> : <Eye className="w-4 h-4 mx-auto"/>}
                   </button>
                 </div>
@@ -491,7 +502,7 @@ export default function SaaSAuth() {
                       type={showPassword ? "text" : "password"}
                       className="field-input pl-10 h-11"
                       value={confirmPassword}
-                      onChange={e=>setConfirmPassword(e.target.value)}
+                      onChange={e=>{setConfirmPassword(e.target.value); clearError();}}
                       disabled={busy}
                       autoComplete="new-password"
                       placeholder="Repite la contraseña"

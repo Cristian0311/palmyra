@@ -34,6 +34,7 @@ import { cn } from "../lib/utils";
 import { loadSaaSContext } from "../services/saas";
 import { useStore } from "../store/useStore";
 import { PalmyraWordmark } from "./PalmyraWordmark";
+import { SocialLinks } from "./SocialLinks";
 import { getOfflineConflictCount, getOfflineQueueCount, getOfflineQueue, refreshOfflineQueueCounts } from "../services/offlineQueue";
 import { runWithLoading } from "../lib/busy";
 import { PRODUCT_VERSION_LABEL, PRODUCT_VERSION_SHORT } from "../lib/productVersion";
@@ -1632,24 +1633,28 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 type="button"
                 onClick={() => navigate("/subscription")}
                 title="Ver mi plan"
-                className={cn("mt-1.5 w-full min-w-0 rounded-xl border px-2.5 py-2 text-left transition-colors hover:border-[#6535C5]/40", getPlanVisual(subscription?.planCode).border, getPlanVisual(subscription?.planCode).soft)}
+                className={cn("mt-1.5 w-full min-w-0 rounded-lg border px-2 py-1.5 text-left transition-colors hover:border-[#6535C5]/40", getPlanVisual(subscription?.planCode).border, getPlanVisual(subscription?.planCode).soft)}
               >
                 <div className="flex items-center gap-1.5 min-w-0">
-                  <div className={cn("w-6 h-6 rounded-lg flex items-center justify-center shrink-0", getPlanVisual(subscription?.planCode).soft)}>
-                    <Sparkles className={cn("w-3 h-3", getPlanVisual(subscription?.planCode).text)} />
+                  <div className={cn("w-5 h-5 rounded-md flex items-center justify-center shrink-0", getPlanVisual(subscription?.planCode).soft)}>
+                    <Sparkles className={cn("h-2.5 w-2.5", getPlanVisual(subscription?.planCode).text)} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className={cn("text-[7px] font-black uppercase leading-tight tracking-[0.11em]", getPlanVisual(subscription?.planCode).text)}>{subscription.planName || "Plan PALMYRA"}</p>
-                    <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[6.5px] font-bold leading-tight">
-                      <span className={cn("rounded-full px-1.5 py-0.5 text-[5.5px] font-black uppercase tracking-wider", countdown?.expired ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700")}>{statusLabel}</span>
-                      <span className="text-primary">Vence {expiryLabel || "—"}</span>
-                      <span className={cn("tabular-nums", countdown?.expired ? "text-rose-600 font-black" : getPlanVisual(subscription?.planCode).text)}>{timeLabel}</span>
+                    <div className="flex items-center gap-1 min-w-0">
+                      <p className={cn("min-w-0 flex-1 truncate text-[7px] font-black uppercase leading-tight tracking-[0.09em]", getPlanVisual(subscription?.planCode).text)}>{subscription.planName || "Plan PALMYRA"}</p>
+                      <span className={cn("shrink-0 rounded-full px-1 py-px text-[6.5px] font-black uppercase leading-none tracking-wide", countdown?.expired ? "bg-rose-100 text-rose-700" : "bg-emerald-100 text-emerald-700")}>{statusLabel}</span>
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-1.5 text-[6.5px] font-bold leading-none">
+                      <span className="truncate text-primary">Vence {expiryLabel || "—"}</span>
+                      <span className={cn("shrink-0 tabular-nums", countdown?.expired ? "text-rose-600 font-black" : getPlanVisual(subscription?.planCode).text)}>{timeLabel}</span>
                     </div>
                   </div>
                 </div>
               </button>
             );
-          })()}    </div>
+          })()}
+          {!sidebarCollapsed && <SocialLinks variant="sidebar" />}
+          </div>
 
       </aside>
 
