@@ -21,7 +21,7 @@ import {
   pushCashSessionToSupabase, deleteProductFromSupabase, pullTransferHistoryFromSupabase,
   pushBranchToSupabase, deleteBranchFromSupabase, pushCategoryToSupabase, deleteCategoryFromSupabase, deleteSupplierFromSupabase, deleteUserFromSupabase,
   pushProductToSupabase, pushUserToSupabase, pushWarrantyToSupabase, pushTimeShiftToSupabase, deleteBankCardFromSupabase,
-  pushQuoteToSupabase, pushBankCardToSupabase, pushReturnToSupabase, pushReturnRefundToSupabase, stableOfflineEntityUuid, stableLegacySaleUuid, deleteQuoteFromSupabase,
+  pushQuoteToSupabase, pushBankCardToSupabase, updateBankCardMetadataToSupabase, pushReturnToSupabase, pushReturnRefundToSupabase, stableOfflineEntityUuid, stableLegacySaleUuid, deleteQuoteFromSupabase,
   pushSupplierToSupabase, pushSupplierOrderToSupabase, pushInventoryAuditToSupabase,
   pushSalarySettlementToSupabase, hasPayrollEmployeeForSettlement, pushInventoryToSupabase, pushCurrencyToSupabase,
   pushCashMovementToSupabase, deleteCashMovementFromSupabase, pushCashSessionMetadataToSupabase,
@@ -934,7 +934,11 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       return true;
     }
     case 'bank_card': {
-      const ok = await pushBankCardToSupabase(data as any);
+      const bankCard = data as any;
+      // Los cambios de nombre/dígitos/estado no deben tocar el saldo remoto.
+      const ok = bankCard?.__metadata_only
+        ? await updateBankCardMetadataToSupabase(bankCard)
+        : await pushBankCardToSupabase(bankCard);
       if (!ok) throw new Error('No se pudo sincronizar la cuenta bancaria pendiente.');
       return true;
     }

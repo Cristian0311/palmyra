@@ -13,7 +13,15 @@ export function RestockAlerts() {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     
-    const recentTx = transactions.filter(t => new Date(t.date) >= thirtyDaysAgo && t.status === 'completed');
+    // El stock se evalúa por sucursal, así que el ritmo de venta debe venir de
+    // la misma sucursal; antes ventas de otra tienda marcaban productos como
+    // críticos aquí y ocultaban los que de verdad se agotan.
+    const recentTx = transactions.filter(t =>
+      new Date(t.date) >= thirtyDaysAgo &&
+      t.status === 'completed' &&
+      !t.deletedAt &&
+      (!currentBranchId || t.branchId === currentBranchId)
+    );
 
     const salesByProduct: Record<string, number> = {};
     recentTx.forEach(tx => {

@@ -451,7 +451,27 @@ export async function pushBankCardToSupabase(card:BankCard){
   try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {error}=await supabase.from('bank_accounts').upsert({id:card.id,company_id:companyId,name:card.name||card.bankName||'Cuenta bancaria',bank_name:card.bankName||card.bank||'Banco',last_four:(card.lastFour||card.lastFourDigits||'').slice(-4),currency_code:card.currency||'USD',balance:Number(card.balance)||0,active:card.isActive!==false,updated_at:new Date().toISOString()},{onConflict:'id'});if(error)throw error;return true;}catch(e:any){await queue('bank_card',card,card.id);return false;}
 }
 export async function setBankCardBalanceToSupabase(cardId:string,expectedBalance:number,newBalance:number):Promise<boolean>{try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {data,error}=await supabase.from('bank_accounts').update({balance:Number(newBalance)||0,updated_at:new Date().toISOString()}).eq('id',cardId).eq('company_id',companyId).eq('balance',Number(expectedBalance)||0).select('id');if(error)throw error;return Boolean(data?.length);}catch{return false;}}
-export async function updateBankCardMetadataToSupabase(card:BankCard):Promise<boolean>{return pushBankCardToSupabase(card);}
+// Editar nombre/últimos dígitos/estado no debe escribir el saldo: el llamador
+// quita `balance` del payload y antes el upsert lo convertía en 0, borrando el
+// saldo real de la cuenta.
+export async function updateBankCardMetadataToSupabase(card:BankCard):Promise<boolean>{
+  try{
+    const supabase=await onlineClient();
+    const {companyId}=await getActiveTenant();
+    const {data,error}=await supabase.from('bank_accounts').update({
+      name:card.name||card.bankName||'Cuenta bancaria',
+      bank_name:card.bankName||card.bank||'Banco',
+      last_four:(card.lastFour||card.lastFourDigits||'').slice(-4),
+      currency_code:card.currency||'USD',
+      active:card.isActive!==false,
+      updated_at:new Date().toISOString()
+    }).eq('id',card.id).eq('company_id',companyId).select('id');
+    if(error)throw error;
+    // Si la cuenta aún no existe en el servidor, se crea con el saldo completo.
+    if(!data?.length) return pushBankCardToSupabase(card);
+    return true;
+  }catch(e:any){await queue('bank_card',{...card,__metadata_only:true},'bank-metadata:'+card.id);return false;}
+}
 export async function deleteBankCardFromSupabase(id:string):Promise<boolean>{
   try{
     const supabase=await onlineClient();
