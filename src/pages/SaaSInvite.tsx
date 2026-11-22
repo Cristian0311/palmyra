@@ -52,6 +52,9 @@ export default function SaaSInvite() {
             setError(e?.message || "No se pudo aceptar la invitación.");
           }
         }
+      } catch (e: any) {
+        // getSession puede fallar sin red; antes quedaba como rechazo sin aviso.
+        if (active) setError(e?.message || "No se pudo comprobar la invitación. Revisa tu conexión.");
       } finally {
         if (active) setChecking(false);
       }

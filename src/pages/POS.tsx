@@ -30,6 +30,7 @@ import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath"
 import { aggregateTransferPayments, buildTransactionTicketId, finalizeCheckoutPayments } from '../modules/pos/utils/checkoutUtils';
 import { rememberOfflinePosCredential, verifyOfflinePosCredential, rememberOfflinePosResumeGrant, verifyOfflinePosResumeGrant } from "../services/offlinePosAuth";
 import { findSessionEmployeeUser } from "../services/employeeCompensation";
+import { getLocalDateYMD } from "../utils/dateUtils";
 import { buildSessionTurnLabelMap, getSessionTurnLabel } from "../modules/reports/utils/sessionTurnLabels";
 import { usePendingQuote, setPendingQuoteId } from "../modules/pos/hooks/usePendingQuote";
 import PendingQuoteBanner from "../components/pos/PendingQuoteBanner";
@@ -466,6 +467,20 @@ export default function POS() {
       cleanUrl();
       return;
     }
+    // Una cotización ya cobrada o vencida no debe volver a cargarse: podía
+    // registrar una segunda venta del mismo pedido o cobrar precios caducados.
+    if (quote.status === 'converted') {
+      setPosError('Esta cotización ya fue cobrada. Duplícala en Cotizaciones si necesitas venderla de nuevo.');
+      cleanUrl();
+      return;
+    }
+    const quoteExpiry = quote.validUntil ? new Date(quote.validUntil).getTime() : NaN;
+    if (quote.status === 'expired' || (Number.isFinite(quoteExpiry) && quoteExpiry < Date.now())) {
+      const expiryLabel = Number.isFinite(quoteExpiry) ? new Date(quoteExpiry).toLocaleDateString('es-CU') : 'la fecha indicada';
+      setPosError(`La cotización venció el ${expiryLabel}. Actualiza su vigencia en Cotizaciones antes de cobrarla.`);
+      cleanUrl();
+      return;
+    }
     if ((state.cart || []).length > 0) {
       setPosError('Hay productos en el carrito. Vacíalo antes de cargar una cotización.');
       cleanUrl();
@@ -474,6 +489,13 @@ export default function POS() {
     const items = (quote.items || []).filter(item => item.product);
     if (!items.length) {
       setPosError('La cotización no tiene productos para cargar.');
+      cleanUrl();
+      return;
+    }
+    // Cargar solo una parte de la cotización cobraría un pedido incompleto sin
+    // avisar: si falta alguna línea se detiene la carga completa.
+    if (items.length !== (quote.items || []).length) {
+      setPosError('La cotización tiene productos que ya no están disponibles en este dispositivo. Bórrala y créala de nuevo antes de cobrar.');
       cleanUrl();
       return;
     }
@@ -855,7 +877,7 @@ export default function POS() {
       setSessionWorkerName("");
       setSessionPassword("");
       setActiveSessionId(null);
-      setSessionClosingDate(new Date().toISOString().split('T')[0]);
+      setSessionClosingDate(getLocalDateYMD(new Date().toISOString()));
       setShowCashManagementModal(false);
       setShowSalarySummary(true);
       setShowOpenShiftModal(false);
@@ -1280,7 +1302,9 @@ export default function POS() {
     }
   };
 
-  const [sessionClosingDate, setSessionClosingDate] = useState(new Date().toISOString().split('T')[0]);
+  // Fecha de cierre por defecto en hora de Cuba, no en UTC: por la tarde/noche
+  // el ISO en UTC ya es el día siguiente y el turno se cerraba con fecha futura.
+  const [sessionClosingDate, setSessionClosingDate] = useState(getLocalDateYMD(new Date().toISOString()));
 
   const handleOpenSession = async (e: React.FormEvent) => {
     e.preventDefault();

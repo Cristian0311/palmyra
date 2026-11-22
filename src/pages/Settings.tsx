@@ -143,6 +143,17 @@ function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
   }, []);
 
   useEffect(() => {
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     if (activeTab !== 'ticket') return;
     let cancelled = false;
     void getConnectedDeviceName().then(name => {
@@ -181,6 +192,9 @@ function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
 
   const [isLoading, setIsLoading] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  // navigator.onLine no provoca renders: sin este estado el botón de sincronizar
+  // y el indicador de conexión quedaban congelados al recuperar la red.
+  const [isOnline, setIsOnline] = useState(() => typeof navigator === 'undefined' ? true : navigator.onLine);
   const [showConfirmReset, setShowConfirmReset] = useState(false);
   const [resetInput, setResetInput] = useState("");
   const RESET_OPTIONS = [
@@ -331,6 +345,27 @@ function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
     showToast("Configuración de ticket guardada.");
   };
 
+  const handleExportBackup = () => {
+    try {
+      const data = exportData();
+      const blob = new Blob([data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = 'palmyra-respaldo.json';
+      // Firefox/Safari cancelan la descarga si el ancla no está en el documento
+      // y si la URL se revoca antes de que el navegador la abra.
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 4000);
+      showToast('Respaldo exportado correctamente.');
+    } catch (exportError) {
+      console.error('[PALMYRA] No se pudo exportar el respaldo:', exportError);
+      showToast('No se pudo generar el respaldo en este dispositivo.', 'error');
+    }
+  };
+
   const handleConnectPrinter = async (mode: 'serial' | 'bluetooth') => {
     if (isInsideIframe()) {
       setPrinterStatus({ type: 'error', message: 'Abre PALMYRA en una pestaña nueva para conectar la impresora.' });
@@ -366,6 +401,11 @@ function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
 
   const handleClearAppCache = async () => {
     if (isLoading) return;
+    // Sin red, borrar el caché deja la app sin shell y la recarga falla.
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      showToast("Necesitas conexión para limpiar el caché: la app se recargará y sin internet podría no abrir.", "error");
+      return;
+    }
     setIsLoading(true);
     try {
       if ('caches' in window) {
@@ -421,7 +461,7 @@ function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
     <div data-palmi-content="settings" className="settings-page space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 w-full min-w-0 pb-8 relative overflow-x-hidden">
       {/* In-App Toast Notification */}
       {toast && (
-        <div className="fixed top-2 right-2 sm:top-4 sm:right-4 z-[200] w-[calc(100vw-1rem)] sm:w-auto max-w-md min-w-0 animate-in slide-in-from-top-4 fade-in duration-300">
+        <div role="status" aria-live="polite" className="fixed top-2 right-2 sm:top-4 sm:right-4 z-[200] w-[calc(100vw-1rem)] sm:w-auto max-w-md min-w-0 animate-in slide-in-from-top-4 fade-in duration-300">
           <div className={cn(
             "p-4 rounded-2xl shadow-2xl border flex items-center gap-3 backdrop-blur-md",
             toast.type === 'success' ? "bg-emerald-950/95 text-emerald-100 border-emerald-800/80 shadow-emerald-900/30" :
@@ -455,7 +495,7 @@ function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
             <p className="text-sm font-medium text-secondary">{settingsTabs.find(tab => tab.id === activeTab)?.detail}</p>
           </div>
         </div>
-        {activeTab === 'connectivity' && <button onClick={handleManualSync} disabled={isSyncing || !navigator.onLine}
+        {activeTab === 'connectivity' && <button onClick={handleManualSync} disabled={isSyncing || !isOnline}
           className="flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-violet-700 disabled:opacity-50 sm:w-auto">
           <RefreshCw size={16} className={isSyncing ? 'animate-spin' : ''} />{isSyncing ? 'Sincronizando…' : 'Sincronizar con la nube'}
         </button>}
@@ -535,8 +575,8 @@ function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
                     </div>
                   </div>
                   <p className="mt-4 flex items-center justify-center gap-2 text-sm font-medium text-muted">
-                    <span className={cn('h-2 w-2 rounded-full', navigator.onLine ? 'bg-emerald-500' : 'bg-amber-500')} />
-                    {navigator.onLine ? 'Dispositivo en línea' : 'Dispositivo sin conexión'}
+                    <span className={cn('h-2 w-2 rounded-full', isOnline ? 'bg-emerald-500' : 'bg-amber-500')} />
+                    {isOnline ? 'Dispositivo en línea' : 'Dispositivo sin conexión'}
                   </p>
                 </div>
               </div>
@@ -670,7 +710,7 @@ function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-bold text-primary">Conexión de la impresora</p>
                 {printerStatus && (
-                  <span className={cn(
+                  <span role="status" aria-live="polite" className={cn(
                     "text-sm font-semibold",
                     printerStatus.type === 'success' ? "text-emerald-600 dark:text-emerald-400" : printerStatus.type === 'error' ? "text-rose-600 dark:text-rose-400" : "text-violet-600 dark:text-violet-300"
                   )}>
@@ -737,7 +777,7 @@ function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
           <div className="bg-secondary rounded-2xl shadow-sm border border-base p-3 sm:p-5 space-y-4">
             <SettingsSectionHeader icon={AlertTriangle} title="Herramientas avanzadas" subtitle="Respaldo, caché, sincronización y restablecimiento selectivo." />
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
-              <button type="button" onClick={() => { const data = exportData(); const blob = new Blob([data], {type:'application/json'}); const url = URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download='palmyra-respaldo.json'; a.click(); URL.revokeObjectURL(url); showToast('Respaldo exportado correctamente.'); }} className="h-11 rounded-xl border border-base bg-primary text-primary text-sm font-semibold flex items-center justify-center gap-2 hover:bg-subtle transition-colors"><CloudDownload size={16}/> Exportar respaldo</button>
+              <button type="button" onClick={handleExportBackup} className="h-11 rounded-xl border border-base bg-primary text-primary text-sm font-semibold flex items-center justify-center gap-2 hover:bg-subtle transition-colors"><CloudDownload size={16}/> Exportar respaldo</button>
               <label className="h-11 rounded-xl border border-base bg-primary text-primary text-sm font-semibold flex items-center justify-center gap-2 cursor-pointer hover:bg-subtle transition-colors">
                 <CloudUpload size={16}/> Importar respaldo
                 <input type="file" accept="application/json,.json" className="sr-only" disabled={isLoading} onChange={async e => {

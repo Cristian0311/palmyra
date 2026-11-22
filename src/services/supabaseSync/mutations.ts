@@ -2,7 +2,7 @@ import { salePayload } from './salePayload';
 import { getSupabase } from '../../lib/supabase';
 import { enqueueOfflineItem, setOfflineQueueItemLastError } from '../offlineQueue';
 import { getActiveTenant, getEmployeeForIdentity } from '../tenant';
-import { callAdjustInventoryRPC, callProcessBankTransactionRPC, stableLegacySaleUuid } from './rpc';
+import { callAdjustInventoryRPC, callProcessBankTransactionRPC, callRecordReturnRefundRPC, stableLegacySaleUuid } from './rpc';
 export { pushCashMovementToSupabase, deleteCashMovementFromSupabase, pushCashSessionMetadataToSupabase } from './cashMutations';
 export type ResetSection =
   | 'inventory' | 'reports' | 'catalog' | 'customers' | 'suppliers'
@@ -374,13 +374,41 @@ export async function pushReturnToSupabase(item:ReturnItem):Promise<boolean>{
     if(item.status==='pending' || item.status==='approved'){
       // Legacy DEV-... IDs are not UUIDs. Map them deterministically so retries
       // and the subsequent completion RPC target the same server return.
-      const remoteReturnId = await stableOfflineEntityUuid(companyId, 'return', String(item.id || 'legacy-return'));
+      const remoteReturnId = item.serverReturnId || await stableOfflineEntityUuid(companyId, 'return', String(item.id || 'legacy-return'));
       const {data,error}=await supabase.rpc('palmyra_create_return',{p_return_id:remoteReturnId,p_company_id:companyId,p_sale_id:(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(item.transactionId || '')) ? item.transactionId : await stableLegacySaleUuid(companyId, String(item.transactionId || 'legacy-sale'))),p_product_id:item.productId,p_quantity:Number(item.quantity)||0,p_reason:item.reason||'',p_amount:Number(item.refundAmount)||0,p_type:item.type||'refund'});
       if(error)throw error;
       return Boolean(data?.success);
     }
     return true;
   }catch(e:any){await queue('return',item,item.id);return false;}
+}
+
+// El reembolso monetario es un evento aparte del retorno físico: se registra en
+// sales_returns mediante RPC autenticada (montos, medio y egreso asociado).
+export async function pushReturnRefundToSupabase(item:ReturnItem):Promise<boolean>{
+  const status=item.refundStatus;
+  if(!status) return true;
+  try{
+    await onlineClient();
+    const {companyId}=await getActiveTenant();
+    const remoteReturnId=item.serverReturnId||await stableOfflineEntityUuid(companyId,'return',String(item.id||'legacy-return'));
+    const asUuid=(value?:string)=>value&&UUID_RE.test(value)?value:null;
+    const res=await callRecordReturnRefundRPC({
+      returnId:remoteReturnId,
+      status,
+      amount:Number(item.refundAmount)||0,
+      currency:item.refundCurrencyCode||null,
+      method:item.refundMethod||null,
+      bankCardId:asUuid(item.refundBankCardId),
+      transactionId:asUuid(item.refundTransactionId),
+    });
+    if(!res.success)throw new Error(res.error||'No se pudo registrar el reembolso.');
+    return true;
+  }catch(e:any){
+    await queue('return',item,item.id);
+    await setOfflineQueueItemLastError('return',item.id,String(e?.message||e||'')).catch(()=>{});
+    return false;
+  }
 }
 
 export async function pushTimeShiftToSupabase(shift:TimeShift){
@@ -443,6 +471,10 @@ export async function deleteSupplierFromSupabase(id:string):Promise<boolean>{try
 
 export async function pushSupplierOrderToSupabase(order:SupplierOrder){
   try{const supabase=await onlineClient();const {companyId,authUserId}=await getActiveTenant();
+    // Los importes de la orden están expresados en la moneda base de la
+    // empresa; fijar USD descuadraba compañías cuya base es CUP.
+    const { data: company } = await supabase.from('companies').select('default_currency_code').eq('id', companyId).maybeSingle();
+    const currencyCode = company?.default_currency_code || 'CUP';
     // La UI usa "pending" para "Pendiente", pero Postgres purchase_status usa
     // "ordered". Nunca enviamos el valor de presentación directamente a la BD.
     const dbStatus = order.status === 'pending' ? 'ordered' : order.status;
@@ -451,7 +483,7 @@ export async function pushSupplierOrderToSupabase(order:SupplierOrder){
       : 'ordered';
     const {error}=await supabase.from('purchase_orders').upsert({
       id:order.id,company_id:companyId,supplier_id:order.supplierId,warehouse_id:order.branchId,status,
-      order_number:order.id,currency_code:'USD',subtotal:Number(order.total)||0,total:Number(order.total)||0,
+      order_number:order.id,currency_code:currencyCode,subtotal:Number(order.total)||0,total:Number(order.total)||0,
       created_by:authUserId,expected_delivery_date:order.expectedDeliveryDate||null,transport_cost:Number(order.transportCost)||0,
       transport_details:order.transportDetails||null
     },{onConflict:'id'});
@@ -593,13 +625,36 @@ export async function deleteTransactionFromSupabase(id:string){
   try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {error}=await supabase.rpc('palmyra_void_sale',{p_sale_id:id,p_company_id:companyId,p_reason:'Anulación desde PALMYRA'});if(error)throw error;return true;}catch{return false;}
 }
 
+// PostgREST corta en 1000 filas y en longitudes de URL acotadas. Sin paginar,
+// un histórico grande dejaba hijos huérfanos (sale_items/payments) y el .in()
+// con miles de UUID terminaba en error 414. Estas utilidades leen por páginas y
+// borran por lotes pequeños respetando company_id en cada llamada.
+async function listCompanyIds(supabase:any, table:string, companyId:string):Promise<string[]>{
+  const ids:string[]=[];
+  for(let from=0;;from+=1000){
+    const {data,error}=await supabase.from(table).select('id')
+      .eq('company_id',companyId).order('id',{ascending:true}).range(from,from+999);
+    if(error) throw error;
+    const page=(data||[]).map((row:any)=>String(row.id)).filter(Boolean);
+    ids.push(...page);
+    if(page.length<1000) break;
+  }
+  return ids;
+}
+async function deleteByIdsInBatches(supabase:any, table:string, column:string, ids:string[]){
+  for(let i=0;i<ids.length;i+=200){
+    const {error}=await supabase.from(table).delete().in(column,ids.slice(i,i+200));
+    if(error) throw error;
+  }
+}
+
 export async function clearSupabaseData(confirmToken?:string):Promise<{success:boolean;failed:string[]}>{
   if(confirmToken!=='ELIMINAR')return {success:false,failed:['Confirma con ELIMINAR.']};
   const failed:string[]=[];try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();
-    const sales=(await supabase.from('sales').select('id').eq('company_id',companyId)).data||[];const saleIds=sales.map((x:any)=>x.id);
-    const returns=(await supabase.from('sales_returns').select('id').eq('company_id',companyId)).data||[];const returnIds=returns.map((x:any)=>x.id);
-    if(returnIds.length)await supabase.from('sales_return_items').delete().in('return_id',returnIds);
-    if(saleIds.length){await supabase.from('sale_items').delete().in('sale_id',saleIds);await supabase.from('payments').delete().eq('company_id',companyId);await supabase.from('sales').delete().eq('company_id',companyId);}
+    const saleIds=await listCompanyIds(supabase,'sales',companyId);
+    const returnIds=await listCompanyIds(supabase,'sales_returns',companyId);
+    if(returnIds.length)await deleteByIdsInBatches(supabase,'sales_return_items','return_id',returnIds);
+    if(saleIds.length){await deleteByIdsInBatches(supabase,'sale_items','sale_id',saleIds);await supabase.from('payments').delete().eq('company_id',companyId);await supabase.from('sales').delete().eq('company_id',companyId);}
     await supabase.from('sales_returns').delete().eq('company_id',companyId);
     for(const table of ['cash_movements','cash_sessions','stock_movements','stock_balances','variant_stock_balances','transfers','inventory_audits','quotes','purchase_orders','bank_transactions','bank_accounts','customers','suppliers','employee_time_shifts'])try{const {error}=await supabase.from(table).delete().eq('company_id',companyId);if(error)failed.push(table+': '+error.message);}catch(e:any){failed.push(table+': '+String(e));}
     await supabase.from('employees').update({active:false}).eq('company_id',companyId);
@@ -613,7 +668,7 @@ export async function clearSelectedDataFromSupabase(sections:ResetSection[]):Pro
   const failed:string[]=[];try{
     const supabase=await onlineClient();const {companyId}=await getActiveTenant();const has=(s:string)=>sections.includes(s as any);
     if(has('inventory')){for(const table of ['stock_movements','stock_balances','variant_stock_balances']){const {error}=await supabase.from(table).delete().eq('company_id',companyId);if(error)failed.push(table+': '+error.message);}}
-    if(has('reports')){const sales=(await supabase.from('sales').select('id').eq('company_id',companyId)).data||[];const ids=sales.map((x:any)=>x.id);if(ids.length)await supabase.from('sale_items').delete().in('sale_id',ids);await supabase.from('payments').delete().eq('company_id',companyId);await supabase.from('sales').delete().eq('company_id',companyId);}
+    if(has('reports')){const ids=await listCompanyIds(supabase,'sales',companyId);if(ids.length)await deleteByIdsInBatches(supabase,'sale_items','sale_id',ids);await supabase.from('payments').delete().eq('company_id',companyId);await supabase.from('sales').delete().eq('company_id',companyId);}
     if(has('catalog')){await supabase.from('products').update({status:'archived'}).eq('company_id',companyId);await supabase.from('categories').update({active:false}).eq('company_id',companyId);}
     if(has('customers'))await supabase.from('customers').update({active:false}).eq('company_id',companyId);
     if(has('suppliers'))await supabase.from('suppliers').update({active:false}).eq('company_id',companyId);

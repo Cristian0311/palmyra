@@ -373,6 +373,22 @@ export async function callDeleteBankInternalTransferRPC(operationId:string){ try
 export async function callDeleteBankTransactionRPC(transactionId:string){ try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_delete_bank_transaction',{p_transaction_id:transactionId,p_company_id:companyId});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);} }
 export async function callDeleteBankCardRPC(cardId:string){ try{const supabase=getSupabase()!;const {companyId}=await getActiveTenant();const {error}=await supabase.from('bank_accounts').update({active:false}).eq('id',cardId).eq('company_id',companyId);if(error)throw error;return {success:true as const,error:undefined,errorCode:undefined,data:{id:cardId}};}catch(e:any){return errorResult(e);} }
 export async function callCompleteReturnRPC(returnId:string,userId:string){try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_complete_return',{p_return_id:returnId,p_company_id:companyId});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);}}
+export async function callRecordReturnRefundRPC(input:{returnId:string;status:string;amount:number;currency?:string|null;method?:string|null;bankCardId?:string|null;transactionId?:string|null}){
+  try{
+    const {companyId}=await getActiveTenant();
+    const data=await rpc('palmyra_record_return_refund',{
+      p_return_id:input.returnId,
+      p_company_id:companyId,
+      p_status:input.status,
+      p_amount:Number(input.amount)||0,
+      p_currency:input.currency||null,
+      p_method:input.method||null,
+      p_bank_card_id:input.bankCardId||null,
+      p_transaction_id:input.transactionId||null
+    });
+    return {success:true as const,error:undefined,errorCode:undefined,data};
+  }catch(e:any){return errorResult(e);}
+}
 export async function callVoidTransactionRPC(id:string,userId:string,reason:string){try{const {companyId}=await getActiveTenant();const data=await rpc('palmyra_void_sale',{p_sale_id:id,p_company_id:companyId,p_reason:reason||'Anulación de venta'});return {success:true as const,error:undefined,errorCode:undefined,data};}catch(e:any){return errorResult(e);}}
 export async function callCancelSessionRPC(sessionId:string,userId:string,reason:string){
   try{

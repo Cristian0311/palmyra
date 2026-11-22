@@ -1169,13 +1169,22 @@ Responde ESTRICTAMENTE con un objeto JSON:
         path.join(moduleDir, '..', 'release'),
       ].filter((dir): dir is string => Boolean(dir));
 
+      // El artefacto actual usa un nombre estable (PALMYRA-POS-Setup.exe) sin
+      // versión intermedia. El patrón anterior exigía «POS-<algo>-Setup» y por
+      // eso servía un instalador viejo (1.3.0) aunque el actual estuviera
+      // presente. Se aceptan ambos y se prefiere siempre el nombre estable.
       let installer = '';
+      let stableInstaller = '';
       let newest = 0;
       for (const dir of releaseDirs) {
         if (!existsSync(dir)) continue;
         for (const entry of await fs.readdir(dir)) {
-          if (!/^PALMYRA-POS-.+-Setup\.exe$/i.test(entry)) continue;
+          if (!/^PALMYRA-POS-.*Setup\.exe$/i.test(entry)) continue;
           const fullPath = path.join(dir, entry);
+          if (/^PALMYRA-POS-Setup\.exe$/i.test(entry)) {
+            stableInstaller = fullPath;
+            continue;
+          }
           const stats = await fs.stat(fullPath);
           if (stats.mtimeMs > newest) {
             newest = stats.mtimeMs;
@@ -1183,6 +1192,7 @@ Responde ESTRICTAMENTE con un objeto JSON:
           }
         }
       }
+      if (stableInstaller) installer = stableInstaller;
 
       if (!installer) {
         res.redirect(302, DOWNLOAD_FALLBACKS.windows);

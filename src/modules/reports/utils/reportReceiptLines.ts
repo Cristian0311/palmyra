@@ -9,6 +9,7 @@ type ShiftPayrollItem = {
   commissions: number;
   totalSalary: number;
   status: string;
+  discrepancyDeduction?: number;
 };
 
 export function buildShiftReceiptLines(
@@ -74,11 +75,14 @@ export function buildShiftReceiptLines(
   lines.push("---", format58mmLine("TOTAL VENTAS:", formatMoney(totalSales), 32), format58mmLine("ITEMS VENDIDOS:", `${totalItems}`, 32));
 
   if (payrollItem) {
+    const deduction = Math.max(0, Number(payrollItem.discrepancyDeduction) || 0);
     lines.push(
       "---",
       "BOLD|LIQUIDACION SALARIO:",
       format58mmLine("Salario Base:", formatMoney(payrollItem.baseSalary), 32),
       format58mmLine("Comisiones:", formatMoney(payrollItem.commissions), 32),
+      // Sin esta línea el total neto no cuadraba con base + comisiones.
+      ...(deduction > 0 ? [format58mmLine("Desc. Descuadre:", `-${formatMoney(deduction)}`, 32)] : []),
       format58mmLine("TOTAL SALARIO:", formatMoney(payrollItem.totalSalary), 32),
       format58mmLine("Estado:", payrollItem.status === 'paid' ? 'PAGADO' : 'PENDIENTE', 32),
     );

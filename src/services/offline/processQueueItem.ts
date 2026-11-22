@@ -21,7 +21,7 @@ import {
   pushCashSessionToSupabase, deleteProductFromSupabase, pullTransferHistoryFromSupabase,
   pushBranchToSupabase, deleteBranchFromSupabase, pushCategoryToSupabase, deleteCategoryFromSupabase, deleteSupplierFromSupabase, deleteUserFromSupabase,
   pushProductToSupabase, pushUserToSupabase, pushWarrantyToSupabase, pushTimeShiftToSupabase, deleteBankCardFromSupabase,
-  pushQuoteToSupabase, pushBankCardToSupabase, pushReturnToSupabase, stableOfflineEntityUuid, stableLegacySaleUuid, deleteQuoteFromSupabase,
+  pushQuoteToSupabase, pushBankCardToSupabase, pushReturnToSupabase, pushReturnRefundToSupabase, stableOfflineEntityUuid, stableLegacySaleUuid, deleteQuoteFromSupabase,
   pushSupplierToSupabase, pushSupplierOrderToSupabase, pushInventoryAuditToSupabase,
   pushSalarySettlementToSupabase, hasPayrollEmployeeForSettlement, pushInventoryToSupabase, pushCurrencyToSupabase,
   pushCashMovementToSupabase, deleteCashMovementFromSupabase, pushCashSessionMetadataToSupabase,
@@ -760,8 +760,11 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       return true;
     }
     case 'return': {
-      const ok = await pushReturnToSupabase(data as ReturnItem);
+      const returnItem = data as ReturnItem;
+      const ok = await pushReturnToSupabase(returnItem);
       if (!ok) throw new Error('No se pudo sincronizar la devolución pendiente.');
+      const refundOk = await pushReturnRefundToSupabase(returnItem);
+      if (!refundOk) throw new Error('No se pudo sincronizar el reembolso de la devolución.');
       return true;
     }
     case 'salary_settlement': {
@@ -1018,15 +1021,26 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
           /no unique or exclusion constraint matching the ON CONFLICT specification/i.test(errorText);
         const permanentCodes = new Set(['P0001','23503','23505','23502','23514','42501','42883','22P02','22003','22007','IDEMPOTENCY_CONFLICT']);
         if (res.errorCode && permanentCodes.has(String(res.errorCode)) && !recoverableInfrastructureError) {
-          // La venta existía localmente por modo offline, pero Supabase la rechazó
-          // definitivamente. No debe seguir apareciendo como completada ni dejar
-          // garantías asociadas que puedan sincronizarse solas.
+          // La venta se cobró físicamente antes de este rechazo. Eliminarla del
+          // historial descuadraría el turno y borraría el rastro del dinero, así
+          // que se conserva marcada para revisión y reembolso manual.
+          const rejectedAt = new Date().toISOString();
+          const rejectedReason = res.error || 'La venta fue rechazada por el servidor.';
           useStore.setState(state => ({
-            transactions: (state.transactions || []).filter(t => t.id !== transaction.id),
-            warranties: (state.warranties || []).filter(w => w.transactionId !== transaction.id)
+            transactions: (state.transactions || []).map(t => t.id === transaction.id
+              ? {
+                  ...t,
+                  offlinePending: false,
+                  syncRejected: true,
+                  syncRejectedAt: rejectedAt,
+                  syncRejectedReason: rejectedReason,
+                  notes: t.notes ? `${t.notes} · SINCRONIZACIÓN RECHAZADA: ${rejectedReason}` : `SINCRONIZACIÓN RECHAZADA: ${rejectedReason}`
+                }
+              : t)
           }));
 
-          // Cualquier garantía dependiente queda invalidada junto con la venta.
+          // Las garantías dependientes no pueden existir en el servidor sin la
+          // venta, pero se conservan localmente como registro de lo entregado.
           for (const queued of getOfflineQueue()) {
             if (queued.type === 'warranty' && queued.data?.transactionId === transaction.id) {
               removeFromOfflineQueue(queued.id);
@@ -1054,9 +1068,9 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
           }
 
           useStore.getState().addNotification(
-            'Una venta realizada sin conexión fue rechazada por el servidor y no se confirmó.',
+            'Venta offline rechazada por el servidor: se conserva en el historial para revisión.',
             'error',
-            res.error || 'Revisa inventario, datos del producto o las reglas de la venta.'
+            `${res.error || 'Revisa inventario, datos del producto o las reglas de la venta.'} El efectivo cobrado sigue en caja; anula o reembolsa la venta manualmente.`
           );
           throw new PermanentSyncError(res.error || 'La venta fue rechazada por Supabase');
         }

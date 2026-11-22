@@ -217,7 +217,9 @@ async function ensureRealtimeSubscribed(supabase: NonNullable<ReturnType<typeof 
     channel.subscribe((status: string) => {
       if (generation !== subscriberGeneration || realtimeChannel !== channel) return;
       if (status === 'SUBSCRIBED') {
-        schedule('all', 300);
+        // Un refresh operativo basta tras reconectar; el bootstrap completo ya
+        // corre al abrir la app y no debe repetirse con cada alt-tab.
+        schedule('operational', 300);
       } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
         console.warn('[PALMYRA] Realtime subscription status:', status);
       } else if (status === 'CLOSED') {
@@ -276,7 +278,7 @@ export function initMultiDeviceRealtimeSync(): () => void {
       if (document.visibilityState !== 'hidden') schedule('operational', 300);
     };
     const onVisibility = () => {
-      if (document.visibilityState === 'visible') schedule('all', 300);
+      if (document.visibilityState === 'visible') schedule('operational', 300);
     };
 
     window.addEventListener('online', onOnline);

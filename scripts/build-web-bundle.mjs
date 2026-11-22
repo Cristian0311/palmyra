@@ -12,10 +12,13 @@ import zlib from 'node:zlib';
 const root = process.cwd();
 const distDir = path.resolve(root, 'dist');
 const releasesDir = path.join(distDir, 'releases');
-const version = String(JSON.parse(fs.readFileSync(path.resolve(root, 'app-version.json'), 'utf8')).version || '').trim();
+// El manifiesto OTA usa la versión de publicación (package.json), no la
+// etiqueta visible de la app: de lo contrario todos los releases 1.3.x
+// quedaban congelados en 1.2.0 y el APK nunca detectaba el bundle nuevo.
+const version = String(JSON.parse(fs.readFileSync(path.resolve(root, 'package.json'), 'utf8')).version || '').trim();
 
 if (!/^\d+(\.\d+){1,3}$/.test(version)) {
-  throw new Error(`Versión inválida en app-version.json: "${version}"`);
+  throw new Error(`Versión inválida en package.json: "${version}"`);
 }
 if (!fs.existsSync(path.join(distDir, 'index.html'))) {
   throw new Error('dist/index.html no existe. Ejecuta vite build antes del empaquetado OTA.');
@@ -29,6 +32,9 @@ const EXCLUDED_TOP_LEVEL = new Set([
   'server.cjs',
   'server.cjs.map',
   'desktop-server.cjs',
+  // El proceso principal de Electron (build:desktop) se escribe en dist/ y no
+  // se usa en el teléfono: enviarlo engordaba cada OTA ~600 KB inútiles.
+  'desktop-main.cjs',
 ]);
 
 function collectFiles(dir, prefix = '') {

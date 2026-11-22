@@ -75,7 +75,8 @@ const adminNavItems = [
 
 // Etiqueta visible acordada con el dueño. La versión real del build sigue
 // siendo __APP_VERSION__ y es la que comparan el detector de actualizaciones
-// y el shell nativo.
+// y el shell nativo. Los avisos de actualización NUNCA deben usar esta
+// etiqueta: muestran la versión detectada en el manifiesto (1.3.x).
 const APP_VERSION_LABEL = PRODUCT_VERSION_LABEL;
 const APP_VERSION_SHORT = PRODUCT_VERSION_SHORT;
 const cashierNavItems = [
@@ -434,8 +435,20 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     };
   }, [currentUser?.id]);
   useEffect(() => {
-    const timer = window.setInterval(() => setCountdownNow(Date.now()), 1000);
-    return () => window.clearInterval(timer);
+    // El contador del plan se muestra en días/horas/minutos: un tick de 1 s
+    // re-renderizaba todo el shell cada segundo en equipos lentos. 30 s basta,
+    // y con la pestaña oculta no se actualiza.
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") setCountdownNow(Date.now());
+    }, 30_000);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") setCountdownNow(Date.now());
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, []);
 
   useEffect(() => {
@@ -1698,7 +1711,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <p className="mt-1 text-[10px] font-semibold leading-4 text-slate-600 dark:text-slate-300">
                 {desktopUpdateFailed
                   ? desktopUpdateState?.error || "No se pudo descargar la actualización. Se reintentará automáticamente."
-                  : `${APP_VERSION_LABEL} · se descarga sola, sin interrumpir la caja.`}
+                  : `${desktopUpdateVersion ? `Versión ${desktopUpdateVersion}` : APP_VERSION_LABEL} · se descarga sola, sin interrumpir la caja.`}
               </p>
               {!desktopUpdateFailed && (
                 <div
@@ -1766,7 +1779,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </div>
               <div className="relative mt-4 rounded-2xl border border-white/15 bg-black/10 px-3.5 py-3">
                 <p className="text-[10px] font-semibold leading-5 text-violet-50">
-                  {APP_VERSION_LABEL} ya está descargada. Reinicia PALMYRA para aplicarla; tu empresa, ventas e inventario se conservan.
+                  {desktopUpdateVersion ? `La versión ${desktopUpdateVersion}` : APP_VERSION_LABEL} ya está descargada. Reinicia PALMYRA para aplicarla; tu empresa, ventas e inventario se conservan.
                 </p>
               </div>
             </div>
@@ -1830,7 +1843,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </div>
               <div className="relative mt-4 rounded-2xl border border-white/15 bg-black/10 px-3.5 py-3">
                 <p className="text-[10px] font-semibold leading-5 text-violet-50">
-                  {APP_VERSION_LABEL} está lista. Se descarga e instala sin salir de la app; tu empresa, ventas e inventario se conservan.
+                  {otaUpdate.version ? `La versión ${otaUpdate.version}` : APP_VERSION_LABEL} está lista. Se descarga e instala sin salir de la app; tu empresa, ventas e inventario se conservan.
                 </p>
               </div>
             </div>
@@ -1932,7 +1945,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </div>
               <div className="relative mt-4 rounded-2xl border border-white/15 bg-black/10 px-3.5 py-3">
                 <p className="text-[10px] font-semibold leading-5 text-violet-50">
-                  {APP_VERSION_LABEL} ya está lista. Descarga el APK e instálalo encima de esta app: tu empresa, ventas y datos se conservan.
+                  {apkUpdateVersion ? `La versión ${apkUpdateVersion}` : APP_VERSION_LABEL} ya está lista. Descarga el APK e instálalo encima de esta app: tu empresa, ventas y datos se conservan.
                 </p>
               </div>
             </div>
@@ -1991,7 +2004,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               <div className="relative mt-4 rounded-2xl border border-white/15 bg-black/10 px-3.5 py-3">
                 <p className="text-[10px] font-semibold leading-5 text-violet-50">
                   {serverVersion
-                    ? `${APP_VERSION_LABEL} está lista. Actualiza ahora para continuar con la experiencia más reciente de PALMYRA.`
+                    ? `La versión ${serverVersion} está lista. Actualiza ahora para continuar con la experiencia más reciente de PALMYRA.`
                     : 'Una nueva versión del sistema está lista. Actualiza ahora para continuar con la experiencia más reciente de PALMYRA.'}
                 </p>
               </div>

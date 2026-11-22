@@ -416,6 +416,8 @@ export default function Team() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Evita crear dos empleados o dos operaciones en cola con dobles toques.
+    if (busy) return;
     setError("");
     setMessage("");
     setInviteLink(null);
@@ -440,27 +442,36 @@ export default function Team() {
 
     const offline = typeof navigator !== "undefined" && !navigator.onLine;
     if (!editing && offline) {
-      const localId = generateId("EMP-OFF");
-      const now = new Date().toISOString();
-      const role = snapshot.roles.find(role => role.id === form.roleId);
-      const localEmployee: TeamEmployee = {
-        id: localId, user_id: null, employee_code: form.employeeCode.trim(), full_name: form.fullName.trim(),
-        login_email: form.sendInvite ? form.email.trim().toLowerCase() : null, base_salary: Number(form.baseSalary) || 0,
-        compensation_type: compensationSettings.mode === "sales_percent" ? "sales_percentage" : "fixed_product", sales_percentage: compensationSettings.mode === "sales_percent" ? Number(compensationSettings.percentRate) || 0 : 0, active: true, role_id: form.roleId,
-        role_name: role?.name || "Empleado", role_key: role?.key || "employee", warehouse_ids: [...form.warehouseIds],
-        default_warehouse_id: form.warehouseIds[0] || null,
-        pending_invitation: form.sendInvite ? { id: localId + "-invite", email: form.email.trim().toLowerCase(), status: "pending_offline", expires_at: new Date(Date.now()+7*86400000).toISOString(), created_at: now } : null
-      };
-      const nextSnapshot: TeamSnapshot = { ...snapshot, employees: [localEmployee, ...snapshot.employees] };
-      setSnapshot(nextSnapshot); writeTeamCache(nextSnapshot);
-      await enqueueOfflineItem("employee_create", {
-        localEmployeeId: localId, companyId: snapshot.companyId, employeeCode: form.employeeCode.trim(), fullName: form.fullName.trim(),
-        baseSalary: Number(form.baseSalary) || 0, roleId: form.roleId, warehouseIds: [...form.warehouseIds],
-        email: form.email.trim().toLowerCase(), sendInvite: form.sendInvite, posPassword: form.sendInvite ? undefined : form.posPassword.trim()
-      }, "employee-create:" + localId);
-      setMessage("Trabajador guardado en este dispositivo. Se creará en la nube automáticamente al recuperar Internet.");
-      setShowForm(false); setFormStep(1);
-      addNotification("Trabajador guardado offline y puesto en cola para sincronización.", "success");
+      setBusy(true);
+      try {
+        const localId = generateId("EMP-OFF");
+        const now = new Date().toISOString();
+        const role = snapshot.roles.find(role => role.id === form.roleId);
+        const localEmployee: TeamEmployee = {
+          id: localId, user_id: null, employee_code: form.employeeCode.trim(), full_name: form.fullName.trim(),
+          login_email: form.sendInvite ? form.email.trim().toLowerCase() : null, base_salary: Number(form.baseSalary) || 0,
+          compensation_type: compensationSettings.mode === "sales_percent" ? "sales_percentage" : "fixed_product", sales_percentage: compensationSettings.mode === "sales_percent" ? Number(compensationSettings.percentRate) || 0 : 0, active: true, role_id: form.roleId,
+          role_name: role?.name || "Empleado", role_key: role?.key || "employee", warehouse_ids: [...form.warehouseIds],
+          default_warehouse_id: form.warehouseIds[0] || null,
+          pending_invitation: form.sendInvite ? { id: localId + "-invite", email: form.email.trim().toLowerCase(), status: "pending_offline", expires_at: new Date(Date.now()+7*86400000).toISOString(), created_at: now } : null
+        };
+        // Primero la cola durable: si IndexedDB rechaza la operación, no debe
+        // quedar un empleado fantasma visible ni un rechazo sin mensaje.
+        await enqueueOfflineItem("employee_create", {
+          localEmployeeId: localId, companyId: snapshot.companyId, employeeCode: form.employeeCode.trim(), fullName: form.fullName.trim(),
+          baseSalary: Number(form.baseSalary) || 0, roleId: form.roleId, warehouseIds: [...form.warehouseIds],
+          email: form.email.trim().toLowerCase(), sendInvite: form.sendInvite, posPassword: form.sendInvite ? undefined : form.posPassword.trim()
+        }, "employee-create:" + localId);
+        const nextSnapshot: TeamSnapshot = { ...snapshot, employees: [localEmployee, ...snapshot.employees] };
+        setSnapshot(nextSnapshot); writeTeamCache(nextSnapshot);
+        setMessage("Trabajador guardado en este dispositivo. Se creará en la nube automáticamente al recuperar Internet.");
+        setShowForm(false); setFormStep(1);
+        addNotification("Trabajador guardado offline y puesto en cola para sincronización.", "success");
+      } catch (offlineCreateError: any) {
+        setError(offlineCreateError?.message || "No se pudo guardar el trabajador en este dispositivo.");
+      } finally {
+        setBusy(false);
+      }
       return;
     }
 
@@ -1131,6 +1142,9 @@ export default function Team() {
                   </div>
                   <div className="relative shrink-0">
                     <button onClick={(e) => { e.stopPropagation(); setMenuId(menuId === employee.id ? null : employee.id); }}
+                      aria-label={`Acciones de ${employee.full_name}`}
+                      aria-expanded={menuId === employee.id}
+                      title="Acciones del trabajador"
                       className="w-10 h-10 rounded-xl border border-base bg-primary text-muted hover:text-primary flex items-center justify-center">
                       <MoreHorizontal className="w-4 h-4" />
                     </button>

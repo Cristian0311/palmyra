@@ -176,6 +176,13 @@ export function mergeBranchInventory(
   branchId: string,
   pendingInventoryKeys: Set<string>
 ): InventoryLevel[] {
+  // Un pull vacío (servidor lento, respuesta parcial) no debe borrar el stock
+  // que este equipo ya conoce: sin filas remotas, se conserva lo local.
+  const scopedLocal = (local || []).filter(item => !branchId || item.branchId === branchId);
+  if (remote && remote.length === 0 && scopedLocal.length > 0) {
+    return local || [];
+  }
+
   const merged = new Map<string, InventoryLevel>();
 
   for (const item of local || []) {

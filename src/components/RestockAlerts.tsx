@@ -22,10 +22,15 @@ export function RestockAlerts() {
       });
     });
 
+    // Un solo recorrido en vez de filtrar el inventario entero por producto.
+    const stockByProduct = new Map<string, number>();
+    for (const row of inventory) {
+      if (currentBranchId && row.branchId !== currentBranchId) continue;
+      stockByProduct.set(row.productId, (stockByProduct.get(row.productId) || 0) + row.quantity);
+    }
+
     return products.map(product => {
-      const stock = inventory
-        .filter(i => i.productId === product.id && (!currentBranchId || i.branchId === currentBranchId))
-        .reduce((sum, i) => sum + i.quantity, 0);
+      const stock = stockByProduct.get(product.id) || 0;
       const soldLast30Days = salesByProduct[product.id] || 0;
       const dailySalesRate = soldLast30Days / 30;
       

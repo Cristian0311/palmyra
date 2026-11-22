@@ -3,6 +3,11 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- El escáner del Punto de Venta usa la cámara vía getUserMedia.
+         La cámara es opcional: sin ella la app sigue funcionando con el
+         lector Bluetooth o la entrada manual. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
         android:allowBackup="true"

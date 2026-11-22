@@ -641,7 +641,7 @@ export default function Dashboard() {
                     return [`${baseCurrency.code} ${formatMoney(Number.isFinite(amount) ? amount : 0)}`, 'Ventas'];
                   }}
                 />
-                <Area type="monotone" dataKey="total" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorTotal)" />
+                <Area type="monotone" dataKey="total" stroke="#4f46e5" strokeWidth={3} fillOpacity={1} fill="url(#colorTotal)" isAnimationActive={false} />
               </AreaChart>
             </ResponsiveContainer>
           </div>

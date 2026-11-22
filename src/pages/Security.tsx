@@ -7,7 +7,10 @@ import {useStore} from "../store/useStore";
 import {cn} from "../lib/utils";
 
 export default function Security(){
- const {addNotification,currentUser}=useStore();
+ // Selectores concretos: una suscripción a todo el store re-renderizaba esta
+ // pantalla con cada cambio del carrito o de la cola de sincronización.
+ const addNotification=useStore(state=>state.addNotification);
+ const currentUser=useStore(state=>state.currentUser);
  const [devices,setDevices]=useState<MyDevice[]>([]);
  const [ctx,setCtx]=useState<Awaited<ReturnType<typeof loadSaaSContext>>>(null);
  const [loading,setLoading]=useState(true),[busy,setBusy]=useState(false),[error,setError]=useState("");
@@ -36,6 +39,13 @@ export default function Security(){
 
  const revoke=async(device:MyDevice)=>{
   if(!ctx?.companyId)return;
+  // Cerrar la sesión actual es local: debe funcionar sin red. La revocación de
+  // otros dispositivos sí exige servidor y se bloquea en modo offline.
+  if(offline&&device.is_current){
+   await signOutSaaSAccount();
+   window.location.href="/auth";
+   return;
+  }
   setBusy(true);setError("");
   try{
    await revokeMyDevice(ctx.companyId,device.id);
@@ -86,7 +96,7 @@ export default function Security(){
    {devices.length?devices.map(device=><div key={device.id} className="p-5 border-b last:border-b-0 border-base flex flex-col md:flex-row md:items-center gap-4">
     <div className="w-11 h-11 rounded-2xl bg-subtle flex items-center justify-center text-primary">{/Android|iPhone|iPad/i.test(device.name)?<Smartphone className="w-5 h-5"/>:<Laptop className="w-5 h-5"/>}</div>
     <div className="flex-1"><div className="flex flex-wrap items-center gap-2"><p className="text-sm font-black text-primary">{device.name}</p>{device.is_current&&<span className="text-[9px] uppercase font-black bg-emerald-100 text-emerald-700 px-2 py-1 rounded-full">Esta sesión</span>}{!device.active&&<span className="text-[9px] uppercase font-black bg-slate-100 text-slate-500 px-2 py-1 rounded-full">Revocado</span>}</div><p className="text-[10px] text-muted mt-1">Última actividad: {device.last_seen_at?new Date(device.last_seen_at).toLocaleString("es-CU"):"—"}</p><p className="text-[9px] text-muted mt-1">Huella: {device.fingerprint?device.fingerprint.slice(-8):"—"}</p></div>
-    <button disabled={busy||!device.active} onClick={()=>void revoke(device)} className="h-10 px-3 rounded-xl border border-base text-xs font-black flex items-center justify-center gap-2 disabled:opacity-40">{device.is_current?<><LogOut className="w-4 h-4"/>Cerrar sesión</>:<><MonitorX className="w-4 h-4"/>Revocar</>}</button>
+    <button disabled={busy||!device.active||(offline&&!device.is_current)} onClick={()=>void revoke(device)} title={offline&&!device.is_current?"Requiere conexión":undefined} className="h-10 px-3 rounded-xl border border-base text-xs font-black flex items-center justify-center gap-2 disabled:opacity-40">{device.is_current?<><LogOut className="w-4 h-4"/>Cerrar sesión</>:<><MonitorX className="w-4 h-4"/>Revocar</>}</button>
    </div>):<div className="p-10 text-center text-xs text-muted">{offline?"La lista de dispositivos se consulta al volver a estar online.":"No hay dispositivos registrados todavía."}</div>}
   </section>
  </div>;

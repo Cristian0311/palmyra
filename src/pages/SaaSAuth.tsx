@@ -459,6 +459,9 @@ export default function SaaSAuth() {
                 </label>
               ) : null}
 
+              {/* En modo "reset" solo se envía el enlace: pedir una contraseña
+                  aquí confundía porque el campo no se usa. */}
+              {mode !== "reset" ? (
               <label className="block">
                 <span className="form-label">{mode==="recovery" ? "Nueva contraseña" : "Contraseña"}</span>
                 <div className="relative">
@@ -477,6 +480,7 @@ export default function SaaSAuth() {
                   </button>
                 </div>
               </label>
+              ) : null}
 
               {mode === "recovery" || mode === "signup" ? (
                 <label className="block">

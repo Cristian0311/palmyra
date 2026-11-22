@@ -395,6 +395,25 @@ export default function Quotes() {
 
   const warehouseName = (id: string) => branches.find((b) => b.id === id)?.name || 'Almacén';
 
+  // Una cotización vencida o ya cobrada no debe cargarse en el POS sin control:
+  // antes se podía repetir la venta de un pedido convertido o cobrar precios
+  // caducados como si la oferta siguiera vigente.
+  const handleChargeQuote = (quote: Quote) => {
+    const status = quoteDerivedStatus(quote);
+    if (status === 'converted') {
+      addNotification('Esta cotización ya fue cobrada. Duplícala si necesitas venderla de nuevo.', 'warning');
+      return;
+    }
+    if (status === 'expired') {
+      addNotification(
+        `La cotización venció${quote.validUntil ? ` el ${shortDate(quote.validUntil)}` : ''}. Duplícala y actualiza la vigencia antes de cobrarla.`,
+        'warning',
+      );
+      return;
+    }
+    navigate(`/pos?loadQuote=${quote.id}`);
+  };
+
   const startNewQuote = () => {
     setWarehouseId(defaultWarehouseId);
     setCustomerId('');
@@ -411,21 +430,30 @@ export default function Quotes() {
     setCustomerId(quote.customerId || '');
     setValidDays(7);
     setNotes(quote.notes || '');
-    setLines(
-      (quote.items || [])
-        .map((item, index): DraftLine | null => {
-          const product = productById.get((item.product as Product)?.id || '');
-          if (!product) return null;
-          return {
-            id: `line-${index}-${Date.now()}`,
-            product,
-            variantLabel: item.variantLabel,
-            quantity: Math.max(1, Number(item.quantity) || 1),
-            price: Number(item.price) || product.price,
-          } satisfies DraftLine;
-        })
-        .filter((line): line is DraftLine => Boolean(line)),
-    );
+    const sourceItems = quote.items || [];
+    const copiedLines = sourceItems
+      .map((item, index): DraftLine | null => {
+        const product = productById.get((item.product as Product)?.id || '');
+        if (!product) return null;
+        return {
+          id: `line-${index}-${Date.now()}`,
+          product,
+          variantLabel: item.variantLabel,
+          quantity: Math.max(1, Number(item.quantity) || 1),
+          price: Number(item.price) || product.price,
+        } satisfies DraftLine;
+      })
+      .filter((line): line is DraftLine => Boolean(line));
+    setLines(copiedLines);
+    // Antes las líneas sin producto se perdían en silencio y la copia quedaba
+    // con menos artículos que el documento original.
+    const dropped = sourceItems.length - copiedLines.length;
+    if (dropped > 0) {
+      addNotification(
+        `${dropped} producto(s) de la cotización ya no están disponibles y no se copiaron. Revisa el pedido antes de guardarlo.`,
+        'warning',
+      );
+    }
     setCatalogSearch('');
     setCategoryFilter('all');
     setView('builder');
@@ -1218,7 +1246,7 @@ export default function Quotes() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => navigate(`/pos?loadQuote=${quote.id}`)}
+                          onClick={() => handleChargeQuote(quote)}
                           title="Abre el POS con estos productos. El empleado elige su nombre y almacén, y el carrito se llena solo."
                           aria-label="Cobrar esta cotización en el Punto de Venta"
                           className="flex h-8 items-center justify-center gap-1 rounded-lg bg-violet-600 px-2 text-[10px] font-black uppercase text-white transition-colors hover:bg-violet-700"
@@ -1315,7 +1343,7 @@ export default function Quotes() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => navigate(`/pos?loadQuote=${quote.id}`)}
+                  onClick={() => handleChargeQuote(quote)}
                   className="flex min-h-10 w-full items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-black uppercase tracking-wide text-white active:scale-[0.99]"
                 >
                   <ShoppingCart size={14} /> Cobrar en POS
@@ -1435,9 +1463,9 @@ export default function Quotes() {
               <button
                 type="button"
                 onClick={() => {
-                  const quoteId = detailQuote.id;
+                  const quote = detailQuote;
                   setDetailQuote(null);
-                  navigate(`/pos?loadQuote=${quoteId}`);
+                  handleChargeQuote(quote);
                 }}
                 title="Abre el POS con estos productos. El empleado elige su nombre y almacén, y el carrito se llena solo."
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2.5 text-xs font-black uppercase tracking-wide text-white hover:bg-violet-700"

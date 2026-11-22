@@ -27,7 +27,9 @@ export default function AccountStatus() {
           : "La cuenta todavía no está habilitada para entrar al panel.");
       }
     } catch (err: any) {
-      setMessage(err?.message || "No se pudo comprobar el estado.");
+      setMessage(typeof navigator !== "undefined" && !navigator.onLine
+        ? "Sin conexión: no se pudo comprobar el estado. Conéctate y vuelve a intentarlo."
+        : err?.message || "No se pudo comprobar el estado.");
     } finally {
       setBusy(false);
     }

@@ -319,6 +319,18 @@ export default function Reports() {
 
   const filteredCashSessions = filteredSessions;
 
+  // Exportar debe respetar el mismo periodo que muestran las pestañas. Las
+  // liquidaciones y los movimientos bancarios se exportaban completos y el
+  // Excel podía incluir filas de meses ajenos al filtro activo.
+  const filteredSalarySettlements = useMemo(
+    () => salarySettlements.filter(settlement => matchesReportDateFilter(settlement.date, selectedFilterDate, sessionFilter)),
+    [salarySettlements, selectedFilterDate, sessionFilter],
+  );
+  const filteredBankTransactions = useMemo(
+    () => bankTransactions.filter(transaction => matchesReportDateFilter(transaction.date, selectedFilterDate, sessionFilter)),
+    [bankTransactions, selectedFilterDate, sessionFilter],
+  );
+
   const { payrollList, filteredPayrollList, aggregatedPayrollByWorker } = useReportsPayroll({
     closedSessions,
     salarySettlements,
@@ -569,14 +581,18 @@ export default function Reports() {
   const getExportData = (): ExcelExportData => {
     let dateFilterLabel = 'Todo el historial';
     if (selectedFilterDate) dateFilterLabel = `Fecha específica: ${selectedFilterDate}`;
-    else if (sessionFilter === 'today') dateFilterLabel = `Hoy: ${new Date().toLocaleDateString('es-CU')}`;
-    else if (sessionFilter === 'yesterday') { const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1); dateFilterLabel = `Ayer: ${yesterday.toLocaleDateString('es-CU')}`; }
+    else if (sessionFilter === 'today') dateFilterLabel = `Hoy: ${getLocalDateYMD(new Date().toISOString())}`;
+    else if (sessionFilter === 'yesterday') {
+      // La etiqueta del Excel debe coincidir con el día cubano usado por el filtro.
+      const yesterdayYMD = getLocalDateYMD(new Date(Date.now() - 86400000).toISOString());
+      dateFilterLabel = `Ayer: ${yesterdayYMD}`;
+    }
     const visibleTransactions = filteredTransactions.filter(tx => !hiddenReportIds.includes(tx.id));
     const visibleIds = new Set(visibleTransactions.map(tx => tx.id));
-    return { businessName: receiptConfig?.businessName || 'PALMYRA', transactions: visibleTransactions, cashSessions: filteredCashSessions, salarySettlements, products, categories, currencies, branches, users, customers, bankTransactions, bankCards, inventory, transfers, returns: returns.filter(r => visibleIds.has(r.transactionId)), warranties: warranties.filter(w => visibleIds.has(w.transactionId)), baseCurrency, dateFilterLabel };
+    return { businessName: receiptConfig?.businessName || 'PALMYRA', transactions: visibleTransactions, cashSessions: filteredCashSessions, salarySettlements: filteredSalarySettlements, products, categories, currencies, branches, users, customers, bankTransactions: filteredBankTransactions, bankCards, inventory, transfers: filteredTransfers, returns: returns.filter(r => visibleIds.has(r.transactionId)), warranties: warranties.filter(w => visibleIds.has(w.transactionId)), baseCurrency, dateFilterLabel, companyCompensation };
   };
 
-  const { exportMenuRef, showExportMenu, setShowExportMenu, exportSuccess, isExporting, handleExportFullExcel, handleExportSectionExcel } = useReportsExport(getExportData);
+  const { exportMenuRef, showExportMenu, setShowExportMenu, exportSuccess, isExporting, handleExportFullExcel, handleExportSectionExcel } = useReportsExport(getExportData, addNotification);
 
   // Find printable shift data
   const printSession = cashSessions.find(s => s.id === printSessionId);
@@ -1053,7 +1069,7 @@ export default function Reports() {
                 const initials = (worker.match(/\b\w/g) || []).slice(0, 2).join('').toUpperCase() || 'CA';
                 const turnLabel = getSessionTurnLabel(session, sessionTurnMap);
                 const dateObj = new Date(session.closingDate || session.closedAt || session.openedAt);
-                const whenLabel = `${branch?.name || 'Sucursal principal'} · ${dateObj.toLocaleDateString('es-CU', { day: '2-digit', month: 'short', year: 'numeric' })} ${dateObj.toLocaleTimeString('es-CU', { hour: '2-digit', minute: '2-digit' })}`;
+                const whenLabel = `${branch?.name || 'Sucursal principal'} · ${dateObj.toLocaleDateString('es-CU', { timeZone: 'America/Havana', day: '2-digit', month: 'short', year: 'numeric' })} ${dateObj.toLocaleTimeString('es-CU', { timeZone: 'America/Havana', hour: '2-digit', minute: '2-digit' })}`;
                 return (
                   <li key={session.id} className="flex flex-col gap-2 px-3 py-2.5 transition-colors hover:bg-subtle/60 sm:flex-row sm:items-center sm:gap-3">
                     <div className="flex min-w-0 flex-1 items-center gap-2.5">
@@ -1216,10 +1232,10 @@ export default function Reports() {
                       <tr key={m.id} className="hover:bg-subtle/50 transition-colors">
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           <div className="text-[10px] font-bold text-primary">
-                            {dateObj.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            {dateObj.toLocaleDateString('es-CU', { timeZone: 'America/Havana', day: '2-digit', month: '2-digit', year: 'numeric' })}
                           </div>
                           <div className="text-[8px] font-mono text-muted">
-                            {dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {dateObj.toLocaleTimeString('es-CU', { timeZone: 'America/Havana', hour: '2-digit', minute: '2-digit' })}
                           </div>
                         </td>
 
@@ -1401,10 +1417,10 @@ export default function Reports() {
                       <tr key={t.id} className="hover:bg-subtle/50 transition-colors">
                         <td className="px-3 py-2.5 whitespace-nowrap">
                           <div className="text-[10px] font-bold text-primary">
-                            {dateObj.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            {dateObj.toLocaleDateString('es-CU', { timeZone: 'America/Havana', day: '2-digit', month: '2-digit', year: 'numeric' })}
                           </div>
                           <div className="text-[8px] font-mono text-muted">
-                            {dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {dateObj.toLocaleTimeString('es-CU', { timeZone: 'America/Havana', hour: '2-digit', minute: '2-digit' })}
                           </div>
                         </td>
 

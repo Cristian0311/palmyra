@@ -287,10 +287,12 @@ export const useStore = create<AppState>()(
   addCustomer: async (customer) => {
     let added = false;
     set((state) => {
-      // Deduplicación por ID, Teléfono o Correo
+      // Deduplicación por ID, Teléfono o Correo. El teléfono se compara solo
+      // por dígitos para no duplicar «555 1234» frente a «555-1234».
+      const digits = (value?: string) => (value || '').replace(/\D/g, '');
       const isDuplicate = (state.customers || []).some(c =>
         c.id === customer.id ||
-        (c.phone && customer.phone && c.phone === customer.phone) ||
+        (digits(customer.phone).length >= 6 && digits(c.phone) === digits(customer.phone)) ||
         (c.email && customer.email && c.email.toLowerCase().trim() === customer.email.toLowerCase().trim())
       );
       if (isDuplicate) return state;

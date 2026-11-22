@@ -143,7 +143,10 @@ export function generateSummarySheet(data: ExcelExportData): any[][] {
 
   const totalBankIncomes = bankTotals.payment_received + bankTotals.deposit;
   const totalBankExpenses = bankTotals.supplier_payment + bankTotals.withdrawal;
-  const netFlow = totalSales + totalCashIncomes + totalBankIncomes - totalCashExpenses - totalBankExpenses;
+  // Los cobros con tarjeta (`payment_received`) ya están dentro de las ventas;
+  // sumarlos otra vez inflaba el flujo neto del Excel frente al mismo KPI de la
+  // aplicación. Solo los depósitos sin venta son entradas adicionales.
+  const netFlow = totalSales + totalCashIncomes + bankTotals.deposit - totalCashExpenses - totalBankExpenses;
   const avgTicket = validSalesTransactions.length > 0 ? totalSales / validSalesTransactions.length : 0;
 
   const rows: any[][] = [

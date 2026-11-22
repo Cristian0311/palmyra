@@ -3,7 +3,10 @@ import path from 'node:path';
 
 const root = process.cwd();
 const publicDir = path.resolve('public');
-const appVersion = JSON.parse(fs.readFileSync(path.resolve('app-version.json'), 'utf8')).version;
+// La versión técnica del build sigue a package.json (la que usan instalador y
+// OTA). app-version.json era la etiqueta informativa y dejaba el buildId con
+// un prefijo 1.2.0 en releases 1.3.x, lo que confundía al diagnosticar.
+const appVersion = JSON.parse(fs.readFileSync(path.resolve('package.json'), 'utf8')).version;
 
 const buildId =
   process.env.RENDER_GIT_COMMIT ||

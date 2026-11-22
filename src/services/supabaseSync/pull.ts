@@ -46,6 +46,10 @@ async function loadCatalog() {
     arr.push(k);
     kitsByProduct.set(k.kit_product_id, arr);
   }
+  const barcodeByProduct = new Map<string, string>();
+  for (const b of barcodeRes.data || []) {
+    if (!barcodeByProduct.has(b.product_id)) barcodeByProduct.set(b.product_id, b.barcode || '');
+  }
   const productById = new Map<string, Product>();
   const defaultCurrency = companyRes.data?.default_currency_code || 'USD';
   const priceByProduct = new Map<string, number>();
@@ -54,7 +58,7 @@ async function loadCatalog() {
     priceByProduct.set(row.product_id, Number(row.price) || 0);
   }
   const products = (productsRes.data || []).map((p:any) => {
-    const firstBarcode = (barcodeRes.data || []).find((b:any) => b.product_id === p.id)?.barcode || '';
+    const firstBarcode = barcodeByProduct.get(p.id) || '';
     const item = mapProduct(p, firstBarcode, kitsByProduct.get(p.id) || []);
     const variants = variantsByProduct.get(p.id) || [];
     item.availableSizes = variants.filter((v:any) => v.active !== false && v.attributes?.type === 'size').map((v:any) => String(v.name));
@@ -242,8 +246,12 @@ async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string
     }
   }
   const barcodeRes = await supabase.from('product_barcodes').select('product_id,barcode').eq('company_id', tenant.companyId).eq('active', true);
+  const barcodeByProduct = new Map<string, string>();
+  for (const b of barcodeRes.data || []) {
+    if (!barcodeByProduct.has(b.product_id)) barcodeByProduct.set(b.product_id, b.barcode || '');
+  }
   const productMap = new Map<string,Product>();
-  for (const p of productsRes.data || []) productMap.set(p.id, mapProduct(p, (barcodeRes.data || []).find((b:any)=>b.product_id===p.id)?.barcode || ''));
+  for (const p of productsRes.data || []) productMap.set(p.id, mapProduct(p, (barcodeByProduct.get(p.id)) || ''));
   const variantMap = new Map<string,string>((variantsRes.data || []).map((v:any)=>[v.id,v.name]));
 
   const itemsBySale = new Map<string, any[]>();
@@ -333,10 +341,9 @@ async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string
 async function loadCashSessions(branchId?: string) {
   const tenant = await getActiveTenant();
   const supabase = getSupabase()!;
-  const [registersRes, employeesRes, profilesRes, companyRes] = await Promise.all([
+  const [registersRes, employeesRes, companyRes] = await Promise.all([
     supabase.from('cash_registers').select('*').eq('company_id',tenant.companyId).eq('active',true),
     supabase.from('employees').select('id,full_name,user_id').eq('company_id',tenant.companyId),
-    supabase.from('profiles').select('id,full_name').limit(5000),
     supabase.from('companies').select('default_currency_code').eq('id',tenant.companyId).single()
   ]);
   if (registersRes.error) throw registersRes.error;
@@ -347,7 +354,6 @@ async function loadCashSessions(branchId?: string) {
   const registerMap = new Map<string,any>((registersRes.data || []).map((r:any)=>[r.id,r]));
   const employeeMap = new Map<string,string>((employeesRes.data || []).map((e:any)=>[e.id,e.full_name]));
   const employeeUserMap = new Map<string,string>((employeesRes.data || []).filter((e:any)=>e.user_id).map((e:any)=>[e.id,e.user_id]));
-  const profileMap = new Map<string,string>((profilesRes.data || []).filter((p:any)=>p.id && p.full_name).map((p:any)=>[p.id,p.full_name]));
   const defaultCurrencyCode = companyRes.data?.default_currency_code || 'CUP';
 
   // Cash history is paginated as well; the previous 200-row cap made
@@ -371,15 +377,35 @@ async function loadCashSessions(branchId?: string) {
   }
 
   const sessionIds=(data||[]).map((s:any)=>s.id).filter(Boolean);
-  const movementRows=sessionIds.length
-    ? await supabase.from('cash_movements').select('*').eq('company_id',tenant.companyId).in('cash_session_id',sessionIds).order('created_at',{ascending:true})
-    : {data:[],error:null};
-  if(movementRows.error) throw movementRows.error;
+  // Los movimientos se paginan por sesión: PostgREST corta en 1000 filas por
+  // respuesta y un turno con muchas ventas en efectivo perdía movimientos.
   const movementsBySession=new Map<string, any[]>();
-  for(const movement of movementRows.data||[]) {
-    const list=movementsBySession.get(movement.cash_session_id)||[];
-    list.push(movement);
-    movementsBySession.set(movement.cash_session_id,list);
+  for(let i=0;i<sessionIds.length;i+=50){
+    const batch=sessionIds.slice(i,i+50);
+    for(let from=0;;from+=500){
+      const {data:page,error}=await supabase.from('cash_movements').select('*')
+        .eq('company_id',tenant.companyId).in('cash_session_id',batch)
+        .order('created_at',{ascending:true}).range(from,from+499);
+      if(error) throw error;
+      for(const movement of page||[]) {
+        const list=movementsBySession.get(movement.cash_session_id)||[];
+        list.push(movement);
+        movementsBySession.set(movement.cash_session_id,list);
+      }
+      if(!page||page.length<500) break;
+    }
+  }
+  // Perfiles: solo los auth-user de este tenant (abridores de turno y cuentas
+  // enlazadas a empleados). Antes se leían 5000 perfiles globales, lo que
+  // exponía nombres de otras empresas si la RLS de profiles era laxa.
+  const profileIds=Array.from(new Set([
+    ...(data||[]).flatMap((s:any)=>[s.opened_by,s.closed_by]),
+    ...(employeesRes.data||[]).map((e:any)=>e.user_id)
+  ].filter(Boolean).map(String)));
+  const profileMap=new Map<string,string>();
+  for(let i=0;i<profileIds.length;i+=200){
+    const {data:profiles}=await supabase.from('profiles').select('id,full_name').in('id',profileIds.slice(i,i+200));
+    for(const p of profiles||[]) if(p?.id&&p.full_name) profileMap.set(p.id,p.full_name);
   }
 
   return (data||[]).filter((s:any)=>{

@@ -155,8 +155,9 @@ export function ReportsSalesTab({
           session,
           sequentialTurn: getSessionTurnLabel(session, sessionTurnMap),
           statusLabel: session.status === "open" ? "Abierto" : session.status === "cancelled" ? "Cancelado" : "Cerrado",
-          dateLabel: dateToDisplay.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" }),
-          timeLabel: dateToDisplay.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) + (session.status === "open" ? " (En curso)" : ""),
+          // La fecha/hora visible debe coincidir con el día cubano usado por el filtro.
+          dateLabel: dateToDisplay.toLocaleDateString("es-CU", { timeZone: 'America/Havana', day: "2-digit", month: "2-digit", year: "numeric" }),
+          timeLabel: dateToDisplay.toLocaleTimeString("es-CU", { timeZone: 'America/Havana', hour: "2-digit", minute: "2-digit" }) + (session.status === "open" ? " (En curso)" : ""),
           branchName: branches.find((branch) => branch.id === session.branchId)?.name || "Sucursal Principal",
           workerName: session.workerName || users.find((user) => user.id === session.userId)?.name || "Vendedor",
           totalItems,
@@ -176,8 +177,8 @@ export function ReportsSalesTab({
           branchName: branches.find((branch) => branch.id === tx.branchId)?.name || "Sucursal",
           workerName: tx.cashierName || users.find((user) => user.id === tx.userId)?.name || "Vendedor",
           totalItems: (tx.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0),
-          dateLabel: dateObj.toLocaleDateString("es-ES", { day: "2-digit", month: "2-digit", year: "numeric" }),
-          timeLabel: dateObj.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          dateLabel: dateObj.toLocaleDateString("es-CU", { timeZone: 'America/Havana', day: "2-digit", month: "2-digit", year: "numeric" }),
+          timeLabel: dateObj.toLocaleTimeString("es-CU", { timeZone: 'America/Havana', hour: "2-digit", minute: "2-digit" }),
           isHidden: hiddenReportIds.includes(tx.id),
         };
       }),
@@ -502,6 +503,14 @@ export function ReportsSalesTab({
                         >
                           {ticketDisplay(tx.ticketNumber, tx.id)}
                         </span>
+                        {tx.syncRejected && (
+                          <span
+                            className="ml-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/40 dark:text-red-300 dark:border-red-900/60"
+                            title={tx.syncRejectedReason || 'La venta fue rechazada por el servidor. El efectivo se cobró y requiere revisión.'}
+                          >
+                            <AlertCircle className="w-2.5 h-2.5" /> Sync rechazada
+                          </span>
+                        )}
                         {hiddenReportIds.includes(tx.id) && (
                           <span
                             className="ml-1.5 inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-900/60"
@@ -526,14 +535,16 @@ export function ReportsSalesTab({
                       <td className="px-3 py-2 whitespace-nowrap">
                         <div className="flex items-center gap-1 text-[11px] font-bold text-primary">
                           <span>
-                            {dateObj.toLocaleDateString("es-ES", {
+                            {dateObj.toLocaleDateString("es-CU", {
+                              timeZone: 'America/Havana',
                               day: "2-digit",
                               month: "2-digit",
                               year: "numeric",
                             })}
                           </span>
                           <span className="text-[9px] font-mono text-muted">
-                            {dateObj.toLocaleTimeString([], {
+                            {dateObj.toLocaleTimeString("es-CU", {
+                              timeZone: 'America/Havana',
                               hour: "2-digit",
                               minute: "2-digit",
                             })}
@@ -637,6 +648,14 @@ export function ReportsSalesTab({
                       <span className="inline-flex items-center rounded border border-rose-200 bg-rose-50 px-2 py-0.5 font-mono text-[11px] font-black tracking-wider text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300">
                         {ticketDisplay(row.tx.ticketNumber, row.tx.id)}
                       </span>
+                      {row.tx.syncRejected && (
+                        <span
+                          className="inline-flex items-center gap-1 rounded border border-red-200 bg-red-50 px-1.5 py-0.5 text-[11px] font-black uppercase tracking-wider text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300"
+                          title={row.tx.syncRejectedReason || 'La venta fue rechazada por el servidor. El efectivo se cobró y requiere revisión.'}
+                        >
+                          <AlertCircle className="h-3 w-3" /> Sync rechazada
+                        </span>
+                      )}
                       {row.isHidden && (
                         <span className="inline-flex items-center gap-1 rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[11px] font-black uppercase tracking-wider text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">
                           <EyeOff className="h-3 w-3" /> Oculto

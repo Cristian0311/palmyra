@@ -27,5 +27,7 @@ export interface ExcelExportData {
   warranties?: any[];
   baseCurrency: import('../../types').Currency;
   dateFilterLabel?: string;
+  /** Modo de compensación vigente, para que la nómina exportada use la misma base salarial que la app. */
+  companyCompensation?: { mode: 'fixed_product' | 'sales_percent'; percentRate: number };
   aiDiagnostic?: AIDiagnosticReport | null;
 }

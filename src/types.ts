@@ -148,6 +148,14 @@ export interface Transaction {
   /** Local marker: sale exists on this terminal and still requires durable/offline confirmation. */
   offlinePending?: boolean;
   /**
+   * Local marker: the server rejected this offline sale definitively. The
+   * ticket is kept because the cash was already collected; it must be reviewed
+   * and refunded manually instead of disappearing from the shift.
+   */
+  syncRejected?: boolean;
+  syncRejectedAt?: string;
+  syncRejectedReason?: string;
+  /**
    * Reports visibility only. A hidden ticket is excluded from the reports list
    * without voiding the sale, the payments or the stock movements.
    * Persisted server-side in `sales.metadata.report_visibility`.
@@ -159,6 +167,9 @@ export interface Transaction {
 
 export interface ReturnItem {
   id: string;
+  // sales_returns.id cuando la devolución vino de otro dispositivo; el id local
+  // es el de la línea (sales_return_items.id).
+  serverReturnId?: string;
   transactionId: string;
   productId: string;
   quantity: number;

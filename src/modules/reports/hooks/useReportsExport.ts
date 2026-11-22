@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ExcelExportData, SectionKey } from '../../../utils/excelExport';
 
-export function useReportsExport(getExportData: () => ExcelExportData) {
+type ExportNotifier = (message: string, type?: 'success' | 'error' | 'warning' | 'info' | 'loading', details?: string) => void;
+
+export function useReportsExport(getExportData: () => ExcelExportData, addNotification?: ExportNotifier) {
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -26,6 +28,10 @@ export function useReportsExport(getExportData: () => ExcelExportData) {
       setTimeout(() => setExportSuccess(false), 2500);
     } catch (error) {
       console.error('[Reports] No se pudo generar el libro de Excel:', error);
+      // Un fallo de generación/descarga no debe quedar silencioso: antes solo
+      // se escribía en consola y el botón parecía no responder.
+      const detail = error instanceof Error && error.message ? error.message : 'Revisa la conexión e inténtalo de nuevo.';
+      addNotification?.('No se pudo generar el archivo Excel.', 'error', detail);
     } finally {
       setIsExporting(false);
       setShowExportMenu(false);

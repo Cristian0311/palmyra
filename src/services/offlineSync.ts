@@ -18,7 +18,8 @@ import {
   clearOfflineQueueRemovalMark,
   setOfflineQueueMemory,
   persistOfflineQueueSnapshot,
-  refreshOfflineQueueCounts
+  refreshOfflineQueueCounts,
+  readDurableOfflineQueue
 } from './offlineQueue';
 import {
   callOpenSessionRPCWithId, callProcessTransactionRPC, callVoidTransactionRPC, callCancelSessionRPC,
@@ -535,6 +536,23 @@ async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
       // La operación sigue pendiente porque esta ejecución no llegó a confirmarla.
       finalById.set(id, current);
     }
+  }
+
+  // Otra pestaña pudo encolar operaciones mientras esta ventana drenaba. Se
+  // relee IndexedDB para incorporarlas antes del snapshot; de lo contrario el
+  // clear()+put del commit las borraría sin que ningún proceso las suba.
+  try {
+    const durableAfterRun = await readDurableOfflineQueue();
+    for (const durable of durableAfterRun || []) {
+      if (finalById.has(durable.id) || startById.has(durable.id)) continue;
+      if (isOfflineQueueItemRemoved(durable.id)) continue;
+      finalById.set(durable.id, {
+        ...durable,
+        status: durable.status === 'processing' ? 'pending' : durable.status
+      });
+    }
+  } catch (error) {
+    console.warn('[offlineSync] No se pudo releer la cola durable antes del commit:', error);
   }
 
   const finalQueue = Array.from(finalById.values())

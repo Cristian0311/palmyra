@@ -296,17 +296,35 @@ export function adminErrorMessage(error: unknown, fallback = "No se pudo complet
   if (code === "PGRST202" || /could not find the function|schema cache/i.test(message)) {
     return "Falta aplicar la actualización de la base de datos para esta función administrativa.";
   }
-  if (/failed to fetch|network|load failed|timeout/i.test(message)) {
+  if (/jwt expired|invalid jwt|jwt is expired|token has expired|refresh_token_not_found|session_not_found/i.test(message)) {
+    return "Tu sesión expiró. Vuelve a iniciar sesión para continuar.";
+  }
+  if (code === "PGRST301" || code === "401") {
+    return "Tu sesión expiró o no tiene permisos. Vuelve a iniciar sesión.";
+  }
+  if (/failed to fetch|network|load failed|timeout|tardó demasiado/i.test(message)) {
     return "No se pudo conectar con Supabase. Revisa tu conexión.";
   }
   return message || fallback;
 }
 
+function withTimeout<T>(promise: PromiseLike<T>, ms = 20_000, label = "La consulta"): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(`${label} tardó demasiado. Revisa tu conexión.`)), ms);
+  });
+  return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
 async function assertPlatformAdmin() {
   const supabase = getAdminSupabase();
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError) throw userError;
-  if (!userData.user) throw new Error("Necesitas iniciar sesión.");
+  // getSession lee la sesión local; getUser añadía una petición de red antes de
+  // cada RPC y duplicaba la latencia de todo el panel.
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  if (!data.session?.user) throw new Error("Tu sesión expiró. Vuelve a iniciar sesión.");
   // La autorización real vive en la base de datos/RPC.
   // El frontend nunca decide quién es Super Admin por metadata local.
   return supabase;
@@ -314,18 +332,18 @@ async function assertPlatformAdmin() {
 
 async function rpcArray<T>(name: string, args: Record<string, unknown> = {}): Promise<T[]> {
   const supabase = await assertPlatformAdmin();
-  const { data, error } = await supabase.rpc(name, args);
+  const { data, error } = await withTimeout(supabase.rpc(name, args), 20_000, "La consulta administrativa");
   if (error) throw new Error(adminErrorMessage(error));
   return Array.isArray(data) ? (data as T[]) : [];
 }
 
 export async function loadPlatformSnapshot(): Promise<PlatformSnapshot> {
   const supabase = await assertPlatformAdmin();
-  const [companies, requests, overview] = await Promise.all([
+  const [companies, requests, overview] = await withTimeout(Promise.all([
     supabase.rpc("get_platform_companies"),
     supabase.rpc("get_pending_plan_requests", { p_status: "pending", p_limit: 200 }),
     supabase.rpc("get_platform_overview"),
-  ]);
+  ]), 25_000, "La carga del panel");
   if (companies.error) throw new Error(adminErrorMessage(companies.error));
   if (requests.error) throw new Error(adminErrorMessage(requests.error));
   if (overview.error) throw new Error(adminErrorMessage(overview.error));
@@ -361,7 +379,7 @@ export function loadPlatformUsers(search?: string, limit = 200) {
 
 export async function loadPlatformUserDetail(userId: string): Promise<PlatformUserDetail> {
   const supabase = await assertPlatformAdmin();
-  const { data, error } = await supabase.rpc("get_platform_user_detail", { p_user_id: userId });
+  const { data, error } = await withTimeout(supabase.rpc("get_platform_user_detail", { p_user_id: userId }), 20_000, "La ficha del usuario");
   if (error) throw new Error(adminErrorMessage(error));
   const value = (data || {}) as Partial<PlatformUserDetail>;
   if (!value.user) throw new Error("No se encontró ese usuario.");
@@ -374,14 +392,14 @@ export async function loadPlatformUserDetail(userId: string): Promise<PlatformUs
 
 export async function loadCompanyDetail(companyId: string): Promise<PlatformCompanyDetail> {
   const supabase = await assertPlatformAdmin();
-  const { data, error } = await supabase.rpc("get_platform_company_detail", { p_company_id: companyId });
+  const { data, error } = await withTimeout(supabase.rpc("get_platform_company_detail", { p_company_id: companyId }), 20_000, "La ficha de la empresa");
   if (error) throw new Error(adminErrorMessage(error));
   return data as PlatformCompanyDetail;
 }
 
 export async function loadCompanyConsole(companyId: string): Promise<PlatformCompanyConsole> {
   const supabase = await assertPlatformAdmin();
-  const { data, error } = await supabase.rpc("get_platform_company_console", { p_company_id: companyId });
+  const { data, error } = await withTimeout(supabase.rpc("get_platform_company_console", { p_company_id: companyId }), 20_000, "La consola de la empresa");
   if (error) throw new Error(adminErrorMessage(error));
   return data as PlatformCompanyConsole;
 }

@@ -50,6 +50,10 @@ const customerCode = (id: string) => documentCode('CLI', id);
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
+// El mismo teléfono escrito como «555 1234», «555-1234» o «+53 555 1234» debe
+// detectarse como duplicado; antes solo se ignoraban los espacios.
+const phoneDigits = (value?: string) => (value || '').replace(/\D/g, '');
+
 function CustomersContent() {
   const {
     customers, addCustomer, updateCustomer, deleteCustomer, transactions, branches, getBaseCurrency, addNotification,
@@ -96,8 +100,19 @@ function CustomersContent() {
     return map;
   }, [validTransactions]);
 
-  const stats = useMemo(() => {
-    let withSales = 0;
+  // Historial real: incluye ventas reembolsadas. Borrar al cliente dejaba esos
+  // tickets huérfanos aunque la actividad comercial ya no las mostrara.
+  const customersWithHistory = useMemo(() => {
+    const ids = new Set<string>();
+    for (const tx of transactions) {
+      if (!tx.deletedAt && tx.customerId) ids.add(tx.customerId);
+    }
+    return ids;
+  }, [transactions]);
+
+  const customerHasHistory = (customerId: string) => customersWithHistory.has(customerId);
+
+  const stats = useMemo(() => {    let withSales = 0;
     let revenue = 0;
     let purchases = 0;
     for (const customer of customers) {
@@ -184,13 +199,15 @@ function CustomersContent() {
       return;
     }
 
-    const duplicate = customers.find(customer =>
-      customer.id !== editingCustomer?.id &&
-      ((phone && customer.phone && customer.phone.replace(/\s+/g, '') === phone.replace(/\s+/g, '')) ||
-        (email && customer.email && customer.email.toLowerCase().trim() === email.toLowerCase()))
-    );
+    const duplicate = customers.find(customer => {
+      if (customer.id === editingCustomer?.id) return false;
+      const phoneMatch = phoneDigits(phone).length >= 6 && phoneDigits(customer.phone) === phoneDigits(phone);
+      const emailMatch = Boolean(email && customer.email && customer.email.toLowerCase().trim() === email.toLowerCase());
+      const taxIdMatch = Boolean(taxId && customer.taxId && customer.taxId.trim().toLowerCase() === taxId.toLowerCase());
+      return phoneMatch || emailMatch || taxIdMatch;
+    });
     if (duplicate) {
-      setFormError(`Ya existe un cliente con ese ${phone && duplicate.phone ? 'teléfono' : 'correo'}: ${duplicate.name}.`);
+      setFormError(`Ya existe un cliente con esos datos: ${duplicate.name} (${customerCode(duplicate.id)}).`);
       return;
     }
 
@@ -222,6 +239,12 @@ function CustomersContent() {
 
   const confirmDelete = () => {
     if (!deletingCustomer) return;
+    // Doble barrera: ni por una ruta alternativa se borra un cliente con historial.
+    if (customerHasHistory(deletingCustomer.id)) {
+      addNotification("No se puede eliminar", "warning", `${deletingCustomer.name} tiene ventas registradas.`);
+      setDeletingCustomer(null);
+      return;
+    }
     deleteCustomer(deletingCustomer.id);
     addNotification("Cliente eliminado", "info", `${deletingCustomer.name} se retiró del directorio.`);
     setDeletingCustomer(null);
@@ -274,7 +297,7 @@ function CustomersContent() {
 
   const viewingActivity = viewingCustomer ? activityByCustomer.get(viewingCustomer.id) : undefined;
   const viewingTransactions = viewingCustomer ? customerTransactions(viewingCustomer.id) : [];
-  const deleteBlocked = Boolean(deletingCustomer && activityByCustomer.get(deletingCustomer.id));
+  const deleteBlocked = Boolean(deletingCustomer && customerHasHistory(deletingCustomer.id));
 
   const actionBase = "rounded-lg border border-base text-muted transition-colors hover:bg-violet-50 hover:text-violet-600 dark:hover:bg-violet-950/30";
   const renderRowActions = (customer: Customer, activity?: CustomerActivity, mobile = false) => (
@@ -300,9 +323,9 @@ function CustomersContent() {
       <button
         type="button"
         onClick={() => setDeletingCustomer(customer)}
-        disabled={Boolean(activity)}
+        disabled={customerHasHistory(customer.id)}
         aria-label={`Eliminar ${customer.name}`}
-        title={activity ? "Tiene ventas registradas y no puede eliminarse" : "Eliminar cliente"}
+        title={customerHasHistory(customer.id) ? "Tiene ventas registradas y no puede eliminarse" : "Eliminar cliente"}
         className={cn(
           actionBase,
           mobile ? "flex h-9 w-9 items-center justify-center" : "p-1.5",
@@ -679,8 +702,8 @@ function CustomersContent() {
               <button
                 type="button"
                 onClick={() => setDeletingCustomer(viewingCustomer)}
-                disabled={Boolean(viewingActivity)}
-                title={viewingActivity ? "Este cliente tiene ventas registradas y no puede eliminarse." : "Eliminar cliente"}
+                disabled={customerHasHistory(viewingCustomer.id)}
+                title={customerHasHistory(viewingCustomer.id) ? "Este cliente tiene ventas registradas y no puede eliminarse." : "Eliminar cliente"}
                 className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-black uppercase tracking-wide text-red-600 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300"
               >
                 <Trash2 size={14} /> Eliminar

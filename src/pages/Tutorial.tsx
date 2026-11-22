@@ -1881,7 +1881,12 @@ export default function Tutorial() {
 
   const activateZone = (zone: number) => {
     setActiveZone(zone);
-    const step = document.getElementById(`paso-${currentLesson.id}-${zone}`);
+    // Los puntos de la figura no siguen el orden de los pasos (el Dashboard,
+    // por ejemplo, numera 1, 4, 2…). Se busca el paso por su zone y no por el
+    // número del punto para no desplazar al paso equivocado.
+    const stepIndex = currentLesson.steps.findIndex((step) => step.zone === zone);
+    const stepNumber = stepIndex >= 0 ? stepIndex + 1 : zone;
+    const step = document.getElementById(`paso-${currentLesson.id}-${stepNumber}`);
     step?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 

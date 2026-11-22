@@ -84,7 +84,11 @@ export default function SettingsLanSection({ active, onToast }: Props) {
   useEffect(() => {
     if (!active) return;
     void load();
-    const timer = window.setInterval(() => { void load(true); }, REFRESH_MS);
+    // No consultar la red local mientras la pestaña está oculta: el sondeo de
+    // 15 s seguía golpeando el servidor en segundo plano.
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load(true);
+    }, REFRESH_MS);
     return () => window.clearInterval(timer);
   }, [active, load]);
 

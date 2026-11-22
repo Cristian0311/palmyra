@@ -27,7 +27,7 @@ import {
 import { useStore } from "../store/useStore";
 import { cn } from "../lib/utils";
 import { documentCode, ticketDisplay } from "../lib/documentCodes";
-import type { Customer, ReturnItem, Transaction, Warranty } from "../types";
+import type { BankCard, Customer, ReturnItem, Transaction, Warranty } from "../types";
 
 type ReturnFilter = 'all' | 'pending' | 'completed' | 'rejected';
 type WarrantyFilter = 'all' | 'active' | 'expiring' | 'expired' | 'closed';
@@ -116,9 +116,13 @@ function ReturnsContent() {
     customers,
     currencies,
     currentBranchId,
+    cashSessions,
+    bankCards,
     createReturn,
     updateReturn,
     processReturn,
+    addCashMovement,
+    addBankTransaction,
     addNotification,
     getBaseCurrency,
   } = useStore(useShallow((state) => ({
@@ -129,9 +133,13 @@ function ReturnsContent() {
     customers: state.customers,
     currencies: state.currencies,
     currentBranchId: state.currentBranchId,
+    cashSessions: state.cashSessions,
+    bankCards: state.bankCards,
     createReturn: state.createReturn,
     updateReturn: state.updateReturn,
     processReturn: state.processReturn,
+    addCashMovement: state.addCashMovement,
+    addBankTransaction: state.addBankTransaction,
     addNotification: state.addNotification,
     getBaseCurrency: state.getBaseCurrency,
   })));
@@ -152,6 +160,11 @@ function ReturnsContent() {
   const productById = useMemo(() => new Map(products.map(p => [p.id, p])), [products]);
   const customerById = useMemo(() => new Map(customers.map(c => [c.id, c])), [customers]);
   const transactionById = useMemo(() => new Map(transactions.map(t => [t.id, t])), [transactions]);
+  const openCashSession = useMemo(
+    () => cashSessions.find(s => s.status === 'open' && (s.branchId === currentBranchId || s.warehouseId === currentBranchId)),
+    [cashSessions, currentBranchId]
+  );
+  const activeBankCards = useMemo(() => bankCards.filter(card => card.isActive !== false), [bankCards]);
 
   const pendingReturns = returns.filter(r => r.status === 'pending');
   const receivedReturns = returns.filter(r => r.status === 'completed');
@@ -778,7 +791,7 @@ function ReturnsContent() {
       {modalState?.kind === 'refund' && (
         <RefundModal
           returnItem={modalState.returnItem}
-          defaultAmount={(() => {
+          maxAmount={(() => {
             const tx = transactionById.get(modalState.returnItem.transactionId);
             const line = tx?.items.find(i => i.product.id === modalState.returnItem.productId);
             const unit = line?.price ?? productById.get(modalState.returnItem.productId)?.price ?? 0;
@@ -786,17 +799,71 @@ function ReturnsContent() {
           })()}
           currencies={currencies.map(c => c.code)}
           baseCurrency={baseCurrency.code}
+          bankCards={activeBankCards}
           onClose={() => setModalState(null)}
-          onSave={(data) => {
-            updateReturn(modalState.returnItem.id, {
+          onSave={async (data) => {
+            const returnItem = modalState.returnItem;
+            const paidAt = new Date().toISOString();
+            const ticket = transactionById.get(returnItem.transactionId);
+            const label = ticket ? ticketLabel(ticket) : returnItem.transactionId;
+            let refundTransactionId: string | undefined;
+
+            if (data.status === 'paid' && data.method === 'cash') {
+              if (!openCashSession) {
+                addNotification(
+                  'Abre un turno de caja para pagar el reembolso',
+                  'warning',
+                  'El egreso debe quedar registrado en el turno activo para que el arqueo cuadre.'
+                );
+                return;
+              }
+              refundTransactionId = crypto.randomUUID();
+              await addCashMovement(openCashSession.id, {
+                id: refundTransactionId,
+                type: 'expense',
+                amount: data.amount,
+                currencyCode: data.currency,
+                description: `Reembolso ${returnCode(returnItem)} · ticket ${label}`,
+                date: paidAt,
+                sessionId: openCashSession.id,
+                branchId: currentBranchId,
+                category: 'devolucion',
+              });
+            } else if (data.status === 'paid' && data.method === 'transfer') {
+              if (!data.bankCardId) {
+                addNotification('Selecciona la cuenta bancaria del reembolso', 'warning');
+                return;
+              }
+              refundTransactionId = crypto.randomUUID();
+              await addBankTransaction({
+                id: refundTransactionId,
+                cardId: data.bankCardId,
+                type: 'withdrawal',
+                amount: data.amount,
+                date: paidAt,
+                reference: `RET-${returnItem.id}`,
+                description: `Reembolso ${returnCode(returnItem)} · ticket ${label}`,
+              });
+            }
+
+            updateReturn(returnItem.id, {
               refundStatus: data.status,
               refundAmount: data.amount,
               refundCurrencyCode: data.currency,
               refundMethod: data.method,
-              refundedAt: data.status === 'paid' ? new Date().toISOString() : modalState.returnItem.refundedAt,
+              refundBankCardId: data.bankCardId,
+              refundTransactionId,
+              refundedAt: data.status === 'paid' ? paidAt : returnItem.refundedAt,
             });
             setModalState(null);
-            addNotification(data.status === 'paid' ? 'Reembolso registrado como pagado.' : 'Reembolso aprobado pendiente de pago.', 'success');
+            addNotification(
+              data.status === 'paid'
+                ? data.method === 'store_credit'
+                  ? 'Crédito a favor registrado en el caso.'
+                  : 'Reembolso pagado y registrado en caja/banco.'
+                : 'Reembolso aprobado pendiente de pago.',
+              'success'
+            );
           }}
         />
       )}
@@ -1278,19 +1345,35 @@ function ReturnActionModal({ returnItem, action, productName, customerName, busy
 
 type RefundModalProps = {
   returnItem: ReturnItem;
-  defaultAmount: number;
+  maxAmount: number;
   currencies: string[];
   baseCurrency: string;
+  bankCards: BankCard[];
   onClose: () => void;
-  onSave: (data: { amount: number; currency: string; method: RefundMethod; status: 'paid' | 'approved' }) => void;
+  onSave: (data: { amount: number; currency: string; method: RefundMethod; status: 'paid' | 'approved'; bankCardId?: string }) => Promise<void> | void;
 };
 
-function RefundModal({ returnItem, defaultAmount, currencies, baseCurrency, onClose, onSave }: RefundModalProps) {
-  const [amount, setAmount] = useState(String(returnItem.refundAmount ?? defaultAmount ?? 0));
+function RefundModal({ returnItem, maxAmount, currencies, baseCurrency, bankCards, onClose, onSave }: RefundModalProps) {
+  const [amount, setAmount] = useState(String(returnItem.refundAmount ?? maxAmount ?? 0));
   const [currency, setCurrency] = useState(returnItem.refundCurrencyCode || baseCurrency);
   const [method, setMethod] = useState<RefundMethod>((returnItem.refundMethod as RefundMethod) || 'cash');
+  const [bankCardId, setBankCardId] = useState(returnItem.refundBankCardId || bankCards[0]?.id || '');
+  const [saving, setSaving] = useState(false);
   const parsed = Math.max(0, Number(amount) || 0);
+  const exceedsMax = maxAmount > 0 && parsed > maxAmount + 0.005;
+  const transferMissingCard = method === 'transfer' && !bankCardId;
+  const blocked = saving || exceedsMax;
   const codes = Array.from(new Set([baseCurrency, ...currencies].filter(Boolean)));
+
+  const submit = async (status: 'paid' | 'approved') => {
+    if (blocked || transferMissingCard) return;
+    setSaving(true);
+    try {
+      await onSave({ amount: parsed, currency, method, status, bankCardId: method === 'transfer' ? bankCardId : undefined });
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 backdrop-blur-sm sm:items-center sm:p-4">
@@ -1332,6 +1415,11 @@ function RefundModal({ returnItem, defaultAmount, currencies, baseCurrency, onCl
                 {codes.map(code => <option key={code} value={code}>{code}</option>)}
               </select>
             </div>
+            <p className={cn('mt-1 text-[11px] font-semibold', exceedsMax ? 'text-red-600 dark:text-red-400' : 'text-muted')}>
+              {exceedsMax
+                ? `El monto supera el máximo reembolsable (${fmtMoney(maxAmount, baseCurrency)}).`
+                : `Máximo reembolsable: ${fmtMoney(maxAmount, baseCurrency)}.`}
+            </p>
           </div>
 
           <div className="sm:col-span-2">
@@ -1354,29 +1442,55 @@ function RefundModal({ returnItem, defaultAmount, currencies, baseCurrency, onCl
               ))}
             </div>
           </div>
+
+          {method === 'transfer' && (
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-[11px] font-black uppercase tracking-wider text-muted">Cuenta bancaria</label>
+              <select
+                value={bankCardId}
+                onChange={(e) => setBankCardId(e.target.value)}
+                className="w-full rounded-xl border border-base bg-secondary px-3 py-2.5 text-sm font-bold text-primary outline-none focus:border-violet-400"
+                aria-label="Cuenta bancaria del reembolso"
+              >
+                {bankCards.length === 0 && <option value="">Sin cuentas activas</option>}
+                {bankCards.map(card => (
+                  <option key={card.id} value={card.id}>
+                    {card.name || card.bankName || card.bank || card.lastFour || card.id}
+                  </option>
+                ))}
+              </select>
+              {transferMissingCard && (
+                <p className="mt-1 text-[11px] font-semibold text-red-600 dark:text-red-400">
+                  Agrega o activa una cuenta bancaria para pagar por transferencia.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-          <button type="button" onClick={onClose} className="min-h-[40px] rounded-xl border border-base px-3 text-sm font-bold text-secondary transition-colors hover:bg-subtle hover:text-primary">
+          <button type="button" onClick={onClose} disabled={saving} className="min-h-[40px] rounded-xl border border-base px-3 text-sm font-bold text-secondary transition-colors hover:bg-subtle hover:text-primary disabled:opacity-60">
             Cancelar
           </button>
           <button
             type="button"
-            onClick={() => onSave({ amount: parsed, currency, method, status: 'approved' })}
-            className="min-h-[40px] rounded-xl border border-violet-300 px-3 text-sm font-bold text-violet-700 transition-colors hover:bg-violet-50 dark:border-violet-500/40 dark:text-violet-300 dark:hover:bg-violet-500/10"
+            onClick={() => void submit('approved')}
+            disabled={blocked}
+            className="min-h-[40px] rounded-xl border border-violet-300 px-3 text-sm font-bold text-violet-700 transition-colors hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-violet-500/40 dark:text-violet-300 dark:hover:bg-violet-500/10"
           >
             Guardar como aprobado
           </button>
           <button
             type="button"
-            onClick={() => onSave({ amount: parsed, currency, method, status: 'paid' })}
-            disabled={parsed <= 0}
+            onClick={() => void submit('paid')}
+            disabled={blocked || parsed <= 0 || transferMissingCard}
             className={cn(
               'flex min-h-[40px] items-center gap-1.5 rounded-xl px-4 text-sm font-bold text-white transition-colors',
-              parsed > 0 ? 'bg-emerald-600 hover:bg-emerald-700' : 'cursor-not-allowed bg-subtle text-muted',
+              parsed > 0 && !blocked && !transferMissingCard ? 'bg-emerald-600 hover:bg-emerald-700' : 'cursor-not-allowed bg-subtle text-muted',
             )}
           >
-            <CircleCheck size={14} /> Marcar como pagado
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <CircleCheck size={14} />}
+            {saving ? 'Guardando…' : 'Marcar como pagado'}
           </button>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { printThermalReceipt, format58mmLine } from '../../../lib/escpos';
 import { findSessionEmployeeUser } from '../../../services/employeeCompensation';
 import type { SessionDiscrepancyInfo } from '../utils/getSessionDiscrepancyInfo';
 import { getSessionTurnLabel } from '../utils/sessionTurnLabels';
+import { getCompletedTransactionsForSession } from '../utils/reportSessionCalculations';
 import {
   buildCashMovementReceiptLines,
   buildDiscrepancyReceiptLines,
@@ -68,7 +69,10 @@ export function useReportsPrinting(deps: {
       const payrollItem = payrollList.find(p => p.sessionId === session.id);
       const sequentialTurn = getSessionTurnLabel(session, sessionTurnMap);
       const workerName = findSessionEmployeeUser(session, users)?.name || session.workerName || 'Vendedor';
-      const sessionTx = transactions.filter(t => t.branchId === session.branchId && t.sessionId === session.id);
+      // Mismo criterio que la pestaña y el detalle: incluye tickets heredados
+      // sin sessionId imputados por ventana del turno, para que el papel y la
+      // pantalla no muestren totales distintos.
+      const sessionTx = getCompletedTransactionsForSession(session, transactions);
       const lines = buildShiftReceiptLines(session, {
         branchName: branch?.name || 'Sucursal Principal',
         sequentialTurn,
@@ -80,6 +84,7 @@ export function useReportsPrinting(deps: {
           commissions: payrollItem.commissions,
           totalSalary: payrollItem.totalSalary,
           status: payrollItem.status,
+          discrepancyDeduction: (payrollItem as PayrollItem & { discrepancyDeduction?: number }).discrepancyDeduction,
         } : undefined,
         getProductName,
         formatMoney,
@@ -89,10 +94,13 @@ export function useReportsPrinting(deps: {
         lines,
         openDrawer: false,
         width: (receiptConfig?.printerWidth || '58mm') as '58mm' | '80mm',
-        onError: err => console.warn('Direct thermal print failed:', err),
       });
+      addNotification?.("Comprobante de turno enviado a impresión", "success");
     } catch (e) {
+      // Antes el fallo solo quedaba en consola: el usuario no sabía que el
+      // comprobante no se imprimió.
       console.error('Error printing thermal shift ticket:', e);
+      addNotification?.((e as Error)?.message || "No se pudo imprimir el comprobante del turno.", "error");
     }
   };
 

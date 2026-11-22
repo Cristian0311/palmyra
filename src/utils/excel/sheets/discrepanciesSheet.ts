@@ -16,9 +16,13 @@ export function generateDiscrepanciesSheet(data: ExcelExportData): any[][] {
   const rateFor = (code: string): number => (code === baseCode ? 1 : rateByCode.get(code) || 1);
 
   const transactionsBySession = new Map<string, typeof transactions>();
+  // Tickets heredados sin sessionId: se imputan al turno por sucursal y ventana,
+  // igual que el cálculo de la app. Antes se ignoraban y el Excel mostraba un
+  // esperado distinto al de la auditoría en pantalla.
+  const unlinkedTransactions: typeof transactions = [];
   for (const transaction of transactions) {
     if (transaction?.status !== 'completed' || transaction.deletedAt || String(transaction.notes || '').startsWith('AJUSTE_')) continue;
-    if (!transaction.sessionId) continue;
+    if (!transaction.sessionId) { unlinkedTransactions.push(transaction); continue; }
     const bucket = transactionsBySession.get(transaction.sessionId);
     if (bucket) bucket.push(transaction);
     else transactionsBySession.set(transaction.sessionId, [transaction]);
@@ -50,22 +54,34 @@ export function generateDiscrepanciesSheet(data: ExcelExportData): any[][] {
     const details: DiscrepancyDetail[] = [...(session.discrepancyDetails || [])];
 
     if (details.length === 0 && session.status === 'closed' && session.closingBalances && session.closingBalances.length > 0) {
-      const sessionTransactions = transactionsBySession.get(session.id) || [];
+      const openedAt = new Date(session.openedAt).getTime();
+      const closedAt = session.closedAt ? new Date(session.closedAt).getTime() : Infinity;
+      const sessionTransactions = [
+        ...(transactionsBySession.get(session.id) || []),
+        ...unlinkedTransactions.filter(transaction => {
+          const at = new Date(transaction.date).getTime();
+          return transaction.branchId === session.branchId && Number.isFinite(at) && at >= openedAt && at <= closedAt;
+        }),
+      ];
+      const normalizeMethod = (method: string): 'cash' | 'transfer' =>
+        method === 'transfer' || method === 'bank_transfer' ? 'transfer' : 'cash';
       const expected: { currencyCode: string; method: 'cash' | 'transfer'; amount: number }[] = [
         { currencyCode: baseCode, method: 'cash', amount: Number(session.openingBalance) || 0 },
       ];
 
       for (const transaction of sessionTransactions) {
         for (const payment of transaction.payments || []) {
-          const entry = expected.find(item => item.currencyCode === payment.currencyCode && item.method === payment.method);
+          const method = normalizeMethod(String(payment.method));
+          const entry = expected.find(item => item.currencyCode === payment.currencyCode && item.method === method);
           if (entry) entry.amount += Number(payment.amount) || 0;
-          else expected.push({ currencyCode: payment.currencyCode, method: payment.method, amount: Number(payment.amount) || 0 });
+          else expected.push({ currencyCode: payment.currencyCode, method, amount: Number(payment.amount) || 0 });
         }
         if (transaction.changePayments && transaction.changePayments.length > 0) {
           for (const change of transaction.changePayments) {
-            const entry = expected.find(item => item.currencyCode === change.currencyCode && item.method === change.method);
+            const method = normalizeMethod(String(change.method));
+            const entry = expected.find(item => item.currencyCode === change.currencyCode && item.method === method);
             if (entry) entry.amount -= Number(change.amount) || 0;
-            else expected.push({ currencyCode: change.currencyCode, method: change.method, amount: -(Number(change.amount) || 0) });
+            else expected.push({ currencyCode: change.currencyCode, method, amount: -(Number(change.amount) || 0) });
           }
         } else if (transaction.changeGiven && transaction.changeGiven > 0) {
           const entry = expected.find(item => item.currencyCode === baseCode && item.method === 'cash');
@@ -129,7 +145,13 @@ export function generateDiscrepanciesSheet(data: ExcelExportData): any[][] {
           (isForced ? `Cierre forzado: ${session.forcedCloseReason || 'Diferencia registrada'}` : 'Cierre con descuadre registrado');
 
         const difference = Number(detail.difference) || 0;
-        const baseDifference = Number((difference * rateFor(detail.currencyCode)).toFixed(2));
+        // Se usa la tasa registrada al cerrar la caja; la tasa de hoy no debe
+        // revalorizar un faltante histórico.
+        const closingRate = session.closingBalances?.find(
+          balance => balance.currencyCode === detail.currencyCode && Number(balance.exchangeRate) > 0,
+        )?.exchangeRate;
+        const differenceRate = Number(closingRate) > 0 ? Number(closingRate) : rateFor(detail.currencyCode);
+        const baseDifference = Number((difference * differenceRate).toFixed(2));
 
         rows.push([
           turnLabel,

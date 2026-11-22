@@ -67,15 +67,49 @@ async function refreshInventoryBranchesFromSupabase(set: StoreSet, get: StoreGet
   } catch { return false; }
 }
 
+/**
+ * Stock disponible de una variante en la sucursal activa. Devuelve null cuando
+ * no hay fila de inventario para el producto: en ese caso no se bloquea la
+ * venta (p. ej. catálogo aún sin sincronizar).
+ */
+function availableStockFor(state: any, productId: string, variantLabel?: string): number | null {
+  const branchId = state.currentBranchId;
+  const rows = (state.inventory || []).filter((row: any) =>
+    row.productId === productId && (!branchId || !row.branchId || row.branchId === branchId)
+  );
+  if (!rows.length) return null;
+  const scoped = rows.filter((row: any) => (row.variantLabel || '') === (variantLabel || ''));
+  if (!scoped.length) return null;
+  return scoped.reduce((sum: number, row: any) => sum + Math.max(0, Number(row.quantity) || 0), 0);
+}
+
 export function createPosActions(set: StoreSet, get: StoreGet): any {
   const cancellingSessions = new Set<string>();
   return {
   cart: [],
   currentCustomerId: undefined,
   setCartCustomer: (customerId) => set({ currentCustomerId: customerId }),
-  addToCart: (product, serialNumber, attributes, requestedQuantity = 1) => set((state) => {
-    const quantity = Math.max(1, Math.floor(Number(requestedQuantity) || 1));
+  addToCart: (product, serialNumber, attributes, requestedQuantity = 1) => {
     const variantLabel = attributes?.variantLabel || attributes?.size || attributes?.color;
+    const requested = Math.max(1, Math.floor(Number(requestedQuantity) || 1));
+    const cap = availableStockFor(get(), product.id, variantLabel);
+    if (cap !== null && cap <= 0) {
+      get().addNotification(
+        'Sin stock disponible',
+        'warning',
+        `${product.name} no tiene existencias en la sucursal activa.`
+      );
+      return;
+    }
+    const quantity = cap === null ? requested : Math.min(requested, cap);
+    if (cap !== null && quantity < requested) {
+      get().addNotification(
+        'Cantidad limitada por stock',
+        'warning',
+        `${product.name}: solo hay ${cap} unidad(es) disponibles; se agregaron ${quantity}.`
+      );
+    }
+    set((state) => {
 
     // Batch normal-product additions into one state update. This is especially
     // important for voice commands like "agrega 15 blusas": one set() instead
@@ -90,7 +124,9 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
       );
 
       if (existing) {
-        const nextQuantity = existing.quantity + quantity;
+        const nextQuantity = cap === null
+          ? existing.quantity + quantity
+          : Math.min(existing.quantity + quantity, cap);
         return {
           cart: state.cart.map(item =>
             item.id === existing.id
@@ -146,14 +182,17 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
     }
 
     return { products: updatedProducts, cart: [...state.cart, ...rows] };
-  }),
-  
+    });
+  },
+
   updateCartQty: (cartItemId, delta) => set((state) => ({
     cart: state.cart.map(item => {
       if (item.id === cartItemId) {
         // Productos con serie no deben cambiar cantidad > 1 (o se divide, pero simplificamos así)
-        if (item.product.hasSerial && delta > 0) return item; 
-        const newQty = Math.max(0, item.quantity + delta);
+        if (item.product.hasSerial && delta > 0) return item;
+        const cap = delta > 0 ? availableStockFor(state, item.product.id, item.variantLabel) : null;
+        const requestedQty = Math.max(0, item.quantity + delta);
+        const newQty = cap === null ? requestedQty : Math.min(requestedQty, cap);
         return { ...item, quantity: newQty, total: newQty * item.price };
       }
       return item;
@@ -561,13 +600,17 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
     }).catch(() => {});
   },
   updateReturn: (id, returnItem) => {
+    const previous = get().returns.find(r => r.id === id);
     set((state) => ({
       returns: state.returns.map(r => r.id === id ? { ...r, ...returnItem } : r)
     }));
     const updated = get().returns.find(r => r.id === id);
     if (updated) {
-      import('../../services/supabaseSync').then(({ pushReturnToSupabase }) => {
+      const refundKeys: (keyof typeof updated)[] = ['refundStatus', 'refundAmount', 'refundCurrencyCode', 'refundMethod', 'refundBankCardId', 'refundTransactionId', 'refundedAt'];
+      const refundChanged = refundKeys.some(key => (previous as any)?.[key] !== (updated as any)?.[key]);
+      import('../../services/supabaseSync').then(({ pushReturnToSupabase, pushReturnRefundToSupabase }) => {
         pushReturnToSupabase(updated).catch(() => {});
+        if (refundChanged) pushReturnRefundToSupabase(updated).catch(() => {});
       }).catch(() => {});
     }
   },
@@ -579,7 +622,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
     let canonicalInventoryRefreshed = false;
 
     if (action === 'complete') {
-      await enqueueOfflineItem('return_complete', { id, userId }, 'return:' + id);
+      await enqueueOfflineItem('return_complete', { id, remoteId: returnReq.serverReturnId || id, userId }, 'return:' + id);
       if (navigator.onLine && isCloudBusinessSyncAllowed()) {
         try {
           // Primero confirmamos la existencia de la devolución en la nube. Así
@@ -589,7 +632,7 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
           if (!persisted) throw new Error('La devolución todavía no está confirmada en Supabase.');
           removeFromOfflineQueueByAction('return', returnReq.id);
 
-          const res = await callCompleteReturnRPC(id, userId);
+          const res = await callCompleteReturnRPC(returnReq.serverReturnId || id, userId);
           if (!res.success) throw new Error(res.error || 'No se pudo completar la devolución');
 
           canonicalInventoryRefreshed = await get().refreshBranchInventory();

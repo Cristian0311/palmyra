@@ -1,6 +1,6 @@
 import type { ExcelExportData } from '../types';
 import type { Product, SalarySettlement, Transaction, User } from '../../../types';
-import { calculateEmployeeSaleCommission, findSessionEmployeeUser } from '../../../services/employeeCompensation';
+import { findSessionEmployeeUser } from '../../../services/employeeCompensation';
 
 interface CommissionBucket {
   name: string;
@@ -14,6 +14,7 @@ function emptyBucket(name: string): CommissionBucket {
 
 export function generatePayrollSheet(data: ExcelExportData): any[][] {
   const { salarySettlements = [], cashSessions = [], transactions = [], products = [], baseCurrency, users = [] } = data;
+  const compensation = data.companyCompensation || { mode: 'fixed_product' as const, percentRate: 0 };
   const baseCode = baseCurrency?.code || 'CUP';
   const userById = new Map(users.map(user => [user.id, user]));
   const userByEmployeeId = new Map(users.filter(user => user.employeeId).map(user => [String(user.employeeId), user]));
@@ -36,9 +37,13 @@ export function generatePayrollSheet(data: ExcelExportData): any[][] {
   ];
 
   const transactionsBySession = new Map<string, Transaction[]>();
+  // Tickets heredados sin sessionId: se adjudican por sucursal y ventana del
+  // turno, igual que hace la pestaña de Nómina. Antes se descartaban y el Excel
+  // mostraba ventas y comisiones en cero para esos turnos.
+  const unlinkedTransactions: Transaction[] = [];
   for (const transaction of transactions) {
     if (transaction?.status !== 'completed' || transaction.deletedAt || String(transaction.notes || '').startsWith('AJUSTE_')) continue;
-    if (!transaction.sessionId) continue;
+    if (!transaction.sessionId) { unlinkedTransactions.push(transaction); continue; }
     const bucket = transactionsBySession.get(transaction.sessionId);
     if (bucket) bucket.push(transaction);
     else transactionsBySession.set(transaction.sessionId, [transaction]);
@@ -56,34 +61,75 @@ export function generatePayrollSheet(data: ExcelExportData): any[][] {
     const settlement = settlements.get(session.id);
     if (settlement) usedSettlements.add(settlement.id);
 
-    const sessionTransactions = transactionsBySession.get(session.id) || [];
+    const sessionTransactions = [
+      ...(transactionsBySession.get(session.id) || []),
+      ...unlinkedTransactions.filter(transaction => {
+        if (transaction.branchId !== session.branchId) return false;
+        const at = new Date(transaction.date).getTime();
+        const openedAt = new Date(session.openedAt).getTime();
+        const closedAt = session.closedAt ? new Date(session.closedAt).getTime() : Infinity;
+        return Number.isFinite(at) && at >= openedAt && at <= closedAt;
+      }),
+    ];
     const sessionTotalSales = sessionTransactions.reduce((sum, transaction) => sum + (Number(transaction.total) || 0), 0);
+    // Solo comisionan los vendedores imputados al turno; el resto se liquida en
+    // su propio turno y antes inflaba el total de esta fila.
+    const eligibleSellerIds = new Set<string>(
+      [session.userId, session.employeeId || '', ...(session.workingEmployeeIds || [])].filter(Boolean),
+    );
 
-    // Comisiones por empleado en una sola pasada (evita el O(n²) anterior).
+    // Comisiones por empleado en una sola pasada (evita el O(n²) anterior) y con
+    // el mismo criterio que la pestaña de Nómina: porcentaje global o comisión
+    // por producto, repartida entre los vendedores del ticket.
     const commissionBuckets = new Map<string, CommissionBucket>();
     for (const transaction of sessionTransactions) {
       const sellerIds = transaction.sellerEmployeeIds?.length ? transaction.sellerEmployeeIds : [transaction.userId];
+      const splitFactor = Math.max(1, sellerIds.length);
       for (const sellerId of sellerIds) {
+        if (!eligibleSellerIds.has(sellerId)) continue;
         const employee = userById.get(sellerId) || userByEmployeeId.get(String(sellerId));
-        const commission = calculateEmployeeSaleCommission(employee, transaction, products, sellerIds.length);
         const bucket = commissionBuckets.get(sellerId) || emptyBucket(employee?.name || sellerId);
-        bucket.total += commission;
-        for (const item of transaction.items || []) {
-          const productId = typeof item.product === 'string' ? item.product : item.product?.id;
-          const product: Product | undefined = productId ? productById.get(productId) : undefined;
-          const snapshotName = typeof item.product === 'object' ? item.product?.name : undefined;
-          const name = product?.name || snapshotName || productId || 'Producto';
-          const fixedCommission = Math.max(0, Number(product?.commissionValue) || 0) * (Number(item.quantity) || 0) / Math.max(1, sellerIds.length);
-          bucket.products.set(name, (bucket.products.get(name) || 0) + fixedCommission);
+        if (compensation.mode === 'sales_percent') {
+          const amount = (Math.max(0, Number(transaction.total) || 0) * compensation.percentRate / 100) / splitFactor;
+          const label = `% sobre ventas (${compensation.percentRate}%)`;
+          bucket.total += amount;
+          bucket.products.set(label, (bucket.products.get(label) || 0) + amount);
+        } else {
+          for (const item of transaction.items || []) {
+            const snapshot = typeof item.product === 'object' ? item.product : undefined;
+            const productId = typeof item.product === 'string' ? item.product : item.product?.id;
+            const product: Product | undefined = productId ? productById.get(productId) : undefined;
+            const name = product?.name || snapshot?.name || productId || 'Producto';
+            const commissionValue = Math.max(0, Number(
+              product?.commissionValue ??
+              (snapshot as any)?.commissionValue ??
+              (item as any).product_snapshot?.commissionValue ??
+              (item as any).commissionValue ?? 0,
+            ));
+            const amount = commissionValue * Math.max(0, Number(item.quantity) || 0) / splitFactor;
+            bucket.total += amount;
+            bucket.products.set(name, (bucket.products.get(name) || 0) + amount);
+          }
         }
         commissionBuckets.set(sellerId, bucket);
       }
     }
 
     const calculatedCommissions = [...commissionBuckets.values()].reduce((sum, bucket) => sum + bucket.total, 0);
-    const baseSalary = Number(settlement?.baseSalary) || 0;
+    const primaryEmployee = findSessionEmployeeUser(session, users);
+    // Sin liquidación guardada, la base sale del empleado (o 0 en modo
+    // porcentaje) y se descuenta el faltante aplicado al turno, igual que en la
+    // pestaña de Nómina. Antes el Excel mostraba base 0 y total 0.
+    const baseSalary = settlement
+      ? Number(settlement.baseSalary) || 0
+      : compensation.mode === 'sales_percent'
+        ? 0
+        : Math.max(0, Number(primaryEmployee?.baseSalary) || 0);
     const commissions = settlement ? Number(settlement.commissions) || 0 : calculatedCommissions;
-    const totalToPay = settlement ? Number(settlement.total) || 0 : baseSalary + commissions;
+    const deduction = settlement ? 0 : Math.max(0, Number(session.discrepancyDeductionApplied) || 0);
+    const totalToPay = settlement
+      ? Number(settlement.total) || 0
+      : Math.max(0, baseSalary + commissions - deduction);
     const status = settlement ? (settlement.status === 'paid' ? 'PAGADO' : settlement.status === 'cancelled' ? 'CANCELADO' : 'PENDIENTE') : 'PENDIENTE';
 
     // La meta debe compararse con las ventas del turno, pero sin meta no se
@@ -91,7 +137,6 @@ export function generatePayrollSheet(data: ExcelExportData): any[][] {
     const salesGoal = Number(settlement?.salesGoal) || 0;
     const goalPct = salesGoal > 0 ? (sessionTotalSales / salesGoal) * 100 : 0;
 
-    const primaryEmployee = findSessionEmployeeUser(session, users);
     const primaryBucket = primaryEmployee
       ? commissionBuckets.get(primaryEmployee.id) || commissionBuckets.get(String(primaryEmployee.employeeId || ''))
       : undefined;

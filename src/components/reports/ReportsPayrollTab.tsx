@@ -27,6 +27,7 @@ export type AggregatedPayrollRowView = {
   totalBaseSalary: number;
   totalCommissions: number;
   totalSalary: number;
+  totalDeductions?: number;
   pendingSalary: number;
   paidSalary: number;
 };
@@ -114,8 +115,8 @@ export function ReportsPayrollTab({
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">
                       <div className="flex items-center gap-1.5 text-[11px] font-bold text-primary">
-                        <span>{dateObj.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
-                        <span className="text-[9px] font-medium text-muted">{dateObj.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span>{dateObj.toLocaleDateString('es-CU', { timeZone: 'America/Havana', day: '2-digit', month: '2-digit', year: 'numeric' })}</span>
+                        <span className="text-[9px] font-medium text-muted">{dateObj.toLocaleTimeString('es-CU', { timeZone: 'America/Havana', hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap">
@@ -142,6 +143,12 @@ export function ReportsPayrollTab({
                       <span className="text-xs font-black text-emerald-700 dark:text-emerald-400 tracking-tight bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-lg border border-emerald-100 dark:border-emerald-900/30">
                         {formatMoney(item.totalSalary)}
                       </span>
+                      {item.discrepancyDeduction > 0 && (
+                        // El total es neto; sin este detalle no cuadraba con base + comisión.
+                        <span className="mt-0.5 block text-[8px] font-bold uppercase text-rose-600 dark:text-rose-400">
+                          −{formatMoney(item.discrepancyDeduction)} descuadre
+                        </span>
+                      )}
                     </td>
 
                     <td className="px-3 py-2 text-center whitespace-nowrap">
@@ -219,6 +226,7 @@ export function ReportsPayrollTab({
                 <th className="px-3 py-2.5 text-right">Ventas Totales</th>
                 <th className="px-3 py-2.5 text-right">Salario Base Acumulado</th>
                 <th className="px-3 py-2.5 text-right">Comisiones Totales</th>
+                <th className="px-3 py-2.5 text-right">Descuentos</th>
                 <th className="px-3 py-2.5 text-right">Total Ganado</th>
                 <th className="px-3 py-2.5 text-right">Pendiente de Pago</th>
               </tr>
@@ -241,6 +249,9 @@ export function ReportsPayrollTab({
                   <td className="px-3 py-2 text-right text-[10px] font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
                     +{formatMoney(agg.totalCommissions)}
                   </td>
+                  <td className="px-3 py-2 text-right text-[10px] font-bold whitespace-nowrap text-rose-600 dark:text-rose-400">
+                    {agg.totalDeductions ? `−${formatMoney(agg.totalDeductions)}` : '—'}
+                  </td>
                   <td className="px-3 py-2 text-right text-xs font-black text-primary whitespace-nowrap">
                     {formatMoney(agg.totalSalary)}
                   </td>
@@ -257,7 +268,7 @@ export function ReportsPayrollTab({
 
               {aggregatedByWorker.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-6 py-6 text-center text-muted text-[10px] font-bold uppercase">
+                  <td colSpan={8} className="px-6 py-6 text-center text-muted text-[10px] font-bold uppercase">
                     No hay acumulación registrada de trabajadores.
                   </td>
                 </tr>

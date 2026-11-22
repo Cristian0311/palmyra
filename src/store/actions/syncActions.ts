@@ -73,8 +73,7 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
           categories: replaceRemoteRecords(d.categories || [], state.categories || [], pendingCategoryIds).filter(x => !pendingCategoryDeleteIds.has(x.id)),
           products: replaceRemoteRecords(d.products || [], state.products || [], pendingProductIds)
             .filter(x => !pendingProductDeleteIds.has(x.id) && (
-              (Array.isArray(d.products) && d.products.some((p: any) => p.id === x.id)) ||
-              pendingProductIds.has(x.id)
+              validProductIds.has(x.id) || pendingProductIds.has(x.id)
             )),
           users: replaceRemoteRecords(d.users || [], state.users || [], pendingUserIds).filter((u: any) => !pendingUserDeleteIds.has(u.id)),
           currencies: Array.isArray(d.currencies) && d.currencies.length

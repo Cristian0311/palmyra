@@ -54,6 +54,7 @@ export async function loadReturnsWarrantiesQuotesTimePayroll() {
   for(const r of rr.data||[]) for(const item of (ri.data||[]).filter((x:any)=>x.return_id===r.id)){
     returns.push({
       id:item.id,
+      serverReturnId:r.id,
       transactionId:r.sale_id,
       productId:item.product_id,
       quantity:Number(item.quantity)||0,
@@ -67,7 +68,10 @@ export async function loadReturnsWarrantiesQuotesTimePayroll() {
       refundStatus:r.refund_status||'not_required',
       refundAmount:Number(r.refund_amount)||0,
       refundCurrencyCode:r.refund_currency_code||undefined,
-      refundMethod:r.refund_method||undefined
+      refundMethod:r.refund_method||undefined,
+      refundBankCardId:r.refund_bank_card_id||undefined,
+      refundTransactionId:r.refund_transaction_id||undefined,
+      refundedAt:r.refunded_at||undefined
     });
   }
 

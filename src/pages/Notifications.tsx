@@ -290,6 +290,11 @@ export default function Notifications() {
         });
       }
     } catch (e: any) {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        setNeedsAccount(false);
+        setError("Sin conexión: el historial y las preferencias se actualizarán cuando vuelvas a estar en línea.");
+        return;
+      }
       setError(e?.message || "No se pudieron cargar las notificaciones.");
     } finally {
       setLoading(false);
@@ -643,7 +648,7 @@ export default function Notifications() {
                         {!notice.read_at && <span className="shrink-0 rounded-full bg-violet-600 px-2 py-0.5 text-xs font-semibold text-white">Nuevo</span>}
                       </div>
                       <p className="mt-1 whitespace-pre-line break-words text-sm font-medium leading-6 text-secondary">{notice.body}</p>
-                      <p className="mt-1.5 text-xs font-medium text-muted">{new Date(notice.created_at).toLocaleString("es-PR")}</p>
+                      <p className="mt-1.5 text-xs font-medium text-muted">{new Date(notice.created_at).toLocaleString("es-CU")}</p>
                     </div>
                     {!notice.read_at && (notice.user_id === userId || notice.user_id === null) && (
                       <button type="button" title="Marcar esta notificación como leída" aria-label="Marcar como leída" onClick={() => void markRead(notice)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-violet-700 transition-colors hover:bg-violet-100 dark:text-violet-300 dark:hover:bg-violet-950/40"><CheckCheck size={16} /></button>

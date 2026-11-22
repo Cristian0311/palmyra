@@ -7,9 +7,12 @@ export function generateSessionsSheet(data: ExcelExportData): any[][] {
   const rateByCode = new Map(currencies.map(currency => [currency.code, Number(currency.rateToBase) || 1]));
 
   const salesBySession = new Map<string, number>();
+  // Tickets sin sessionId (datos heredados) se imputan al turno por sucursal y
+  // ventana, igual que la pestaña; antes sumaban 0 en el Excel.
+  const unlinkedTransactions: typeof transactions = [];
   for (const transaction of transactions) {
     if (transaction?.status !== 'completed' || transaction.deletedAt || String(transaction.notes || '').startsWith('AJUSTE_')) continue;
-    if (!transaction.sessionId) continue;
+    if (!transaction.sessionId) { unlinkedTransactions.push(transaction); continue; }
     salesBySession.set(transaction.sessionId, (salesBySession.get(transaction.sessionId) || 0) + (Number(transaction.total) || 0));
   }
 
@@ -41,17 +44,27 @@ export function generateSessionsSheet(data: ExcelExportData): any[][] {
     const closed = closedRaw ? new Date(closedRaw) : null;
     const closedDate = closed && !Number.isNaN(closed.getTime()) ? closed : null;
 
-    const sessionSales = salesBySession.get(session.id) || 0;
+    const openedAtMs = new Date(session.openedAt).getTime();
+    const closedAtMs = session.closedAt ? new Date(session.closedAt).getTime() : Infinity;
+    const sessionSales = (salesBySession.get(session.id) || 0) + unlinkedTransactions.reduce((sum, transaction) => {
+      if (transaction.branchId !== session.branchId) return sum;
+      const at = new Date(transaction.date).getTime();
+      return Number.isFinite(at) && at >= openedAtMs && at <= closedAtMs ? sum + (Number(transaction.total) || 0) : sum;
+    }, 0);
 
     const declaredBreakdown = (session.closingBalances || [])
       .map(balance => `${(Number(balance.amount) || 0).toLocaleString('es-CU')} ${balance.currencyCode}`)
       .join(' | ') || 'Sin declarar';
 
-    const declaredTotalBase = (session.closingBalances || []).reduce((sum, balance) => {
-      const recordedRate = Number(balance.exchangeRate);
-      const rate = recordedRate > 0 ? recordedRate : rateByCode.get(balance.currencyCode) || 1;
-      return sum + (Number(balance.amount) || 0) * rate;
-    }, 0);
+    // `expectedBalance` es el esperado en EFECTIVO. Sumar también las
+    // transferencias declaradas inflaba el físico y mostraba un sobrante falso.
+    const declaredTotalBase = (session.closingBalances || [])
+      .filter(balance => balance.method === 'cash')
+      .reduce((sum, balance) => {
+        const recordedRate = Number(balance.exchangeRate);
+        const rate = recordedRate > 0 ? recordedRate : rateByCode.get(balance.currencyCode) || 1;
+        return sum + (Number(balance.amount) || 0) * rate;
+      }, 0);
 
     const movementsText = (session.movements || [])
       .map(movement => `${movement.type === 'income' ? '+Ingreso' : '-Egreso'}: ${movement.amount} ${movement.currencyCode} (${movement.description || 'Sin nota'})`)

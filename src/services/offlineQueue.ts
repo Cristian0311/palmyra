@@ -600,6 +600,25 @@ export function clearOfflineQueueRemovalMark(id: string): void {
   removedDuringQueueProcess.delete(id);
 }
 
+/**
+ * Relee la cola durable sin tocar la copia en memoria. Se usa antes de
+ * confirmar un drenaje para no borrar operaciones que otra pestaña encoló
+ * mientras esta ventana estaba procesando.
+ */
+export async function readDurableOfflineQueue(): Promise<OfflineQueueItem[] | null> {
+  if (typeof indexedDB === 'undefined') return null;
+  try {
+    const stored = await idbGetAll(DB_NAME, Boolean(activeScopeKey));
+    if (!Array.isArray(stored)) return null;
+    const tombstones = readQueueTombstones();
+    return stored
+      .filter(raw => raw && raw.id && !tombstones.has(String(raw.id)))
+      .map(raw => normalizeOfflineQueueItem(raw));
+  } catch {
+    return null;
+  }
+}
+
 export async function persistOfflineQueueSnapshot(queue: OfflineQueueItem[]): Promise<void> {
   const snapshot = [...queue];
   memoryQueue = [...snapshot];

@@ -175,6 +175,10 @@ const markUpdateAvailable = (version?: string) => {
   try { localStorage.setItem(PALMYRA_UPDATE_AVAILABLE_KEY, '1'); } catch {}
   if (version) {
     try { localStorage.setItem(PALMYRA_UPDATE_VERSION_KEY, version); } catch {}
+  } else {
+    // Un aviso sin versión (el SW detectó el cambio antes que version.json) no
+    // debe mostrar la versión de un despliegue anterior como si fuera la nueva.
+    try { localStorage.removeItem(PALMYRA_UPDATE_VERSION_KEY); } catch {}
   }
   window.dispatchEvent(new CustomEvent('palmyra:update-available', { detail: { version } }));
 };

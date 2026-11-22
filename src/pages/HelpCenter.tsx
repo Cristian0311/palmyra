@@ -81,7 +81,10 @@ export default function HelpCenter(){
   const [query,setQuery] = useState("");
   const [copied,setCopied] = useState(false);
   const [form,setForm] = useState({requestType:"Error detectado",subject:"",message:"",contactPhone:""});
-  const section = (params.get("section") as CenterSection) || "overview";
+  const requestedSection = params.get("section") as CenterSection | null;
+  // Un enlace profundo con ?section= desconocida dejaba el área de contenido
+  // vacía; se vuelve a la vista general en lugar de mostrar un hueco.
+  const section = sections.some(item => item.id === requestedSection) ? requestedSection as CenterSection : "overview";
   const online = useOnline();
   const pending = getOfflineQueueCount();
   const version = PRODUCT_VERSION;
@@ -145,6 +148,9 @@ export default function HelpCenter(){
     setSent("");
     if(form.subject.trim().length<3)return setError("Escribe un asunto breve para que podamos identificar tu solicitud.");
     if(form.message.trim().length<10)return setError("Describe el problema o la solicitud con un poco más de detalle.");
+    // La solicitud se registra en la nube; sin conexión el formulario se
+    // conserva y se explica la alternativa en lugar de mostrar un error técnico.
+    if(!online)return setError("Sin conexión: la solicitud no se puede registrar ahora. Conéctate y vuelve a intentarlo, o escríbenos por WhatsApp o correo mientras tanto.");
     setSending(true);
     try{
       const saved=await createSupportRequest({

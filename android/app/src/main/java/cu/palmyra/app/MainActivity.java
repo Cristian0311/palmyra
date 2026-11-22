@@ -1,10 +1,13 @@
 package cu.palmyra.app;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.DownloadManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
@@ -12,6 +15,8 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
+import android.webkit.PermissionRequest;
+import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -58,6 +63,8 @@ public class MainActivity extends Activity {
     private static final String KEY_CONFIRMED = "confirmed_";
     private static final String KEY_ATTEMPT = "attempt_";
     private static final long MAX_BUNDLE_BYTES = 300L * 1024L * 1024L;
+    private static final int REQUEST_FILE_CHOOSER = 1001;
+    private static final int REQUEST_CAMERA_PERMISSION = 1002;
 
     private WebView web;
     private LocalServer server;
@@ -65,6 +72,10 @@ public class MainActivity extends Activity {
     private File releasesDir;
     private volatile String activeVersion = "";
     private final AtomicBoolean updateRunning = new AtomicBoolean(false);
+    // Selección de archivos (<input type="file">) y permiso de cámara pedido
+    // desde la web: ambos viven en el hilo principal del Activity.
+    private ValueCallback<Uri[]> fileChooserCallback;
+    private PermissionRequest pendingCameraRequest;
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -80,6 +91,7 @@ public class MainActivity extends Activity {
         // localStorage e IndexedDB del negocio no se tocan.
         purgeStaleServiceWorkerOnce();
         resolveActiveRelease();
+        pruneOldReleases();
 
         server = new LocalServer();
         try {
@@ -94,7 +106,10 @@ public class MainActivity extends Activity {
         settings.setDomStorageEnabled(true);
         settings.setDatabaseEnabled(true);
         settings.setAllowFileAccess(false);
-        settings.setAllowContentAccess(false);
+        // El selector de archivos devuelve URI content:// (foto del producto,
+        // importar respaldo). Sin acceso a content:// la WebView no puede leer
+        // el archivo elegido y el <input type="file"> queda muerto.
+        settings.setAllowContentAccess(true);
         settings.setLoadWithOverviewMode(true);
         settings.setUseWideViewPort(true);
         settings.setSupportMultipleWindows(false);
@@ -107,7 +122,11 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             settings.setSafeBrowsingEnabled(false);
         }
-        WebView.setWebContentsDebuggingEnabled(true);
+        // La depuración remota solo en compilaciones de desarrollo: en el APK
+        // que usan los negocios no debe quedar ningún puerto de inspección.
+        if ((getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+            WebView.setWebContentsDebuggingEnabled(true);
+        }
         web.addJavascriptInterface(new NativeBridge(), "PALMYRA_NATIVE");
 
         web.setWebViewClient(new WebViewClient() {
@@ -126,7 +145,64 @@ public class MainActivity extends Activity {
                 return true;
             }
         });
-        web.setWebChromeClient(new WebChromeClient());
+        web.setWebChromeClient(new WebChromeClient() {
+            // Sin este puente los <input type="file"> (foto de inventario,
+            // importar respaldo) no abren nada y quedan inservibles.
+            @Override
+            public boolean onShowFileChooser(WebView view, ValueCallback<Uri[]> callback,
+                                             FileChooserParams params) {
+                if (fileChooserCallback != null) {
+                    fileChooserCallback.onReceiveValue(null);
+                }
+                fileChooserCallback = callback;
+                try {
+                    Intent intent = params.createIntent();
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    startActivityForResult(intent, REQUEST_FILE_CHOOSER);
+                    return true;
+                } catch (Exception error) {
+                    fileChooserCallback = null;
+                    Toast.makeText(MainActivity.this,
+                            "No hay una aplicación disponible para elegir el archivo.",
+                            Toast.LENGTH_LONG).show();
+                    return false;
+                }
+            }
+
+            // El escáner del POS pide la cámara con getUserMedia. Solo se
+            // concede a la app servida por el servidor local: ningún sitio
+            // externo puede quedarse con la cámara del dispositivo.
+            @Override
+            public void onPermissionRequest(final PermissionRequest request) {
+                runOnUiThread(() -> {
+                    boolean wantsCamera = false;
+                    for (String resource : request.getResources()) {
+                        if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) {
+                            wantsCamera = true;
+                        }
+                    }
+                    Uri origin = request.getOrigin();
+                    String host = origin == null ? "" : origin.getHost();
+                    if (!wantsCamera || !("127.0.0.1".equals(host) || "localhost".equals(host))) {
+                        request.deny();
+                        return;
+                    }
+                    if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                        request.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+                        return;
+                    }
+                    pendingCameraRequest = request;
+                    requestPermissions(new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA_PERMISSION);
+                });
+            }
+
+            @Override
+            public void onPermissionRequestCanceled(PermissionRequest request) {
+                if (pendingCameraRequest == request) {
+                    pendingCameraRequest = null;
+                }
+            }
+        });
 
         // Respaldo para instaladores antiguos: si una versión anterior aún
         // ofrece el APK, la descarga sigue funcionando desde la app.
@@ -164,6 +240,55 @@ public class MainActivity extends Activity {
             return;
         }
         super.onBackPressed();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        if (requestCode == REQUEST_FILE_CHOOSER) {
+            ValueCallback<Uri[]> callback = fileChooserCallback;
+            fileChooserCallback = null;
+            if (callback == null) {
+                super.onActivityResult(requestCode, resultCode, data);
+                return;
+            }
+            Uri[] results = null;
+            if (resultCode == RESULT_OK && data != null) {
+                if (data.getClipData() != null) {
+                    int count = data.getClipData().getItemCount();
+                    results = new Uri[count];
+                    for (int i = 0; i < count; i++) {
+                        results[i] = data.getClipData().getItemAt(i).getUri();
+                    }
+                } else if (data.getData() != null) {
+                    results = new Uri[]{data.getData()};
+                }
+            }
+            // Un resultado nulo es la forma correcta de avisar "cancelado".
+            callback.onReceiveValue(results);
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        if (requestCode == REQUEST_CAMERA_PERMISSION) {
+            PermissionRequest request = pendingCameraRequest;
+            pendingCameraRequest = null;
+            if (request == null) return;
+            boolean granted = grantResults.length > 0
+                    && grantResults[0] == PackageManager.PERMISSION_GRANTED;
+            if (granted) {
+                request.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
+            } else {
+                request.deny();
+                Toast.makeText(this,
+                        "Sin permiso de cámara no se puede escanear. Puedes activarlo en Ajustes de la app.",
+                        Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
     }
 
     @Override
@@ -234,6 +359,27 @@ public class MainActivity extends Activity {
             prefs.edit().putInt(KEY_ATTEMPT + current, attempts).apply();
         }
         activeVersion = current;
+    }
+
+    // Cada OTA deja una carpeta de ~5 MB y las versiones descartadas nunca se
+    // borraban. Se conservan solo la activa y la anterior (para el rollback).
+    private void pruneOldReleases() {
+        try {
+            File[] dirs = releasesDir.listFiles();
+            if (dirs == null) return;
+            String current = prefs.getString(KEY_CURRENT, "");
+            String previous = prefs.getString(KEY_PREVIOUS, "");
+            for (File dir : dirs) {
+                if (dir == null || !dir.isDirectory()) continue;
+                String name = dir.getName();
+                if (name.equals(current) || name.equals(previous) || name.equals(activeVersion)) {
+                    continue;
+                }
+                deleteRecursive(dir);
+            }
+        } catch (Exception ignored) {
+            // La poda es mantenimiento: nunca debe impedir abrir la app.
+        }
     }
 
     private void purgeStaleServiceWorkerOnce() {

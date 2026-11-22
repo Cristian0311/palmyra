@@ -59,11 +59,21 @@ export function getSessionDiscrepancyInfo(
 ): SessionDiscrepancyInfo | null {
   const { currencies, salarySettlements, baseCurrency, transactions, products } = deps;
 
+  // Un faltante histórico se valora con la tasa registrada al cerrar la caja;
+  // usar la tasa de hoy hacía que el reporte cambiara de un día para otro.
+  const rateAtClose = (currencyCode: string): number => {
+    const recorded = session.closingBalances?.find(
+      balance => balance.currencyCode === currencyCode && Number(balance.exchangeRate) > 0,
+    )?.exchangeRate;
+    if (Number(recorded) > 0) return Number(recorded);
+    return currencies.find(currency => currency.code === currencyCode)?.rateToBase || 1;
+  };
+
   if (session.discrepancyDetails && session.discrepancyDetails.length > 0) {
     let totalShortageBase = 0;
     let totalOverageBase = 0;
     session.discrepancyDetails.forEach(dd => {
-      const rate = currencies.find(c => c.code === dd.currencyCode)?.rateToBase || 1;
+      const rate = rateAtClose(dd.currencyCode);
       if (dd.difference < 0) totalShortageBase += Math.abs(dd.difference) * rate;
       else if (dd.difference > 0) totalOverageBase += dd.difference * rate;
     });
@@ -124,7 +134,7 @@ export function getSessionDiscrepancyInfo(
   let totalShortageBase = 0;
   let totalOverageBase = 0;
   details.forEach(dd => {
-    const rate = currencies.find(c => c.code === dd.currencyCode)?.rateToBase || 1;
+    const rate = rateAtClose(dd.currencyCode);
     if (dd.difference < 0) totalShortageBase += Math.abs(dd.difference) * rate;
     else if (dd.difference > 0) totalOverageBase += dd.difference * rate;
   });
@@ -132,7 +142,7 @@ export function getSessionDiscrepancyInfo(
   // Product prices are stored in the base currency, so compare the difference
   // converted to base instead of the raw amount of a USD/MLC mismatch.
   const matchingProducts = details.map(dd => {
-    const rate = currencies.find(c => c.code === dd.currencyCode)?.rateToBase || 1;
+    const rate = rateAtClose(dd.currencyCode);
     const differenceBase = Math.abs(dd.difference) * rate;
     return {
       currencyCode: dd.currencyCode,

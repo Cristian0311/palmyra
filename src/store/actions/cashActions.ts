@@ -282,7 +282,11 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
             get().addNotification(String(res.error || 'No se pudo cerrar el turno'), 'error');
             return false;
           }
-          if (res.errorCode) return false;
+          if (res.errorCode) {
+            // Rechazo del servidor sin mensaje conocido: no dejar el botón mudo.
+            get().addNotification(String(res.error || 'No se pudo cerrar el turno'), 'error');
+            return false;
+          }
           throw new Error(res.error || 'No se pudo cerrar el turno');
         }
         const metadataOk = await pushCashSessionMetadataToSupabase(updatedSession);

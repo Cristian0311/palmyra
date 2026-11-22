@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { RefreshCw, X } from "lucide-react";
 import { isPalmyraApp } from "../lib/install";
-import { PRODUCT_VERSION } from "../lib/productVersion";
 
 /**
  * Aviso flotante de actualización para el shell PÚBLICO (landing, auth,
@@ -241,7 +240,7 @@ export default function PublicUpdateBanner({ signedIn }: { signedIn: boolean }) 
               Actualización disponible
             </p>
             <p className="mt-0.5 text-[11px] font-bold leading-4 text-slate-700 dark:text-slate-200">
-              {version ? `La versión ${PRODUCT_VERSION} de PALMYRA está lista.` : "Una nueva versión de PALMYRA está lista."}
+              {version ? `La versión ${version} de PALMYRA está lista.` : "Una nueva versión de PALMYRA está lista."}
             </p>
 
             {applying && (

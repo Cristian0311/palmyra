@@ -83,7 +83,13 @@ export function generateReturnsAndWarrantiesSheet(data: ExcelExportData): any[][
     const registered = registeredRaw ? new Date(registeredRaw) : null;
     const refundCurrency = item.refundCurrencyCode || baseCurrency?.code || baseCode;
     const refundOriginal = Number(item.refundAmount) || 0;
-    const refundBase = refundOriginal * (rateByCode.get(refundCurrency) || 1);
+    // Si la venta cobró en esa moneda, se usa la tasa guardada en el pago: el
+    // reembolso original no debe revalorizarse con la tasa de hoy.
+    const recordedRate = transaction?.payments?.find(
+      payment => payment.currencyCode === refundCurrency && Number(payment.exchangeRate) > 0,
+    )?.exchangeRate;
+    const refundRate = Number(recordedRate) > 0 ? Number(recordedRate) : rateByCode.get(refundCurrency) || 1;
+    const refundBase = refundOriginal * refundRate;
 
     rows.push([
       'DEVOLUCIÓN',

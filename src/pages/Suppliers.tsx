@@ -254,10 +254,15 @@ function SuppliersContent() {
   const detailOrder = supplierOrders.find(order => order.id === detailOrderId);
   const supplierById = useMemo(() => new Map(suppliers.map(supplier => [supplier.id, supplier])), [suppliers]);
   const productById = useMemo(() => new Map(products.map(product => [product.id, product])), [products]);
+  const ordersBySupplier = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const order of supplierOrders) map.set(order.supplierId, (map.get(order.supplierId) || 0) + 1);
+    return map;
+  }, [supplierOrders]);
   const term = search.trim().toLocaleLowerCase('es');
   const filteredSuppliers = suppliers.filter(supplier => `${supplier.name} ${supplier.phone || ''} ${supplier.address || ''} ${supplier.typeOfMerchandise || ''}`.toLocaleLowerCase('es').includes(term));
   const sortedSuppliers = [...filteredSuppliers].sort((a, b) => (sortAsc ? 1 : -1) * a.name.localeCompare(b.name, 'es', { sensitivity: 'base' }));
-  const directoryOrders = sortedSuppliers.reduce((total, supplier) => total + supplierOrders.filter(order => order.supplierId === supplier.id).length, 0);
+  const directoryOrders = sortedSuppliers.reduce((total, supplier) => total + (ordersBySupplier.get(supplier.id) || 0), 0);
   const filteredOrders = supplierOrders.filter(order => (!selectedId || order.supplierId === selectedId)
     && (status === 'all' || order.status === status)
     && `${order.id} ${supplierById.get(order.supplierId)?.name || ''}`.toLocaleLowerCase('es').includes(term))
@@ -272,7 +277,7 @@ function SuppliersContent() {
   const totalSpent = activeOrders.reduce((sum, order) => sum + (order.total || 0) + (order.transportCost || 0), 0);
   const pendingOrders = supplierOrders.filter(order => order.status === 'pending').length;
   const receivedOrders = supplierOrders.filter(order => order.status === 'received').length;
-  const ordersFor = (supplierId: string) => supplierOrders.filter(order => order.supplierId === supplierId).length;
+  const ordersFor = (supplierId: string) => ordersBySupplier.get(supplierId) || 0;
   const supplierProducts = supplierDraft.products || [];
   const linkedProductIds = supplierProducts.map(item => item.productId);
   const linkedProductCount = new Set(linkedProductIds).size;
