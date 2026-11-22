@@ -17,17 +17,17 @@ export interface ReportsChartsProps {
 const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 function CustomTooltip({ active, payload, label, formatMoney }: any) {
-  if (active && payload && payload.length) {
-    return (
-      <div className="bg-white dark:bg-slate-900 border border-base p-2 rounded-xl shadow-xl">
-        <p className="text-[10px] font-black text-primary uppercase mb-1">{label}</p>
-        <p className="text-[11px] font-bold text-indigo-600">
-          {formatMoney(payload[0].value)}
-        </p>
-      </div>
-    );
-  }
-  return null;
+  if (!active || !payload || !payload.length) return null;
+  const value = Number(payload[0]?.value);
+  const formatted = typeof formatMoney === 'function'
+    ? formatMoney(Number.isFinite(value) ? value : 0)
+    : String(payload[0]?.value ?? '');
+  return (
+    <div className="bg-white dark:bg-slate-900 border border-base p-2 rounded-xl shadow-xl">
+      <p className="text-[10px] font-black text-primary uppercase mb-1">{label ?? payload[0]?.name}</p>
+      <p className="text-[11px] font-bold text-indigo-600">{formatted}</p>
+    </div>
+  );
 }
 
 export default function ReportsCharts({ hourData, categoryData, formatMoney }: ReportsChartsProps) {
@@ -102,7 +102,7 @@ export default function ReportsCharts({ hourData, categoryData, formatMoney }: R
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<CustomTooltip formatMoney={formatMoney} />} />
                 </PieChart>
               </ResponsiveContainer>
             </div>

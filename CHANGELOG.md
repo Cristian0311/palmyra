@@ -1,5 +1,15 @@
 # CHANGELOG — PALMYRA POS
 
+## 1.3.4 — Gráficas de Reportes sin bloqueo
+
+### Corrección
+- La dona «Top Categorías» de Reportes usaba el tooltip sin la función de
+  formato monetario: al pasar el cursor o pulsar la gráfica lanzaba
+  `TypeError` y la pantalla de bloqueo. Ahora recibe el formato y el tooltip
+  tolera valores vacíos.
+- Nueva versión para que los equipos con 1.3.3 reciban la corrección
+  automáticamente.
+
 ## 1.3.3 — Consola administrativa, avisos al dueño y Excel corporativo
 
 ### Panel administrativo

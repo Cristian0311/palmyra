@@ -201,7 +201,7 @@ export default function SettingsView() {
             <div className="admin-panel__head"><div><p className="admin-kicker">SISTEMA</p><h2>Información de la consola</h2></div><Info size={17} /></div>
             <dl className="admin-kv admin-kv--boxed admin-system-kv">
               <div><dt>Entorno</dt><dd>Producción · Supabase</dd></div>
-              <div><dt>Versión</dt><dd>1.3.3</dd></div>
+              <div><dt>Versión</dt><dd>1.3.4</dd></div>
               <div><dt>Compilación</dt><dd>{new Date(ADMIN_BUILT_AT).toLocaleString("es-CU")}</dd></div>
               <div><dt>Autorización</dt><dd>RPC + platform_admins</dd></div>
               <div><dt>Datos</dt><dd>Solo lectura salvo acciones auditadas</dd></div>
