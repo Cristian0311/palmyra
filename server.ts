@@ -575,6 +575,144 @@ async function startServer() {
     }
   });
 
+  const PLATFORM_ADMIN_ORIGINS = new Set([
+    'https://palmyra-admin.onrender.com',
+    'https://palmyracrm.onrender.com',
+    'http://localhost:4174',
+    'http://127.0.0.1:4174',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173'
+  ]);
+
+  const applyPlatformAdminCors = (req: any, res: any) => {
+    const origin = String(req.headers.origin || '');
+    if (!PLATFORM_ADMIN_ORIGINS.has(origin)) return;
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Vary', 'Origin');
+    res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  };
+
+  const authorizePlatformAdmin = async (req: any, res: any) => {
+    const accessToken = String(req.headers.authorization || '').replace(/^Bearer\s+/i, '').trim();
+    const supabaseUrl = process.env.SUPABASE_URL || 'https://hmcvujyqloyjdvngpdxz.supabase.co';
+    const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || '';
+    if (!accessToken || !supabaseAnonKey) {
+      res.status(401).json({ error: 'Sesión administrativa no disponible.' });
+      return null;
+    }
+
+    const userResponse = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(8_000)
+    }).catch(() => null);
+    if (!userResponse?.ok) {
+      res.status(401).json({ error: 'Sesión administrativa inválida.' });
+      return null;
+    }
+    const user = await userResponse.json().catch(() => null);
+    if (!user?.id) {
+      res.status(401).json({ error: 'Sesión administrativa inválida.' });
+      return null;
+    }
+
+    const adminResponse = await fetch(`${supabaseUrl}/rest/v1/rpc/get_platform_companies`, {
+      method: 'POST',
+      headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: '{}'
+    }).catch(() => null);
+    if (!adminResponse?.ok) {
+      res.status(403).json({ error: 'Solo el administrador de plataforma puede cambiar esta configuración.' });
+      return null;
+    }
+
+    return { userId: String(user.id) };
+  };
+
+  const supabaseManagementConfig = () => ({
+    token: process.env.SUPABASE_MANAGEMENT_TOKEN || '',
+    projectRef: process.env.SUPABASE_PROJECT_REF || 'hmcvujyqloyjdvngpdxz'
+  });
+
+  app.options('/api/platform-auth-settings', (req, res) => {
+    applyPlatformAdminCors(req, res);
+    return res.status(204).end();
+  });
+
+  app.get('/api/platform-auth-settings', async (req, res) => {
+    applyPlatformAdminCors(req, res);
+    const admin = await authorizePlatformAdmin(req, res);
+    if (!admin) return;
+
+    const { token, projectRef } = supabaseManagementConfig();
+    if (!token) return res.status(503).json({ error: 'Falta configurar SUPABASE_MANAGEMENT_TOKEN en el servidor.' });
+
+    try {
+      const response = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/config/auth`, {
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(8_000)
+      });
+      if (!response.ok) {
+        console.error('[PALMYRA] No se pudo leer la configuración de correo:', response.status);
+        return res.status(502).json({ error: 'No se pudo leer la configuración de correo de Supabase.' });
+      }
+      const config = await response.json();
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json({
+        mailer_autoconfirm: Boolean(config.mailer_autoconfirm),
+        requireEmailConfirmation: !config.mailer_autoconfirm
+      });
+    } catch (error: any) {
+      console.error('[PALMYRA] platform auth settings:', error);
+      return res.status(502).json({ error: 'No se pudo consultar la configuración de correo.' });
+    }
+  });
+
+  app.post('/api/platform-auth-settings', async (req, res) => {
+    applyPlatformAdminCors(req, res);
+    const admin = await authorizePlatformAdmin(req, res);
+    if (!admin) return;
+
+    const requireEmailConfirmation = req.body?.requireEmailConfirmation;
+    if (typeof requireEmailConfirmation !== 'boolean') {
+      return res.status(400).json({ error: 'Indica si la confirmación de correo debe estar activa.' });
+    }
+
+    const limit = consumeRateLimit('platform-auth-settings:' + admin.userId, 5, 60_000);
+    if (!limit.allowed) {
+      res.setHeader('Retry-After', String(limit.retryAfter || 60));
+      return res.status(429).json({ error: 'Demasiados cambios seguidos. Espera un minuto.' });
+    }
+
+    const { token, projectRef } = supabaseManagementConfig();
+    if (!token) return res.status(503).json({ error: 'Falta configurar SUPABASE_MANAGEMENT_TOKEN en el servidor.' });
+
+    try {
+      const response = await fetch(`https://api.supabase.com/v1/projects/${projectRef}/config/auth`, {
+        method: 'PATCH',
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mailer_autoconfirm: !requireEmailConfirmation }),
+        signal: AbortSignal.timeout(8_000)
+      });
+      if (!response.ok) {
+        console.error('[PALMYRA] No se pudo cambiar la confirmación de correo:', response.status);
+        return res.status(502).json({ error: 'Supabase no aceptó el cambio de confirmación de correo.' });
+      }
+      console.log('[PALMYRA] Confirmación de correo actualizada', {
+        requireEmailConfirmation,
+        adminUserId: admin.userId
+      });
+      res.setHeader('Cache-Control', 'no-store');
+      return res.json({
+        mailer_autoconfirm: !requireEmailConfirmation,
+        requireEmailConfirmation
+      });
+    } catch (error: any) {
+      console.error('[PALMYRA] platform auth settings update:', error);
+      return res.status(502).json({ error: 'No se pudo actualizar la confirmación de correo.' });
+    }
+  });
+
   const exchangeRates = createExchangeRateProvider();
   app.get('/api/exchange-rates', rateLimitExchange, async (_req, res) => {
     const result = await exchangeRates(process.env.ELTOQUE_API_TOKEN || '');

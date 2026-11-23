@@ -1,6 +1,14 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { AlertCircle, Check, CheckCircle2, ExternalLink, Facebook, Github, Info, Mail, MessageCircle, Phone, RefreshCw, RotateCcw, Save, Send, Settings2, ShieldCheck } from "lucide-react";
-import { adminErrorMessage, loadSupportSettings, saveSupportSettings, type PlatformSupportSettings } from "../platformAdminApi";
+import { AlertCircle, Check, CheckCircle2, ExternalLink, Facebook, Github, Info, Mail, MessageCircle, Phone, RefreshCw, RotateCcw, Save, Send, Settings2, ShieldAlert, ShieldCheck } from "lucide-react";
+import {
+  adminErrorMessage,
+  loadSupportSettings,
+  saveSupportSettings,
+  loadPlatformAuthSettings,
+  setPlatformEmailConfirmationRequired,
+  type PlatformSupportSettings,
+  type PlatformAuthSettings,
+} from "../platformAdminApi";
 import { Button, FileTextIcon, LoadingBlock } from "../shared";
 import { loadAlertChannelStatus, OWNER_WHATSAPP, sendAdminTestAlert, type AlertChannelStatus } from "../ownerAlerts";
 import { ADMIN_BUILT_AT } from "../adminUpdate";
@@ -70,6 +78,11 @@ export default function SettingsView() {
   const [error, setError] = useState("");
   const [loadFailed, setLoadFailed] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Partial<Record<FormKey, string>>>({});
+  const [authSettings, setAuthSettings] = useState<PlatformAuthSettings | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authSaving, setAuthSaving] = useState(false);
+  const [authMessage, setAuthMessage] = useState("");
+  const [authError, setAuthError] = useState("");
 
   const apply = (value: PlatformSupportSettings) => {
     setSettings(value);
@@ -90,7 +103,20 @@ export default function SettingsView() {
     }
   };
 
-  useEffect(() => { void refresh(); }, []);
+  const refreshAuth = async () => {
+    setAuthLoading(true);
+    setAuthError("");
+    try {
+      setAuthSettings(await loadPlatformAuthSettings());
+    } catch (err) {
+      setAuthSettings(null);
+      setAuthError(adminErrorMessage(err, "No se pudo consultar la confirmación de correo."));
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  useEffect(() => { void refresh(); void refreshAuth(); }, []);
 
   const update = (key: FormKey, value: string) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -129,6 +155,30 @@ export default function SettingsView() {
       setError(adminErrorMessage(err, "No se pudo guardar la configuración."));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const toggleEmailConfirmation = async () => {
+    if (!authSettings || authSaving) return;
+    const nextRequired = !authSettings.requireEmailConfirmation;
+    const confirmation = nextRequired
+      ? "¿Reactivar la confirmación de correo? Los nuevos registros volverán a recibir el correo de confirmación."
+      : "¿Desactivar temporalmente la confirmación? Los nuevos registros entrarán sin verificar el correo.";
+    if (!window.confirm(confirmation)) return;
+
+    setAuthSaving(true);
+    setAuthMessage("");
+    setAuthError("");
+    try {
+      const value = await setPlatformEmailConfirmationRequired(nextRequired);
+      setAuthSettings(value);
+      setAuthMessage(nextRequired
+        ? "Confirmación reactivada. Los nuevos registros volverán a pedir confirmación."
+        : "Confirmación desactivada temporalmente. Los nuevos registros entrarán directo.");
+    } catch (err) {
+      setAuthError(adminErrorMessage(err, "No se pudo cambiar la confirmación de correo."));
+    } finally {
+      setAuthSaving(false);
     }
   };
 
@@ -225,6 +275,44 @@ export default function SettingsView() {
           </section>
         </div>
       </div>
+
+      <section className="admin-panel admin-email-control">
+        <div className="admin-panel__head">
+          <div><p className="admin-kicker">REGISTRO Y CORREO</p><h2>Confirmación de correo</h2></div>
+          <span className={`admin-status ${authSettings?.requireEmailConfirmation ? "admin-status--green" : "admin-status--amber"}`}>
+            <span />{authLoading ? "Consultando…" : authSettings?.requireEmailConfirmation ? "Activada" : "Desactivada"}
+          </span>
+        </div>
+        <div className="admin-email-control__body">
+          {authLoading ? <p className="admin-email-control__hint">Consultando la configuración de Supabase…</p> : authSettings ? (
+            <>
+              <div className={`admin-email-control__state ${authSettings.requireEmailConfirmation ? "is-protected" : "is-open"}`}>
+                {authSettings.requireEmailConfirmation ? <ShieldCheck size={22} /> : <ShieldAlert size={22} />}
+                <div>
+                  <strong>{authSettings.requireEmailConfirmation ? "Los usuarios deben confirmar su correo" : "Registro directo sin confirmación"}</strong>
+                  <p>{authSettings.requireEmailConfirmation
+                    ? "Supabase envía el correo de confirmación antes de permitir el acceso. Mantén esta opción activa cuando el proveedor de correo esté funcionando."
+                    : "Desactivado temporalmente para que los registros no dependan de AgentMail. Reactívalo cuando el proveedor vuelva a enviar correos con normalidad."}</p>
+                </div>
+              </div>
+              <p className="admin-email-control__hint">Al reactivar, solo los registros nuevos volverán a pedir confirmación. Las cuentas ya creadas no se modifican.</p>
+              {authError ? <div className="admin-settings-message admin-settings-message--error" role="alert"><AlertCircle size={14} />{authError}</div> : null}
+              {authMessage ? <div className="admin-settings-message admin-settings-message--success" role="status"><CheckCircle2 size={14} />{authMessage}</div> : null}
+              <div className="admin-email-control__actions">
+                <span>{authSettings.requireEmailConfirmation ? "Protección activa" : "Modo temporal sin verificación"}</span>
+                <div className="admin-email-control__buttons">
+                  <Button variant="secondary" onClick={() => void refreshAuth()} disabled={authSaving}><RefreshCw size={14} />Actualizar estado</Button>
+                  <Button variant={authSettings.requireEmailConfirmation ? "danger" : "primary"} onClick={() => void toggleEmailConfirmation()} disabled={authSaving}>
+                    {authSaving ? "Guardando…" : authSettings.requireEmailConfirmation ? "Desactivar temporalmente" : "Reactivar confirmación"}
+                  </Button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="admin-settings-message admin-settings-message--error" role="alert"><AlertCircle size={14} />{authError || "No se pudo consultar la confirmación de correo."}</div>
+          )}
+        </div>
+      </section>
     </div>
   );
 }

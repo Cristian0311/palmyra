@@ -18,6 +18,7 @@ fixrender/
 _unused/
 # Temporary local artifacts
 temp.txt
+.vite/
 # Generated at build time by scripts/write-version.mjs
 public/version.json
 # Supabase CLI local state

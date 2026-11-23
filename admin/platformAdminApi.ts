@@ -200,6 +200,11 @@ export type PlatformSupportSettings = {
   whatsapp_channel_url: string | null;
 };
 
+export type PlatformAuthSettings = {
+  mailer_autoconfirm: boolean;
+  requireEmailConfirmation: boolean;
+};
+
 export type PlatformUser = {
   user_id: string;
   email?: string | null;
@@ -543,6 +548,40 @@ export async function saveSupportSettings(settings: PlatformSupportSettings): Pr
     facebook_url: value.facebook_url ? String(value.facebook_url) : null,
     whatsapp_channel_url: value.whatsapp_channel_url ? String(value.whatsapp_channel_url) : null,
   };
+}
+
+const PLATFORM_API_BASE = (import.meta.env.VITE_PALMYRA_API_URL || "https://palmyracrm.onrender.com").replace(/\/+$/, "");
+
+async function platformAdminHeaders() {
+  const supabase = await assertPlatformAdmin();
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  const token = data.session?.access_token;
+  if (!token) throw new Error("La sesión administrativa no está disponible.");
+  return { Authorization: `Bearer ${token}` };
+}
+
+async function readPlatformAuthSettings(response: Response): Promise<PlatformAuthSettings> {
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(adminErrorMessage(payload?.error || "No se pudo actualizar la confirmación de correo."));
+  return payload as PlatformAuthSettings;
+}
+
+export async function loadPlatformAuthSettings(): Promise<PlatformAuthSettings> {
+  const response = await fetch(`${PLATFORM_API_BASE}/api/platform-auth-settings`, {
+    headers: await platformAdminHeaders(),
+    cache: "no-store",
+  });
+  return readPlatformAuthSettings(response);
+}
+
+export async function setPlatformEmailConfirmationRequired(required: boolean): Promise<PlatformAuthSettings> {
+  const response = await fetch(`${PLATFORM_API_BASE}/api/platform-auth-settings`, {
+    method: "POST",
+    headers: { ...(await platformAdminHeaders()), "Content-Type": "application/json" },
+    body: JSON.stringify({ requireEmailConfirmation: required }),
+  });
+  return readPlatformAuthSettings(response);
 }
 
 export async function loadSupportRequests(status?: string): Promise<PlatformSupportRequest[]> {

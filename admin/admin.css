@@ -1001,3 +1001,22 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 .admin-alert-channel__guide code { font-size: 9.5px; background: #efe8fb; color: #5526b8; padding: 1px 4px; border-radius: 4px; }
 .admin-alert-channel .admin-settings-footer { margin-top: 12px; }
 .admin-alert-channel .admin-muted a { color: #5526b8; font-weight: 700; }
+
+.admin-email-control__body { padding: 22px; display: grid; gap: 14px; }
+.admin-email-control__state { display: flex; align-items: flex-start; gap: 12px; padding: 14px; border: 1px solid var(--admin-line); border-radius: 14px; background: #fff; }
+.admin-email-control__state.is-open { border-color: #f0d7a8; background: #fffaf0; }
+.admin-email-control__state.is-protected { border-color: #caead6; background: #f2fbf6; }
+.admin-email-control__state > svg { flex: 0 0 auto; margin-top: 1px; }
+.admin-email-control__state.is-open > svg { color: #a96b1d; }
+.admin-email-control__state.is-protected > svg { color: #21815e; }
+.admin-email-control__state strong { display: block; color: var(--admin-deep); font-size: 12px; }
+.admin-email-control__state p { margin: 4px 0 0; color: var(--admin-muted); font-size: 10px; line-height: 1.6; }
+.admin-email-control__hint { margin: 0; color: var(--admin-muted); font-size: 9px; line-height: 1.6; }
+.admin-email-control__actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 14px; border-top: 1px solid var(--admin-line); font-size: 9px; color: var(--admin-muted); }
+.admin-email-control__buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+@media(max-width:760px) {
+  .admin-email-control__body { padding: 16px; }
+  .admin-email-control__actions { flex-direction: column; align-items: stretch; }
+  .admin-email-control__buttons { flex-direction: column; }
+  .admin-email-control__buttons .admin-btn { width: 100%; }
+}
