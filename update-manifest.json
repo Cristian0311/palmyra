@@ -1,25 +1,26 @@
 {
   "v": 1,
-  "version": "1.3.9",
+  "version": "1.3.10",
   "channel": "stable",
-  "releasedAt": "2026-11-24T19:13:57.412Z",
+  "releasedAt": "2026-11-24T20:19:33.072Z",
+  "notes": "Tasas en vivo con CORS corregido y respaldo de nube tolerante al reloj; confirmacion de email reactivada.",
   "rollout": 100,
   "artifacts": [
     {
       "platform": "windows",
       "name": "PALMYRA-POS-Setup.exe",
-      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.9/PALMYRA-POS-Setup.exe",
-      "sha256": "3a85c8e67f7a325d915e02db6a4566884ab653ec89cf979cafe7aef4dac1c02f",
-      "bytes": 78523957
+      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.10/PALMYRA-POS-Setup.exe",
+      "sha256": "826dda48fba0243d34d1647fde85b3dac21b6e508c9766c86ac5d0ffd18000ca",
+      "bytes": 78521937
     },
     {
       "platform": "android",
       "name": "PALMYRA-Android.apk",
-      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.9/PALMYRA-Android.apk",
-      "sha256": "b57b49897d3aaa29fa9ab2376cb8c496ea805f29c6b7cd4cecebaf2721287924",
+      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.10/PALMYRA-Android.apk",
+      "sha256": "391c31cb74346169b321fed5f9c26886318ff5282778418f2bd3e54ca1a96c70",
       "bytes": 2679878
     }
   ],
   "keyId": "palmyra-stable-2026-11",
-  "signature": "VCIEQltU9zaaqLrb6PI_s0An8GDSUwyXUTVD6BGbCAs66hM7iR5GxzHyJJ315z8wExZujhFSYtdDaqfPLOsUWQ"
+  "signature": "SIMc0vPqnpKD3RtyHBzILv_y2fNxkz-bwU75exF8G3QwkJVxnXMe1D40isjgk5Rn1VyXVH7v3yojZt-usso2nw"
 }
