@@ -828,10 +828,10 @@ export default function Team() {
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <p className="text-[10px] font-black tracking-[0.18em] uppercase text-violet-600 dark:text-violet-300">Empresa{planLabel ? ` · Plan ${planLabel}` : ''}</p>
-                <span className={cn('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider',
+                <span className={cn('inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider',
                   online ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300'
                     : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-300')}>
-                  {online ? <Wifi className="h-2.5 w-2.5" /> : <WifiOff className="h-2.5 w-2.5" />}
+                  {online ? <Wifi className="h-2 w-2" /> : <WifiOff className="h-2 w-2" />}
                   {online ? 'En línea' : 'Modo local'}
                 </span>
               </div>
@@ -896,7 +896,7 @@ export default function Team() {
           >
             <Icon className="h-4 w-4 shrink-0" />
             <span className="truncate text-[11px] font-black uppercase tracking-wider">{label}</span>
-            {detail && <span className={cn('hidden sm:inline rounded-full px-1.5 py-0.5 text-[9px] font-black tabular-nums', activeSection === id ? 'bg-white/20 text-white' : 'bg-subtle text-muted')}>{detail}</span>}
+            {detail && <span className={cn('hidden sm:inline rounded-full px-1.5 py-px text-[9px] font-black tabular-nums', activeSection === id ? 'bg-white/20 text-white' : 'bg-subtle text-muted')}>{detail}</span>}
           </button>
         ))}
       </nav>
@@ -950,13 +950,13 @@ export default function Team() {
                   <span className="text-[8px] uppercase tracking-wider font-black text-muted">{role.is_system ? (isEmployeeSystemRole(role) ? "Sistema · editable" : "Sistema") : "Personalizado"}</span>
                 </div>
                 <p className="text-[9px] text-muted mt-1 line-clamp-2">{role.description || "Sin descripción"}</p>
-                <div className="flex flex-wrap gap-1 mt-2">
+                <div className="flex flex-wrap gap-1 mt-1.5">
                   {(role.permission_keys || []).slice(0, 3).map(key => (
-                    <span key={key} className="text-[8px] rounded-full bg-subtle border border-base px-2 py-1 text-secondary">
+                    <span key={key} className="text-[8px] rounded-full bg-subtle border border-base px-1.5 py-0.5 text-secondary">
                       {(snapshot?.permissions || []).find(permission => permission.key === key)?.name || key}
                     </span>
                   ))}
-                  {(role.permission_keys || []).length > 3 && <span className="text-[8px] font-black text-violet-600 dark:text-violet-300 px-1 py-1">+{(role.permission_keys || []).length - 3}</span>}
+                  {(role.permission_keys || []).length > 3 && <span className="text-[8px] font-black text-violet-600 dark:text-violet-300 px-1 py-0.5">+{(role.permission_keys || []).length - 3}</span>}
                 </div>
               </button>
             ))}
@@ -974,23 +974,23 @@ export default function Team() {
                     </div>
                     <p className="text-[10px] text-muted mt-1 leading-5">Define aquí la modalidad de pago para todos los trabajadores. Esta configuración es independiente del alta individual.</p>
                   </div>
-                  <span className="text-[8px] font-black uppercase tracking-wider px-2.5 py-1.5 rounded-full bg-subtle border border-base text-muted shrink-0">
+                  <span className="text-[8px] font-black uppercase tracking-wider px-2 py-1 rounded-full bg-subtle border border-base text-muted shrink-0">
                     {activeEmployees} activo{activeEmployees === 1 ? "" : "s"}{pendingInvites > 0 ? ` · ${pendingInvites} invitación${pendingInvites === 1 ? "" : "es"} pendiente${pendingInvites === 1 ? "" : "s"}` : ""}
                   </span>
                 </div>
-                <div className="grid md:grid-cols-2 gap-2 mt-4">
+                <div className="grid md:grid-cols-2 gap-2 mt-3">
                   {([
                     ['fixed_product','CUP fijo por producto','Usa la comisión CUP configurada en cada producto.'],
                     ['sales_percent','% sobre el total de venta','Usa el mismo porcentaje general para todos los empleados.']
                   ] as [CompanyCompensationMode,string,string][]).map(([mode,label,description]) => (
                     <button key={mode} type="button" disabled={savingCompensation}
                       onClick={() => setCompensationSettings(prev => ({ ...prev, mode }))}
-                      className={cn("text-left p-4 rounded-2xl border transition-all", compensationSettings.mode === mode ? "bg-violet-50 dark:bg-violet-950/30 border-violet-300 shadow-sm" : "bg-primary border-base hover:border-violet-200")}>
+                      className={cn("text-left p-3.5 rounded-2xl border transition-all", compensationSettings.mode === mode ? "bg-violet-50 dark:bg-violet-950/30 border-violet-300 shadow-sm" : "bg-primary border-base hover:border-violet-200")}>
                       <div className="flex items-center justify-between gap-3">
                         <p className="text-[10px] font-black text-primary uppercase tracking-wider">{label}</p>
-                        <span className={cn("w-5 h-5 rounded-full border flex items-center justify-center shrink-0", compensationSettings.mode === mode ? "bg-violet-600 border-violet-600 text-white" : "border-base text-transparent")}><Check className="w-3 h-3" /></span>
+                        <span className={cn("w-4 h-4 rounded-full border flex items-center justify-center shrink-0", compensationSettings.mode === mode ? "bg-violet-600 border-violet-600 text-white" : "border-base text-transparent")}><Check className="w-2.5 h-2.5" /></span>
                       </div>
-                      <p className="text-[9px] text-muted mt-1.5 leading-5">{description}</p>
+                      <p className="text-[9px] text-muted mt-1 leading-5">{description}</p>
                     </button>
                   ))}
                 </div>

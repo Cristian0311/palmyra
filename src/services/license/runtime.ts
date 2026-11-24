@@ -77,6 +77,13 @@ export interface LicenseSnapshot {
    * verificar» solo es legítimo cuando la evaluación terminó de verdad.
    */
   activationSettled?: boolean;
+  /**
+   * Código estable de por qué falló el último intento de activación (p. ej.
+   * "no-session", "server-rejected:403:permission_denied"). Solo se publica
+   * cuando la evaluación terminó sin lease: permite que la UI explique la
+   * causa real en lugar de un aviso genérico engañoso.
+   */
+  activationError?: string;
 }
 
 export type LicenseFetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -157,6 +164,37 @@ function isOnline(): boolean {
   } catch {
     return true;
   }
+}
+
+/**
+ * Resultado de un intento de renovación. `not-needed` (y el fallo "backoff")
+ * son saltos neutros, no errores: la UI no debe avisar por ellos.
+ */
+type RenewResult =
+  | { status: "renewed"; lease: SignedLease }
+  | { status: "not-needed" }
+  | { status: "failed"; reason: string };
+
+/** Limpia el código de error del servidor: minúsculas, [a-z0-9_-], máx 40. */
+function sanitizeServerErrorCode(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+}
+
+/**
+ * Razón estable de un error devuelto (no lanzado) por `issue-lease`: estado
+ * HTTP y código del servidor, para que la UI distinga un rechazo de plan
+ * (403/409) de un rate limit (429) o de un fallo de red.
+ */
+function serverRejectionReason(error: unknown): string {
+  const record = (error ?? {}) as { status?: unknown; error?: unknown };
+  const status = typeof record.status === "number" ? record.status : 0;
+  const code = sanitizeServerErrorCode(record.error);
+  return code ? `server-rejected:${status}:${code}` : `server-rejected:${status}`;
 }
 
 function readDeviceId(prefix: string): string {
@@ -335,25 +373,27 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
     atMs: number;
     /** Renovar aunque el lease no esté por vencer (identidad reparada o botón Renovar). */
     force?: boolean;
-  }): Promise<SignedLease | null> {
+  }): Promise<RenewResult> {
     // Sin conexión no se intenta activar: el arranque nunca espera a la red.
-    if (!isOnline()) return null;
+    if (!isOnline()) return { status: "failed", reason: "offline" };
     let client: LicenseRuntimeClient | null = null;
     try {
       client = getClient();
     } catch {
-      return null;
+      return { status: "failed", reason: "no-client" };
     }
-    if (!client) return null;
+    if (!client) return { status: "failed", reason: "no-client" };
 
     let session: unknown = null;
     try {
       const result = await client.auth.getSession();
       session = result?.data?.session ?? null;
     } catch {
-      return null;
+      return { status: "failed", reason: "no-session" };
     }
-    if (!session) return null;
+    // Sin sesión el servidor rechazaría la emisión: es la causa real más común
+    // del falso «sin verificar» (arranque offline-first sin sesión Supabase).
+    if (!session) return { status: "failed", reason: "no-session" };
 
     const expiresMs = args.lease ? Date.parse(args.lease.expiresAt) : Number.NaN;
     const issuedMs = args.lease ? Date.parse(args.lease.issuedAt) : Number.NaN;
@@ -362,37 +402,53 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
       !args.lease ||
       (Number.isFinite(expiresMs) && expiresMs - args.atMs < RENEW_BEFORE_MS) ||
       (Number.isFinite(issuedMs) && args.atMs - issuedMs > LEASE_MAX_AGE_MS);
-    if (!needsRenewal) return null;
-    if (!args.force && args.atMs - lastRenewAttemptAt < RENEW_RETRY_MS) return null;
+    if (!needsRenewal) return { status: "not-needed" };
+    // La espera entre reintentos no es un fallo real: se distingue para no
+    // avisar al usuario por un intento que todavía no debía ocurrir.
+    if (!args.force && args.atMs - lastRenewAttemptAt < RENEW_RETRY_MS) {
+      return { status: "failed", reason: "backoff" };
+    }
     lastRenewAttemptAt = args.atMs;
 
+    const startedAt = Date.now();
+    let invoked: { data: unknown; error: unknown };
     try {
-      const startedAt = Date.now();
-      const { data, error } = await client.functions.invoke("issue-lease", {
+      invoked = await client.functions.invoke("issue-lease", {
         body: {
           deviceId: readDeviceId(storageKeyPrefix),
           devicePubKeyFp: args.deviceFp,
           companyId: args.activeCompany
         }
       });
-      // F6: la renovación de lease es una solicitud de nube contabilizada
-      // (cada 12 h); el panel de presupuesto la muestra como `license/lease`.
-      recordRequest("license/lease", { ms: Date.now() - startedAt, ok: !error });
-      if (error) return null;
-      const candidate = (data as { lease?: SignedLease } | null)?.lease;
-      if (!candidate) return null;
-      // Nunca se persiste un lease sin comprobar firma y vínculo con el equipo.
-      const verification = await verifyLeaseForDevice(candidate, {
+    } catch {
+      // Un fallo de red al renovar conserva el lease actual y su evaluación.
+      return { status: "failed", reason: "network" };
+    }
+    // F6: la renovación de lease es una solicitud de nube contabilizada
+    // (cada 12 h); el panel de presupuesto la muestra como `license/lease`.
+    recordRequest("license/lease", { ms: Date.now() - startedAt, ok: !invoked.error });
+    if (invoked.error) {
+      return { status: "failed", reason: serverRejectionReason(invoked.error) };
+    }
+    const candidate = (invoked.data as { lease?: SignedLease } | null)?.lease;
+    if (!candidate) return { status: "failed", reason: "no-lease-response" };
+    // Nunca se persiste un lease sin comprobar firma y vínculo con el equipo.
+    let verification: Awaited<ReturnType<typeof verifyLeaseForDevice>>;
+    try {
+      verification = await verifyLeaseForDevice(candidate, {
         verifyKey: args.verifyKey,
         devicePublicKeySpki: args.deviceSpki
       });
-      if (!verification.ok) return null;
-      await saveLease(store, candidate, args.activeCompany);
-      return candidate;
     } catch {
-      // Un fallo de red al renovar conserva el lease actual y su evaluación.
-      return null;
+      return { status: "failed", reason: "signature-invalid" };
     }
+    if (!verification.ok) return { status: "failed", reason: "signature-invalid" };
+    try {
+      await saveLease(store, candidate, args.activeCompany);
+    } catch {
+      return { status: "failed", reason: "save-failed" };
+    }
+    return { status: "renewed", lease: candidate };
   }
 
   /**
@@ -708,11 +764,13 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
 
     // Cierra una activación que quedó en curso: a partir de aquí el intento ya
     // no puede dar más de sí en esta evaluación y el aviso de «licencia sin
-    // verificar» es legítimo (o no, si mientras tanto llegó un lease).
-    const concludeActivationIfNeeded = (atMs: number): LicenseSnapshot => {
+    // verificar» es legítimo (o no, si mientras tanto llegó un lease). Si el
+    // intento falló de verdad, su causa viaja en `activationError` para que la
+    // UI explique qué pasó en lugar del mensaje genérico engañoso.
+    const concludeActivationIfNeeded = (atMs: number, activationError?: string): LicenseSnapshot => {
       if (!snapshot.pendingActivation || snapshot.activationSettled) return snapshot;
       return publish(
-        { ...snapshot, activationSettled: true, lastCheckedAt: atMs },
+        { ...snapshot, activationSettled: true, lastCheckedAt: atMs, activationError },
         snapshot.readOnly
       );
     };
@@ -726,7 +784,7 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
     }
 
     const needsIdentityRepair = identityRotated || Boolean(verification && !verification.ok);
-    const renewed = await maybeRenew({
+    const attempt = await maybeRenew({
       lease,
       verifyKey,
       deviceFp: identity.fingerprint,
@@ -735,7 +793,16 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
       atMs,
       force: needsIdentityRepair || Boolean(input?.forceRenew)
     });
-    if (!renewed) return concludeActivationIfNeeded(atMs);
+    if (attempt.status !== "renewed") {
+      // El intento terminó sin lease. Solo un fallo real se publica como causa
+      // del aviso: not-needed y backoff son saltos neutros, no errores.
+      const activationError =
+        attempt.status === "failed" && attempt.reason !== "backoff"
+          ? attempt.reason
+          : undefined;
+      return concludeActivationIfNeeded(atMs, activationError);
+    }
+    const renewed = attempt.lease;
 
     // Un lease solo se adopta si su firma y su vinculo con el equipo verifican.
     const renewedVerification = await verifyWith(renewed, verifyKey);

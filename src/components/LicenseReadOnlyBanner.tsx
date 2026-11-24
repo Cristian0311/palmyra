@@ -46,6 +46,25 @@ function unverifiedMessage(snapshot: LicenseSnapshot): string | null {
     // (activationSettled false) se muestra el estado neutro «verificando»,
     // nunca este aviso: el orden correcto es cargar primero y avisar después.
     if (!snapshot.pendingActivation || !snapshot.activationSettled) return null;
+    // La causa exacta del intento fallido permite un aviso veraz: la más común
+    // es no tener sesión Supabase (arranque offline-first), y el mensaje
+    // genérico de «conéctate» era falso cuando el equipo sí tenía internet.
+    const activationError = snapshot.activationError ?? "";
+    if (activationError.startsWith("no-session")) {
+      return "Este equipo no tiene una sesión de licencia activa. Conéctate a internet y entra con tu usuario o enlace de acceso una vez para activar la licencia comprada; mientras tanto puedes seguir operando. Tus datos no se borran.";
+    }
+    if (
+      activationError.startsWith("server-rejected:403") ||
+      activationError.startsWith("server-rejected:409")
+    ) {
+      return "Tu suscripción no pudo activarse en este equipo. Revisa tu plan en Ver planes; mientras tanto puedes seguir operando. Tus datos no se borran.";
+    }
+    if (activationError.startsWith("server-rejected:429")) {
+      return "El servidor de licencias está saturado; se reintentará solo. Puedes seguir operando. Tus datos no se borran.";
+    }
+    if (activationError.startsWith("signature-invalid")) {
+      return "La respuesta del servidor de licencias no se pudo verificar; se reintentará automáticamente. Puedes seguir operando. Tus datos no se borran.";
+    }
     return "Licencia sin verificar: este equipo todavía no tiene una licencia emitida. Conéctate a internet y pulsa Renovar; mientras tanto puedes seguir operando.";
   }
   return null;
@@ -127,6 +146,16 @@ export function LicenseReadOnlyBanner() {
                 {renewing ? "Verificando…" : "Renovar"}
                 <ArrowRight className="h-3 w-3" aria-hidden="true" />
               </button>
+              {snapshot.activationError?.startsWith("no-session") ? (
+                // Sin sesión el botón Renovar no puede emitir un lease: la vía
+                // real para desbloquear la activación es entrar en la cuenta.
+                <Link
+                  to="/auth"
+                  className="rounded text-[9px] font-black uppercase tracking-wider text-amber-800/80 underline decoration-amber-300 underline-offset-2 hover:text-amber-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 dark:text-amber-200/80"
+                >
+                  Iniciar sesión
+                </Link>
+              ) : null}
               <Link
                 to="/subscription"
                 className="rounded text-[9px] font-black uppercase tracking-wider text-amber-800/80 underline decoration-amber-300 underline-offset-2 hover:text-amber-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-600 dark:text-amber-200/80"

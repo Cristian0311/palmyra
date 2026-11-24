@@ -522,8 +522,10 @@ class SqliteDriver implements LocalDbDriver {
         [id]
       );
       return rows.length > 0 ? (deserializeRow(rows[0]) as T) : null;
-    } catch {
+    } catch (error) {
       // Igual que IndexedDB: un fallo de lectura se traduce a "sin fila".
+      // Se avisa en consola para no confundir un fallo real con "no hay datos".
+      console.warn(`[PALMYRA] Almacén local: no se pudo leer «${table}»/${id}; se trata como fila ausente.`, error);
       return null;
     }
   }
@@ -539,7 +541,10 @@ class SqliteDriver implements LocalDbDriver {
     try {
       const rows = await this.adapter.all<Record<string, unknown>>(built.sql, built.params);
       return rows.map((row) => deserializeRow(row) as T);
-    } catch {
+    } catch (error) {
+      // Un fallo real de lectura (base bloqueada o corrupta) no debe parecer
+      // "tabla vacía": se avisa en consola para poder diagnosticarlo.
+      console.warn(`[PALMYRA] Almacén local: consulta fallida en «${spec.table}»; se devuelve vacío.`, error);
       return [];
     }
   }

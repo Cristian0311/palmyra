@@ -12,6 +12,7 @@ import {
 import { LOCAL_DB_TABLE_NAMES } from "../../src/services/localDb/schema";
 import { createNodeSqliteAdapter } from "../../src/services/localDb/sqlite/bindingNode";
 import { createSqliteDriver } from "../../src/services/localDb/sqlite/driver";
+import type { SqliteAdapter } from "../../src/services/localDb/sqlite/adapter";
 
 const FIXED_NOW = "2026-01-01T00:00:00.000Z";
 
@@ -428,4 +429,59 @@ test("close deja el driver no disponible", async (t) => {
   await assert.rejects(() => driver.changes(), unavailable);
   await assert.rejects(() => driver.latestSeq(), unavailable);
   await assert.rejects(() => driver.transaction(async () => 1), unavailable);
+});
+
+test("un fallo real de lectura avisa en consola y no se confunde con tabla vacía", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "palmyra-sqlite-"));
+  const dbPath = join(dir, "local-db.sqlite");
+  const base = await createNodeSqliteAdapter(dbPath);
+
+  // Adaptador que delega todo pero puede fallar las lecturas a voluntad:
+  // simula una base bloqueada o corrupta en plena operación.
+  let failReads = false;
+  const flaky: SqliteAdapter = {
+    exec: (sql) => base.exec(sql),
+    run: (sql, params) => base.run(sql, params),
+    all: (sql, params) => {
+      if (failReads) throw new Error("database disk image is malformed");
+      return base.all(sql, params);
+    },
+    close: () => base.close()
+  };
+
+  const driver = await createSqliteDriver({ adapter: flaky, filePath: dbPath, now: () => FIXED_NOW });
+  t.after(async () => {
+    await driver.close();
+    await rm(dir, { recursive: true, force: true, maxRetries: 5 });
+  });
+
+  await driver.put("products", [makeRow("p1", { name: "Arroz" })]);
+
+  const warnings: string[] = [];
+  const warn = t.mock.method(console, "warn", (message?: unknown) => {
+    warnings.push(String(message));
+  });
+
+  failReads = true;
+  // El contrato se conserva: lectura fallida = "sin fila" / consulta vacía...
+  assert.equal(await driver.get("products", "p1"), null);
+  assert.deepEqual(await driver.query({ table: "products" }), []);
+  failReads = false;
+
+  // ...pero el fallo queda registrado con contexto para poder diagnosticarlo.
+  assert.ok(warn.mock.callCount() >= 2, "cada lectura fallida genera un aviso");
+  assert.ok(
+    warnings.some((message) =>
+      message.includes("[PALMYRA]") && message.includes("«products»") && message.includes("p1")
+    ),
+    "el aviso de get identifica tabla y fila"
+  );
+  assert.ok(
+    warnings.some((message) => message.includes("[PALMYRA]") && message.includes("consulta fallida")),
+    "el aviso de query menciona la consulta fallida"
+  );
+
+  // El fallo no envenena el driver: las escrituras y lecturas siguen bien.
+  await driver.put("products", [makeRow("p2")]);
+  assert.equal((await driver.get<LocalRow>("products", "p2"))?.id, "p2");
 });

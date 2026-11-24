@@ -50,8 +50,8 @@ export default function Inventory() {
     products, inventory, branches, addProduct, updateProduct, 
     setInventoryQuantity, deleteProduct, deleteCategory,
     categories, batchDeleteProducts, batchUpdateProducts, getBaseCurrency, currencies,
-    currentBranchId, addNotification, users, currentUser, receiptConfig
-  } = useStore(useShallow((state) => ({ products: state.products, inventory: state.inventory, branches: state.branches, addProduct: state.addProduct, updateProduct: state.updateProduct, setInventoryQuantity: state.setInventoryQuantity, deleteProduct: state.deleteProduct, deleteCategory: state.deleteCategory, categories: state.categories, batchDeleteProducts: state.batchDeleteProducts, batchUpdateProducts: state.batchUpdateProducts, getBaseCurrency: state.getBaseCurrency, currencies: state.currencies, currentBranchId: state.currentBranchId, addNotification: state.addNotification, users: state.users, currentUser: state.currentUser, receiptConfig: state.receiptConfig })));
+    currentBranchId, addNotification, users, currentUser, receiptConfig, syncResult
+  } = useStore(useShallow((state) => ({ products: state.products, inventory: state.inventory, branches: state.branches, addProduct: state.addProduct, updateProduct: state.updateProduct, setInventoryQuantity: state.setInventoryQuantity, deleteProduct: state.deleteProduct, deleteCategory: state.deleteCategory, categories: state.categories, batchDeleteProducts: state.batchDeleteProducts, batchUpdateProducts: state.batchUpdateProducts, getBaseCurrency: state.getBaseCurrency, currencies: state.currencies, currentBranchId: state.currentBranchId, addNotification: state.addNotification, users: state.users, currentUser: state.currentUser, receiptConfig: state.receiptConfig, syncResult: state.syncResult })));
   const baseCurrency = getBaseCurrency();
 
   // Compensación global de la empresa: define el salario por unidad que se
@@ -929,6 +929,23 @@ export default function Inventory() {
 
         </div>
       </header>
+
+      {/* Aviso de sincronización: si el arranque fue parcial, la lista puede
+          mostrar solo la copia local (o estar vacía) sin que sea un fallo de
+          la empresa; aquí se hace visible el motivo en español. */}
+      {syncResult && !syncResult.success && (
+        <div className="flex items-start gap-2 px-2 py-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 rounded-xl text-[11px] font-semibold leading-snug" role="alert">
+          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+          <div className="min-w-0">
+            <p className="truncate" title={syncResult.message}>{syncResult.message}</p>
+            {Array.isArray(syncResult.errors) && syncResult.errors.length > 0 && (
+              <p className="text-[10px] font-medium text-amber-700 dark:text-amber-300/90 mt-0.5 truncate" title={syncResult.errors[0]}>
+                {syncResult.errors[0]}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Summary Cards Lineal - Responsive Grid */}
       <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-1.5 sm:gap-2 px-1 shrink-0">

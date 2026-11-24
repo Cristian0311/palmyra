@@ -383,6 +383,91 @@ test("sin lease y con sesión: invoca issue-lease y persiste el lease verificado
   assert.deepEqual(await loadLease(store, COMPANY_ID), freshLease);
 });
 
+/* ------------------------- errores de activación ------------------------ */
+
+test("sin sesión y sin lease: publica activationError no-session al concluir", async () => {
+  setLicenseReadOnly(false);
+  const store = await seededStore(null);
+  let invoked = 0;
+  const client: LicenseRuntimeClient = {
+    auth: {
+      async getSession() {
+        return { data: { session: null }, error: null };
+      }
+    },
+    functions: {
+      async invoke() {
+        invoked += 1;
+        return { data: null, error: null };
+      }
+    }
+  };
+  const runtime = makeRuntime({ store, prefix: "no-session", getClient: () => client });
+
+  const snapshot = await runtime.start({ companyId: COMPANY_ID });
+
+  assert.equal(snapshot.mode, "unmanaged");
+  assert.equal(snapshot.reason, "lease-missing");
+  assert.equal(snapshot.pendingActivation, true);
+  assert.equal(snapshot.activationSettled, true);
+  assert.equal(snapshot.activationError, "no-session");
+  // Sin sesión no se llega a invocar issue-lease.
+  assert.equal(invoked, 0);
+  assert.equal(isLicenseReadOnly(), false);
+});
+
+test("el servidor rechaza 403: publica activationError server-rejected:403:permission_denied", async () => {
+  setLicenseReadOnly(false);
+  const store = await seededStore(null);
+  const client: LicenseRuntimeClient = {
+    auth: {
+      async getSession() {
+        return { data: { session: { access_token: "token-de-prueba" } }, error: null };
+      }
+    },
+    functions: {
+      async invoke() {
+        return { data: null, error: { status: 403, error: "permission_denied" } };
+      }
+    }
+  };
+  const runtime = makeRuntime({ store, prefix: "rejected", getClient: () => client });
+
+  const snapshot = await runtime.start({ companyId: COMPANY_ID });
+
+  assert.equal(snapshot.mode, "unmanaged");
+  assert.equal(snapshot.reason, "lease-missing");
+  assert.equal(snapshot.activationSettled, true);
+  assert.equal(snapshot.activationError, "server-rejected:403:permission_denied");
+  assert.equal(isLicenseReadOnly(), false);
+});
+
+test("lease adoptado tras renovar: el snapshot no lleva activationError", async () => {
+  setLicenseReadOnly(false);
+  const store = await seededStore(null);
+  const freshLease = await makeLease();
+  const client: LicenseRuntimeClient = {
+    auth: {
+      async getSession() {
+        return { data: { session: { access_token: "token-de-prueba" } }, error: null };
+      }
+    },
+    functions: {
+      async invoke() {
+        return { data: { lease: freshLease }, error: null };
+      }
+    }
+  };
+  const runtime = makeRuntime({ store, prefix: "adopted", getClient: () => client });
+
+  const snapshot = await runtime.start({ companyId: COMPANY_ID });
+
+  assert.equal(snapshot.mode, "active");
+  assert.equal(snapshot.leasePresent, true);
+  assert.equal(snapshot.pendingActivation, false);
+  assert.equal(snapshot.activationError, undefined);
+});
+
 /* --------------------------------- guarda ------------------------------- */
 
 test("guarda de solo lectura: notifica cambios y no deja pasar escrituras", () => {

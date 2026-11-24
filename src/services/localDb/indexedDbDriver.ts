@@ -346,9 +346,11 @@ class IndexedDbDriver implements LocalDbDriver {
     let rows: LocalRow[];
     try {
       rows = await this.readAll<LocalRow>(db, spec.table);
-    } catch {
+    } catch (error) {
       // Solo los fallos de lectura se traducen a "sin resultados";
       // las filas mal formadas se propagan al aplicar el spec.
+      // Se avisa en consola para no confundir un fallo real con "no hay datos".
+      console.warn(`[PALMYRA] Almacén local: consulta fallida en «${spec.table}»; se devuelve vacío.`, error);
       return [];
     }
     return applyQuerySpec(rows as T[], spec);
