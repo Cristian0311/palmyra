@@ -206,6 +206,67 @@ test("fetchCloudRateQuotes prefiere la copia verificada fresca y no toca Render"
   assert.equal(calls.length, 0);
 });
 
+test("una copia verificada vencida se conserva como último recurso si la nube directa falla", async () => {
+  calls = [];
+  script = {
+    render: () => {
+      throw new TypeError("CORS bloqueado en la consulta directa");
+    }
+  };
+
+  const staleCapturedAt = new Date(NOW_MS - 40 * 60 * 1000).toISOString();
+  const rates = await fetchCloudRateQuotes({
+    fetchImpl: dispatcher,
+    now: () => NOW_MS,
+    verifiedQuotes: async () => [quote("USD", 300, staleCapturedAt)]
+  });
+
+  assert.deepEqual(rates.map(item => [item.code, item.rate, item.stale]), [["USD", 300, true]]);
+});
+
+test("resolveExchangeRates muestra la copia verificada vencida (stale) en lugar de fallar con la nube caída", async () => {
+  calls = [];
+  script = {
+    local: credential503,
+    render: () => {
+      throw new TypeError("CORS bloqueado en la consulta directa");
+    }
+  };
+
+  const staleCapturedAt = new Date(NOW_MS - 40 * 60 * 1000).toISOString();
+  const resolved = await resolveExchangeRates({
+    session: null,
+    fetchImpl: dispatcher,
+    now: () => NOW_MS,
+    verifiedQuotes: async () => [quote("USD", 300, staleCapturedAt)]
+  });
+
+  assert.equal(resolved.source, "fallback");
+  assert.equal(resolved.stale, true);
+  assert.equal(resolved.error, undefined);
+  assert.deepEqual(resolved.rates.map(item => [item.code, item.rate]), [["USD", 300]]);
+});
+
+test("un reloj de equipo atrasado no descarta la copia verificada (fechas del futuro)", async () => {
+  calls = [];
+  script = {
+    render: () => {
+      throw new Error("Render no debe consultarse con una copia válida");
+    }
+  };
+
+  // El servidor va 2 h por delante del reloj del equipo.
+  const futureCapturedAt = new Date(NOW_MS + 2 * 60 * 60 * 1000).toISOString();
+  const rates = await fetchCloudRateQuotes({
+    fetchImpl: dispatcher,
+    now: () => NOW_MS,
+    verifiedQuotes: async () => [quote("USD", 455, futureCapturedAt)]
+  });
+
+  assert.deepEqual(rates.map(item => [item.code, item.rate]), [["USD", 455]]);
+  assert.equal(calls.length, 0, "no se consultó Render");
+});
+
 /* ------------------------------------------------------------------ */
 /* Sin Internet: última tasa guardada + aviso claro, sin red           */
 /* ------------------------------------------------------------------ */

@@ -518,8 +518,10 @@ async function fetchVerifiedSupabaseQuotes(): Promise<HubRateQuote[]> {
     if (!client) return [];
     const startedAt = Date.now();
     // 40 grupos cubren la ventana de 6 h con la cadencia real del cron.
+    // `p_since` nulo: la ventana la aplica el servidor (now() - 6 h). Así la
+    // consulta no depende del reloj del equipo, que puede estar desajustado.
     const { data, error } = await client.rpc("get_verified_exchange_rate_history", {
-      p_since: new Date(Date.now() - VERIFIED_RATE_WINDOW_MS).toISOString(),
+      p_since: null,
       p_limit: 40
     });
     if (error || !Array.isArray(data) || !data.length) {
@@ -539,9 +541,13 @@ async function fetchVerifiedSupabaseQuotes(): Promise<HubRateQuote[]> {
  * Copia verificada fresca: la captura más reciente del conjunto debe tener
  * ≤ 30 min (la misma frescura que la nube directa), mientras cada código puede
  * conservar su última observación hasta el final de la ventana consultada.
- * Devuelve `[]` cuando el dispositivo está sin Internet, no hay copia, está
- * vencida o el proveedor inyectado falla; así la consulta directa a Render
- * sigue siendo el siguiente respaldo.
+ * Devuelve `[]` solo cuando el dispositivo está sin Internet, no hay copia,
+ * está claramente vencida (más de 6 h por el reloj del equipo) o el proveedor
+ * inyectado falla. Las cotizaciones presentes pero no frescas se devuelven
+ * marcadas `stale` para que el llamador decida: la nube directa primero y la
+ * copia vencida como último recurso antes de fallar. Un reloj de equipo
+ * atrasado hace que la copia parezca «del futuro»: se acepta igual, porque el
+ * RPC ya devuelve los grupos más nuevos del servidor.
  */
 async function readVerifiedRateQuotes(options: HubRatesOptions): Promise<HubRateQuote[]> {
   if (isDeviceOffline()) return [];
@@ -554,11 +560,16 @@ async function readVerifiedRateQuotes(options: HubRatesOptions): Promise<HubRate
       .map(quote => Date.parse(quote && quote.capturedAt ? quote.capturedAt : ""))
       .filter(Number.isFinite);
     const newest = capturedTimes.reduce((latest, t) => Math.max(latest, t), 0);
-    if (newest <= 0 || nowMs - newest > RATE_SOURCE_FRESH_MS) return [];
-    return quotes.filter(quote => {
-      const captured = Date.parse(quote && quote.capturedAt ? quote.capturedAt : "");
-      return Number.isFinite(captured) && nowMs - captured <= VERIFIED_RATE_WINDOW_MS;
-    });
+    if (newest <= 0 || (newest < nowMs && nowMs - newest > VERIFIED_RATE_WINDOW_MS)) return [];
+    return quotes
+      .filter(quote => {
+        const captured = Date.parse(quote && quote.capturedAt ? quote.capturedAt : "");
+        return Number.isFinite(captured) && nowMs - captured <= VERIFIED_RATE_WINDOW_MS;
+      })
+      .map(quote => {
+        const captured = Date.parse(quote && quote.capturedAt ? quote.capturedAt : "");
+        return nowMs - captured > RATE_SOURCE_FRESH_MS ? { ...quote, stale: true } : quote;
+      });
   } catch {
     return [];
   }
@@ -566,19 +577,23 @@ async function readVerifiedRateQuotes(options: HubRatesOptions): Promise<HubRate
 
 /**
  * Respaldo de nube: primero la copia verificada de Supabase (CORS abierto,
- * funciona en escritorio y APK, ≤ 5 min de antigüedad con el cron sano) y, si
- * falta o está vencida, una sola consulta directa a la nube de producción. El
- * tiempo de espera de la consulta directa es generoso porque una instancia
+ * funciona en escritorio y APK). Si está fresca se usa sin tocar Render; si
+ * falta o está vencida se hace una sola consulta directa a la nube de
+ * producción (que sí tiene la credencial de elTOQUE) y, solo si esa consulta
+ * falla o no trae cotizaciones, se conserva la copia verificada vencida como
+ * último recurso en lugar de fallar: con Internet el dueño siempre ve tasas.
+ * El tiempo de espera de la consulta directa es generoso porque una instancia
  * gratuita de Render puede tardar decenas de segundos en despertar; sin
  * reintento para no duplicar esa espera. Lanza con un mensaje neutro (sin
- * credenciales ni nombres de red) cuando no hay respuesta válida.
+ * credenciales ni nombres de red) solo cuando no hay respuesta válida de
+ * ninguna fuente.
  */
 export const CLOUD_RATES_TIMEOUT_MS = 30_000;
 
 export async function fetchCloudRateQuotes(options: HubRatesOptions = {}): Promise<HubRateQuote[]> {
   if (isCloudSurface()) return [];
   const verified = await readVerifiedRateQuotes(options);
-  if (verified.length) return verified;
+  if (verified.some(quote => !quote.stale)) return verified;
   const doFetch = options.fetchImpl
     ?? ((input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init));
   const clock = options.now ?? (() => Date.now());
@@ -587,32 +602,39 @@ export async function fetchCloudRateQuotes(options: HubRatesOptions = {}): Promi
     ? AbortSignal.timeout(CLOUD_RATES_TIMEOUT_MS)
     : undefined;
   const startedAt = Date.now();
-  let response: Response;
   try {
-    response = await doFetch(endpoint, {
+    const response = await doFetch(endpoint, {
       headers: { Accept: "application/json" },
       cache: "no-store",
       ...(signal ? { signal } : {})
     });
+    if (!response.ok) {
+      recordRequest("rates/cloud", { ms: Date.now() - startedAt, ok: false });
+      if (verified.length) return verified;
+      throw new Error(
+        response.status === 429
+          ? "Se alcanzó el límite de consultas de tasa; se reintentará más tarde."
+          : "La consulta de tasa no está disponible en este momento; se conserva la última tasa conocida."
+      );
+    }
+    const body: unknown = await response.json().catch(() => null);
+    const rates = normalizeLocalRatesPayload(body, clock());
+    recordRequest("rates/cloud", { ms: Date.now() - startedAt, ok: rates.length > 0 });
+    if (!rates.length) {
+      if (verified.length) return verified;
+      throw new Error("La consulta de tasa respondió sin cotizaciones válidas; se conserva la última tasa conocida.");
+    }
+    return rates;
   } catch {
+    // Fallo de red o CORS en la consulta directa: la copia verificada vencida
+    // (si existe) evita la pantalla vacía; sin ella se conserva el aviso claro.
+    if (verified.length) {
+      recordRequest("rates/cloud", { ms: Date.now() - startedAt, ok: true });
+      return verified;
+    }
     recordRequest("rates/cloud", { ms: Date.now() - startedAt, ok: false });
     throw new Error("No se pudo consultar la tasa automática en la nube; se conserva la última tasa conocida.");
   }
-  if (!response.ok) {
-    recordRequest("rates/cloud", { ms: Date.now() - startedAt, ok: false });
-    throw new Error(
-      response.status === 429
-        ? "Se alcanzó el límite de consultas de tasa; se reintentará más tarde."
-        : "La consulta de tasa no está disponible en este momento; se conserva la última tasa conocida."
-    );
-  }
-  const body: unknown = await response.json().catch(() => null);
-  const rates = normalizeLocalRatesPayload(body, clock());
-  recordRequest("rates/cloud", { ms: Date.now() - startedAt, ok: rates.length > 0 });
-  if (!rates.length) {
-    throw new Error("La consulta de tasa respondió sin cotizaciones válidas; se conserva la última tasa conocida.");
-  }
-  return rates;
 }
 
 /* ------------------------------------------------------------------ */

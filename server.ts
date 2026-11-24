@@ -932,7 +932,17 @@ async function startServer() {
   });
 
   const exchangeRates = createExchangeRateProvider();
+  // CORS abierto: escritorio (http://127.0.0.1:<puerto>) y el WebView del APK
+  // consultan esta ruta como respaldo de nube; sin estas cabeceras el
+  // navegador bloquea la respuesta aunque haya Internet.
+  app.options('/api/exchange-rates', (_req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Accept');
+    return res.status(204).end();
+  });
   app.get('/api/exchange-rates', rateLimitExchange, async (_req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
     const result = await exchangeRates(process.env.ELTOQUE_API_TOKEN || '');
     res.setHeader('Cache-Control', 'no-store');
     return res.status(result.status).json(result.body);
