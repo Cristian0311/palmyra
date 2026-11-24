@@ -1,25 +1,94 @@
 import { useEffect } from 'react';
 import { runAutoRateSync } from '../services/autoExchangeRate';
+import { RATE_TARGET_MS } from '../services/lanHub/rateScheduler';
+import { getHubSession } from '../services/lanHub/session';
 
-const CHECK_MS = 5 * 60 * 1000;
+/**
+ * Revisión normal: la misma cadencia del hub (45 min). No hay bucles de 25
+ * minutos ni consultas propias a elTOQUE desde el renderer.
+ */
+export const AUTO_RATE_CHECK_MS = RATE_TARGET_MS;
+/** Reintento de la LAN mientras el hub no responda (no toca Internet). */
+export const AUTO_RATE_HUB_RETRY_MS = 10 * 60 * 1000;
 const FIRST_CHECK_DELAY_MS = 6000;
 
-/** Revisa la cotización de elTOQUE mientras la aplicación permanezca abierta. */
+/** Contexto de la decisión; `visibility` es `document.visibilityState`. */
+export interface AutoRateRunState {
+  /** `document.visibilityState`; solo se bloquea con `hidden`. */
+  visibility?: string | null;
+  /** `navigator.onLine`; sin `navigator` se asume red disponible. */
+  online: boolean;
+  /** Hay una sesión persistida con el hub LAN (`getHubSession`). */
+  hasHubSession: boolean;
+}
+
+/**
+ * Decisión pura y testeable: solo se consulta la tasa con la pestaña visible y
+ * cuando hay Internet O una sesión con el hub LAN. Un cliente de la red local
+ * sin salida a Internet igual pide su tasa al hub.
+ */
+export function shouldRunAutoRates(state: AutoRateRunState): boolean {
+  if (!state) return false;
+  if (state.visibility === 'hidden') return false;
+  return state.online === true || state.hasHubSession === true;
+}
+
+/** `navigator` puede no existir (SSR/pruebas); sin él se asume red disponible. */
+function isOnline(): boolean {
+  if (typeof navigator === 'undefined' || typeof navigator.onLine !== 'boolean') return true;
+  return navigator.onLine;
+}
+
+/** Sesión de hub disponible; indexado/privado puede fallar y se trata como «sin hub». */
+async function readHasHubSession(): Promise<boolean> {
+  try {
+    return (await getHubSession()) !== null;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Revisa la cotización mientras la aplicación permanezca abierta.
+ *
+ * - Corre si hay red o si el equipo está emparejado con un hub LAN.
+ * - No trabaja con la pestaña oculta.
+ * - Revisa cada 45 min (la cadencia del hub) y refresca al volver `online`.
+ * - Si hay sesión de hub, reintenta la LAN cada 10 min aunque
+ *   `navigator.onLine` siga en false (la LAN no necesita Internet).
+ */
 export function useAutoRateSync() {
   useEffect(() => {
-    const run = () => {
-      if (document.visibilityState === 'hidden' || !navigator.onLine) return;
+    let disposed = false;
+
+    /**
+     * Un solo intento: visible y (red o hub). `requireHub` es el reintento de
+     * los 10 minutos, que solo tiene sentido si el equipo sigue emparejado.
+     */
+    const attempt = async (requireHub: boolean) => {
+      if (disposed || document.visibilityState === 'hidden') return;
+      const hasHubSession = await readHasHubSession();
+      if (disposed || (requireHub && !hasHubSession)) return;
+      if (!shouldRunAutoRates({ visibility: document.visibilityState, online: isOnline(), hasHubSession })) return;
       void runAutoRateSync().catch(() => { /* la fuente es opcional */ });
     };
-    const initial = window.setTimeout(run, FIRST_CHECK_DELAY_MS);
-    const timer = window.setInterval(run, CHECK_MS);
-    const onVisible = () => { if (document.visibilityState === 'visible') run(); };
-    window.addEventListener('online', run);
+
+    const run = () => attempt(false);
+    const runHubRetry = () => attempt(true);
+
+    const initial = window.setTimeout(() => { void run(); }, FIRST_CHECK_DELAY_MS);
+    const timer = window.setInterval(() => { void run(); }, AUTO_RATE_CHECK_MS);
+    const hubTimer = window.setInterval(() => { void runHubRetry(); }, AUTO_RATE_HUB_RETRY_MS);
+    const onOnline = () => { void run(); };
+    const onVisible = () => { if (document.visibilityState === 'visible') void run(); };
+    window.addEventListener('online', onOnline);
     document.addEventListener('visibilitychange', onVisible);
     return () => {
+      disposed = true;
       window.clearTimeout(initial);
       window.clearInterval(timer);
-      window.removeEventListener('online', run);
+      window.clearInterval(hubTimer);
+      window.removeEventListener('online', onOnline);
       document.removeEventListener('visibilitychange', onVisible);
     };
   }, []);

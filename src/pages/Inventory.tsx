@@ -814,6 +814,7 @@ export default function Inventory() {
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted group-focus-within:text-indigo-500 transition-colors" />
             <input 
               type="text" 
+              aria-label="Buscar productos por nombre, SKU o código"
               placeholder="Buscar por nombre, SKU, código..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -829,7 +830,8 @@ export default function Inventory() {
               <select 
                 value={selectedBranch}
                 onChange={(e) => setSelectedBranch(e.target.value)}
-                className="w-full pl-6 pr-7 h-8 bg-subtle border border-base text-primary rounded-lg text-[9px] sm:text-[9px] font-bold outline-none hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
+                aria-label="Filtrar por sucursal"
+                className="w-full pl-6 pr-7 h-8 bg-subtle border border-base text-primary rounded-lg text-[9px] sm:text-[9px] font-bold outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
                 title="Filtrar por sucursal"
               >
                 {!isBranchRestricted && <option value="all">Sucursal</option>}
@@ -846,7 +848,8 @@ export default function Inventory() {
               <select 
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="w-full pl-6 pr-5 h-7 bg-subtle border border-base text-primary rounded-lg text-[8px] sm:text-[9px] font-bold outline-none hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
+                aria-label="Filtrar por categoría"
+                className="w-full pl-6 pr-5 h-7 bg-subtle border border-base text-primary rounded-lg text-[8px] sm:text-[9px] font-bold outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
                 title="Filtrar por categoría"
               >
                 <option value="all">Categoría</option>
@@ -863,7 +866,8 @@ export default function Inventory() {
               <select 
                 value={stockFilter}
                 onChange={(e) => setStockFilter(e.target.value as any)}
-                className="w-full px-6 pr-7 h-8 bg-subtle border border-base text-primary rounded-lg text-[9px] sm:text-[9px] font-bold outline-none hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
+                aria-label="Filtrar por stock"
+                className="w-full px-6 pr-7 h-8 bg-subtle border border-base text-primary rounded-lg text-[9px] sm:text-[9px] font-bold outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
                 title="Filtrar por stock"
               >
                 <option value="all">Stock</option>
@@ -882,6 +886,8 @@ export default function Inventory() {
             <button 
               onClick={() => setViewMode('table')}
               title="Vista Lista"
+              aria-label="Vista lista"
+              aria-pressed={viewMode === 'table'}
               className={cn(
                 "p-1.5 rounded-md transition-all",
                 viewMode === 'table' ? "bg-primary text-indigo-600 shadow-xs ring-1 ring-black/5" : "text-muted hover:text-primary"
@@ -892,6 +898,8 @@ export default function Inventory() {
             <button 
               onClick={() => setViewMode('grid')}
               title="Vista Cuadrícula Compacta"
+              aria-label="Vista cuadrícula"
+              aria-pressed={viewMode === 'grid'}
               className={cn(
                 "p-1.5 rounded-md transition-all",
                 viewMode === 'grid' ? "bg-primary text-indigo-600 shadow-xs ring-1 ring-black/5" : "text-muted hover:text-primary"
@@ -1042,13 +1050,13 @@ export default function Inventory() {
                 <div className="py-12 text-center text-sm font-bold text-muted">No hay productos que coincidan con la búsqueda.</div>
               )}
             </div>
-            <table className="hidden md:table w-full text-left border-collapse min-w-[700px]">
+            <table aria-label="Productos en edición masiva" className="hidden md:table w-full text-left border-collapse min-w-[700px]">
               <thead className="sticky top-0 z-10 bg-slate-50 dark:bg-slate-800 border-b border-base">
                 <tr>
-                  <th className="px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest">Producto</th>
-                  <th className="px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest">SKU</th>
-                  <th className="px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest text-center">Precio de Venta ({baseCurrency.symbol})</th>
-                  <th className="px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest text-center">Salario/Comisión (CUP)</th>
+                  <th scope="col" className="px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest">Producto</th>
+                  <th scope="col" className="px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest">SKU</th>
+                  <th scope="col" className="px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest text-center">Precio de Venta ({baseCurrency.symbol})</th>
+                  <th scope="col" className="px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest text-center">Salario/Comisión (CUP)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-base">
@@ -1080,6 +1088,7 @@ export default function Inventory() {
                         <div className="flex justify-center">
                           <input
                             type="number"
+                            aria-label={`Precio de venta de ${product.name}`}
                             value={changes.price !== undefined ? changes.price : product.price}
                             onChange={(e) => handleBulkChange(rowKey, 'price', parseFloat(e.target.value) || 0)}
                             className={cn(
@@ -1093,6 +1102,7 @@ export default function Inventory() {
                         <div className="flex justify-center">
                           <input
                             type="number"
+                            aria-label={`Comisión de ${product.name}`}
                             value={changes.commissionValue !== undefined ? changes.commissionValue : (product.commissionValue || 0)}
                             onChange={(e) => handleBulkChange(rowKey, 'commissionValue', parseFloat(e.target.value) || 0)}
                             className={cn(
@@ -1121,12 +1131,13 @@ export default function Inventory() {
         viewMode === 'table' ? (
           <div className="bg-secondary rounded-[2rem] shadow-sm border border-base overflow-hidden flex-1 flex flex-col min-h-[500px] w-full">
           <div className="overflow-x-auto overflow-y-auto flex-1 h-full custom-scrollbar w-full">
-            <table className="w-full text-left border-collapse table-fixed min-w-[950px]">
+            <table aria-label="Productos del inventario" className="w-full text-left border-collapse table-fixed min-w-[950px]">
               <thead>
                 <tr className="bg-secondary border-b border-base sticky top-0 z-30 shadow-sm translate-y-[-1px]">
-                  <th className="w-14 px-4 py-3 bg-secondary">
+                  <th scope="col" className="w-14 px-4 py-3 bg-secondary">
                     <input 
                       type="checkbox" 
+                      aria-label="Seleccionar todos los productos"
                       className="rounded border-base text-indigo-600 focus:ring-indigo-500 bg-primary"
                       checked={selectedItems.length === inventoryView.length && inventoryView.length > 0}
                       onChange={(e) => {
@@ -1135,12 +1146,12 @@ export default function Inventory() {
                       }}
                     />
                   </th>
-                  <th className="w-1/4 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Producto / Cat</th>
-                  <th className="w-36 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">SKU / CB</th>
-                  <th className="w-28 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Garantía</th>
-                  <th className="w-36 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Precio (CUP)</th>
-                  <th className="w-40 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Stock Actual</th>
-                  <th className="w-28 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest text-right bg-secondary">Acciones</th>
+                  <th scope="col" className="w-1/4 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Producto / Cat</th>
+                  <th scope="col" className="w-36 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">SKU / CB</th>
+                  <th scope="col" className="w-28 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Garantía</th>
+                  <th scope="col" className="w-36 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Precio (CUP)</th>
+                  <th scope="col" className="w-40 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Stock Actual</th>
+                  <th scope="col" className="w-28 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest text-right bg-secondary">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-subtle">
@@ -1152,6 +1163,7 @@ export default function Inventory() {
                     <td className="px-4 py-3">
                       <input 
                         type="checkbox" 
+                        aria-label={`Seleccionar ${item.name}`}
                         checked={selectedItems.includes(item.id)}
                         onChange={() => {
                           setSelectedItems(prev => prev.includes(item.id) ? prev.filter(id => id !== item.id) : [...prev, item.id]);
@@ -1247,6 +1259,7 @@ export default function Inventory() {
                           }}
                           className="text-muted hover:text-emerald-600 transition-colors p-1.5 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-950/50 border border-base shadow-sm"
                           title="Gestionar Stock"
+                          aria-label={`Gestionar stock de ${item.name}`}
                         >
                           <PackagePlus className="w-3.5 h-3.5" />
                         </button>
@@ -1258,12 +1271,14 @@ export default function Inventory() {
                             setShowAddModal(true);
                           }}
                           className="text-muted hover:text-indigo-600 transition-colors p-1.5 rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-base shadow-sm"
+                          aria-label={`Editar ${item.name}`}
                         >
                           <Edit className="w-3.5 h-3.5" />
                         </button>
                         <button 
                           onClick={() => setPendingDelete({ kind: 'product', id: item.id, name: item.name })}
                           className="text-muted hover:text-rose-600 transition-colors p-1.5 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/50 border border-base shadow-sm"
+                          aria-label={`Eliminar ${item.name}`}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -1744,6 +1759,7 @@ export default function Inventory() {
                                   <input 
                                     type="number" 
                                     min="0"
+                                    aria-label={`Stock mínimo de ${variant || 'Stock Base'} en ${branch.name}`}
                                     value={readStockDraft(managingStockProduct.id, branch.id, variant, level.quantity, level.minQuantity).minQuantity} 
                                     placeholder="0"
                                     onFocus={(e) => e.target.select()}
@@ -1758,6 +1774,7 @@ export default function Inventory() {
                                 <input 
                                     type="number" 
                                     min="0"
+                                    aria-label={`Cantidad de ${variant || 'Stock Base'} en ${branch.name}`}
                                     value={readStockDraft(managingStockProduct.id, branch.id, variant, level.quantity, level.minQuantity).quantity} 
                                     placeholder="0"
                                     onFocus={(e) => e.target.select()}

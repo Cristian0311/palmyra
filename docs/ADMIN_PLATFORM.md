@@ -9,7 +9,7 @@ PALMYRA Admin es la consola privada del dueño/operador del SaaS. Se mantiene co
 - admin/ contiene la aplicación Vite + React del panel.
 - admin/supabase.ts crea el cliente con una clave publicable; nunca debe contener service_role ni una clave secreta.
 - admin/platformAdminApi.ts consume las RPC administrativas ya existentes.
-- admin/AdminApp.tsx contiene el shell y las vistas administrativas.
+- admin/AdminApp.tsx orquesta la aplicación y admin/AdminShell.tsx provee el shell; las vistas viven en admin/views/.
 - admin/admin.css contiene el sistema visual responsive y las reglas de reduced motion.
 
 ## Render

@@ -11,6 +11,28 @@ const writeErrors = new Map<string, Error>();
 const legacyKey = (scope: string) => 'palmyra-local-state__' + scope;
 const recoveryKey = (scope: string) => 'palmyra-local-state-recovery__' + scope;
 
+type LocalStateListener = (raw: string) => void;
+const listeners = new Set<LocalStateListener>();
+
+/** Avisa cuando el estado legado quedó guardado; lo usa la escritura en sombra. */
+export function subscribeLocalStateStorage(listener: LocalStateListener): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
+
+function notifySaved(raw: string): void {
+  for (const listener of listeners) {
+    try { listener(raw); } catch {}
+  }
+}
+
+/** Lee el snapshot legado del usuario/empresa activos, sin montar un store. */
+export async function readLocalStateStorage(): Promise<string | null> {
+  const scope = getPalmyraLocalScopeKey();
+  if (!scope) return null;
+  return read(scope);
+}
+
 function openDb(scope: string): Promise<IDBDatabase | null> {
   if (typeof indexedDB === 'undefined') return Promise.resolve(null);
   const existing = databases.get(scope);
@@ -68,10 +90,12 @@ async function writeNow(scope: string, value: string): Promise<void> {
       });
       try { localStorage.removeItem(recoveryKey(scope)); localStorage.removeItem(legacyKey(scope)); } catch {}
       writeErrors.delete(scope);
+      notifySaved(value);
     } catch {
       try {
         localStorage.setItem(recoveryKey(scope), value);
         writeErrors.delete(scope);
+        notifySaved(value);
       } catch {
         const error = new Error('No se pudo guardar en este dispositivo. Libera espacio y vuelve a intentar antes de cerrar la aplicación.');
         writeErrors.set(scope, error);

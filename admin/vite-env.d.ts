@@ -2,6 +2,7 @@
 
 declare const __ADMIN_BUILD__: string;
 declare const __ADMIN_BUILT_AT__: string;
+declare const __ADMIN_VERSION__: string;
 
 interface ImportMetaEnv {
   readonly VITE_SUPABASE_URL?: string;

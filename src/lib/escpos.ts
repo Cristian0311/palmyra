@@ -1,3 +1,5 @@
+import { isDesktopRuntime } from './desktopRuntime';
+
 export const ESCPOS_COMMANDS = {
   INIT: new Uint8Array([0x1b, 0x40]),
   LF: new Uint8Array([0x0a]),
@@ -67,10 +69,17 @@ export function isInsideIframe(): boolean {
 export function getHardwareCapabilities() {
   const serialSupported = typeof navigator !== 'undefined' && 'serial' in navigator;
   const bluetoothSupported = typeof navigator !== 'undefined' && 'bluetooth' in navigator;
+  const inIframe = isInsideIframe();
   return {
     serialSupported,
     bluetoothSupported,
-    inIframe: isInsideIframe()
+    inIframe,
+    // Campos añadidos: el contrato anterior se conserva tal cual.
+    // En Electron la ventana expone los puentes de escritorio (preload aislado).
+    isDesktop: isDesktopRuntime(),
+    // Dentro de un marco las APIs de hardware lanzan SecurityError: cuenta como
+    // no disponible aunque el objeto del navegador exista.
+    directPrintingSupported: (serialSupported || bluetoothSupported) && !inIframe
   };
 }
 

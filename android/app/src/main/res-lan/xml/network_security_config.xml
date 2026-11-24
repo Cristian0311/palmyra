@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    VARIANTE LAN · la incluye android/build-apk.sh con la opción LAN mediante overlay de
+    aapt2 (res-lan sustituye a res/xml/network_security_config.xml).
+
+    Permite tráfico en claro porque el hub de la red local habla HTTP: el
+    teléfono se conecta a http://<IP-privada>:<puerto> del equipo que hace de
+    hub (192.168.x.x, 10.x.x.x o 172.16-31.x.x). Sin cleartext la app no puede
+    hablar con ese hub y el POS queda aislado de la sucursal.
+
+    Por qué no se limita por dominio: la IP del hub cambia con la red de cada
+    negocio y <network-security-config> no admite rangos CIDR ni comodines de
+    IP. La alternativa (HTTPS con certificado propio) obligaría a instalar una
+    CA en cada teléfono y no aporta confidencialidad real dentro de la LAN.
+
+    La nube sigue siendo solo HTTPS: este archivo no se incluye en el APK
+    estándar, que mantiene el cleartext restringido a 127.0.0.1/localhost.
+-->
+<network-security-config>
+    <!-- Solo en la variante LAN. El APK estándar no embebe este archivo. -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

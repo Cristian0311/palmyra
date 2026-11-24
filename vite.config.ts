@@ -5,18 +5,14 @@ import fs from 'fs';
 import { defineConfig } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-// La versión visible de PALMYRA vive en app-version.json. package.json sigue
-// siendo la fuente del versionCode del APK (debe crecer siempre), pero la
-// versión que ve el cliente se cambia solo cuando el producto lo autoriza.
+// package.json es la única fuente de versión: la usa el instalador, el APK,
+// el manifiesto /version.json y la etiqueta visible. app-version.json quedó
+// obsoleto y provocaba que la app mostrara una versión distinta a la instalada.
 const appVersion = (() => {
   try {
-    return JSON.parse(fs.readFileSync(path.resolve(__dirname, 'app-version.json'), 'utf8')).version || '0.0.0';
+    return JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8')).version || '0.0.0';
   } catch {
-    try {
-      return JSON.parse(fs.readFileSync(path.resolve(__dirname, 'package.json'), 'utf8')).version || '0.0.0';
-    } catch {
-      return '0.0.0';
-    }
+    return '0.0.0';
   }
 })();
 

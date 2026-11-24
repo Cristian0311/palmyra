@@ -1,5 +1,6 @@
 import { getSupabase } from "../lib/supabase";
 import { platformAdminError } from "./platformAdmin";
+import { recordRequest } from "./requestBudget";
 
 export interface PlatformOverview {
   companies_total: number;
@@ -153,20 +154,34 @@ export interface PlatformUserDetail {
   }>;
 }
 
-async function rpcList<T>(name: string, args: Record<string, unknown> = {}): Promise<T[]> {
+/**
+ * Toda RPC de la consola se mide (F6): ruta, latencia y error en el registro
+ * local, para que el panel de presupuesto muestre el costo real de la consola.
+ */
+async function callRpc<T>(name: string, args: Record<string, unknown> = {}): Promise<T> {
   const supabase = getSupabase();
   if (!supabase) throw new Error("Supabase no está configurado.");
-  const { data, error } = await supabase.rpc(name, args);
-  if (error) throw new Error(platformAdminError(error));
+  const startedAt = Date.now();
+  let result: { data: unknown; error: unknown };
+  try {
+    result = await supabase.rpc(name, args);
+  } catch (networkError) {
+    // Fallo de transporte: se mide una sola vez y se propaga.
+    recordRequest(`admin/${name}`, { ms: Date.now() - startedAt, ok: false });
+    throw networkError;
+  }
+  recordRequest(`admin/${name}`, { ms: Date.now() - startedAt, ok: !result.error });
+  if (result.error) throw new Error(platformAdminError(result.error));
+  return result.data as T;
+}
+
+async function rpcList<T>(name: string, args: Record<string, unknown> = {}): Promise<T[]> {
+  const data = await callRpc<unknown>(name, args);
   return Array.isArray(data) ? (data as T[]) : [];
 }
 
 export async function loadPlatformOverview(): Promise<PlatformOverview> {
-  const supabase = getSupabase();
-  if (!supabase) throw new Error("Supabase no está configurado.");
-  const { data, error } = await supabase.rpc("get_platform_overview");
-  if (error) throw new Error(platformAdminError(error));
-  return (data || {}) as PlatformOverview;
+  return (await callRpc<PlatformOverview>("get_platform_overview")) || ({} as PlatformOverview);
 }
 
 export function loadPlanRequests(
@@ -192,24 +207,19 @@ export function loadPlatformPlans() {
 }
 
 export async function loadPlatformCompanyDetail(companyId: string): Promise<PlatformCompanyDetail> {
-  const supabase = getSupabase();
-  if (!supabase) throw new Error("Supabase no está configurado.");
-  const { data, error } = await supabase.rpc("get_platform_company_detail", { p_company_id: companyId });
-  if (error) throw new Error(platformAdminError(error));
-  return data as PlatformCompanyDetail;
+  return callRpc<PlatformCompanyDetail>("get_platform_company_detail", { p_company_id: companyId });
 }
 
 export async function assignPlatformCompanyPlan(companyId: string, planCode: string, months = 1, note?: string) {
-  const supabase = getSupabase();
-  if (!supabase) throw new Error("Supabase no está configurado.");
-  const { data, error } = await supabase.rpc("set_platform_company_plan_v2", {
-    p_company_id: companyId,
-    p_plan_code: planCode,
-    p_months: planCode === "free" ? 0 : months,
-    p_note: note?.trim() || null,
-  });
-  if (error) throw new Error(platformAdminError(error));
-  return data as { ok: boolean; plan_name: string; months: number; current_period_end?: string | null };
+  return callRpc<{ ok: boolean; plan_name: string; months: number; current_period_end?: string | null }>(
+    "set_platform_company_plan_v2",
+    {
+      p_company_id: companyId,
+      p_plan_code: planCode,
+      p_months: planCode === "free" ? 0 : months,
+      p_note: note?.trim() || null,
+    }
+  );
 }
 
 export function loadPlatformUsers(search?: string, limit = 300) {
@@ -217,11 +227,7 @@ export function loadPlatformUsers(search?: string, limit = 300) {
 }
 
 export async function loadPlatformUserDetail(userId: string): Promise<PlatformUserDetail> {
-  const supabase = getSupabase();
-  if (!supabase) throw new Error("Supabase no está configurado.");
-  const { data, error } = await supabase.rpc("get_platform_user_detail", { p_user_id: userId });
-  if (error) throw new Error(platformAdminError(error));
-  return data as PlatformUserDetail;
+  return callRpc<PlatformUserDetail>("get_platform_user_detail", { p_user_id: userId });
 }
 
 export function loadPlatformSupportRequests(status = "all", limit = 200) {

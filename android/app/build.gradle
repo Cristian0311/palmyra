@@ -1,8 +1,59 @@
 apply plugin: 'com.android.application'
 
 
-def appVersionName = '1.0.25'
-def appVersionCode = 10025
+def packageJson = new groovy.json.JsonSlurper().parseText(file('../../package.json').text)
+def appVersionName = String(packageJson.version)
+// Mismo cálculo que android/build-apk.sh: 1.3.5 -> 10305. El esquema exige
+// major.minor.patch numéricos; un sufijo (-beta, +build) no es representable
+// en versionCode y rompería el instalador, así que se falla con un mensaje
+// claro en vez de con un NumberFormatException.
+if (!(appVersionName ==~ /^\d+\.\d+\.\d+$/)) {
+    throw new GradleException(
+        "package.json version debe ser major.minor.patch numérico para el APK (recibido: ${appVersionName})."
+    )
+}
+def appVersionCode = appVersionName.tokenize('.').inject(0) { total, part -> total * 100 + part.toInteger() }
+
+// ─── Firma de release ────────────────────────────────────────────────────────
+// NUNCA se versionan el keystore ni las contraseñas: el archivo vive fuera del
+// repo y el pipeline los inyecta como secretos. Para firmar de verdad hacen
+// falta estas tres variables de entorno (la cuarta es opcional):
+//   ANDROID_KEYSTORE_PATH      ruta al .jks/.keystore, fuera del repo
+//   ANDROID_KEYSTORE_PASSWORD  contraseña del keystore
+//   ANDROID_KEY_ALIAS          alias de la clave de release
+//   ANDROID_KEY_PASSWORD       contraseña de la clave (si difiere de la del store)
+// Contrato idéntico a android/build-apk.sh: con las tres primeras presentes se
+// firma con la clave real; si falta alguna se usa la clave de depuración (APK
+// instalable fuera de la tienda, NO publicable) y se avisa en el log.
+def envTrim = { String name -> System.getenv(name)?.trim() ?: null }
+def keystorePath = envTrim('ANDROID_KEYSTORE_PATH')
+def keystorePassword = System.getenv('ANDROID_KEYSTORE_PASSWORD') ?: null
+def keyAlias = envTrim('ANDROID_KEY_ALIAS')
+def keyPassword = System.getenv('ANDROID_KEY_PASSWORD') ?: keystorePassword
+def keystoreFile = keystorePath ? file(keystorePath) : null
+def keystoreCredentialsReady = Boolean(keystorePath && keystorePassword && keyAlias)
+
+// Con las credenciales completas, una ruta inexistente es un error del
+// pipeline, no una degradación: publicar un APK firmado con la clave de
+// depuración por una ruta mal escrita sería peor que fallar aquí. Si solo hay
+// una ruta suelta (variables incompletas), se avisa y se usa la depuración,
+// igual que build-apk.sh.
+if (keystoreCredentialsReady && keystoreFile && !keystoreFile.isFile()) {
+    throw new GradleException(
+        "ANDROID_KEYSTORE_PATH no existe o no es un archivo: revisa la ruta del keystore de release."
+    )
+}
+
+def hasReleaseKeystore = keystoreCredentialsReady && keystoreFile != null && keystoreFile.isFile()
+def partialKeystore = !hasReleaseKeystore && Boolean(keystorePath || keystorePassword || keyAlias)
+if (partialKeystore) {
+    logger.warn('PALMYRA: firma de release incompleta; se necesitan a la vez ' +
+        'ANDROID_KEYSTORE_PATH, ANDROID_KEYSTORE_PASSWORD y ANDROID_KEY_ALIAS. ' +
+        'Se usará la clave de depuración.')
+} else if (!hasReleaseKeystore) {
+    logger.lifecycle('PALMYRA: sin keystore de release; el APK se firmará con la ' +
+        'clave de depuración (no publicable).')
+}
 
 android {
     namespace 'cu.palmyra.app'
@@ -16,14 +67,80 @@ android {
         versionName appVersionName
     }
 
-    buildTypes {
-        release {
-            minifyEnabled false
-            shrinkResources false
-            // Instalable fuera de la tienda: firma con la clave de depuración.
-            signingConfig signingConfigs.debug
+    // Dos sabores con la misma identidad de app:
+    //   standard: APK publicado; network_security_config solo permite cleartext
+    //             en 127.0.0.1/localhost.
+    //   lan:      APK para el hub HTTP de la red privada; res-lan sobrescribe
+    //             ese recurso con cleartext permitido. No se publica.
+    flavorDimensions += 'distribution'
+    productFlavors {
+        standard {
+            dimension 'distribution'
+        }
+        lan {
+            dimension 'distribution'
         }
     }
+
+    sourceSets {
+        // El sabor lan reutiliza el mismo directorio que usa build-apk.sh --lan;
+        // solo contiene xml/network_security_config.xml, sin duplicar recursos.
+        lan {
+            res.srcDirs = ['src/main/res-lan']
+        }
+    }
+
+    // Nombres de salida alineados con android/build-apk.sh y con
+    // scripts/check-release-assets.mjs: standard -> PALMYRA-Android.apk y
+    // lan -> PALMYRA-Android-LAN.apk. El sufijo LAN es la marca que
+    // /download/android y el verificador usan para rechazar el artefacto de red
+    // local; sin él, un APK Gradle del sabor lan pasaría por estándar.
+    applicationVariants.all { variant ->
+        variant.outputs.all { output ->
+            def publicName = variant.flavorName == 'lan'
+                ? 'PALMYRA-Android-LAN.apk'
+                : 'PALMYRA-Android.apk'
+            output.outputFileName = publicName
+        }
+    }
+
+    signingConfigs {
+        // El bloque release solo existe con credenciales completas; así un APK
+        // "release" nunca queda firmado a medias con un almacén vacío.
+        if (hasReleaseKeystore) {
+            release {
+                storeFile keystoreFile
+                storePassword keystorePassword
+                keyAlias keyAlias
+                keyPassword keyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            // minify/shrink apagados a propósito: no hay proguard-rules.pro y el
+            // APK depende del puente @JavascriptInterface de MainActivity, de
+            // NanoHTTPD y de los assets de la WebView. Activar R8 sin reglas de
+            // keep rompería el POS instalado; si se activa, añadir keep rules
+            // para cu.palmyra.app.** y org.nanohttpd.** y probar en el equipo
+            // real antes de publicar.
+            minifyEnabled false
+            shrinkResources false
+            // Sin keystore de release configurado se cae a la clave de
+            // depuración, igual que build-apk.sh: instalable fuera de la tienda
+            // pero NO publicable. Con las variables ANDROID_KEYSTORE_* presentes
+            // se firma con la clave real.
+            signingConfig hasReleaseKeystore ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    // Nota: los flags de seguridad (android:allowBackup="false" y
+    // android:usesCleartextTraffic="false" con excepción solo para el servidor
+    // local en res/xml/network_security_config.xml) viven en
+    // AndroidManifest.xml. build-apk.sh compila el manifiesto con aapt2
+    // directamente, sin procesar manifestPlaceholders, así que aquí no se
+    // declaran placeholders para no romper ese build.
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

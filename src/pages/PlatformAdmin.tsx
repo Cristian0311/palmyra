@@ -7,7 +7,8 @@ import {
   loadPlatformAdminSnapshot, loadPlatformUsage, platformAdminError,
   type PlatformSupportRequest, type PlatformSupportSettings,
 } from "../services/platformAdmin";
-import { loadPlatformOverview, loadPlatformPlans, type PlatformOverview, type PlatformPlan } from "../services/platformAdminConsole";
+import { loadPlatformOverview, loadPlatformPlans, loadPlanRequests, type PlatformOverview, type PlatformPlan } from "../services/platformAdminConsole";
+import { subscribePlanApprovalRealtime } from "../services/realtimeSync";
 import { getSupabase } from "../lib/supabase";
 import { useStore } from "../store/useStore";
 import { useDocumentScrollPage } from "../hooks/useDocumentScrollPage";
@@ -35,6 +36,12 @@ const EMPTY_SUPPORT: PlatformSupportSettings = {
   whatsapp_number: null, support_email: null, privacy_url: null,
   facebook_url: DEFAULT_FACEBOOK_URL, whatsapp_channel_url: null,
 };
+
+/**
+ * F6: respaldo de la aprobación de planes cuando la tabla no está publicada en
+ * Realtime. Una sola RPC por minuto y SOLO con la consola abierta y visible.
+ */
+const PLAN_REQUEST_POLL_MS = 60_000;
 
 export default function PlatformAdmin() {
   useDocumentScrollPage();
@@ -85,15 +92,58 @@ export default function PlatformAdmin() {
 
   // Sin sesión el error del servidor ("sin permisos") confunde: no hay cuenta.
   const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const [adminUserId, setAdminUserId] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
     const supabase = getSupabase();
     if (!supabase) { setSignedIn(false); return; }
     supabase.auth.getSession()
-      .then(({ data }) => { if (active) setSignedIn(Boolean(data.session)); })
+      .then(({ data }) => {
+        if (!active) return;
+        setSignedIn(Boolean(data.session));
+        setAdminUserId(data.session?.user?.id || null);
+      })
       .catch(() => { if (active) setSignedIn(null); });
     return () => { active = false; };
   }, []);
+
+  // F6: realtime de nube SOLO para la aprobación de planes, y solo mientras la
+  // consola está montada y visible. La operación de negocio no pasa por aquí.
+  useEffect(() => {
+    if (!adminUserId) return;
+    let active = true;
+    let timer: number | null = null;
+
+    const reloadRequests = async () => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      try {
+        const rows = await loadPlanRequests("pending", 300);
+        if (!active) return;
+        setRequests(rows as PlanRequestLite[]);
+        setUpdatedAt(new Date());
+      } catch {
+        // Sin conexión se conserva la última lista visible.
+      }
+    };
+
+    const unsubscribe = subscribePlanApprovalRealtime({
+      userId: adminUserId,
+      onChange: () => { void reloadRequests(); },
+    });
+
+    timer = window.setInterval(() => { void reloadRequests(); }, PLAN_REQUEST_POLL_MS);
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void reloadRequests();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+
+    return () => {
+      active = false;
+      unsubscribe();
+      if (timer) window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [adminUserId]);
 
   const refresh = useCallback(async () => {
     await load(true);

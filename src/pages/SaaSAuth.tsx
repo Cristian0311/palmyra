@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { ArrowRight, Check, Eye, EyeOff, Loader2, LockKeyhole, Mail, MailCheck, Send, ShieldCheck, Sparkles, Users, Warehouse, MonitorSmartphone } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { getSupabase } from "../lib/supabase";
+import { entryPathForSurface, lockDevAppSurface } from "../lib/appSurface";
 import { PalmyraWordmark } from "../components/PalmyraWordmark";
 import { getPlan } from "../config/saas";
 import { useDocumentScrollPage } from "../hooks/useDocumentScrollPage";
@@ -127,6 +128,9 @@ export default function SaaSAuth() {
   }, [params]);
 
   const finishAuth = async (credentialEmail?: string, credentialPassword?: string) => {
+    // Cada acceso nuevo debe terminar en la pantalla de descarga, aunque en
+    // desarrollo se haya abierto la app antes en esta pestaña.
+    lockDevAppSurface();
     const ctx = await withTimeout(
       loadSaaSContext(true),
       15000,
@@ -194,7 +198,8 @@ export default function SaaSAuth() {
         console.info("[PALMYRA] La precarga POS offline se reintentará cuando haya conexión.", offlinePosError);
       }
     }
-    window.location.replace("/");
+    // La cuenta quedó activa; en web se entra a la pantalla de descarga.
+    window.location.replace(entryPathForSurface());
   };
 
   // El error anterior se queda en pantalla aunque el usuario ya corrigió el
@@ -229,6 +234,9 @@ export default function SaaSAuth() {
     setError("");
     setMessage("");
     setBusy(true);
+    // La sesión puede quedar activa antes de que finishAuth navegue; si el
+    // permiso local de desarrollo sigue abierto, el inicio asomaría un instante.
+    lockDevAppSurface();
     try {
       if (mode === "reset") {
         if (!email.trim()) throw new Error("Escribe tu correo.");
@@ -317,7 +325,7 @@ export default function SaaSAuth() {
         if (!offlineContext) {
           throw new Error("No hay conexión y este dispositivo no tiene una sesión offline válida para ese correo. Conéctate una vez, inicia sesión y vuelve a intentarlo sin internet.");
         }
-        window.location.replace("/");
+        window.location.replace(entryPathForSurface());
         return;
       }
       const result = await withTimeout(
@@ -336,7 +344,7 @@ export default function SaaSAuth() {
         try {
           const offlineContext = await verifyOfflineSaaSCredential(email, password);
           if (offlineContext) {
-            window.location.replace("/");
+            window.location.replace(entryPathForSurface());
             return;
           }
         } catch (offlineError) {
@@ -356,7 +364,7 @@ export default function SaaSAuth() {
           <button onClick={() => navigate("/landing")} className="flex items-center gap-2.5" aria-label="Ir a la página de inicio de PALMYRA">
             <PalmyraWordmark className="h-8 w-auto sm:h-10" />
           </button>
-          <button onClick={() => navigate("/landing")} className="text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-[#6535C5]">Volver al inicio</button>
+          <button onClick={() => navigate("/landing")} className="text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-[#6535C5]">Volver al inicio</button>
         </div>
 
         <div className="grid lg:grid-cols-[.9fr_1.1fr] bg-white border border-violet-100 rounded-[26px] overflow-hidden shadow-[0_30px_90px_-52px_rgba(59,27,110,.55)]">
@@ -409,8 +417,8 @@ export default function SaaSAuth() {
             </div>
 
             {mode !== "recovery" && mode !== "sent" && <div className="grid grid-cols-2 gap-1 p-1 bg-[#F7F5FC] rounded-xl mt-5">
-              <button type="button" onClick={() => switchMode("signin")} className={"h-10 min-h-10 rounded-lg text-[10px] font-black " + (mode==="signin"?"bg-white text-[#3B1B6E] shadow-sm":"text-slate-400")}>Iniciar sesión</button>
-              <button type="button" onClick={() => switchMode("signup")} className={"h-10 min-h-10 rounded-lg text-[10px] font-black " + (mode==="signup"?"bg-white text-[#3B1B6E] shadow-sm":"text-slate-400")}>Crear cuenta</button>
+              <button type="button" onClick={() => switchMode("signin")} className={"h-10 min-h-10 rounded-lg text-[10px] font-black " + (mode==="signin"?"bg-white text-[#3B1B6E] shadow-sm":"text-slate-500")}>Iniciar sesión</button>
+              <button type="button" onClick={() => switchMode("signup")} className={"h-10 min-h-10 rounded-lg text-[10px] font-black " + (mode==="signup"?"bg-white text-[#3B1B6E] shadow-sm":"text-slate-500")}>Crear cuenta</button>
             </div>}
 
             {mode === "sent" ? (
@@ -446,21 +454,21 @@ export default function SaaSAuth() {
             ) : (
             <form onSubmit={submit} className="space-y-3 mt-4">
               {mode === "signup" ? (
-                <label className="block">
+                <label className="block" htmlFor="auth-name">
                   <span className="form-label">Nombre completo</span>
                   <div className="relative">
                     <Users className="field-icon" />
-                    <input className="field-input pl-10 h-11" value={name} onChange={e=>{setName(e.target.value); clearError();}} disabled={busy} autoComplete="name" placeholder="Tu nombre"/>
+                    <input id="auth-name" className="field-input pl-10 h-11" value={name} onChange={e=>{setName(e.target.value); clearError();}} disabled={busy} autoComplete="name" placeholder="Tu nombre"/>
                   </div>
                 </label>
               ) : null}
 
               {mode !== "recovery" ? (
-                <label className="block">
+                <label className="block" htmlFor="auth-email">
                   <span className="form-label">Correo</span>
                   <div className="relative">
                     <Mail className="field-icon" />
-                    <input type="email" className="field-input pl-10 h-11" value={email} onChange={e=>{setEmail(e.target.value); clearError();}} disabled={busy} autoComplete="email" placeholder="nombre@empresa.com"/>
+                    <input id="auth-email" type="email" className="field-input pl-10 h-11" value={email} onChange={e=>{setEmail(e.target.value); clearError();}} disabled={busy} autoComplete="email" placeholder="nombre@empresa.com"/>
                   </div>
                 </label>
               ) : null}
@@ -468,11 +476,12 @@ export default function SaaSAuth() {
               {/* En modo "reset" solo se envía el enlace: pedir una contraseña
                   aquí confundía porque el campo no se usa. */}
               {mode !== "reset" ? (
-              <label className="block">
+              <label className="block" htmlFor="auth-password">
                 <span className="form-label">{mode==="recovery" ? "Nueva contraseña" : "Contraseña"}</span>
                 <div className="relative">
                   <LockKeyhole className="field-icon" />
                   <input
+                    id="auth-password"
                     type={showPassword ? "text" : "password"}
                     className="field-input pl-10 pr-10 h-11"
                     value={password}
@@ -485,7 +494,7 @@ export default function SaaSAuth() {
                     type="button"
                     onClick={()=>setShowPassword(v=>!v)}
                     aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 text-slate-400"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 text-slate-500"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4 mx-auto"/> : <Eye className="w-4 h-4 mx-auto"/>}
                   </button>
@@ -494,11 +503,12 @@ export default function SaaSAuth() {
               ) : null}
 
               {mode === "recovery" || mode === "signup" ? (
-                <label className="block">
+                <label className="block" htmlFor="auth-password-confirm">
                   <span className="form-label">Confirmar contraseña</span>
                   <div className="relative">
                     <LockKeyhole className="field-icon"/>
                     <input
+                      id="auth-password-confirm"
                       type={showPassword ? "text" : "password"}
                       className="field-input pl-10 h-11"
                       value={confirmPassword}
@@ -544,9 +554,9 @@ export default function SaaSAuth() {
             )}
 
             {mode === "signin" && <button type="button" onClick={()=>{setMode("reset");setError("");setMessage("");}} className="w-full mt-3 text-[10px] font-black text-[#6535C5]">¿Olvidaste tu contraseña?</button>}
-            {mode === "reset" && <button type="button" onClick={()=>switchMode("signin")} className="w-full mt-3 text-[10px] font-black text-slate-400">Volver a iniciar sesión</button>}
+            {mode === "reset" && <button type="button" onClick={()=>switchMode("signin")} className="w-full mt-3 text-[10px] font-black text-slate-500">Volver a iniciar sesión</button>}
 
-            <div className="mt-5 pt-4 border-t border-violet-100 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[10px] text-slate-400">
+            <div className="mt-5 pt-4 border-t border-violet-100 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[10px] text-slate-500">
               <span className="inline-flex items-center gap-1"><Check className="w-3 h-3 text-emerald-600"/> Datos aislados</span>
               <span className="inline-flex items-center gap-1"><ShieldCheck className="w-3 h-3 text-[#6535C5]"/> Accesos por rol</span>
               <span className="inline-flex items-center gap-1"><MonitorSmartphone className="w-3 h-3 text-[#6535C5]"/> Multi-dispositivo</span>

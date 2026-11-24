@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    APK ESTÁNDAR: tráfico externo solo por HTTPS. La única excepción es el
+    servidor local del shell (127.0.0.1:45643), porque la WebView sirve la app
+    desde ese origen seguro para conservar localStorage/IndexedDB. Sin esta
+    excepción el APK no podría cargar su propia aplicación y quedaría en blanco.
+
+    Este archivo NO se toca para el hub LAN. La variante que habla HTTP con el
+    hub de la red privada se compila aparte (build-apk.sh con la opción LAN) y sobrescribe
+    este recurso con res-lan/xml/network_security_config.xml. Así el APK que se
+    publica en Releases nunca permite cleartext fuera de localhost.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="false" />
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

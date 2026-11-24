@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { AtSign, ArrowUpRight, BriefcaseBusiness, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, Copy, Edit3, Eye, EyeOff, Hash, Info, Link2, LockKeyhole, Mail, MapPin, MoreHorizontal, Network, Plus, RefreshCw, ShieldCheck, UserRound, Users, UserX, WalletCards, Warehouse, Wifi, WifiOff, X, Shield, Save } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useStore } from "../store/useStore";
-import { loadSaaSContext } from "../services/saas";
+import { getPalmyraPublicUrl, loadSaaSContext } from "../services/saas";
 import { canUsePlanFeature, getPlanDisplayName } from "../services/planAccess";
 import EmployeeAvatar from "../components/team/EmployeeAvatar";
 import TeamConfirmDialog from "../components/team/TeamConfirmDialog";
@@ -571,7 +571,7 @@ export default function Team() {
             roleId: form.roleId,
             warehouseIds: form.warehouseIds
           });
-          const link = `${window.location.origin}/invite?token=${encodeURIComponent(invite.token)}`;
+          const link = getPalmyraPublicUrl(`/invite?token=${encodeURIComponent(invite.token)}`);
           setInviteLink(link);
           setEditing(previous => previous ? {
             ...previous,
@@ -600,7 +600,7 @@ export default function Team() {
             warehouseIds: form.warehouseIds,
             email: form.email
           });
-          const link = `${window.location.origin}/invite?token=${encodeURIComponent(invite.token)}`;
+          const link = getPalmyraPublicUrl(`/invite?token=${encodeURIComponent(invite.token)}`);
           setInviteLink(link);
           setMessage(invite.email_sent ? "Empleado creado y correo de invitación enviado." : "Empleado creado. El correo automático no fue enviado; usa el enlace generado.");
         } else {
@@ -736,7 +736,7 @@ export default function Team() {
         roleId: employee.role_id,
         warehouseIds: employee.warehouse_ids
       });
-      const link = `${window.location.origin}/invite?token=${encodeURIComponent(invite.token)}`;
+      const link = getPalmyraPublicUrl(`/invite?token=${encodeURIComponent(invite.token)}`);
       await copyText(link);
       setInviteLink(link);
       addNotification("Enlace de invitación copiado.", "success");

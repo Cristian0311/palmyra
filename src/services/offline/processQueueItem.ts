@@ -33,20 +33,127 @@ import { reconcileBankCanonical } from './reconcileBank';
 import { replaceWarehouseInventory, replaceWarehousesInventory } from './reconcileInventory';
 import { reconcileSupplierReceiveCanonical } from './reconcileSupplierReceive';
 import { rememberOfflinePosCredential } from "../offlinePosAuth";
+/**
+ * SQLSTATE que, por sí mismos, hacen imposible que el replay prospere:
+ * violaciones de clave/foránea/check, permisos revocados, tipos inválidos,
+ * función inexistente o conflicto de idempotencia.
+ *
+ * `P0001` (raise_exception) NO está aquí a propósito: es el código genérico de
+ * las reglas de negocio y de los mensajes de Postgres. Muchos de esos rechazos
+ * se corrigen después (stock, alcance de almacén, límite del plan) y descartar
+ * el ítem al primer intento perdía trabajo del usuario sin rastro. Solo un
+ * subconjunto explícito de mensajes P0001 es irreversible (ver abajo).
+ */
 const PERMANENT_SYNC_SQL_CODES = new Set([
-  'P0001', '23503', '23505', '42501', '22003', '22P02', '23514', '42883', '22007',
+  '23503', '23505', '42501', '22003', '22P02', '23514', '42883', '22007',
   'IDEMPOTENCY_CONFLICT'
 ]);
 
-function isPermanentSyncSqlCode(code: unknown): boolean {
-  return PERMANENT_SYNC_SQL_CODES.has(String(code || ''));
+/**
+ * Mensajes P0001 irreversibles: la fila objetivo no existe o el usuario no
+ * pertenece a la empresa, así que reintentar el mismo payload nunca funcionará.
+ * `permission_denied` y `authentication_required` quedan fuera: un permiso o
+ * una sesión se pueden recuperar y el reintento vuelve a intentarlo.
+ */
+const IRREVERSIBLE_BUSINESS_ERRORS =
+  /sale_not_found|return_not_found|company_access_denied|transfer_not_found|unknown_table|invalid_operation_id/i;
+
+function isPermanentSyncFailure(code: unknown, message?: unknown): boolean {
+  const token = String(code || '');
+  if (PERMANENT_SYNC_SQL_CODES.has(token)) return true;
+  if (token === 'P0001') return IRREVERSIBLE_BUSINESS_ERRORS.test(String(message || ''));
+  return false;
+}
+
+/**
+ * `can(...)` local: el estado de sesión ya expone rol y permisos, así que una
+ * clasificación de error puede consultarlos sin crear un contrato nuevo.
+ */
+function can(permission: string): boolean {
+  try {
+    const user = useStore.getState()?.currentUser as
+      | { role?: string; permissions?: string[] }
+      | null
+      | undefined;
+    if (!user) return false;
+    if (user.role === 'admin') return true;
+    return Array.isArray(user.permissions) && user.permissions.includes(permission);
+  } catch {
+    return false;
+  }
 }
 
 class PermanentSyncError extends Error {
   permanent = true;
 }
 
+/**
+ * Normaliza los errores del alta/edición de trabajadores. El RPC
+ * `create_employee_pos_secure` lanza `warehouse_out_of_scope` (P0001) cuando
+ * los almacenes elegidos quedan fuera del alcance del usuario. No es un
+ * descarte si quien opera tiene `employees.manage`: puede pedir/ajustar su
+ * alcance y reintentar, así que el ítem se conserva en la cola con el motivo
+ * claro. Sin ese permiso nunca podrá resolverlo y se marca como conflicto.
+ */
+function normalizeEmployeeSyncError(error: unknown): unknown {
+  const message = String((error as { message?: unknown } | null)?.message ?? error ?? '');
+  if (!/warehouse_out_of_scope/i.test(message)) return error;
+  const detail = `Los almacenes del trabajador quedaron fuera de tu alcance (${message}).`;
+  if (can('employees.manage')) {
+    const retriable = new Error(
+      `${detail} Asigna esos almacenes en tu alcance y reintenta; la operación se conserva en la cola.`
+    );
+    const code = (error as { code?: unknown } | null)?.code;
+    if (code) (retriable as Error & { code?: unknown }).code = code;
+    return retriable;
+  }
+  return new PermanentSyncError(
+    `${detail} Solo un usuario con permiso de gestionar empleados puede completar esta operación.`
+  );
+}
+
+/** Tras este número de intentos el error persistido deja de ser un simple reintento. */
+const OFFLINE_RETRY_VISIBILITY_THRESHOLD = 5;
+
+/**
+ * Anota el error que abandona el replay para que `lastError` (persistido por el
+ * motor de sincronización) explique, a partir del tope de reintentos, que la
+ * operación sigue guardada y requiere revisión. Nunca cambia la clasificación
+ * ni elimina el ítem: un fallo de red/5xx sigue siendo reintentable.
+ */
+function withRetryTrace(error: unknown, item: OfflineQueueItem): unknown {
+  const attempts = Number(item?.retryCount || 0) + 1;
+  if (attempts < OFFLINE_RETRY_VISIBILITY_THRESHOLD) return error;
+  const source = error as
+    | { message?: unknown; permanent?: boolean; code?: unknown; status?: unknown; statusCode?: unknown; details?: unknown; hint?: unknown }
+    | null;
+  const baseMessage = String(source?.message ?? error ?? 'Error desconocido');
+  if (baseMessage.includes('la operación se conserva en la cola')) return error;
+  const annotated = Object.assign(
+    new Error(
+      `${baseMessage} · Intento ${attempts}: la operación se conserva en la cola (estado de error visible) hasta que se corrija la causa o se descarte manualmente.`
+    ),
+    {
+      permanent: source?.permanent === true,
+      ...(source?.code !== undefined ? { code: source.code } : {}),
+      ...(source?.status !== undefined ? { status: source.status } : {}),
+      ...(source?.statusCode !== undefined ? { statusCode: source.statusCode } : {}),
+      ...(source?.details !== undefined ? { details: source.details } : {}),
+      ...(source?.hint !== undefined ? { hint: source.hint } : {})
+    }
+  );
+  return annotated;
+}
+
 export async function processQueueItem(supabase: any, item: OfflineQueueItem): Promise<boolean> {
+  try {
+    return await replayQueueItem(supabase, item);
+  } catch (error) {
+    throw withRetryTrace(error, item);
+  }
+}
+
+async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<boolean> {
   const { type, data } = item;
   switch (type) {
     case 'employee_create': {
@@ -66,7 +173,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         p_warehouse_ids: d.warehouseIds,
         p_pos_password: d.sendInvite ? null : (String(d.posPassword || '').trim() || null)
       });
-      if (employeeError) throw employeeError;
+      if (employeeError) throw normalizeEmployeeSyncError(employeeError);
 
       if (!d.sendInvite && String(d.posPassword || "").trim()) {
         await rememberOfflinePosCredential(String(d.companyId), String(d.localEmployeeId), String(d.posPassword).trim());
@@ -189,7 +296,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
           p_warehouse_ids: d.warehouseIds,
           p_pos_password: null
         });
-        if (updateError) throw updateError;
+        if (updateError) throw normalizeEmployeeSyncError(updateError);
 
         if (!d.employeeUserId) {
           const { data: invite, error: inviteError } = await supabase.rpc('create_company_invitation', {
@@ -222,7 +329,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
           p_warehouse_ids: d.warehouseIds,
           p_pos_password: String(d.posPassword || '').trim() || null
         });
-        if (error) throw error;
+        if (error) throw normalizeEmployeeSyncError(error);
         if (String(d.posPassword || "").trim()) {
           await rememberOfflinePosCredential(String(d.companyId), String(d.employeeId), String(d.posPassword).trim());
         }
@@ -648,7 +755,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       const res = await callTransferInventoryBulkRPC(data as any);
       if (!res.success) {
         const allPermanent = res.failedItems.length > 0 &&
-          res.failedItems.every(failure => isPermanentSyncSqlCode(failure.errorCode));
+          res.failedItems.every(failure => isPermanentSyncFailure(failure.errorCode, failure.error));
         // Un lote parcialmente aplicado nunca se descarta: las operaciones ya
         // confirmadas son idempotentes y las pendientes deben reintentarse.
         if (!res.partial && allPermanent) {
@@ -961,7 +1068,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
         const res = await callDeleteBankTransactionRPC(d.id);
         if (!res.success) {
           const code = String(res.errorCode || '');
-          if (isPermanentSyncSqlCode(code)) {
+          if (isPermanentSyncFailure(code, res.error)) {
             await reconcileBankCanonical();
             throw new PermanentSyncError(res.error || 'No se pudo eliminar el movimiento bancario');
           }
@@ -986,7 +1093,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       const res = await callProcessBankTransactionRPC(d);
       if (!res.success) {
         const code = String(res.errorCode || '');
-        if (isPermanentSyncSqlCode(code)) {
+        if (isPermanentSyncFailure(code, res.error)) {
           await reconcileBankCanonical();
           throw new PermanentSyncError(res.error || 'No se pudo sincronizar el movimiento bancario');
         }
@@ -1138,7 +1245,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       const res = await callVoidTransactionRPC(remoteSaleId, data.userId, data.reason || 'Anulación de venta');
       if (!res.success) {
         const code = String(res.errorCode || '');
-        if (isPermanentSyncSqlCode(code)) {
+        if (isPermanentSyncFailure(code, res.error)) {
           throw new PermanentSyncError(res.error || 'La anulación de la venta fue rechazada permanentemente.');
         }
         throw new Error(res.error || 'No se pudo anular la venta');
@@ -1168,7 +1275,7 @@ export async function processQueueItem(supabase: any, item: OfflineQueueItem): P
       const res = await callCompleteReturnRPC(remoteReturnId, data.userId);
       if (!res.success) {
         const code = String(res.errorCode || '');
-        if (isPermanentSyncSqlCode(code)) {
+        if (isPermanentSyncFailure(code, res.error)) {
           throw new PermanentSyncError(res.error || 'La devolución fue rechazada permanentemente.');
         }
         throw new Error(res.error || 'No se pudo completar la devolución');

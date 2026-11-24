@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Printer, Receipt, MessageSquare, X, Banknote, CreditCard } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { ticketDisplay } from '../lib/documentCodes';
@@ -25,11 +25,26 @@ export default function POSReceiptModal({
   onWhatsAppReceipt,
   onThermalPrint
 }: POSReceiptModalProps) {
+  // Escape cierra el ticket con el mismo manejador del botón Cerrar.
+  useEffect(() => {
+    if (!showReceiptModal) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showReceiptModal, onClose]);
+
   if (!showReceiptModal) return null;
 
   return (
   <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[95] flex items-center justify-center p-2 sm:p-4 overflow-hidden animate-in fade-in duration-200">
-    <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-sm sm:max-w-md max-h-[94vh] sm:max-h-[90vh] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 print:w-full print:max-w-none print:shadow-none print:bg-white print:fixed print:inset-0 print:border-none print:max-h-none print:rounded-none">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Ticket ${ticketDisplay(showReceiptModal.ticketNumber, showReceiptModal.id)}`}
+      className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-sm sm:max-w-md max-h-[94dvh] sm:max-h-[90dvh] flex flex-col overflow-hidden border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 print:w-full print:max-w-none print:shadow-none print:bg-white print:fixed print:inset-0 print:border-none print:max-h-none print:rounded-none"
+    >
       
       {/* Top Bar with Ticket ID and Quick Close (Hidden when printing) */}
       <div className="px-3.5 py-2.5 sm:px-4 sm:py-3 bg-slate-900 text-white flex items-center justify-between gap-2 shrink-0 border-b border-slate-800 print:hidden">
@@ -55,6 +70,7 @@ export default function POSReceiptModal({
           onClick={() => onClose()}
           className="w-7 h-7 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-all shrink-0 active:scale-95 border border-slate-700"
           title="Cerrar ticket"
+          aria-label="Cerrar ticket"
         >
           <X className="w-4 h-4" />
         </button>

@@ -32,13 +32,20 @@ export interface SaaSContext {
 
 const mapRole = (key: string): 'admin' | 'employee' => key === 'admin' ? 'admin' : 'employee';
 
-const PRODUCTION_APP_URL = 'https://palmyracrm.onrender.com';
+const PRODUCTION_APP_URL = (import.meta.env.VITE_APP_ORIGIN as string | undefined)?.trim() || 'https://palmyracrm.onrender.com';
+
+/**
+ * Origen público para enlaces que viajan por correo o WhatsApp. Nunca debe ser
+ * localhost, una IP de LAN ni 127.0.0.1: quien abre el enlace puede estar en
+ * otro equipo u otra red. Se puede sobreescribir con VITE_APP_ORIGIN.
+ */
+export function getPalmyraPublicUrl(path = '') {
+  const pathname = path && path.startsWith('/') ? path : path ? `/${path}` : '';
+  return `${PRODUCTION_APP_URL.replace(/\/$/, '')}${pathname}`;
+}
 
 function getPalmyraAuthUrl(path: string) {
-  const pathname = path.startsWith('/') ? path : `/${path}`;
-  const host = typeof window !== 'undefined' ? window.location.hostname : '';
-  const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '[::1]';
-  return `${isLocal && typeof window !== 'undefined' ? window.location.origin : PRODUCTION_APP_URL}${pathname}`;
+  return getPalmyraPublicUrl(path);
 }
 
 export async function signUpSaaSAccount(fullName: string, email: string, password: string, redirectPath = "/auth") {
@@ -112,6 +119,57 @@ export async function getAuthenticatedUser() {
   const { data, error } = await supabase.auth.getUser();
   if (error) return null;
   return data.user || null;
+}
+
+/**
+ * Devuelve un almacén utilizable al propietario cuando todos quedaron
+ * desactivados (por ejemplo, tras un reinicio de datos desde Ajustes).
+ * Reactiva el último usado para conservar existencias e historial; si la
+ * empresa no tiene ninguno, crea el principal. Esta recuperación es acotada a
+ * la propia empresa y solo se ejecuta en el arranque del propietario.
+ */
+async function restoreOwnerWarehouse(supabase: any, companyId: string): Promise<string | null> {
+  try {
+    const { data: lastMovement } = await supabase
+      .from('stock_movements')
+      .select('warehouse_id')
+      .eq('company_id', companyId)
+      .order('occurred_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const preferredId = lastMovement?.warehouse_id || null;
+
+    const { data: warehouses, error: listError } = await supabase
+      .from('warehouses')
+      .select('id,active')
+      .eq('company_id', companyId)
+      .order('created_at', { ascending: true });
+    if (listError) return null;
+
+    const rows: any[] = warehouses || [];
+    const target = rows.find((row) => row.id === preferredId) || rows[0] || null;
+    if (target) {
+      if (target.active === false) {
+        const { error: activateError } = await supabase
+          .from('warehouses')
+          .update({ active: true })
+          .eq('id', target.id)
+          .eq('company_id', companyId);
+        if (activateError) return null;
+      }
+      return target.id;
+    }
+
+    const { data: created, error: createError } = await supabase
+      .from('warehouses')
+      .insert({ company_id: companyId, code: 'ALM-01', name: 'Almacén principal', active: true })
+      .select('id')
+      .maybeSingle();
+    if (createError) return null;
+    return created?.id || null;
+  } catch {
+    return null;
+  }
 }
 
 export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext | null> {
@@ -252,11 +310,29 @@ export async function loadSaaSContext(forceRefresh = false): Promise<SaaSContext
   if (!roleKey) roleKey = isOwner ? 'admin' : 'employee';
 
   let warehouseIds = (locations || []).map((row:any) => row.warehouse_id).filter(Boolean);
+  // Una ubicación puede apuntar a un almacén desactivado: sin este filtro la
+  // lista salía no vacía, se saltaba la recuperación del propietario y el
+  // arranque fallaba con «sin almacén autorizado».
+  if (warehouseIds.length > 0) {
+    const { data: activeRows, error: activeError } = await supabase
+      .from('warehouses').select('id').eq('company_id',companyId).eq('active',true).in('id',warehouseIds);
+    if (activeError) throw new Error(`No se pudieron comprobar los almacenes autorizados: ${activeError.message}`);
+    const activeIds = new Set((activeRows || []).map((row:any) => row.id));
+    warehouseIds = warehouseIds.filter((id: string) => activeIds.has(id));
+  }
   if (warehouseIds.length === 0 && isOwner) {
     const { data: fallbackWarehouses, error: fallbackWarehouseError } = await supabase
       .from('warehouses').select('id').eq('company_id',companyId).eq('active',true).order('created_at',{ascending:true}).limit(1);
     if (fallbackWarehouseError) throw new Error(`No se pudieron localizar los almacenes de la empresa: ${fallbackWarehouseError.message}`);
     warehouseIds = (fallbackWarehouses || []).map((row:any)=>row.id).filter(Boolean);
+  }
+  // Un propietario no puede quedar fuera del sistema por no tener almacén activo:
+  // basta con que los haya desactivado alguna vez (o que un reinicio de datos lo
+  // hiciera) para que el arranque lo bloqueara sin salida. Se reactiva el último
+  // almacén usado —conserva existencias e historial— o se crea uno principal.
+  if (warehouseIds.length === 0 && isOwner) {
+    const restored = await restoreOwnerWarehouse(supabase, companyId);
+    if (restored) warehouseIds = [restored];
   }
   if (warehouseIds.length === 0) throw new Error('La cuenta no tiene un almacén autorizado para trabajar.');
 

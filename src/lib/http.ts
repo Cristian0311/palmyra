@@ -18,6 +18,27 @@ export class HttpTimeoutError extends Error {
   }
 }
 
+/**
+ * El servidor respondió con algo que no es JSON (por ejemplo la página HTML de
+ * Render mientras despierta, un portal cautivo o un 502 de la CDN). Sin este
+ * diagnóstico el usuario veía `Unexpected token '<'`, que no dice nada.
+ */
+export class HttpPayloadError extends Error {
+  readonly status: number;
+  readonly contentType: string;
+
+  constructor(status: number, contentType: string, reason: string) {
+    super(
+      contentType.toLowerCase().includes('html')
+        ? `El servidor respondió con una página web en lugar de datos (HTTP ${status}). Suele ser un aviso del proveedor o un portal de conexión; reintenta en unos segundos.`
+        : `El servidor devolvió una respuesta no válida (HTTP ${status}${reason ? `, ${reason}` : ''}). Reintenta en unos segundos.`
+    );
+    this.name = 'HttpPayloadError';
+    this.status = status;
+    this.contentType = contentType;
+  }
+}
+
 export type FetchRetryOptions = {
   /** Tiempo máximo por intento (incluye cuerpo). */
   timeoutMs?: number;
@@ -115,12 +136,26 @@ export async function fetchJsonWithRetry<T = unknown>(
   options: FetchRetryOptions = {}
 ): Promise<{ response: Response; body: T | null }> {
   const response = await fetchWithRetry(input, init, options);
-  const body = await response.json().catch(() => null) as T | null;
-  return { response, body };
+  const contentType = response.headers.get('content-type') || '';
+  const raw = await response.text().catch(() => '');
+  if (!raw.trim()) return { response, body: null };
+
+  const looksJson = /json/i.test(contentType) || /^\s*[\[{]/.test(raw);
+  if (!looksJson) {
+    throw new HttpPayloadError(response.status, contentType || 'desconocido', 'contenido no JSON');
+  }
+
+  try {
+    return { response, body: JSON.parse(raw) as T };
+  } catch {
+    // JSON truncado o corrupto: nunca dejar que un parseo a medias pase como respuesta válida.
+    throw new HttpPayloadError(response.status, contentType || 'desconocido', 'JSON mal formado');
+  }
 }
 
 /** Mensaje listo para el usuario: sin códigos, sin jerga técnica. */
 export function describeNetworkError(error: unknown): string {
+  if (error instanceof HttpPayloadError) return error.message;
   if (error instanceof HttpTimeoutError || (error as Error)?.name === 'TimeoutError') {
     return 'El servidor tardó demasiado en responder. Se reintentará automáticamente.';
   }

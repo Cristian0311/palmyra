@@ -2035,7 +2035,7 @@ export default function POS() {
               title="Anular Turno Completo"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              <span className="hidden xs:inline">Cancelar Turno</span>
+              <span className="hidden sm:inline">Cancelar Turno</span>
             </button>
           )}
 

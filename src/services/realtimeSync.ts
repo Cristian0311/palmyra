@@ -1,316 +1,234 @@
 import { getSupabase } from '../lib/supabase';
-import { useStore } from '../store/useStore';
-import { getOfflineQueueCount } from './offlineQueue';
 import { isBrowserOffline, isTransientNetworkError } from './offlineNetwork';
+import { recordRequest } from './requestBudget';
 
-let realtimeChannel: any = null;
-let realtimeSubscriptionPromise: Promise<void> | null = null;
-let realtimeSubscriptionGeneration: number | null = null;
-let channelRemovalPromise: Promise<void> = Promise.resolve();
-let pollIntervalId: ReturnType<typeof setInterval> | null = null;
-let refreshTimeout: ReturnType<typeof setTimeout> | null = null;
-let isSyncInProgress = false;
-let bootstrappedTenantKey = '';
-let lastOperationalRefreshAt = 0;
-let lastGlobalRefreshAt = 0;
-let subscriberGeneration = 0;
+/**
+ * Realtime acotado al presupuesto de nube (F6).
+ *
+ * - Los datos de negocio viajan por el hub LAN (SSE): este módulo ya NO abre
+ *   canales de cambio por tabla de negocio ni sondea la nube cada 120 s, ni
+ *   refresca todo al recuperar foco o conexión.
+ * - La nube solo se escucha para la aprobación de planes del propietario:
+ *   `notifications` (ámbito de usuario) y, si la consola lo necesita,
+ *   `plan_requests`. Nunca tablas de negocio.
+ * - El arranque hace un bootstrap mínimo por tenant (una sola vez) mediante
+ *   `bootstrapCloudData()`; si ese export aún no existe, no se cae a un pull
+ *   completo, porque el hub LAN ya alimenta la operación.
+ */
+
+/** Tabla de notificaciones del propietario (ámbito de usuario). */
+export const PLAN_APPROVAL_NOTIFICATION_TABLE = 'notifications';
+/** Solicitudes de plan que revisa la consola de plataforma. */
+export const PLAN_REQUEST_TABLE = 'plan_requests';
+
+/**
+ * Lista blanca de tablas que pueden usar Realtime en la nube. Cualquier tabla
+ * de negocio queda fuera a propósito: su tiempo real es el hub LAN.
+ */
+const CLOUD_REALTIME_TABLES: readonly string[] = [
+  PLAN_APPROVAL_NOTIFICATION_TABLE,
+  PLAN_REQUEST_TABLE
+];
+
+export function realtimeTableSubscriptions(): string[] {
+  return [...CLOUD_REALTIME_TABLES];
+}
+
+const CLOUD_CHANNEL_PREFIX = 'palmyra-plan-approval-';
+
 let initRefCount = 0;
+let bootstrappedTenantKey = '';
+let bootstrapInFlight: Promise<boolean> | null = null;
 let cleanupRuntime: (() => void) | null = null;
 
-const OP_MS = 5000;
-const GLOBAL_MS = 15000;
+/** Generación de suscripción: invalida callbacks de un canal ya retirado. */
+let subscriberGeneration = 0;
+let cloudChannel: any = null;
 
-const GLOBAL_TABLES = new Set([
-  'warehouses', 'categories', 'products', 'product_variants', 'product_barcodes',
-  'product_kit_components', 'employees', 'employee_warehouse_access', 'currencies', 'exchange_rates'
-]);
-// Only subscribe to tenant-owned tables with company_id. Child tables without
-// that column are refreshed through their parent (sales, transfers, audits, etc.);
-// listening without a tenant filter could leak another company's row metadata.
-const OP_TABLES = new Set([
-  'stock_balances', 'variant_stock_balances', 'stock_movements', 'sales',
-  'payments', 'cash_registers', 'cash_sessions', 'cash_movements', 'transfers',
-  'sales_returns', 'warranties', 'purchase_orders', 'quotes', 'inventory_audits',
-  'bank_accounts', 'bank_transactions', 'employee_time_shifts', 'payroll_runs',
-  'payroll_items'
-]);
-
-async function getTenantState() {
-  const { getActiveTenant } = await import('./tenant');
-  const tenant = await getActiveTenant();
-  return {
-    companyId: tenant.companyId,
-    branchId: useStore.getState().currentBranchId,
-    bootstrapPosFromSupabase: async () => {
-      const { pullPosBootstrapFromSupabase } = await import('./supabaseSync');
-      const result = await pullPosBootstrapFromSupabase(useStore.getState().currentBranchId);
-      if (result.success) {
-        const { mergeInventoryAudits } = await import('../store/utils/mergeInventoryAudits');
-        const data: any = { ...result.data };
-        if (Array.isArray(data.inventoryAudits)) {
-          data.inventoryAudits = mergeInventoryAudits(useStore.getState().inventoryAudits, data.inventoryAudits);
-        }
-        useStore.setState(data);
-        return true;
-      }
-      return false;
-    },
-    refreshBranchOperationalData: () => useStore.getState().refreshBranchOperationalData(),
-    refreshGlobalCatalogData: () => useStore.getState().refreshGlobalCatalogData()
-  };
+function warnNetworkOnly(message: string, error?: unknown) {
+  if (isBrowserOffline() || isTransientNetworkError(error)) return;
+  if (error === undefined) console.warn(message);
+  else console.warn(message, error);
 }
 
-function warnNetworkOnly(message: string, error: unknown) {
-  if (!isBrowserOffline() && !isTransientNetworkError(error)) {
-    console.warn(message, error);
-  }
+function emitRemoteDataChanged(table: string) {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('remote_data_changed', { detail: { table } }));
 }
 
-function isManualOfflineSyncEnabled(): boolean {
-  return useStore.getState().storeConfig?.manualOfflineSync === true;
-}
-
-async function refresh(force = false): Promise<void> {
-  if (isBrowserOffline() || isSyncInProgress) return;
-
+/**
+ * Bootstrap mínimo de nube: una vez por tenant/sucursal. Es el único camino de
+ * lectura masiva al arrancar; con la app ya abierta no hay sondeos periódicos.
+ */
+async function runCloudBootstrap(): Promise<boolean> {
+  if (isBrowserOffline()) return false;
+  let key = '';
   try {
-    if (getOfflineQueueCount() > 0) {
-      // Respect the explicit manual-sync preference even when a Realtime
-      // event, focus or reconnect causes a background refresh. A user-triggered
-      // force sync is the only path allowed to bypass this preference.
-      if (!force && isManualOfflineSyncEnabled()) return;
-      isSyncInProgress = true;
-      let remaining = getOfflineQueueCount();
-      try {
-        const { processOfflineQueue } = await import('./offlineSync');
-        const result = await processOfflineQueue();
-        remaining = result.remaining;
-      } catch (error) {
-        warnNetworkOnly('[PALMYRA] offline replay failed', error);
-      } finally {
-        isSyncInProgress = false;
-      }
-
-      // A completed replay is followed by a canonical catalogue pull. This
-      // keeps deletes and edits in sync even when Realtime missed an event.
-      if (remaining === 0 && !isBrowserOffline()) {
-        try {
-          const state = await getTenantState();
-          await state.refreshGlobalCatalogData();
-        } catch (error) {
-          warnNetworkOnly('[PALMYRA] No se pudo refrescar el catálogo tras vaciar la cola offline:', error);
-        }
-      }
-      return;
-    }
-
-    const state = await getTenantState();
-    const key = state.companyId + '|' + state.branchId;
-    if (force || key !== bootstrappedTenantKey) {
-      const ok = await state.bootstrapPosFromSupabase();
-      if (ok) bootstrappedTenantKey = key;
-    } else {
-      await state.refreshBranchOperationalData();
-    }
+    const { getActiveTenant } = await import('./tenant');
+    const tenant = await getActiveTenant();
+    if (!tenant.companyId) return false;
+    const { useStore } = await import('../store/useStore');
+    const branchId = useStore.getState().currentBranchId || '';
+    key = tenant.companyId + '|' + branchId;
+    if (key === bootstrappedTenantKey) return false;
   } catch (error) {
-    // Transient outages must never turn into an unhandled rejected promise.
-    warnNetworkOnly('[PALMYRA] Background sync could not reach the active tenant.', error);
+    warnNetworkOnly('[PALMYRA] No se pudo resolver el tenant para el bootstrap mínimo.', error);
+    return false;
   }
-}
 
-function schedule(kind: 'operational' | 'global' | 'all' = 'operational', delay = 500): void {
-  if (refreshTimeout) clearTimeout(refreshTimeout);
-  // Jitter corto: varias cajas reciben el mismo evento Realtime o recuperan el
-  // foco a la vez; sin él todas pedían el catálogo en el mismo instante.
-  const wait = delay + Math.round(Math.random() * 300);
-  refreshTimeout = setTimeout(() => {
-    refreshTimeout = null;
-    if (isBrowserOffline()) return;
-    void (async () => {
-      const now = Date.now();
-      if (kind === 'operational' && now - lastOperationalRefreshAt < OP_MS) return;
-      if (kind === 'global' && now - lastGlobalRefreshAt < GLOBAL_MS) return;
-      if (kind === 'operational') lastOperationalRefreshAt = now;
-      else if (kind === 'global') lastGlobalRefreshAt = now;
-      else {
-        lastOperationalRefreshAt = now;
-        lastGlobalRefreshAt = now;
+  if (bootstrapInFlight) return bootstrapInFlight;
+
+  bootstrapInFlight = (async () => {
+    try {
+      const module = await import('../store/actions/syncActions');
+      const bootstrap = (module as Record<string, unknown>).bootstrapCloudData;
+      if (typeof bootstrap !== 'function') {
+        // F6-B aún no aterrizó: no hay pull completo de respaldo.
+        console.info(
+          '[PALMYRA] Bootstrap mínimo en la nube no disponible todavía; ' +
+            'la operación sigue por el hub LAN.'
+        );
+        return false;
       }
-
-      try {
-        const state = await getTenantState();
-        if (getOfflineQueueCount() > 0) {
-          await refresh(false);
-          return;
-        }
-        if (kind === 'global') await state.refreshGlobalCatalogData();
-        else if (kind === 'all') await state.bootstrapPosFromSupabase();
-        else await state.refreshBranchOperationalData();
-      } catch (error) {
-        warnNetworkOnly('[PALMYRA] Realtime refresh deferred until connectivity returns.', error);
-      }
-    })();
-  }, wait);
-}
-
-export function triggerBackgroundSync(force = false): Promise<void> {
-  return refresh(force);
-}
-
-export function scheduleDebouncedSync(delayMs = 1200): void {
-  schedule('all', delayMs);
-}
-
-async function ensureRealtimeSubscribed(supabase: NonNullable<ReturnType<typeof getSupabase>>): Promise<void> {
-  if (isBrowserOffline()) return;
-  if (realtimeChannel) return;
-
-  if (realtimeSubscriptionPromise) {
-    const pendingGeneration = realtimeSubscriptionGeneration;
-    await realtimeSubscriptionPromise;
-    // If an offline/cleanup transition invalidated the pending subscription,
-    // retry once for the new generation. A failed connection in the same
-    // generation is left to the poll/online event, avoiding retry recursion.
-    if (!realtimeChannel && !isBrowserOffline() && pendingGeneration !== subscriberGeneration) {
-      await ensureRealtimeSubscribed(supabase);
+      const result = await (bootstrap as () => Promise<unknown>)();
+      if (result === false) return false;
+      bootstrappedTenantKey = key;
+      emitRemoteDataChanged('bootstrap');
+      return true;
+    } catch (error) {
+      warnNetworkOnly('[PALMYRA] Bootstrap mínimo en la nube diferido.', error);
+      return false;
+    } finally {
+      bootstrapInFlight = null;
     }
-    return;
-  }
+  })();
 
+  return bootstrapInFlight;
+}
+
+/**
+ * Refresco manual desde Configuración: vuelve a ejecutar el bootstrap mínimo
+ * sin depender de esperas ni de eventos de foco.
+ */
+export async function refreshRealtimeNow(): Promise<boolean> {
+  if (typeof window === 'undefined') return false;
+  bootstrappedTenantKey = '';
+  return runCloudBootstrap();
+}
+
+/**
+ * Un filtro de tenant nunca debe aplicarse a tablas compartidas. `currencies`
+ * es la única compartida y hoy no participa en Realtime, pero la guarda evita
+ * que un futuro canal compartido quede silenciado por un filtro inexistente.
+ */
+function tenantScopedFilter(table: string, companyId: string | null | undefined): string | undefined {
+  if (!companyId) return undefined;
+  if (table !== 'currencies') return 'company_id=eq.' + companyId;
+  return undefined;
+}
+
+export interface PlanApprovalRealtimeOptions {
+  companyId?: string | null;
+  userId?: string | null;
+  /** Se llama con cada fila escuchada; la consola decide si recarga. */
+  onChange?: (info: { table: string; event: string }) => void;
+}
+
+/**
+ * Canal de nube para la consola: SOLO aprobación de planes. La suscripción se
+ * cierra al desmontar la consola; no hay sondeos en segundo plano.
+ */
+export function subscribePlanApprovalRealtime(options: PlanApprovalRealtimeOptions = {}): () => void {
+  const supabase = getSupabase();
+  if (!supabase || isBrowserOffline()) return () => {};
+
+  subscriberGeneration += 1;
   const generation = subscriberGeneration;
-  let attempt!: Promise<void>;
-  attempt = (async () => {
-    // Wait for an in-flight unsubscribe before reusing the same Realtime topic.
-    await channelRemovalPromise;
-    const state = await getTenantState();
-    if (generation !== subscriberGeneration || isBrowserOffline() || !state.companyId) return;
-    if (realtimeChannel) return;
+  const topic = CLOUD_CHANNEL_PREFIX + (options.companyId || options.userId || 'platform');
+  const startedAt = Date.now();
+  const channel = supabase.channel(topic);
 
-    const topic = 'palmyra-tenant-' + state.companyId;
-    const channel = supabase.channel(topic);
-
-    // Every postgres_changes callback is registered before subscribe().
-    // Adding handlers afterwards throws and can abort the socket lifecycle.
-    for (const table of [...GLOBAL_TABLES, ...OP_TABLES]) {
-      const config: any = { event: '*', schema: 'public', table };
-      // currencies is a shared reference table and has no company_id column.
-      if (state.companyId && table !== 'currencies') config.filter = 'company_id=eq.' + state.companyId;
-      channel.on('postgres_changes', config, (payload: any) => {
-        if (generation !== subscriberGeneration || realtimeChannel !== channel) return;
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('remote_data_changed', { detail: payload }));
-        }
-        const tableName = payload?.table;
-        if (OP_TABLES.has(tableName)) schedule('operational', 400);
-        else if (GLOBAL_TABLES.has(tableName)) schedule('global', 700);
-      });
+  // Cada callback se registra antes de subscribe(): añadirlos después lanza.
+  for (const table of realtimeTableSubscriptions()) {
+    // `any` mantiene la configuración compatible con todas las versiones del
+    // cliente de Realtime (el filtro solo existe en algunas).
+    const config: any = { event: '*', schema: 'public', table };
+    // `notifications` es del usuario; `plan_requests` es global para plataforma.
+    if (table === PLAN_APPROVAL_NOTIFICATION_TABLE) {
+      const filter = options.userId
+        ? 'user_id=eq.' + options.userId
+        : tenantScopedFilter(table, options.companyId);
+      if (filter) config.filter = filter;
     }
-
-    // Check cancellation again after async tenant resolution and before subscribe.
-    if (generation !== subscriberGeneration || isBrowserOffline()) {
-      channelRemovalPromise = Promise.resolve(supabase.removeChannel(channel)).then(() => undefined).catch(() => undefined);
-      await channelRemovalPromise;
-      return;
-    }
-
-    realtimeChannel = channel;
-    channel.subscribe((status: string) => {
-      if (generation !== subscriberGeneration || realtimeChannel !== channel) return;
-      if (status === 'SUBSCRIBED') {
-        // Un refresh operativo basta tras reconectar; el bootstrap completo ya
-        // corre al abrir la app y no debe repetirse con cada alt-tab.
-        schedule('operational', 300);
-      } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-        console.warn('[PALMYRA] Realtime subscription status:', status);
-      } else if (status === 'CLOSED') {
-        if (realtimeChannel === channel) realtimeChannel = null;
+    channel.on('postgres_changes', config, (payload: any) => {
+      if (generation !== subscriberGeneration) return;
+      try {
+        options.onChange?.({
+          table: String(payload?.table || table),
+          event: String(payload?.eventType || payload?.event || 'unknown')
+        });
+      } catch {
+        // Un manejador roto no debe cerrar el canal.
       }
     });
-  })().catch(error => {
-    // Supabase aborts a pending channel when it is removed or the app goes
-    // offline. That is expected; do not surface it as a user-facing failure.
-    if (!isBrowserOffline() && !isTransientNetworkError(error)) {
-      console.warn('[PALMYRA] Could not establish Realtime subscription; polling remains active.', error);
-    }
-  }).finally(() => {
-    if (realtimeSubscriptionPromise === attempt) {
-      realtimeSubscriptionPromise = null;
-      realtimeSubscriptionGeneration = null;
+  }
+
+  let closed = false;
+  channel.subscribe((status: string) => {
+    if (generation !== subscriberGeneration) return;
+    if (status === 'SUBSCRIBED') {
+      recordRequest('realtime/notifications', { ms: Date.now() - startedAt, ok: true });
+    } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+      recordRequest('realtime/notifications', { ms: Date.now() - startedAt, ok: false });
+      warnNetworkOnly('[PALMYRA] Realtime de aprobación de planes: ' + status);
+    } else if (status === 'CLOSED' && cloudChannel === channel) {
+      cloudChannel = null;
     }
   });
 
-  realtimeSubscriptionGeneration = generation;
-  realtimeSubscriptionPromise = attempt;
-  await attempt;
+  cloudChannel = channel;
+
+  return () => {
+    if (closed) return;
+    closed = true;
+    subscriberGeneration += 1;
+    if (cloudChannel === channel) cloudChannel = null;
+    void Promise.resolve(supabase.removeChannel(channel)).catch(() => undefined);
+  };
 }
 
-function stopRealtimeChannel(supabase: NonNullable<ReturnType<typeof getSupabase>>): void {
-  subscriberGeneration += 1;
-  bootstrappedTenantKey = '';
-  const channel = realtimeChannel;
-  realtimeChannel = null;
-  if (channel) {
-    channelRemovalPromise = Promise.resolve(supabase.removeChannel(channel))
-      .then(() => undefined)
-      .catch(error => {
-        warnNetworkOnly('[PALMYRA] Realtime channel cleanup deferred.', error);
-      });
-  }
-}
-
+/**
+ * Arranque del motor. No abre canales de negocio ni temporizadores: solo
+ * ejecuta el bootstrap mínimo una vez y lo reintenta al volver la conexión
+ * si aún no se completó.
+ */
 export function initMultiDeviceRealtimeSync(): () => void {
   if (typeof window === 'undefined') return () => {};
   initRefCount += 1;
 
   if (initRefCount === 1) {
-    const supabase = getSupabase();
-    if (!supabase) {
-      initRefCount = 0;
-      return () => {};
-    }
-
-    const onOffline = () => stopRealtimeChannel(supabase);
     const onOnline = () => {
-      void ensureRealtimeSubscribed(supabase);
-      void refresh(false);
+      void runCloudBootstrap();
     };
-    const onFocus = () => {
-      if (document.visibilityState !== 'hidden') schedule('operational', 300);
-    };
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') schedule('operational', 300);
+    const onOffline = () => {
+      // Sin conexión no hay nada que escuchar en la nube; el hub LAN sigue.
+      if (cloudChannel) {
+        subscriberGeneration += 1;
+        cloudChannel = null;
+      }
     };
 
     window.addEventListener('online', onOnline);
     window.addEventListener('offline', onOffline);
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onVisibility);
-
-    if (!isBrowserOffline()) {
-      void ensureRealtimeSubscribed(supabase);
-      void refresh(false);
-    }
-
-    // Retry the channel as well as canonical polling: "online" can fire while
-    // DNS, TLS or the API is still unavailable.
-    pollIntervalId = setInterval(() => {
-      if (isBrowserOffline()) return;
-      void ensureRealtimeSubscribed(supabase);
-      void refresh(false);
-    }, 120_000);
+    void runCloudBootstrap();
 
     cleanupRuntime = () => {
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onVisibility);
-      if (pollIntervalId) clearInterval(pollIntervalId);
-      pollIntervalId = null;
-      if (refreshTimeout) clearTimeout(refreshTimeout);
-      refreshTimeout = null;
-      stopRealtimeChannel(supabase);
-      realtimeSubscriptionPromise = null;
-      realtimeSubscriptionGeneration = null;
+      subscriberGeneration += 1;
+      cloudChannel = null;
+      bootstrappedTenantKey = '';
+      bootstrapInFlight = null;
     };
   }
 
@@ -326,3 +244,10 @@ export function initMultiDeviceRealtimeSync(): () => void {
     }
   };
 }
+
+/** Solo para pruebas: expone el estado interno sin cambiar el contrato público. */
+export const __realtimeInternals = {
+  getInitRefCount: () => initRefCount,
+  getBootstrappedTenantKey: () => bootstrappedTenantKey,
+  getSubscriberGeneration: () => subscriberGeneration
+};

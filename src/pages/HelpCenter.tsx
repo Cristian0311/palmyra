@@ -11,7 +11,7 @@ import { buildWhatsAppUrl, createSupportRequest, DEFAULT_SUPPORT_WHATSAPP, loadP
 import { sendOwnerAlert, supportAlertLines } from "../services/ownerAlerts";
 import { getOfflineQueueCount } from "../services/offlineQueue";
 import Security from "./Security";
-import { PRODUCT_VERSION } from "../lib/productVersion";
+import { PRODUCT_DISPLAY_VERSION } from "../lib/productVersion";
 import "./helpCenter.css";
 
 type CenterSection = "overview" | "tutorial" | "support" | "security" | "privacy";
@@ -87,7 +87,33 @@ export default function HelpCenter(){
   const section = sections.some(item => item.id === requestedSection) ? requestedSection as CenterSection : "overview";
   const online = useOnline();
   const pending = getOfflineQueueCount();
-  const version = PRODUCT_VERSION;
+  const version = PRODUCT_DISPLAY_VERSION;
+  const desktopShell = /\bElectron\//i.test(navigator.userAgent);
+  const androidApp = /PALMYRAApp\//i.test(navigator.userAgent);
+  const platformLabel = desktopShell ? "PC instalada" : androidApp ? "Android instalada" : "Navegador web";
+  const installLabel = `${window.matchMedia?.("(display-mode: standalone)").matches ? "instalada" : "pestaña"}`
+    + ` · service worker ${("serviceWorker" in navigator) ? (navigator.serviceWorker.controller ? "activo" : "sin control") : "no disponible"}`;
+  const [localHealth, setLocalHealth] = useState<"checking" | "ok" | "fail" | "remote">("checking");
+
+  useEffect(() => {
+    // Dentro de la app instalada, /healthz lo responde el servidor local; si
+    // falla, la instalación está dañada o el puerto está ocupado. En la web
+    // este diagnóstico no aplica.
+    if (!desktopShell && !androidApp) {
+      setLocalHealth("remote");
+      return;
+    }
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 4_000);
+    fetch("/healthz", { cache: "no-store", signal: controller.signal })
+      .then(response => setLocalHealth(response.ok ? "ok" : "fail"))
+      .catch(() => setLocalHealth("fail"))
+      .finally(() => window.clearTimeout(timer));
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [desktopShell, androidApp]);
 
   useEffect(()=>{
     let active = true;
@@ -112,7 +138,7 @@ export default function HelpCenter(){
     document.title = section==="overview" ? "Ayuda · PALMYRA" : `${sections.find(s=>s.id===section)?.label || "Ayuda"} · PALMYRA`;
   },[section]);
 
-  const diagnosis = `Empresa: ${companyName}\nVersión: ${version}\nConexión: ${online ? "En línea" : "Sin conexión"}\nOperaciones pendientes: ${pending}`;
+  const diagnosis = `Empresa: ${companyName}\nVersión: ${version}\nPlataforma: ${platformLabel}\nInstalación: ${installLabel}\nServidor local: ${localHealth === "ok" ? "responde" : localHealth === "fail" ? "sin respuesta" : localHealth === "remote" ? "no aplica (web)" : "comprobando"}\nConexión: ${online ? "En línea" : "Sin conexión"}\nOperaciones pendientes: ${pending}`;
   const whatsappUrl = support.whatsapp_number
     ? buildWhatsAppUrl(support.whatsapp_number, `Hola PALMYRA, necesito ayuda.\n\n${diagnosis}`)
     : null;
@@ -387,6 +413,9 @@ export default function HelpCenter(){
               <dl>
                 <div><dt>Empresa</dt><dd>{companyName}</dd></div>
                 <div><dt>Versión</dt><dd>{version}</dd></div>
+                <div><dt>Plataforma</dt><dd>{platformLabel}</dd></div>
+                <div><dt>Instalación</dt><dd>{installLabel}</dd></div>
+                <div><dt>Servidor local</dt><dd className={localHealth === "fail" ? "is-offline" : localHealth === "ok" ? "is-online" : ""}>{localHealth === "ok" ? "Responde" : localHealth === "fail" ? "Sin respuesta" : localHealth === "remote" ? "No aplica" : "Comprobando…"}</dd></div>
                 <div><dt>Conexión</dt><dd className={online?"is-online":"is-offline"}>{online?"En línea":"Sin conexión"}</dd></div>
                 <div><dt>Pendientes</dt><dd>{pending}</dd></div>
               </dl>

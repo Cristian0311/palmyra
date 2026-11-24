@@ -35,12 +35,19 @@ import { loadSaaSContext } from "../services/saas";
 import { useStore } from "../store/useStore";
 import { PalmyraWordmark } from "./PalmyraWordmark";
 import { SocialLinks } from "./SocialLinks";
+import { LicenseReadOnlyBanner } from "./LicenseReadOnlyBanner";
 import { getOfflineConflictCount, getOfflineQueueCount, getOfflineQueue, refreshOfflineQueueCounts } from "../services/offlineQueue";
 import { runWithLoading } from "../lib/busy";
-import { PRODUCT_VERSION_LABEL, PRODUCT_VERSION_SHORT } from "../lib/productVersion";
-import { ANDROID_APK_DOWNLOAD, APK_PROMO_DISMISSED_KEY, PALMYRA_REMOTE_ORIGIN, REMOTE_APK_DOWNLOAD, getIosBrowserName, isAndroidDevice, isPalmyraApp, isRunningStandalone } from "../lib/install";
-import { getNativeAppInfo, startNativeUpdate, type NativeUpdateRequest } from "../lib/nativeApp";
+import { PRODUCT_VERSION, PRODUCT_VERSION_LABEL, PRODUCT_VERSION_SHORT } from "../lib/productVersion";
+import { ANDROID_APK_DOWNLOAD, APK_PROMO_DISMISSED_KEY, REMOTE_APK_DOWNLOAD, isAndroidDevice, isPalmyraApp } from "../lib/install";
+import { getNativeAppInfo } from "../lib/nativeApp";
+import { applyAndroidUpdate } from "../services/updates/android";
+import { androidUpdateKindForArtifact } from "../services/updates/runtime";
+import { useAppUpdateRuntime } from "../hooks/useAppUpdateRuntime";
 import { useDesktopUpdate } from "../hooks/useDesktopUpdate";
+import { useCloudSync } from "../hooks/useCloudSync";
+import { useLegacyShadowSync } from "../hooks/useLegacyShadowSync";
+import { useCloudBackup } from "../hooks/useCloudBackup";
 import { DESKTOP_UPDATE_STATUS_LABELS } from "../lib/desktopUpdate";
 import { useAutoRateSync } from "../hooks/useAutoRateSync";
 import { useLanPresence } from "../hooks/useLanPresence";
@@ -112,9 +119,6 @@ function formatPlanExpiry(target: string | null | undefined) {
     year: "numeric"
   });
 }
-const PALMYRA_PWA_INSTALLED_KEY = "palmyra:pwa-installed";
-const IOS_INSTALL_HINT_DISMISSED_KEY = "palmyra:ios-install-dismissed";
-const IOS_BROWSER = getIosBrowserName();
 const PALMYRA_UPDATE_AVAILABLE_KEY = "palmyra:update-available";
 // "Ahora no" silencia esa versión concreta durante un rato. Sin esto, el
 // chequeo periódico (60 s) volvería a abrir el aviso que el usuario cerró.
@@ -154,12 +158,6 @@ const IS_DESKTOP_SHELL = typeof navigator !== "undefined" && /\bElectron\//i.tes
 const IN_PALMYRA_APP = isPalmyraApp();
 const NATIVE_APP_INFO = getNativeAppInfo();
 const NATIVE_OTA_ENABLED = Boolean(NATIVE_APP_INFO?.ota);
-// Versión web instalada real: la release descargada por OTA o la que viene
-// empaquetada en este build (__APP_VERSION__). NUNCA shellVersion: el versionName
-// del APK no es la versión de la app web y comparar contra él hacía que el
-// aviso de actualización apareciera o desapareciera sin corresponder.
-const INSTALLED_WEB_VERSION = (NATIVE_APP_INFO?.webVersion || "").trim() || __APP_VERSION__;
-const OTA_DISMISSED_KEY = "palmyra:ota-dismissed-version";
 // "Ocultar"/"Más tarde" silencia solo la fase actual (versión + estado): si la
 // descarga termina y queda lista para instalar, el aviso reaparece.
 const DESKTOP_UPDATE_DISMISSED_KEY = "palmyra:desktop-update-dismissed";
@@ -199,55 +197,6 @@ function formatUpdateBytes(bytes?: number, totalBytes?: number) {
   if (bytes >= 1024 * 1024) return `${toMb(bytes)} MB descargados`;
   return `${Math.max(1, Math.round(bytes / 1024))} KB descargados`;
 }
-
-function compareAppVersions(a: string, b: string) {
-  const pa = a.split(/[^0-9]+/).filter(Boolean).map(Number);
-  const pb = b.split(/[^0-9]+/).filter(Boolean).map(Number);
-  const len = Math.max(pa.length, pb.length);
-  for (let i = 0; i < len; i += 1) {
-    const x = pa[i] ?? 0;
-    const y = pb[i] ?? 0;
-    if (x !== y) return x > y ? 1 : -1;
-  }
-  return 0;
-}
-
-function isIosInstallHintDismissed() {
-  if (!IOS_BROWSER) return false;
-  try { return window.localStorage.getItem(IOS_INSTALL_HINT_DISMISSED_KEY) === "1"; } catch { return false; }
-}
-
-function isPALMYRAPWAInstalled() {
-  if (typeof window === "undefined") return false;
-  // El APK ya es la app instalada: nunca debe ofrecerse la PWA.
-  if (IN_PALMYRA_APP) return true;
-  const standalone = window.matchMedia?.("(display-mode: standalone)").matches;
-  const fullscreen = window.matchMedia?.("(display-mode: fullscreen)").matches;
-  const minimalUi = window.matchMedia?.("(display-mode: minimal-ui)").matches;
-  const windowControls = window.matchMedia?.("(display-mode: window-controls-overlay)").matches;
-  const iosStandalone = Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
-  const rememberedInstalled = window.localStorage.getItem(PALMYRA_PWA_INSTALLED_KEY) === "1";
-  const installed = Boolean(standalone || fullscreen || minimalUi || windowControls || iosStandalone || rememberedInstalled);
-
-  // If the app is currently running in an installed display mode, remember it
-  // so a later browser launch cannot show the install banner again.
-  if (installed && !rememberedInstalled) {
-    try { window.localStorage.setItem(PALMYRA_PWA_INSTALLED_KEY, "1"); } catch {}
-  }
-
-  return installed;
-}
-
-function getDeferredPWAInstallPrompt() {
-  if (typeof window === "undefined") return null;
-  return (window as typeof window & {
-    __palmyraInstallPrompt?: Event & {
-      prompt?: () => Promise<void>;
-      userChoice?: Promise<{ outcome: "accepted" | "dismissed"; platform: string }>;
-    };
-  }).__palmyraInstallPrompt || null;
-}
-
 
 const SIDEBAR_COLLAPSED_KEY = "palmyra:sidebar-collapsed";
 
@@ -338,13 +287,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const navigationTimerRef = useRef<number | null>(null);
   const [saasContext, setSaaSContext] = useState<Awaited<ReturnType<typeof loadSaaSContext>>>(null);
   const [countdownNow, setCountdownNow] = useState(() => Date.now());
-  const [showInstallPwa, setShowInstallPwa] = useState(false);
-  const [pwaInstallAvailable, setPwaInstallAvailable] = useState(false);
-  const [pwaInstalling, setPwaInstalling] = useState(false);
   const [showApkPromo, setShowApkPromo] = useState(false);
-  const [apkStandalone, setApkStandalone] = useState(false);
-  const [apkUpdateVersion, setApkUpdateVersion] = useState<string | null>(null);
-  const [otaUpdate, setOtaUpdate] = useState<NativeUpdateRequest | null>(null);
   const [otaPhase, setOtaPhase] = useState<OtaPhase>("idle");
   const [otaPercent, setOtaPercent] = useState(0);
   const [otaReceived, setOtaReceived] = useState(0);
@@ -360,9 +303,18 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const activeWarehouseName = useStore(state => state.branches.find(branch => branch.id === state.currentBranchId)?.name || null);
   useAutoRateSync();
   useLanPresence(activeWarehouseName);
+  // Subida por cursores del journal local; en la web de registro queda inerte.
+  useCloudSync();
+  // Reflejo del JSON legado en el almacén normalizado (SQLite/IndexedDB).
+  useLegacyShadowSync();
+  // Respaldo cifrado diario en la nube; sin sesión o internet queda inerte.
+  useCloudBackup();
   // Actualización de escritorio (Electron + electron-updater por IPC). Fuera del
   // shell Electron el controlador queda inerte y manda el flujo web/Android.
   const desktopUpdate = useDesktopUpdate();
+  // Manifiesto firmado: runtime único compartido con el Centro de actualizaciones.
+  const { state: updateState, dismiss: dismissUpdateVersion, isDismissed: isUpdateDismissed } =
+    useAppUpdateRuntime();
 
   useEffect(() => {
     try {
@@ -382,9 +334,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       setShowApkPromo(false);
       return;
     }
-    // En Android el APK nativo es más rápido y confiable que la PWA, incluso si
-    // ya existe una PWA instalada: se recomienda el APK al entrar desde la web.
-    setApkStandalone(isRunningStandalone());
+    // En Android el APK nativo es la única forma de operar: se recomienda al
+    // entrar desde la web (por ejemplo, al gestionar el plan).
     let dismissed = false;
     try { dismissed = window.localStorage.getItem(APK_PROMO_DISMISSED_KEY) === '1'; } catch {}
     setShowApkPromo(!dismissed);
@@ -396,45 +347,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     try { window.localStorage.setItem(APK_PROMO_DISMISSED_KEY, '1'); } catch {}
   };
 
-  const dismissInstallPrompt = () => {
-    setShowInstallPwa(false);
-    if (!IOS_BROWSER) return;
-    try { window.localStorage.setItem(IOS_INSTALL_HINT_DISMISSED_KEY, "1"); } catch {}
-  };
-
-  useEffect(() => {
-    if (!currentUser?.id || IS_DESKTOP_SHELL || IN_PALMYRA_APP) {
-      setShowInstallPwa(false);
-      setPwaInstallAvailable(false);
-      return;
-    }
-
-    const syncPwaState = () => {
-      const installed = isPALMYRAPWAInstalled();
-      const available = !installed && Boolean(getDeferredPWAInstallPrompt());
-      setPwaInstallAvailable(available);
-      setShowInstallPwa(!installed && !isIosInstallHintDismissed());
-      if (installed) {
-        delete (window as typeof window & { __palmyraInstallPrompt?: unknown }).__palmyraInstallPrompt;
-      }
-    };
-
-    syncPwaState();
-    const onInstallAvailable = () => syncPwaState();
-    const onInstalled = () => {
-      setPwaInstallAvailable(false);
-      setShowInstallPwa(false);
-    };
-    window.addEventListener("palmyra:pwa-install-available", onInstallAvailable);
-    window.addEventListener("palmyra:pwa-installed", onInstalled);
-    const timer = window.setTimeout(syncPwaState, 900);
-
-    return () => {
-      window.removeEventListener("palmyra:pwa-install-available", onInstallAvailable);
-      window.removeEventListener("palmyra:pwa-installed", onInstalled);
-      window.clearTimeout(timer);
-    };
-  }, [currentUser?.id]);
   useEffect(() => {
     // El contador del plan se muestra en días/horas/minutos: un tick de 1 s
     // re-renderizaba todo el shell cada segundo en equipos lentos. 30 s basta,
@@ -456,13 +368,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     let active = true;
     let lastRefreshAt = 0;
 
-    // Cada refresco hace getUser + varias consultas REST. Con muchas cajas
-    // abiertas eso agotaba el límite de Supabase Auth ("request rate limit
-    // reached"). 90 s + un mínimo de 30 s entre refrescos basta para enterarse
-    // de una aprobación de plan sin castigar la API.
+    // Cada refresco hace getUser + varias consultas REST. El contexto cambia
+    // por aprobación de plan o cambios de empresa: con 12 h, al enfocar y al
+    // recuperar internet sobra, y se evita castigar la API de Supabase.
     const refreshContext = async (force = false) => {
+      if (!active) return;
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return;
       const now = Date.now();
-      if (!force && now - lastRefreshAt < 30_000) return;
+      if (!force && now - lastRefreshAt < 15 * 60 * 1000) return;
       lastRefreshAt = now;
       try {
         const ctx = await loadSaaSContext(true);
@@ -477,19 +390,24 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
     const timer = window.setInterval(() => {
       if (document.visibilityState === 'visible') void refreshContext();
-    }, 90_000);
+    }, 12 * 60 * 60 * 1000);
 
     const handleFocus = () => {
       if (document.visibilityState === 'visible') void refreshContext();
     };
+    const handleOnline = () => {
+      if (document.visibilityState === 'visible') void refreshContext(true);
+    };
     window.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleFocus);
+    window.addEventListener("online", handleOnline);
 
     return () => {
       active = false;
       window.clearInterval(timer);
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleFocus);
+      window.removeEventListener("online", handleOnline);
     };
   }, [currentUser?.id]);
 
@@ -590,79 +508,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Dentro del APK la app se actualiza sin instalar otro APK: el servidor
-  // publica un paquete web con versión, tamaño y SHA-256. Solo se avisa si la
-  // versión publicada es superior a la instalada.
-  useEffect(() => {
-    if (!IN_PALMYRA_APP || !currentUser?.id) {
-      setApkUpdateVersion(null);
-      setOtaUpdate(null);
-      return;
-    }
-    let active = true;
-    const checkRemoteVersion = async () => {
-      try {
-        const response = await fetch(`${PALMYRA_REMOTE_ORIGIN}/version.json?ts=${Date.now()}`, { cache: 'no-store' });
-        if (!response.ok) return;
-        const manifest = await response.json() as {
-          version?: string;
-          webBundle?: string;
-          webBundleSha256?: string;
-          webBundleBytes?: number;
-        };
-        if (!active) return;
-        const remote = String(manifest?.version || '').trim();
-        // Solo una versión estrictamente superior; igual o menor nunca avisa.
-        if (!remote || compareAppVersions(remote, INSTALLED_WEB_VERSION) <= 0) {
-          setApkUpdateVersion(null);
-          setOtaUpdate(null);
-          return;
-        }
-        let dismissed = "";
-        try { dismissed = sessionStorage.getItem(OTA_DISMISSED_KEY) || ""; } catch {}
-        if (dismissed === remote) return;
-
-        const bundlePath = String(manifest?.webBundle || '').trim();
-        const sha256 = String(manifest?.webBundleSha256 || '').trim();
-        const bundleBytes = Number(manifest?.webBundleBytes) || 0;
-        const bundleReady = Boolean(bundlePath) && /^[a-f0-9]{64}$/i.test(sha256) && bundleBytes > 0 && bundleBytes <= 300 * 1024 * 1024;
-        if (NATIVE_OTA_ENABLED) {
-          if (!bundleReady) {
-            // Manifiesto desplegado sin paquete OTA válido: NO se ofrece el APK
-            // (sería un aviso sin efecto). Se reintenta en el próximo ciclo.
-            console.warn('[OTA] version.json no publica un webBundle válido; se omite el aviso hasta el próximo despliegue.');
-            setOtaUpdate(null);
-            setApkUpdateVersion(null);
-            return;
-          }
-          setOtaUpdate({
-            version: remote,
-            url: new URL(bundlePath, PALMYRA_REMOTE_ORIGIN).toString(),
-            sha256,
-            bytes: bundleBytes,
-          });
-          setApkUpdateVersion(null);
-        } else {
-          // Instalador antiguo sin OTA: se mantiene la descarga del APK.
-          setOtaUpdate(null);
-          setApkUpdateVersion(remote);
-        }
-      } catch {
-        // Sin conexión: se reintenta al volver a la app o en el próximo ciclo.
-      }
-    };
-    void checkRemoteVersion();
-    const timer = window.setInterval(() => { void checkRemoteVersion(); }, 15 * 60 * 1000);
-    const onFocus = () => { void checkRemoteVersion(); };
-    window.addEventListener('focus', onFocus);
-    document.addEventListener('visibilitychange', onFocus);
-    return () => {
-      active = false;
-      window.clearInterval(timer);
-      window.removeEventListener('focus', onFocus);
-      document.removeEventListener('visibilitychange', onFocus);
-    };
-  }, [currentUser?.id]);
 
   // Progreso real del shell Android mientras descarga, verifica e instala.
   useEffect(() => {
@@ -839,8 +684,26 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const offlineStatusSpeechText = offlineStatusSpeech(offlineIndicatorState, safePendingOfflineCount, safeConflictOfflineCount);
   const offlineStatusTitleText = offlineStatusTitle(offlineIndicatorState, safePendingOfflineCount, safeConflictOfflineCount);
 
+  // ─── Actualización desde el manifiesto firmado ───
+  // Dentro del APK con OTA manda el manifiesto; en escritorio manda
+  // electron-updater y en la web el aviso del service worker. El artefacto solo
+  // existe cuando el cliente verificó la firma (fase "available").
+  const manifestUpdateVersion = updateState.phase === "available" ? updateState.result?.version || "" : "";
+  const manifestUpdateArtifact = updateState.artifact;
+  const manifestUpdateDismissed = manifestUpdateVersion !== "" && isUpdateDismissed(manifestUpdateVersion);
+  const manifestUpdateVisible =
+    IN_PALMYRA_APP && NATIVE_OTA_ENABLED && manifestUpdateVersion !== "" && !manifestUpdateDismissed;
+
+  const resetOtaProgress = () => {
+    setOtaPhase('idle');
+    setOtaPercent(0);
+    setOtaReceived(0);
+    setOtaTotal(0);
+    setOtaError('');
+  };
+
   const handleOtaDownload = () => {
-    if (!otaUpdate || otaBusy) return;
+    if (manifestUpdateVersion === "" || otaBusy) return;
     const activeSession = currentUser?.id ? getCurrentSession(currentBranchId, currentUser.id) : undefined;
     if (isPosPage && activeSession && cart.length > 0) {
       addNotification('Actualización preparada', 'info', 'Finaliza o limpia la venta actual antes de actualizar PALMYRA. La caja y los datos permanecen protegidos.');
@@ -851,40 +714,48 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       setOtaError('Sin conexión. Conéctate para descargar la actualización.');
       return;
     }
+    const artifact = manifestUpdateArtifact;
+    if (!artifact || artifact.platform !== 'android') {
+      setOtaPhase('error');
+      setOtaError('Esta versión no publica un paquete para Android. Descarga el APK más reciente.');
+      return;
+    }
     setOtaError('');
     setOtaPercent(4);
     setOtaReceived(0);
-    setOtaTotal(otaUpdate.bytes || 0);
+    setOtaTotal(artifact.bytes || 0);
     // La fase se marca antes de cruzar el puente para que el primer evento de
     // progreso nativo (que llega en milisegundos) no se pierda.
     setOtaPhase('downloading');
-    if (!startNativeUpdate(otaUpdate)) {
+    const result = applyAndroidUpdate(
+      {
+        kind: androidUpdateKindForArtifact(artifact),
+        version: manifestUpdateVersion,
+        url: artifact.url,
+        sha256: artifact.sha256,
+        bytes: artifact.bytes,
+      },
+      { currentVersion: PRODUCT_VERSION }
+    );
+    if (!result.ok) {
       setOtaPhase('error');
-      setOtaError('Este instalador no permite actualizar desde la app. Descarga el APK más reciente.');
-      return;
+      setOtaError(result.error || 'Este instalador no permite actualizar desde la app. Descarga el APK más reciente.');
     }
   };
 
-  // Reintento manual: vuelve a lanzar startUpdate desde cero (el shell borra
+  // Reintento manual: vuelve a lanzar la descarga desde cero (el shell borra
   // el archivo parcial y repite la descarga).
   const handleOtaRetry = () => {
-    if (!otaUpdate) return;
-    setOtaError('');
-    setOtaPercent(0);
-    setOtaReceived(0);
-    setOtaPhase('idle');
+    if (manifestUpdateVersion === "") return;
+    resetOtaProgress();
     handleOtaDownload();
   };
 
   const handleOtaLater = () => {
     if (otaBusy) return;
-    try { if (otaUpdate) sessionStorage.setItem(OTA_DISMISSED_KEY, otaUpdate.version); } catch {}
-    setOtaUpdate(null);
-    setOtaPhase('idle');
-    setOtaError('');
-    setOtaPercent(0);
-    setOtaReceived(0);
-    setOtaTotal(0);
+    // El runtime persiste el descarte; el aviso desaparece al instante.
+    if (manifestUpdateVersion !== "") dismissUpdateVersion(manifestUpdateVersion);
+    resetOtaProgress();
   };
 
   // Ocultar el aviso de escritorio sin frenar la descarga: el Setup se sigue
@@ -1168,9 +1039,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   </button>
                 </div>
                 <p className="mt-1 text-[7.5px] font-bold leading-4 text-muted">
-                  {apkStandalone
-                    ? "Estás usando la versión web instalada. El APK oficial abre más rápido, trabaja 100% offline y evita recargas del navegador."
-                    : "Estás entrando desde el navegador. Instala el APK oficial de Android para abrir más rápido y trabajar 100% offline, incluso con la PWA ya instalada."}
+                  Estás entrando desde el navegador. La operación solo funciona en la app instalada: descarga el APK
+                  oficial de Android para abrir más rápido y trabajar 100% offline.
                 </p>
                 <div className="mt-2 flex flex-col sm:flex-row gap-1.5">
                   <a
@@ -1202,86 +1072,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      {showInstallPwa && !showApkPromo && currentUser && (
-        <div className="fixed inset-x-3 bottom-3 sm:inset-auto sm:right-4 sm:bottom-4 z-[10000]">
-          <div className="w-full sm:w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-violet-200/80 bg-white/95 dark:bg-slate-900/95 dark:border-violet-900/50 shadow-2xl backdrop-blur-md p-3">
-            <div className="flex items-start gap-2.5">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-100 dark:bg-violet-900/40 text-violet-600 dark:text-violet-300">
-                <Smartphone className="w-4 h-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[9px] font-black uppercase tracking-[0.11em] text-primary">{IOS_BROWSER ? "Instala PALMYRA en iPhone / iPad" : "Instala PALMYRA"}</p>
-                  <button type="button" onClick={dismissInstallPrompt} className="p-1 rounded-lg text-muted hover:bg-subtle" aria-label="Cerrar aviso">
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-                <p className="mt-1 text-[7px] font-bold leading-4 text-muted">
-                  Instala PALMYRA como aplicación para abrirla directamente y trabajar a pantalla completa, incluso con conexión inestable.
-                </p>
-                {IOS_BROWSER && (
-                  <div className="mt-2 rounded-xl bg-violet-50 dark:bg-violet-950/30 border border-violet-100 dark:border-violet-900/40 px-2.5 py-2">
-                    {IOS_BROWSER === "Safari" ? (
-                      <>
-                        <p className="text-[6.5px] font-black uppercase tracking-wider text-violet-700 dark:text-violet-300">Añádela a pantalla de inicio</p>
-                        <ol className="mt-1 space-y-1 text-[6.5px] font-bold leading-4 text-muted">
-                          <li><b className="text-violet-700 dark:text-violet-300">1.</b> Toca <b>Compartir</b> (el cuadro con la flecha) en Safari.</li>
-                          <li><b className="text-violet-700 dark:text-violet-300">2.</b> Elige <b>Añadir a pantalla de inicio</b>.</li>
-                          <li><b className="text-violet-700 dark:text-violet-300">3.</b> Pulsa <b>Añadir</b> y abre PALMYRA desde el nuevo icono.</li>
-                        </ol>
-                      </>
-                    ) : (
-                      <>
-                        <p className="text-[6.5px] font-black uppercase tracking-wider text-violet-700 dark:text-violet-300">Abre esta página en Safari</p>
-                        <p className="mt-0.5 text-[6.5px] font-bold leading-4 text-muted">
-                          Estás en {IOS_BROWSER}. En iPhone y iPad solo <b>Safari</b> puede instalar la app: abre PALMYRA en Safari y usa <b>Compartir → Añadir a pantalla de inicio</b>.
-                        </p>
-                      </>
-                    )}
-                  </div>
-                )}
-                {!IOS_BROWSER && (pwaInstallAvailable ? (
-                  <button
-                    type="button"
-                    disabled={pwaInstalling}
-                    onClick={async () => {
-                      const prompt = getDeferredPWAInstallPrompt();
-                      if (!prompt?.prompt) return;
-                      setPwaInstalling(true);
-                      try {
-                        await prompt.prompt();
-                        const choice = await prompt.userChoice;
-                        if (choice?.outcome === "accepted") {
-                          try { window.localStorage.setItem(PALMYRA_PWA_INSTALLED_KEY, "1"); } catch {}
-                          delete (window as typeof window & { __palmyraInstallPrompt?: unknown }).__palmyraInstallPrompt;
-                          setPwaInstallAvailable(false);
-                          setShowInstallPwa(false);
-                        }
-                      } finally {
-                        setPwaInstalling(false);
-                      }
-                    }}
-                    className="mt-2 w-full h-8 rounded-xl bg-violet-600 text-white text-[8px] font-black uppercase tracking-[0.08em] flex items-center justify-center gap-1.5 hover:bg-violet-700 disabled:opacity-60"
-                  >
-                    <Download className="w-3 h-3" />
-                    {pwaInstalling ? "Instalando…" : "Instalar PALMYRA"}
-                  </button>
-                ) : (
-                  <div className="mt-2 rounded-xl bg-violet-50 dark:bg-violet-950/30 border border-violet-100 dark:border-violet-900/40 px-2.5 py-2">
-                    <p className="text-[6.5px] font-black uppercase tracking-wider text-violet-700 dark:text-violet-300">Instalación manual</p>
-                    <p className="mt-0.5 text-[6.5px] font-bold leading-4 text-muted">
-                      Abre el menú del navegador y elige <b>Instalar aplicación</b> o <b>Añadir a pantalla de inicio</b>.
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Sistema de Notificaciones Globales */}
-      <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
+      <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none" aria-live="polite">
         {notifications.map((n) => (
           <div 
             key={n.id} 
@@ -1345,7 +1137,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               type="button"
               onClick={() => setSidebarOpen(!sidebarOpen)}
               className="flex h-9 w-9 items-center justify-center rounded-lg transition hover:bg-slate-100 dark:hover:bg-slate-800"
-              aria-label="Abrir menú principal"
+              aria-label={sidebarOpen ? "Cerrar menú principal" : "Abrir menú principal"}
               title="Abrir menú principal"
               aria-expanded={sidebarOpen}
             >
@@ -1357,6 +1149,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       <aside
         data-palmy-sidebar="true"
+        aria-label="Menú principal"
+        role={sidebarOpen ? "dialog" : undefined}
+        aria-modal={sidebarOpen ? true : undefined}
         className={cn(
           "bg-secondary border-r border-base transition-all duration-300 ease-in-out flex flex-col h-full shrink-0 shadow-sm",
           // Mobile: off-canvas drawer with fixed overlay
@@ -1434,6 +1229,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                     <NavLink
                       key={item.href}
                       to={item.href}
+                      aria-current={location.pathname === item.href ? "page" : undefined}
                       onClick={(event) => {
                         if (comingSoon) {
                           event.preventDefault();
@@ -1658,6 +1454,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       </aside>
 
+      <LicenseReadOnlyBanner />
+
       {(saasContext?.company?.account_status === 'pending_payment' && !!saasContext?.subscription?.graceEndsAt && new Date(saasContext.subscription.graceEndsAt).getTime() <= countdownNow) && location.pathname !== '/subscription' && location.pathname !== '/help' && (
         <div className="fixed inset-0 z-[290] flex items-center justify-center p-4 bg-slate-950/55 backdrop-blur-[3px]">
           <div className="w-full max-w-md rounded-3xl border border-amber-200 bg-white shadow-2xl p-6 text-center">
@@ -1826,7 +1624,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Main Content */}
-      {otaUpdate && (
+      {manifestUpdateVisible && (
         <div className="fixed inset-0 z-[301] flex items-center justify-center px-4 py-6 pointer-events-none bg-slate-950/20 dark:bg-slate-950/50 backdrop-blur-[3px]">
           <div
             className="pointer-events-auto w-full max-w-sm overflow-hidden rounded-[30px] border border-violet-200/70 bg-white shadow-[0_28px_90px_rgba(76,29,149,0.24)] dark:border-violet-900/60 dark:bg-slate-900 dark:shadow-[0_28px_90px_rgba(0,0,0,0.5)]"
@@ -1848,7 +1646,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </div>
               <div className="relative mt-4 rounded-2xl border border-white/15 bg-black/10 px-3.5 py-3">
                 <p className="text-[10px] font-semibold leading-5 text-violet-50">
-                  {otaUpdate.version ? `La versión ${otaUpdate.version}` : APP_VERSION_LABEL} está lista. Se descarga e instala sin salir de la app; tu empresa, ventas e inventario se conservan.
+                  {manifestUpdateVersion ? `La versión ${manifestUpdateVersion}` : APP_VERSION_LABEL} está lista y su firma fue verificada. Se descarga e instala sin salir de la app; tu empresa, ventas e inventario se conservan.
                 </p>
               </div>
             </div>
@@ -1923,63 +1721,6 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </div>
               <p className="mt-2 text-center text-[8px] font-semibold leading-4 text-slate-400 dark:text-slate-500">
                 Solo se descarga una vez la app. Las próximas versiones se instalan aquí mismo.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {apkUpdateVersion && (
-        <div className="fixed inset-0 z-[301] flex items-center justify-center px-4 py-6 pointer-events-none bg-slate-950/20 dark:bg-slate-950/50 backdrop-blur-[3px]">
-          <div
-            className="pointer-events-auto w-full max-w-sm overflow-hidden rounded-[30px] border border-violet-200/70 bg-white shadow-[0_28px_90px_rgba(76,29,149,0.24)] dark:border-violet-900/60 dark:bg-slate-900 dark:shadow-[0_28px_90px_rgba(0,0,0,0.5)]"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="palmyra-apk-update-title"
-          >
-            <div className="relative overflow-hidden bg-gradient-to-br from-violet-700 via-indigo-600 to-violet-500 px-5 pb-5 pt-5 text-white sm:px-6">
-              <div className="absolute -right-10 -top-12 h-32 w-32 rounded-full bg-white/15 blur-2xl" />
-              <div className="relative flex items-center gap-3">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/15 shadow-lg backdrop-blur-sm">
-                  <Download className="h-6 w-6" />
-                </div>
-                <div className="min-w-0">
-                  <p className="text-[9px] font-black uppercase tracking-[0.18em] text-violet-100">PALMYRA · Android</p>
-                  <h3 id="palmyra-apk-update-title" className="mt-1 text-xl font-black tracking-tight">Nueva versión disponible</h3>
-                </div>
-              </div>
-              <div className="relative mt-4 rounded-2xl border border-white/15 bg-black/10 px-3.5 py-3">
-                <p className="text-[10px] font-semibold leading-5 text-violet-50">
-                  {apkUpdateVersion ? `La versión ${apkUpdateVersion}` : APP_VERSION_LABEL} ya está lista. Descarga el APK e instálalo encima de esta app: tu empresa, ventas y datos se conservan.
-                </p>
-              </div>
-            </div>
-            <div className="border-t border-slate-100 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-900 sm:px-6">
-              <div className="flex items-center justify-between gap-2.5">
-                <span className="text-[8px] font-black uppercase tracking-[0.12em] text-slate-400">Actualización de la app</span>
-                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-[8px] font-black uppercase tracking-wider text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                  Lista
-                </span>
-              </div>
-              <div className="mt-3 flex flex-col-reverse gap-2.5 sm:flex-row">
-                <button
-                  type="button"
-                  onClick={() => setApkUpdateVersion(null)}
-                  className="h-11 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-4 text-[9px] font-black uppercase tracking-[0.08em] text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-                >
-                  Más tarde
-                </button>
-                <a
-                  href={REMOTE_APK_DOWNLOAD}
-                  download="PALMYRA-Android.apk"
-                  className="h-11 flex-1 rounded-xl bg-violet-600 px-4 text-center text-[9px] font-black uppercase leading-[2.75rem] tracking-[0.08em] text-white shadow-lg shadow-violet-600/20 transition hover:bg-violet-700"
-                >
-                  Descargar APK
-                </a>
-              </div>
-              <p className="mt-2 text-center text-[8px] font-semibold leading-4 text-slate-400 dark:text-slate-500">
-                Al terminar la descarga, abre el archivo y pulsa Instalar para actualizar PALMYRA.
               </p>
             </div>
           </div>
@@ -2129,7 +1870,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             onClick={() => setSidebarOpen(false)}
           />
         )}
-        <div className={cn("flex-1 min-w-0 h-full flex flex-col scroll-touch keyboard-safe-scroll", isPosPage ? "overflow-hidden p-0" : "overflow-y-auto p-3 sm:p-4 lg:p-6 pb-4 lg:pb-6")}>
+        <div
+          aria-hidden={sidebarOpen || undefined}
+          className={cn("flex-1 min-w-0 h-full flex flex-col scroll-touch keyboard-safe-scroll", isPosPage ? "overflow-hidden p-0" : "overflow-y-auto p-3 sm:p-4 lg:p-6 pb-4 lg:pb-6")}
+        >
           {children}
         </div>
         </main>

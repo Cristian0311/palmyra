@@ -9,46 +9,86 @@ import type {
   InventoryAudit,
 } from '../../../types';
 
-export async function loadReturnsWarrantiesQuotesTimePayroll() {
-  const tenant = await getActiveTenant();
-  const supabase = getSupabase()!;
-  const [rr,w,qs,ts,pr,pi,aa] = await Promise.all([
-    supabase.from('sales_returns').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(1000),
-    supabase.from('warranties').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(1000),
-    supabase.from('quotes').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(1000),
-    supabase.from('employee_time_shifts').select('*').eq('company_id',tenant.companyId).order('clock_in',{ascending:false}).limit(1000),
-    supabase.from('payroll_runs').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(500),
-    supabase.from('payroll_items').select('*').eq('company_id',tenant.companyId),
-    supabase.from('inventory_audits').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(500),
+export type OperationalExtrasOptions = {
+  /** Cliente inyectable (pruebas o cliente que cuenta solicitudes). */
+  client?: any;
+  tenant?: { companyId: string };
+  /** Ventana de arranque: solo filas creadas desde esta fecha. */
+  sinceIso?: string;
+  /** Tope de filas por consulta (nunca sin límite en la ventana). */
+  limit?: number;
+  /** Tope de filas para tablas hijas (líneas/cuentas). */
+  itemsLimit?: number;
+  /** Mapas ya cargados por el catálogo: evitan consultas repetidas. */
+  refs?: {
+    productNames?: Map<string, string>;
+    customerNames?: Map<string, string>;
+    employeeNames?: Map<string, string>;
+  };
+};
+
+export async function loadReturnsWarrantiesQuotesTimePayroll(options: OperationalExtrasOptions = {}) {
+  const tenant = (options.tenant || await getActiveTenant()) as { companyId: string };
+  const supabase = options.client || getSupabase()!;
+  const since = options.sinceIso;
+  const rowLimit = Math.max(1, Math.trunc(options.limit ?? 1000));
+  const itemsLimit = Math.max(1, Math.trunc(options.itemsLimit ?? 1000));
+
+  const withWindow = (query: any, column: string) => {
+    let q = query;
+    if (since) q = q.gte(column, since);
+    return q.limit(rowLimit);
+  };
+
+  const [rr,w,qs,ts,pr,aa] = await Promise.all([
+    withWindow(supabase.from('sales_returns').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}), 'created_at'),
+    withWindow(supabase.from('warranties').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}), 'created_at'),
+    withWindow(supabase.from('quotes').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}), 'created_at'),
+    withWindow(supabase.from('employee_time_shifts').select('*').eq('company_id',tenant.companyId).order('clock_in',{ascending:false}), 'clock_in'),
+    withWindow(supabase.from('payroll_runs').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}), 'created_at'),
+    withWindow(supabase.from('inventory_audits').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}), 'created_at'),
   ]);
-  for(const x of [rr,w,qs,ts,pr,pi,aa]) if(x.error) throw x.error;
+  for(const x of [rr,w,qs,ts,pr,aa]) if(x.error) throw x.error;
+
+  const runIds = (pr.data || []).map((run:any) => run.id).filter(Boolean);
+  const pi = since
+    ? (runIds.length
+        ? await supabase.from('payroll_items').select('*').eq('company_id',tenant.companyId).in('payroll_run_id', runIds).limit(itemsLimit)
+        : { data: [], error: null })
+    : await supabase.from('payroll_items').select('*').eq('company_id',tenant.companyId);
+  if (pi.error) throw pi.error;
 
   const returnIds = (rr.data || []).map((row:any) => row.id).filter(Boolean);
   const quoteIds = (qs.data || []).map((row:any) => row.id).filter(Boolean);
   const auditIds = (aa.data || []).map((row:any) => row.id).filter(Boolean);
   const [ri,qi,ai] = await Promise.all([
     returnIds.length
-      ? supabase.from('sales_return_items').select('*').in('return_id', returnIds)
+      ? supabase.from('sales_return_items').select('*').in('return_id', returnIds).limit(itemsLimit)
       : Promise.resolve({ data: [], error: null }),
     quoteIds.length
-      ? supabase.from('quote_items').select('*').in('quote_id', quoteIds)
+      ? supabase.from('quote_items').select('*').in('quote_id', quoteIds).limit(itemsLimit)
       : Promise.resolve({ data: [], error: null }),
     auditIds.length
-      ? supabase.from('inventory_audit_items').select('*').in('audit_id', auditIds)
+      ? supabase.from('inventory_audit_items').select('*').in('audit_id', auditIds).limit(itemsLimit)
       : Promise.resolve({ data: [], error: null }),
   ]);
   for(const x of [ri,qi,ai]) if(x.error) throw x.error;
 
-  const productRes = await supabase.from('products').select('id,name').eq('company_id',tenant.companyId);
-  if(productRes.error) throw productRes.error;
-  const customerRes = await supabase.from('customers').select('id,name').eq('company_id',tenant.companyId);
-  if(customerRes.error) throw customerRes.error;
-  const employeeRes = await supabase.from('employees').select('id,full_name').eq('company_id',tenant.companyId);
-  if(employeeRes.error) throw employeeRes.error;
-
-  const pMap = new Map(productRes.data?.map((p:any)=>[p.id,p.name]) || []);
-  const eMap = new Map(employeeRes.data?.map((e:any)=>[e.id,e.full_name]) || []);
-  const cMap = new Map(customerRes.data?.map((c:any)=>[c.id,c.name]) || []);
+  const pMap = options.refs?.productNames || await (async () => {
+    const productRes = await supabase.from('products').select('id,name').eq('company_id',tenant.companyId);
+    if(productRes.error) throw productRes.error;
+    return new Map(productRes.data?.map((p:any)=>[p.id,p.name]) || []);
+  })();
+  const cMap = options.refs?.customerNames || await (async () => {
+    const customerRes = await supabase.from('customers').select('id,name').eq('company_id',tenant.companyId);
+    if(customerRes.error) throw customerRes.error;
+    return new Map(customerRes.data?.map((c:any)=>[c.id,c.name]) || []);
+  })();
+  const eMap = options.refs?.employeeNames || await (async () => {
+    const employeeRes = await supabase.from('employees').select('id,full_name').eq('company_id',tenant.companyId);
+    if(employeeRes.error) throw employeeRes.error;
+    return new Map(employeeRes.data?.map((e:any)=>[e.id,e.full_name]) || []);
+  })();
 
   const returns:ReturnItem[]=[];
   for(const r of rr.data||[]) for(const item of (ri.data||[]).filter((x:any)=>x.return_id===r.id)){
@@ -167,5 +207,6 @@ export async function loadReturnsWarrantiesQuotesTimePayroll() {
     }))
   }));
 
+  // cMap se mantiene por compatibilidad con la firma histórica del loader.
   return {returns,warranties,quotes,timeShifts,salarySettlements,audits};
 }

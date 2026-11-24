@@ -1,4 +1,5 @@
 import type { AppState } from '../storeTypes';
+import type { Transaction } from '../../types';
 import { buildLocalVoidTransactionPatch, canVoidSales } from './localVoidTransaction';
 import { isCloudBusinessSyncAllowed } from '../../services/localPlanMode';
 
@@ -14,6 +15,12 @@ type Dependencies = {
   rpc: (id: string, userId: string, reason: string) => Promise<{ success: boolean; error?: string; errorCode?: string }>;
   reconcile: (branchId: string) => Promise<boolean>;
   flush: () => Promise<unknown>;
+  /**
+   * Aviso opcional tras completar la baja local (venta ya marcada como
+   * anulada y persistida). El espejo al almacén normalizado se cuelga de aquí;
+   * un fallo del callback no altera el resultado de la anulación.
+   */
+  onVoided?: (transaction: Transaction) => void;
 };
 
 /** Serialized per sale, durable intent first; reconciliation can never turn a confirmed void into failure. */
@@ -71,6 +78,16 @@ export function createVoidTransactionAction(deps: Dependencies) {
         deps.set(current => buildLocalVoidTransactionPatch(current, tx, audit));
         applied = true;
         await deps.flush();
+        // La baja ya está persistida: el espejo se dispara una sola vez y fuera
+        // del camino crítico (el `inFlight` evita anulaciones simultáneas).
+        if (deps.onVoided) {
+          try {
+            const voided = deps.get().transactions.find(t => t.id === id) ?? tx;
+            deps.onVoided(voided);
+          } catch {
+            // El espejo es best-effort: no invalida una anulación confirmada.
+          }
+        }
         if (confirmed) {
           // Retain the queue entry until reconciliation succeeds, so a reload or
           // lost response retries the same remote sale, never restores locally twice.

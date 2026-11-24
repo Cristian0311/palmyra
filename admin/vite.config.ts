@@ -11,6 +11,13 @@ import { VitePWA } from "vite-plugin-pwa";
 const BUILD_ID = Date.now().toString(36);
 const BUILT_AT = new Date().toISOString();
 const OUT_DIR = fileURLToPath(new URL("../dist-admin", import.meta.url));
+const PACKAGE_VERSION = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")).version || "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+})();
 
 export default defineConfig({
   root: fileURLToPath(new URL(".", import.meta.url)),
@@ -18,6 +25,7 @@ export default defineConfig({
   define: {
     __ADMIN_BUILD__: JSON.stringify(BUILD_ID),
     __ADMIN_BUILT_AT__: JSON.stringify(BUILT_AT),
+    __ADMIN_VERSION__: JSON.stringify(PACKAGE_VERSION),
   },
   plugins: [
     react(),

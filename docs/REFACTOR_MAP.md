@@ -2,7 +2,7 @@
 
 ## Completado en esta fase
 
-- Saneamiento inicial: históricos retirados de la superficie raíz y conservados en `docs/archive/` y `scripts/archive/legacy/`.
+- Saneamiento inicial: históricos retirados de la superficie raíz y conservados en `scripts/archive/legacy/` (el antiguo `docs/archive/` ya no forma parte del árbol activo).
 - Verificación recursiva: sin `fixrender/`, `.bak`, `.orig`, `.rej`, HOTFIX, REPAIR ni LIVE_REPAIR en el árbol activo.
 - Estado global: `useStore.ts` permanece en 449 líneas mediante action creators por dominio.
 - POS: estado offline, printer/recibos, cierre imprimible y modales principales extraídos; `POS.tsx` quedó en 3.372 líneas.
@@ -16,15 +16,15 @@
 - Inventory/Transfers/POS: las asignaciones de trabajador ya pueden resolverse mediante la frontera Warehouse sin romper los campos históricos.
 - CI: validación por push/PR con TypeScript, tests unitarios, auditoría estructural y build; además cancela ejecuciones obsoletas por rama.
 
-## Tamaños de mantenimiento actuales
+## Tamaños de mantenimiento actuales (2026-11-23)
 
 | Archivo | Líneas |
 | --- | ---: |
-| `src/pages/POS.tsx` | 3.372 |
-| `src/pages/Reports.tsx` | 3.492 |
-| `src/store/useStore.ts` | 449 |
-| `src/services/offlineSync.ts` | 382 |
-| `src/services/offlineQueue.ts` | 399 |
+| `src/pages/POS.tsx` | 2.458 |
+| `src/pages/Reports.tsx` | 1.685 |
+| `src/store/useStore.ts` | 563 |
+| `src/services/offlineSync.ts` | 665 |
+| `src/services/offlineQueue.ts` | 652 |
 | `src/store/actions/syncActions.ts` | 280 |
 | `src/services/supabaseSync/mutations.ts` | 295 |
 | `src/services/supabaseSync/pull.ts` | 433 |

@@ -1,0 +1,9 @@
+{
+  "kty": "EC",
+  "crv": "P-256",
+  "x": "FGn_uP649oYTljOnoGWDKxXtdb_vuDKjNd55FlIjlQE",
+  "y": "bilDRYR0a3aYLymu4X5EaO61ETiBQxGTVFRIgSqFw8g",
+  "kid": "palmyra-stable-2026-11",
+  "alg": "ES256",
+  "use": "sig"
+}

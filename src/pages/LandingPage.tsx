@@ -5,18 +5,17 @@ import {
   Settings2, LineChart, Menu, X, UserRound,
   ShieldCheck, Sparkles, Globe2,
   CircleDollarSign, LockKeyhole, Landmark, Caravan, Castle,
-  Download, Smartphone, FileText, BookOpen, Headphones, Loader2,
+  Download, Smartphone, Tablet, FileText, BookOpen, Headphones, Loader2,
   Mail, MailCheck
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { PalmyraWordmark } from "../components/PalmyraWordmark";
 import { SocialLinks } from "../components/SocialLinks";
 import { useDocumentScrollPage } from "../hooks/useDocumentScrollPage";
-import { PRODUCT_VERSION } from "../lib/productVersion";
+import { PRODUCT_DISPLAY_VERSION } from "../lib/productVersion";
 
 const CITY_IMAGE = "/landing/palmyra-ruins.webp";
 const CITY_CREDIT = "Fotografía real de Palmyra, Siria · Vyacheslav Argenberg · Wikimedia Commons · CC BY 4.0";
-const PALMYRA_PWA_INSTALLED_KEY = "palmyra:pwa-installed";
 const DESKTOP_DOWNLOAD_URL =
   (import.meta.env.VITE_DESKTOP_DOWNLOAD_URL as string | undefined)?.trim() || "/download/windows";
 const ANDROID_APK_URL =
@@ -246,8 +245,6 @@ function AreaPanel({ area, compact = false, onOpen }: { area: LandingArea; compa
   );
 }
 
-type InstallPlatform = "ios" | "android" | "desktop";
-
 function DownloadCta({
   href,
   label,
@@ -314,74 +311,6 @@ function DownloadCta({
 }
 
 function DownloadCenter() {
-  const [installPromptReady, setInstallPromptReady] = useState(false);
-  const [installed, setInstalled] = useState(false);
-  const [platform, setPlatform] = useState<InstallPlatform>("desktop");
-
-  useEffect(() => {
-    const userAgent = navigator.userAgent;
-    const isIOS =
-      /iPad|iPhone|iPod/.test(userAgent) ||
-      (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-    setPlatform(isIOS ? "ios" : /Android/i.test(userAgent) ? "android" : "desktop");
-    setInstalled(
-      Boolean(window.matchMedia?.("(display-mode: standalone)").matches) ||
-        Boolean((navigator as Navigator & { standalone?: boolean }).standalone) ||
-        localStorage.getItem(PALMYRA_PWA_INSTALLED_KEY) === "1"
-    );
-
-    const bridge = () =>
-      (window as typeof window & { __palmyraInstallPrompt?: { prompt?: () => Promise<void> } })
-        .__palmyraInstallPrompt;
-    const syncPrompt = () => setInstallPromptReady(Boolean(bridge()?.prompt));
-    syncPrompt();
-    const markInstalled = () => setInstalled(true);
-    window.addEventListener("palmyra:pwa-install-available", syncPrompt);
-    window.addEventListener("palmyra:pwa-installed", markInstalled);
-    return () => {
-      window.removeEventListener("palmyra:pwa-install-available", syncPrompt);
-      window.removeEventListener("palmyra:pwa-installed", markInstalled);
-    };
-  }, []);
-
-  const requestInstall = async () => {
-    const install = (
-      window as typeof window & { __palmyraInstallPrompt?: { prompt?: () => Promise<void> } }
-    ).__palmyraInstallPrompt;
-    await install?.prompt?.();
-  };
-
-  const mobileHint =
-    platform === "ios"
-      ? "En Safari: toca Compartir y elige «Añadir a pantalla de inicio»."
-      : platform === "android"
-        ? "En Chrome: abre el menú ⋮ y elige «Instalar aplicación» o «Añadir a pantalla de inicio»."
-        : "Abre esta página en tu teléfono para añadirla a la pantalla de inicio. En Chrome de escritorio: menú ⋮ → «Instalar PALMYRA».";
-
-  const pwaInstallFallback = installed ? (
-    <div className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-center text-[10px] font-black text-emerald-800">
-      <Check className="h-4 w-4 shrink-0" />
-      App instalada en este dispositivo
-    </div>
-  ) : installPromptReady ? (
-    <div>
-      <button
-        type="button"
-        onClick={requestInstall}
-        className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-white px-3 text-center text-[11px] font-black text-[#5B2DBA]"
-      >
-        <Download className="h-4 w-4 shrink-0" />
-        O instálala desde el navegador
-      </button>
-      <p className="mt-1.5 text-[9px] font-semibold leading-4 text-slate-600">{mobileHint}</p>
-    </div>
-  ) : (
-    <div className="rounded-xl border border-violet-200 bg-white px-3 py-2.5">
-      <p className="text-[9px] font-black uppercase tracking-wider text-[#5B2DBA]">O instálala desde el navegador</p>
-      <p className="mt-1 text-[10px] leading-5 text-slate-600">{mobileHint}</p>
-    </div>
-  );
-
   return (
     <section id="descargas" className="bg-white border-y border-violet-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 lg:py-18">
@@ -391,13 +320,13 @@ function DownloadCenter() {
             Lleva PALMYRA a tu PC o a tu móvil.
           </h2>
           <p className="text-sm text-slate-500 mt-3 leading-6">
-            Instala el programa completo en Windows o descarga el APK en tu Android. También puedes añadirla a la pantalla
-            de inicio desde el navegador. Todo usa la misma cuenta, empresa y datos: lo que registres en un dispositivo
-            aparece en el otro al sincronizar.
+            PALMYRA ya no se opera desde el navegador. Instala el programa completo en Windows o el APK en tu Android; la
+            app para iPhone y iPad llegará próximamente. Todo usa la misma cuenta, empresa y datos: lo que registres en un
+            dispositivo aparece en el otro al sincronizar.
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 gap-3 mt-8">
+        <div className="grid gap-3 mt-8 md:grid-cols-2 lg:grid-cols-3 items-stretch">
           <article className="relative flex flex-col overflow-hidden rounded-3xl border border-violet-100 bg-[#F7F5FC] p-5 sm:p-6">
             <div className="pointer-events-none absolute -top-20 -right-16 h-52 w-52 rounded-full bg-[#EFE8FF] blur-2xl" />
             <div className="relative flex flex-col h-full">
@@ -427,7 +356,7 @@ function DownloadCenter() {
               </div>
               <div className="mt-auto pt-5">
                 <div className="rounded-xl border border-violet-100 bg-white px-3 py-2">
-                  <p className="text-[10px] font-black text-[#3B1B78]">Versión actual · v{PRODUCT_VERSION}</p>
+                  <p className="text-[10px] font-black text-[#3B1B78]">Versión actual · v{PRODUCT_DISPLAY_VERSION}</p>
                   <p className="mt-0.5 text-[9px] font-semibold text-slate-600">Siempre la última versión publicada</p>
                 </div>
                 <DownloadCta
@@ -452,12 +381,12 @@ function DownloadCenter() {
                   <Smartphone className="w-5 h-5" />
                 </span>
                 <span className="px-2.5 py-1 rounded-full bg-white border border-violet-100 text-[8px] font-black uppercase tracking-wider text-[#5B2DBA]">
-                  Android 7+ · iPhone / iPad
+                  Android 7 o superior
                 </span>
               </div>
-              <h3 className="text-xl font-black text-[#3B1B78] mt-4">PALMYRA para móvil</h3>
+              <h3 className="text-xl font-black text-[#3B1B78] mt-4">PALMYRA para Android</h3>
               <p className="text-xs text-slate-500 mt-2 leading-6">
-                Descarga el APK en Android o añade la app a la pantalla de inicio. Sin pasar por una tienda de aplicaciones.
+                Descarga el APK oficial directamente en tu teléfono o tablet, sin pasar por una tienda de aplicaciones.
               </p>
               <div className="mt-4 space-y-1.5">
                 {[
@@ -472,35 +401,65 @@ function DownloadCenter() {
                   </div>
                 ))}
               </div>
-              <div className="mt-auto space-y-2 pt-5">
-                {platform !== "ios" ? (
-                  <>
-                    <DownloadCta
-                      href={ANDROID_APK_URL}
-                      label="Descargar APK para Android"
-                      sizeLabel="APK para Android 7 o superior · aprox. 2 MB"
-                    />
-                    <p className="text-[9px] font-semibold leading-4 text-slate-600">
-                      Instala sin tienda de aplicaciones. Si Android lo solicita, activa «Instalar apps desconocidas».
-                    </p>
-                    <div className="pt-1">{pwaInstallFallback}</div>
-                  </>
-                ) : (
-                  <>
-                    <p className="text-[9px] font-black uppercase tracking-wider text-[#3B1B78]">En iPhone / iPad</p>
-                    {pwaInstallFallback}
-                    <p className="text-[9px] font-semibold leading-4 text-slate-600">
-                      iPhone y iPad no aceptan APK: usa Safari y añádela a la pantalla de inicio.
-                    </p>
-                  </>
-                )}
+              <div className="mt-auto pt-5">
+                <div className="rounded-xl border border-violet-100 bg-white px-3 py-2">
+                  <p className="text-[10px] font-black text-[#3B1B78]">Versión actual · v{PRODUCT_DISPLAY_VERSION}</p>
+                  <p className="mt-0.5 text-[9px] font-semibold text-slate-600">Siempre la última versión publicada</p>
+                </div>
+                <DownloadCta
+                  href={ANDROID_APK_URL}
+                  label="Descargar APK para Android"
+                  sizeLabel="APK para Android 7 o superior · aprox. 2 MB"
+                  className="mt-2"
+                />
+                <p className="mt-2 text-[9px] leading-4 text-slate-600">
+                  Si Android lo solicita, activa «Instalar apps desconocidas» para este archivo.
+                </p>
+              </div>
+            </div>
+          </article>
+
+          <article className="relative flex flex-col overflow-hidden rounded-3xl border border-dashed border-violet-200 bg-white p-5 sm:p-6 md:col-span-2 lg:col-span-1">
+            <div className="relative flex flex-col h-full">
+              <div className="flex items-center justify-between gap-3">
+                <span className="w-11 h-11 rounded-2xl bg-[#EFE8FF] text-[#5B2DBA] flex items-center justify-center">
+                  <Tablet className="w-5 h-5" />
+                </span>
+                <span className="px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-[8px] font-black uppercase tracking-wider text-amber-700">
+                  Próximamente
+                </span>
+              </div>
+              <h3 className="text-xl font-black text-[#3B1B78] mt-4">PALMYRA para iPhone / iPad</h3>
+              <p className="text-xs text-slate-500 mt-2 leading-6">
+                La app para Apple está en preparación. Publicaremos el aviso en esta misma página en cuanto esté disponible.
+              </p>
+              <div className="mt-4 space-y-1.5">
+                {[
+                  "Misma cuenta, empresa y datos",
+                  "Sincronizará con tus equipos Windows y Android",
+                  "Aviso oficial en esta página",
+                ].map((item) => (
+                  <div key={item} className="flex items-center gap-2 text-[10px] text-slate-600">
+                    <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-[#7C4DDE]" />
+                    {item}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-auto pt-5">
+                <div className="flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-violet-200 bg-[#F7F5FC] px-3 text-center text-[10px] font-black uppercase tracking-wider text-[#5B2DBA]/80">
+                  <Tablet className="h-4 w-4 shrink-0" />
+                  Disponible próximamente
+                </div>
+                <p className="mt-2 text-[9px] leading-4 text-slate-600">
+                  Mientras tanto, trabaja desde Windows o Android con la misma cuenta: todo se sincroniza igual.
+                </p>
               </div>
             </div>
           </article>
         </div>
 
         <p className="text-[10px] text-slate-500 mt-5">
-          ¿Prefieres no instalar nada todavía? También puedes entrar directo desde el navegador con tu cuenta.
+          La operación desde el navegador está cerrada: tu cuenta funciona únicamente en la app instalada.
         </p>
       </div>
     </section>
@@ -588,7 +547,7 @@ export default function LandingPage({ signedIn = false }: { signedIn?: boolean }
               <span className="sm:hidden">Crear</span>
               <span className="hidden sm:inline">Crear cuenta</span>
             </button>
-            <button type="button" onClick={() => setMobileMenu(v => !v)} className="w-10 h-10 shrink-0 rounded-xl border border-violet-100 bg-white text-[#5B2DBA]" aria-label="Menú" aria-expanded={mobileMenu}>{mobileMenu ? <X className="w-4 h-4 mx-auto" /> : <Menu className="w-4 h-4 mx-auto" />}</button>
+            <button type="button" onClick={() => setMobileMenu(v => !v)} className="w-10 h-10 shrink-0 rounded-xl border border-violet-100 bg-white text-[#5B2DBA]" aria-label={mobileMenu ? "Cerrar menú" : "Abrir menú"} aria-expanded={mobileMenu}>{mobileMenu ? <X className="w-4 h-4 mx-auto" /> : <Menu className="w-4 h-4 mx-auto" />}</button>
           </div>
         </div>
         {mobileMenu && <div className="lg:hidden border-t border-violet-100 bg-white px-4 py-3"><div className="flex flex-col gap-3 text-xs font-bold text-slate-600"><a href="#producto" onClick={() => setMobileMenu(false)}>Producto</a><a href="#modulos" onClick={() => setMobileMenu(false)}>Módulos</a><a href="#descargas" onClick={() => setMobileMenu(false)}>Descargas</a><a href="#planes" onClick={() => setMobileMenu(false)}>Planes</a><a href="#historia" onClick={() => setMobileMenu(false)}>Historia</a></div><div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-violet-100"><button type="button" onClick={() => goAuth("signin")} className="h-11 rounded-xl border border-violet-200 bg-white text-[11px] font-black text-[#5B2DBA] active:scale-[.98]">Entrar</button><button type="button" onClick={() => goAuth("signup")} className="h-11 rounded-xl bg-[#5B2DBA] text-white text-[11px] font-black active:scale-[.98]">Crear cuenta</button></div></div>}
@@ -716,14 +675,16 @@ export default function LandingPage({ signedIn = false }: { signedIn?: boolean }
               {plans.map(plan => {
                 const Icon = plan.icon;
                 return (
-                  <article key={plan.code} className={"relative rounded-2xl p-4 border " + (plan.featured ? "border-[#8B63E6] bg-white shadow-[0_25px_60px_-34px_rgba(101,53,197,.55)] md:-translate-y-2" : "border-violet-100 bg-white/80")}>
+                  <article key={plan.code} className={"relative flex h-full flex-col rounded-2xl p-4 border " + (plan.featured ? "border-[#8B63E6] bg-white shadow-[0_25px_60px_-34px_rgba(101,53,197,.55)]" : "border-violet-100 bg-white/80")}>
                     {plan.featured && <div className="absolute -top-2.5 left-4 px-2.5 py-1 rounded-full bg-[#5B2DBA] text-white text-[8px] font-black uppercase tracking-wider">Más elegido</div>}
                     <div className="flex items-center justify-between gap-2"><div className="flex items-center gap-2"><span className="w-8 h-8 rounded-xl bg-[#EFE8FF] text-[#5B2DBA] flex items-center justify-center"><Icon className="w-4 h-4"/></span><div><p className="text-[9px] uppercase tracking-wider text-slate-500 font-black">{plan.note}</p><h3 className="text-base font-black text-[#3B1B78]">{plan.name}</h3></div></div><p className="text-xl font-black text-[#3B1B78]">{plan.price}{plan.code !== "free" && <span className="text-[8px] text-slate-500 font-bold">/mes</span>}</p></div>
                     <div className="grid grid-cols-3 gap-1.5 mt-4">{[plan.warehouses, plan.employees, plan.products].map((value, index) => <div key={index} className="rounded-lg bg-[#F7F5FC] border border-violet-50 px-2 py-2 text-center"><p className="text-[7px] text-slate-500 uppercase font-black">{["Almacenes","Empleados","Productos"][index]}</p><p className="text-[10px] font-black text-[#5B2DBA] mt-0.5">{value}</p></div>)}</div>
                     <p className="text-[9px] text-slate-500 leading-5 mt-3">{plan.description}</p>
                     <div className="space-y-1.5 mt-4">{plan.features.map(f => <div key={f} className="flex items-center gap-2 text-[9px] text-slate-500"><span className="w-4 h-4 rounded-md bg-[#EFE8FF] text-[#5B2DBA] flex items-center justify-center shrink-0"><Check className="w-2.5 h-2.5"/></span>{f}</div>)}</div>
-                    <button type="button" onClick={() => choosePlanAndSignup(plan.code)} className={"w-full h-10 mt-5 rounded-xl text-[10px] font-black active:scale-[.98] " + (plan.featured ? "bg-[#5B2DBA] text-white" : "bg-[#F0EBFA] text-[#5B2DBA]")}>{plan.code === "free" ? "Comenzar con Gratis" : "Elegir plan"}</button>
-                    <p className="text-[7px] text-center text-slate-500 mt-2">{plan.code === "free" ? "Gratis permanente · modo offline · respaldo comercial en la nube" : "CUP en efectivo o transferencia · USD en efectivo · confirmación manual"}</p>
+                    <div className="mt-auto pt-5">
+                      <button type="button" onClick={() => choosePlanAndSignup(plan.code)} className={"w-full h-10 rounded-xl text-[10px] font-black active:scale-[.98] " + (plan.featured ? "bg-[#5B2DBA] text-white" : "bg-[#F0EBFA] text-[#5B2DBA]")}>{plan.code === "free" ? "Comenzar con Gratis" : "Elegir plan"}</button>
+                      <p className="text-[7px] text-center text-slate-500 mt-2">{plan.code === "free" ? "Gratis permanente · modo offline · respaldo comercial en la nube" : "CUP en efectivo o transferencia · USD en efectivo · confirmación manual"}</p>
+                    </div>
                   </article>
                 );
               })}

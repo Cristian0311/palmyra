@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Plus, Trash2, CreditCard, DollarSign, Copy, Check
 } from "lucide-react";
@@ -74,9 +74,24 @@ export default function CheckoutModal({
     return `${symbol} ${amount.toLocaleString("es-CU", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}`;
   };
 
+  // Escape cierra el cobro mientras no haya una venta en proceso.
+  useEffect(() => {
+    if (isSubmittingCheckout) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isSubmittingCheckout, onClose]);
+
   return (
         <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[80] flex items-center justify-center p-2 sm:p-4 overflow-hidden animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-md sm:max-w-lg overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[94vh] sm:max-h-[90vh] border border-slate-200 dark:border-slate-800">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Cobro"
+            className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-md sm:max-w-lg overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[94dvh] sm:max-h-[90dvh] border border-slate-200 dark:border-slate-800"
+          >
             
             {/* Header: Total Summary (Compact) */}
             <div className="bg-slate-900 text-white p-3.5 sm:p-4 relative shrink-0">
@@ -84,6 +99,7 @@ export default function CheckoutModal({
                 onClick={onClose}
                 className="absolute right-3 top-3 p-1.5 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white"
                 title="Cerrar cobro"
+                aria-label="Cerrar cobro"
               >
                 <Plus className="w-5 h-5 rotate-45" />
               </button>
@@ -163,8 +179,8 @@ export default function CheckoutModal({
 
               {activePaymentLineId && (
                 <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 animate-in slide-in-from-bottom-2 duration-300">
-                  <div className="flex gap-2 mb-4">
-                    <div className="flex-1 grid grid-cols-2 gap-1 p-1 bg-white rounded-xl border border-slate-100">
+                  <div className="flex flex-col gap-2 mb-4 sm:flex-row">
+                    <div className="flex-1 sm:flex-[1.4] grid grid-cols-2 gap-1 p-1 bg-white rounded-xl border border-slate-100">
                       {(['cash','transfer'] as const).map(method => (
                         <button key={method} type="button"
                           onClick={() => activePaymentLineId && onUpdatePaymentLine(activePaymentLineId, 'method', method)}
@@ -179,7 +195,7 @@ export default function CheckoutModal({
                       ))}
                     </div>
 
-                    <div className="flex-[1.2] flex gap-1 p-1 bg-white rounded-xl border border-slate-100 overflow-x-auto scrollbar-hide">
+                    <div className="flex-1 flex gap-1 p-1 bg-white rounded-xl border border-slate-100 overflow-x-auto scrollbar-hide">
                       {currencies
                         .filter(c => {
                           const activeLine = paymentLines.find(l => l.id === activePaymentLineId);
@@ -371,7 +387,7 @@ export default function CheckoutModal({
                     )}
 
                     <div className="flex justify-between items-end mb-1 px-1 gap-2 flex-wrap">
-                      <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">Monto a recibir</label>
+                      <label htmlFor="checkout-amount" className="block text-[8px] font-black text-slate-500 uppercase tracking-widest">Monto a recibir</label>
                       <div className="flex gap-2">
                         {paymentLines.find(l => l.id === activePaymentLineId)?.code === 'USD' && 
                          (paymentLines.find(l => l.id === activePaymentLineId)?.amount || 0) % 1 !== 0 && (
@@ -400,6 +416,7 @@ export default function CheckoutModal({
                       </div>
                     </div>
                     <input 
+                      id="checkout-amount"
                       type="number"
                       step="0.01"
                       autoFocus

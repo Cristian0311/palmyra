@@ -22,6 +22,71 @@ const DOWNLOAD_FALLBACKS = {
   android: process.env.PALMYRA_ANDROID_DOWNLOAD_URL || `${GITHUB_RELEASES_LATEST}/PALMYRA-Android.apk`,
 };
 
+// --- Descarga pública de Android -------------------------------------------
+// El APK «LAN» (build-apk.sh --lan) permite cleartext hacia el hub HTTP de la
+// red privada; es un artefacto de soporte interno y nunca se publica. Además,
+// /download/android solo sirve el nombre exacto que produce el build estándar:
+// cualquier otro .apk (versionado, renombrado o LAN) se descarta para que la
+// descarga pública no dependa nunca de un artefacto de soporte. Estas funciones
+// son puras (sin disco ni red) para poder probarlas aisladas.
+
+/** Nombre exacto del APK estándar: el que produce build-apk.sh sin --lan. */
+export const PUBLIC_ANDROID_APK = 'PALMYRA-Android.apk';
+/** Cualquier archivo .apk; el filtro fino lo hace pickAndroidAsset. */
+export const ANDROID_APK_RE = /\.apk$/i;
+const LAN_TOKEN_RE = /lan/i;
+
+export interface AndroidApkCandidate {
+  name: string;
+  fullPath: string;
+  mtimeMs: number;
+}
+
+/** True si el nombre es un APK de red local (p. ej. PALMYRA-Android-LAN.apk). */
+export function isLanAndroidApk(fileName: string): boolean {
+  const base = path.basename(String(fileName ?? '').trim());
+  if (!ANDROID_APK_RE.test(base)) return false;
+  // «-LAN» y variantes (-lan, _LAN, .Lan, LAN suelto) comparten la marca «lan».
+  return LAN_TOKEN_RE.test(base.slice(0, -4));
+}
+
+export interface AndroidAssetPick {
+  /** APK estándar a servir; null si no está publicado con su nombre exacto. */
+  file: AndroidApkCandidate | null;
+  /** APK de red local vistos y descartados: se registran, nunca se sirven. */
+  lanRejected: string[];
+  /** Otros .apk con nombre distinto al estándar: tampoco se sirven. */
+  ignored: string[];
+}
+
+/**
+ * Elige el APK descargable por cualquiera. Solo el nombre estándar es público;
+ * los APK LAN se rechazan (el llamador responde 404) y el resto de nombres se
+ * ignora. Función pura: sin disco, sin red y sin lanzar.
+ */
+export function pickAndroidAsset(candidates: AndroidApkCandidate[]): AndroidAssetPick {
+  let file: AndroidApkCandidate | null = null;
+  const lanRejected: string[] = [];
+  const ignored: string[] = [];
+  for (const candidate of candidates ?? []) {
+    const name = path.basename(String(candidate?.name ?? '').trim());
+    if (!ANDROID_APK_RE.test(name)) continue;
+    if (isLanAndroidApk(name)) {
+      lanRejected.push(name);
+      continue;
+    }
+    if (name !== PUBLIC_ANDROID_APK) {
+      ignored.push(name);
+      continue;
+    }
+    const mtimeMs = Number.isFinite(candidate.mtimeMs) ? candidate.mtimeMs : 0;
+    if (!file || mtimeMs > file.mtimeMs) {
+      file = { name, fullPath: candidate.fullPath, mtimeMs };
+    }
+  }
+  return { file, lanRejected, ignored };
+}
+
 // Carga diferida: la app de escritorio empaqueta un único server.cjs y la IA
 // solo debe inicializarse cuando el endpoint la necesita realmente.
 async function createGoogleGenAIClient(apiKey: string) {
@@ -1414,7 +1479,14 @@ Responde ESTRICTAMENTE con un objeto JSON:
     }
   });
 
-  // Descarga del APK de Android publicado en release/ (el más reciente).
+  // Descarga del APK de Android publicado en release/.
+  //
+  // Solo se sirve el APK estándar con su nombre exacto (PUBLIC_ANDROID_APK). El
+  // APK «LAN» (build-apk.sh --lan) lleva res-lan con cleartext hacia el hub HTTP
+  // de la red privada: es un artefacto de soporte interno y NUNCA se publica ni
+  // se sirve como descarga pública. La selección vive en funciones puras
+  // (arriba, a nivel de módulo) para probarlas sin abrir el servidor.
+
   app.get('/download/android', async (_req, res) => {
     try {
       const releaseDirs = [
@@ -1423,27 +1495,62 @@ Responde ESTRICTAMENTE con un objeto JSON:
         path.join(moduleDir, '..', 'release'),
       ].filter((dir): dir is string => Boolean(dir));
 
-      let apk = '';
-      let newest = 0;
+      const candidates: AndroidApkCandidate[] = [];
       for (const dir of releaseDirs) {
         if (!existsSync(dir)) continue;
         for (const entry of await fs.readdir(dir)) {
-          if (!/^PALMYRA.*\.apk$/i.test(entry)) continue;
+          if (!ANDROID_APK_RE.test(entry)) continue;
           const fullPath = path.join(dir, entry);
-          const stats = await fs.stat(fullPath);
-          if (stats.mtimeMs > newest) {
-            newest = stats.mtimeMs;
-            apk = fullPath;
+          try {
+            const stats = await fs.stat(fullPath);
+            if (!stats.isFile()) continue;
+            candidates.push({ name: entry, fullPath, mtimeMs: stats.mtimeMs });
+          } catch {
+            // El archivo desapareció entre readdir y stat: se ignora.
           }
         }
       }
 
-      if (!apk) {
+      const { file, lanRejected, ignored } = pickAndroidAsset(candidates);
+      if (lanRejected.length > 0) {
+        // Solo el nombre del artefacto: sin IP, user-agent ni rutas del disk.
+        console.warn(
+          `[Download] APK de red local ignorado en la descarga pública: ${lanRejected.join(', ')}`
+        );
+      }
+      if (ignored.length > 0) {
+        console.warn(
+          `[Download] APK con nombre no estándar ignorado (solo se sirve ${PUBLIC_ANDROID_APK}): ${ignored.join(', ')}`
+        );
+      }
+
+      if (!file) {
+        if (lanRejected.length > 0) {
+          // Nunca se degrada a servir el APK LAN: cleartext no va al público.
+          res.status(404).json({ error: 'La descarga pública no ofrece el APK de red local.' });
+          return;
+        }
         res.redirect(302, DOWNLOAD_FALLBACKS.android);
         return;
       }
+      const apk = file.fullPath;
+      if (!existsSync(apk)) {
+        res.status(404).json({ error: 'El APK publicado ya no está disponible.' });
+        return;
+      }
+      const stats = await fs.stat(apk);
+      if (!stats.isFile() || stats.size <= 0) {
+        res.status(404).json({ error: 'El APK publicado está vacío.' });
+        return;
+      }
+      const fileName = path.basename(apk);
       res.setHeader('Content-Type', 'application/vnd.android.package-archive');
-      res.setHeader('Content-Disposition', `attachment; filename="${path.basename(apk)}"`);
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${fileName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`
+      );
+      res.setHeader('Content-Length', String(stats.size));
+      res.setHeader('Cache-Control', 'no-store');
       res.sendFile(apk);
     } catch (error: any) {
       console.error('[Download] No se pudo servir el APK:', error?.message || error);
@@ -1461,6 +1568,29 @@ Responde ESTRICTAMENTE con un objeto JSON:
   const serveBuiltClient =
     process.env.NODE_ENV === 'production' ||
     (process.env.NODE_ENV !== 'development' && hasBuiltClient);
+
+  // Clave pública del lease (ES256). El cliente la pide al mismo origen; la
+  // privada vive solo como secreto de la Edge Function y nunca se expone aquí.
+  app.get('/license-public-key.json', (_req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    const raw = process.env.LEASE_PUBLIC_JWK;
+    if (!raw || !raw.trim()) {
+      res.status(404).json({ error: 'not_configured' });
+      return;
+    }
+    try {
+      const jwk = JSON.parse(raw) as JsonWebKey;
+      if (!jwk || jwk.kty !== 'EC' || jwk.crv !== 'P-256' || !jwk.x || !jwk.y) {
+        res.status(404).json({ error: 'not_configured' });
+        return;
+      }
+      res.status(200).json({ keyId: process.env.LEASE_KEY_ID || '', jwk });
+    } catch {
+      res.status(404).json({ error: 'not_configured' });
+    }
+  });
 
   if (!serveBuiltClient) {
     const { createServer: createViteServer } = await import('vite');
@@ -1560,4 +1690,7 @@ Responde ESTRICTAMENTE con un objeto JSON:
   });
 }
 
-startServer();
+// No se abre el puerto cuando el módulo se importa para probar las funciones
+// puras de descarga (tests/unit/release-assets.test.ts). En ejecución normal
+// la variable no existe y el servidor arranca igual que siempre.
+if (process.env.PALMYRA_SKIP_SERVER_BOOT !== '1') startServer();

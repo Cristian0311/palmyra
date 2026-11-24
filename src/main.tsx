@@ -27,6 +27,7 @@ import { isPalmyraApp } from './lib/install';
 import { installNativeUpdateHooks } from './lib/nativeApp';
 import { fetchWithTimeout as fetchWithLimit } from './lib/http';
 import { beginServerWarmup, SERVER_WAKE_EVENT } from './lib/serverWake';
+import { initLocalDbSource } from './services/localDb/bootHydration';
 
 // Recover gracefully when a cached HTML/service-worker version references a
 // chunk removed by a newer deployment. Vite emits this event for failed
@@ -76,55 +77,6 @@ window.addEventListener('vite:preloadError', (event) => {
 // Register Service Worker for Offline-First PWA support.
 // The app must update itself after every Render deployment without requiring
 // the user to manually clear the browser cache.
-
-/**
- * PWA install bridge.
- * The browser can emit beforeinstallprompt before the authenticated shell
- * mounts, so keep the deferred event globally until Layout can present it.
- */
-const PALMYRA_PWA_INSTALLED_KEY = 'palmyra:pwa-installed';
-
-function isPALMYRAPWAInstalledAtBoot() {
-  if (typeof window === 'undefined') return false;
-  const standalone = window.matchMedia?.('(display-mode: standalone)').matches;
-  const fullscreen = window.matchMedia?.('(display-mode: fullscreen)').matches;
-  const minimalUi = window.matchMedia?.('(display-mode: minimal-ui)').matches;
-  const windowControls = window.matchMedia?.('(display-mode: window-controls-overlay)').matches;
-  const iosStandalone = Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
-  const rememberedInstalled = localStorage.getItem(PALMYRA_PWA_INSTALLED_KEY) === '1';
-  return Boolean(standalone || fullscreen || minimalUi || windowControls || iosStandalone || rememberedInstalled);
-}
-
-window.addEventListener('beforeinstallprompt', (event) => {
-  const installEvent = event as Event & {
-    prompt?: () => Promise<void>;
-    userChoice?: Promise<{ outcome: 'accepted' | 'dismissed'; platform: string }>;
-  };
-
-  // Never surface an installation prompt from an already-installed PALMYRA.
-  // Android can keep firing beforeinstallprompt in browser contexts after the
-  // PWA was installed, so the persistent marker is intentional.
-  if (isPALMYRAPWAInstalledAtBoot()) {
-    event.preventDefault();
-    delete (window as typeof window & { __palmyraInstallPrompt?: unknown }).__palmyraInstallPrompt;
-    return;
-  }
-
-  event.preventDefault();
-  (window as typeof window & { __palmyraInstallPrompt?: typeof installEvent }).__palmyraInstallPrompt = installEvent;
-  window.dispatchEvent(new Event('palmyra:pwa-install-available'));
-});
-
-window.addEventListener('appinstalled', () => {
-  try { localStorage.setItem(PALMYRA_PWA_INSTALLED_KEY, '1'); } catch {}
-  delete (window as typeof window & { __palmyraInstallPrompt?: unknown }).__palmyraInstallPrompt;
-  window.dispatchEvent(new Event('palmyra:pwa-installed'));
-});
-
-if (isPALMYRAPWAInstalledAtBoot()) {
-  delete (window as typeof window & { __palmyraInstallPrompt?: unknown }).__palmyraInstallPrompt;
-}
-
 import { registerSW } from 'virtual:pwa-register';
 
 const SW_CHECK_INTERVAL_MS = 5 * 60_000;
@@ -864,6 +816,10 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 );
+
+// Fuente local tras el render: apagada salvo VITE_LOCAL_DB_SOURCE=local. No
+// bloquea ni puede romper el arranque (publica el resultado en un evento).
+void initLocalDbSource();
 
 // Refuerzo tras el primer render: cubre un despliegue ocurrido mientras se
 // descargaba el propio bundle. Comparte el guard de in-flight con el resto y se

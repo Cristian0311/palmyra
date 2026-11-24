@@ -1,5 +1,127 @@
 # CHANGELOG — PALMYRA POS
 
+## 1.3.5 — Base local, escritorio, nube y Android autónomo (sin publicar)
+
+### Almacén local
+- Base de datos local propia (`src/services/localDb/`): SQLite en escritorio y
+  Android, IndexedDB en web y driver en memoria para pruebas. La UI lee y
+  escribe ahí; la cola durable conserva el replay idempotente tras recargas.
+- Retención y respaldos cifrados, paridad con el estado anterior e importación
+  verificada del histórico.
+
+### Escritorio y licencias
+- Empaquetado Electron con servidor local en un solo archivo, instalador NSIS y
+  actualización automática validada por firma ES256 del manifiesto.
+- Licencias locales con activación, lease, revocación, guardia de reloj y
+  telemetría, más modo de solo lectura visible cuando la licencia no es válida.
+- Hub LAN para cajas que comparten datos: emparejamiento por PIN/QR, SSE y
+  respaldo.
+
+### Actualizaciones firmadas (cierre F5)
+- `update-manifest.json` firmado con ES256 (EC P-256, `kid`
+  `palmyra-stable-2026-11`) y verificado en el renderer, en el arranque de
+  escritorio y en CI: sin firma válida no se descarga ni se instala nada.
+- La clave privada vive solo fuera del repositorio, en el equipo de release; la
+  pública queda versionada en `src/services/updates/update-public-key.json`.
+- Nuevo Centro de actualizaciones y diagnóstico de instalación en Ajustes, aviso
+  OTA Android desde el manifiesto y actualización de escritorio desde archivo
+  (USB/SD) anclada al manifiesto cuando no hay certificado Authenticode.
+- El POS instalado (Android y escritorio) ya no decide su actualización por el
+  polling web `/version.json`: manda el manifiesto firmado. El shell web conserva
+  su propio aviso PWA.
+- Cadencia de comprobación: al arrancar, cada 24 h y bajo demanda.
+
+### Nube
+- Sincronización por cursores (`src/services/cloudSync/`), bandeja de cambios
+  locales y materializador en PostgreSQL, con escenarios de recuperación
+  cubiertos por pruebas.
+
+### Nube mínima y respaldo (cierre F6)
+- **Descarga incremental**: el motor de subida gana un PULL por cursor de
+  tiempo (`pullEngine.ts`, `pullRemote.ts`, `pull.ts`) que pide solo la ventana
+  posterior al cursor guardado en `palmyra:cloudsync:pull:<companyId>` y la
+  aplica con last-writer-wins (versión y `updated_at`). Cadencia mínima de 30
+  minutos incluso tras reiniciar, tope de 7 días por ventana, 500 filas por lote
+  y salto del tráfico programado al llegar a 90 solicitudes del día; `syncNow`
+  de `useCloudSync` siempre pasa.
+- **Arranque acotado**: `loadBootstrapData` trae catálogo pequeño más una
+  ventana operativa de 90 días con límites por tabla, y el historial viejo se
+  pide bajo demanda con `loadOlderSalesHistory` y el paginador de Reportes. No
+  queda ninguna descarga de historial completo en el arranque.
+- **Respaldo fuera del sitio**: copia AES-256-GCM del mismo sobre local
+  (`.pmlr`) más manifiesto con SHA-256, deduplicación por hash y retención, en
+  el cubo privado `palmyra-backups`. Ciclo de 24 h con reanudación al volver la
+  red; la frase del usuario nunca se guarda y, para que el respaldo diario
+  funcione sin abrir Ajustes, se genera una clave de recuperación por empresa
+  que queda en el equipo y se muestra para guardarla aparte.
+- **Tasas**: el hub LAN consulta elTOQUE cada 45 min ± 3 min (acotado a 30–60
+  min) con retroceso ante fallos y publica la copia firmada; el escritorio la
+  persiste en `hub-rates.json`. El cliente lee primero el hub y solo pide su
+  propia ruta cuando no hay sesión de hub, conservando la última tasa válida. El
+  escaneo de 25 minutos desaparece.
+- **Realtime acotado**: la nube solo escucha `notifications` y `plan_requests`
+  (aprobación de planes en la consola de plataforma); las tablas de negocio
+  viajan por SSE del hub LAN. Se elimina el sondeo de 120 s y el arranque hace
+  un único `bootstrapCloudData()` por tenant. El lease de licencia pasa a 12 h.
+- **Presupuesto visible**: `requestBudget` cuenta cada solicitud a la nube
+  (push, pull, bootstrap, tasas, lease, respaldo, admin) y el panel de Ajustes
+  la compara con 100/día por equipo y 500/día por negocio.
+- **Pendiente de aplicar** (no ejecutado): `20261124090000_cloud_pull_changes.sql`
+  (RPC `pull_cloud_changes`) y `20261124091000_cloud_backups_bucket.sql` (cubo
+  `palmyra-backups` con políticas por prefijo de empresa).
+
+### Piloto y migración (cierre F7)
+- **Migración guiada** (`src/services/localDb/migration/`, panel en
+  **Configuración → Administración avanzada**): cuatro pasos manuales
+  (analizar en solo lectura, respaldar, migrar y revisar). El respaldo cifrado
+  es obligatorio y caduca a los 30 minutos; la escritura es una única
+  transacción verificada por conteos, suma de ventas, stock y huella, y un
+  botón de vuelta al modo anterior deja la marca que lee el arranque. El JSON
+  legado se conserva 30 días.
+- **Métricas del piloto** (pestaña **Piloto** de Configuración): ventas en
+  riesgo, conflictos, sincronización, solicitudes frente al presupuesto,
+  actualizaciones y tickets de soporte de los últimos 7 días, todo calculado
+  con registros locales y sin tráfico de red. Incluye copia en texto y
+  exportación JSON local; el historial de actualizaciones y el contador de
+  tickets se anotan solos y se conservan 90 días.
+- **Respaldos del hub con restauración protegida**: el diagnóstico de
+  escritorio lista los respaldos cifrados del hub y permite restaurar con
+  palabra de confirmación, diálogo nativo e instantánea de seguridad previa
+  (si la instantánea falla, no se escribe nada). La ventana solo envía un
+  nombre validado por IPC; carpeta, clave y escritura viven en el proceso
+  principal.
+- **Piloto de campo**: `docs/PILOTO_MANUAL.md` (instalación, emparejamiento,
+  respaldo, restauración, actualización y plan de fallo del hub) y lista de
+  comprobación de siete pasos integrada en Configuración.
+- **Herramientas de aceptación**: `npm run drill:restore` (simulacro de
+  restauración de 5.000 ventas y 2.000 saldos; medido en 5,8 s frente al tope
+  de 15 minutos) y `npm run pilot:sim` (simulación determinista de 14 días:
+  72,4 solicitudes/día con hub, 53,6 con un equipo directo y 216,1 con cinco
+  equipos directos, todas bajo el presupuesto de 100/500). Cobertura de la
+  fase: 1.133 pruebas unitarias, 34/34 de empaquetado Android y 20/20 de
+  extremo a extremo local.
+- **Pendiente de despliegue** (nada aplicado ni publicado): migraciones
+  `20261123090000_local_change_inbox.sql`, `20261123120000_license_revocations.sql`,
+  `20261123150000_local_change_materializer.sql`,
+  `20261123180000_license_telemetry_and_plan_gates.sql`,
+  `20261124090000_cloud_pull_changes.sql` y
+  `20261124091000_cloud_backups_bucket.sql`; cubo de Storage
+  `palmyra-backups`; Edge Function `license-telemetry`; secretos
+  `UPDATE_SIGNING_KEY`/Render; subida del manifiesto firmado y despliegue
+  manual en Render.
+
+### Android autónomo
+- Respaldo cifrado en Descargas (MediaStore/SAF) con respaldo programado y
+  estado visible; restauración desde un archivo elegido por el usuario.
+- Actualización por red (OTA) y también desde un paquete copiado por USB/SD.
+- Diagnóstico exportable para soporte in situ: versiones, puentes nativos,
+  integridad de la base, conteos y espacio, sin secretos ni datos del negocio.
+- Rendimiento y aguante medidos con arneses deterministas (50.000 ventas y 30
+  días sin red) y validador estático del APK en integración continua.
+
+### Nota
+- Esta versión no está publicada: no hay despliegue público activo.
+
 ## 1.3.4 — Gráficas de Reportes sin bloqueo
 
 ### Corrección

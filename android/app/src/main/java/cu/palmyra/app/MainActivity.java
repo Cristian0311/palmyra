@@ -7,12 +7,16 @@ import android.app.DownloadManager;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ApplicationInfo;
+import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
+import android.database.Cursor;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
+import android.provider.OpenableColumns;
+import android.util.Log;
 import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
@@ -28,6 +32,7 @@ import org.json.JSONObject;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -40,6 +45,7 @@ import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.security.MessageDigest;
+import java.util.HashMap;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.zip.ZipEntry;
@@ -63,15 +69,26 @@ public class MainActivity extends Activity {
     private static final String KEY_CONFIRMED = "confirmed_";
     private static final String KEY_ATTEMPT = "attempt_";
     private static final long MAX_BUNDLE_BYTES = 300L * 1024L * 1024L;
+    /** Un APK ronda 10-25 MB; 200 MB deja margen sin permitir abusos. */
+    private static final long MAX_APK_BYTES = 200L * 1024L * 1024L;
     private static final int REQUEST_FILE_CHOOSER = 1001;
     private static final int REQUEST_CAMERA_PERMISSION = 1002;
+    private static final int REQUEST_APK_IMPORT = 1003;
+    private static final int REQUEST_BUNDLE_IMPORT = 1005;
 
     private WebView web;
     private LocalServer server;
     private SharedPreferences prefs;
     private File releasesDir;
+    private NativeDb nativeDb;
+    /** Respaldo cifrado a Descargas y restauración desde archivo. */
+    private AndroidBackup backup;
     private volatile String activeVersion = "";
     private final AtomicBoolean updateRunning = new AtomicBoolean(false);
+    /** Evita dos instalaciones de APK (descarga o importación USB) a la vez. */
+    private final AtomicBoolean apkUpdateRunning = new AtomicBoolean(false);
+    /** Clave de licencia del dispositivo: se crea bajo demanda en el Keystore. */
+    private final DeviceKeystore deviceKeystore = new DeviceKeystore();
     // Selección de archivos (<input type="file">) y permiso de cámara pedido
     // desde la web: ambos viven en el hilo principal del Activity.
     private ValueCallback<Uri[]> fileChooserCallback;
@@ -128,6 +145,22 @@ public class MainActivity extends Activity {
             WebView.setWebContentsDebuggingEnabled(true);
         }
         web.addJavascriptInterface(new NativeBridge(), "PALMYRA_NATIVE");
+        // Almacén local SQLite de la tablet: NativeDb serializa todas las
+        // sentencias en su propio hilo (BEGIN/COMMIT incluidos) y no permite
+        // elegir otro archivo ni expone rutas del dispositivo.
+        nativeDb = new NativeDb(this);
+        web.addJavascriptInterface(nativeDb, "PALMYRA_DB");
+        // Identidad criptográfica del equipo para el lease de licencia. La
+        // superficie es mínima (publicKey/sign/verify y sellado AES-GCM de la
+        // copia local) y la clave privada nunca sale del Keystore; las
+        // respuestas son JSON con ok:false si algo falla, jamás una excepción
+        // hacia la web.
+        web.addJavascriptInterface(new KeystoreBridge(), "PALMYRA_KEYSTORE");
+        // Respaldo cifrado en Descargas públicas y restauración desde archivo.
+        // Solo cruzan Base64 y nombres de archivo; las respuestas son siempre
+        // envelopes JSON y el archivo importado se lee por trozos.
+        backup = new AndroidBackup(this, web);
+        web.addJavascriptInterface(new BackupBridge(), "PALMYRA_BACKUP");
 
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -243,6 +276,16 @@ public class MainActivity extends Activity {
     }
 
     @Override
+    protected void onPause() {
+        // El sistema puede matar el proceso en segundo plano. Volcar el WAL
+        // (best-effort) deja el archivo completo aunque no haya cierre limpio.
+        if (nativeDb != null) {
+            nativeDb.checkpoint();
+        }
+        super.onPause();
+    }
+
+    @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == REQUEST_FILE_CHOOSER) {
             ValueCallback<Uri[]> callback = fileChooserCallback;
@@ -265,6 +308,28 @@ public class MainActivity extends Activity {
             }
             // Un resultado nulo es la forma correcta de avisar "cancelado".
             callback.onReceiveValue(results);
+            return;
+        }
+        if (requestCode == REQUEST_APK_IMPORT) {
+            Uri source = resultCode == RESULT_OK && data != null ? data.getData() : null;
+            if (source == null) {
+                apkUpdateRunning.set(false);
+                return;
+            }
+            new Thread(() -> verifyImportedApk(source), "palmyra-apk-import").start();
+            return;
+        }
+        if (backup != null && backup.handleActivityResult(requestCode, resultCode, data)) {
+            return;
+        }
+        if (requestCode == REQUEST_BUNDLE_IMPORT) {
+            Uri source = resultCode == RESULT_OK && data != null ? data.getData() : null;
+            if (source == null) {
+                updateRunning.set(false);
+                emitError("Importación cancelada: no se eligió ningún paquete.");
+                return;
+            }
+            new Thread(() -> installImportedBundle(source), "palmyra-bundle-import").start();
             return;
         }
         super.onActivityResult(requestCode, resultCode, data);
@@ -429,6 +494,183 @@ public class MainActivity extends Activity {
         public void startUpdate(String version, String url, String sha256, long bytes) {
             beginUpdate(version, url, sha256, bytes);
         }
+
+        /**
+         * Actualización del APK: descarga HTTPS, exige SHA-256 publicado,
+         * versión estrictamente mayor y la misma firma de desarrollador antes
+         * de abrir el instalador. Si algo no coincide, se avisa y no se instala.
+         */
+        @JavascriptInterface
+        public void startApkUpdate(String version, String url, String sha256, long bytes) {
+            beginApkUpdate(version, url, sha256, bytes);
+        }
+
+        /**
+         * Importación desde archivo (USB/SD): se elige el APK con el selector
+         * del sistema y pasa la misma verificación (paquete, versión, firma).
+         * No hay hash publicado para un archivo local, así que la confianza
+         * viene de la firma del desarrollador ya instalada.
+         */
+        @JavascriptInterface
+        public void importApk() {
+            importApkFromFile();
+        }
+
+        /**
+         * Instalación del paquete web desde archivo (USB/SD): elige el ZIP con
+         * el selector del sistema y reutiliza el desempaquetado protegido de la
+         * OTA. Sin Internet la tablet puede actualizarse copiando el bundle.
+         */
+        @JavascriptInterface
+        public void importBundle() {
+            importBundleFromFile();
+        }
+    }
+
+    /**
+     * Puente del respaldo del dispositivo: AndroidBackup ya devuelve envelopes
+     * JSON, aquí solo se captura cualquier Throwable para que la WebView nunca
+     * reciba una excepción del hilo nativo.
+     */
+    private class BackupBridge {
+        @JavascriptInterface
+        public String save(String fileName, String dataBase64, String sha256Expected) {
+            try {
+                return backup.save(fileName, dataBase64, sha256Expected);
+            } catch (Throwable error) {
+                return backupErrorEnvelope("save_failed");
+            }
+        }
+
+        @JavascriptInterface
+        public String list() {
+            try {
+                return backup.list();
+            } catch (Throwable error) {
+                return backupErrorEnvelope("list_failed");
+            }
+        }
+
+        @JavascriptInterface
+        public String remove(String name) {
+            try {
+                return backup.remove(name);
+            } catch (Throwable error) {
+                return backupErrorEnvelope("delete_failed");
+            }
+        }
+
+        /**
+         * El selector se abre en el hilo de UI y el resultado llega a
+         * onActivityResult; el aviso a la web viaja como evento
+         * palmyra-backup-imported, por eso este método no devuelve nada.
+         */
+        @JavascriptInterface
+        public void openPicker() {
+            try {
+                backup.openPicker(MainActivity.this);
+            } catch (Throwable error) {
+                // Sin explorador de archivos: el polling de la web expira.
+            }
+        }
+
+        @JavascriptInterface
+        public String pendingInfo() {
+            try {
+                return backup.pendingInfo();
+            } catch (Throwable error) {
+                return backupErrorEnvelope("no_pending");
+            }
+        }
+
+        @JavascriptInterface
+        public String readPending(int offset, int length) {
+            try {
+                return backup.readPending(offset, length);
+            } catch (Throwable error) {
+                return backupErrorEnvelope("read_failed");
+            }
+        }
+
+        @JavascriptInterface
+        public String clearPending() {
+            try {
+                return backup.clearPending();
+            } catch (Throwable error) {
+                return backupErrorEnvelope("delete_failed");
+            }
+        }
+    }
+
+    /** Envelope de último recurso: los códigos son literales, sin datos. */
+    private static String backupErrorEnvelope(String code) {
+        return "{\"ok\":false,\"error\":\"" + code + "\"}";
+    }
+
+    /**
+     * Puente acotado del Keystore del dispositivo: solo operaciones sobre datos
+     * Base64 (firma, verificación y sellado AES-GCM de la identidad/lease).
+     * DeviceKeystore valida tamaños y devuelve siempre un envelope JSON; aquí
+     * no se propaga ninguna excepción ni se registra material de clave.
+     */
+    private class KeystoreBridge {
+        @JavascriptInterface
+        public String publicKey() {
+            try {
+                return deviceKeystore.publicKey();
+            } catch (Exception error) {
+                return DeviceKeystore.errorEnvelope("keystore_unavailable",
+                        "No se pudo abrir la clave segura del dispositivo.");
+            }
+        }
+
+        @JavascriptInterface
+        public String sign(String dataBase64) {
+            try {
+                return deviceKeystore.sign(dataBase64);
+            } catch (Exception error) {
+                return DeviceKeystore.errorEnvelope("keystore_unavailable",
+                        "No se pudo firmar con la clave segura del dispositivo.");
+            }
+        }
+
+        @JavascriptInterface
+        public String verify(String dataBase64, String signatureBase64) {
+            try {
+                return deviceKeystore.verify(dataBase64, signatureBase64);
+            } catch (Exception error) {
+                return DeviceKeystore.errorEnvelope("keystore_unavailable",
+                        "No se pudo verificar con la clave segura del dispositivo.");
+            }
+        }
+
+        /**
+         * Cifra la copia de la identidad del equipo y del lease con AES-GCM del
+         * Keystore. El sobre resultante es lo único que se guarda en IndexedDB.
+         */
+        @JavascriptInterface
+        public String sealSecret(String plainBase64) {
+            try {
+                return deviceKeystore.sealSecret(plainBase64);
+            } catch (Exception error) {
+                return DeviceKeystore.errorEnvelope("keystore_unavailable",
+                        "No se pudo cifrar el secreto del dispositivo.");
+            }
+        }
+
+        /**
+         * Abre un sobre sellado por este mismo equipo. En otra tableta el GCM
+         * falla y el puente responde ok:false: la app rehace la identidad.
+         */
+        @JavascriptInterface
+        public String openSecret(String envelopeBase64) {
+            try {
+                return deviceKeystore.openSecret(envelopeBase64);
+            } catch (Exception error) {
+                return DeviceKeystore.errorEnvelope("keystore_unavailable",
+                        "El secreto del dispositivo no se puede abrir en este equipo.");
+            }
+        }
     }
 
     private void beginUpdate(final String version, final String url, final String sha256, final long bytes) {
@@ -442,6 +684,19 @@ public class MainActivity extends Activity {
         }
         if (url == null || !url.startsWith("https://")) {
             emitError("La actualización debe descargarse por una conexión segura.");
+            return;
+        }
+        // La versión solo avanza: aplicar un paquete igual o anterior
+        // reemplazaría la app por una versión ya superada. Para volver atrás
+        // existe el rollback automático, no una "actualización" descendente.
+        String installed = shellVersion();
+        String applied = activeVersion == null ? "" : activeVersion;
+        if (compareVersions(version, installed) <= 0) {
+            emitError("La versión " + installed + " ya está instalada. Solo se aplican versiones más nuevas.");
+            return;
+        }
+        if (compareVersions(version, applied) <= 0) {
+            emitError("La versión " + applied + " ya está aplicada. Solo se aplican versiones más nuevas.");
             return;
         }
         if (!updateRunning.compareAndSet(false, true)) {
@@ -496,6 +751,509 @@ public class MainActivity extends Activity {
         }, "palmyra-ota").start();
     }
 
+    // ---------------------------------------------------------------------
+    // Actualización del APK: descarga verificada e importación desde archivo
+    // ---------------------------------------------------------------------
+
+    /**
+     * Descarga el APK por HTTPS, comprueba SHA-256, paquete, versión creciente
+     * y firma del desarrollador ANTES de abrir el instalador. Cualquier
+     * discrepancia deja el archivo borrado y avisa a la web.
+     */
+    private void beginApkUpdate(final String version, final String url, final String sha256, final long bytes) {
+        if (version == null || !version.matches("[0-9A-Za-z._-]{1,32}")) {
+            emitError("Versión de actualización inválida.");
+            return;
+        }
+        if (sha256 == null || !sha256.matches("[0-9a-fA-F]{64}")) {
+            emitError("El instalador no incluye una huella SHA-256 válida.");
+            return;
+        }
+        if (url == null || !url.startsWith("https://")) {
+            emitError("La actualización debe descargarse por una conexión segura.");
+            return;
+        }
+        if (bytes <= 0 || bytes > MAX_APK_BYTES) {
+            emitError("El instalador tiene un tamaño no permitido.");
+            return;
+        }
+        String installed = shellVersion();
+        if (compareVersions(version, installed) <= 0) {
+            emitError("La versión " + installed + " ya está instalada. Solo se instalan versiones más nuevas.");
+            return;
+        }
+        if (!apkUpdateRunning.compareAndSet(false, true)) {
+            emitError("Ya hay una actualización en curso.");
+            return;
+        }
+
+        new Thread(() -> {
+            File download = new File(getCacheDir(), "palmyra-apk-update.bin");
+            try {
+                downloadWithRetry(url, download, bytes);
+                emitProgress("verifying", 82, download.length(), download.length());
+                String actual = sha256Of(download);
+                if (!actual.equalsIgnoreCase(sha256)) {
+                    throw new IOException("El instalador descargado no coincide con la huella SHA-256 publicada. No se instalará.");
+                }
+                verifyApkForInstall(download, version);
+                File dir = UpdateApkProvider.directory(this);
+                if (dir == null) {
+                    throw new IOException("No hay espacio en el dispositivo para preparar el instalador.");
+                }
+                File target = new File(dir, "palmyra-" + version + ".apk");
+                copyFile(download, target);
+                // La copia que verá el instalador debe ser byte a byte la misma.
+                if (!sha256Of(target).equalsIgnoreCase(sha256)) {
+                    throw new IOException("La copia local del instalador cambió y no se instalará.");
+                }
+                pruneApkDir(dir, target);
+                openInstaller(target, version);
+            } catch (Exception error) {
+                emitError(friendlyUpdateError(error));
+            } finally {
+                //noinspection ResultOfMethodCallIgnored
+                download.delete();
+                apkUpdateRunning.set(false);
+            }
+        }, "palmyra-apk").start();
+    }
+
+    /** Abre el selector de archivos para importar un APK desde USB/SD. */
+    private void importApkFromFile() {
+        if (!apkUpdateRunning.compareAndSet(false, true)) {
+            emitError("Ya hay una actualización en curso.");
+            return;
+        }
+        runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("application/vnd.android.package-archive");
+                startActivityForResult(intent, REQUEST_APK_IMPORT);
+            } catch (Exception error) {
+                apkUpdateRunning.set(false);
+                emitError("No hay un explorador de archivos disponible para importar la actualización.");
+            }
+        });
+    }
+
+    private void verifyImportedApk(final Uri source) {
+        File staged = new File(getCacheDir(), "palmyra-apk-import.bin");
+        try {
+            copyFromUri(source, staged);
+            emitProgress("verifying", 40, staged.length(), staged.length());
+            PackageInfo candidate = verifyApkForInstall(staged, "");
+            String version = candidate.versionName == null ? "" : candidate.versionName;
+            File dir = UpdateApkProvider.directory(this);
+            if (dir == null) {
+                throw new IOException("No hay espacio en el dispositivo para preparar el instalador.");
+            }
+            File target = new File(dir, "palmyra-import-" + safeFileName(version) + ".apk");
+            copyFile(staged, target);
+            pruneApkDir(dir, target);
+            openInstaller(target, version);
+        } catch (Exception error) {
+            emitError(friendlyUpdateError(error));
+        } finally {
+            //noinspection ResultOfMethodCallIgnored
+            staged.delete();
+            apkUpdateRunning.set(false);
+        }
+    }
+
+    // ---------------------------------------------------------------------
+    // Actualización del bundle web desde archivo (USB/SD)
+    // ---------------------------------------------------------------------
+
+    /** Abre el selector de archivos para instalar un paquete web local. */
+    private void importBundleFromFile() {
+        if (!updateRunning.compareAndSet(false, true)) {
+            emitError("Ya hay una actualización en curso.");
+            return;
+        }
+        runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("application/zip");
+                // Muchos exploradores entregan los .zip como octet-stream.
+                intent.putExtra(Intent.EXTRA_MIME_TYPES,
+                        new String[]{"application/zip", "application/octet-stream"});
+                startActivityForResult(intent, REQUEST_BUNDLE_IMPORT);
+            } catch (Exception error) {
+                updateRunning.set(false);
+                emitError("No hay un explorador de archivos disponible para importar la actualización.");
+            }
+        });
+    }
+
+    /**
+     * Instala el paquete web elegido. Se copia completo al caché (tope de la
+     * OTA), se lee su versión, se exige estrictamente mayor que la instalada y
+     * la aplicada, y se desempaqueta con la misma protección zip-slip de la
+     * OTA. Cualquier fallo deja intacta la versión en uso.
+     */
+    private void installImportedBundle(final Uri source) {
+        File zipFile = new File(getCacheDir(), "palmyra-web-import.zip");
+        File staging = new File(releasesDir, ".staging-import");
+        try {
+            copyFromUri(source, zipFile, MAX_BUNDLE_BYTES);
+            if (zipFile.length() < 1024) {
+                throw new IOException("El archivo elegido no es un paquete de actualización de PALMYRA.");
+            }
+            String version = bundleVersion(zipFile, displayNameOf(source));
+            if (version == null || !version.matches("[0-9A-Za-z._-]{1,32}")) {
+                throw new IOException("El paquete no declara una versión válida. Usa el ZIP del bundle de PALMYRA (index.html y version.json en la raíz).");
+            }
+            String installed = shellVersion();
+            String applied = activeVersion == null ? "" : activeVersion;
+            if (compareVersions(version, installed) <= 0) {
+                throw new IOException("La versión " + installed + " ya está instalada. Solo se aplican versiones más nuevas.");
+            }
+            if (compareVersions(version, applied) <= 0) {
+                throw new IOException("La versión " + applied + " ya está aplicada. Solo se aplican versiones más nuevas.");
+            }
+
+            unpackBundle(zipFile, staging);
+            File target = new File(releasesDir, version);
+            deleteRecursive(target);
+            if (!staging.renameTo(target)) {
+                throw new IOException("No se pudo preparar la nueva versión en el dispositivo. Verifica el espacio libre.");
+            }
+
+            String previous = activeVersion == null ? "" : activeVersion;
+            SharedPreferences.Editor editor = prefs.edit()
+                    .putString(KEY_CURRENT, version)
+                    .putBoolean(KEY_CONFIRMED + version, false)
+                    .putInt(KEY_ATTEMPT + version, 0);
+            if (!version.equals(previous)) {
+                editor.putString(KEY_PREVIOUS, previous);
+            }
+            editor.apply();
+            activeVersion = version;
+
+            emitInstalled(version);
+            runOnUiThread(() -> web.postDelayed(() -> web.loadUrl(BASE_URL), 1200));
+        } catch (Exception error) {
+            deleteRecursive(staging);
+            emitError(friendlyUpdateError(error));
+        } finally {
+            //noinspection ResultOfMethodCallIgnored
+            zipFile.delete();
+            updateRunning.set(false);
+        }
+    }
+
+    /**
+     * Versión del paquete leída de version.json en la raíz del ZIP. El ZIP que
+     * publica la OTA excluye ese manifiesto (lo verifica por SHA-256), así que
+     * un archivo copiado a mano puede identificarse por su nombre
+     * palmyra-web-&lt;versión&gt;.zip. Nunca acepta una versión inventada.
+     */
+    private static String bundleVersion(File zipFile, String fallbackName) {
+        try (ZipInputStream zip = new ZipInputStream(
+                new BufferedInputStream(new FileInputStream(zipFile)))) {
+            ZipEntry entry;
+            byte[] buffer = new byte[16 * 1024];
+            while ((entry = zip.getNextEntry()) != null) {
+                String name = entry.getName().replace('\\', '/');
+                if (!"version.json".equals(name)) continue;
+                ByteArrayOutputStream collected = new ByteArrayOutputStream();
+                int read;
+                while ((read = zip.read(buffer)) != -1) {
+                    collected.write(buffer, 0, read);
+                    if (collected.size() > 64 * 1024) return "";
+                }
+                try {
+                    JSONObject manifest = new JSONObject(collected.toString("UTF-8"));
+                    String version = manifest.optString("version", "").trim();
+                    if (!version.isEmpty()) return version;
+                } catch (Exception ignored) {
+                    // Un version.json ilegible se trata como ausente.
+                }
+                break;
+            }
+        } catch (Exception ignored) {
+            // ZIP dañado: se intenta el nombre del archivo y, si no, se rechaza.
+        }
+        return versionFromName(fallbackName);
+    }
+
+    /**
+     * Solo el nombre canónico de la OTA (palmyra-web-&lt;versión&gt;.zip) sirve
+     * como respaldo: aceptar dígitos sueltos dejaría que un ZIP cualquiera se
+     * declarara versión "2026".
+     */
+    private static String versionFromName(String name) {
+        if (name == null) return "";
+        java.util.regex.Matcher matcher = java.util.regex.Pattern
+                .compile("(?i)palmyra-web-(\\d+(?:\\.\\d+){1,3})(?:\\.zip)?$")
+                .matcher(name.trim());
+        return matcher.find() ? matcher.group(1) : "";
+    }
+
+    private String displayNameOf(Uri source) {
+        Cursor cursor = null;
+        try {
+            cursor = getContentResolver().query(
+                    source, new String[]{OpenableColumns.DISPLAY_NAME}, null, null, null);
+            if (cursor != null && cursor.moveToFirst()) {
+                int index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
+                if (index >= 0) return cursor.getString(index);
+            }
+        } catch (Exception ignored) {
+            // Sin nombre visible se usa solo el contenido del ZIP.
+        } finally {
+            if (cursor != null) {
+                try { cursor.close(); } catch (Exception ignored) {}
+            }
+        }
+        return "";
+    }
+
+    private void copyFromUri(Uri source, File destination) throws IOException {
+        copyFromUri(source, destination, MAX_APK_BYTES);
+    }
+
+    private void copyFromUri(Uri source, File destination, long maxBytes) throws IOException {
+        InputStream input = null;
+        OutputStream output = null;
+        boolean copied = false;
+        try {
+            input = getContentResolver().openInputStream(source);
+            if (input == null) {
+                throw new IOException("No se pudo leer el archivo seleccionado.");
+            }
+            output = new BufferedOutputStream(new FileOutputStream(destination));
+            byte[] buffer = new byte[64 * 1024];
+            long total = 0L;
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                total += read;
+                if (total > maxBytes) {
+                    throw new IOException("El archivo supera el tamaño máximo permitido.");
+                }
+                output.write(buffer, 0, read);
+            }
+            copied = true;
+        } finally {
+            if (output != null) try { output.close(); } catch (Exception ignored) {}
+            if (input != null) try { input.close(); } catch (Exception ignored) {}
+            if (!copied) {
+                //noinspection ResultOfMethodCallIgnored
+                destination.delete();
+            }
+        }
+    }
+
+    private void copyFile(File source, File destination) throws IOException {
+        try (InputStream input = new BufferedInputStream(new FileInputStream(source));
+             OutputStream output = new BufferedOutputStream(new FileOutputStream(destination))) {
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = input.read(buffer)) != -1) {
+                output.write(buffer, 0, read);
+            }
+        }
+    }
+
+    /**
+     * Valida un APK local antes de instalarlo: mismo paquete que PALMYRA,
+     * versionCode estrictamente mayor, versión anunciada (si la hay) y misma
+     * clave de firma que la app instalada. Devuelve el PackageInfo leído.
+     */
+    private PackageInfo verifyApkForInstall(File apk, String expectedVersion) throws IOException {
+        int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                ? PackageManager.GET_SIGNING_CERTIFICATES
+                : PackageManager.GET_SIGNATURES;
+        PackageInfo candidate;
+        try {
+            candidate = getPackageManager().getPackageArchiveInfo(apk.getAbsolutePath(), flags);
+        } catch (Exception error) {
+            throw new IOException("No se pudo leer el instalador descargado.", error);
+        }
+        if (candidate == null || candidate.packageName == null) {
+            throw new IOException("El archivo no es un APK de Android válido.");
+        }
+        if (!getPackageName().equals(candidate.packageName)) {
+            throw new IOException("El instalador pertenece a otra aplicación y no se instalará.");
+        }
+        long candidateCode = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                ? candidate.getLongVersionCode()
+                : candidate.versionCode;
+        long installedCode = installedVersionCode();
+        if (installedCode >= 0 && candidateCode <= installedCode) {
+            throw new IOException("El instalador no es más nuevo que la versión instalada ("
+                    + shellVersion() + ").");
+        }
+        String candidateName = candidate.versionName == null ? "" : candidate.versionName;
+        if (expectedVersion != null && !expectedVersion.isEmpty() && !expectedVersion.equals(candidateName)) {
+            throw new IOException("El instalador no corresponde a la versión anunciada ("
+                    + expectedVersion + ").");
+        }
+        if (!sameSigner(installedPackage(), candidate)) {
+            throw new IOException("El instalador no está firmado con la clave de PALMYRA y no se instalará.");
+        }
+        return candidate;
+    }
+
+    /** La app instalada y el APK candidato deben compartir al menos un firmante. */
+    private static boolean sameSigner(PackageInfo installed, PackageInfo candidate) {
+        if (installed == null || candidate == null) return false;
+        android.content.pm.Signature[] candidateSignatures = signaturesOf(candidate);
+        if (candidateSignatures.length == 0) return false;
+        for (android.content.pm.Signature installedSignature : signaturesOf(installed)) {
+            if (installedSignature == null) continue;
+            byte[] expected = installedSignature.toByteArray();
+            for (android.content.pm.Signature candidateSignature : candidateSignatures) {
+                if (candidateSignature != null
+                        && MessageDigest.isEqual(expected, candidateSignature.toByteArray())) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private PackageInfo installedPackage() {
+        try {
+            int flags = Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                    ? PackageManager.GET_SIGNING_CERTIFICATES
+                    : PackageManager.GET_SIGNATURES;
+            return getPackageManager().getPackageInfo(getPackageName(), flags);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private long installedVersionCode() {
+        PackageInfo info = installedPackage();
+        if (info == null) return -1L;
+        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.P
+                ? info.getLongVersionCode()
+                : info.versionCode;
+    }
+
+    private static android.content.pm.Signature[] signaturesOf(PackageInfo info) {
+        android.content.pm.Signature[] signatures = null;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && info.signingInfo != null) {
+            android.content.pm.SigningInfo signing = info.signingInfo;
+            signatures = signing.hasMultipleSigners()
+                    ? signing.getApkContentsSigners()
+                    : signing.getSigningCertificateHistory();
+        }
+        if (signatures == null || signatures.length == 0) {
+            // Android 7-8 aún expone el arreglo simple de firmas.
+            signatures = info.signatures;
+        }
+        return signatures == null ? new android.content.pm.Signature[0] : signatures;
+    }
+
+    /** Abre el instalador del sistema con un content:// de solo lectura. */
+    private void openInstaller(final File apk, final String version) {
+        final Intent intent = new Intent(Intent.ACTION_VIEW);
+        intent.setDataAndType(UpdateApkProvider.uriFor(apk), "application/vnd.android.package-archive");
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
+        runOnUiThread(() -> {
+            try {
+                startActivity(intent);
+                emitApkReady(version);
+            } catch (Exception error) {
+                emitError("El dispositivo no pudo abrir el instalador de Android. Revisa \"Instalar apps desconocidas\".");
+            }
+        });
+    }
+
+    /** La caché conserva solo el APK que se está instalando. */
+    private static void pruneApkDir(File dir, File keep) {
+        try {
+            File[] files = dir.listFiles();
+            if (files == null) return;
+            for (File file : files) {
+                if (file == null || !file.isFile() || file.equals(keep)) continue;
+                if (file.getName().endsWith(".apk")) {
+                    //noinspection ResultOfMethodCallIgnored
+                    file.delete();
+                }
+            }
+        } catch (Exception ignored) {
+            // La poda es mantenimiento: nunca debe impedir instalar.
+        }
+    }
+
+    private static String safeFileName(String version) {
+        String cleaned = version == null ? "" : version.replaceAll("[^0-9A-Za-z._-]", "-");
+        if (cleaned.length() > 32) cleaned = cleaned.substring(0, 32);
+        return cleaned.isEmpty() ? "manual" : cleaned;
+    }
+
+    /**
+     * Comparación semántica por segmentos numéricos: "1.10.0" > "1.9.9" y la
+     * estable "1.4.0" es más nueva que "1.4.0-beta.2". No lanza nunca.
+     */
+    private static int compareVersions(String left, String right) {
+        String a = left == null ? "" : left.trim();
+        String b = right == null ? "" : right.trim();
+        int aDash = a.indexOf('-');
+        int bDash = b.indexOf('-');
+        String aCore = aDash >= 0 ? a.substring(0, aDash) : a;
+        String bCore = bDash >= 0 ? b.substring(0, bDash) : b;
+        int core = compareSegments(aCore, bCore);
+        if (core != 0) return core;
+        String aPre = aDash >= 0 ? a.substring(aDash + 1) : "";
+        String bPre = bDash >= 0 ? b.substring(bDash + 1) : "";
+        if (aPre.isEmpty() && bPre.isEmpty()) return 0;
+        if (aPre.isEmpty()) return 1;
+        if (bPre.isEmpty()) return -1;
+        return compareSegments(aPre, bPre);
+    }
+
+    private static int compareSegments(String left, String right) {
+        String[] a = left.split("\\.");
+        String[] b = right.split("\\.");
+        int length = Math.max(a.length, b.length);
+        for (int i = 0; i < length; i++) {
+            int compared = compareSegment(i < a.length ? a[i] : "", i < b.length ? b[i] : "");
+            if (compared != 0) return compared;
+        }
+        return 0;
+    }
+
+    private static int compareSegment(String left, String right) {
+        // Un segmento vacío ("1.4" frente a "1.4.0", o "") cuenta como 0.
+        String a = left == null || left.isEmpty() ? "0" : left;
+        String b = right == null || right.isEmpty() ? "0" : right;
+        boolean leftNumeric = isNumeric(a);
+        boolean rightNumeric = isNumeric(b);
+        if (leftNumeric && rightNumeric) {
+            String x = stripLeadingZeros(a);
+            String y = stripLeadingZeros(b);
+            if (x.length() != y.length()) return x.length() < y.length() ? -1 : 1;
+            int compared = x.compareTo(y);
+            return compared < 0 ? -1 : (compared > 0 ? 1 : 0);
+        }
+        // Semver: un identificador numérico precede a uno alfanumérico.
+        if (leftNumeric) return -1;
+        if (rightNumeric) return 1;
+        int compared = a.compareToIgnoreCase(b);
+        return compared < 0 ? -1 : (compared > 0 ? 1 : 0);
+    }
+
+    private static boolean isNumeric(String value) {
+        if (value == null || value.isEmpty()) return false;
+        for (int i = 0; i < value.length(); i++) {
+            if (!Character.isDigit(value.charAt(i))) return false;
+        }
+        return true;
+    }
+
+    private static String stripLeadingZeros(String value) {
+        int index = 0;
+        while (index < value.length() - 1 && value.charAt(index) == '0') index++;
+        return value.substring(index);
+    }
+
     private void downloadWithRetry(String url, File destination, long expectedBytes) throws IOException {
         IOException lastError = null;
         for (int attempt = 1; attempt <= 2; attempt++) {
@@ -533,7 +1291,7 @@ public class MainActivity extends Activity {
             // timeout por lectura, así que se amplía y se emite progreso real.
             connection.setReadTimeout(120_000);
             connection.setInstanceFollowRedirects(true);
-            connection.setRequestProperty("Accept", "application/zip");
+            connection.setRequestProperty("Accept", "application/octet-stream, application/zip;q=0.9, */*;q=0.8");
             connection.setRequestProperty("Accept-Encoding", "identity");
             connection.connect();
             int status = connection.getResponseCode();
@@ -687,6 +1445,11 @@ public class MainActivity extends Activity {
         evaluate("window.__palmyraOtaError&&window.__palmyraOtaError(" + JSONObject.quote(message) + ")");
     }
 
+    /** El APK quedó verificado y se abrió el instalador del sistema. */
+    private void emitApkReady(final String version) {
+        evaluate("window.__palmyraApkReady&&window.__palmyraApkReady(" + JSONObject.quote(version) + ")");
+    }
+
     private void evaluate(final String script) {
         runOnUiThread(() -> {
             if (web != null) {
@@ -720,16 +1483,42 @@ public class MainActivity extends Activity {
 
         @Override
         public Response serve(IHTTPSession session) {
+            Method method = session.getMethod();
+            // NanoHTTPD 2.3.1 deja el cuerpo de un POST/PUT en el socket si el
+            // handler no lo consume. La siguiente petición keep-alive empieza a
+            // leer ese JSON como línea HTTP y devuelve "BAD REQUEST: Syntax
+            // error. HTTP verb {...} unhandled." (issue #356). Se drena siempre.
+            if (method != Method.GET && method != Method.HEAD) {
+                try {
+                    session.parseBody(new HashMap<String, String>());
+                } catch (Exception ignored) {
+                    // Cuerpo vacío o truncado: la respuesta 503/404 sigue siendo válida.
+                }
+            }
+
             String uri = session.getUri();
             if (uri == null || uri.isEmpty()) {
                 uri = "/index.html";
             }
 
+            // Salud del servidor local del APK (usada por el diagnóstico de Ayuda).
+            if ("/healthz".equals(uri) || "/api/healthz".equals(uri)) {
+                return newFixedLengthResponse(Response.Status.OK, "application/json",
+                        "{\"ok\":true,\"server\":\"palmyra-android\"}");
+            }
+
             // Las rutas del servidor Node no existen dentro del APK: respondemos
             // JSON para que la app lo trate como servicio no disponible.
             if (uri.startsWith("/api/")) {
-                return newFixedLengthResponse(Response.Status.lookup(503),
+                Log.w("PALMYRA", "API local no disponible: " + method + " " + uri
+                        + " content-type=" + session.getHeaders().get("content-type")
+                        + " content-length=" + session.getHeaders().get("content-length"));
+                Response unavailable = newFixedLengthResponse(Response.Status.lookup(503),
                         "application/json", "{\"success\":false,\"error\":\"Servicio no disponible sin conexión.\"}");
+                // El cuerpo ya se drenó; cerrar evita reutilizar una conexión
+                // que un cliente antiguo pudo dejar a medias.
+                unavailable.addHeader("Connection", "close");
+                return unavailable;
             }
 
             String clean = uri.replace("..", "");

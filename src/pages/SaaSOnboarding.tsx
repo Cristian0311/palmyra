@@ -17,6 +17,7 @@ import { loadPlatformSupportSettings, type PlatformSocialLinks } from '../servic
 import { consumePendingOfflineCredential } from '../services/offlineSaaSAuth';
 import { registerCurrentDevice } from '../services/device';
 import { getSupabase } from '../lib/supabase';
+import { entryPathForSurface, lockDevAppSurface } from '../lib/appSurface';
 import { PalmyraWordmark } from '../components/PalmyraWordmark';
 
 const input = 'mt-1.5 min-h-11 w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-600';
@@ -87,7 +88,8 @@ export default function SaaSOnboarding() {
       } catch { /* La comprobación se reintenta al hidratar la sesión. */ }
       if (context?.companyId) {
         try { sessionStorage.removeItem('palmyra_pending_onboarding'); } catch {}
-        window.location.replace('/');
+        lockDevAppSurface();
+        window.location.replace(entryPathForSurface());
         return;
       }
       // Sin sesión no hay forma de crear la empresa. Antes, una marca vieja en
@@ -172,6 +174,9 @@ export default function SaaSOnboarding() {
       return;
     }
     setBusy(true);
+    // La empresa nueva también entra por la pantalla de descarga: el permiso
+    // local de desarrollo no debe dejar ver la operación antes de tiempo.
+    lockDevAppSurface();
     try {
       const result = await createCompanyAcquisition({ name: companyName, warehouseName, planCode, paymentMethod, months });
       if (!result?.company_id || !result.warehouse_id) throw new Error('El servidor no confirmó la creación de la empresa.');
@@ -194,7 +199,8 @@ export default function SaaSOnboarding() {
         paymentMethodLabel: paymentMethodLabel(paymentMethod),
         months,
       }), result.company_id);
-      window.location.replace(result.request_id ? '/subscription' : '/');
+      // El pago del plan se completa en web; la operación en cambio exige la app.
+      window.location.replace(result.request_id ? '/subscription' : entryPathForSurface());
     } catch (caught: any) {
       setError(caught?.message || 'No se pudo crear la empresa. Comprueba tu conexión e inténtalo de nuevo.');
       setBusy(false);

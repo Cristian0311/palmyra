@@ -18,11 +18,33 @@ import {
   type ExchangeRate,
   type RateSnapshot
 } from '../lib/exchangeRates';
+import {
+  RATE_HUB_FRESH_MS,
+  RATE_SOURCE_FRESH_MS,
+  describeExchangeRateSource,
+  formatRateAge,
+  hubQuotesToPayload,
+  resolveExchangeRates,
+  type ExchangeRateSourceKind,
+  type ExchangeRateSourceView
+} from '../services/exchangeRatesHub';
+import { RATE_TARGET_MS } from '../services/lanHub/rateScheduler';
 
 const CACHE_KEY = EXCHANGE_RATE_CACHE_KEY;
 const HISTORY_KEY = 'palmyra.eltoque-observations.v2';
-const REFRESH_MS = 5 * 60 * 1000;
+/** La pantalla revisa con la cadencia del hub (45 min), no cada 5 minutos. */
+const REFRESH_MS = RATE_TARGET_MS;
+/** Una copia repartida por el hub vale hasta 60 min; la de la nube, 30. */
+const CACHE_FRESH_MS = RATE_HUB_FRESH_MS;
+const CLOUD_FRESH_MS = RATE_SOURCE_FRESH_MS;
 type Period = '24h' | '7d' | '30d' | 'all';
+
+/** Etiqueta de pantalla de la fuente real de la tasa. */
+const SOURCE_TITLES: Record<ExchangeRateSourceKind, string> = {
+  hub: 'Hub local',
+  cloud: 'Servidor local',
+  cached: 'Última válida'
+};
 
 const PERIOD_DAYS: Record<Period, number | null> = { '24h': 1, '7d': 7, '30d': 30, all: null };
 
@@ -145,38 +167,38 @@ export default function ExchangeRate() {
   const [market, setMarket] = useState<'divisas' | 'crypto'>('divisas');
   const [selectedCode, setSelectedCode] = useState('');
   const [nextRefreshAt, setNextRefreshAt] = useState<number | null>(null);
-  const controller = useRef<AbortController | null>(null);
+  const [rateSource, setRateSource] = useState<ExchangeRateSourceView>(() => describeExchangeRateSource(null));
+  const inFlight = useRef(false);
   const cardIdPrefix = useId().replace(/[:]/g, '');
 
   const load = useCallback(async () => {
-    if (controller.current) return;
-    const request = new AbortController();
-    controller.current = request;
-    let timedOut = false;
-    const timeout = window.setTimeout(() => { timedOut = true; request.abort(); }, 15000);
+    if (inFlight.current) return;
+    inFlight.current = true;
     setLoading(true);
     setError('');
     try {
-      const response = await fetch('/api/exchange-rates', { headers: { Accept: 'application/json' }, cache: 'no-store', signal: request.signal });
-      const body = await response.json().catch(() => null);
-      if (!response.ok) {
-        setApiConfigured(typeof body?.configured === 'boolean' ? body.configured : null);
-        throw new Error(typeof body?.error === 'string' ? body.error : 'La consulta no pudo completarse.');
-      }
-      if (!isElToquePayload(body)) throw new Error('La respuesta no contiene cotizaciones válidas de elTOQUE.');
+      // Hub LAN primero; si no hay sesión o no responde, la nube/elTOQUE local.
+      const resolved = await resolveExchangeRates();
+      const source = describeExchangeRateSource(resolved);
+      setRateSource(source);
+      const body = hubQuotesToPayload(resolved.rates);
+      if (!body || !isElToquePayload(body)) throw new Error(resolved.error || 'La fuente no entregó cotizaciones válidas.');
+      const stale = resolved.stale || source.stale;
+      const notice = stale
+        ? body.notice || 'La fuente no entregó una consulta en vivo; se conserva la última tasa válida.'
+        : body.notice;
+      const next: ExchangePayload = { ...body, stale, ...(notice ? { notice } : {}) };
       setApiConfigured(true);
-      setPayload(body);
-      setFromCache(Boolean(body.stale));
-      setHistory(current => appendRateSnapshot(current, body));
-      try { localStorage.setItem(CACHE_KEY, JSON.stringify(body)); setStorageError(false); }
+      setPayload(next);
+      setFromCache(stale);
+      setHistory(current => appendRateSnapshot(current, next));
+      try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); setStorageError(false); }
       catch { setStorageError(true); }
     } catch (error) {
-      if (request.signal.aborted && !timedOut) return;
       setFromCache(true);
-      setError(timedOut ? 'La consulta agotó el tiempo de espera. Puedes reintentar.' : error instanceof Error ? error.message : 'Sin conexión con el servicio de tasas.');
+      setError(error instanceof Error ? error.message : 'Sin conexión con el servicio de tasas.');
     } finally {
-      window.clearTimeout(timeout);
-      if (controller.current === request) controller.current = null;
+      inFlight.current = false;
       setNextRefreshAt(Date.now() + REFRESH_MS);
       setLoading(false);
     }
@@ -258,7 +280,10 @@ export default function ExchangeRate() {
     return { min: Math.min(...values), max: Math.max(...values), first: values[0], last: values[values.length - 1] };
   }, [chart]);
   const hasBuySell = visibleRates.some(rate => rate.buy !== undefined || rate.sell !== undefined);
-  const stale = fromCache || Boolean(payload?.stale) || Boolean(payload && Date.now() - Date.parse(payload.capturedAt) >= REFRESH_MS);
+  const cacheFreshMs = rateSource.kind === 'hub' ? CACHE_FRESH_MS : CLOUD_FRESH_MS;
+  const stale = fromCache || Boolean(payload?.stale) || Boolean(payload && Date.now() - Date.parse(payload.capturedAt) >= cacheFreshMs);
+  /** Antigüedad de la captura mostrada: la guardada o la que resolvió la fuente. */
+  const rateAge = payload ? Date.now() - Date.parse(payload.capturedAt) : rateSource.ageMs;
   const globalDelta = useMemo(() => {
     const usd = visibleRates.find(rate => rate.code === 'USD');
     return usd ? deltaFor(usd) : null;
@@ -292,8 +317,9 @@ export default function ExchangeRate() {
                   {payload ? (stale ? 'Última consulta guardada' : 'Conexión activa con elTOQUE') : loading ? 'Consultando la fuente…' : 'Sin cotizaciones disponibles'}
                   {payload && !stale && <LiveDot />}
                   {payload && stale && <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">Sin conexión en vivo</span>}
+                  <SourceBadge source={rateSource} />
                 </p>
-                <p className="mt-0.5 text-[11px] font-semibold text-muted">{payload ? `Consultado el ${dateLabel(payload.capturedAt)}` : 'Aún no hay una consulta válida'}</p>
+                <p className="mt-0.5 text-[11px] font-semibold text-muted">{payload ? `Consultado el ${dateLabel(payload.capturedAt)} · ${formatRateAge(rateAge)} · ${rateSource.detail}` : rateSource.detail}</p>
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
@@ -456,9 +482,22 @@ export default function ExchangeRate() {
           </section>
         )}
 
-        <p className="text-xs leading-5 text-muted">Fuente: elTOQUE · Referencias del mercado informal, no tasas oficiales ni garantía de una operación. Compra y venta solo aparecen si la API las publica. La fecha indicada corresponde a la consulta, no necesariamente al momento de publicación del proveedor. Actualización automática cada 5 minutos con esta pantalla abierta.</p>
+        <p className="text-xs leading-5 text-muted">Fuente: elTOQUE · Referencias del mercado informal, no tasas oficiales ni garantía de una operación. Compra y venta solo aparecen si la API las publica. La fecha indicada corresponde a la consulta, no necesariamente al momento de publicación del proveedor. El hub LAN consulta elTOQUE cada 45 minutos y reparte la tasa a los equipos; esta pantalla se revisa con esa misma cadencia. Sin conexión se conserva la última tasa válida y se indica su antigüedad.</p>
       </main>
     </OperationsSurface>
+  );
+}
+
+function SourceBadge({ source }: { source: ExchangeRateSourceView }) {
+  const tone = source.kind === 'hub'
+    ? 'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/40 dark:text-sky-300'
+    : source.kind === 'cloud'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300'
+      : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300';
+  return (
+    <span className={'rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ' + tone}>
+      {SOURCE_TITLES[source.kind] ?? source.label}{source.stale && source.kind !== 'cached' ? ' · vencida' : ''}
+    </span>
   );
 }
 

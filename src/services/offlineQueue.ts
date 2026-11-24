@@ -6,6 +6,7 @@
  * periods and localStorage is too fragile for a growing transactional queue.
  */
 import { addSyncLog } from '../utils/syncLogger';
+import { assertLicenseWritable } from './license/guard';
 import { getPalmyraLocalScopeKey } from './localScope';
 import { idbClear, idbDelete, idbGetAll, idbPut, idbReplaceAll, resetOfflineQueueDbCache } from './offlineQueueStorage';
 import type { OfflineActionType, OfflineQueueItem } from './offlineQueueTypes';
@@ -486,6 +487,8 @@ function persistQueueClear(): void {
 }
 
 export function enqueueOfflineItem(type: OfflineActionType, data: any, actionId?: string): Promise<void> {
+  // Con la licencia vencida no se encola trabajo nuevo: la app es solo lectura.
+  assertLicenseWritable();
   const finalActionId = actionId || data?.id || crypto.randomUUID();
   const currentQueue = getOfflineQueue();
   const existingIdx = currentQueue.findIndex(item => item.type === type && item.actionId === finalActionId);

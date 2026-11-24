@@ -29,3 +29,18 @@ verify_jwt = false
 # Requiere el JWT del dueño/encargado que invita al trabajador.
 [functions.send-company-invitation]
 verify_jwt = true
+
+# Licencias firmadas y telemetría: siempre con el JWT del usuario autenticado.
+[functions.issue-lease]
+verify_jwt = true
+
+[functions.revoke-lease]
+verify_jwt = true
+
+[functions.license-telemetry]
+verify_jwt = true
+
+# El planificador llama con x-worker-secret (sin JWT) o el equipo con la
+# service role; la función valida ambos casos por su cuenta.
+[functions.materialize-local-changes]
+verify_jwt = false

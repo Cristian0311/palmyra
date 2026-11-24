@@ -34,14 +34,222 @@ import {
 import type { AppState } from '../storeTypes';
 import { buildSupabaseSyncState } from '../utils/buildSupabaseSyncState';
 import { mergeById, mergeUnique } from '../utils/syncMerges';
-import { collectPendingInventoryKeys, mergeBranchInventory, mergeBranchOperationalData } from '../utils/offlineProtection';
-import { recordSyncMoment } from '../../services/offline/syncLedger';
+import {
+  collectPendingCashSessionIds,
+  collectPendingInventoryKeys,
+  collectPendingTransactionIds,
+  collectPendingTransferIds,
+  mergeBranchInventory,
+  mergeBranchOperationalData
+} from '../utils/offlineProtection';
+import { readSyncLedger, recordSyncMoment } from '../../services/offline/syncLedger';
+import {
+  loadBootstrapData,
+  pullSalesHistoryPage,
+  HISTORY_PAGE_DEFAULT_LIMIT,
+} from '../../services/supabaseSync';
 
 
 type StoreSet = (
   partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)
 ) => void;
 type StoreGet = () => AppState;
+
+/** Ventana de gracia: repetir el arranque en este plazo no gasta red. */
+export const BOOTSTRAP_COOLDOWN_MS = 10 * 60 * 1000;
+
+let bootstrapInFlight: Promise<boolean> | null = null;
+let lastBootstrapSuccessAt = 0;
+let historyCursor: string | null = null;
+let historyExhausted = false;
+
+export type BootstrapActionOptions = {
+  force?: boolean;
+  /** Inyección para pruebas: cliente y empresa sin red. */
+  supabase?: any;
+  tenant?: { companyId: string };
+  now?: Date | string;
+};
+
+function lastPullMomentMs(): number {
+  const ledger = readSyncLedger().lastPullAt;
+  const parsed = ledger ? Date.parse(ledger) : NaN;
+  return Math.max(lastBootstrapSuccessAt, Number.isFinite(parsed) ? parsed : 0);
+}
+
+function oldestTransactionIso(transactions: Transaction[]): string | null {
+  let oldest: string | null = null;
+  for (const tx of transactions || []) {
+    const date = (tx as any)?.date;
+    if (typeof date !== 'string' || !date) continue;
+    if (!oldest || date < oldest) oldest = date;
+  }
+  return oldest;
+}
+
+function pendingIds(queue: { type: string; data?: any; actionId?: string }[], types: string[]): Set<string> {
+  return new Set(
+    queue
+      .filter(i => types.includes(i.type))
+      .map(i => String(i.data?.id ?? i.data?.operationId ?? i.actionId ?? ''))
+      .filter(Boolean)
+  );
+}
+
+/**
+ * Fusiona el arranque acotado con el estado local sin purgar historial:
+ * lo que no entró en la ventana sigue disponible desde la caché del equipo.
+ */
+export function mergeBootstrapSnapshot(d: any, state: AppState): Partial<AppState> {
+  const queue = getOfflineQueue();
+  const pendingTransactions = collectPendingTransactionIds(queue);
+  const pendingSessions = collectPendingCashSessionIds(queue);
+  const pendingTransfers = collectPendingTransferIds(queue);
+  const pendingInventoryKeys = collectPendingInventoryKeys(queue, {
+    transactions: state.transactions || [],
+    returns: state.returns || [],
+    supplierOrders: state.supplierOrders || []
+  });
+
+  const mergedTransactions = (() => {
+    const map = new Map<string, Transaction>();
+    for (const tx of state.transactions || []) map.set(String(tx.id), tx);
+    for (const tx of d.transactions || []) {
+      const key = String(tx.id);
+      const local: any = map.get(key);
+      const remoteId = local?.remoteId ? String(local.remoteId) : '';
+      if (local && (local.offlinePending === true || pendingTransactions.has(key) || (remoteId && pendingTransactions.has(remoteId)))) continue;
+      map.set(key, tx);
+    }
+    return Array.from(map.values());
+  })();
+
+  const mergedCashSessions = (() => {
+    const map = new Map<string, CashRegisterSession>();
+    for (const session of state.cashSessions || []) map.set(String(session.id), session);
+    for (const session of d.cashSessions || []) {
+      const key = String(session.id);
+      const local: any = map.get(key);
+      // Un cierre local nunca se reabre por un snapshot retrasado.
+      if (local && (pendingSessions.has(key) || (local.status === 'closed' && session.status === 'open'))) continue;
+      map.set(key, session);
+    }
+    return Array.from(map.values());
+  })();
+
+  const mergedTransfers = (() => {
+    const map = new Map<string, InventoryTransfer>();
+    const keyOf = (item: any) => String(item?.id || item?.operationId || '');
+    for (const transfer of state.transfers || []) map.set(keyOf(transfer), transfer);
+    for (const transfer of d.transfers || []) {
+      const key = keyOf(transfer);
+      if (pendingTransfers.has(key) && map.has(key)) continue;
+      map.set(key, transfer);
+    }
+    return Array.from(map.values());
+  })();
+
+  const pendingBranchIds = pendingIds(queue, ['branch']);
+  const pendingBranchDeleteIds = pendingIds(queue, ['branch_delete']);
+  const pendingCategoryIds = pendingIds(queue, ['category']);
+  const pendingCategoryDeleteIds = pendingIds(queue, ['category_delete']);
+  const pendingProductIds = pendingIds(queue, ['product']);
+  const pendingProductDeleteIds = pendingIds(queue, ['product_delete']);
+  const pendingUserIds = pendingIds(queue, ['user']);
+  const pendingUserDeleteIds = pendingIds(queue, ['user_delete']);
+  const pendingCustomerIds = pendingIds(queue, ['customer_delete', 'customer']);
+  const pendingCustomerDeleteIds = pendingIds(queue, ['customer_delete']);
+
+  const branches = replaceRemoteRecords(d.branches || [], state.branches || [], pendingBranchIds)
+    .filter(b => !pendingBranchDeleteIds.has(b.id));
+  const validBranchIds = new Set(branches.map(b => b.id));
+  const nextBranchId = state.currentBranchId && validBranchIds.has(state.currentBranchId)
+    ? state.currentBranchId
+    : (branches[0]?.id || state.currentBranchId);
+
+  const users = (() => {
+    const merged = mergeById(d.users || [], state.users || [], pendingUserIds);
+    const map = new Map(merged.map(u => [String(u.id), u]));
+    for (const local of state.users || []) {
+      if (pendingUserIds.has(String(local.id)) && !map.has(String(local.id))) map.set(String(local.id), local);
+    }
+    return Array.from(map.values()).filter(u => !pendingUserDeleteIds.has(String(u.id)));
+  })();
+
+  const products = replaceRemoteRecords(d.products || [], state.products || [], pendingProductIds)
+    .filter(p => !pendingProductDeleteIds.has(p.id));
+  const categories = replaceRemoteRecords(d.categories || [], state.categories || [], pendingCategoryIds)
+    .filter(c => !pendingCategoryDeleteIds.has(c.id));
+  const customers = mergeById(d.customers || [], state.customers || [], pendingCustomerIds)
+    .filter(c => !pendingCustomerDeleteIds.has(String(c.id)));
+
+  return {
+    branches,
+    currentBranchId: nextBranchId,
+    products,
+    categories,
+    users,
+    customers,
+    currencies: Array.isArray(d.currencies) && d.currencies.length
+      ? mergeUnique(d.currencies, state.currencies || [], { idKey: 'code' })
+      : state.currencies,
+    inventory: mergeBranchInventory(d.inventory, state.inventory || [], '', pendingInventoryKeys),
+    transactions: mergedTransactions,
+    cashSessions: mergedCashSessions,
+    transfers: mergedTransfers,
+    bankCards: mergeById(d.bankCards || [], state.bankCards || []),
+    bankTransactions: mergeById(d.bankTransactions || [], state.bankTransactions || []),
+    suppliers: mergeById(d.suppliers || [], state.suppliers || []),
+    supplierOrders: mergeById(d.supplierOrders || [], state.supplierOrders || []),
+    returns: mergeById(d.returns || [], state.returns || []),
+    warranties: mergeById(d.warranties || [], state.warranties || []),
+    quotes: mergeById(d.quotes || [], state.quotes || []),
+    timeShifts: mergeById(d.timeShifts || [], state.timeShifts || []),
+    salarySettlements: mergeById(d.salarySettlements || [], state.salarySettlements || []),
+    inventoryAudits: mergeById(d.inventoryAudits || [], state.inventoryAudits || []),
+    storeConfig: d.storeConfig ? { ...state.storeConfig, ...d.storeConfig } : state.storeConfig,
+    receiptConfig: d.receiptConfig ? { ...state.receiptConfig, ...d.receiptConfig } : state.receiptConfig,
+    lastTurnNumber: Math.max(Number(state.lastTurnNumber) || 0, Number(d.lastTurnNumber) || 0),
+  };
+}
+
+async function runBootstrap(set: StoreSet, get: StoreGet, options?: BootstrapActionOptions): Promise<boolean> {
+  const force = options?.force === true;
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+  if (bootstrapInFlight) return bootstrapInFlight;
+  if (!force && Date.now() - lastPullMomentMs() < BOOTSTRAP_COOLDOWN_MS) return false;
+
+  const run = (async () => {
+    try {
+      const { data } = await loadBootstrapData({
+        supabase: options?.supabase,
+        tenant: options?.tenant,
+        now: options?.now,
+        includeSaasUser: options?.supabase ? false : undefined,
+      });
+      set((state) => ({
+        ...mergeBootstrapSnapshot(data, state),
+        lastSyncTime: new Date().toISOString(),
+        syncResult: { success: true, message: 'Arranque acotado: catálogo y actividad reciente.' }
+      }));
+      lastBootstrapSuccessAt = Date.now();
+      historyCursor = null;
+      historyExhausted = false;
+      recordSyncMoment('pull');
+      return true;
+    } catch (e: any) {
+      // Un fallo de red no toca los datos locales: el POS sigue offline.
+      set({ syncResult: { success: false, message: e?.message || 'No se pudo actualizar desde la nube' } });
+      return false;
+    } finally {
+      bootstrapInFlight = null;
+    }
+  })();
+
+  bootstrapInFlight = run;
+  return run;
+}
+
 
 export function createSyncActions(set: StoreSet, get: StoreGet): any {
   return {
@@ -162,104 +370,47 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
   },
 
   bootstrapPosFromSupabase: async () => {
-    const branchId = get().currentBranchId;
-    if (typeof navigator !== 'undefined' && !navigator.onLine) return false;
-    const res = await pullPosBootstrapFromSupabase(branchId);
-    if (!res.success || !res.data) return false;
-    const d = res.data;
-    const queuedStoreConfig = [...getOfflineQueue()]
-      .filter(i => i.type === 'store_config' && i.data && typeof i.data === 'object')
-      .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
-      .at(-1)?.data;
-    const queueSnapshot = getOfflineQueue();
-    const pendingBranchIds = new Set(queueSnapshot.filter(i => i.type === 'branch').map(i => i.data?.id).filter(Boolean));
-    const pendingBranchDeleteIds = new Set(queueSnapshot.filter(i => i.type === 'branch_delete').map(i => i.data?.id).filter(Boolean));
-    const pendingCategoryIds = new Set(queueSnapshot.filter(i => i.type === 'category').map(i => i.data?.id).filter(Boolean));
-    const pendingCategoryDeleteIds = new Set(queueSnapshot.filter(i => i.type === 'category_delete').map(i => i.data?.id).filter(Boolean));
-    const pendingProductIds = new Set(queueSnapshot.filter(i => i.type === 'product').map(i => i.data?.id).filter(Boolean));
-    const pendingProductDeleteIds = new Set(queueSnapshot.filter(i => i.type === 'product_delete').map(i => i.data?.id).filter(Boolean));
-    const pendingUserIds = new Set(queueSnapshot.filter(i => i.type === 'user').map(i => i.data?.id).filter(Boolean));
-    const pendingCustomerIds = new Set(queueSnapshot.filter(i => i.type === 'customer').map(i => i.data?.id).filter(Boolean));
-
-    set((state) => {
-      // Never blank a branch because a reconnect pull returned zero rows.
-      // Keep the last local branch snapshot until a non-empty authoritative
-      // snapshot arrives; pending offline operations are then replayed normally.
-      const hasBranchInventory = Array.isArray(d.inventory) && d.inventory.length > 0;
-      const branchInv = hasBranchInventory ? d.inventory : (state.inventory || []).filter((item: InventoryLevel) => !branchId || item.branchId === branchId);
-      const invMap = new Map<string, InventoryLevel>();
-      for (const item of state.inventory || []) {
-        if (branchId && item.branchId === branchId) continue;
-        invMap.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
-      }
-      for (const item of branchInv) invMap.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
-      return {
-        branches: replaceRemoteRecords(d.branches || [], state.branches || [], pendingBranchIds).filter((b: any) => !pendingBranchDeleteIds.has(b.id)),
-        categories: replaceRemoteRecords(d.categories || [], state.categories || [], pendingCategoryIds).filter((c: any) => !pendingCategoryDeleteIds.has(c.id)),
-        products: replaceRemoteRecords(d.products || [], state.products || [], pendingProductIds)
-          .filter((p: any) => !pendingProductDeleteIds.has(p.id) && (
-            (Array.isArray(d.products) && d.products.some((sp: any) => sp.id === p.id)) ||
-            pendingProductIds.has(p.id)
-          )),
-        inventory: Array.from(invMap.values()),
-        users: replaceRemoteRecords(d.users || [], state.users || [], pendingUserIds),
-        customers: replaceRemoteRecords(d.customers || [], state.customers || [], pendingCustomerIds),
-        currencies: d.currencies?.length ? d.currencies : state.currencies,
-        fiscalConfigs: Array.isArray(queuedStoreConfig?.fiscalConfigs)
-          ? queuedStoreConfig.fiscalConfigs
-          : (Array.isArray(d.settings?.store_config?.fiscalConfigs) ? d.settings.store_config.fiscalConfigs : state.fiscalConfigs),
-        storeConfig: queuedStoreConfig
-          ? { ...state.storeConfig, ...(d.settings?.store_config || {}), ...queuedStoreConfig }
-          : (d.settings?.store_config ? { ...state.storeConfig, ...d.settings.store_config } : state.storeConfig),
-        receiptConfig: d.settings?.receipt_config
-          ? { ...state.receiptConfig, ...d.settings.receipt_config }
-          : state.receiptConfig,
-        transactions: (() => {
-          const pending = new Set(getOfflineQueue().filter(i => i.type === 'transaction' || i.type === 'void_transaction').map(i => String(i.data?.id || i.actionId)));
-          const map = new Map<string, Transaction>();
-          for (const item of state.transactions || []) {
-            if (item.branchId !== branchId || pending.has(String(item.id)) || item.offlinePending === true) map.set(item.id, item);
-          }
-          for (const item of d.transactions || []) map.set(item.id, item);
-          return Array.from(map.values());
-        })(),
-        cashSessions: (() => {
-          const pending = new Set(getOfflineQueue().filter(i => i.type === 'cash_session').map(i => String(i.data?.id || i.actionId)));
-          const map = new Map<string, CashRegisterSession>();
-          for (const item of state.cashSessions || []) {
-            if (item.branchId !== branchId || pending.has(String(item.id))) map.set(item.id, item);
-          }
-          for (const item of d.cashSessions || []) map.set(item.id, item);
-          return Array.from(map.values());
-        })(),
-        transfers: (() => {
-          const pending = new Set<string>();
-          for (const q of getOfflineQueue()) {
-            if (q.type === 'transfer') {
-              pending.add(String(q.data?.id || q.data?.operationId || q.actionId));
-            } else if (q.type === 'transfer_bulk') {
-              for (const op of Array.isArray(q.data?.items) ? q.data.items : []) {
-                if (op?.operationId) pending.add(String(op.operationId));
-              }
-            }
-          }
-          const map = new Map<string, InventoryTransfer>();
-          const belongsToBranch = (item: any) => item.branchId === branchId || item.fromBranchId === branchId || item.toBranchId === branchId;
-          for (const item of state.transfers || []) {
-            if (!belongsToBranch(item) || pending.has(String(item.id || item.operationId))) map.set(item.id || item.operationId, item);
-          }
-          for (const item of d.transfers || []) map.set(item.id || item.operationId, item);
-          return Array.from(map.values());
-        })(),
-        bankCards: mergeById(d.bankCards, state.bankCards || []),
-        bankTransactions: mergeById(d.bankTransactions, state.bankTransactions || []),
-        lastSyncTime: new Date().toISOString(),
-        syncResult: { success: true, message: 'Caché POS actualizado de forma incremental.' }
-      };
-    });
-    recordSyncMoment('pull');
-    return true;
+    // Antes descargaba todo el historial. Ahora usa el arranque acotado.
+    return runBootstrap(set, get);
   },
+
+  /**
+   * Único arranque permitido: catálogo pequeño + ventana operativa reciente.
+   * Nunca llama a syncWithSupabase ni descarga historial completo.
+   */
+  bootstrapCloudData: async (options?: BootstrapActionOptions) => {
+    return runBootstrap(set, get, options);
+  },
+
+  /** Página siguiente de ventas antiguas (keyset por created_at), bajo demanda. */
+  loadOlderSalesHistory: async (options?: { limit?: number }) => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return { added: 0, hasMore: !historyExhausted };
+    }
+    if (historyExhausted) return { added: 0, hasMore: false };
+    const beforeIso = historyCursor || oldestTransactionIso(get().transactions || []);
+    try {
+      const page = await pullSalesHistoryPage({ beforeIso, limit: options?.limit ?? HISTORY_PAGE_DEFAULT_LIMIT });
+      historyCursor = page.nextBefore || beforeIso;
+      historyExhausted = !page.hasMore;
+      if (!page.transactions.length) return { added: 0, hasMore: false };
+      set((state) => {
+        const protectedIds = collectPendingTransactionIds(getOfflineQueue());
+        const map = new Map<string, Transaction>();
+        for (const tx of state.transactions || []) map.set(String(tx.id), tx);
+        for (const tx of page.transactions) {
+          const key = String(tx.id);
+          if (map.has(key) || protectedIds.has(key)) continue;
+          map.set(key, tx);
+        }
+        return { transactions: Array.from(map.values()) };
+      });
+      return { added: page.transactions.length, hasMore: page.hasMore };
+    } catch {
+      return { added: 0, hasMore: !historyExhausted };
+    }
+  },
+
 
   syncWithSupabase: async () => {
     set({ isSyncing: true });

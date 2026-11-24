@@ -192,6 +192,31 @@ export type PlatformAuditEntry = {
   created_at: string;
 };
 
+/**
+ * Reporte de manipulación de reloj (`public.clock_tamper_reports`).
+ * No guarda datos personales: solo clase de anomalía, origen, magnitud y
+ * fechas, con empresa, equipo y lease como contexto.
+ */
+export type PlatformClockTamperReport = {
+  id: string;
+  company_id: string;
+  company_name?: string | null;
+  device_id?: string | null;
+  lease_id?: string | null;
+  kind?: string | null;
+  source?: string | null;
+  skew_ms?: number | null;
+  /** Contrato nuevo de `license-telemetry`; `kind/source` pueden venir nulos. */
+  reason?: string | null;
+  effective_now?: string | null;
+  anchor?: string | null;
+  app_version?: string | null;
+  platform?: string | null;
+  detail?: Record<string, unknown> | null;
+  detected_at: string;
+  created_at?: string | null;
+};
+
 export type PlatformSupportSettings = {
   whatsapp_number: string | null;
   support_email: string | null;
@@ -369,6 +394,50 @@ export function loadBillingPayments(limit = 100) {
 
 export function loadAdminAudit(limit = 150, companyId?: string) {
   return rpcArray<PlatformAuditEntry>("get_platform_admin_audit", { p_limit: limit, p_company_id: companyId || null });
+}
+
+/** Tabla de telemetría de reloj (solo lectura para el panel). */
+const CLOCK_TAMPER_REPORTS_TABLE = "clock_tamper_reports";
+const CLOCK_TAMPER_COLUMNS =
+  "id, company_id, device_id, lease_id, kind, source, skew_ms, reason, effective_now, anchor, app_version, platform, detail, detected_at, created_at";
+
+/**
+ * Reportes recientes de manipulación de reloj.
+ *
+ * Camino esperado: RPC `get_platform_clock_tamper_reports` (con nombre de
+ * empresa y autorización de plataforma). Mientras el backend no la exponga, se
+ * intenta la lectura directa de la tabla por el cliente admin; para que eso
+ * funcione en producción hace falta una política RLS de SELECT para
+ * administradores de plataforma o la RPC mencionada. Sin ninguna de las dos,
+ * el panel muestra un aviso claro en lugar de una lista vacía engañosa.
+ */
+export async function loadClockTamperReports(limit = 200): Promise<PlatformClockTamperReport[]> {
+  const supabase = await assertPlatformAdmin();
+  const rpc = await withTimeout(
+    supabase.rpc("get_platform_clock_tamper_reports", { p_limit: limit }),
+    20_000,
+    "La telemetría de seguridad",
+  );
+  if (!rpc.error) return (Array.isArray(rpc.data) ? rpc.data : []) as PlatformClockTamperReport[];
+
+  const code = String((rpc.error as { code?: unknown })?.code ?? "");
+  const message = String((rpc.error as { message?: unknown })?.message ?? "");
+  const missingFunction = code === "PGRST202" || /could not find the function|schema cache/i.test(message);
+  if (!missingFunction) throw new Error(adminErrorMessage(rpc.error));
+
+  const direct = await withTimeout(
+    supabase
+      .from(CLOCK_TAMPER_REPORTS_TABLE)
+      .select(CLOCK_TAMPER_COLUMNS)
+      .order("detected_at", { ascending: false })
+      .limit(limit),
+    20_000,
+    "La telemetría de seguridad",
+  );
+  if (!direct.error) return (direct.data || []) as PlatformClockTamperReport[];
+  throw new Error(
+    "Falta habilitar la lectura de seguridad: aplica la función get_platform_clock_tamper_reports o una política RLS de lectura para administradores.",
+  );
 }
 
 export function loadPlatformPlans() {

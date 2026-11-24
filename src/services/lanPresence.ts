@@ -1,5 +1,6 @@
 import { getSupabase } from '../lib/supabase';
 import { fetchWithRetry } from '../lib/http';
+import { canUseLanPresence, lanHubUrl } from './lanHost';
 
 const DEVICE_ID_KEY = 'palmyra:device-id';
 const DEVICE_NAME_KEY = 'palmyra:device-name';
@@ -119,10 +120,18 @@ async function authHeaders(): Promise<Record<string, string>> {
   }
 }
 
+function lanEndpoint(path: string): string {
+  const hub = lanHubUrl();
+  return hub ? `${hub}${path}` : path;
+}
+
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
+  if (!canUseLanPresence()) {
+    throw new Error('La red local no está disponible en este equipo.');
+  }
   // Los endpoints LAN son idempotentes (heartbeat/rename/delete), así que un
   // reintento es seguro si el equipo servidor está ocupado o despertando.
-  const response = await fetchWithRetry(path, {
+  const response = await fetchWithRetry(lanEndpoint(path), {
     ...init,
     headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...(init.headers || {}) },
     cache: 'no-store'
@@ -135,6 +144,7 @@ async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export async function sendLanPresence(warehouseName?: string | null): Promise<void> {
+  if (!canUseLanPresence()) return;
   await api('/api/lan/presence', {
     method: 'POST',
     body: JSON.stringify({

@@ -1,12 +1,12 @@
 import { Suspense, useEffect, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { Activity, AlertCircle, BarChart3, Building2, ChevronRight, CreditCard, LogOut, Menu, RefreshCw, Settings2, ShieldCheck, TicketCheck, Users } from "lucide-react";
+import { Activity, AlertCircle, BarChart3, Building2, ChevronRight, CreditCard, LogOut, Menu, RefreshCw, Settings2, ShieldAlert, ShieldCheck, TicketCheck, Users } from "lucide-react";
 import { adminErrorMessage, loadPlatformSnapshot, type PlatformSnapshot } from "./platformAdminApi";
 import { adminSignOut } from "./supabase";
 import AdminNotifications from "./adminNotifications";
 import { lazyWithRetry } from "./chunkRecovery";
 
-type View = "overview" | "companies" | "users" | "billing" | "support" | "audit" | "settings";
+type View = "overview" | "companies" | "users" | "billing" | "support" | "security" | "audit" | "settings";
 
 type NavItem = { id: View; label: string; icon: typeof BarChart3; hint: string };
 
@@ -29,6 +29,7 @@ const navGroups: Array<{ label: string; items: NavItem[] }> = [
   {
     label: "Sistema",
     items: [
+      { id: "security", label: "Seguridad", icon: ShieldAlert, hint: "Manipulación de reloj" },
       { id: "audit", label: "Auditoría", icon: Activity, hint: "Acciones administrativas" },
       { id: "settings", label: "Configuración", icon: Settings2, hint: "Canales y sistema" },
     ],
@@ -42,6 +43,7 @@ const CompaniesView = lazyWithRetry(() => import("./views/CompaniesView"));
 const UsersView = lazyWithRetry(() => import("./views/UsersView"));
 const BillingView = lazyWithRetry(() => import("./views/BillingView"));
 const SupportView = lazyWithRetry(() => import("./views/SupportView"));
+const TamperView = lazyWithRetry(() => import("./views/TamperView"));
 const AuditView = lazyWithRetry(() => import("./views/AuditView"));
 const SettingsView = lazyWithRetry(() => import("./views/SettingsView"));
 
@@ -144,6 +146,7 @@ export default function AdminShell({
                 view === "users" ? <UsersView /> :
                 view === "billing" ? <BillingView onChanged={refresh} /> :
                 view === "support" ? <SupportView onChanged={refresh} /> :
+                view === "security" ? <TamperView companies={snapshot.companies} /> :
                 view === "audit" ? <AuditView /> :
                 <SettingsView />}
             </motion.div>

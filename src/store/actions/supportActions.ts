@@ -18,6 +18,7 @@ import { normalizeSemanticText, areSemanticallyEqual } from '../../utils/textUti
 import { localStateStorage, clearLocalStateStorage, flushLocalStateStorage } from '../../services/localStateStorage';
 import { getPalmyraScopedStorageKey } from '../../services/localScope';
 import { isCloudBusinessSyncAllowed } from '../../services/localPlanMode';
+import { mirrorCashMovement } from '../../services/localDb/posWriteThrough';
 import { setCanonicalInventoryQuantity, validateTransferStock } from '../utils/inventoryTransforms';
 import { buildLocalVoidTransactionPatch } from '../utils/localVoidTransaction';
 import { buildLocalCompletedSalePatch } from '../utils/localCompletedSale';
@@ -351,6 +352,9 @@ export function createSupportActions(set: StoreSet, get: StoreGet): any {
       description: movement.description || ''
     }, actionId);
     await flushLocalStateStorage();
+    // El movimiento ya está en la store: se espeja al almacén normalizado sin
+    // await. Una baja posterior (removeCashMovement) no toca estos libros.
+    void mirrorCashMovement(updated, movement);
 
     if (navigator.onLine && isCloudBusinessSyncAllowed()) {
       const { pushCashMovementToSupabase } = await import('../../services/supabaseSync');

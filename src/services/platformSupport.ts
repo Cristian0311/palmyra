@@ -1,4 +1,5 @@
 import { getSupabase } from "../lib/supabase";
+import { recordSupportTicket } from "./pilot/metrics";
 
 export const DEFAULT_FACEBOOK_URL = "https://www.facebook.com/share/18E6USqhUn/";
 
@@ -78,7 +79,11 @@ export async function createSupportRequest(input: SupportRequestInput) {
     p_metadata: { source: "crm_support_center", user_agent: navigator.userAgent.slice(0, 240) },
   });
   if (error) throw error;
-  return data as { ok: boolean; request_id: string; company_id: string; company_name: string };
+  const result = data as { ok: boolean; request_id: string; company_id: string; company_name: string };
+  // Métrica del piloto (F7-B): solo cuenta el ticket creado de verdad. Es local
+  // (contador por día) y nunca lanza; un fallo del contador no rompe el envío.
+  if (result?.ok !== false) recordSupportTicket();
+  return result;
 }
 
 export function normalizeWhatsAppNumber(value?: string | null) {

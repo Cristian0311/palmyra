@@ -4,7 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useEffect, useState, useRef, lazy, Suspense, type ComponentType } from "react";
+import { useEffect, useState, useRef, lazy, Suspense, type ComponentType, type ReactNode } from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { canAccessSettingsSection, NOTIFICATIONS_PATH } from './utils/settingsAccess';
 import Layout from "./components/Layout";
@@ -22,6 +22,11 @@ import { getCachedSaaSContext } from "./services/offlineAuthContext";
 import { registerCurrentDevice } from "./services/device";
 import { touchCurrentDevice } from "./services/security";
 import { confirmNativeBoot } from "./lib/nativeApp";
+import { currentAppSurface } from "./lib/appSurface";
+import InstallRequired from "./components/InstallRequired";
+import { LicenseBanner } from "./components/system/LicenseBanner";
+import AndroidBackupRuntime from "./components/system/AndroidBackupRuntime";
+import { refreshStoreFromLocalDb } from "./services/localDb/bootHydration";
 
 // Recuperación de chunks perezosos: una PWA con caché vieja puede pedir un
 // archivo JS que ya no existe en el servidor. Sin esto, la navegación queda en
@@ -90,6 +95,25 @@ const PlatformAdmin = lazyWithRetry(() => import("./pages/PlatformAdmin"));
 const HelpCenter = lazyWithRetry(() => import("./pages/HelpCenter"));
 const Tutorial = lazyWithRetry(() => import("./pages/Tutorial"));
 const ExchangeRate = lazyWithRetry(() => import("./pages/ExchangeRate"));
+
+// La web solo registra, cobra el plan y entrega la descarga. La caja y el resto
+// de la operación viven en la app instalada (Windows o APK). `currentAppSurface()`
+// distingue esas superficies de la pestaña web y de la PWA, que ya no se ofrece.
+// `VITE_ALLOW_WEB_POS=true` sigue siendo el escape temporal para soporte y pruebas.
+const APP_SURFACE = currentAppSurface();
+const WEB_ALLOW_POS = String(import.meta.env.VITE_ALLOW_WEB_POS || "").toLowerCase() === "true";
+
+function WebOperatingGate({ children }: { children: ReactNode }) {
+  const location = useLocation();
+  // La suscripción sí debe funcionar en web: es donde se paga y renueva el plan.
+  if (location.pathname.startsWith("/subscription")) return <>{children}</>;
+  // Solo las apps instaladas (escritorio y APK) y el desarrollo local abren la
+  // operación. La PWA dejó de ofrecerse y la pestaña web queda cerrada para
+  // todas las cuentas: se instala la app o el APK. No hay enlaces de retorno al
+  // software desde la pantalla de bloqueo.
+  if (APP_SURFACE === "desktop" || APP_SURFACE === "android-app" || APP_SURFACE === "dev" || WEB_ALLOW_POS) return <>{children}</>;
+  return <Navigate to="/download" replace />;
+}
 function SettingsRoute() {
   const user = useStore(state => state.currentUser);
   const location = useLocation();
@@ -482,23 +506,40 @@ export default function App() {
   useEffect(() => {
     if (accessState !== "ready" || !currentUser) return;
     let cancelled = false;
-    const heartbeat = async () => {
+    let lastCheckAt = 0;
+
+    // Revalidar sesión y dispositivo cada 12 h, al volver a la app o al
+    // recuperar internet. Antes era cada 2 min: con varias cajas abiertas eso
+    // agotaba el rate limit de Supabase Auth sin aportar seguridad real.
+    const verifySession = async (force = false) => {
+      if (cancelled) return;
+      if (document.visibilityState !== "visible") return;
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
+      const now = Date.now();
+      if (!force && now - lastCheckAt < 15 * 60 * 1000) return;
+      lastCheckAt = now;
       try {
         const ctx = await loadSaaSContext(true);
         if (cancelled || !ctx?.companyId) return;
         const active = await touchCurrentDevice(ctx.companyId);
         if (!active) {
           await signOutSaaSAccount();
-          return;
         }
       } catch (error) {
         console.warn("[PALMYRA] Device heartbeat failed:", error);
       }
     };
-    const timer = window.setInterval(heartbeat, 120000);
+
+    const timer = window.setInterval(() => { void verifySession(); }, 12 * 60 * 60 * 1000);
+    const onFocus = () => { void verifySession(); };
+    const onOnline = () => { void verifySession(true); };
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("online", onOnline);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("online", onOnline);
     };
   }, [currentUser?.id, accessState]);
 
@@ -527,10 +568,68 @@ export default function App() {
     };
   }, [currentUser?.id, currentBranchId, accessState]);
 
+  // Red local: si este equipo quedó vinculado a un hub LAN, replica su journal
+  // mientras haya sesión iniciada. El bucle observa la sesión del hub por
+  // dentro (emparejar/desvincular desde Configuración) y se detiene aquí al
+  // cerrar sesión, sin dejar stream ni temporizadores vivos.
+  useEffect(() => {
+    if (accessState !== "ready" || !currentUser?.id) return;
+    let active = true;
+    let stop: (() => void) | null = null;
+    void (async () => {
+      try {
+        const { startHubClientLoop } = await import("./services/lanHub/clientLoop");
+        if (!active) return;
+        const handle = startHubClientLoop({
+          onChanges: (result) => {
+            if (result.applied === 0 && result.deleted === 0) return;
+            console.info(
+              `[PALMYRA] Hub LAN (${result.source}): ${result.applied} altas, ` +
+                `${result.deleted} bajas, cursor ${result.cursor}.`
+            );
+            // El bucle ya escribió en el almacén normalizado; la UI sigue
+            // leyendo el JSON legado, así que se proyecta el diff a la store
+            // (con debounce interno: varias páginas = un solo render). Las
+            // bajas también cuentan: el puente solo borra lápidas explícitas.
+            if (result.applied + result.deleted > 0) {
+              const companyId = getPalmyraLocalScope()?.companyId;
+              if (companyId) {
+                void refreshStoreFromLocalDb(companyId, { reason: "hub-lan" });
+              }
+            }
+          }
+        });
+        stop = () => handle.stop();
+      } catch (error) {
+        console.warn("[PALMYRA] No se pudo iniciar el bucle del hub LAN:", error);
+      }
+    })();
+    return () => {
+      active = false;
+      stop?.();
+    };
+  }, [currentUser?.id, accessState]);
+
+  // Al volver a primer plano se proyecta una vez lo que el hub haya podido
+  // dejar en el almacén con la pestaña en segundo plano (el canal SSE puede
+  // haberse pausado y el refresco tiene debounce propio).
+  useEffect(() => {
+    if (accessState !== "ready" || !currentUser?.id) return;
+    const onVisibility = () => {
+      if (typeof document === "undefined" || document.visibilityState !== "visible") return;
+      const companyId = getPalmyraLocalScope()?.companyId;
+      if (companyId) void refreshStoreFromLocalDb(companyId, { reason: "visibilidad" });
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [currentUser?.id, accessState]);
+
   // La landing es pública: debe abrir aunque la verificación de sesión siga en
   // curso. Sin esto, quien no ha iniciado sesión veía el login (o un loader)
   // antes de poder evaluar el producto y descargar las apps.
-  const isLandingPath = typeof window !== "undefined" && /^\/landing\/?$/i.test(window.location.pathname);
+  // La pantalla de descarga tampoco debe esperar la verificación de sesión: es
+  // la salida de todo acceso web y no necesita datos del usuario para pintarse.
+  const isLandingPath = typeof window !== "undefined" && /^\/(landing|download)\/?$/i.test(window.location.pathname);
   // El flujo de acceso (/auth y /auth/confirm) es público por definición. Ni el
   // splash de arranque ni la tarjeta de "recovering" deben taparlo: si la
   // verificación de sesión se cuelga, el usuario quedaría viendo un loader
@@ -551,6 +650,7 @@ export default function App() {
               renderizarse (App está por encima del Router). */}
           <Routes>
             <Route path="/landing" element={<LandingPage signedIn={Boolean(currentUser?.id)} />} />
+            <Route path="/download" element={<InstallRequired />} />
             <Route path="/auth" element={<SaaSAuth />} />
             <Route path="/auth/confirm" element={<AuthConfirm />} />
             <Route path="*" element={<Navigate to="/landing" replace />} />
@@ -603,6 +703,7 @@ export default function App() {
         <Suspense fallback={<PageLoading />}>
           <Routes>
           <Route path="/landing" element={<LandingPage signedIn={Boolean(currentUser?.id)} />} />
+          <Route path="/download" element={<InstallRequired />} />
           <Route path="/platform-admin" element={<PlatformAdmin />} />
           <Route path="/security" element={<Navigate to="/help-center?section=security" replace />} />
           <Route path="/invite" element={<SaaSInvite />} />
@@ -621,6 +722,7 @@ export default function App() {
           <Route path="/account-status" element={accessState === "blocked" ? <AccountStatus /> : <Navigate to={accessState === "signed_out" ? "/auth" : accessState === "needs_onboarding" ? "/onboarding" : "/"} replace />} />
           <Route path="/*" element={
             accessState === "ready" && currentUser ? (
+              <WebOperatingGate>
               <Layout>
                 {/* Aislamiento por sección: un fallo de render de una página
                     muestra una tarjeta recuperable y no desmonta la navegación. */}
@@ -651,6 +753,13 @@ export default function App() {
                 </Suspense>
                 </ErrorBoundary>
               </Layout>
+              {/* Respaldo periódico en la tablet: se monta una sola vez y no
+                  pinta nada; en APK crea el respaldo cada 24 h. */}
+              <AndroidBackupRuntime />
+              {/* Aviso discreto de licencia (gracia, vencimiento próximo, reloj).
+                  El de solo lectura vive en Layout; aquí no se duplica. */}
+              <LicenseBanner />
+              </WebOperatingGate>
             ) : (
               <Navigate to={accessState === "signed_out" || !currentUser ? "/landing" : accessState === "needs_onboarding" || pendingOnboarding ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/landing"} replace />
             )

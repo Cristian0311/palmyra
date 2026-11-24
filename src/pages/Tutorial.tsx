@@ -1073,14 +1073,14 @@ const lessons: Lesson[] = [
         zone: 2,
       },
       {
-        title: "La LAN es una vista previa, no un servidor compartido",
-        detail: "El servidor LAN permite abrir PALMYRA desde otros dispositivos en la misma Wi-Fi mediante una URL. Cada dispositivo guarda sus propios datos: la sincronización compartida por LAN todavía no está activa.",
-        where: "Configuración → Conexión y datos → Servidor LAN",
+        title: "La LAN comparte los datos entre cajas emparejadas",
+        detail: "El hub LAN comparte los datos del negocio entre los equipos emparejados del mismo Wi-Fi: una venta hecha en una caja aparece en las demás. El equipo principal debe estar encendido y cada caja vinculada con su código.",
+        where: "Configuración → Red local",
         zone: 3,
       },
     ],
     mistakes: [
-      "Pensar que la LAN comparte automáticamente las ventas entre cajas: aún no lo hace.",
+      "Esperar que la LAN comparta las ventas con el equipo principal apagado o con las cajas sin vincular.",
       "Limpiar los datos del navegador con operaciones pendientes.",
       "Asumir que todo se sincronizó sin revisar la Salud offline.",
     ],

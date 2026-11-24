@@ -33,8 +33,8 @@ import { useReportsSessions } from "../modules/reports/useReportsSessions";
 import { getSessionTurnLabel } from "../modules/reports/utils/sessionTurnLabels";
 import { useReportsAnalytics } from "../hooks/useReportsAnalytics";
 import type { ExcelExportData } from "../utils/excelExport";
-import { pullPosBootstrapFromSupabase } from "../services/supabaseSync/pull";
 import { useReportVisibility } from "../modules/reports/hooks/useReportVisibility";
+import { ReportsHistoryPager } from "../components/reports/ReportsHistoryPager";
 import { getOfflineQueueCount } from "../services/offlineQueue";
 import PlanFeatureGate from "../components/PlanFeatureGate";
 import { canUsePlanFeature } from "../services/planAccess";
@@ -74,7 +74,8 @@ export default function Reports() {
 
   const store = useStore(useShallow((state) => ({
     addNotification: state.addNotification,
-    syncWithSupabase: state.syncWithSupabase,
+    bootstrapCloudData: (state as any).bootstrapCloudData as ((options?: { force?: boolean }) => Promise<boolean>) | undefined,
+    loadOlderSalesHistory: (state as any).loadOlderSalesHistory as ((options?: { limit?: number }) => Promise<{ added: number; hasMore: boolean }>) | undefined,
     addSalarySettlement: state.addSalarySettlement,
     bankCards: state.bankCards,
     bankTransactions: state.bankTransactions,
@@ -562,16 +563,54 @@ export default function Reports() {
         const { waitForOfflineQueueReady } = await import('../services/offlineQueue');
         await waitForOfflineQueueReady();
         if (!active || (typeof navigator !== 'undefined' && !navigator.onLine)) return;
-        // Reports is an authoritative view. Refresh after the outbox is hydrated
-        // so remote pulls never erase a locally durable offline sale/session.
-        await store.syncWithSupabase();
+        // Reportes ya no descarga todo el historial: arranque acotado y el
+        // resto se pagina bajo demanda con «Ver historial».
+        await store.bootstrapCloudData?.({});
       } catch (error) {
         if (active) console.warn('[Reports] No se pudo actualizar el informe desde Supabase:', error);
       }
     };
     void hydrateReports();
     return () => { active = false; };
-  }, [store.syncWithSupabase]);
+  }, [store.bootstrapCloudData]);
+
+  // Paginador de historial: nunca carga todo de golpe, funciona con caché local.
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyHasMore, setHistoryHasMore] = useState(true);
+  const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' && navigator.onLine === false);
+
+  useEffect(() => {
+    const update = () => setIsOffline(typeof navigator !== 'undefined' && navigator.onLine === false);
+    update();
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, []);
+
+  const handleLoadOlderHistory = useCallback(async () => {
+    if (historyLoading || !historyHasMore) return;
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      store.addNotification('Sin conexión: se muestran las ventas ya guardadas en este equipo.', 'warning');
+      return;
+    }
+    const loadPage = store.loadOlderSalesHistory;
+    if (!loadPage) return;
+    setHistoryLoading(true);
+    try {
+      const result = await loadPage({ limit: 100 });
+      setHistoryHasMore(result.hasMore);
+      if (result.added === 0) {
+        store.addNotification('No hay más ventas anteriores en este equipo.', 'info');
+      }
+    } catch (error) {
+      store.addNotification(error instanceof Error ? error.message : 'No se pudo cargar el historial.', 'error');
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [historyLoading, historyHasMore, store.loadOlderSalesHistory, store.addNotification]);
   const canExcelExport = canUsePlanFeature(planCode, "excel_exports");
   useEffect(() => {
     if (canExcelExport) setShowExcelGate(false);
@@ -709,7 +748,16 @@ export default function Reports() {
           </h2>
           <p className="text-[8px] font-black text-muted uppercase tracking-[0.2em] mt-0.5 truncate">Control Financiero</p>
         </div>
-        
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          <ReportsHistoryPager
+            loadedCount={transactions.length}
+            isLoading={historyLoading}
+            hasMore={historyHasMore}
+            offline={isOffline}
+            onLoadMore={handleLoadOlderHistory}
+          />
+
         {/* Excel Export Menu */}
         <div className="relative shrink-0" ref={exportMenuRef}>
             <div className="flex items-center h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-200 transition-all">
@@ -779,6 +827,7 @@ export default function Reports() {
               </div>
             )}
           </div>
+        </div>
       </header>
 
       {/* Navigation Tabs - Dedicated full-width horizontal segmented bar */}
@@ -1191,7 +1240,8 @@ export default function Reports() {
               <select
                 value={movementCurrencyFilter}
                 onChange={(e) => setMovementCurrencyFilter(e.target.value)}
-                className="px-2.5 py-1 bg-subtle border border-base rounded-lg text-[8px] font-black uppercase text-primary outline-none cursor-pointer"
+                aria-label="Filtrar movimientos por moneda"
+                className="px-2.5 py-1 bg-subtle border border-base rounded-lg text-[8px] font-black uppercase text-primary outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
               >
                 <option value="all">Todas las Monedas</option>
                 {currencies.map(c => (
@@ -1208,17 +1258,17 @@ export default function Reports() {
           {/* Movements Table */}
           <div className="bg-secondary rounded-2xl shadow-xs border border-base overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table aria-label="Movimientos detallados de caja" className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-subtle border-b border-base text-[8px] font-black text-muted uppercase tracking-[0.15em]">
-                    <th className="px-3 py-2.5">Fecha y Hora</th>
-                    <th className="px-3 py-2.5">Turno</th>
-                    <th className="px-3 py-2.5">Cajero / Sucursal</th>
-                    <th className="px-3 py-2.5 text-center">Tipo de Movimiento</th>
-                    <th className="px-3 py-2.5">Concepto / Descripción</th>
-                    <th className="px-3 py-2.5 text-right">Importe Moneda</th>
-                    <th className="px-3 py-2.5 text-right">Equivalente CUP</th>
-                    <th className="px-3 py-2.5 text-center">Detalle / Vale</th>
+                    <th scope="col" className="px-3 py-2.5">Fecha y Hora</th>
+                    <th scope="col" className="px-3 py-2.5">Turno</th>
+                    <th scope="col" className="px-3 py-2.5">Cajero / Sucursal</th>
+                    <th scope="col" className="px-3 py-2.5 text-center">Tipo de Movimiento</th>
+                    <th scope="col" className="px-3 py-2.5">Concepto / Descripción</th>
+                    <th scope="col" className="px-3 py-2.5 text-right">Importe Moneda</th>
+                    <th scope="col" className="px-3 py-2.5 text-right">Equivalente CUP</th>
+                    <th scope="col" className="px-3 py-2.5 text-center">Detalle / Vale</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-base text-sm">
@@ -1349,7 +1399,8 @@ export default function Reports() {
                 <select
                   value={transferFromFilter}
                   onChange={(e) => setTransferFromFilter(e.target.value)}
-                  className="px-2 py-1 bg-subtle border border-base rounded-lg text-[8px] font-black uppercase text-primary outline-none cursor-pointer"
+                  aria-label="Filtrar transferencias por origen"
+                  className="px-2 py-1 bg-subtle border border-base rounded-lg text-[8px] font-black uppercase text-primary outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
                 >
                   <option value="all">Todos los Orígenes</option>
                   {branches.map(b => (
@@ -1364,7 +1415,8 @@ export default function Reports() {
                 <select
                   value={transferToFilter}
                   onChange={(e) => setTransferToFilter(e.target.value)}
-                  className="px-2 py-1 bg-subtle border border-base rounded-lg text-[8px] font-black uppercase text-primary outline-none cursor-pointer"
+                  aria-label="Filtrar transferencias por destino"
+                  className="px-2 py-1 bg-subtle border border-base rounded-lg text-[8px] font-black uppercase text-primary outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
                 >
                   <option value="all">Todos los Destinos</option>
                   {branches.map(b => (
@@ -1376,6 +1428,7 @@ export default function Reports() {
               <div className="relative min-w-[160px]">
                 <input
                   type="text"
+                  aria-label="Buscar transferencias por producto"
                   placeholder="Buscar producto..."
                   value={transferSearch}
                   onChange={(e) => setTransferSearch(e.target.value)}
@@ -1392,17 +1445,17 @@ export default function Reports() {
           {/* Transfers Table */}
           <div className="bg-secondary rounded-2xl shadow-xs border border-base overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table aria-label="Transferencias entre sucursales" className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-subtle border-b border-base text-[8px] font-black text-muted uppercase tracking-[0.15em]">
-                    <th className="px-3 py-2.5">Fecha y Hora</th>
-                    <th className="px-3 py-2.5">Producto & Variante</th>
-                    <th className="px-3 py-2.5">Almacén Origen</th>
-                    <th className="px-3 py-2.5 text-center"></th>
-                    <th className="px-3 py-2.5">Sucursal Destino</th>
-                    <th className="px-3 py-2.5 text-center">Cantidad</th>
-                    <th className="px-3 py-2.5">Responsable</th>
-                    <th className="px-3 py-2.5 text-center">Acciones</th>
+                    <th scope="col" className="px-3 py-2.5">Fecha y Hora</th>
+                    <th scope="col" className="px-3 py-2.5">Producto & Variante</th>
+                    <th scope="col" className="px-3 py-2.5">Almacén Origen</th>
+                    <th scope="col" className="px-3 py-2.5 text-center"></th>
+                    <th scope="col" className="px-3 py-2.5">Sucursal Destino</th>
+                    <th scope="col" className="px-3 py-2.5 text-center">Cantidad</th>
+                    <th scope="col" className="px-3 py-2.5">Responsable</th>
+                    <th scope="col" className="px-3 py-2.5 text-center">Acciones</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-base text-sm">

@@ -3,8 +3,10 @@ import { AlertCircle, ArrowRight, CheckCircle2, Loader2, MailCheck, Send } from 
 import { useSearchParams } from "react-router-dom";
 import type { EmailOtpType, VerifyOtpParams } from "@supabase/supabase-js";
 import { getSupabase } from "../lib/supabase";
+import { getPalmyraPublicUrl } from "../services/saas";
 import { PalmyraWordmark } from "../components/PalmyraWordmark";
 import { useDocumentScrollPage } from "../hooks/useDocumentScrollPage";
+import { lockDevAppSurface } from "../lib/appSurface";
 
 type Phase = "verifying" | "success" | "error";
 
@@ -63,6 +65,9 @@ export default function AuthConfirm() {
   const queryError = params.get("error_description") || params.get("error");
 
   const finishSuccess = useCallback((path: string, note: string) => {
+    // Un acceso nuevo siempre termina en la entrada que corresponde a la
+    // superficie (en web, la pantalla de descarga).
+    lockDevAppSurface();
     setDestination(path);
     setStatus(note);
     setPhase("success");
@@ -250,7 +255,7 @@ export default function AuthConfirm() {
       const { error: resendError } = await supabase.auth.resend({
         type: "signup",
         email,
-        options: { emailRedirectTo: `${window.location.origin}/auth` },
+        options: { emailRedirectTo: getPalmyraPublicUrl("/auth") },
       });
       if (resendError) throw resendError;
       setResent("Correo reenviado. Revisa Principal y Spam; si aparece en Spam, márcalo como «No es spam».");

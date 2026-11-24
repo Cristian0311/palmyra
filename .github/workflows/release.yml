@@ -1,0 +1,494 @@
+name: PALMYRA Release
+
+# Un único pipeline por tag v*: publica en GitHub Releases (nunca Render ni
+# Supabase) exactamente cinco assets con nombres estables:
+#   PALMYRA-POS-Setup.exe, latest.yml, PALMYRA-Android.apk,
+#   update-manifest.json y SHA256SUMS.
+# La versión sale SIEMPRE de package.json (no se deriva del tag): el tag solo
+# la confirma y, si no coincide, el pipeline falla antes de compilar.
+on:
+  push:
+    tags:
+      - 'v*'
+
+concurrency:
+  group: palmyra-release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  # Puerta de entrada. Los secretos no están disponibles en el `if` de un job,
+  # así que se detectan en un paso: en modo release la falta de clave de firma
+  # o de keystore es un error, no una degradación silenciosa.
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      channel: ${{ steps.version.outputs.channel }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Exigir secretos de release
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          UPDATE_MANIFEST_KEY_JWK: ${{ secrets.UPDATE_MANIFEST_KEY_JWK }}
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          missing=0
+          # PEM (preferido) o JWK legacy: sin clave ES256 no se publica.
+          if [ -z "${UPDATE_SIGNING_KEY}" ] && [ -z "${UPDATE_MANIFEST_KEY_JWK}" ]; then
+            echo "::error::Falta UPDATE_SIGNING_KEY (PEM PKCS8 EC P-256): sin clave ES256 no se publica un manifiesto sin firma."
+            missing=1
+          fi
+          if [ -z "${ANDROID_KEYSTORE_BASE64}" ]; then
+            echo "::error::Falta ANDROID_KEYSTORE_BASE64: el APK firmado es un asset obligatorio del release."
+            missing=1
+          fi
+          for name in ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Falta $name: el APK debe firmarse con la clave de release, no con la de depuración."
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then exit 1; fi
+
+      - name: La clave firmante coincide con la pública incrustada
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const crypto = require('crypto');
+          const fs = require('fs');
+          const pem = process.env.UPDATE_SIGNING_KEY || '';
+          if (!pem.trim()) {
+            console.error('::error::Falta UPDATE_SIGNING_KEY: no se puede comprobar la clave de firma.');
+            process.exit(1);
+          }
+          let derived;
+          try {
+            derived = crypto.createPublicKey(crypto.createPrivateKey(pem)).export({ format: 'jwk' });
+          } catch (error) {
+            console.error('::error::UPDATE_SIGNING_KEY no es una clave EC P-256 válida en PEM PKCS8.');
+            process.exit(1);
+          }
+          const baked = JSON.parse(fs.readFileSync('src/services/updates/update-public-key.json', 'utf8'));
+          if (derived.kty !== 'EC' || derived.crv !== 'P-256' || derived.x !== baked.x || derived.y !== baked.y) {
+            console.error('::error::La clave de firma no coincide con la clave pública incrustada: los equipos rechazarían el manifiesto. Actualiza src/services/updates/update-public-key.json o rota la clave con cuidado.');
+            process.exit(1);
+          }
+          console.log('Clave de firma coincide con la pública incrustada.');
+          NODE
+
+      - name: Versión desde package.json
+        id: version
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          if [ -z "$VERSION" ]; then
+            echo "::error::package.json no define version."
+            exit 1
+          fi
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-beta(\.[0-9]+)?)?$'; then
+            echo "::error::package.json tiene una versión no semver: $VERSION"
+            exit 1
+          fi
+          if [ "${GITHUB_REF_NAME}" != "v${VERSION}" ]; then
+            echo "::error::El tag ${GITHUB_REF_NAME} no coincide con package.json (v${VERSION}). Actualiza la versión antes de etiquetar."
+            exit 1
+          fi
+          # electron-builder nombra el metadato beta.yml cuando la versión es
+          # prerelease. Este pipeline publica latest.yml (canal estable), así que
+          # una beta quedaría anunciada a todos los clientes: se bloquea aquí.
+          if [[ "$VERSION" == *-beta* ]]; then
+            echo "::error::Versión prerelease v${VERSION}: este pipeline publica latest.yml (estable) y no beta.yml. Usa una versión x.y.z sin sufijo."
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "channel=stable" >> "$GITHUB_OUTPUT"
+
+  quality:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: TypeScript
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm run test:unit
+
+      - name: Admin build
+        run: npm run build:admin
+
+      - name: Production build
+        run: npm run build
+
+  desktop:
+    needs: quality
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      # desktop:dist usa --publish never: el Release lo crea el job publish.
+      - name: Build installer
+        run: npm run desktop:dist
+
+      # El Setup y latest.yml son obligatorios y no puede aparecer un .blockmap
+      # (differentialPackage está desactivado): el release publica cinco assets.
+      - name: Comprobar instalador
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in release/PALMYRA-POS-Setup.exe release/latest.yml; do
+            if [ ! -s "$file" ]; then
+              echo "::error::Falta o está vacío: $file"
+              exit 1
+            fi
+          done
+          if compgen -G "release/*.blockmap" > /dev/null; then
+            echo "::error::Se generó un .blockmap que el release no publica; revisa nsis.differentialPackage."
+            exit 1
+          fi
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: palmyra-desktop
+          path: |
+            release/PALMYRA-POS-Setup.exe
+            release/latest.yml
+          if-no-files-found: error
+
+  android:
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install platform and build-tools
+        run: sdkmanager "platforms;android-34" "build-tools;35.0.0"
+
+      # build-apk.sh firma con la clave de release cuando recibe las cuatro
+      # variables; sin ellas cae a la clave de depuración (no publicable).
+      # preflight ya exige los cuatro secretos: aquí solo se restauran.
+      - name: Restore Android keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$HOME/.android/palmyra-release.keystore"
+          chmod 600 "$HOME/.android/palmyra-release.keystore"
+          if [ ! -s "$HOME/.android/palmyra-release.keystore" ]; then
+            echo "::error::El keystore restaurado está vacío."
+            exit 1
+          fi
+
+      # build-apk.sh se escribió para Windows: usa cygpath, aapt2.exe,
+      # zipalign.exe y un classpath separado por ';'. Estos ajustes lo ejecutan
+      # en Linux sin tocar el script (Java solo traduce ';' a ':').
+      - name: Prepare Linux toolchain
+        run: |
+          set -euo pipefail
+          sudo ln -sf "$(command -v python3)" /usr/local/bin/python
+          SHIM="$RUNNER_TEMP/bin"
+          mkdir -p "$SHIM"
+          cat > "$SHIM/cygpath" <<'EOF'
+          #!/usr/bin/env bash
+          for last; do :; done
+          printf '%s\n' "$last"
+          EOF
+          chmod +x "$SHIM/cygpath"
+          echo "$SHIM" >> "$GITHUB_PATH"
+          BT="$ANDROID_SDK_ROOT/build-tools/35.0.0"
+          ln -sf "$BT/aapt2" "$BT/aapt2.exe"
+          ln -sf "$BT/zipalign" "$BT/zipalign.exe"
+          JBR="$RUNNER_TEMP/jbr"
+          mkdir -p "$JBR/bin"
+          ln -sf "$JAVA_HOME/bin/java" "$JBR/bin/java"
+          ln -sf "$JAVA_HOME/bin/jar" "$JBR/bin/jar"
+          ln -sf "$JAVA_HOME/bin/keytool" "$JBR/bin/keytool"
+          cat > "$JBR/bin/javac" <<EOF
+          #!/usr/bin/env bash
+          args=()
+          while [ \$# -gt 0 ]; do
+            case "\$1" in
+              -classpath|-cp)
+                args+=("\$1")
+                shift
+                args+=("\${1//;/:}")
+                ;;
+              *) args+=("\$1") ;;
+            esac
+            shift
+          done
+          exec "$JAVA_HOME/bin/javac" "\${args[@]}"
+          EOF
+          chmod +x "$JBR/bin/javac"
+
+      - name: Install
+        run: npm install --no-audit --no-fund
+
+      - name: Build web bundle
+        run: npm run build
+
+      # versionName y versionCode los deriva build-apk.sh del único valor de
+      # package.json: versionName=x.y.z y versionCode=xyz (siempre creciente).
+      - name: Comprobar versión Android
+        run: |
+          set -euo pipefail
+          VERSION_NAME="$(node -p "require('./package.json').version")"
+          VERSION_CODE="$(printf '%s' "$VERSION_NAME" | awk -F. '{printf "%d%02d%02d", $1, $2, $3}')"
+          if [ -z "$VERSION_CODE" ] || [ "$VERSION_CODE" = "0" ]; then
+            echo "::error::No se pudo derivar versionCode de $VERSION_NAME."
+            exit 1
+          fi
+          echo "versionName=$VERSION_NAME versionCode=$VERSION_CODE"
+
+      - name: Build APK
+        env:
+          JAVA_HOME: ${{ runner.temp }}/jbr
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          export ANDROID_KEYSTORE_PATH="$HOME/.android/palmyra-release.keystore"
+          bash android/build-apk.sh
+
+      # Puerta de empaquetado (F4): manifiesto endurecido (allowBackup,
+      # usesCleartextTraffic, exported, proveedor solo APK), versión alineada con
+      # package.json, firma solo desde variables de entorno, red solo local y
+      # los cuatro bridges nativos. Se ejecuta tras compilar y antes de publicar:
+      # si el paquete se degrada, el release falla aquí.
+      - name: Comprobar empaquetado Android
+        run: npm run check:android
+
+      - name: Comprobar APK
+        run: |
+          set -euo pipefail
+          if [ ! -s release/PALMYRA-Android.apk ]; then
+            echo "::error::Falta o está vacío release/PALMYRA-Android.apk"
+            exit 1
+          fi
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: palmyra-android
+          path: release/PALMYRA-Android.apk
+          if-no-files-found: error
+
+  publish:
+    needs: [preflight, desktop, android]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      # download-artifact@v4 usa la API de Actions: con permisos restringidos
+      # hay que conceder actions: read o la descarga devuelve 403.
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: palmyra-*
+          merge-multiple: true
+
+      # Monotonía: un release nunca puede retroceder de versión. Se descarga el
+      # manifiesto del último Release publicado (si existe y trae manifiesto).
+      - name: Fetch previous manifest
+        id: previous
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          PREV_TAG="$(gh release view --json tagName --jq '.tagName' 2>/dev/null || true)"
+          if [ -z "$PREV_TAG" ]; then
+            echo "Sin Releases previos: no hay manifiesto anterior que comparar."
+            exit 0
+          fi
+          mkdir -p previous
+          if gh release download "$PREV_TAG" --pattern update-manifest.json --dir previous 2>/dev/null; then
+            echo "path=previous/update-manifest.json" >> "$GITHUB_OUTPUT"
+            echo "Manifiesto anterior de $PREV_TAG descargado."
+          else
+            echo "::warning::El release $PREV_TAG no publica update-manifest.json; no se comprueba monotonía."
+          fi
+
+      - name: Build signed manifest
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
+          UPDATE_MANIFEST_KEY_JWK: ${{ secrets.UPDATE_MANIFEST_KEY_JWK }}
+          UPDATE_MANIFEST_KEY_ID: ${{ vars.UPDATE_MANIFEST_KEY_ID }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
+          PREVIOUS: ${{ steps.previous.outputs.path }}
+        run: |
+          set -euo pipefail
+          for file in artifacts/PALMYRA-POS-Setup.exe artifacts/latest.yml artifacts/PALMYRA-Android.apk; do
+            if [ ! -s "$file" ]; then
+              echo "::error::Falta o está vacío el artefacto $file; no se genera el manifiesto."
+              exit 1
+            fi
+          done
+          # --require-signature es el modo release: sin clave ES256 el paso falla
+          # y nunca se publica un manifiesto sin firma.
+          ARGS=(--version "$VERSION" --channel "$CHANNEL" --out update-manifest.json
+            --windows artifacts/PALMYRA-POS-Setup.exe
+            --android artifacts/PALMYRA-Android.apk
+            --rollout 100 --require-signature)
+          if [ -n "${UPDATE_MANIFEST_KEY_ID:-}" ]; then
+            ARGS+=(--key-id "$UPDATE_MANIFEST_KEY_ID")
+          fi
+          if [ -n "${PREVIOUS:-}" ]; then
+            ARGS+=(--previous-manifest "$PREVIOUS")
+          fi
+          node scripts/build-update-manifest.mjs "${ARGS[@]}"
+
+      # Puerta de artefactos: tag = package.json, Setup + APK + latest.yml +
+      # manifiesto presentes, hashes reales y manifiesto firmado. Falla antes de
+      # crear el Release, no después. El .blockmap solo se exige cuando
+      # electron-builder lo genera (nsis.differentialPackage distinto de false).
+      - name: Check release assets
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          set -euo pipefail
+          ARGS=(--dir artifacts --version "$VERSION" --tag "$GITHUB_REF_NAME"
+            --latest-yml artifacts/latest.yml
+            --manifest update-manifest.json --require-manifest --require-signature)
+          if node -e "process.exit(require('fs').readFileSync('electron-builder.yml','utf8').includes('differentialPackage: false') ? 0 : 1)"; then
+            echo "Actualización diferencial desactivada: no se exige .blockmap."
+          else
+            ARGS+=(--require-blockmap)
+          fi
+          node scripts/check-release-assets.mjs "${ARGS[@]}"
+
+      # SHA256SUMS cubre los cinco assets salvo sí mismo, con nombres estables
+      # (sin rutas) para que se pueda verificar desde cualquier descarga.
+      - name: Generate SHA256SUMS
+        run: |
+          set -euo pipefail
+          ( cd artifacts && sha256sum PALMYRA-POS-Setup.exe latest.yml PALMYRA-Android.apk > ../SHA256SUMS )
+          sha256sum update-manifest.json >> SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Verify release assets
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+          CHANNEL: ${{ needs.preflight.outputs.channel }}
+        run: |
+          set -euo pipefail
+          node scripts/verify-release-assets.mjs \
+            --dir artifacts \
+            --manifest update-manifest.json \
+            --sums SHA256SUMS \
+            --version "$VERSION" \
+            --channel "$CHANNEL" \
+            --require-signature
+
+      - name: List release assets
+        id: assets
+        run: |
+          set -euo pipefail
+          {
+            echo "files<<PALMYRA_ASSETS"
+            echo "artifacts/PALMYRA-POS-Setup.exe"
+            echo "artifacts/latest.yml"
+            echo "artifacts/PALMYRA-Android.apk"
+            echo "update-manifest.json"
+            echo "SHA256SUMS"
+            echo "PALMYRA_ASSETS"
+          } >> "$GITHUB_OUTPUT"
+
+      # Crea (o reutiliza) el Release del tag y sube solo esos cinco assets.
+      # No borra Releases ni usa --force; overwrite_files permite reintentar el
+      # mismo tag sin duplicar assets con el mismo nombre.
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.assets.outputs.files }}
+          fail_on_unmatched_files: true
+          overwrite_files: true
+          # preflight ya rechazó versiones prerelease: todo tag es estable.
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Cierre: el Release publicado debe exponer exactamente los cinco assets.
+      - name: Verify published assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' > published-assets.txt
+          missing=0
+          for name in PALMYRA-POS-Setup.exe latest.yml PALMYRA-Android.apk update-manifest.json SHA256SUMS; do
+            if ! grep -Fxq "$name" published-assets.txt; then
+              echo "::error::El Release $GITHUB_REF_NAME no publicó $name."
+              missing=1
+            fi
+          done
+          cat published-assets.txt
+          if [ "$missing" -ne 0 ]; then exit 1; fi

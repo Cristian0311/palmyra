@@ -1,4 +1,4 @@
-export const SETTINGS_SECTIONS = ['company', 'branches', 'categories', 'currency', 'ticket', 'visual', 'lan', 'connectivity', 'notifications', 'advanced'] as const;
+export const SETTINGS_SECTIONS = ['company', 'branches', 'categories', 'currency', 'ticket', 'visual', 'lan', 'connectivity', 'notifications', 'advanced', 'piloto'] as const;
 export type SettingsSection = typeof SETTINGS_SECTIONS[number];
 export const NOTIFICATIONS_PATH = '/settings?section=notifications';
 

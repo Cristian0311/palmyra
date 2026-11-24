@@ -1,6 +1,0 @@
-{
-  "name": "PALMYRA POS",
-  "description": "Sistema de punto de venta, CRM, catálogo e inventario para PALMYRA",
-  "requestFramePermissions": ["serial"],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}

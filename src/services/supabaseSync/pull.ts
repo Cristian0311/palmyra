@@ -9,12 +9,150 @@ import type {
 } from '../../types';
 import type { SyncResult } from './core';
 import { loadSaaSContext } from '../saas';
+import { recordRequest } from '../requestBudget';
 import { loadReturnsWarrantiesQuotesTimePayroll } from './pull/loadOperationalExtras';
 import { mapBranch, mapProduct, mapUser, normalizeSaleItem } from './pull/mappers';
 
-async function loadCatalog() {
-  const tenant = await getActiveTenant();
-  const supabase = getSupabase()!;
+// Ventana de arranque: el POS arranca con catálogo + operación reciente.
+// El historial antiguo se pagina bajo demanda (loadHistoryPage) y nunca se
+// descarga completo al iniciar.
+export const BOOTSTRAP_WINDOW_DAYS = 90;
+/** Tope de ventas por arranque (siempre <= 500). */
+export const BOOTSTRAP_SALES_LIMIT = 300;
+export const BOOTSTRAP_CASH_SESSIONS_LIMIT = 400;
+export const BOOTSTRAP_CASH_MOVEMENTS_LIMIT = 500;
+export const BOOTSTRAP_TRANSFERS_LIMIT = 200;
+export const BOOTSTRAP_PURCHASE_ORDERS_LIMIT = 200;
+export const BOOTSTRAP_EXTRAS_LIMIT = 200;
+export const BOOTSTRAP_CUSTOMERS_LIMIT = 2000;
+/** Presupuesto de solicitudes de la ventana operativa por arranque. */
+export const BOOTSTRAP_REQUEST_BUDGET = 25;
+/** Filas máximas de líneas/pagos por consulta de ventana. */
+export const BOOTSTRAP_SALE_CHILD_ROWS = 1000;
+
+export const HISTORY_PAGE_DEFAULT_LIMIT = 100;
+export const HISTORY_PAGE_MAX_LIMIT = 200;
+
+export const HISTORY_TABLES = [
+  'sales',
+  'sale_items',
+  'payments',
+  'cash_sessions',
+  'cash_movements',
+  'transfers',
+  'purchase_orders',
+] as const;
+
+export type HistoryTable = (typeof HISTORY_TABLES)[number];
+
+/** cash_sessions no tiene created_at: su cursor real es opened_at. */
+const HISTORY_CURSOR_COLUMN: Record<HistoryTable, string> = {
+  sales: 'created_at',
+  sale_items: 'created_at',
+  payments: 'created_at',
+  cash_sessions: 'opened_at',
+  cash_movements: 'created_at',
+  transfers: 'created_at',
+  purchase_orders: 'created_at',
+};
+
+export type CloudPullMetrics = {
+  /** Solicitudes totales (catálogo + ventana). */
+  requests: number;
+  /** Solicitudes de la ventana operativa (presupuesto BOOTSTRAP_REQUEST_BUDGET). */
+  windowRequests: number;
+  rows: number;
+  tables: Record<string, number>;
+  /** Consultas descartadas por presupuesto (nunca deberían ocurrir). */
+  budgetDenied: number;
+};
+
+export function createPullMetrics(): CloudPullMetrics {
+  return { requests: 0, windowRequests: 0, rows: 0, tables: {}, budgetDenied: 0 };
+}
+
+type QueryPhase = 'catalog' | 'window';
+
+function countResult(metrics: CloudPullMetrics, table: string, phase: QueryPhase, data: unknown) {
+  metrics.requests += 1;
+  if (phase === 'window') metrics.windowRequests += 1;
+  metrics.tables[table] = (metrics.tables[table] || 0) + 1;
+  if (Array.isArray(data)) metrics.rows += data.length;
+  else if (data) metrics.rows += 1;
+}
+
+function reportRequest(table: string, phase: QueryPhase, startedAt: number, ok: boolean) {
+  recordRequest(`${phase}/${table}`, { ms: Date.now() - startedAt, ok });
+}
+
+function wrapQueryBuilder(builder: any, table: string, metrics: CloudPullMetrics, phase: QueryPhase): any {
+  return new Proxy(builder, {
+    get(target, prop) {
+      const value = Reflect.get(target, prop);
+      if (prop === 'then') {
+        return (onFulfilled?: any, onRejected?: any) => {
+          if (phase === 'window' && metrics.windowRequests >= BOOTSTRAP_REQUEST_BUDGET) {
+            // Presupuesto agotado: se corta la consulta en lugar de gastar red.
+            metrics.budgetDenied += 1;
+            return Promise.resolve(onFulfilled ? onFulfilled({ data: [], error: null }) : undefined);
+          }
+          const startedAt = Date.now();
+          return target.then((res: any) => {
+            countResult(metrics, table, phase, res?.data);
+            reportRequest(table, phase, startedAt, !res?.error);
+            return onFulfilled ? onFulfilled(res) : res;
+          }, (error: unknown) => {
+            reportRequest(table, phase, startedAt, false);
+            if (onRejected) return onRejected(error);
+            throw error;
+          });
+        };
+      }
+      if (typeof value === 'function') {
+        return (...args: any[]) => wrapQueryBuilder(value.apply(target, args), table, metrics, phase);
+      }
+      return value;
+    },
+  });
+}
+
+/** Cliente que cuenta cada solicitud resuelta y respeta el presupuesto. */
+export function createCountingClient(base: any, metrics: CloudPullMetrics, phase: QueryPhase): any {
+  if (!base || typeof base.from !== 'function') throw new Error('Cliente Supabase no válido para el bootstrap.');
+  return new Proxy(base, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value !== 'function') return value;
+      if (prop === 'from') {
+        return (table: string) => wrapQueryBuilder(value.call(target, table), table, metrics, phase);
+      }
+      return value.bind(target);
+    },
+  });
+}
+
+type TenantLike = { companyId: string };
+
+type CatalogRefs = {
+  productRows: any[];
+  variantRows: any[];
+  barcodeRows: any[];
+  employeeRows: any[];
+  defaultCurrencyCode: string;
+  productMap: Map<string, Product>;
+  variantMap: Map<string, string>;
+  employeeNames: Map<string, string>;
+};
+
+type CatalogOptions = {
+  client?: any;
+  tenant?: TenantLike;
+  includeSaasUser?: boolean;
+};
+
+async function loadCatalog(options: CatalogOptions = {}) {
+  const tenant = (options.tenant || await getActiveTenant()) as TenantLike;
+  const supabase = options.client || getSupabase()!;
 
   const [warehousesRes, categoriesRes, productsRes, employeesRes, accessRes, companyRes, variantsRes, barcodeRes, kitRes, currenciesRes, exchangeRatesRes, pricesRes] = await Promise.all([
     supabase.from('warehouses').select('*').eq('company_id', tenant.companyId).eq('active', true).order('created_at', { ascending: true }),
@@ -72,7 +210,7 @@ async function loadCatalog() {
     return item;
   });
 
-  const ctx = await loadSaaSContext();
+  const ctx = options.includeSaasUser === false ? null : await loadSaaSContext();
   const { data: compensationSettings } = await supabase
     .from('compensation_settings')
     .select('mode,percent_rate,active')
@@ -139,12 +277,29 @@ async function loadCatalog() {
     autoPrint: false
   };
 
-  return { tenant, warehouses: warehousesRes.data || [], branches, categories: categoriesRes.data || [], products, users, currencies, storeConfig, receiptConfig };
+  const refs: CatalogRefs = {
+    productRows: productsRes.data || [],
+    variantRows: variantsRes.data || [],
+    barcodeRows: barcodeRes.data || [],
+    employeeRows: employeesRes.data || [],
+    defaultCurrencyCode: baseCurrencyCode,
+    productMap: productById,
+    variantMap: new Map((variantsRes.data || []).map((v:any) => [String(v.id), String(v.name)])),
+    employeeNames: new Map((employeesRes.data || []).map((e:any) => [String(e.id), String(e.full_name)])),
+  };
+
+  return { tenant, warehouses: warehousesRes.data || [], branches, categories: categoriesRes.data || [], products, users, currencies, storeConfig, receiptConfig, refs };
 }
 
-async function loadInventory(branchId?: string) {
-  const tenant = await getActiveTenant();
-  const supabase = getSupabase()!;
+type InventoryOptions = {
+  client?: any;
+  tenant?: TenantLike;
+  productRows?: any[];
+};
+
+async function loadInventory(branchId?: string, options: InventoryOptions = {}) {
+  const tenant = (options.tenant || await getActiveTenant()) as TenantLike;
+  const supabase = options.client || getSupabase()!;
   let q = supabase.from('stock_balances').select('*').eq('company_id', tenant.companyId);
   if (branchId) q = q.eq('warehouse_id', branchId);
   const { data: baseRows, error: baseErr } = await q;
@@ -155,8 +310,14 @@ async function loadInventory(branchId?: string) {
   const { data: variantRows, error: variantErr } = await vq;
   if (variantErr) throw variantErr;
 
-  const productsRes = await supabase.from('products').select('id,minimum_stock').eq('company_id', tenant.companyId);
-  if (productsRes.error) throw productsRes.error;  const minByProduct = new Map<string, number>((productsRes.data || []).map((p:any) => [p.id, Number(p.minimum_stock) || 0]));
+  // El catálogo ya trae el stock mínimo: se reutiliza para no duplicar consultas.
+  let productRows = options.productRows;
+  if (!productRows) {
+    const productsRes = await supabase.from('products').select('id,minimum_stock').eq('company_id', tenant.companyId);
+    if (productsRes.error) throw productsRes.error;
+    productRows = productsRes.data || [];
+  }
+  const minByProduct = new Map<string, number>((productRows || []).map((p:any) => [p.id, Number(p.minimum_stock) || 0]));
 
   const inventory: InventoryLevel[] = [];
   for (const r of baseRows || []) {
@@ -180,13 +341,60 @@ async function loadInventory(branchId?: string) {
   return inventory;
 }
 
-async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string[]) {
-  const tenant = await getActiveTenant();
-  const supabase = getSupabase()!;
+type SaleRefs = {
+  productMap: Map<string, Product>;
+  variantMap: Map<string, string>;
+  employeeNames: Map<string, string>;
+  defaultCurrencyCode: string;
+};
+
+type SalesOptions = {
+  client?: any;
+  tenant?: TenantLike;
+  /** Solo ventas creadas desde esta fecha (ventana de arranque). */
+  sinceIso?: string;
+  /** Keyset: solo ventas anteriores a esta fecha (historial bajo demanda). */
+  beforeIso?: string | null;
+  refs?: SaleRefs;
+  /** Máximo de líneas/pagos por lote; una sola consulta por tabla. */
+  childRowCap?: number;
+};
+
+// Referencias compartidas: sin ellas se consultan una vez por bloque.
+async function loadSaleRefs(supabase: any, companyId: string): Promise<SaleRefs> {
+  const [productsRes, variantsRes, companyRes, barcodeRes, employeesRes] = await Promise.all([
+    supabase.from('products').select('*').eq('company_id', companyId),
+    supabase.from('product_variants').select('id,name').eq('company_id', companyId),
+    supabase.from('companies').select('default_currency_code').eq('id', companyId).single(),
+    supabase.from('product_barcodes').select('product_id,barcode').eq('company_id', companyId).eq('active', true),
+    supabase.from('employees').select('id,full_name,user_id').eq('company_id', companyId),
+  ]);
+  if (productsRes.error) throw productsRes.error;
+  if (variantsRes.error) throw variantsRes.error;
+  if (companyRes.error) throw companyRes.error;
+  if (barcodeRes.error) throw barcodeRes.error;
+  if (employeesRes.error) throw employeesRes.error;
+  const barcodeByProduct = new Map<string, string>();
+  for (const b of barcodeRes.data || []) {
+    if (!barcodeByProduct.has(b.product_id)) barcodeByProduct.set(b.product_id, b.barcode || '');
+  }
+  const productMap = new Map<string, Product>();
+  for (const p of productsRes.data || []) productMap.set(p.id, mapProduct(p, (barcodeByProduct.get(p.id)) || ''));
+  return {
+    productMap,
+    variantMap: new Map<string,string>((variantsRes.data || []).map((v:any)=>[v.id,v.name])),
+    employeeNames: new Map<string,string>((employeesRes.data || []).map((e:any)=>[e.id,e.full_name])),
+    defaultCurrencyCode: companyRes.data?.default_currency_code || 'CUP',
+  };
+}
+
+async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string[], options: SalesOptions = {}) {
+  const tenant = (options.tenant || await getActiveTenant()) as TenantLike;
+  const supabase = options.client || getSupabase()!;
   // Paginate explicitly instead of imposing a hidden 5,000-sale ceiling.
   // Reports/POS history must not silently lose older sales once a business grows.
-  const pageSize = 500;
   const maxRows = Math.max(limit, 0);
+  const pageSize = maxRows > 0 ? Math.min(500, maxRows) : 500;
   const sales: any[] = [];
   for (let from = 0; ; from += pageSize) {
     let salesQ = supabase
@@ -196,10 +404,13 @@ async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string
       // A voided shift is deleted from the operator's point of view: neither
       // the shift nor its tickets must reappear after a refresh.
       .neq('status', 'voided')
-      .order('created_at', { ascending: false })
-      .range(from, from + pageSize - 1);
+      .order('created_at', { ascending: false });
+    if (options.sinceIso) salesQ = salesQ.gte('created_at', options.sinceIso);
+    if (options.beforeIso) salesQ = salesQ.lt('created_at', options.beforeIso);
     if (branchId) salesQ = salesQ.eq('warehouse_id', branchId);
     if (cashSessionIds?.length) salesQ = salesQ.in('cash_session_id', cashSessionIds);
+    // With a limit the range is bounded; the full-manual path keeps paging.
+    salesQ = maxRows > 0 ? salesQ.range(from, Math.min(from + pageSize, maxRows) - 1) : salesQ.range(from, from + pageSize - 1);
     const { data: page, error: salesErr } = await salesQ;
     if (salesErr) throw salesErr;
     if (!page?.length) break;
@@ -210,17 +421,8 @@ async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string
   const ids = selectedSales.map((s:any) => s.id);
   if (!ids.length) return [] as Transaction[];
 
-  const [productsRes, variantsRes, companyRes] = await Promise.all([
-    supabase.from('products').select('*').eq('company_id', tenant.companyId),
-    supabase.from('product_variants').select('id,name').eq('company_id', tenant.companyId),
-    supabase.from('companies').select('default_currency_code').eq('id', tenant.companyId).single(),
-  ]);
-  if (productsRes.error) throw productsRes.error;
-  if (variantsRes.error) throw variantsRes.error;
-  if (productsRes.error) throw productsRes.error;
-  if (variantsRes.error) throw variantsRes.error;
-  if (companyRes.error) throw companyRes.error;
-  const defaultCurrencyCode = companyRes.data?.default_currency_code || 'CUP';
+  const refs = options.refs || await loadSaleRefs(supabase, tenant.companyId);
+  const { productMap, variantMap, employeeNames, defaultCurrencyCode } = refs;
 
   // Supabase .in() is batched to keep URL/query sizes bounded for large histories.
   const itemRows: any[] = [];
@@ -230,6 +432,18 @@ async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string
     // A batch can still contain >1,000 sale lines/payments. Paginate child
     // tables too or a ticket with many items can be silently truncated by the
     // PostgREST row cap even though the parent sales were loaded successfully.
+    if (options.childRowCap) {
+      const cap = Math.max(1, Math.trunc(options.childRowCap));
+      const [itemsRes, paymentsRes] = await Promise.all([
+        supabase.from('sale_items').select('*').in('sale_id',batch).order('id',{ascending:true}).limit(cap),
+        supabase.from('payments').select('*').in('sale_id',batch).order('id',{ascending:true}).limit(cap),
+      ]);
+      if (itemsRes.error) throw itemsRes.error;
+      if (paymentsRes.error) throw paymentsRes.error;
+      itemRows.push(...(itemsRes.data || []));
+      paymentRows.push(...(paymentsRes.data || []));
+      continue;
+    }
     for (let from = 0; ; from += 500) {
       const {data,error}=await supabase.from('sale_items').select('*').in('sale_id',batch).order('id',{ascending:true}).range(from,from+499);
       if(error) throw error;
@@ -245,14 +459,6 @@ async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string
       if(data.length<500) break;
     }
   }
-  const barcodeRes = await supabase.from('product_barcodes').select('product_id,barcode').eq('company_id', tenant.companyId).eq('active', true);
-  const barcodeByProduct = new Map<string, string>();
-  for (const b of barcodeRes.data || []) {
-    if (!barcodeByProduct.has(b.product_id)) barcodeByProduct.set(b.product_id, b.barcode || '');
-  }
-  const productMap = new Map<string,Product>();
-  for (const p of productsRes.data || []) productMap.set(p.id, mapProduct(p, (barcodeByProduct.get(p.id)) || ''));
-  const variantMap = new Map<string,string>((variantsRes.data || []).map((v:any)=>[v.id,v.name]));
 
   const itemsBySale = new Map<string, any[]>();
   for (const item of itemRows) {
@@ -266,10 +472,6 @@ async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string
     arr.push(p);
     paymentsBySale.set(p.sale_id, arr);
   }
-
-  const employeeNames = new Map<string,string>();
-  const employeesRes = await supabase.from('employees').select('id,full_name,user_id').eq('company_id',tenant.companyId);
-  for (const e of employeesRes.data || []) employeeNames.set(e.id,e.full_name);
 
   return selectedSales.map((s:any) => {
     const itemRows = itemsBySale.get(s.id) || [];
@@ -338,54 +540,101 @@ async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string
   });
 }
 
-async function loadCashSessions(branchId?: string) {
-  const tenant = await getActiveTenant();
-  const supabase = getSupabase()!;
+type CashSessionOptions = {
+  client?: any;
+  tenant?: TenantLike;
+  /** Ventana: turnos abiertos siempre + turnos abiertos desde esta fecha. */
+  sinceIso?: string;
+  sessionLimit?: number;
+  movementSinceIso?: string;
+  movementLimit?: number;
+  includeProfiles?: boolean;
+  refs?: { employeeRows?: any[]; defaultCurrencyCode?: string };
+};
+
+async function loadCashSessions(branchId?: string, options: CashSessionOptions = {}) {
+  const tenant = (options.tenant || await getActiveTenant()) as TenantLike;
+  const supabase = options.client || getSupabase()!;
+
   const [registersRes, employeesRes, companyRes] = await Promise.all([
     supabase.from('cash_registers').select('*').eq('company_id',tenant.companyId).eq('active',true),
-    supabase.from('employees').select('id,full_name,user_id').eq('company_id',tenant.companyId),
-    supabase.from('companies').select('default_currency_code').eq('id',tenant.companyId).single()
+    options.refs?.employeeRows
+      ? Promise.resolve({ data: options.refs.employeeRows, error: null })
+      : supabase.from('employees').select('id,full_name,user_id').eq('company_id',tenant.companyId),
+    options.refs?.defaultCurrencyCode
+      ? Promise.resolve({ data: { default_currency_code: options.refs.defaultCurrencyCode }, error: null })
+      : supabase.from('companies').select('default_currency_code').eq('id',tenant.companyId).single()
   ]);
   if (registersRes.error) throw registersRes.error;
   if (employeesRes.error) throw employeesRes.error;
-  // El nombre de perfil es auxiliar. Si RLS no permite consultar perfiles,
-  // la carga de caja debe continuar usando empleado/metadata/opened_by.
   if (companyRes.error) throw companyRes.error;
   const registerMap = new Map<string,any>((registersRes.data || []).map((r:any)=>[r.id,r]));
   const employeeMap = new Map<string,string>((employeesRes.data || []).map((e:any)=>[e.id,e.full_name]));
   const employeeUserMap = new Map<string,string>((employeesRes.data || []).filter((e:any)=>e.user_id).map((e:any)=>[e.id,e.user_id]));
   const defaultCurrencyCode = companyRes.data?.default_currency_code || 'CUP';
 
-  // Cash history is paginated as well; the previous 200-row cap made
-  // older turns disappear from Reports while still existing in Supabase.
-  const cashPageSize = 200;
   const data: any[] = [];
-  for (let from = 0; ; from += cashPageSize) {
+  if (options.sinceIso) {
+    // Turnos abiertos son imprescindibles para operar; el resto es ventana.
     const { data: page, error } = await supabase
       .from('cash_sessions')
       .select('*')
       .eq('company_id', tenant.companyId)
-      // Cancelled shifts are fully purged: keeping the `voided` row would show
-      // them again in Reports and in the cash history.
       .neq('status', 'voided')
+      .or(`status.eq.open,opened_at.gte.${options.sinceIso}`)
       .order('opened_at', { ascending: false })
-      .range(from, from + cashPageSize - 1);
+      .limit(options.sessionLimit ?? BOOTSTRAP_CASH_SESSIONS_LIMIT);
     if (error) throw error;
-    if (!page?.length) break;
-    data.push(...page);
-    if (page.length < cashPageSize) break;
+    data.push(...(page || []));
+  } else {
+    // Cash history is paginated as well; the previous 200-row cap made
+    // older turns disappear from Reports while still existing in Supabase.
+    const cashPageSize = 200;
+    for (let from = 0; ; from += cashPageSize) {
+      const { data: page, error } = await supabase
+        .from('cash_sessions')
+        .select('*')
+        .eq('company_id', tenant.companyId)
+        // Cancelled shifts are fully purged: keeping the `voided` row would show
+        // them again in Reports and in the cash history.
+        .neq('status', 'voided')
+        .order('opened_at', { ascending: false })
+        .range(from, from + cashPageSize - 1);
+      if (error) throw error;
+      if (!page?.length) break;
+      data.push(...page);
+      if (page.length < cashPageSize) break;
+    }
   }
 
   const sessionIds=(data||[]).map((s:any)=>s.id).filter(Boolean);
   // Los movimientos se paginan por sesión: PostgREST corta en 1000 filas por
   // respuesta y un turno con muchas ventas en efectivo perdía movimientos.
   const movementsBySession=new Map<string, any[]>();
-  for(let i=0;i<sessionIds.length;i+=50){
+  if (options.movementSinceIso && options.movementLimit && options.movementLimit > 0) {
+    // Ventana de arranque: una sola consulta acotada por fecha y filas.
+    const { data: page, error } = await supabase.from('cash_movements').select('*')
+      .eq('company_id', tenant.companyId)
+      .gte('created_at', options.movementSinceIso)
+      .order('created_at', { ascending: false })
+      .limit(options.movementLimit);
+    if (error) throw error;
+    const sessionIdSet = new Set(sessionIds.map(String));
+    for (const movement of page || []) {
+      if (!sessionIdSet.has(String(movement.cash_session_id))) continue;
+      const list = movementsBySession.get(movement.cash_session_id) || [];
+      list.push(movement);
+      movementsBySession.set(movement.cash_session_id, list);
+    }
+  }
+  for(let i=0;i<(options.movementSinceIso && options.movementLimit ? 0 : sessionIds.length);i+=50){
     const batch=sessionIds.slice(i,i+50);
     for(let from=0;;from+=500){
-      const {data:page,error}=await supabase.from('cash_movements').select('*')
+      let mq = supabase.from('cash_movements').select('*')
         .eq('company_id',tenant.companyId).in('cash_session_id',batch)
-        .order('created_at',{ascending:true}).range(from,from+499);
+        .order('created_at',{ascending:true});
+      if (options.movementSinceIso) mq = mq.gte('created_at', options.movementSinceIso);
+      const {data:page,error} = await mq.range(from,from+499);
       if(error) throw error;
       for(const movement of page||[]) {
         const list=movementsBySession.get(movement.cash_session_id)||[];
@@ -398,14 +647,16 @@ async function loadCashSessions(branchId?: string) {
   // Perfiles: solo los auth-user de este tenant (abridores de turno y cuentas
   // enlazadas a empleados). Antes se leían 5000 perfiles globales, lo que
   // exponía nombres de otras empresas si la RLS de profiles era laxa.
-  const profileIds=Array.from(new Set([
-    ...(data||[]).flatMap((s:any)=>[s.opened_by,s.closed_by]),
-    ...(employeesRes.data||[]).map((e:any)=>e.user_id)
-  ].filter(Boolean).map(String)));
   const profileMap=new Map<string,string>();
-  for(let i=0;i<profileIds.length;i+=200){
-    const {data:profiles}=await supabase.from('profiles').select('id,full_name').in('id',profileIds.slice(i,i+200));
-    for(const p of profiles||[]) if(p?.id&&p.full_name) profileMap.set(p.id,p.full_name);
+  if (options.includeProfiles !== false) {
+    const profileIds=Array.from(new Set([
+      ...(data||[]).flatMap((s:any)=>[s.opened_by,s.closed_by]),
+      ...(employeesRes.data||[]).map((e:any)=>e.user_id)
+    ].filter(Boolean).map(String)));
+    for(let i=0;i<profileIds.length;i+=200){
+      const {data:profiles}=await supabase.from('profiles').select('id,full_name').in('id',profileIds.slice(i,i+200));
+      for(const p of profiles||[]) if(p?.id&&p.full_name) profileMap.set(p.id,p.full_name);
+    }
   }
 
   return (data||[]).filter((s:any)=>{
@@ -476,15 +727,16 @@ export async function pullOpenCashSessionsFromSupabase() {
       : { data: [], error: null } as any;
     if (movementRes.error) throw movementRes.error;
 
+    // El turno abierto se reanuda con sus ventas, no con todo el historial.
     const transactions = sessionIds.length
-      ? await loadSales(undefined, 0, sessionIds)
+      ? await loadSales(undefined, 400, sessionIds, { tenant })
       : [] as Transaction[];
 
     // También precargamos el inventario de las sucursales que tienen turnos
     // abiertos. Esto permite reanudar una caja en otro almacén y seguir
     // cobrando aunque la conexión vuelva a desaparecer inmediatamente después.
     const branchIds = Array.from(new Set(rows.map((row: any) => String(row.branch_id || '')).filter(Boolean)));
-    const inventoryResults = await Promise.all(branchIds.map((branchId) => loadInventory(branchId)));
+    const inventoryResults = await Promise.all(branchIds.map((branchId) => loadInventory(branchId, { tenant })));
     const inventory = inventoryResults.flat();
 
     const movementsBySession = new Map<string, any[]>();
@@ -538,25 +790,53 @@ export async function pullOpenCashSessionsFromSupabase() {
   }
 }
 
-async function loadTransfers(branchId?: string) {
-  const tenant=await getActiveTenant();
-  const supabase=getSupabase()!;
+type TransfersOptions = {
+  client?: any;
+  tenant?: TenantLike;
+  /** Ventana: transferencias abiertas + creadas desde esta fecha. */
+  sinceIso?: string;
+  limit?: number;
+  /** Nombres ya cargados en el catálogo: evita consultas repetidas. */
+  refs?: {
+    productNames?: Map<string, string>;
+    warehouseNames?: Map<string, string>;
+    variantNames?: Map<string, string>;
+  };
+};
+
+async function loadTransfers(branchId?: string, options: TransfersOptions = {}) {
+  const tenant = (options.tenant || await getActiveTenant()) as TenantLike;
+  const supabase = options.client || getSupabase()!;
   // Inventory-transfer reports use the full tenant history, not just the last
   // 500 parent operations. Page it explicitly so older warehouse movements do
   // not disappear from Reports after a business grows.
   const data: any[] = [];
-  const pageSize = 500;
-  for (let from = 0; ; from += pageSize) {
-    let q=supabase.from('transfers').select('*').eq('company_id',tenant.companyId)
-      .order('created_at',{ascending:false}).range(from,from+pageSize-1);
-    if(branchId) q=q.or(`origin_warehouse_id.eq.${branchId},destination_warehouse_id.eq.${branchId}`);
-    const {data:page,error}=await q;
-    if(error) throw error;
-    if(!page?.length) break;
-    data.push(...page);
-    if(page.length<pageSize) break;
+  if (options.sinceIso) {
+    const { data: page, error } = await supabase.from('transfers').select('*')
+      .eq('company_id', tenant.companyId)
+      // No cerradas siempre; cerradas solo dentro de la ventana.
+      .or(`created_at.gte.${options.sinceIso},status.not.in.(completed,cancelled)`)
+      .order('created_at',{ascending:false})
+      .limit(options.limit ?? BOOTSTRAP_TRANSFERS_LIMIT);
+    if (error) throw error;
+    data.push(...(page || []));
+  } else {
+    const pageSize = 500;
+    for (let from = 0; ; from += pageSize) {
+      let q=supabase.from('transfers').select('*').eq('company_id',tenant.companyId)
+        .order('created_at',{ascending:false}).range(from,from+pageSize-1);
+      if(branchId) q=q.or(`origin_warehouse_id.eq.${branchId},destination_warehouse_id.eq.${branchId}`);
+      const {data:page,error}=await q;
+      if(error) throw error;
+      if(!page?.length) break;
+      data.push(...page);
+      if(page.length<pageSize) break;
+    }
   }
-  const ids=data.map((t:any)=>t.id);
+  const scoped = branchId
+    ? data.filter((t:any) => t.origin_warehouse_id === branchId || t.destination_warehouse_id === branchId)
+    : data;
+  const ids=scoped.map((t:any)=>t.id);
   if(!ids.length)return [] as InventoryTransfer[];
   const itemRows: any[] = [];
   for (let i = 0; i < ids.length; i += 400) {
@@ -570,14 +850,20 @@ async function loadTransfers(branchId?: string) {
     }
   }
   const [productsRes,warehousesRes,variantsRes]=await Promise.all([
-    supabase.from('products').select('id,name').eq('company_id',tenant.companyId),
-    supabase.from('warehouses').select('id,name').eq('company_id',tenant.companyId),
-    supabase.from('product_variants').select('id,name').eq('company_id',tenant.companyId)
+    options.refs?.productNames
+      ? Promise.resolve({data: [], error: null})
+      : supabase.from('products').select('id,name').eq('company_id',tenant.companyId),
+    options.refs?.warehouseNames
+      ? Promise.resolve({data: [], error: null})
+      : supabase.from('warehouses').select('id,name').eq('company_id',tenant.companyId),
+    options.refs?.variantNames
+      ? Promise.resolve({data: [], error: null})
+      : supabase.from('product_variants').select('id,name').eq('company_id',tenant.companyId)
   ]);
   if(productsRes.error)throw productsRes.error;if(warehousesRes.error)throw warehousesRes.error;if(variantsRes.error)throw variantsRes.error;
-  const pMap=new Map<string,string>((productsRes.data||[]).map((p:any)=>[p.id,p.name]));
-  const wMap=new Map<string,string>((warehousesRes.data||[]).map((w:any)=>[w.id,w.name]));
-  const vMap=new Map<string,string>((variantsRes.data||[]).map((v:any)=>[v.id,v.name]));
+  const pMap=options.refs?.productNames || new Map<string,string>((productsRes.data||[]).map((p:any)=>[p.id,p.name]));
+  const wMap=options.refs?.warehouseNames || new Map<string,string>((warehousesRes.data||[]).map((w:any)=>[w.id,w.name]));
+  const vMap=options.refs?.variantNames || new Map<string,string>((variantsRes.data||[]).map((v:any)=>[v.id,v.name]));
   const itemsByTransfer = new Map<string, any[]>();
   for (const item of itemRows) {
     const list = itemsByTransfer.get(item.transfer_id) || [];
@@ -585,7 +871,7 @@ async function loadTransfers(branchId?: string) {
     itemsByTransfer.set(item.transfer_id, list);
   }
   const rows:InventoryTransfer[]=[];
-  for(const t of data||[]){
+  for(const t of scoped){
     const tis=itemsByTransfer.get(t.id)||[];
     for(const i of tis){
       rows.push({
@@ -604,14 +890,26 @@ async function loadTransfers(branchId?: string) {
   return rows;
 }
 
-async function loadCustomers() {
-  const tenant=await getActiveTenant(); const supabase=getSupabase()!;
-  const {data,error}=await supabase.from('customers').select('*').eq('company_id',tenant.companyId).eq('active',true).order('name').limit(5000);
+async function loadCustomers(options: { client?: any; tenant?: TenantLike; limit?: number } = {}) {
+  const tenant = (options.tenant || await getActiveTenant()) as TenantLike;
+  const supabase = options.client || getSupabase()!;
+  const {data,error}=await supabase.from('customers').select('*').eq('company_id',tenant.companyId).eq('active',true).order('name').limit(options.limit ?? BOOTSTRAP_CUSTOMERS_LIMIT);
   if(error)throw error;
   return (data||[]).map((c:any):Customer=>({id:c.id,name:c.name||'',email:c.email||'',phone:c.phone||'',taxId:c.tax_id||''}));
 }
-async function loadBanks() {
-  const tenant=await getActiveTenant(); const supabase=getSupabase()!;
+
+type BanksOptions = {
+  client?: any;
+  tenant?: TenantLike;
+  /** El historial bancario crece sin control: la ventana lo omite. */
+  includeTransactions?: boolean;
+  sinceIso?: string;
+  transactionLimit?: number;
+};
+
+async function loadBanks(options: BanksOptions = {}) {
+  const tenant = (options.tenant || await getActiveTenant()) as TenantLike;
+  const supabase = options.client || getSupabase()!;
   const bankAccounts: any[] = [];
   const bankTransactions: any[] = [];
   const pageSize = 500;
@@ -623,13 +921,23 @@ async function loadBanks() {
     bankAccounts.push(...data);
     if(data.length<pageSize) break;
   }
-  for (let from = 0; ; from += pageSize) {
-    const {data,error}=await supabase.from('bank_transactions').select('*').eq('company_id',tenant.companyId)
-      .order('created_at',{ascending:false}).range(from,from+pageSize-1);
-    if(error) throw error;
-    if(!data?.length) break;
-    bankTransactions.push(...data);
-    if(data.length<pageSize) break;
+  if (options.includeTransactions !== false) {
+    if (options.sinceIso || options.transactionLimit) {
+      let q = supabase.from('bank_transactions').select('*').eq('company_id', tenant.companyId).order('created_at',{ascending:false});
+      if (options.sinceIso) q = q.gte('created_at', options.sinceIso);
+      const {data,error}=await q.limit(options.transactionLimit ?? 500);
+      if(error) throw error;
+      bankTransactions.push(...(data||[]));
+    } else {
+      for (let from = 0; ; from += pageSize) {
+        const {data,error}=await supabase.from('bank_transactions').select('*').eq('company_id',tenant.companyId)
+          .order('created_at',{ascending:false}).range(from,from+pageSize-1);
+        if(error) throw error;
+        if(!data?.length) break;
+        bankTransactions.push(...data);
+        if(data.length<pageSize) break;
+      }
+    }
   }
   return {
     bankCards:bankAccounts.map((x:any):BankCard=>({id:x.id,name:x.name,bank:x.bank_name,bankName:x.bank_name,cardHolder:'',lastFour:x.last_four,lastFourDigits:x.last_four,balance:Number(x.balance)||0,currency:x.currency_code||'USD',isActive:x.active!==false})),
@@ -653,11 +961,24 @@ async function loadBanks() {
     }))
   };
 }
-async function loadSuppliersOrders() {
-  const tenant=await getActiveTenant(); const supabase=getSupabase()!;
+
+type SuppliersOptions = {
+  client?: any;
+  tenant?: TenantLike;
+  sinceIso?: string;
+  orderLimit?: number;
+  /** Filas de producto ya cargadas en el catálogo. */
+  productRows?: any[];
+};
+
+async function loadSuppliersOrders(options: SuppliersOptions = {}) {
+  const tenant = (options.tenant || await getActiveTenant()) as TenantLike;
+  const supabase = options.client || getSupabase()!;
+  let ordersQ = supabase.from('purchase_orders').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false});
+  if (options.sinceIso) ordersQ = ordersQ.gte('created_at', options.sinceIso);
   const [s,o] = await Promise.all([
     supabase.from('suppliers').select('*').eq('company_id',tenant.companyId).eq('active',true).order('name'),
-    supabase.from('purchase_orders').select('*').eq('company_id',tenant.companyId).order('created_at',{ascending:false}).limit(1000),
+    ordersQ.limit(options.orderLimit ?? 1000),
   ]);
   if(s.error)throw s.error;if(o.error)throw o.error;
   const orderIds=(o.data||[]).map((x:any)=>x.id).filter(Boolean);
@@ -665,7 +986,9 @@ async function loadSuppliersOrders() {
     ? await supabase.from('purchase_items').select('*').in('purchase_order_id',orderIds)
     : {data:[],error:null};
   if(i.error)throw i.error;
-  const productsRes=await supabase.from('products').select('id,name').eq('company_id',tenant.companyId);
+  const productsRes=options.productRows
+    ? {data: options.productRows, error: null}
+    : await supabase.from('products').select('id,name').eq('company_id',tenant.companyId);
   if(productsRes.error)throw productsRes.error;
   const pMap=new Map<string,string>((productsRes.data||[]).map((p:any)=>[p.id,p.name]));
   const supplierMap=new Map<string,string>((s.data||[]).map((x:any)=>[x.id,x.name]));
@@ -706,6 +1029,232 @@ async function loadAllData(branchId?:string) {
   };
 }
 
+export type BootstrapOptions = {
+  branchId?: string;
+  now?: Date | string;
+  /** Cliente inyectable (pruebas); sin él se usa getSupabase(). */
+  supabase?: any;
+  tenant?: TenantLike;
+  /** Desactiva el usuario admin del contexto SaaS (pruebas sin red). */
+  includeSaasUser?: boolean;
+};
+
+export type BootstrapSnapshot = {
+  products: Product[];
+  categories: Category[];
+  inventory: InventoryLevel[];
+  branches: Branch[];
+  users: User[];
+  currencies: any[];
+  customers: Customer[];
+  bankCards: BankCard[];
+  bankTransactions: BankTransaction[];
+  transactions: Transaction[];
+  cashSessions: CashRegisterSession[];
+  transfers: InventoryTransfer[];
+  warranties: Warranty[];
+  returns: ReturnItem[];
+  quotes: Quote[];
+  timeShifts: TimeShift[];
+  salarySettlements: SalarySettlement[];
+  inventoryAudits: InventoryAudit[];
+  suppliers: Supplier[];
+  supplierOrders: SupplierOrder[];
+  receiptConfig: any;
+  storeConfig: any;
+  lastTurnNumber: number;
+  window: { sinceIso: string; days: number; salesLimit: number; metrics: CloudPullMetrics };
+};
+
+/**
+ * Arranque acotado: catálogo completo (pequeño) + ventana operativa reciente.
+ * Nunca descarga historial completo, ni siquiera con `limit = 0`.
+ */
+export async function loadBootstrapData(options: BootstrapOptions = {}): Promise<{ data: BootstrapSnapshot; metrics: CloudPullMetrics }> {
+  const metrics = createPullMetrics();
+  const injected = Boolean(options.supabase);
+  const tenant = (options.tenant || await getActiveTenant()) as TenantLike;
+  const base = options.supabase || getSupabase();
+  if (!base) throw new Error('Supabase no está configurado.');
+
+  const nowMs = (options.now ? new Date(options.now).getTime() : Date.now());
+  const sinceIso = new Date((Number.isFinite(nowMs) ? nowMs : Date.now()) - BOOTSTRAP_WINDOW_DAYS * 86_400_000).toISOString();
+
+  const catalogClient = createCountingClient(base, metrics, 'catalog');
+  const windowClient = createCountingClient(base, metrics, 'window');
+
+  // Catálogo y ajustes: siempre pequeño y sin ventana.
+  const catalog = await loadCatalog({
+    client: catalogClient,
+    tenant,
+    includeSaasUser: options.includeSaasUser ?? !injected,
+  });
+  const refs = catalog.refs;
+
+  // Contactos primero: sus nombres alimentan los extras sin otra consulta.
+  const customers = await loadCustomers({ client: windowClient, tenant, limit: BOOTSTRAP_CUSTOMERS_LIMIT });
+
+  const [inventory, transactions, cashSessions, transfers, banks, extras, suppliersOrders] = await Promise.all([
+    loadInventory(options.branchId, { client: windowClient, tenant, productRows: refs.productRows }),
+    loadSales(options.branchId, BOOTSTRAP_SALES_LIMIT, undefined, {
+      client: windowClient,
+      tenant,
+      sinceIso,
+      refs: {
+        productMap: refs.productMap,
+        variantMap: refs.variantMap,
+        employeeNames: refs.employeeNames,
+        defaultCurrencyCode: refs.defaultCurrencyCode,
+      },
+      childRowCap: BOOTSTRAP_SALE_CHILD_ROWS,
+    }),
+    loadCashSessions(options.branchId, {
+      client: windowClient,
+      tenant,
+      sinceIso,
+      sessionLimit: BOOTSTRAP_CASH_SESSIONS_LIMIT,
+      movementSinceIso: sinceIso,
+      movementLimit: BOOTSTRAP_CASH_MOVEMENTS_LIMIT,
+      includeProfiles: false,
+      refs: { employeeRows: refs.employeeRows, defaultCurrencyCode: refs.defaultCurrencyCode },
+    }),
+    loadTransfers(options.branchId, {
+      client: windowClient,
+      tenant,
+      sinceIso,
+      limit: BOOTSTRAP_TRANSFERS_LIMIT,
+      refs: {
+        productNames: new Map(refs.productRows.map((p:any) => [String(p.id), String(p.name)])),
+        warehouseNames: new Map(catalog.warehouses.map((w:any) => [String(w.id), String(w.name)])),
+        variantNames: refs.variantMap,
+      },
+    }),
+    // Las cuentas bancarias son catálogo; su historial se carga bajo demanda.
+    loadBanks({ client: windowClient, tenant, includeTransactions: false }),
+    loadReturnsWarrantiesQuotesTimePayroll({
+      client: windowClient,
+      tenant,
+      sinceIso,
+      limit: BOOTSTRAP_EXTRAS_LIMIT,
+      itemsLimit: BOOTSTRAP_SALE_CHILD_ROWS,
+      refs: {
+        productNames: new Map(refs.productRows.map((p:any) => [String(p.id), String(p.name)])),
+        customerNames: new Map(customers.map((c:any) => [String(c.id), String(c.name)])),
+        employeeNames: refs.employeeNames,
+      },
+    }),
+    loadSuppliersOrders({ client: windowClient, tenant, sinceIso, orderLimit: BOOTSTRAP_PURCHASE_ORDERS_LIMIT, productRows: refs.productRows }),
+  ]);
+
+  const lastTurnNumber = cashSessions.reduce((m:number,s:any)=>Math.max(m,Number(s.turnNumber)||0),0);
+
+  return {
+    data: {
+      products: catalog.products,
+      categories: catalog.categories,
+      inventory,
+      branches: catalog.branches,
+      users: catalog.users,
+      currencies: catalog.currencies,
+      customers,
+      bankCards: banks.bankCards,
+      bankTransactions: banks.bankTransactions,
+      transactions,
+      cashSessions,
+      transfers,
+      warranties: extras.warranties,
+      returns: extras.returns,
+      quotes: extras.quotes,
+      timeShifts: extras.timeShifts,
+      salarySettlements: extras.salarySettlements,
+      inventoryAudits: extras.audits,
+      suppliers: suppliersOrders.suppliers,
+      supplierOrders: suppliersOrders.supplierOrders,
+      receiptConfig: catalog.receiptConfig,
+      storeConfig: catalog.storeConfig,
+      lastTurnNumber,
+      window: { sinceIso, days: BOOTSTRAP_WINDOW_DAYS, salesLimit: BOOTSTRAP_SALES_LIMIT, metrics },
+    },
+    metrics,
+  };
+}
+
+export function clampHistoryLimit(limit?: number): number {
+  const value = Number.isFinite(Number(limit)) ? Math.trunc(Number(limit)) : HISTORY_PAGE_DEFAULT_LIMIT;
+  return Math.min(HISTORY_PAGE_MAX_LIMIT, Math.max(1, value));
+}
+
+export type HistoryPageParams = {
+  table: HistoryTable | string;
+  beforeIso?: string | null;
+  limit?: number;
+  branchId?: string;
+  supabase?: any;
+  tenant?: TenantLike;
+};
+
+export type HistoryPage = {
+  rows: any[];
+  nextBefore: string | null;
+  hasMore: boolean;
+  cursorColumn: string;
+};
+
+/**
+ * Página de historial por keyset (`created_at < beforeIso`), nunca por offset.
+ * Solo tablas de la lista blanca.
+ */
+export async function loadHistoryPage(params: HistoryPageParams): Promise<HistoryPage> {
+  const table = String(params.table);
+  if (!(HISTORY_TABLES as readonly string[]).includes(table)) {
+    throw new Error(`Tabla de historial no permitida: ${table}`);
+  }
+  const key = table as HistoryTable;
+  const column = HISTORY_CURSOR_COLUMN[key];
+  const limit = clampHistoryLimit(params.limit);
+  const tenant = (params.tenant || await getActiveTenant()) as TenantLike;
+  const supabase = params.supabase || getSupabase();
+  if (!supabase) throw new Error('Supabase no está configurado.');
+
+  let q = supabase.from(key).select('*').eq('company_id', tenant.companyId);
+  if (key === 'sales' || key === 'cash_sessions') q = q.neq('status', 'voided');
+  if (params.branchId && key === 'sales') q = q.eq('warehouse_id', params.branchId);
+  if (params.beforeIso) q = q.lt(column, params.beforeIso);
+  q = q.order(column, { ascending: false }).limit(limit + 1);
+
+  const { data, error } = await q;
+  if (error) throw error;
+  const fetched: any[] = Array.isArray(data) ? data : [];
+  const rows = fetched.slice(0, limit);
+  const hasMore = fetched.length > limit;
+  const last = rows[rows.length - 1];
+  const nextBefore = last ? (typeof last[column] === 'string' ? last[column] : null) : null;
+  return { rows, nextBefore, hasMore, cursorColumn: column };
+}
+
+/** Ventas (dominio) para el paginador de Reportes: keyset por created_at. */
+export async function pullSalesHistoryPage(options: {
+  beforeIso?: string | null;
+  limit?: number;
+  branchId?: string;
+  supabase?: any;
+  tenant?: TenantLike;
+} = {}): Promise<{ transactions: Transaction[]; nextBefore: string | null; hasMore: boolean }> {
+  const limit = clampHistoryLimit(options.limit);
+  const tenant = (options.tenant || await getActiveTenant()) as TenantLike;
+  const supabase = options.supabase || getSupabase();
+  if (!supabase) throw new Error('Supabase no está configurado.');
+  const transactions = await loadSales(options.branchId, limit + 1, undefined, {
+    client: supabase,
+    tenant,
+    beforeIso: options.beforeIso ?? null,
+  });
+  const hasMore = transactions.length > limit;
+  const page = hasMore ? transactions.slice(0, limit) : transactions;
+  const last = page[page.length - 1];
+  return { transactions: page, nextBefore: last?.date || null, hasMore };
+}
+
 export async function pullBranchInventoryFromSupabase(branchId?: string) {
   try { return { success:true, inventory:await loadInventory(branchId) }; }
   catch(e:any){ return {success:false,inventory:[],message:e?.message||'No se pudo actualizar el inventario'}; }
@@ -741,8 +1290,11 @@ export async function pullGlobalCatalogDataFromSupabase() {
 }
 
 export async function pullPosBootstrapFromSupabase(branchId?:string) {
-  try { return {success:true,data:await loadAllData(branchId)}; }
-  catch(e:any){ return {success:false,data:null,message:e?.message||'No se pudo cargar PALMYRA'}; }
+  try {
+    const { data, metrics } = await loadBootstrapData({ branchId });
+    return {success:true,data,metrics};
+  }
+  catch(e:any){ return {success:false,data:null,metrics:null,message:e?.message||'No se pudo cargar PALMYRA'}; }
 }
 
 export async function pullAllFromSupabase():Promise<{data:any;result:SyncResult}> {

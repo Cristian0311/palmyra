@@ -1,19 +1,14 @@
 name: PALMYRA keepalive
 
-# Render suspende las instancias gratuitas tras ~15 min sin tráfico y el primer
-# request tras dormir tarda 30-60 s (cold start). Un ping cada 10 min mantiene
-# la instancia caliente. En un repositorio público los minutos de Actions son
-# gratuitos; la instancia sigue dentro de las ~730 h/mes del plan free.
+# Histórico: este flujo mantenía despierta la instancia gratuita de Render
+# (palmyracrm.onrender.com) con un ping cada 10 minutos.
 #
-# Limitación real: el cron de GitHub es "best effort" y puede retrasarse varios
-# minutos con la plataforma cargada. Si eso ocurre, la instancia puede dormirse
-# igualmente; para más margen se puede bajar a */5 (en repo público no cuesta
-# minutos) y para garantía total hace falta un monitor externo (UptimeRobot,
-# cron-job.org) o una instancia de pago.
+# Hoy no hay despliegue público activo: la aplicación se instala y opera en
+# local (Windows, Android y PWA). El flujo queda solo como disparo manual y sin
+# peticiones externas, para no golpear un host que ya no existe y poder
+# reactivarlo con un botón cuando vuelva a haber un servidor publicado.
 
 on:
-  schedule:
-    - cron: '*/10 * * * *'
   workflow_dispatch:
 
 permissions:
@@ -24,26 +19,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  wake:
+  status:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 2
     steps:
-      - name: Ping /healthz (fallback /version.json)
-        env:
-          BASE_URL: https://palmyracrm.onrender.com
+      - name: Recordar que no hay despliegue activo
         run: |
-          set -eu
-          # /healthz no toca BD ni requiere sesión. Si el despliegue aún no lo
-          # tiene, /version.json cumple la misma función (despertar la instancia).
-          for path in /healthz /version.json; do
-            code="$(curl --silent --show-error --output /dev/null \
-              --write-out '%{http_code} %{time_total}s' \
-              --max-time 75 --retry 1 --retry-delay 3 --retry-all-errors \
-              "${BASE_URL}${path}" || true)"
-            echo "${path} -> ${code}"
-            case "${code%% *}" in
-              2*) exit 0 ;;
-            esac
-          done
-          echo "PALMYRA no respondió correctamente en ninguno de los endpoints." >&2
-          exit 1
+          echo "Sin despliegue público activo: no se realiza ninguna petición externa."
+          echo "Cuando exista un servidor publicado, añade aquí el paso de ping."

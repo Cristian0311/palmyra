@@ -5,7 +5,6 @@ import {
   Laptop,
   Monitor,
   Pencil,
-  QrCode,
   RefreshCw,
   Router,
   Server,
@@ -16,7 +15,6 @@ import {
   WifiOff,
   X
 } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
 import { cn } from '../../lib/utils';
 import { SettingsSectionHeader } from './SettingsSectionHeader';
 import {
@@ -178,11 +176,36 @@ export default function SettingsLanSection({ active, onToast }: Props) {
 
   return (
     <div className="space-y-4 min-w-0">
+      <section className="rounded-2xl border border-violet-200 bg-violet-50/60 p-3 sm:p-5 dark:border-violet-900/40 dark:bg-violet-950/20">
+        <p className="flex items-center gap-2 text-sm font-bold text-violet-900 dark:text-violet-100">
+          <Wifi size={15} className="shrink-0 text-violet-600 dark:text-violet-300" />
+          Cómo conectar otra PC del negocio
+        </p>
+        <ol className="mt-3 space-y-2 text-sm font-medium leading-6 text-violet-900/90 dark:text-violet-100/90">
+          <li className="flex gap-2">
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-black text-white">1</span>
+            Instala PALMYRA en cada PC o Android y conéctalos al mismo Wi-Fi del negocio.
+          </li>
+          <li className="flex gap-2">
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-black text-white">2</span>
+            En esta PC (la principal) activa «Permitir acceso LAN» aquí abajo. Si pide reiniciar, ciérrala y vuelve a abrirla.
+          </li>
+          <li className="flex gap-2">
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-black text-white">3</span>
+            En «Vincular otra PC instalada», al final de esta pestaña, copia la invitación con la dirección y el código de 8 dígitos.
+          </li>
+          <li className="flex gap-2">
+            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-violet-600 text-xs font-black text-white">4</span>
+            En la otra PC repite el mismo camino, pega la invitación y pulsa Vincular. Con 3 o más PC, todas se vinculan a esta.
+          </li>
+        </ol>
+      </section>
+
       <section className="rounded-2xl border border-base bg-secondary p-3 sm:p-5 shadow-sm space-y-4 min-w-0">
         <SettingsSectionHeader
           icon={Router}
           title="Acceso desde otros equipos"
-          subtitle="Abre PALMYRA desde un móvil, tablet o PC conectado al mismo Wi-Fi del negocio."
+          subtitle="Esta PC es la principal: guarda la copia del negocio y comparte los cambios con los equipos vinculados por el Wi-Fi."
           action={snapshot?.status.desktop ? (
             <button
               type="button"
@@ -212,10 +235,10 @@ export default function SettingsLanSection({ active, onToast }: Props) {
           </p>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_176px] gap-4 items-start">
+        <div className="min-w-0">
           <div className="space-y-3 min-w-0">
             <div>
-              <span className="mb-1.5 block text-sm font-semibold text-muted">Dirección para otros dispositivos</span>
+              <span className="mb-1.5 block text-sm font-semibold text-muted">Dirección de esta PC en la red</span>
               {lanUrl ? (
                 <div className="flex items-stretch gap-2">
                   <div className="flex-1 min-w-0 rounded-xl border border-base bg-primary px-3 py-2.5 font-mono text-[12px] font-bold text-violet-700 dark:text-violet-300 break-all">
@@ -232,49 +255,39 @@ export default function SettingsLanSection({ active, onToast }: Props) {
               ) : (
                 <div className="rounded-xl border border-dashed border-base bg-primary px-3 py-4 text-sm font-medium leading-6 text-muted">
                   {snapshot?.status.desktop
-                    ? 'Activa el acceso LAN y reinicia PALMYRA POS para obtener una dirección de red.'
-                    : 'Este servidor no está expuesto en la red local.'}
+                    ? 'Activa el acceso LAN y reinicia PALMYRA POS para obtener la dirección de esta PC.'
+                    : 'Este equipo no es el principal: para compartir la operación, abre esta pantalla en la PC principal.'}
                 </div>
               )}
             </div>
             <dl className="grid grid-cols-2 gap-2 text-sm">
               <div className="rounded-xl border border-base bg-primary p-2.5 min-w-0">
-                <dt className="text-sm font-medium text-muted">Puerto</dt>
-                <dd className="font-black text-primary tabular-nums">{snapshot?.status.port ?? '—'}</dd>
-              </div>
-              <div className="rounded-xl border border-base bg-primary p-2.5 min-w-0">
                 <dt className="text-sm font-medium text-muted">Equipos en línea</dt>
                 <dd className="font-black text-primary tabular-nums">{onlineCount} de {devices.length}</dd>
               </div>
               {snapshot?.status.addresses?.length ? (
-                <div className="col-span-2 rounded-xl border border-base bg-primary p-2.5 min-w-0">
-                  <dt className="text-sm font-medium text-muted">IP de este servidor</dt>
+                <div className="rounded-xl border border-base bg-primary p-2.5 min-w-0">
+                  <dt className="text-sm font-medium text-muted">IP de esta PC</dt>
                   <dd className="font-bold text-primary break-all">{snapshot.status.addresses.join(' · ')}</dd>
                 </div>
               ) : null}
             </dl>
           </div>
 
-          <div className="rounded-2xl border border-base bg-primary p-3 flex flex-col items-center justify-center gap-2 self-stretch">
-            {lanUrl ? (
-              <>
-                <div className="rounded-xl bg-white p-2 shadow-sm">
-                  <QRCodeSVG value={lanUrl} size={128} level="M" />
-                </div>
-                <span className="flex items-center gap-1 text-sm font-medium text-muted"><QrCode size={13} /> Escanea para abrir</span>
-              </>
-            ) : (
-              <div className="flex flex-col items-center gap-2 py-6 text-center">
-                <WifiOff size={26} className="text-muted" />
-                <span className="text-sm font-medium leading-5 text-muted">Sin dirección LAN activa</span>
-              </div>
-            )}
+          <div className="mt-3 flex items-start gap-2 rounded-xl border border-base bg-primary p-3">
+            <WifiOff size={16} className="mt-0.5 shrink-0 text-muted" />
+            <p className="text-sm font-medium leading-6 text-muted">
+              La dirección es solo para equipos con PALMYRA instalado. No hace falta escribirla a mano: usa la
+              invitación de «Vincular otra PC instalada», al final de esta pestaña.
+            </p>
           </div>
         </div>
 
         <p className="rounded-xl border border-base bg-subtle p-3 text-sm font-medium leading-6 text-secondary">
-          Cada dispositivo mantiene su propia copia local y sincroniza por la nube cuando tiene internet. El acceso LAN comparte la misma aplicación web,
-          no copia datos entre equipos. Actívalo solo en una red de confianza: PALMYRA sigue pidiendo iniciar sesión.
+          Esta PC comparte la operación con los equipos vinculados: una venta hecha en una caja aparece en las demás
+          en segundos. Si se cae el Wi-Fi, cada equipo sigue cobrando con su copia local y envía lo pendiente al
+          reconectarse. Tras 72 h sin contacto con la PC principal, el equipo vinculado pasa a solo lectura. Actívalo
+          solo en una red de confianza.
         </p>
       </section>
 

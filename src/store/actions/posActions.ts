@@ -21,6 +21,7 @@ import { getActiveTenant } from '../../services/tenant';
 import { pushWarrantyToSupabase, callCancelSessionRPC, pullBranchInventoryFromSupabase } from '../../services/supabaseSync';
 import { flushLocalStateStorage } from '../../services/localStateStorage';
 import { isCloudBusinessSyncAllowed } from '../../services/localPlanMode';
+import { mirrorCompletedSale, mirrorSaleVoid } from '../../services/localDb/posWriteThrough';
 
 type StoreSet = (
   partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)
@@ -300,6 +301,11 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
         }
       }
       await flushLocalStateStorage();
+      // Espejo directo al almacén normalizado: sin await para no sumar latencia
+      // al cobro (la función captura sus propios errores). Se espeja la venta
+      // tal como quedó en la store, que es lo que verá la sombra en el JSON.
+      const settled = get().transactions.find(t => t.id === localTransaction.id);
+      void mirrorCompletedSale(settled ?? localTransaction);
     };
 
     // El plan Gratis no tiene nube: la venta es local aunque el teléfono esté online.
@@ -392,6 +398,10 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
     online: () => typeof navigator !== 'undefined' && navigator.onLine && isCloudBusinessSyncAllowed(),
     rpc: callVoidTransactionRPC,
     flush: flushLocalStateStorage,
+    // La anulación se espeja al libro local sin bloquear ni cambiar la baja.
+    onVoided: transaction => {
+      void mirrorSaleVoid(transaction);
+    },
     reconcile: async branchId => {
       const inventoryOk = await refreshInventoryBranchesFromSupabase(set, get, [branchId]);
       const { pullBankDataFromSupabase } = await import('../../services/supabaseSync');
