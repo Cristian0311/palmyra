@@ -12,7 +12,7 @@ import {
   rateToBaseFromCup
 } from '../lib/autoRatePolicy';
 import { hubQuotesToPayload } from './lanHub/rates';
-import { RATE_SNAPSHOT_MAX_AGE_MS, RATE_TARGET_MS } from './lanHub/rateScheduler';
+import { RATE_SNAPSHOT_MAX_AGE_MS } from './lanHub/rateScheduler';
 import type { HubRateQuote } from './lanHub/protocol';
 import { formatRateAge, isDeviceOffline, readOwnServerRateRouteAllowed } from './exchangeRatesHub';
 import { recordRequest } from './requestBudget';
@@ -25,10 +25,12 @@ const MAX_PAYLOAD_AGE_MS = 30 * 60 * 1000;
 /** Una copia del hub vale hasta 60 min: su cadencia es de 45 min. */
 const HUB_PAYLOAD_MAX_AGE_MS = RATE_SNAPSHOT_MAX_AGE_MS;
 /**
- * Separación mínima entre ciclos: algo menos que la cadencia del hub (45 min)
- * para alcanzar cada refresco sin bucles de 25 minutos.
+ * Separación mínima entre ciclos: 20 minutos, la cadencia que pidió el dueño.
+ * El hub LAN conserva su cadencia propia de 45 min (rateScheduler) y el hook
+ * de fondo (useAutoRateSync) sigue esa cadencia del hub; este tope solo evita
+ * repetir un ciclo exitoso antes de 20 minutos en superficies autónomas.
  */
-export const AUTO_RATE_MIN_GAP_MS = RATE_TARGET_MS - 5 * 60 * 1000;
+export const AUTO_RATE_MIN_GAP_MS = 20 * 60 * 1000;
 const MIN_RUN_GAP_MS = AUTO_RATE_MIN_GAP_MS;
 
 /**

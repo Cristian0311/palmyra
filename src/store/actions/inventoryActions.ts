@@ -11,7 +11,13 @@ import {
   callReceiveTransferRPC,
   callCancelTransferRPC,
 } from '../../services/supabaseSync';
-import { pullTransferHistoryCorrected } from '../../services/cloudSync/transferHistory';
+import {
+  pullTransferHistoryCorrected,
+  settleTransferRows,
+  classifyTransferResolutionError,
+  registerTransferStatusOverrides,
+  getTransferStatusOverrides
+} from '../../services/cloudSync/transferHistory';
 import { mergeTransferLists } from '../../services/localDb/repositories';
 import { enqueueOfflineItem, getOfflineQueue, removeFromOfflineQueue } from '../../services/offlineQueue';
 import { removeFromOfflineQueueByAction } from '../../services/offlineQueue/outboxUtils';
@@ -43,37 +49,6 @@ async function refreshInventoryBranchesFromSupabase(set: StoreSet, get: StoreGet
   } catch { return false; }
 }
 
-/** Adds the received/cancelled quantities to one side of the transfer. */
-function addTransferStock(
-  inventory: InventoryLevel[],
-  rows: InventoryTransfer[],
-  side: 'fromBranchId' | 'toBranchId'
-): InventoryLevel[] {
-  const next = [...inventory];
-  for (const row of rows) {
-    const branchId = row[side];
-    const quantity = Number(row.quantity || 0);
-    if (!branchId || !Number.isFinite(quantity) || quantity <= 0) continue;
-    const label = row.variantLabel && row.variantLabel !== 'Producto Base' ? row.variantLabel : '';
-    const idx = next.findIndex(item =>
-      item.productId === row.productId && item.branchId === branchId && (item.variantLabel || '') === label
-    );
-    if (idx >= 0) {
-      next[idx] = { ...next[idx], quantity: Number(next[idx].quantity || 0) + quantity };
-    } else {
-      next.push({
-        id: crypto.randomUUID(),
-        productId: row.productId,
-        branchId,
-        variantLabel: label || undefined,
-        quantity,
-        minQuantity: 5
-      });
-    }
-  }
-  return next;
-}
-
 export type TransferResolutionMode = 'receive' | 'cancel';
 
 /**
@@ -86,22 +61,15 @@ export function settleTransferResolutions(
   transfers: InventoryTransfer[],
   inventory: InventoryLevel[],
   ids: string[],
-  mode: TransferResolutionMode
+  mode: TransferResolutionMode,
+  options: { creditStock?: boolean } = {}
 ): { transfers: InventoryTransfer[]; inventory: InventoryLevel[]; changed: boolean } {
-  const idSet = new Set((ids || []).map(id => String(id || '')).filter(Boolean));
-  const side = mode === 'receive' ? 'toBranchId' : 'fromBranchId';
   const targetStatus: InventoryTransfer['status'] = mode === 'receive' ? 'completed' : 'cancelled';
-  const rows = (transfers || []).filter(t =>
-    idSet.has(String(t.operationId || t.id)) && t.status === 'in_transit'
-  );
-  const changed = rows.length > 0;
-  const nextTransfers = (transfers || []).map(t =>
-    idSet.has(String(t.operationId || t.id)) && t.status === 'in_transit'
-      ? { ...t, status: targetStatus }
-      : t
-  );
-  const nextInventory = changed ? addTransferStock(inventory || [], rows, side) : inventory || [];
-  return { transfers: nextTransfers, inventory: nextInventory, changed };
+  const creditSide = mode === 'receive' ? 'toBranchId' : 'fromBranchId';
+  return settleTransferRows(transfers, inventory, ids, targetStatus, {
+    creditStock: options.creditStock !== false,
+    creditSide
+  });
 }
 
 /** Doble clic / doble invocación: una resolución por lote de ids en vuelo. */
@@ -125,7 +93,20 @@ export async function syncTransferHistory(
     // legado destruía la distinción despachado/recibido.
     const result = await pull();
     if (!result || result.success !== true || !Array.isArray(result.transfers)) return;
-    set(state => ({ transfers: mergeTransferLists(result.transfers, state.transfers || []) }));
+    // Los traslados legacy 'posted' ya aplicados en la nube se asentaron
+    // localmente como recibidos: el override evita que este pull los devuelva
+    // a 'in_transit' (el servidor aún los reporta como posted).
+    const overrides = getTransferStatusOverrides();
+    set(state => {
+      const merged = mergeTransferLists(result.transfers, state.transfers || []);
+      if (!overrides.size) return { transfers: merged };
+      return {
+        transfers: merged.map(t => {
+          const forced = overrides.get(String(t.operationId || t.id));
+          return forced && t.status === 'in_transit' ? { ...t, status: forced } : t;
+        })
+      };
+    });
   } catch {
     // La reconciliación se reintentará en el siguiente ciclo de sincronización.
   }
@@ -590,7 +571,10 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
     // Un lote parcial nunca aplica deltas locales a medias: un reintento
     // volvería a incluir los artículos ya confirmados y descontaría dos veces.
     // El stock se reconciliará desde el servidor en el siguiente intento.
-    if (!bulkPartial && !canonicalRefreshed && !serverConfirmed) {
+    // Si el servidor confirmó pero el refresco canónico falló, el descuento
+    // local del origen SÍ se aplica: mantenerlo pendiente dejaba el stock
+    // local inflado (mercancía ya despachada) hasta el próximo ciclo.
+    if (!bulkPartial && !canonicalRefreshed) {
       set(state => {
         // La mercancía queda EN TRÁNSITO: se descuenta del origen y el destino
         // solo se acredita al confirmar la recepción (igual que el traslado
@@ -661,8 +645,17 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
     try {
     const destinationIds = Array.from(new Set(rows.map(row => row.toBranchId).filter(Boolean)));
 
-    const settleLocal = () => {
-      const resolution = settleTransferResolutions(get().transfers || [], get().inventory || [], ids, 'receive');
+    // Asienta el estado visible local SIEMPRE (in_transit → target) de forma
+    // idempotente; con creditStock=false no vuelve a mover stock porque la
+    // nube ya lo resolvió y el refresco canónico traerá la verdad.
+    const settleLocal = (targetStatus: InventoryTransfer['status'], creditStock: boolean, subsetIds: string[]) => {
+      const resolution = settleTransferRows(
+        get().transfers || [],
+        get().inventory || [],
+        subsetIds,
+        targetStatus,
+        { creditStock, creditSide: 'toBranchId' }
+      );
       set({ inventory: resolution.inventory, transfers: resolution.transfers });
     };
 
@@ -678,29 +671,75 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
 
     const online = typeof navigator !== 'undefined' && navigator.onLine && isCloudBusinessSyncAllowed();
     if (!online) {
-      settleLocal();
+      settleLocal('completed', true, ids);
       await enqueueOfflineItem('transfer_receive', queuePayload, 'transfer-receive:' + ids.join(','));
       return { success: true, pending: true };
     }
 
-    const failedIds: string[] = [];
-    let lastError = '';
+    const freshIds: string[] = [];      // aplicado ahora por la nube: acreditar localmente
+    const alreadyIds: string[] = [];    // ya recibido en la nube: sin crédito local
+    const postedIds: string[] = [];     // una sola fase: asentar sin crédito + override
+    const cancelledIds: string[] = [];  // la nube dice cancelado: asentar cancelado
+    const missingIds: string[] = [];    // no existe en la nube: asentar recibido local
+    const retryableIds: string[] = [];
+    const unresolvedIds: string[] = [];
+    const errors: string[] = [];
+
     for (const id of ids) {
       const res = await callReceiveTransferRPC(id);
-      if (!res.success) {
-        failedIds.push(id);
-        lastError = res.error || lastError;
+      if (res.success) {
+        const data = res.data || {};
+        if (data.already_existed && String(data.status) === 'posted') postedIds.push(id);
+        else if (data.already_existed) alreadyIds.push(id);
+        else freshIds.push(id);
+      } else {
+        const kind = classifyTransferResolutionError(res.error || '', res.errorCode);
+        if (kind === 'cancelled') {
+          cancelledIds.push(id);
+        } else if (kind === 'not_found') {
+          missingIds.push(id);
+        } else if (kind === 'retriable') {
+          retryableIds.push(id);
+          errors.push(res.error || 'La nube no confirmó la recepción.');
+        } else {
+          unresolvedIds.push(id);
+          errors.push(res.error || 'La nube rechazó la recepción con un estado inesperado.');
+        }
       }
     }
-    if (failedIds.length) {
-      await enqueueOfflineItem('transfer_receive', { ...queuePayload, operationIds: failedIds }, 'transfer-receive:' + failedIds.join(','));
+
+    if (freshIds.length) settleLocal('completed', true, freshIds);
+    if (alreadyIds.length) settleLocal('completed', false, alreadyIds);
+    if (postedIds.length) {
+      settleLocal('completed', false, postedIds);
+      registerTransferStatusOverrides(postedIds, 'completed');
+    }
+    if (cancelledIds.length) settleLocal('cancelled', false, cancelledIds);
+    if (missingIds.length) settleLocal('completed', false, missingIds);
+
+    if (retryableIds.length) {
+      await enqueueOfflineItem('transfer_receive', { ...queuePayload, operationIds: retryableIds }, 'transfer-receive:' + retryableIds.join(','));
     }
     await refreshInventoryBranchesFromSupabase(set, get, destinationIds);
     await syncTransferHistory(set);
-    if (failedIds.length) {
-      return { success: false, pending: true, error: lastError || 'La recepción quedó pendiente de confirmación con la nube.' };
+
+    if (retryableIds.length) {
+      return { success: false, pending: true, error: errors.join(' ') || 'La recepción quedó pendiente de confirmación con la nube.' };
     }
-    return { success: true, pending: false };
+    if (unresolvedIds.length) {
+      return { success: false, pending: false, error: errors.join(' ') || 'La nube rechazó la recepción con un estado inesperado.' };
+    }
+    const warnings: string[] = [];
+    if (postedIds.length) warnings.push('Traslado de una sola fase: ya estaba aplicado en el servidor; se marcó como recibido sin mover stock de nuevo.');
+    if (alreadyIds.length) warnings.push('La nube ya tenía registrada la recepción; no se volvió a mover stock.');
+    if (cancelledIds.length) warnings.push('El traslado estaba cancelado en la nube; se actualizó el estado local.');
+    if (missingIds.length) warnings.push('El traslado no existe en la nube; se marcó como recibido localmente y se reconciliará.');
+    return {
+      success: true,
+      pending: false,
+      warning: warnings.join(' ') || undefined,
+      alreadyApplied: freshIds.length === 0 && (alreadyIds.length > 0 || postedIds.length > 0 || cancelledIds.length > 0 || missingIds.length > 0)
+    };
     } finally {
       transferResolutionInFlight.delete(flightKey);
     }
@@ -719,8 +758,17 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
     try {
     const originIds = Array.from(new Set(rows.map(row => row.fromBranchId).filter(Boolean)));
 
-    const settleLocal = () => {
-      const resolution = settleTransferResolutions(get().transfers || [], get().inventory || [], ids, 'cancel');
+    // Asienta el estado visible local SIEMPRE (in_transit → target) de forma
+    // idempotente; con creditStock=false no devuelve stock local porque la
+    // nube ya lo resolvió y el refresco canónico traerá la verdad.
+    const settleLocal = (targetStatus: InventoryTransfer['status'], creditStock: boolean, subsetIds: string[]) => {
+      const resolution = settleTransferRows(
+        get().transfers || [],
+        get().inventory || [],
+        subsetIds,
+        targetStatus,
+        { creditStock, creditSide: 'fromBranchId' }
+      );
       set({ inventory: resolution.inventory, transfers: resolution.transfers });
     };
 
@@ -736,29 +784,67 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
 
     const online = typeof navigator !== 'undefined' && navigator.onLine && isCloudBusinessSyncAllowed();
     if (!online) {
-      settleLocal();
+      settleLocal('cancelled', true, ids);
       await enqueueOfflineItem('transfer_cancel', queuePayload, 'transfer-cancel:' + ids.join(','));
       return { success: true, pending: true };
     }
 
-    const failedIds: string[] = [];
-    let lastError = '';
+    const freshIds: string[] = [];      // cancelado ahora por la nube: devolver stock al origen local
+    const alreadyIds: string[] = [];    // ya cancelado en la nube: sin crédito local
+    const missingIds: string[] = [];    // no existe en la nube: asentar cancelado local
+    const retryableIds: string[] = [];
+    const errors: string[] = [];
+
     for (const id of ids) {
       const res = await callCancelTransferRPC(id);
-      if (!res.success) {
-        failedIds.push(id);
-        lastError = res.error || lastError;
+      if (res.success) {
+        if (res.data?.already_existed) alreadyIds.push(id);
+        else freshIds.push(id);
+      } else {
+        const kind = classifyTransferResolutionError(res.error || '', res.errorCode);
+        if (kind === 'not_found') {
+          missingIds.push(id);
+        } else if (kind === 'retriable') {
+          retryableIds.push(id);
+          errors.push(res.error || 'La nube no confirmó la cancelación.');
+        } else {
+          // 'not_in_transit' aquí significa un traslado legacy de una sola
+          // fase (posted) ya aplicado: la nube NO admite su cancelación y
+          // reintentar nunca prosperará. Se informa un error claro sin encolar.
+          errors.push(
+            kind === 'not_in_transit'
+              ? 'Este traslado se aplicó en una sola fase y la nube no admite su cancelación. Contacta soporte para revertirlo.'
+              : (res.error || 'La nube rechazó la cancelación con un estado inesperado.')
+          );
+        }
       }
     }
-    if (failedIds.length) {
-      await enqueueOfflineItem('transfer_cancel', { ...queuePayload, operationIds: failedIds }, 'transfer-cancel:' + failedIds.join(','));
+
+    if (freshIds.length) settleLocal('cancelled', true, freshIds);
+    if (alreadyIds.length) settleLocal('cancelled', false, alreadyIds);
+    if (missingIds.length) settleLocal('cancelled', false, missingIds);
+
+    if (retryableIds.length) {
+      await enqueueOfflineItem('transfer_cancel', { ...queuePayload, operationIds: retryableIds }, 'transfer-cancel:' + retryableIds.join(','));
     }
     await refreshInventoryBranchesFromSupabase(set, get, originIds);
     await syncTransferHistory(set);
-    if (failedIds.length) {
-      return { success: false, pending: true, error: lastError || 'La cancelación quedó pendiente de confirmación con la nube.' };
+
+    if (retryableIds.length) {
+      return { success: false, pending: true, error: errors.join(' ') || 'La cancelación quedó pendiente de confirmación con la nube.' };
     }
-    return { success: true, pending: false };
+    if (errors.length) {
+      return { success: false, pending: false, error: errors.join(' ') };
+    }
+    const warnings: string[] = [];
+    if (alreadyIds.length) warnings.push('La nube ya tenía registrada la cancelación; no se volvió a mover stock.');
+    if (missingIds.length) warnings.push('El traslado no existe en la nube; se marcó como cancelado localmente y se reconciliará.');
+    return {
+      success: true,
+      pending: false,
+      warning: warnings.join(' ') || undefined,
+      alreadyApplied: freshIds.length === 0 && (alreadyIds.length > 0 || missingIds.length > 0)
+    };
     } finally {
       transferResolutionInFlight.delete(flightKey);
     }

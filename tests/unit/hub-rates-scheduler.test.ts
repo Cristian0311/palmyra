@@ -328,9 +328,17 @@ test("sin copia el hub solo consulta si tiene credencial, y no repite el intento
   assert.equal(quotes.find(item => item.code === "USD")?.rate, 500);
 });
 
-test("la cadencia de la UI sigue los 45 min del hub y no bucles de 25", () => {
-  assert.equal(AUTO_RATE_CHECK_MS, RATE_TARGET_MS);
+test("la página y el hook de fondo consultan cada 20 min; el hub conserva sus 45 min", () => {
+  assert.equal(AUTO_RATE_CHECK_MS, 20 * MINUTE);
   assert.equal(RATE_HUB_FRESH_MS, RATE_MAX_MS);
-  assert.equal(AUTO_RATE_MIN_GAP_MS, 40 * MINUTE);
-  assert.ok(AUTO_RATE_MIN_GAP_MS >= 30 * MINUTE);
+  // El dueño pidió consultas cada 20 minutos: el tope entre ciclos de la
+  // sincronización automática baja de 40 a 20 min sin tocar la cadencia del hub.
+  assert.equal(AUTO_RATE_MIN_GAP_MS, 20 * MINUTE);
+  assert.ok(AUTO_RATE_MIN_GAP_MS < RATE_TARGET_MS);
+});
+
+test("la página de tasas refresca su consulta cada 20 minutos", () => {
+  const page = fs.readFileSync(path.join(ROOT, "src/pages/ExchangeRate.tsx"), "utf8");
+  assert.match(page, /const REFRESH_MS = 20 \* 60 \* 1000/);
+  assert.match(page, /La tasa se consulta automáticamente cada 20 minutos/);
 });

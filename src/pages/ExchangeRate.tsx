@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Activity, AlertCircle, ArrowDownRight, ArrowUpRight, BarChart3, CircleDollarSign, Clock3, Minus, RefreshCw, ShieldCheck, TrendingDown, TrendingUp } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
@@ -34,12 +34,10 @@ import {
   type ExchangeRateSourceKind,
   type ExchangeRateSourceView
 } from '../services/exchangeRatesHub';
-import { RATE_TARGET_MS } from '../services/lanHub/rateScheduler';
-
 const CACHE_KEY = EXCHANGE_RATE_CACHE_KEY;
 const HISTORY_KEY = 'palmyra.eltoque-observations.v2';
-/** La pantalla revisa con la cadencia del hub (45 min), no cada 5 minutos. */
-const REFRESH_MS = RATE_TARGET_MS;
+/** La pantalla consulta la fuente cada 20 minutos, como pidió el dueño. */
+const REFRESH_MS = 20 * 60 * 1000;
 /** Una copia repartida por el hub vale hasta 60 min; la de la nube, 30. */
 const CACHE_FRESH_MS = RATE_HUB_FRESH_MS;
 const CLOUD_FRESH_MS = RATE_SOURCE_FRESH_MS;
@@ -67,14 +65,21 @@ function localHistory(): RateSnapshot[] {
   try { return readRateSnapshots(JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]')).slice(-2500); }
   catch { return []; }
 }
+// Formateadores construidos UNA sola vez. Antes `money`/`pct`/`dateLabel`
+// creaban un `Intl.*` por llamada: con el historial completo eran decenas de
+// miles de construcciones por render, la causa del trabe al cambiar de moneda.
+const MONEY_MINOR_FMT = new Intl.NumberFormat('es-CU', { maximumFractionDigits: 6 });
+const MONEY_MAJOR_FMT = new Intl.NumberFormat('es-CU', { maximumFractionDigits: 2 });
+const DATE_TIME_FMT = new Intl.DateTimeFormat('es-CU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+const TIME_ONLY_FMT = new Intl.DateTimeFormat('es-CU', { hour: '2-digit', minute: '2-digit' });
 function money(value?: number) {
-  return value === undefined ? '—' : new Intl.NumberFormat('es-CU', { maximumFractionDigits: value < 1 ? 6 : 2 }).format(value);
+  return value === undefined ? '—' : (value < 1 ? MONEY_MINOR_FMT : MONEY_MAJOR_FMT).format(value);
 }
 function pct(value?: number) {
-  return value === undefined ? '—' : `${value > 0 ? '+' : ''}${new Intl.NumberFormat('es-CU', { maximumFractionDigits: 2 }).format(value)}%`;
+  return value === undefined ? '—' : `${value > 0 ? '+' : ''}${MONEY_MAJOR_FMT.format(value)}%`;
 }
 function dateLabel(value: string, timeOnly = false) {
-  return new Intl.DateTimeFormat('es-CU', timeOnly ? { hour: '2-digit', minute: '2-digit' } : { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }).format(new Date(value));
+  return (timeOnly ? TIME_ONLY_FMT : DATE_TIME_FMT).format(new Date(value));
 }
 function rateNumber(rate: ExchangeRate): number | undefined {
   return rate.value ?? rate.sell ?? rate.buy;
@@ -91,7 +96,24 @@ function computeDelta(current?: number, reference?: number): Delta {
   return { absolute, percent: (absolute / reference) * 100 };
 }
 
-function TrendPill({ delta, compact = false }: { delta: Delta; compact?: boolean }) {
+type SeriesPoint = { timestamp: string; label: string; value: number };
+/** Serie vacía compartida: nunca se crea una referencia nueva por render. */
+const EMPTY_SERIES: SeriesPoint[] = [];
+/** Tope de puntos del gráfico grande (recharts) y de cada mini-gráfica. */
+const CHART_MAX_POINTS = 320;
+const SPARK_MAX_POINTS = 120;
+/** La tabla del historial muestra solo las consultas más recientes. */
+const HISTORY_TABLE_MAX_ROWS = 1000;
+/** Reducción uniforme que conserva el primer y el último punto (O(tope)). */
+function decimateSeries<T>(series: T[], maxPoints: number): T[] {
+  if (series.length <= maxPoints) return series;
+  const step = (series.length - 1) / (maxPoints - 1);
+  const out: T[] = [];
+  for (let index = 0; index < maxPoints; index += 1) out.push(series[Math.round(index * step)]);
+  return out;
+}
+
+const TrendPill = memo(function TrendPill({ delta, compact = false }: { delta: Delta; compact?: boolean }) {
   if (!delta) {
     return <span className="inline-flex items-center gap-1 rounded-full bg-subtle px-2 py-0.5 text-[10px] font-bold text-muted"><Minus className="h-3 w-3" /> Sin comparación</span>;
   }
@@ -104,9 +126,9 @@ function TrendPill({ delta, compact = false }: { delta: Delta; compact?: boolean
       {pct(delta.percent)}{!compact && <span className="hidden font-bold text-current/80 sm:inline"> · {up ? '+' : ''}{money(delta.absolute)}</span>}
     </span>
   );
-}
+});
 
-function Sparkline({ values, id }: { values: number[]; id: string }) {
+const Sparkline = memo(function Sparkline({ values, id }: { values: number[]; id: string }) {
   if (values.length < 2) {
     return <div className="flex h-12 items-center text-[10px] font-bold uppercase tracking-wider text-muted">Sin historial en el período</div>;
   }
@@ -138,7 +160,46 @@ function Sparkline({ values, id }: { values: number[]; id: string }) {
       <circle cx={points[points.length - 1][0]} cy={points[points.length - 1][1]} r="2.4" fill={stroke} />
     </svg>
   );
-}
+});
+
+type RateCardProps = {
+  rate: ExchangeRate;
+  active: boolean;
+  delta: Delta;
+  values: number[];
+  count: number;
+  hasBuySell: boolean;
+  sparkId: string;
+  onSelect: (code: string) => void;
+};
+
+/**
+ * Tarjeta de moneda memoizada: al seleccionar otra moneda solo se repintan las
+ * dos tarjetas cuyo `active` cambia; las demás se saltan el render completo.
+ */
+const RateCard = memo(function RateCard({ rate, active, delta, values, count, hasBuySell, sparkId, onSelect }: RateCardProps) {
+  const shown = rateNumber(rate);
+  return (
+    <button type="button" aria-pressed={active} onClick={() => onSelect(rate.code)} className={'group min-w-0 rounded-2xl border bg-secondary p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:border-violet-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-600 ' + (active ? 'border-violet-500 ring-1 ring-violet-500' : 'border-base')}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-lg font-black leading-none text-primary">{rate.code}</p>
+          <p className="mt-1 truncate text-[11px] font-semibold text-secondary" title={rateTitle(rate)}>{rateTitle(rate)}</p>
+        </div>
+        <TrendPill delta={delta} compact />
+      </div>
+      <p className="mt-3 text-3xl font-black tabular-nums leading-none text-primary">{money(shown)} <span className="text-xs font-semibold text-muted">CUP</span></p>
+      {shown === undefined && <p className="mt-1 text-[11px] font-semibold text-muted">La fuente no publicó una tasa de referencia.</p>}
+      <div className="mt-3"><Sparkline values={values} id={sparkId} /></div>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-base pt-2 text-[11px] font-semibold text-secondary">
+        {hasBuySell ? (
+          <span className="flex flex-wrap gap-x-4 gap-y-0.5"><span>Compra <b className="tabular-nums text-primary">{money(rate.buy)}</b></span><span>Venta <b className="tabular-nums text-primary">{money(rate.sell)}</b></span></span>
+        ) : <span className="text-muted">Sin compra/venta publicada</span>}
+        <span className="text-muted">{count ? `${count} consultas` : 'Sin historial'}</span>
+      </div>
+    </button>
+  );
+});
 
 function RefreshCountdown({ target, onRefresh, loading }: { target: number | null; onRefresh: () => void; loading: boolean }) {
   const [now, setNow] = useState(() => Date.now());
@@ -177,6 +238,8 @@ export default function ExchangeRate() {
   const [period, setPeriod] = useState<Period>('7d');
   const [market, setMarket] = useState<'divisas' | 'crypto'>('divisas');
   const [selectedCode, setSelectedCode] = useState('');
+  /** La tabla «Ver consultas» solo se renderiza cuando el dueño la abre. */
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [nextRefreshAt, setNextRefreshAt] = useState<number | null>(null);
   const [rateSource, setRateSource] = useState<ExchangeRateSourceView>(() => describeExchangeRateSource(null));
   const inFlight = useRef(false);
@@ -300,29 +363,77 @@ export default function ExchangeRate() {
     return days === null ? 0 : Date.now() - days * 86400000;
   }, [period]);
 
-  const seriesFor = useCallback((rawCode: string) => {
-    const code = canonicalRateCode(rawCode);
-    return snapshots
-      .filter(item => Date.parse(item.capturedAt) >= since && item.rates[code] !== undefined)
-      .map(item => ({ timestamp: item.capturedAt, label: dateLabel(item.capturedAt, period === '24h'), value: item.rates[code] }));
+  /**
+   * Series por código calculadas UNA sola vez por (historial, período). Antes
+   * cada tarjeta filtraba y etiquetaba todo el historial en cada render (y dos
+   * veces por tarjeta, con `deltaFor` + `seriesFor`), construyendo decenas de
+   * miles de `Intl.DateTimeFormat`: el trabe al seleccionar moneda.
+   */
+  const seriesByCode = useMemo(() => {
+    const map = new Map<string, SeriesPoint[]>();
+    const timeOnly = period === '24h';
+    for (const item of snapshots) {
+      const at = Date.parse(item.capturedAt);
+      if (at < since) continue;
+      const label = dateLabel(item.capturedAt, timeOnly);
+      for (const code of Object.keys(item.rates)) {
+        const point: SeriesPoint = { timestamp: item.capturedAt, label, value: item.rates[code] };
+        const list = map.get(code);
+        if (list) list.push(point); else map.set(code, [point]);
+      }
+    }
+    return map;
   }, [snapshots, since, period]);
 
-  const deltaFor = (rate: ExchangeRate): Delta => {
-    const code = canonicalRateCode(rate.code);
-    const values = seriesFor(code);
-    if (values.length >= 2) return computeDelta(values[values.length - 1].value, values[0].value);
-    const current = rateNumber(rate);
-    const previous = [...snapshots].reverse().find(item => item.capturedAt < (payload?.capturedAt || '') && item.rates[code] !== undefined)?.rates[code];
-    return computeDelta(current, previous);
-  };
+  /** Búsqueda O(1) de la serie de un código; nunca crea arrays por render. */
+  const seriesFor = useCallback((rawCode: string): SeriesPoint[] => seriesByCode.get(canonicalRateCode(rawCode)) ?? EMPTY_SERIES, [seriesByCode]);
 
-  const chart = selected ? seriesFor(selected.code) : [];
+  /** Deltas por código precalculados: las tarjetas no recomputan series. */
+  const deltasByCode = useMemo(() => {
+    const map = new Map<string, Delta>();
+    for (const rate of visibleRates) {
+      const code = canonicalRateCode(rate.code);
+      const series = seriesByCode.get(code);
+      if (series && series.length >= 2) {
+        map.set(code, computeDelta(series[series.length - 1].value, series[0].value));
+        continue;
+      }
+      const current = rateNumber(rate);
+      const previous = [...snapshots].reverse().find(item => item.capturedAt < (payload?.capturedAt || '') && item.rates[code] !== undefined)?.rates[code];
+      map.set(code, computeDelta(current, previous));
+    }
+    return map;
+  }, [visibleRates, seriesByCode, snapshots, payload?.capturedAt]);
+
+  const deltaFor = useCallback((rate: ExchangeRate): Delta => deltasByCode.get(canonicalRateCode(rate.code)) ?? null, [deltasByCode]);
+
+  /** Valores decimados para las mini-gráficas de cada tarjeta. */
+  const sparkValuesByCode = useMemo(() => {
+    const map = new Map<string, number[]>();
+    for (const [code, series] of seriesByCode) map.set(code, decimateSeries(series, SPARK_MAX_POINTS).map(point => point.value));
+    return map;
+  }, [seriesByCode]);
+
+  /** Total de consultas por código (el conteo real, sin decimar). */
+  const seriesCountByCode = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const [code, series] of seriesByCode) map.set(code, series.length);
+    return map;
+  }, [seriesByCode]);
+
+  const handleSelect = useCallback((code: string) => { setSelectedCode(code); }, []);
+
+  const chart = selected ? seriesFor(selected.code) : EMPTY_SERIES;
+  /** El gráfico grande también se decima: recharts con miles de puntos traba el APK. */
+  const chartData = useMemo(() => decimateSeries(chart, CHART_MAX_POINTS), [chart]);
   const selectedDelta = selected ? deltaFor(selected) : null;
   const selectedStats = useMemo(() => {
     if (!chart.length) return null;
     const values = chart.map(item => item.value);
     return { min: Math.min(...values), max: Math.max(...values), first: values[0], last: values[values.length - 1] };
   }, [chart]);
+  /** La tabla muestra las consultas más recientes y solo se renderiza abierta. */
+  const tableRows = useMemo(() => chart.slice(-HISTORY_TABLE_MAX_ROWS).reverse(), [chart]);
   const hasBuySell = visibleRates.some(rate => rate.buy !== undefined || rate.sell !== undefined);
   const cacheFreshMs = rateSource.kind === 'hub' ? CACHE_FRESH_MS : CLOUD_FRESH_MS;
   const stale = fromCache || Boolean(payload?.stale) || Boolean(payload && Date.now() - Date.parse(payload.capturedAt) >= cacheFreshMs);
@@ -331,8 +442,7 @@ export default function ExchangeRate() {
   const globalDelta = useMemo(() => {
     const usd = visibleRates.find(rate => rate.code === 'USD');
     return usd ? deltaFor(usd) : null;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visibleRates, snapshots, since, payload?.capturedAt]);
+  }, [visibleRates, deltaFor]);
 
   const periodLabel = period === '24h' ? '24 h' : period === '7d' ? '7 días' : period === '30d' ? '30 días' : 'todo el historial';
 
@@ -412,32 +522,19 @@ export default function ExchangeRate() {
             )}
 
             <section aria-label="Cotizaciones disponibles" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {visibleRates.map(rate => {
-                const delta = deltaFor(rate);
-                const values = seriesFor(rate.code).map(item => item.value);
-                const shown = rateNumber(rate);
-                const active = selected?.code === rate.code;
-                return (
-                  <button key={rate.code} type="button" aria-pressed={active} onClick={() => setSelectedCode(rate.code)} className={'group min-w-0 rounded-2xl border bg-secondary p-4 text-left shadow-xs transition-all hover:-translate-y-0.5 hover:border-violet-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-violet-600 ' + (active ? 'border-violet-500 ring-1 ring-violet-500' : 'border-base')}>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="text-lg font-black leading-none text-primary">{rate.code}</p>
-                        <p className="mt-1 truncate text-[11px] font-semibold text-secondary" title={rateTitle(rate)}>{rateTitle(rate)}</p>
-                      </div>
-                      <TrendPill delta={delta} compact />
-                    </div>
-                    <p className="mt-3 text-3xl font-black tabular-nums leading-none text-primary">{money(shown)} <span className="text-xs font-semibold text-muted">CUP</span></p>
-                    {shown === undefined && <p className="mt-1 text-[11px] font-semibold text-muted">La fuente no publicó una tasa de referencia.</p>}
-                    <div className="mt-3"><Sparkline values={values} id={`${cardIdPrefix}-${rate.code}`} /></div>
-                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 border-t border-base pt-2 text-[11px] font-semibold text-secondary">
-                      {hasBuySell ? (
-                        <span className="flex flex-wrap gap-x-4 gap-y-0.5"><span>Compra <b className="tabular-nums text-primary">{money(rate.buy)}</b></span><span>Venta <b className="tabular-nums text-primary">{money(rate.sell)}</b></span></span>
-                      ) : <span className="text-muted">Sin compra/venta publicada</span>}
-                      <span className="text-muted">{values.length ? `${values.length} consultas` : 'Sin historial'}</span>
-                    </div>
-                  </button>
-                );
-              })}
+              {visibleRates.map(rate => (
+                <RateCard
+                  key={rate.code}
+                  rate={rate}
+                  active={selected?.code === rate.code}
+                  delta={deltaFor(rate)}
+                  values={sparkValuesByCode.get(rate.code) ?? []}
+                  count={seriesCountByCode.get(rate.code) ?? 0}
+                  hasBuySell={hasBuySell}
+                  sparkId={`${cardIdPrefix}-${rate.code}`}
+                  onSelect={handleSelect}
+                />
+              ))}
             </section>
 
             {selected && (
@@ -477,9 +574,9 @@ export default function ExchangeRate() {
                 )}
 
                 <div className="mt-5 h-72" role="img" aria-label={`Evolución de ${selected.code}: ${chart.length} consultas; los valores exactos están en la tabla de historial.`}>
-                  {chart.length >= 2 ? (
+                  {chartData.length >= 2 ? (
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={chart} margin={{ top: 8, right: 16, left: 10, bottom: 8 }}>
+                      <AreaChart data={chartData} margin={{ top: 8, right: 16, left: 10, bottom: 8 }}>
                         <defs>
                           <linearGradient id="palmyra-rate-fill" x1="0" x2="0" y1="0" y2="1">
                             <stop offset="0%" stopColor="#7C4DDE" stopOpacity="0.28" />
@@ -490,7 +587,7 @@ export default function ExchangeRate() {
                         <XAxis dataKey="label" tick={{ fontSize: 12 }} minTickGap={40} tickLine={false} axisLine={{ stroke: 'var(--border-base)' }} />
                         <YAxis domain={['auto', 'auto']} width={70} tick={{ fontSize: 12 }} tickLine={false} axisLine={false} />
                         <Tooltip labelFormatter={(_, items) => items[0]?.payload?.timestamp ? dateLabel(items[0].payload.timestamp) : ''} formatter={value => [`${money(Number(value))} CUP`, 'Referencia']} contentStyle={{ background: 'var(--bg-secondary)', color: 'var(--text-primary)', borderRadius: 12, border: '1px solid var(--border-base)' }} />
-                        <Area type="monotone" dataKey="value" stroke="#7C4DDE" strokeWidth={2.5} fill="url(#palmyra-rate-fill)" dot={chart.length < 20 ? { r: 2.5, fill: '#7C4DDE', strokeWidth: 0 } : false} activeDot={{ r: 4 }} isAnimationActive={false} />
+                        <Area type="monotone" dataKey="value" stroke="#7C4DDE" strokeWidth={2.5} fill="url(#palmyra-rate-fill)" dot={chartData.length < 20 ? { r: 2.5, fill: '#7C4DDE', strokeWidth: 0 } : false} activeDot={{ r: 4 }} isAnimationActive={false} />
                       </AreaChart>
                     </ResponsiveContainer>
                   ) : (
@@ -503,13 +600,14 @@ export default function ExchangeRate() {
                 </div>
 
                 {chart.length > 0 && (
-                  <details className="mt-4 border-t border-base pt-3">
+                  <details className="mt-4 border-t border-base pt-3" onToggle={event => setHistoryOpen((event.currentTarget as HTMLDetailsElement).open)}>
                     <summary className="min-h-11 cursor-pointer py-3 text-sm font-semibold text-primary">Ver consultas ({chart.length})</summary>
+                    {historyOpen && (
                     <div className="max-h-64 overflow-auto custom-scrollbar">
                       <table className="w-full text-left text-sm">
                         <thead><tr className="text-muted"><th className="p-2">Fecha de consulta</th><th className="p-2 text-right">CUP por unidad</th><th className="p-2 text-right">Cambio</th></tr></thead>
                         <tbody>
-                          {chart.slice().reverse().map((item, index, list) => {
+                          {tableRows.map((item, index, list) => {
                             const previous = list[index + 1]?.value;
                             const delta = computeDelta(item.value, previous);
                             return (
@@ -522,7 +620,9 @@ export default function ExchangeRate() {
                           })}
                         </tbody>
                       </table>
+                      {chart.length > tableRows.length && <p className="p-2 text-[11px] font-semibold text-muted">Se muestran las {tableRows.length} consultas más recientes de {chart.length}.</p>}
                     </div>
+                    )}
                   </details>
                 )}
               </section>
@@ -570,7 +670,7 @@ export default function ExchangeRate() {
           </section>
         )}
 
-        <p className="text-xs leading-5 text-muted">Fuente: elTOQUE · Referencias del mercado informal, no tasas oficiales ni garantía de una operación. Compra y venta solo aparecen si la API las publica. La fecha indicada corresponde a la consulta, no necesariamente al momento de publicación del proveedor. La tasa se consulta automáticamente cada 45 minutos por Wi-Fi y esta pantalla se revisa con esa misma cadencia. Sin conexión se conserva la última tasa válida y se indica su antigüedad. Si no hay ninguna guardada, se muestran tus tasas manuales de Configuración → Monedas y tasas; si tampoco las has guardado, esta pantalla te indica cómo hacerlo.</p>
+        <p className="text-xs leading-5 text-muted">Fuente: elTOQUE · Referencias del mercado informal, no tasas oficiales ni garantía de una operación. Compra y venta solo aparecen si la API las publica. La fecha indicada corresponde a la consulta, no necesariamente al momento de publicación del proveedor. La tasa se consulta automáticamente cada 20 minutos. Sin conexión se conserva la última tasa válida y se indica su antigüedad. Si no hay ninguna guardada, se muestran tus tasas manuales de Configuración → Monedas y tasas; si tampoco las has guardado, esta pantalla te indica cómo hacerlo.</p>
       </main>
     </OperationsSurface>
   );

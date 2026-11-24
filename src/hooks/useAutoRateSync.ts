@@ -1,13 +1,12 @@
 import { useEffect } from 'react';
 import { runAutoRateSync } from '../services/autoExchangeRate';
-import { RATE_TARGET_MS } from '../services/lanHub/rateScheduler';
 import { getHubSession } from '../services/lanHub/session';
 
 /**
- * Revisión normal: la misma cadencia del hub (45 min). No hay bucles de 25
- * minutos ni consultas propias a elTOQUE desde el renderer.
+ * Cadencia pedida por el dueño: las consultas de tasa se hacen cada 20
+ * minutos. El hub LAN conserva su propia cadencia interna (45 min).
  */
-export const AUTO_RATE_CHECK_MS = RATE_TARGET_MS;
+export const AUTO_RATE_CHECK_MS = 20 * 60 * 1000;
 /** Reintento de la LAN mientras el hub no responda (no toca Internet). */
 export const AUTO_RATE_HUB_RETRY_MS = 10 * 60 * 1000;
 const FIRST_CHECK_DELAY_MS = 6000;

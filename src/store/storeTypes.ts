@@ -57,8 +57,8 @@ export interface AppState {
   adjustInventory: (productId: string, branchId: string, delta: number, variantLabel?: string, minQuantity?: number) => void;
   setInventoryQuantity: (productId: string, branchId: string, quantity: number, variantLabel?: string, minQuantity?: number) => void;
   transferProductsBulk: (fromBranchId: string, toBranchId: string, items: { productId: string; quantity: number; variant?: string }[]) => Promise<{ success: boolean; error?: string }>;
-  receiveTransfer: (operationIds: string[]) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
-  cancelTransfer: (operationIds: string[]) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
+  receiveTransfer: (operationIds: string[]) => Promise<{ success: boolean; pending?: boolean; error?: string; warning?: string; alreadyApplied?: boolean }>;
+  cancelTransfer: (operationIds: string[]) => Promise<{ success: boolean; pending?: boolean; error?: string; warning?: string; alreadyApplied?: boolean }>;
   
   // Carrito POS
   cart: CartItem[];

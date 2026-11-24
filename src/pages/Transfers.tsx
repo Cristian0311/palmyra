@@ -342,14 +342,15 @@ export default function Transfers() {
         : await cancelTransfer(operationIds);
       if (result.success) {
         addNotification(
-          result.pending
-            ? (action === 'receive'
-                ? 'Recepción guardada. Se confirmará con la nube al recuperar conexión.'
-                : 'Cancelación guardada. Se confirmará con la nube al recuperar conexión.')
-            : (action === 'receive'
-                ? 'Mercancía recibida y sumada al almacén de destino.'
-                : 'Traslado cancelado y mercancía devuelta al origen.'),
-          result.pending ? 'info' : 'success'
+          result.warning ||
+            (result.pending
+              ? (action === 'receive'
+                  ? 'Recepción guardada. Se confirmará con la nube al recuperar conexión.'
+                  : 'Cancelación guardada. Se confirmará con la nube al recuperar conexión.')
+              : (action === 'receive'
+                  ? 'Mercancía recibida y sumada al almacén de destino.'
+                  : 'Traslado cancelado y mercancía devuelta al origen.')),
+          result.warning ? 'warning' : (result.pending ? 'info' : 'success')
         );
       } else {
         addNotification(result.error || 'No se pudo completar la operación.', 'error');

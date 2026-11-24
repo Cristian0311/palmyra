@@ -30,6 +30,11 @@ import {
 import { addSyncLog } from '../../utils/syncLogger';
 import { getActiveTenant } from '../tenant';
 import { filterLocalTransfers } from '../localDb/repositories';
+import {
+  settleTransferRows,
+  classifyTransferResolutionError,
+  registerTransferStatusOverrides
+} from '../cloudSync/transferHistory';
 import { reconcileBankCanonical } from './reconcileBank';
 import { replaceWarehouseInventory, replaceWarehousesInventory } from './reconcileInventory';
 import { reconcileSupplierReceiveCanonical } from './reconcileSupplierReceive';
@@ -799,9 +804,57 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
         ? data.operationIds.map((id: any) => String(id || '')).filter(Boolean)
         : [];
       if (!ids.length) throw new PermanentSyncError('Recepción de traslado sin operaciones.');
+      // Clasifica el resultado de cada operación: los errores terminales
+      // (la nube ya resolvió el traslado) NO se reintentan: la reconciliación
+      // canónica de abajo trae el estado y el stock reales. Solo un fallo
+      // transitorio conserva el ítem en cola (throw → reintento).
+      const postedIds: string[] = [];
+      const cancelledIds: string[] = [];
+      const settledIds: string[] = [];
+      const retryableIds: string[] = [];
       for (const id of ids) {
         const res = await callReceiveTransferRPC(id);
-        if (!res.success) throw new Error(res.error || 'No se pudo confirmar la recepción del traslado.');
+        if (res.success) {
+          settledIds.push(id);
+          if (res.data?.already_existed && String(res.data?.status) === 'posted') postedIds.push(id);
+        } else {
+          const kind = classifyTransferResolutionError(res.error || '', res.errorCode);
+          if (kind === 'cancelled') {
+            settledIds.push(id);
+            cancelledIds.push(id);
+          } else if (kind === 'not_found') {
+            settledIds.push(id);
+          } else if (kind === 'retriable') {
+            retryableIds.push(id);
+          }
+          // 'not_in_transit': estado inesperado; la reconciliación del
+          // historial mostrará el estado real sin reintentos infinitos.
+        }
+      }
+      if (retryableIds.length) {
+        throw new Error('Recepción pendiente: la nube no confirmó ' + retryableIds.length + ' operación(es). Se reintentará.');
+      }
+      if (postedIds.length) registerTransferStatusOverrides(postedIds, 'completed');
+      if (settledIds.length) {
+        useStore.setState(state => {
+          // Sin crédito local: la nube ya movió el stock (o el traslado no
+          // existe); el pull de inventario de abajo aplica la verdad canónica.
+          const received = settleTransferRows(
+            state.transfers || [],
+            state.inventory || [],
+            settledIds.filter(id => !cancelledIds.includes(id)),
+            'completed',
+            { creditStock: false, creditSide: 'toBranchId' }
+          );
+          const cancelled = settleTransferRows(
+            received.transfers,
+            received.inventory,
+            cancelledIds,
+            'cancelled',
+            { creditStock: false, creditSide: 'toBranchId' }
+          );
+          return { transfers: cancelled.transfers, inventory: cancelled.inventory };
+        });
       }
       const branchIds: string[] = Array.from(new Set<string>(
         (Array.isArray(data?.rows) ? data.rows : []).map((row: any): string => String(row?.branchId || '')).filter(Boolean)
@@ -828,9 +881,37 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
         ? data.operationIds.map((id: any) => String(id || '')).filter(Boolean)
         : [];
       if (!ids.length) throw new PermanentSyncError('Cancelación de traslado sin operaciones.');
+      const settledIds: string[] = [];
+      const retryableIds: string[] = [];
       for (const id of ids) {
         const res = await callCancelTransferRPC(id);
-        if (!res.success) throw new Error(res.error || 'No se pudo cancelar el traslado pendiente.');
+        if (res.success) {
+          settledIds.push(id);
+        } else {
+          const kind = classifyTransferResolutionError(res.error || '', res.errorCode);
+          if (kind === 'not_found') {
+            settledIds.push(id);
+          } else if (kind === 'retriable') {
+            retryableIds.push(id);
+          }
+          // 'not_in_transit' (posted de una sola fase): la nube no admite la
+          // cancelación; el historial canónico reconcilia el estado visible.
+        }
+      }
+      if (retryableIds.length) {
+        throw new Error('Cancelación pendiente: la nube no confirmó ' + retryableIds.length + ' operación(es). Se reintentará.');
+      }
+      if (settledIds.length) {
+        useStore.setState(state => {
+          const settled = settleTransferRows(
+            state.transfers || [],
+            state.inventory || [],
+            settledIds,
+            'cancelled',
+            { creditStock: false, creditSide: 'fromBranchId' }
+          );
+          return { transfers: settled.transfers, inventory: settled.inventory };
+        });
       }
       const branchIds: string[] = Array.from(new Set<string>(
         (Array.isArray(data?.rows) ? data.rows : []).map((row: any): string => String(row?.branchId || '')).filter(Boolean)

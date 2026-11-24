@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { RefreshCw, X } from "lucide-react";
 import { isPalmyraApp } from "../lib/install";
-import { PRODUCT_DISPLAY_VERSION, PRODUCT_VERSION } from "../lib/productVersion";
+import { PRODUCT_VERSION } from "../lib/productVersion";
 import { useAppUpdateRuntime } from "../hooks/useAppUpdateRuntime";
 import { useDesktopUpdate } from "../hooks/useDesktopUpdate";
 import { applyAndroidUpdate } from "../services/updates/android";
@@ -91,6 +91,37 @@ function percentOf(detail: UpdateProgressDetail | null) {
 }
 
 /**
+ * Titular del aviso. Muestra la versión REAL disponible (la del manifiesto),
+ * nunca la etiqueta de versión de esta instalación.
+ */
+export function updateBannerHeadline(version: string): string {
+  return version
+    ? `La versión ${version} de PALMYRA está lista.`
+    : "Una nueva versión de PALMYRA está lista.";
+}
+
+/**
+ * Etiqueta del botón principal del aviso de escritorio. Nunca dice
+ * «Reiniciando…» mientras se descarga o se verifica: solo cuando el
+ * instalador ya se lanzó de verdad.
+ */
+export function desktopBannerPrimaryLabel(input: {
+  installing: boolean;
+  status: string;
+  percent: number;
+}): string {
+  const { installing, status, percent } = input;
+  switch (status) {
+    case "available": return `Verificando… ${percent}%`;
+    case "downloading": return `Descargando… ${percent}%`;
+    case "downloaded": return installing ? "Reiniciando…" : "Reiniciar y actualizar";
+    case "error":
+    case "blocked": return "Reintentar";
+    default: return installing ? "Reiniciando…" : `Preparando… ${percent}%`;
+  }
+}
+
+/**
  * Tarjeta compartida por las tres superficies. El botón principal solo se
  * habilita cuando la acción es posible; el resto del tiempo muestra progreso.
  */
@@ -121,7 +152,7 @@ function UpdateCard(props: {
               Actualización disponible
             </p>
             <p className="mt-0.5 text-[11px] font-bold leading-4 text-slate-700 dark:text-slate-200">
-              {props.version ? `La versión ${PRODUCT_DISPLAY_VERSION} de PALMYRA está lista.` : "Una nueva versión de PALMYRA está lista."}
+              {updateBannerHeadline(props.version)}
             </p>
 
             {props.applying && (
@@ -463,22 +494,63 @@ function DesktopUpdateBanner() {
   const { state, install, retry } = useDesktopUpdate();
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState("");
+  const applyingRef = useRef(false);
+  const watchdogRef = useRef<number | null>(null);
   const status = state?.status ?? "idle";
   const version = state?.version || state?.currentVersion || "";
   const percent = Math.min(100, Math.max(0, Math.round(state?.percent ?? 0)));
   const { hidden, dismiss } = useBannerDismissal(version);
 
+  // Si la descarga termina en error o bloqueo, el botón se libera aunque el
+  // instalador no haya respondido.
+  useEffect(() => {
+    if (status === "error" || status === "blocked") {
+      applyingRef.current = false;
+      setApplying(false);
+      if (watchdogRef.current !== null) {
+        window.clearTimeout(watchdogRef.current);
+        watchdogRef.current = null;
+      }
+    }
+  }, [status]);
+
+  useEffect(() => () => {
+    if (watchdogRef.current !== null) window.clearTimeout(watchdogRef.current);
+  }, []);
+
   const applyUpdate = useCallback(async () => {
+    if (applyingRef.current) return;
+    applyingRef.current = true;
     setError("");
     setApplying(true);
+    // Si quitAndInstall no reinicia la app, el botón se libera solo.
+    if (watchdogRef.current !== null) window.clearTimeout(watchdogRef.current);
+    watchdogRef.current = window.setTimeout(() => {
+      watchdogRef.current = null;
+      applyingRef.current = false;
+      setApplying(false);
+      setError("El instalador no respondió. Reinicia PALMYRA manualmente o inténtalo de nuevo.");
+    }, APPLY_WATCHDOG_MS);
     try {
       const result = await install();
       if (!result.ok) {
+        applyingRef.current = false;
         setApplying(false);
+        if (watchdogRef.current !== null) {
+          window.clearTimeout(watchdogRef.current);
+          watchdogRef.current = null;
+        }
         setError(result.error || "No se pudo iniciar el instalador. Reintenta en unos minutos.");
       }
+      // Éxito: la app se reinicia sola; el watchdog cubre el caso raro de que
+      // quitAndInstall no arranque.
     } catch {
+      applyingRef.current = false;
       setApplying(false);
+      if (watchdogRef.current !== null) {
+        window.clearTimeout(watchdogRef.current);
+        watchdogRef.current = null;
+      }
       setError("No se pudo iniciar el instalador. Reintenta en unos minutos.");
     }
   }, [install]);
@@ -507,15 +579,7 @@ function DesktopUpdateBanner() {
       message={message}
       error={status === "error" || status === "blocked" ? "" : error}
       disabled={status !== "downloaded" && status !== "error" && status !== "blocked"}
-      primaryLabel={
-        applying
-          ? "Reiniciando…"
-          : status === "downloaded"
-            ? "Reiniciar y actualizar"
-            : status === "error" || status === "blocked"
-              ? "Reintentar"
-              : `Preparando… ${percent}%`
-      }
+      primaryLabel={desktopBannerPrimaryLabel({ installing: applying, status, percent })}
       onPrimary={() => {
         if (status === "error" || status === "blocked") {
           void retry();

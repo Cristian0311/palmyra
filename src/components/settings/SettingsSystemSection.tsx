@@ -44,6 +44,13 @@ const DESKTOP_SHELL =
 const SURFACE_LABEL = ANDROID_SHELL ? "Android" : DESKTOP_SHELL ? "Windows (escritorio)" : "Web";
 
 const APPLY_WATCHDOG_MS = 3 * 60_000;
+/** La comprobación de escritorio no puede quedarse «Comprobando…» para siempre. */
+const DESKTOP_CHECK_WATCHDOG_MS = 90_000;
+/**
+ * Tras instalar en escritorio la app debe reiniciarse sola; si quitAndInstall
+ * no arranca, el botón se libera a los 60 s en lugar de quedar «Actualizando…».
+ */
+const DESKTOP_INSTALL_WATCHDOG_MS = 60_000;
 
 type Tone = "ok" | "warn" | "bad" | "idle";
 
@@ -65,7 +72,7 @@ const PHASE_COPY: Record<AppUpdatePhase, { label: string; tone: Tone }> = {
   error: { label: "No se pudo comprobar; inténtalo más tarde", tone: "bad" }
 };
 
-function desktopCopy(status: string, percent: number): { label: string; tone: Tone } {
+export function desktopCopy(status: string, percent: number): { label: string; tone: Tone } {
   switch (status) {
     case "checking": return { label: "Comprobando…", tone: "idle" };
     case "available": return { label: "Preparando la descarga…", tone: "warn" };
@@ -77,6 +84,16 @@ function desktopCopy(status: string, percent: number): { label: string; tone: To
     case "unsupported": return { label: "Esta instalación no permite actualizar desde la app", tone: "idle" };
     default: return { label: "Sin comprobar todavía", tone: "idle" };
   }
+}
+
+/**
+ * Texto del botón de aplicar según superficie. Puro para poder probarlo sin DOM.
+ * Nunca dice «Actualizando…» si la instalación terminó o falló.
+ */
+export function applyButtonLabel(applying: boolean, desktopStatus: string): string {
+  if (applying) return "Actualizando…";
+  if (desktopStatus === "downloaded") return "Reiniciar y actualizar";
+  return "Actualizar ahora";
 }
 
 function formatDay(iso?: string | null): string {
@@ -349,7 +366,15 @@ export function SettingsSystemSection() {
   const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
   const [companyPlan, setCompanyPlan] = useState<SaaSContext["subscription"] | null>(null);
+  const [desktopChecking, setDesktopChecking] = useState(false);
   const watchdogRef = useRef<number | null>(null);
+  // React 18 procesa varios clics en el mismo tick: el estado no basta para
+  // evitar el doble disparo; los refs sí.
+  const applyingRef = useRef(false);
+  const checkingRef = useRef(false);
+  const desktopCheckWatchdogRef = useRef<number | null>(null);
+  const desktopInstallWatchdogRef = useRef<number | null>(null);
+  const webApplyWatchdogRef = useRef<number | null>(null);
 
   // El lease del equipo puede no estar emitido todavía aunque la empresa tenga
   // un plan pagado en la nube: se muestra el plan real mientras el lease llega.
@@ -395,21 +420,30 @@ export function SettingsSystemSection() {
     };
   }, []);
 
+  const desktopStatus = desktop.state?.status ?? (desktop.supported ? "idle" : "unsupported");
+  const desktopPercent = Math.min(100, Math.max(0, Math.round(desktop.state?.percent ?? 0)));
+  const desktopVersion = desktop.state?.version || "";
+  const androidVersion = app.state.phase === "available" ? app.state.result?.version || "" : "";
+  const androidArtifact = app.state.artifact;
+
   useEffect(() => {
     if (!ANDROID_SHELL) return;
     const onProgress = (event: Event) => {
       const detail = (event as CustomEvent<{ percent?: number }>).detail;
       const percent = Math.min(100, Math.max(0, Math.round(Number(detail?.percent) || 0)));
+      applyingRef.current = true;
       setApplying(true);
       setProgress({ percent, message: "Descargando la actualización…" });
     };
     const onInstalled = () => {
+      applyingRef.current = false;
       if (watchdogRef.current !== null) { window.clearTimeout(watchdogRef.current); watchdogRef.current = null; }
       setApplying(false);
       setActionError("");
       setProgress({ percent: 100, message: "Actualización instalada. Reiniciando…" });
     };
     const onFailed = () => {
+      applyingRef.current = false;
       if (watchdogRef.current !== null) { window.clearTimeout(watchdogRef.current); watchdogRef.current = null; }
       setApplying(false);
       setProgress(null);
@@ -426,11 +460,85 @@ export function SettingsSystemSection() {
     };
   }, []);
 
-  const desktopStatus = desktop.state?.status ?? (desktop.supported ? "idle" : "unsupported");
-  const desktopPercent = Math.min(100, Math.max(0, Math.round(desktop.state?.percent ?? 0)));
-  const desktopVersion = desktop.state?.version || "";
-  const androidVersion = app.state.phase === "available" ? app.state.result?.version || "" : "";
-  const androidArtifact = app.state.artifact;
+  // Web/PWA: el flujo de main.tsx emite progreso durante la aplicación; se
+  // refleja aquí para que el botón nunca mienta («Actualizando…» con barra).
+  useEffect(() => {
+    if (ANDROID_SHELL || DESKTOP_SHELL) return;
+    const onProgress = (event: Event) => {
+      const detail = (event as CustomEvent<{ percent?: number; message?: string }>).detail;
+      if (!detail) return;
+      const percent = Math.min(100, Math.max(0, Math.round(Number(detail.percent) || 0)));
+      applyingRef.current = true;
+      setApplying(true);
+      setProgress({ percent, message: detail.message || "Actualizando…" });
+    };
+    const onCleared = () => {
+      applyingRef.current = false;
+      setApplying(false);
+      setProgress(null);
+    };
+    window.addEventListener("palmyra:update-progress", onProgress);
+    window.addEventListener("palmyra:update-cleared", onCleared);
+    return () => {
+      window.removeEventListener("palmyra:update-progress", onProgress);
+      window.removeEventListener("palmyra:update-cleared", onCleared);
+    };
+  }, []);
+
+  // Escritorio: «Comprobando…» sigue al estado real del proceso principal y
+  // nunca puede quedarse fijo más de DESKTOP_CHECK_WATCHDOG_MS.
+  useEffect(() => {
+    if (!DESKTOP_SHELL) return;
+    if (desktopStatus === "checking") {
+      setDesktopChecking(true);
+      if (desktopCheckWatchdogRef.current === null) {
+        desktopCheckWatchdogRef.current = window.setTimeout(() => {
+          desktopCheckWatchdogRef.current = null;
+          setDesktopChecking(false);
+        }, DESKTOP_CHECK_WATCHDOG_MS);
+      }
+    } else if (desktopStatus !== "idle") {
+      if (desktopCheckWatchdogRef.current !== null) {
+        window.clearTimeout(desktopCheckWatchdogRef.current);
+        desktopCheckWatchdogRef.current = null;
+      }
+      setDesktopChecking(false);
+    }
+  }, [desktopStatus]);
+
+  // Escritorio: si la descarga/instalación termina en error o bloqueo, se
+  // libera el botón aunque el instalador no haya respondido.
+  useEffect(() => {
+    if (!DESKTOP_SHELL) return;
+    if (desktopStatus === "error" || desktopStatus === "blocked") {
+      applyingRef.current = false;
+      setApplying(false);
+      setProgress(null);
+      if (desktopInstallWatchdogRef.current !== null) {
+        window.clearTimeout(desktopInstallWatchdogRef.current);
+        desktopInstallWatchdogRef.current = null;
+      }
+    }
+  }, [desktopStatus]);
+
+  useEffect(
+    () => () => {
+      if (watchdogRef.current !== null) { window.clearTimeout(watchdogRef.current); watchdogRef.current = null; }
+      if (desktopCheckWatchdogRef.current !== null) {
+        window.clearTimeout(desktopCheckWatchdogRef.current);
+        desktopCheckWatchdogRef.current = null;
+      }
+      if (desktopInstallWatchdogRef.current !== null) {
+        window.clearTimeout(desktopInstallWatchdogRef.current);
+        desktopInstallWatchdogRef.current = null;
+      }
+      if (webApplyWatchdogRef.current !== null) {
+        window.clearTimeout(webApplyWatchdogRef.current);
+        webApplyWatchdogRef.current = null;
+      }
+    },
+    []
+  );
 
   const status = ANDROID_SHELL
     ? PHASE_COPY[app.state.phase]
@@ -438,7 +546,7 @@ export function SettingsSystemSection() {
       ? desktopCopy(desktopStatus, desktopPercent)
       : PHASE_COPY[app.state.phase];
   const availableVersion = ANDROID_SHELL || !DESKTOP_SHELL ? androidVersion : desktopVersion;
-  const busyChecking = app.state.phase === "checking" || desktopStatus === "checking";
+  const busyChecking = DESKTOP_SHELL ? desktopChecking : app.state.phase === "checking";
   const appUpdateError =
     !DESKTOP_SHELL &&
     (app.state.phase === "error" || app.state.phase === "blocked") &&
@@ -452,18 +560,36 @@ export function SettingsSystemSection() {
       : null;
 
   const checkNow = useCallback(() => {
+    // Guard contra doble disparo (React 18 agrupa clics; el estado no alcanza).
+    if (checkingRef.current) return;
     setActionError("");
     setNotice("");
     if (!ANDROID_SHELL && DESKTOP_SHELL) {
-      void desktop.checkNow().catch(() => {
-        setActionError("No se pudo comprobar. Revisa tu conexión a internet y vuelve a intentarlo.");
-      });
+      checkingRef.current = true;
+      setDesktopChecking(true);
+      void desktop
+        .checkNow()
+        .catch(() => {
+          setActionError("No se pudo comprobar. Revisa tu conexión a internet y vuelve a intentarlo.");
+        })
+        .finally(() => {
+          checkingRef.current = false;
+        });
       return;
     }
-    void app.checkNow();
+    checkingRef.current = true;
+    void app
+      .checkNow()
+      .catch(() => {
+        setActionError("No se pudo comprobar. Revisa tu conexión a internet y vuelve a intentarlo.");
+      })
+      .finally(() => {
+        checkingRef.current = false;
+      });
   }, [app, desktop]);
 
   const applyAndroid = useCallback(() => {
+    if (applyingRef.current) return;
     const version = androidVersion;
     if (!androidArtifact || version === "") {
       setActionError("Esta versión no publica un paquete para este equipo. Descarga la versión más reciente desde la web.");
@@ -471,11 +597,13 @@ export function SettingsSystemSection() {
     }
     setActionError("");
     setNotice("");
+    applyingRef.current = true;
     setApplying(true);
     setProgress({ percent: 2, message: "Preparando la actualización…" });
     if (watchdogRef.current !== null) window.clearTimeout(watchdogRef.current);
     watchdogRef.current = window.setTimeout(() => {
       watchdogRef.current = null;
+      applyingRef.current = false;
       setApplying(false);
       setProgress(null);
       setActionError("La actualización está tardando demasiado. Revisa tu conexión y vuelve a intentarlo.");
@@ -492,6 +620,7 @@ export function SettingsSystemSection() {
       { currentVersion: PRODUCT_VERSION }
     );
     if (!result.ok) {
+      applyingRef.current = false;
       if (watchdogRef.current !== null) { window.clearTimeout(watchdogRef.current); watchdogRef.current = null; }
       setApplying(false);
       setProgress(null);
@@ -500,22 +629,48 @@ export function SettingsSystemSection() {
   }, [androidArtifact, androidVersion]);
 
   const applyDesktop = useCallback(() => {
+    if (applyingRef.current) return;
     setActionError("");
     setNotice("");
     if (desktopStatus === "downloaded") {
+      applyingRef.current = true;
       setApplying(true);
+      setProgress({ percent: 100, message: "Reiniciando PALMYRA…" });
+      // Si quitAndInstall no reinicia la app, el botón se libera solo.
+      if (desktopInstallWatchdogRef.current !== null) window.clearTimeout(desktopInstallWatchdogRef.current);
+      desktopInstallWatchdogRef.current = window.setTimeout(() => {
+        desktopInstallWatchdogRef.current = null;
+        applyingRef.current = false;
+        setApplying(false);
+        setProgress(null);
+        setNotice("PALMYRA se reiniciará para aplicar la actualización.");
+      }, DESKTOP_INSTALL_WATCHDOG_MS);
       void desktop
         .install()
         .then(result => {
           if (!result.ok) {
+            applyingRef.current = false;
+            if (desktopInstallWatchdogRef.current !== null) {
+              window.clearTimeout(desktopInstallWatchdogRef.current);
+              desktopInstallWatchdogRef.current = null;
+            }
             setApplying(false);
+            setProgress(null);
             setActionError("No se pudo iniciar el instalador. Inténtalo de nuevo en unos minutos.");
             return;
           }
+          // Éxito: la app se reinicia sola; el watchdog cubre el caso raro de
+          // que quitAndInstall no arranque.
           setNotice("PALMYRA se reiniciará para aplicar la actualización.");
         })
         .catch(() => {
+          applyingRef.current = false;
+          if (desktopInstallWatchdogRef.current !== null) {
+            window.clearTimeout(desktopInstallWatchdogRef.current);
+            desktopInstallWatchdogRef.current = null;
+          }
           setApplying(false);
+          setProgress(null);
           setActionError("No se pudo iniciar el instalador. Inténtalo de nuevo en unos minutos.");
         });
       return;
@@ -528,6 +683,7 @@ export function SettingsSystemSection() {
   }, [desktop, desktopStatus]);
 
   const applyWeb = useCallback(() => {
+    if (applyingRef.current) return;
     setActionError("");
     setNotice("");
     const bridge = (window as Window & {
@@ -537,16 +693,40 @@ export function SettingsSystemSection() {
       setActionError("Esta versión no se puede aplicar sin recargar. Vuelve a abrir PALMYRA en unos segundos.");
       return;
     }
+    applyingRef.current = true;
     setApplying(true);
+    setProgress({ percent: 2, message: "Preparando la actualización…" });
+    if (webApplyWatchdogRef.current !== null) window.clearTimeout(webApplyWatchdogRef.current);
+    webApplyWatchdogRef.current = window.setTimeout(() => {
+      webApplyWatchdogRef.current = null;
+      applyingRef.current = false;
+      setApplying(false);
+      setProgress(null);
+      setActionError("La actualización está tardando demasiado. Revisa tu conexión y vuelve a intentarlo.");
+    }, APPLY_WATCHDOG_MS);
     void bridge()
       .then(outcome => {
         if (outcome === "up-to-date") {
+          applyingRef.current = false;
+          if (webApplyWatchdogRef.current !== null) {
+            window.clearTimeout(webApplyWatchdogRef.current);
+            webApplyWatchdogRef.current = null;
+          }
           setApplying(false);
+          setProgress(null);
           setNotice("Ya tienes la última versión publicada.");
         }
+        // "reloaded": la página se recargará sola; el progreso lo muestra el
+        // listener de palmyra:update-progress y el watchdog libera el botón.
       })
       .catch(() => {
+        applyingRef.current = false;
+        if (webApplyWatchdogRef.current !== null) {
+          window.clearTimeout(webApplyWatchdogRef.current);
+          webApplyWatchdogRef.current = null;
+        }
         setApplying(false);
+        setProgress(null);
         setActionError("No se pudo aplicar la actualización. Vuelve a abrir PALMYRA en unos segundos.");
       });
   }, []);
@@ -670,6 +850,13 @@ export function SettingsSystemSection() {
             </p>
           )}
 
+          {ANDROID_SHELL && app.state.phase === "available" && !androidArtifact && (
+            <p role="status" className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-2.5 text-sm font-semibold text-amber-800 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">
+              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              Esta versión no publica un paquete automático para Android. Descarga la versión más reciente desde la web.
+            </p>
+          )}
+
           {(progress || (DESKTOP_SHELL && (desktopStatus === "downloading" || desktopStatus === "available"))) && (
             <div className="space-y-1.5">
               <div className="h-2 w-full overflow-hidden rounded-full bg-subtle">
@@ -679,7 +866,7 @@ export function SettingsSystemSection() {
                 />
               </div>
               <p className="text-xs font-semibold text-muted">
-                {progress ? progress.message : `Descargando ${desktopPercent}%…`}
+                {progress ? progress.message : desktopCopy(desktopStatus, desktopPercent).label}
               </p>
             </div>
           )}
@@ -701,7 +888,7 @@ export function SettingsSystemSection() {
             <button
               type="button"
               onClick={checkNow}
-              disabled={busyChecking}
+              disabled={busyChecking || applying}
               className="flex h-11 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-violet-700 disabled:opacity-50"
             >
               <RefreshCw size={15} className={busyChecking ? "animate-spin" : undefined} aria-hidden="true" />
@@ -719,7 +906,7 @@ export function SettingsSystemSection() {
                 className="flex h-11 items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-emerald-700 disabled:opacity-50"
               >
                 <Download size={15} aria-hidden="true" />
-                {applying ? "Actualizando…" : desktopStatus === "downloaded" ? "Reiniciar y actualizar" : "Actualizar ahora"}
+                {applyButtonLabel(applying, desktopStatus)}
               </button>
             )}
           </div>

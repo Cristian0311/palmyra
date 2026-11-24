@@ -16,10 +16,170 @@
  * Nunca lanza: un fallo de red o de credenciales devuelve success:false y el
  * llamador conserva la copia local.
  */
-import type { InventoryTransfer } from "../../types";
+import type { InventoryTransfer, InventoryLevel } from "../../types";
 import { getSupabase } from "../../lib/supabase";
 import { getActiveTenant } from "../tenant";
 import { normalizeTransferStatus } from "../localDb/repositories";
+
+// ---------------------------------------------------------------------------
+// Asentamiento local de resoluciones (puro) y overrides de estado persistentes
+// ---------------------------------------------------------------------------
+// Compartidos por las acciones del store (inventoryActions) y por el
+// procesador de la cola offline (processQueueItem) sin crear ciclos de
+// importación: este módulo solo depende de tipos, lib/supabase, tenant y
+// localDb/repositories.
+
+type TransferStatus = InventoryTransfer["status"];
+
+/** Suma las cantidades de un lado del traslado al inventario local (pura). */
+function addTransferStockLocal(
+  inventory: readonly InventoryLevel[],
+  rows: InventoryTransfer[],
+  side: "fromBranchId" | "toBranchId"
+): InventoryLevel[] {
+  const next = [...inventory];
+  for (const row of rows) {
+    const branchId = row[side];
+    const quantity = Number(row.quantity || 0);
+    if (!branchId || !Number.isFinite(quantity) || quantity <= 0) continue;
+    const label = row.variantLabel && row.variantLabel !== "Producto Base" ? row.variantLabel : "";
+    const idx = next.findIndex(item =>
+      item.productId === row.productId && item.branchId === branchId && (item.variantLabel || "") === label
+    );
+    if (idx >= 0) {
+      next[idx] = { ...next[idx], quantity: Number(next[idx].quantity || 0) + quantity };
+    } else {
+      next.push({
+        id: crypto.randomUUID(),
+        productId: row.productId,
+        branchId,
+        variantLabel: label || undefined,
+        quantity,
+        minQuantity: 5
+      });
+    }
+  }
+  return next;
+}
+
+/**
+ * Asentamiento local IDEMPOTENTE de una resolución: solo toca filas con
+ * estado 'in_transit' y las marca una vez hacia `targetStatus`. Con
+ * `creditStock` y `creditSide` aplica el movimiento de stock local una sola
+ * vez; con `creditStock:false` solo cambia el estado visible (el stock ya
+ * fue resuelto por la nube y la reconciliación canónica traerá la verdad).
+ */
+export function settleTransferRows(
+  transfers: readonly InventoryTransfer[],
+  inventory: readonly InventoryLevel[],
+  ids: readonly string[],
+  targetStatus: TransferStatus,
+  options: { creditStock?: boolean; creditSide?: "fromBranchId" | "toBranchId" } = {}
+): { transfers: InventoryTransfer[]; inventory: InventoryLevel[]; changed: boolean } {
+  const idSet = new Set((ids || []).map(id => String(id || "")).filter(Boolean));
+  const rows = (transfers || []).filter(t =>
+    idSet.has(String(t.operationId || t.id)) && t.status === "in_transit"
+  );
+  const changed = rows.length > 0;
+  const nextTransfers = (transfers || []).map(t =>
+    idSet.has(String(t.operationId || t.id)) && t.status === "in_transit"
+      ? { ...t, status: targetStatus }
+      : t
+  );
+  const creditStock = options.creditStock !== false;
+  const base: InventoryLevel[] = [...(inventory || [])];
+  const nextInventory =
+    changed && creditStock && options.creditSide
+      ? addTransferStockLocal(base, rows, options.creditSide)
+      : base;
+  return { transfers: nextTransfers, inventory: nextInventory, changed };
+}
+
+/**
+ * Errores terminales del RPC de recepción/cancelación: reintentar el mismo
+ * payload jamás prosperará. Se distinguen para asentar el estado visible
+ * correcto (la nube ya resolvió la operación) en lugar de encolar y
+ * reintentar para siempre.
+ */
+export function classifyTransferResolutionError(
+  error: string | undefined | null,
+  errorCode?: string | null
+): "not_found" | "cancelled" | "not_in_transit" | "retriable" {
+  const code = String(errorCode || "");
+  if (code === "INVALID_OPERATION_ID") return "not_found";
+  const message = String(error || "");
+  if (/transfer_not_found/i.test(message)) return "not_found";
+  if (/transfer_cancelled/i.test(message)) return "cancelled";
+  if (/transfer_not_in_transit/i.test(message)) return "not_in_transit";
+  return "retriable";
+}
+
+/**
+ * Overrides persistentes de estado por identidad de traslado.
+ *
+ * Los traslados legacy 'posted' (una sola fase) ya tienen sus dos movimientos
+ * aplicados en la nube. `palmyra_receive_transfer` responde success con
+ * `status:'posted', already_existed:true` SIN mover el estado a 'received';
+ * el cliente asienta la recepción localmente y registra aquí la identidad
+ * para que la reconciliación del historial (posted → in_transit) no deshaga
+ * el cambio visible. El override solo aplica cuando la fila local está en
+ * 'in_transit' y persiste en localStorage para sobrevivir recargas hasta que
+ * la migración del servidor convierta posted → received (entonces es inerte).
+ */
+const TRANSFER_STATUS_OVERRIDE_KEY = "palmyra.transfer.statusOverrides.v1";
+
+const statusOverrides = new Map<string, TransferStatus>();
+
+function loadStatusOverrides(): void {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const raw = localStorage.getItem(TRANSFER_STATUS_OVERRIDE_KEY);
+    if (!raw) return;
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return;
+    for (const entry of parsed) {
+      const id = String((entry as any)?.id || "");
+      const status = (entry as any)?.status;
+      if (id && (status === "completed" || status === "cancelled")) {
+        statusOverrides.set(id, status as TransferStatus);
+      }
+    }
+  } catch {
+    // Almacenamiento no disponible o corrupto: el override vive solo en memoria.
+  }
+}
+
+function persistStatusOverrides(): void {
+  try {
+    if (typeof localStorage === "undefined") return;
+    const payload = Array.from(statusOverrides.entries()).map(([id, status]) => ({ id, status }));
+    localStorage.setItem(TRANSFER_STATUS_OVERRIDE_KEY, JSON.stringify(payload));
+  } catch {
+    // Sin persistencia disponible: se mantiene solo en memoria.
+  }
+}
+
+loadStatusOverrides();
+
+export function registerTransferStatusOverrides(
+  ids: readonly string[],
+  status: TransferStatus
+): void {
+  let changed = false;
+  for (const rawId of ids || []) {
+    const id = String(rawId || "");
+    if (!id) continue;
+    if (statusOverrides.get(id) !== status) {
+      statusOverrides.set(id, status);
+      changed = true;
+    }
+  }
+  if (changed) persistStatusOverrides();
+}
+
+export function getTransferStatusOverrides(): Map<string, TransferStatus> {
+  return new Map(statusOverrides);
+}
 
 export interface TransferHistoryOptions {
   /** Cliente inyectable (pruebas); sin él se usa getSupabase(). */
