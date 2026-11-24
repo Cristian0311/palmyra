@@ -49,7 +49,7 @@ export interface RunnerTimers {
 }
 
 export interface RunnerPull {
-  pullOnce(options?: { manual?: boolean }): Promise<PullOutcome>;
+  pullOnce(options?: { manual?: boolean; full?: boolean }): Promise<PullOutcome>;
 }
 
 export interface CloudSyncRunnerOptions {
@@ -74,7 +74,7 @@ export interface CloudSyncRunner {
   stop(): void;
   tick(options?: { manual?: boolean }): Promise<SyncOutcome | null>;
   /** Tick manual: ignora el presupuesto y fuerza una descarga si hay motor. */
-  syncNow(): Promise<CloudSyncTickResult>;
+  syncNow(options?: { full?: boolean }): Promise<CloudSyncTickResult>;
   readonly running: boolean;
   readonly lastStatus: CloudSyncRunnerStatus | null;
 }
@@ -182,7 +182,7 @@ export function createCloudSyncRunner(options: CloudSyncRunnerOptions): CloudSyn
    * Una subida y, si corresponde, una descarga. La descarga corre tras una
    * subida sin fallo; su motor decide la cadencia de 30 minutos.
    */
-  async function runTick(manual: boolean): Promise<CloudSyncTickResult> {
+  async function runTick(manual: boolean, full = false): Promise<CloudSyncTickResult> {
     const at = time();
     let online = false;
     try {
@@ -216,10 +216,11 @@ export function createCloudSyncRunner(options: CloudSyncRunnerOptions): CloudSyn
 
     let pullOutcome: PullOutcome | null = null;
     const pushStatus = outcome?.status;
-    const canPull = Boolean(pull) && (pushStatus === "synced" || pushStatus === "idle" || pushStatus === "throttled");
+    // `full` solo lo pide la autocuración del arranque: completa e ignora cursores.
+    const canPull = Boolean(pull) && (full || pushStatus === "synced" || pushStatus === "idle" || pushStatus === "throttled");
     if (canPull && pull) {
       try {
-        pullOutcome = await pull.pullOnce({ manual });
+        pullOutcome = await pull.pullOnce({ manual, full });
       } catch (error) {
         // La descarga nunca invalida el resultado de la subida.
         pullOutcome = {
@@ -245,15 +246,17 @@ export function createCloudSyncRunner(options: CloudSyncRunnerOptions): CloudSyn
 
   /**
    * Manual: ignora el presupuesto y el intervalo de subida, y fuerza que la
-   * descarga se intente en este tick. Si ya hay un tick en vuelo se reutiliza.
+   * descarga se intente en este tick. Con `full` la descarga es completa (sin
+   * cursor incremental), que es lo que usa la autocuración del arranque.
+   * Si ya hay un tick en vuelo se reutiliza.
    */
-  function syncNow(): Promise<CloudSyncTickResult> {
-    return execute(true);
+  function syncNow(options?: { full?: boolean }): Promise<CloudSyncTickResult> {
+    return execute(true, options?.full === true);
   }
 
-  function execute(manual: boolean): Promise<CloudSyncTickResult> {
+  function execute(manual: boolean, full = false): Promise<CloudSyncTickResult> {
     if (inflight) return inflight;
-    const task = runTick(manual);
+    const task = runTick(manual, full);
     inflight = task;
     // Se libera en ambos caminos; los llamadores conservan su resultado.
     const release = (): void => {

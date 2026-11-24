@@ -419,6 +419,33 @@ test("sin deviceId el rollout no es auditable y la evaluación es inválida", ()
   );
 });
 
+test("una versión más nueva de la misma minor también habilita el aviso", () => {
+  const base = {
+    currentVersion: "1.3.5",
+    shellVersion: "1.3.5",
+    deviceId: "device-1",
+    channel: "stable" as const
+  };
+
+  // Subir solo el patch basta: no se exige cambiar de minor ni de major.
+  assert.deepEqual(evaluateUpdate({ ...base, manifest: baseManifest({ version: "1.3.6" }) }), {
+    allowed: true,
+    reason: "newer"
+  });
+  assert.deepEqual(evaluateUpdate({ ...base, manifest: baseManifest({ version: "1.4.0" }) }), {
+    allowed: true,
+    reason: "newer"
+  });
+  assert.deepEqual(evaluateUpdate({ ...base, manifest: baseManifest({ version: "1.3.5" }) }), {
+    allowed: false,
+    reason: "up-to-date"
+  });
+  assert.deepEqual(evaluateUpdate({ ...base, manifest: baseManifest({ version: "1.3.4" }) }), {
+    allowed: false,
+    reason: "downgrade"
+  });
+});
+
 test("el shell mínimo bloquea clientes viejos y deja pasar a los nuevos", () => {
   const manifest = baseManifest({ version: "1.5.0", minShellVersion: "1.4.0" });
   const base = {

@@ -49,3 +49,6 @@ tests.log
 tests.err
 build.log
 build.err
+
+# Secretos locales (API keys, service role, claves de firma)
+.secrets/

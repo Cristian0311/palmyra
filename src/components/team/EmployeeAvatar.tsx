@@ -1,3 +1,4 @@
+import { UserRound } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
 const AVATAR_PALETTE = [
@@ -36,6 +37,8 @@ type Props = {
   active?: boolean;
   pending?: boolean;
   inShift?: boolean;
+  /** Foto del trabajador. Si falta, se muestran iniciales + icono de persona. */
+  photoUrl?: string | null;
   className?: string;
 };
 
@@ -51,6 +54,18 @@ const DOT_CLASS = {
   lg: 'h-3.5 w-3.5 -bottom-0.5 -right-0.5 border-2'
 };
 
+const PERSON_BADGE_CLASS = {
+  sm: 'h-3.5 w-3.5 -left-1 -top-1',
+  md: 'h-4 w-4 -left-1 -top-1',
+  lg: 'h-5 w-5 -left-1.5 -top-1.5'
+};
+
+const PERSON_ICON_CLASS = {
+  sm: 'h-2 w-2',
+  md: 'h-2.5 w-2.5',
+  lg: 'h-3 w-3'
+};
+
 export default function EmployeeAvatar({
   name,
   seed,
@@ -58,13 +73,14 @@ export default function EmployeeAvatar({
   active = true,
   pending = false,
   inShift = false,
+  photoUrl = null,
   className
 }: Props) {
   const gradient = employeeAvatarGradient(seed || name || 'palmyra');
   return (
     <span
       className={cn(
-        'relative inline-flex shrink-0 items-center justify-center bg-gradient-to-br font-black text-white shadow-sm ring-1 ring-black/5',
+        'relative inline-flex shrink-0 items-center justify-center overflow-visible bg-gradient-to-br font-black text-white shadow-sm ring-1 ring-black/5',
         gradient,
         SIZE_CLASS[size],
         !active && 'grayscale opacity-55',
@@ -72,7 +88,21 @@ export default function EmployeeAvatar({
       )}
       aria-hidden="true"
     >
-      {employeeInitials(name)}
+      {photoUrl ? (
+        <img src={photoUrl} alt={name} className="h-full w-full rounded-[inherit] object-cover" />
+      ) : (
+        employeeInitials(name)
+      )}
+      {!photoUrl && (
+        <span
+          className={cn(
+            'absolute grid place-items-center rounded-full bg-white text-violet-600 shadow-sm ring-1 ring-black/10 dark:bg-slate-900 dark:text-violet-300',
+            PERSON_BADGE_CLASS[size]
+          )}
+        >
+          <UserRound className={PERSON_ICON_CLASS[size]} strokeWidth={2.5} />
+        </span>
+      )}
       {(inShift || pending || !active) && (
         <span
           className={cn(

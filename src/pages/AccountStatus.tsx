@@ -43,12 +43,12 @@ export default function AccountStatus() {
   };
 
   return (
-    <main className="palmyra-scroll-page min-h-screen bg-[#F7F5FC] px-4 py-8 flex items-center justify-center">
-      <div className="w-full max-w-lg bg-white border border-violet-100 rounded-[2rem] shadow-xl p-7 sm:p-9 text-center">
+    <main className="palmyra-scroll-page min-h-[100dvh] bg-[#F7F5FC] px-4 py-8 flex items-start justify-center sm:items-center">
+      <div className="w-full min-w-0 max-w-xl bg-white border border-violet-100 rounded-2xl shadow-xl p-6 sm:p-9 text-center">
         <div className="w-16 h-16 mx-auto rounded-2xl bg-[#F0EBFA] text-amber-600 flex items-center justify-center">
           <AlertTriangle className="w-8 h-8" />
         </div>
-        <p className="text-[10px] font-black tracking-[0.18em] uppercase text-slate-400 mt-6">Estado de la cuenta</p>
+        <p className="mt-6 text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">Estado de la cuenta</p>
         <h1 className="text-2xl font-black text-[#21182F] mt-2">{suspended ? "Acceso suspendido" : "La empresa necesita activación"}</h1>
         <p className="text-sm text-[#6F647B] mt-3 leading-6">
           {suspended

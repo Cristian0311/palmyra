@@ -1225,7 +1225,7 @@ export default function Reports() {
                   key={f.id}
                   onClick={() => setMovementTypeFilter(f.id as any)}
                   className={cn(
-                    "px-2.5 py-1 rounded-lg text-[8px] font-black uppercase tracking-wider transition-all cursor-pointer",
+                    "min-h-11 sm:min-h-0 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer",
                     movementTypeFilter === f.id
                       ? "bg-[#6535C5] text-white shadow-xs"
                       : "bg-subtle text-secondary hover:text-primary"
@@ -1241,7 +1241,7 @@ export default function Reports() {
                 value={movementCurrencyFilter}
                 onChange={(e) => setMovementCurrencyFilter(e.target.value)}
                 aria-label="Filtrar movimientos por moneda"
-                className="px-2.5 py-1 bg-subtle border border-base rounded-lg text-[8px] font-black uppercase text-primary outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
+                className="min-h-11 px-2.5 py-1 bg-subtle border border-base rounded-lg text-[10px] font-black uppercase text-primary outline-none focus-visible:ring-2 focus-visible:ring-violet-500 cursor-pointer sm:min-h-0"
               >
                 <option value="all">Todas las Monedas</option>
                 {currencies.map(c => (
@@ -1267,7 +1267,7 @@ export default function Reports() {
                     <th scope="col" className="px-3 py-2.5 text-center">Tipo de Movimiento</th>
                     <th scope="col" className="px-3 py-2.5">Concepto / Descripción</th>
                     <th scope="col" className="px-3 py-2.5 text-right">Importe Moneda</th>
-                    <th scope="col" className="px-3 py-2.5 text-right">Equivalente CUP</th>
+                    <th scope="col" className="px-3 py-2.5 text-right">Equivalente {baseCurrency.code}</th>
                     <th scope="col" className="px-3 py-2.5 text-center">Detalle / Vale</th>
                   </tr>
                 </thead>
@@ -1328,7 +1328,7 @@ export default function Reports() {
                         <td className="px-3 py-2.5 text-right whitespace-nowrap">
                           <span
                             className={cn(
-                              "text-xs font-black font-mono",
+                              "text-xs font-black font-mono tabular-nums",
                               m.type === 'income' ? "text-emerald-600" : "text-red-600"
                             )}
                           >
@@ -1336,7 +1336,7 @@ export default function Reports() {
                           </span>
                         </td>
 
-                        <td className="px-3 py-2.5 text-right whitespace-nowrap font-bold text-[10px] text-muted">
+                        <td className="px-3 py-2.5 text-right whitespace-nowrap tabular-nums font-bold text-[10px] text-muted">
                           {formatMoney(cupAmount, baseCurrency.code)}
                         </td>
 
@@ -1345,7 +1345,7 @@ export default function Reports() {
                             <button
                               onClick={() => setSelectedMovementDetail(m)}
                               title="Ver Detalle del Movimiento"
-                              className="h-7 px-2.5 inline-flex items-center justify-center gap-1 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/50 dark:hover:bg-violet-900/60 text-violet-700 dark:text-violet-300 text-[9px] font-black uppercase rounded-lg border border-violet-200 dark:border-violet-900/50 transition-all active:scale-95 shadow-2xs cursor-pointer"
+                              className="h-11 min-w-11 px-2.5 sm:h-7 sm:min-w-0 inline-flex items-center justify-center gap-1 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/50 dark:hover:bg-violet-900/60 text-violet-700 dark:text-violet-300 text-[10px] sm:text-[9px] font-black uppercase rounded-lg border border-violet-200 dark:border-violet-900/50 transition-all active:scale-95 shadow-2xs cursor-pointer"
                             >
                               <Eye className="w-3 h-3 text-violet-600 dark:text-violet-300" />
                               <span>Detalle</span>
@@ -1353,7 +1353,7 @@ export default function Reports() {
                             <button
                               onClick={() => handlePrintCashMovementTicket(m)}
                               title="Imprimir Vale de Movimiento (58mm)"
-                              className="h-7 w-7 p-0 inline-flex items-center justify-center bg-subtle hover:bg-slate-200 dark:hover:bg-slate-800 text-primary rounded-lg transition-all border border-base active:scale-95 cursor-pointer shadow-2xs"
+                              className="h-11 w-11 sm:h-7 sm:w-7 p-0 inline-flex items-center justify-center bg-subtle hover:bg-slate-200 dark:hover:bg-slate-800 text-primary rounded-lg transition-all border border-base active:scale-95 cursor-pointer shadow-2xs"
                             >
                               <Printer className="w-3.5 h-3.5" />
                             </button>
@@ -1400,7 +1400,7 @@ export default function Reports() {
                   value={transferFromFilter}
                   onChange={(e) => setTransferFromFilter(e.target.value)}
                   aria-label="Filtrar transferencias por origen"
-                  className="px-2 py-1 bg-subtle border border-base rounded-lg text-[8px] font-black uppercase text-primary outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
+                  className="min-h-11 sm:min-h-0 px-2 py-1 bg-subtle border border-base rounded-lg text-[10px] font-black uppercase text-primary outline-none focus-visible:ring-2 focus-visible:ring-violet-500 cursor-pointer"
                 >
                   <option value="all">Todos los Orígenes</option>
                   {branches.map(b => (
@@ -1416,7 +1416,7 @@ export default function Reports() {
                   value={transferToFilter}
                   onChange={(e) => setTransferToFilter(e.target.value)}
                   aria-label="Filtrar transferencias por destino"
-                  className="px-2 py-1 bg-subtle border border-base rounded-lg text-[8px] font-black uppercase text-primary outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 cursor-pointer"
+                  className="min-h-11 sm:min-h-0 px-2 py-1 bg-subtle border border-base rounded-lg text-[10px] font-black uppercase text-primary outline-none focus-visible:ring-2 focus-visible:ring-violet-500 cursor-pointer"
                 >
                   <option value="all">Todos los Destinos</option>
                   {branches.map(b => (
@@ -1432,7 +1432,7 @@ export default function Reports() {
                   placeholder="Buscar producto..."
                   value={transferSearch}
                   onChange={(e) => setTransferSearch(e.target.value)}
-                  className="w-full pl-2.5 pr-2 py-1 bg-subtle border border-base rounded-lg text-[8px] font-bold text-primary placeholder:text-muted outline-none focus:border-violet-500"
+                  className="min-h-11 sm:min-h-0 w-full pl-2.5 pr-2 py-1 bg-subtle border border-base rounded-lg text-[10px] font-bold text-primary placeholder:text-muted outline-none focus:border-violet-500"
                 />
               </div>
             </div>
@@ -1520,7 +1520,7 @@ export default function Reports() {
                           <button
                             onClick={() => setSelectedTransferModal(t)}
                             title="Ver Detalle de Transferencia"
-                            className="h-7 px-2.5 inline-flex items-center justify-center gap-1 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/50 dark:hover:bg-violet-900/60 text-violet-700 dark:text-violet-300 text-[9px] font-black uppercase rounded-lg border border-violet-200 dark:border-violet-900/50 transition-all mx-auto active:scale-95 shadow-2xs cursor-pointer"
+                            className="h-11 min-w-11 px-2.5 sm:h-7 sm:min-w-0 inline-flex items-center justify-center gap-1 bg-violet-50 hover:bg-violet-100 dark:bg-violet-950/50 dark:hover:bg-violet-900/60 text-violet-700 dark:text-violet-300 text-[10px] sm:text-[9px] font-black uppercase rounded-lg border border-violet-200 dark:border-violet-900/50 transition-all mx-auto active:scale-95 shadow-2xs cursor-pointer"
                           >
                             <Eye className="w-3 h-3 text-violet-600 dark:text-violet-300" />
                             <span>Detalle</span>

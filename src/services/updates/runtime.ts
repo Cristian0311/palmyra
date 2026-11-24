@@ -26,6 +26,7 @@ import { getNativeAppInfo } from "../../lib/nativeApp";
 import { PRODUCT_VERSION } from "../../lib/productVersion";
 import {
   createUpdateClient,
+  DEFAULT_UPDATE_INTERVAL_MS,
   MAX_MANIFEST_BYTES,
   type UpdateCheckResult,
   type UpdateCheckStorage,
@@ -225,7 +226,15 @@ export function getUpdatePlatform(): UpdatePlatform {
   return "web";
 }
 
-/** Artefacto del manifiesto para esta plataforma; null si no lo publica. */
+/**
+ * Artefacto del manifiesto para esta plataforma; null si no lo publica.
+ *
+ * Android acepta además el paquete `web` (.zip): el shell instala exactamente
+ * ese bundle (index.html + version.json) con `startUpdate`, así que un release
+ * que solo publique el bundle web sigue pudiendo actualizar la tablet sin APK.
+ * La copia devuelta se etiqueta como `android` para que la UI trate el paquete
+ * como OTA nativo; URL, sha256 y bytes son los mismos que cubre la firma.
+ */
 export function selectUpdateArtifact(
   manifest: UpdateManifestV1 | null,
   platform: UpdatePlatform
@@ -234,7 +243,18 @@ export function selectUpdateArtifact(
   const found = manifest.artifacts.find(
     (artifact) => artifact && artifact.platform === platform
   );
-  return found ? { ...found } : null;
+  if (found) return { ...found };
+  if (platform === "android") {
+    const bundle = manifest.artifacts.find(
+      (artifact) =>
+        artifact &&
+        artifact.platform === "web" &&
+        typeof artifact.name === "string" &&
+        artifact.name.toLowerCase().endsWith(".zip")
+    );
+    if (bundle) return { ...bundle, platform: "android" };
+  }
+  return null;
 }
 
 /**
@@ -316,6 +336,13 @@ export interface AppUpdateRuntime {
   subscribe(listener: (state: AppUpdateState) => void): () => void;
   dismiss(version: string): void;
   isDismissed(version: string): boolean;
+  /**
+   * Arranca la vigilancia automática (arranque, primer plano y cada
+   * `intervalMs`). Idempotente: devuelve la parada de la vigilancia activa.
+   */
+  startAutoCheck(options?: { intervalMs?: number }): () => void;
+  /** Detiene la vigilancia automática si estaba activa. */
+  stopAutoCheck(): void;
 }
 
 export interface AppUpdateRuntimeDeps {
@@ -328,6 +355,12 @@ export interface AppUpdateRuntimeDeps {
   publicJwk?: JsonWebKey | null;
   /** Descarga inyectable; por defecto el `fetch` global. */
   fetchImpl?: typeof fetch;
+  /**
+   * Arrancar la vigilancia al crear el runtime (por defecto sí, cuando existe
+   * `document`). Las pruebas en Node pasan `false` o simplemente no definen
+   * `document`, así que nunca quedan temporizadores colgando.
+   */
+  autoSchedule?: boolean;
 }
 
 interface CaptureSlot {
@@ -454,6 +487,7 @@ export function createAppUpdateRuntime(deps: AppUpdateRuntimeDeps = {}): AppUpda
     ...(configured.reason ? { error: configured.reason } : {})
   };
   let inFlight: Promise<AppUpdateState> | null = null;
+  let stopAuto: (() => void) | null = null;
 
   function emit(next: AppUpdateState): void {
     state = next;
@@ -544,6 +578,91 @@ export function createAppUpdateRuntime(deps: AppUpdateRuntimeDeps = {}): AppUpda
     }
   }
 
+  /**
+   * Vigilancia automática: una comprobación al arrancar, otra cada vez que la
+   * app vuelve a primer plano (visibilitychange, focus, pageshow, online y el
+   * aviso `palmyra:native-resume` del shell Android) y una consulta forzada
+   * cada `intervalMs` (24 h por defecto). El aviso inmediato de un build nuevo
+   * lo da ahora el servidor por Realtime (`system_update_signals`): este reloj
+   * es la red de seguridad para equipos que no reciben la señal, así que no
+   * necesita sondear seguido. La firma del manifiesto se sigue verificando.
+   *
+   * Sin `document` (Node, pruebas) no se instala nada: nunca quedan
+   * temporizadores colgando.
+   */
+  function canWatchLifecycle(): boolean {
+    return (
+      typeof window !== "undefined" &&
+      typeof document !== "undefined" &&
+      typeof window.setInterval === "function" &&
+      typeof window.addEventListener === "function" &&
+      typeof document.addEventListener === "function"
+    );
+  }
+
+  function startAutoCheck(options: { intervalMs?: number } = {}): () => void {
+    if (!client || !canWatchLifecycle()) return () => undefined;
+    // Idempotente: dos pantallas que montan el hook comparten una sola vigilancia.
+    if (stopAuto) return stopAuto;
+
+    const requested = Number(options && options.intervalMs);
+    const intervalMs =
+      Number.isFinite(requested) && requested > 0
+        ? Math.max(60_000, Math.trunc(requested))
+        : DEFAULT_UPDATE_INTERVAL_MS;
+
+    // El reloj periódico force la consulta: si el usuario acaba de comprobar
+    // al abrir una pantalla, la cadencia normal dejaría el aviso para más tarde.
+    const timer = window.setInterval(() => {
+      void run(true);
+    }, intervalMs);
+
+    const onForeground = () => {
+      try {
+        if (document.visibilityState !== "visible") return;
+      } catch {
+        // Sin Page Visibility se comprueba igual: mejor de más que de menos.
+      }
+      // Respetar la cadencia: un cambio de pestaña no debe multiplicar descargas.
+      void run(false);
+    };
+
+    window.addEventListener("focus", onForeground);
+    window.addEventListener("online", onForeground);
+    window.addEventListener("pageshow", onForeground);
+    // Evento propio del shell Android (MainActivity.onResume): en WebView el
+    // ciclo de actividad no siempre publica visibilitychange.
+    window.addEventListener("palmyra:native-resume", onForeground);
+    document.addEventListener("visibilitychange", onForeground);
+
+    const stop = () => {
+      try {
+        window.clearInterval(timer);
+      } catch {
+        // Nada que limpiar.
+      }
+      window.removeEventListener("focus", onForeground);
+      window.removeEventListener("online", onForeground);
+      window.removeEventListener("pageshow", onForeground);
+      window.removeEventListener("palmyra:native-resume", onForeground);
+      document.removeEventListener("visibilitychange", onForeground);
+      if (stopAuto === stop) stopAuto = null;
+    };
+    stopAuto = stop;
+
+    // Arranque: la primera comprobación (el cliente respeta la marca persistida).
+    void run(false);
+    return stop;
+  }
+
+  function stopAutoCheck(): void {
+    if (stopAuto) stopAuto();
+  }
+
+  if (deps.autoSchedule !== false && client) {
+    startAutoCheck();
+  }
+
   return {
     get client() {
       return client;
@@ -554,6 +673,8 @@ export function createAppUpdateRuntime(deps: AppUpdateRuntimeDeps = {}): AppUpda
     check(force = false) {
       return run(force === true);
     },
+    startAutoCheck,
+    stopAutoCheck,
     subscribe(listener) {
       listeners.add(listener);
       return () => {

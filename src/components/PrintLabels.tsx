@@ -7,7 +7,7 @@ import { useStore } from '../store/useStore';
 import { formatMoney } from '../lib/utils';
 
 export function PrintLabels() {
-  const { products, getBaseCurrency } = useStore(useShallow((state) => ({ products: state.products, getBaseCurrency: state.getBaseCurrency })));
+  const { products, getBaseCurrency, addNotification } = useStore(useShallow((state) => ({ products: state.products, getBaseCurrency: state.getBaseCurrency, addNotification: state.addNotification })));
   const baseCurrency = getBaseCurrency();
   const [selectedProduct, setSelectedProduct] = useState<string>('');
   const [quantity, setQuantity] = useState(1);
@@ -20,7 +20,11 @@ export function PrintLabels() {
     
     const printContent = printRef.current.innerHTML;
     const printWindow = window.open('', '_blank');
-    if (!printWindow) return;
+    if (!printWindow) {
+      // El navegador bloqueó la pestaña: antes la pantalla quedaba muda.
+      addNotification('Permite las ventanas emergentes de este sitio para imprimir las etiquetas.', 'warning');
+      return;
+    }
     
     printWindow.document.write(`
       <html>
@@ -37,7 +41,7 @@ export function PrintLabels() {
               width: 40mm; height: 30mm; 
               border: 1px dashed #ccc; 
               padding: 5px; box-sizing: border-box; 
-              display: flex; flex-col; align-items: center; justify-content: center;
+              display: flex; flex-direction: column; align-items: center; justify-content: center;
               text-align: center;
             }
             .name { font-size: 10px; font-weight: bold; margin-bottom: 2px; max-height: 12px; overflow: hidden; }
@@ -62,16 +66,16 @@ export function PrintLabels() {
   };
 
   return (
-    <div className="bg-white rounded-[2rem] shadow-sm border border-slate-100 p-6 flex flex-col gap-6">
-      <div className="flex justify-between items-center border-b border-slate-100 pb-4">
+    <div className="bg-secondary rounded-2xl shadow-sm border border-base p-4 sm:p-6 flex flex-col gap-4 sm:gap-6">
+      <div className="flex flex-wrap justify-between items-center gap-3 border-b border-base pb-4">
         <div>
-          <h2 className="text-lg font-black text-slate-900 uppercase tracking-tight">Impresión de Etiquetas</h2>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Genera QR y Códigos de Barras</p>
+          <h2 className="text-base sm:text-lg font-black text-primary uppercase tracking-tight">Impresión de Etiquetas</h2>
+          <p className="text-[10px] font-black text-muted uppercase tracking-widest">Genera QR y Códigos de Barras</p>
         </div>
         <button 
           onClick={handlePrint}
           disabled={!product || quantity < 1}
-          className="bg-indigo-600 text-white px-6 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="min-h-11 bg-violet-600 text-white px-5 py-3 rounded-xl text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 hover:bg-violet-700 transition-all shadow-md disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Printer className="w-4 h-4" /> Imprimir
         </button>
@@ -80,11 +84,11 @@ export function PrintLabels() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         <div className="space-y-4">
           <div>
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Producto</label>
+            <label className="block text-[10px] font-black text-muted uppercase tracking-widest mb-1">Producto</label>
             <select 
               value={selectedProduct}
               onChange={(e) => setSelectedProduct(e.target.value)}
-              className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+              className="w-full min-h-11 bg-subtle border border-base text-primary rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-violet-500 outline-none"
             >
               <option value="">Selecciona un producto...</option>
               {products.map(p => (
@@ -94,30 +98,30 @@ export function PrintLabels() {
           </div>
 
           <div>
-            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Cantidad de Etiquetas</label>
+            <label className="block text-[10px] font-black text-muted uppercase tracking-widest mb-1">Cantidad de Etiquetas</label>
             <div className="flex items-center gap-4">
               <button 
                 onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center hover:bg-slate-200 transition-colors"
+                className="w-11 h-11 bg-subtle border border-base rounded-xl flex items-center justify-center text-secondary hover:text-violet-600 transition-colors"
               >
-                <Minus className="w-4 h-4 text-slate-600" />
+                <Minus className="w-4 h-4" />
               </button>
-              <span className="text-xl font-black text-slate-900 w-12 text-center">{quantity}</span>
+              <span className="text-xl font-black text-primary w-12 text-center tabular-nums">{quantity}</span>
               <button 
                 onClick={() => setQuantity(quantity + 1)}
-                className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center hover:bg-slate-200 transition-colors"
+                className="w-11 h-11 bg-subtle border border-base rounded-xl flex items-center justify-center text-secondary hover:text-violet-600 transition-colors"
               >
-                <Plus className="w-4 h-4 text-slate-600" />
+                <Plus className="w-4 h-4" />
               </button>
             </div>
           </div>
         </div>
 
-        <div className="bg-slate-50 rounded-2xl border border-slate-100 p-6 flex items-center justify-center min-h-[300px]">
+        <div className="bg-subtle rounded-2xl border border-base p-6 flex items-center justify-center min-h-[260px] sm:min-h-[300px]">
           {product ? (
             <div className="text-center">
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Vista Previa de Etiqueta (40x30mm)</p>
-              <div className="w-[40mm] h-[30mm] bg-white border border-slate-300 shadow-sm flex flex-col items-center justify-center p-2 mx-auto">
+              <p className="text-[10px] font-black text-muted uppercase tracking-widest mb-4">Vista Previa de Etiqueta (40x30mm)</p>
+              <div className="w-[40mm] h-[30mm] bg-white text-slate-900 border border-slate-300 shadow-sm flex flex-col items-center justify-center p-2 mx-auto">
                 <div className="text-[9px] font-bold text-slate-800 leading-tight mb-1 truncate w-full px-1">{product.name}</div>
                 <div className="text-[12px] font-black text-slate-900 mb-1">{formatMoney(product.price, baseCurrency.symbol)}</div>
                 <QRCodeSVG value={product.barcode || product.sku || product.id} size={40} />
@@ -125,7 +129,7 @@ export function PrintLabels() {
               </div>
             </div>
           ) : (
-            <div className="text-center text-slate-400">
+            <div className="text-center text-muted">
               <RefreshCw className="w-8 h-8 mx-auto mb-2 opacity-50" />
               <p className="text-xs font-bold uppercase tracking-widest">Selecciona un producto</p>
             </div>

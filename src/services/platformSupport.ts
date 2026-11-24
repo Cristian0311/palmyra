@@ -1,5 +1,5 @@
 import { getSupabase } from "../lib/supabase";
-import { recordSupportTicket } from "./pilot/metrics";
+import { recordSupportTicket } from "./supportTicketCounter";
 
 export const DEFAULT_FACEBOOK_URL = "https://www.facebook.com/share/18E6USqhUn/";
 

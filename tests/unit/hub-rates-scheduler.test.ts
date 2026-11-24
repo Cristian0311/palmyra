@@ -294,7 +294,7 @@ test("sin copia el hub solo consulta si tiene credencial, y no repite el intento
     cacheReader: () => null,
     fetchImpl: impl
   });
-  await assert.rejects(withoutToken(), /no tiene una tasa válida/i);
+  await assert.rejects(withoutToken(), /no hay una tasa válida/i);
   assert.equal(calls.length, 0);
 
   let now = NOW_MS;
@@ -306,7 +306,7 @@ test("sin copia el hub solo consulta si tiene credencial, y no repite el intento
     fetchImpl: failingFetch,
     localBaseUrl: "http://127.0.0.1:10000"
   });
-  await assert.rejects(withToken(), /servidor local/i);
+  await assert.rejects(withToken(), /no se pudo consultar la tasa automática/i);
   // Enfriamiento de 5 min: no se reintenta en cada petición.
   await assert.rejects(withToken(), /reintentando/i);
 

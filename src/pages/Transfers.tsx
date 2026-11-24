@@ -401,7 +401,7 @@ export default function Transfers() {
             onClick={() => setActiveTab('history')}
             aria-pressed={activeTab === 'history'}
             className={cn(
-              'min-h-9 rounded-lg px-3 text-[11px] font-black uppercase tracking-wide transition-all',
+              'min-h-11 rounded-lg px-3 text-[11px] font-black uppercase tracking-wide transition-all',
               activeTab === 'history' ? 'bg-secondary text-violet-700 shadow-xs dark:text-violet-300' : 'text-muted hover:text-primary'
             )}
           >
@@ -412,7 +412,7 @@ export default function Transfers() {
             onClick={() => setActiveTab('new')}
             aria-pressed={activeTab === 'new'}
             className={cn(
-              'min-h-9 rounded-lg px-3 text-[11px] font-black uppercase tracking-wide transition-all',
+              'min-h-11 rounded-lg px-3 text-[11px] font-black uppercase tracking-wide transition-all',
               activeTab === 'new' ? 'bg-secondary text-violet-700 shadow-xs dark:text-violet-300' : 'text-muted hover:text-primary'
             )}
           >
@@ -430,7 +430,7 @@ export default function Transfers() {
                 onClick={() => setHistoryMode('general')}
                 aria-pressed={historyMode === 'general'}
                 className={cn(
-                  'min-h-9 rounded-lg px-3 text-[11px] font-black uppercase tracking-wide transition-all whitespace-nowrap',
+                  'min-h-11 rounded-lg px-3 text-[11px] font-black uppercase tracking-wide transition-all whitespace-nowrap',
                   historyMode === 'general' ? 'bg-violet-600 text-white shadow-xs' : 'text-secondary hover:text-primary'
                 )}
               >
@@ -444,7 +444,7 @@ export default function Transfers() {
                 }}
                 aria-pressed={historyMode === 'branch'}
                 className={cn(
-                  'min-h-9 rounded-lg px-3 text-[11px] font-black uppercase tracking-wide transition-all whitespace-nowrap',
+                  'min-h-11 rounded-lg px-3 text-[11px] font-black uppercase tracking-wide transition-all whitespace-nowrap',
                   historyMode === 'branch' ? 'bg-violet-600 text-white shadow-xs' : 'text-secondary hover:text-primary'
                 )}
               >
@@ -522,7 +522,7 @@ export default function Transfers() {
                           type="button"
                           disabled={busy}
                           onClick={() => void resolveTransit(group.key, group.operationIds, 'cancel')}
-                          className="inline-flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-base bg-secondary px-3 text-[11px] font-black uppercase tracking-wide text-secondary transition-colors hover:bg-subtle disabled:opacity-50 lg:flex-none"
+                          className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-base bg-secondary px-3 text-[11px] font-black uppercase tracking-wide text-secondary transition-colors hover:bg-subtle disabled:opacity-50 lg:min-h-9 lg:flex-none"
                         >
                           <Undo2 className="h-3.5 w-3.5" aria-hidden="true" /> Cancelar
                         </button>
@@ -530,7 +530,7 @@ export default function Transfers() {
                           type="button"
                           disabled={busy}
                           onClick={() => void resolveTransit(group.key, group.operationIds, 'receive')}
-                          className="inline-flex min-h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-[11px] font-black uppercase tracking-wide text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50 lg:flex-none"
+                          className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-[11px] font-black uppercase tracking-wide text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50 lg:min-h-9 lg:flex-none"
                         >
                           {busy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <PackageCheck className="h-3.5 w-3.5" aria-hidden="true" />}
                           Recibir
@@ -556,7 +556,7 @@ export default function Transfers() {
               </span>
             </div>
 
-            <div className="hidden overflow-x-auto md:block">
+            <div className="hidden overflow-x-auto lg:block">
               <table className="w-full min-w-[840px] border-collapse text-left">
                 <thead>
                   <tr className="border-b border-base bg-subtle text-[11px] font-black uppercase tracking-wider text-muted">
@@ -647,7 +647,7 @@ export default function Transfers() {
               </table>
             </div>
 
-            <ul className="divide-y divide-base md:hidden">
+            <ul className="divide-y divide-base lg:hidden">
               {historyGroups.length > 0 ? historyGroups.map((group) => {
                 const isExpanded = expandedBatches.includes(group.key);
                 const visibleItems = isExpanded ? group.rows : group.rows.slice(0, 2);
@@ -699,7 +699,7 @@ export default function Transfers() {
                         <button
                           type="button"
                           onClick={() => toggleBatch(group.key)}
-                          className="min-h-8 rounded-md border border-violet-200 bg-secondary px-2 text-[11px] font-black uppercase text-violet-700 dark:border-violet-900/60 dark:text-violet-300"
+                          className="min-h-10 rounded-md border border-violet-200 bg-secondary px-3 text-[11px] font-black uppercase text-violet-700 dark:border-violet-900/60 dark:text-violet-300"
                         >
                           {isExpanded ? 'Mostrar menos' : `Ver ${group.rows.length - 2} más`}
                         </button>
@@ -737,7 +737,7 @@ export default function Transfers() {
                     }}
                     className="min-h-10 w-full appearance-none truncate rounded-xl border border-base bg-subtle pl-9 pr-3 text-[12px] font-black uppercase text-primary"
                   >
-                    {branches.map((branch) => (
+                    {allowedBranches.map((branch) => (
                       <option key={branch.id} value={branch.id}>{branchLabel(branch.id, branch.name)}</option>
                     ))}
                   </select>
@@ -885,7 +885,7 @@ export default function Transfers() {
                           type="button"
                           onClick={() => setBulkTransferItems((prev) => prev.filter((_, idx) => idx !== index))}
                           aria-label={`Quitar ${product.name} del envío`}
-                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-rose-50 text-rose-500 transition-colors hover:bg-rose-100 hover:text-rose-600 dark:bg-rose-950/40 dark:text-rose-300"
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-rose-50 text-rose-500 transition-colors hover:bg-rose-100 hover:text-rose-600 dark:bg-rose-950/40 dark:text-rose-300"
                         >
                           <X className="h-3.5 w-3.5" aria-hidden="true" />
                         </button>
@@ -930,7 +930,7 @@ export default function Transfers() {
                             type="button"
                             onClick={() => updateShipmentQuantity(index, item.quantity - 1, stock)}
                             aria-label="Reducir cantidad"
-                            className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors hover:bg-subtle hover:text-violet-600"
+                            className="flex h-11 w-11 items-center justify-center rounded-md text-secondary transition-colors hover:bg-subtle hover:text-violet-600 lg:h-8 lg:w-8"
                           >
                             <Minus className="h-4 w-4" aria-hidden="true" />
                           </button>
@@ -948,13 +948,13 @@ export default function Transfers() {
                               if (!Number.isFinite(requested)) return;
                               updateShipmentQuantity(index, requested, stock);
                             }}
-                            className="w-11 border-0 bg-transparent p-0 text-center text-[12px] font-black tabular-nums text-primary focus:ring-0"
+                            className="h-11 w-11 border-0 bg-transparent p-0 text-center text-[13px] font-black tabular-nums text-primary focus:ring-0 lg:h-8"
                           />
                           <button
                             type="button"
                             onClick={() => updateShipmentQuantity(index, item.quantity + 1, stock)}
                             aria-label="Aumentar cantidad"
-                            className="flex h-7 w-7 items-center justify-center rounded-md text-secondary transition-colors hover:bg-subtle hover:text-violet-600"
+                            className="flex h-11 w-11 items-center justify-center rounded-md text-secondary transition-colors hover:bg-subtle hover:text-violet-600 lg:h-8 lg:w-8"
                           >
                             <Plus className="h-4 w-4" aria-hidden="true" />
                           </button>

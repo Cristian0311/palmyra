@@ -1,4 +1,8 @@
-export const SETTINGS_SECTIONS = ['company', 'branches', 'categories', 'currency', 'ticket', 'visual', 'lan', 'connectivity', 'notifications', 'advanced', 'piloto'] as const;
+// Secciones reales de Configuración. Los slugs retirados (lan, connectivity,
+// advanced, piloto, «Salud local») ya no forman parte del contrato: cualquier
+// enlace viejo cae en «Empresa» (o en «Notificaciones» sin permisos) en lugar
+// de dejar una pestaña fantasma.
+export const SETTINGS_SECTIONS = ['company', 'branches', 'categories', 'currency', 'ticket', 'visual', 'notifications'] as const;
 export type SettingsSection = typeof SETTINGS_SECTIONS[number];
 export const NOTIFICATIONS_PATH = '/settings?section=notifications';
 

@@ -1,11 +1,12 @@
 import { useShallow } from 'zustand/react/shallow';
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import OperationsSurface from '../components/OperationsSurface';
 import { selectBankTransactions, validateBankTransfer } from '../utils/operationsUi';
 import { useStore } from '../store/useStore';
 import { generateId, cn } from '../lib/utils';
 import {
   Activity,
+  AlertTriangle,
   ArrowDownRight,
   ArrowLeftRight,
   ArrowUpRight,
@@ -18,6 +19,7 @@ import {
   Pencil,
   Play,
   Plus,
+  RefreshCw,
   Snowflake,
   Trash2,
   Wallet,
@@ -32,6 +34,7 @@ import { enqueueOfflineItem, getOfflineQueue, removeFromOfflineQueue } from '../
 import { callBankInternalTransferRPC } from '../services/supabaseSync';
 import { findSessionEmployeeUser } from '../services/employeeCompensation';
 import { buildSessionTurnMap } from '../modules/reports/useReportsSessions';
+import type { BankRefreshResult } from '../store/actions/bankActions';
 
 const CARD_TYPE_OPTIONS = ['MN', 'MLC', 'Clásica USD'] as const;
 type BankCardType = typeof CARD_TYPE_OPTIONS[number];
@@ -672,6 +675,63 @@ export default function Banks() {
     addNotification
   } = useStore(useShallow((state) => ({ bankCards: state.bankCards, bankTransactions: state.bankTransactions, transactions: state.transactions, cashSessions: state.cashSessions, users: state.users, branches: state.branches, addBankCard: state.addBankCard, updateBankCard: state.updateBankCard, deleteBankCard: state.deleteBankCard, getBaseCurrency: state.getBaseCurrency, addBankTransaction: state.addBankTransaction, deleteBankTransaction: state.deleteBankTransaction, addNotification: state.addNotification })));
 
+  // `refreshBankData` vive en bankActions pero el tipo AppState aún no lo declara
+  // (mismo patrón que Reports.tsx para acciones fuera del contrato base).
+  const refreshBankData = useStore(
+    (state) => (state as any).refreshBankData as
+      | ((options?: { force?: boolean }) => Promise<BankRefreshResult>)
+      | undefined
+  );
+  const currentBranchId = useStore((state) => state.currentBranchId);
+  const currencies = useStore((state) => state.currencies);
+
+  // Distinguir "sin movimientos" de "no se pudo cargar" es obligatorio: antes la
+  // página nunca pedía el historial y siempre parecía vacía.
+  const [movementsStatus, setMovementsStatus] = useState<'idle' | 'loading' | 'loaded' | 'error'>('idle');
+  const [movementsMessage, setMovementsMessage] = useState<string | null>(null);
+  const [skippedMovements, setSkippedMovements] = useState(0);
+  const lastLoadedBranchRef = useRef<string | undefined>(currentBranchId);
+
+  const loadMovements = useCallback(async (options?: { force?: boolean }) => {
+    if (!refreshBankData) {
+      setMovementsStatus('loaded');
+      return;
+    }
+    setMovementsStatus('loading');
+    try {
+      const result = await refreshBankData(options);
+      setSkippedMovements(result.unknownTypeCount || 0);
+      if (!result.success && result.offline) {
+        // Sin conexión no es "no se pudo cargar": se muestran los movimientos
+        // guardados en el dispositivo con un aviso, sin alarmar al operador.
+        setMovementsStatus('loaded');
+        setMovementsMessage(result.message || 'Sin conexión: se muestran los movimientos guardados en este dispositivo.');
+        return;
+      }
+      if (!result.success) {
+        setMovementsStatus('error');
+        setMovementsMessage(result.message || 'No se pudo cargar el historial bancario.');
+        return;
+      }
+      setMovementsStatus('loaded');
+      setMovementsMessage(result.offline ? (result.message || null) : null);
+    } catch (error) {
+      console.warn('[Banks] No se pudo cargar el historial bancario:', error);
+      setMovementsStatus('error');
+      setMovementsMessage('No se pudo cargar el historial bancario. Inténtalo de nuevo.');
+    }
+  }, [refreshBankData]);
+
+  useEffect(() => {
+    // Al entrar a la página y al cambiar de sucursal el historial bancario se
+    // pide a la nube. El cooldown de la acción del store evita ráfagas de
+    // consultas (doble montaje en StrictMode, re-renders, foco de ventana).
+    const branchChanged = lastLoadedBranchRef.current !== currentBranchId;
+    lastLoadedBranchRef.current = currentBranchId;
+    void loadMovements({ force: branchChanged });
+  }, [loadMovements, currentBranchId]);
+
+
   const emptyForm = (): Partial<BankCard> => ({
     name: "",
     bank: "BPA",
@@ -1081,7 +1141,13 @@ export default function Banks() {
     if (!movementToDelete) return;
     const deleted = await deleteBankTransaction(movementToDelete.id);
     if (!deleted) return;
-    addNotification(`Movimiento ${movementToDelete.reference || movementToDelete.id} eliminado y saldo de tarjeta ajustado correctamente.`, 'info');
+    const ref = movementToDelete.reference;
+    addNotification(
+      ref
+        ? `Movimiento ${ref} eliminado y saldo de tarjeta ajustado correctamente.`
+        : 'Movimiento eliminado y saldo de tarjeta ajustado correctamente.',
+      'info',
+    );
     setMovementToDelete(null);
   };
 
@@ -1190,12 +1256,20 @@ export default function Banks() {
   const activeCount = bankCards.filter(c => c.isActive !== false).length;
   const frozenCount = bankCards.length - activeCount;
 
+  // Cada movimiento está en la moneda de su tarjeta: sumar los importes sin
+  // convertir mezclaba CUP, USD y MLC en un mismo total y el resumen mentía.
+  const baseCode = getBaseCurrency().code;
+  const rateByCode = new Map<string, number>(currencies.map(currency => [String(currency.code), Number(currency.rateToBase) || 1]));
+  const toBase = (entry: BankTransaction) => {
+    const code = bankCardById.get(entry.cardId)?.currency || baseCode;
+    return Number(entry.amount || 0) * (rateByCode.get(code) || 1);
+  };
   const incomeTotal = filteredTransactions
     .filter(t => t.type === 'deposit' || t.type === 'payment_received')
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + toBase(t), 0);
   const expenseTotal = filteredTransactions
     .filter(t => t.type !== 'deposit' && t.type !== 'payment_received')
-    .reduce((sum, t) => sum + t.amount, 0);
+    .reduce((sum, t) => sum + toBase(t), 0);
 
   return (
     <PlanFeatureGate feature="banking" title="Cuentas bancarias" description="La gestión bancaria y sus movimientos están disponibles desde el plan Caravana." highlights={[
@@ -1219,7 +1293,7 @@ export default function Banks() {
               <button
                 type="button"
                 onClick={() => setCardToDelete(null)}
-                className="bg-subtle text-secondary rounded-xl font-black uppercase tracking-wide transition-colors hover:bg-secondary cursor-pointer"
+                className="min-h-11 bg-subtle text-secondary rounded-xl px-3 py-3 font-black uppercase tracking-wide transition-colors hover:bg-secondary cursor-pointer"
                 style={{ fontSize: 12 }}
               >
                 Cancelar
@@ -1235,7 +1309,7 @@ export default function Banks() {
                   if (actionsCardId === id) setActionsCardId(null);
                   addNotification("Tarjeta eliminada correctamente.", 'info');
                 }}
-                className="bg-red-600 text-white rounded-xl font-black uppercase tracking-wide shadow-lg shadow-red-200 dark:shadow-none cursor-pointer hover:bg-red-700 transition-colors"
+                className="min-h-11 bg-red-600 text-white rounded-xl px-3 py-3 font-black uppercase tracking-wide shadow-lg shadow-red-200 dark:shadow-none cursor-pointer hover:bg-red-700 transition-colors"
                 style={{ fontSize: 12 }}
               >
                 Confirmar
@@ -1254,7 +1328,10 @@ export default function Banks() {
             </div>
             <h3 className="text-sm font-black text-primary uppercase tracking-tight mb-1">¿Eliminar movimiento?</h3>
             <p className="text-sm font-semibold text-muted mb-2">
-              Monto: <strong className="text-primary">{movementToDelete.amount.toLocaleString()}</strong> ({movementToDelete.type})
+              {movementToDelete.type === 'deposit' || movementToDelete.type === 'payment_received' ? 'Entrada' : 'Salida'} de{' '}
+              <strong className="text-primary tabular-nums">
+                {money(movementToDelete.amount)} {bankCardById.get(movementToDelete.cardId)?.currency || ''}
+              </strong>
             </p>
             <p className="text-sm font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 p-2.5 rounded-xl mb-4">
               {movementToDelete.type === 'deposit' || movementToDelete.type === 'payment_received'
@@ -1265,7 +1342,7 @@ export default function Banks() {
               <button
                 type="button"
                 onClick={() => setMovementToDelete(null)}
-                className="bg-subtle text-secondary rounded-xl font-black uppercase tracking-wide transition-colors hover:bg-secondary cursor-pointer"
+                className="min-h-11 bg-subtle text-secondary rounded-xl px-3 py-3 font-black uppercase tracking-wide transition-colors hover:bg-secondary cursor-pointer"
                 style={{ fontSize: 12 }}
               >
                 Cancelar
@@ -1273,7 +1350,7 @@ export default function Banks() {
               <button
                 type="button"
                 onClick={handleConfirmDeleteMovement}
-                className="bg-red-600 text-white rounded-xl font-black uppercase tracking-wide shadow-lg shadow-red-200 dark:shadow-none cursor-pointer hover:bg-red-700 transition-colors"
+                className="min-h-11 bg-red-600 text-white rounded-xl px-3 py-3 font-black uppercase tracking-wide shadow-lg shadow-red-200 dark:shadow-none cursor-pointer hover:bg-red-700 transition-colors"
                 style={{ fontSize: 12 }}
               >
                 Eliminar
@@ -1420,7 +1497,7 @@ export default function Banks() {
             <button
               type="button"
               onClick={openCreate}
-              className="mt-1 flex items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 font-bold text-sm text-white transition-colors hover:bg-violet-700"
+              className="mt-1 flex min-h-11 items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 font-bold text-sm text-white transition-colors hover:bg-violet-700"
             >
               <Plus size={15} /> Agregar cuenta
             </button>
@@ -1445,12 +1522,24 @@ export default function Banks() {
           <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
+              onClick={() => void loadMovements({ force: true })}
+              disabled={movementsStatus === 'loading'}
+              title="Volver a cargar los movimientos desde la nube"
+              aria-label="Actualizar movimientos bancarios"
+              className="flex min-h-11 items-center gap-1.5 rounded-lg border border-base bg-secondary px-2.5 py-1 font-bold text-secondary transition-colors hover:bg-subtle disabled:opacity-50 sm:min-h-8"
+              style={{ fontSize: 12 }}
+            >
+              <RefreshCw size={13} className={cn(movementsStatus === 'loading' && 'animate-spin')} aria-hidden="true" />
+              {movementsStatus === 'loading' ? 'Cargando…' : 'Actualizar'}
+            </button>
+            <button
+              type="button"
               onClick={() => setShowMaintenance(v => !v)}
               aria-pressed={showMaintenance}
               disabled={!selectedCard}
               title={selectedCard ? 'Muestra el botón para eliminar un movimiento y ajustar el saldo' : 'Selecciona una cuenta para corregir sus movimientos'}
               className={cn(
-                'flex items-center gap-1.5 rounded-lg border px-2.5 py-1 font-bold transition-colors cursor-pointer',
+                'flex min-h-11 items-center gap-1.5 rounded-lg border px-2.5 py-1 font-bold transition-colors cursor-pointer sm:min-h-8',
                 showMaintenance
                   ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300'
                   : 'border-base bg-secondary text-secondary hover:bg-subtle',
@@ -1463,7 +1552,7 @@ export default function Banks() {
               <button
                 type="button"
                 onClick={() => setSelectedCardId(null)}
-                className="rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1 font-black uppercase tracking-wide text-indigo-700 transition-colors hover:bg-indigo-100 dark:border-indigo-900/60 dark:bg-indigo-950/40 dark:text-indigo-300"
+                className="min-h-11 rounded-lg border border-violet-200 bg-violet-50 px-2.5 py-1 font-black uppercase tracking-wide text-violet-700 transition-colors hover:bg-violet-100 sm:min-h-8 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300"
                 style={{ fontSize: 12 }}
               >
                 Ver todas
@@ -1479,7 +1568,7 @@ export default function Banks() {
               <ArrowDownRight size={13} aria-hidden="true" /> Entradas
             </span>
             <span className="mt-1 block font-black tabular-nums text-emerald-700 dark:text-emerald-300" style={{ fontSize: 16 }}>
-              {money(incomeTotal)}
+              {money(incomeTotal)} <span className="font-bold text-muted" style={{ fontSize: 11 }}>{baseCode}</span>
             </span>
           </div>
           <div className="rounded-xl border border-base bg-secondary p-2.5">
@@ -1487,7 +1576,7 @@ export default function Banks() {
               <ArrowUpRight size={13} aria-hidden="true" /> Salidas
             </span>
             <span className="mt-1 block font-black tabular-nums" style={{ fontSize: 16, color: 'var(--danger)' }}>
-              {money(expenseTotal)}
+              {money(expenseTotal)} <span className="font-bold text-muted" style={{ fontSize: 11 }}>{baseCode}</span>
             </span>
           </div>
           <div className="rounded-xl border border-violet-200 bg-violet-50 p-2.5 dark:border-violet-900/60 dark:bg-violet-950/30">
@@ -1495,7 +1584,7 @@ export default function Banks() {
               <Activity size={13} aria-hidden="true" /> Saldo neto
             </span>
             <span className="mt-1 block font-black tabular-nums text-violet-700 dark:text-violet-300" style={{ fontSize: 16 }}>
-              {money(incomeTotal - expenseTotal)}
+              {money(incomeTotal - expenseTotal)} <span className="font-bold text-muted" style={{ fontSize: 11 }}>{baseCode}</span>
             </span>
           </div>
           <div className="rounded-xl border border-base bg-secondary p-2.5">
@@ -1533,15 +1622,62 @@ export default function Banks() {
           </label>
         </div>
 
-        {filteredTransactions.length === 0 ? (
+        {movementsStatus === 'loaded' && (movementsMessage || skippedMovements > 0) && filteredTransactions.length > 0 ? (
+          <p className="border-b border-base bg-amber-50/60 px-3 py-2 text-[12px] font-semibold text-amber-800 dark:bg-amber-950/20 dark:text-amber-200">
+            {movementsMessage}
+            {skippedMovements > 0
+              ? `${movementsMessage ? ' ' : ''}${skippedMovements} movimiento(s) se omitieron por tener un tipo no reconocido.`
+              : ''}
+          </p>
+        ) : null}
+
+        {(movementsStatus === 'loading' || movementsStatus === 'idle') && filteredTransactions.length === 0 ? (
+          <div className="space-y-2 p-3" aria-busy="true" aria-live="polite">
+            <p className="text-sm font-bold text-secondary">Cargando movimientos bancarios…</p>
+            {[0, 1, 2].map(row => (
+              <div key={row} className="flex items-center justify-between gap-3 rounded-xl border border-base bg-primary p-3">
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="h-3 w-2/5 rounded bg-subtle" />
+                  <div className="h-2.5 w-3/5 rounded bg-subtle" />
+                </div>
+                <div className="h-4 w-16 shrink-0 rounded bg-subtle" />
+              </div>
+            ))}
+          </div>
+        ) : movementsStatus === 'error' && filteredTransactions.length === 0 ? (
+          <div className="p-8 text-center">
+            <div className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-300">
+              <AlertTriangle size={20} aria-hidden="true" />
+            </div>
+            <h4 className="text-sm font-black text-primary">No se pudo cargar el historial</h4>
+            <p className="mt-1 text-sm font-semibold text-muted">
+              {movementsMessage || 'No se pudo consultar la nube. Revisa la conexión e inténtalo de nuevo.'}
+            </p>
+            <button
+              type="button"
+              onClick={() => void loadMovements({ force: true })}
+              className="mx-auto mt-3 flex items-center gap-1.5 rounded-xl border border-base bg-secondary px-3 py-2 text-sm font-bold text-primary hover:bg-subtle"
+            >
+              <RefreshCw size={14} aria-hidden="true" /> Reintentar
+            </button>
+          </div>
+        ) : filteredTransactions.length === 0 ? (
           <div className="p-8 text-center">
             <div className="mx-auto mb-2 flex h-11 w-11 items-center justify-center rounded-full border border-base bg-subtle text-muted">
               <List size={20} aria-hidden="true" />
             </div>
-            <h4 className="text-sm font-black text-primary">No hay movimientos</h4>
+            <h4 className="text-sm font-black text-primary">Sin movimientos</h4>
             <p className="mt-1 text-sm font-semibold text-muted">
               Las transferencias y pagos confirmados aparecerán aquí. También puedes registrar una salida con «Transferir».
             </p>
+            {movementsMessage ? (
+              <p className="mt-2 text-[12px] font-semibold text-amber-700 dark:text-amber-300">{movementsMessage}</p>
+            ) : null}
+            {skippedMovements > 0 ? (
+              <p className="mt-2 text-[12px] font-semibold text-amber-700 dark:text-amber-300">
+                {skippedMovements} movimiento(s) se omitieron por tener un tipo no reconocido.
+              </p>
+            ) : null}
           </div>
         ) : (
           <>
@@ -1970,7 +2106,7 @@ export default function Banks() {
               <div className="pt-1">
                 <button
                   type="submit"
-                  className="w-full rounded-xl bg-indigo-600 py-2.5 font-black uppercase tracking-wide text-white shadow-md shadow-indigo-600/20 transition-all hover:bg-indigo-700 active:scale-98 cursor-pointer"
+                  className="w-full rounded-xl bg-violet-600 py-2.5 font-black uppercase tracking-wide text-white shadow-md shadow-violet-600/20 transition-all hover:bg-violet-700 active:scale-95 cursor-pointer"
                   style={{ fontSize: 13 }}
                 >
                   {editingCard ? 'Guardar cambios' : 'Crear cuenta'}
@@ -2006,8 +2142,8 @@ export default function Banks() {
                   type="button"
                   onClick={() => setTransferData({...transferData, isExternal: false})}
                   className={cn(
-                    "flex-1 rounded py-1.5 font-black uppercase tracking-wider transition-all cursor-pointer",
-                    !transferData.isExternal ? "bg-secondary text-indigo-600 shadow-xs" : "text-muted hover:text-primary"
+                    "flex-1 rounded py-2.5 font-black uppercase tracking-wider transition-all cursor-pointer sm:py-1.5",
+                    !transferData.isExternal ? "bg-secondary text-violet-600 shadow-xs" : "text-muted hover:text-primary"
                   )}
                   style={{ fontSize: 12 }}
                 >
@@ -2017,8 +2153,8 @@ export default function Banks() {
                   type="button"
                   onClick={() => setTransferData({...transferData, isExternal: true})}
                   className={cn(
-                    "flex-1 rounded py-1.5 font-black uppercase tracking-wider transition-all cursor-pointer",
-                    transferData.isExternal ? "bg-secondary text-indigo-600 shadow-xs" : "text-muted hover:text-primary"
+                    "flex-1 rounded py-2.5 font-black uppercase tracking-wider transition-all cursor-pointer sm:py-1.5",
+                    transferData.isExternal ? "bg-secondary text-violet-600 shadow-xs" : "text-muted hover:text-primary"
                   )}
                   style={{ fontSize: 12 }}
                 >
@@ -2112,7 +2248,7 @@ export default function Banks() {
               <div className="pt-1">
                 <button
                   type="submit"
-                  className="w-full rounded-xl bg-emerald-600 py-2.5 font-black uppercase tracking-wide text-white shadow-md shadow-emerald-600/20 transition-all hover:bg-emerald-700 active:scale-98 cursor-pointer"
+                  className="w-full rounded-xl bg-emerald-600 py-2.5 font-black uppercase tracking-wide text-white shadow-md shadow-emerald-600/20 transition-all hover:bg-emerald-700 active:scale-95 disabled:opacity-60 cursor-pointer"
                   style={{ fontSize: 13 }}
                 >
                   {isTransferring ? 'Guardando…' : 'Registrar transferencia'}

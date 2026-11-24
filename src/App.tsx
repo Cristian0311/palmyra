@@ -88,6 +88,7 @@ const AccountStatus = lazyWithRetry(() => import("./pages/AccountStatus"));
 const Subscription = lazyWithRetry(() => import("./pages/Subscription"));
 const Team = lazyWithRetry(() => import("./pages/Team"));
 const SaaSInvite = lazyWithRetry(() => import("./pages/SaaSInvite"));
+const DeviceAccess = lazyWithRetry(() => import("./pages/DeviceAccess"));
 const Suppliers = lazyWithRetry(() => import("./pages/Suppliers"));
 const InventoryAudit = lazyWithRetry(() => import("./pages/InventoryAudit"));
 const Banks = lazyWithRetry(() => import("./pages/Banks"));
@@ -578,6 +579,9 @@ export default function App() {
     let stop: (() => void) | null = null;
     void (async () => {
       try {
+        const { LAN_HUB_ENABLED } = await import("./services/lanHub/protocol");
+        // Producto solo Wi-Fi/cloud: el hub LAN queda apagado y no se abre el bucle.
+        if (!LAN_HUB_ENABLED) return;
         const { startHubClientLoop } = await import("./services/lanHub/clientLoop");
         if (!active) return;
         const handle = startHubClientLoop({
@@ -707,6 +711,7 @@ export default function App() {
           <Route path="/platform-admin" element={<PlatformAdmin />} />
           <Route path="/security" element={<Navigate to="/help-center?section=security" replace />} />
           <Route path="/invite" element={<SaaSInvite />} />
+          <Route path="/device-access" element={<DeviceAccess />} />
           <Route path="/auth/confirm" element={<AuthConfirm />} />
           <Route path="/auth" element={
             authRouteOpen

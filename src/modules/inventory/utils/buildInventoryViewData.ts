@@ -1,5 +1,6 @@
 import type { InventoryLevel, Product } from '../../../types';
 import { isLowStockProduct, sumAvailableStock } from './lowStock';
+import { unitProfit, type ProfitCompensationInput } from './inventoryProfit';
 
 export function buildInventoryViewData(
   products: Product[],
@@ -8,7 +9,8 @@ export function buildInventoryViewData(
   selectedBranch: string,
   selectedCategory: string,
   stockFilter: 'all' | 'in_stock' | 'low' | 'out',
-  displayLimit: number
+  displayLimit: number,
+  compensation?: ProfitCompensationInput | null
 ) {
   const inventoryByProduct = new Map<string, InventoryLevel[]>();
   for (const level of inventory || []) {
@@ -45,9 +47,18 @@ const inventoryData = (() => {
       const totalStock = sumAvailableStock(productLevels);
       const isLowStock = isLowStockProduct(productLevels, product);
       const variantLevels = productLevels.filter(level => !!level.variantLabel);
+      const profit = unitProfit({
+        price: product.price,
+        costPrice: product.costPrice,
+        commissionValue: product.commissionValue,
+        compensation
+      });
 
       return {
         ...product,
+        costPrice: Math.max(0, Number(product.costPrice) || 0),
+        unitNetProfit: profit.netProfit,
+        unitMarginPct: profit.marginPct,
         totalStock,
         isLowStock,
         levels: productLevels,

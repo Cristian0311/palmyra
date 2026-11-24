@@ -35,10 +35,10 @@ export function ReportsHistoryPager({ loadedCount, isLoading, hasMore, offline, 
         disabled={disabled}
         title={offline ? 'Sin conexión: se muestran las ventas guardadas en el equipo' : 'Carga 100 ventas anteriores'}
         className={cn(
-          'flex items-center gap-1 h-9 px-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all',
+          'flex items-center gap-1 h-11 px-2.5 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all sm:h-9',
           disabled
             ? 'bg-secondary text-muted border-base cursor-not-allowed opacity-70'
-            : 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 shadow-sm active:scale-95'
+            : 'bg-violet-600 hover:bg-violet-700 text-white border-violet-600 shadow-sm active:scale-95'
         )}
       >
         {isLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : offline ? <WifiOff className="w-3.5 h-3.5" /> : hasMore && loadedCount > 0 ? <ChevronDown className="w-3.5 h-3.5" /> : <History className="w-3.5 h-3.5" />}

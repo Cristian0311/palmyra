@@ -243,7 +243,7 @@ export default function Notifications() {
     setError("");
     const supabase = getSupabase();
     try {
-      if (!supabase) throw new Error("Supabase no está configurado.");
+      if (!supabase) throw new Error("No hay conexión con el servicio de PALMYRA. Revisa tu conexión y vuelve a intentarlo.");
       const [ctxResult, authResult] = await Promise.all([loadSaaSContext(true), supabase.auth.getUser()]);
       const cid = ctxResult?.companyId || "";
       const uid = authResult.data.user?.id || "";
@@ -295,7 +295,7 @@ export default function Notifications() {
         setError("Sin conexión: el historial y las preferencias se actualizarán cuando vuelvas a estar en línea.");
         return;
       }
-      setError(e?.message || "No se pudieron cargar las notificaciones.");
+      setError("No se pudieron cargar las notificaciones. Revisa tu conexión y vuelve a intentarlo.");
     } finally {
       setLoading(false);
     }
@@ -344,7 +344,7 @@ export default function Notifications() {
       if (saveError) throw saveError;
       setMessage("Preferencias guardadas.");
     } catch (e: any) {
-      setError(e?.message || "No se pudieron guardar las preferencias.");
+      setError("No se pudieron guardar las preferencias. Revisa tu conexión y vuelve a intentarlo.");
     } finally {
       setSaving(false);
     }
@@ -408,7 +408,7 @@ export default function Notifications() {
         throw new Error("Este navegador no admite notificaciones push. Prueba desde Chrome e instala PALMYRA como aplicación.");
       }
       if (!vapidPublicKey) {
-        throw new Error("La suscripción push está preparada, pero falta configurar VITE_VAPID_PUBLIC_KEY en el despliegue. No activaremos un envío a medias.");
+        throw new Error("Las notificaciones push todavía no están disponibles en esta instalación. Revisa el historial dentro de PALMYRA mientras tanto.");
       }
       if (Notification.permission === "denied") {
         throw new Error("El navegador bloqueó las notificaciones. Actívalas en los permisos del sitio y vuelve aquí.");
@@ -417,7 +417,7 @@ export default function Notifications() {
       if (permission !== "granted") throw new Error("No se concedió permiso para mostrar notificaciones.");
       const registration = await navigator.serviceWorker.ready;
       const supabase = getSupabase();
-      if (!supabase) throw new Error("Supabase no está configurado.");
+      if (!supabase) throw new Error("No hay conexión con el servicio de PALMYRA. Revisa tu conexión y vuelve a intentarlo.");
       let subscription = await registration.pushManager.getSubscription();
 
       if (subscription && companyId && userId) {
@@ -487,7 +487,7 @@ export default function Notifications() {
       setPushDeviceStatus("registered");
       setMessage("Dispositivo registrado. PALMYRA puede enviarte avisos a este móvil.");
     } catch (e: any) {
-      setError(e?.message || "No se pudo activar el push.");
+      setError("No se pudo activar el push. Revisa los permisos del navegador y vuelve a intentarlo.");
     } finally {
       setPushBusy(false);
     }

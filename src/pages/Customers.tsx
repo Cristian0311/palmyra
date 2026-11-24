@@ -307,7 +307,7 @@ function CustomersContent() {
         onClick={() => setViewingCustomer(customer)}
         aria-label={`Ver ficha de ${customer.name}`}
         title="Ver ficha"
-        className={cn(actionBase, mobile ? "flex h-9 w-9 items-center justify-center" : "p-1.5")}
+        className={cn(actionBase, mobile ? "flex h-10 w-10 items-center justify-center" : "p-1.5")}
       >
         <History size={mobile ? 15 : 14} />
       </button>
@@ -316,7 +316,7 @@ function CustomersContent() {
         onClick={() => openEdit(customer)}
         aria-label={`Editar ${customer.name}`}
         title="Editar"
-        className={cn(actionBase, mobile ? "flex h-9 w-9 items-center justify-center" : "p-1.5")}
+        className={cn(actionBase, mobile ? "flex h-10 w-10 items-center justify-center" : "p-1.5")}
       >
         <Pencil size={mobile ? 15 : 14} />
       </button>
@@ -328,7 +328,7 @@ function CustomersContent() {
         title={customerHasHistory(customer.id) ? "Tiene ventas registradas y no puede eliminarse" : "Eliminar cliente"}
         className={cn(
           actionBase,
-          mobile ? "flex h-9 w-9 items-center justify-center" : "p-1.5",
+          mobile ? "flex h-10 w-10 items-center justify-center" : "p-1.5",
           "hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-red-950/30"
         )}
       >
@@ -354,7 +354,7 @@ function CustomersContent() {
         <button
           type="button"
           onClick={openCreate}
-          className="inline-flex w-full items-center justify-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-sm font-bold text-white shadow-xs transition-all hover:bg-violet-700 cursor-pointer sm:w-auto"
+          className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-violet-600 px-4 text-sm font-bold text-white shadow-xs transition-all hover:bg-violet-700 cursor-pointer sm:w-auto"
         >
           <Plus size={15} />
           Nuevo cliente
@@ -365,7 +365,7 @@ function CustomersContent() {
         {kpis.map(kpi => (
           <div key={kpi.label} className="rounded-2xl border border-base bg-secondary p-4 shadow-2xs">
             <div className="flex items-center justify-between gap-2">
-              <p className="text-[9px] font-black uppercase tracking-widest text-muted">{kpi.label}</p>
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted">{kpi.label}</p>
               <span className={cn("flex h-7 w-7 items-center justify-center rounded-xl", kpiTones[kpi.tone])}>
                 <kpi.icon size={14} />
               </span>
@@ -396,7 +396,7 @@ function CustomersContent() {
                 type="button"
                 onClick={() => setFilter(chip.key)}
                 className={cn(
-                  "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wide transition-colors cursor-pointer",
+                  "inline-flex min-h-10 items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wide transition-colors cursor-pointer",
                   filter === chip.key
                     ? "border-violet-600 bg-violet-600 text-white"
                     : "border-base bg-primary text-muted hover:text-primary"
@@ -444,13 +444,13 @@ function CustomersContent() {
                 </div>
                 <div className="mt-2.5 flex items-center justify-between gap-3 rounded-xl bg-subtle px-3 py-2">
                   <div>
-                    <p className="text-[9px] font-black uppercase tracking-widest text-muted">Compras</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Compras</p>
                     <p className="text-xs font-black text-primary">
                       {activity ? `${activity.purchases} · ${shortDate(activity.lastDate)}` : "Sin compras"}
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="text-[9px] font-black uppercase tracking-widest text-muted">Total comprado</p>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-muted">Total comprado</p>
                     <p className={cn("text-xs font-black tabular-nums", activity ? "text-primary" : "text-muted")}>
                       {activity ? formatMoney(activity.total) : "—"}
                     </p>
@@ -465,12 +465,12 @@ function CustomersContent() {
           <table className="w-full min-w-[720px] border-collapse text-left">
             <thead className="bg-subtle/60">
               <tr>
-                <th className="px-4 py-2.5 text-[9px] font-black uppercase tracking-widest text-muted">Cliente</th>
-                <th className="px-4 py-2.5 text-[9px] font-black uppercase tracking-widest text-muted">Contacto</th>
-                <th className="px-4 py-2.5 text-[9px] font-black uppercase tracking-widest text-muted">Compras</th>
-                <th className="px-4 py-2.5 text-right text-[9px] font-black uppercase tracking-widest text-muted">Ticket prom.</th>
-                <th className="px-4 py-2.5 text-right text-[9px] font-black uppercase tracking-widest text-muted">Total comprado</th>
-                <th className="px-4 py-2.5 text-right text-[9px] font-black uppercase tracking-widest text-muted">Acciones</th>
+                <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-muted">Cliente</th>
+                <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-muted">Contacto</th>
+                <th className="px-4 py-2.5 text-[10px] font-black uppercase tracking-widest text-muted">Compras</th>
+                <th className="px-4 py-2.5 text-right text-[10px] font-black uppercase tracking-widest text-muted">Ticket prom.</th>
+                <th className="px-4 py-2.5 text-right text-[10px] font-black uppercase tracking-widest text-muted">Total comprado</th>
+                <th className="px-4 py-2.5 text-right text-[10px] font-black uppercase tracking-widest text-muted">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-base">
@@ -517,7 +517,7 @@ function CustomersContent() {
                           <p className="text-[10px] font-semibold text-muted">Última: {shortDate(activity.lastDate)}</p>
                         </div>
                       ) : (
-                        <span className="rounded-md bg-subtle px-2 py-1 text-[9px] font-black uppercase tracking-wide text-muted">Sin compras</span>
+                        <span className="rounded-md bg-subtle px-2 py-1 text-[10px] font-black uppercase tracking-wide text-muted">Sin compras</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -586,7 +586,7 @@ function CustomersContent() {
                   type="button"
                   onClick={() => setViewingCustomer(null)}
                   aria-label="Cerrar ficha"
-                  className="rounded-full p-1.5 text-muted transition-colors hover:bg-base"
+                  className="flex h-10 w-10 items-center justify-center rounded-full text-muted transition-colors hover:bg-base"
                 >
                   <X size={18} />
                 </button>
@@ -616,28 +616,28 @@ function CustomersContent() {
 
             <div className="grid grid-cols-2 gap-2 border-b border-base p-4">
               <div className="rounded-xl border border-base bg-primary p-3">
-                <p className="text-[8px] font-black uppercase tracking-widest text-muted">Total comprado</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted">Total comprado</p>
                 <p className="mt-1 text-base font-black tabular-nums text-primary">{formatMoney(viewingActivity?.total || 0)}</p>
               </div>
               <div className="rounded-xl border border-base bg-primary p-3">
-                <p className="text-[8px] font-black uppercase tracking-widest text-muted">Compras</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted">Compras</p>
                 <p className="mt-1 text-base font-black tabular-nums text-primary">{viewingActivity?.purchases || 0}</p>
               </div>
               <div className="rounded-xl border border-base bg-primary p-3">
-                <p className="text-[8px] font-black uppercase tracking-widest text-muted">Ticket promedio</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted">Ticket promedio</p>
                 <p className="mt-1 text-sm font-black tabular-nums text-primary">
                   {formatMoney(viewingActivity && viewingActivity.purchases ? viewingActivity.total / viewingActivity.purchases : 0)}
                 </p>
               </div>
               <div className="rounded-xl border border-base bg-primary p-3">
-                <p className="text-[8px] font-black uppercase tracking-widest text-muted">Última compra</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted">Última compra</p>
                 <p className="mt-1 text-sm font-black text-primary">{shortDate(viewingActivity?.lastDate)}</p>
               </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-4">
               <div className="mb-2 flex items-center justify-between">
-                <p className="text-[9px] font-black uppercase tracking-widest text-muted">Historial de compras</p>
+                <p className="text-[10px] font-black uppercase tracking-widest text-muted">Historial de compras</p>
                 <span className="text-[9px] font-bold text-muted">
                   {viewingTransactions.length} {viewingTransactions.length === 1 ? "ticket" : "tickets"}
                 </span>
@@ -665,7 +665,7 @@ function CustomersContent() {
                         <div className="text-right">
                           <p className="text-sm font-black tabular-nums text-primary">{formatMoney(tx.total)}</p>
                           {tx.status === 'partial_refund' && (
-                            <span className="mt-0.5 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wide text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
+                            <span className="mt-0.5 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wide text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
                               Reembolso parcial
                             </span>
                           )}
@@ -695,7 +695,7 @@ function CustomersContent() {
               <button
                 type="button"
                 onClick={() => openEdit(viewingCustomer)}
-                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-base bg-primary px-3 py-2.5 text-xs font-black uppercase tracking-wide text-primary transition-colors hover:bg-secondary cursor-pointer"
+                className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-base bg-primary px-3 text-xs font-black uppercase tracking-wide text-primary transition-colors hover:bg-secondary cursor-pointer"
               >
                 <Pencil size={14} /> Editar cliente
               </button>
@@ -704,7 +704,7 @@ function CustomersContent() {
                 onClick={() => setDeletingCustomer(viewingCustomer)}
                 disabled={customerHasHistory(viewingCustomer.id)}
                 title={customerHasHistory(viewingCustomer.id) ? "Este cliente tiene ventas registradas y no puede eliminarse." : "Eliminar cliente"}
-                className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-black uppercase tracking-wide text-red-600 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300"
+                className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3 text-xs font-black uppercase tracking-wide text-red-600 transition-colors hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300"
               >
                 <Trash2 size={14} /> Eliminar
               </button>
@@ -726,7 +726,7 @@ function CustomersContent() {
                 type="button"
                 onClick={() => setShowForm(false)}
                 aria-label="Cerrar formulario"
-                className="rounded-full p-1.5 text-muted transition-colors hover:bg-base"
+                className="flex h-10 w-10 items-center justify-center rounded-full text-muted transition-colors hover:bg-base"
               >
                 <X size={18} />
               </button>
@@ -734,7 +734,7 @@ function CustomersContent() {
 
             <form onSubmit={handleSaveCustomer} className="space-y-3 p-4">
               <div>
-                <label htmlFor="customer-name" className="mb-1 block text-[9px] font-black uppercase tracking-widest text-muted">Nombre completo *</label>
+                <label htmlFor="customer-name" className="mb-1 block text-[10px] font-black uppercase tracking-widest text-muted">Nombre completo *</label>
                 <input
                   id="customer-name"
                   required
@@ -747,7 +747,7 @@ function CustomersContent() {
               </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label htmlFor="customer-phone" className="mb-1 block text-[9px] font-black uppercase tracking-widest text-muted">Teléfono</label>
+                  <label htmlFor="customer-phone" className="mb-1 block text-[10px] font-black uppercase tracking-widest text-muted">Teléfono</label>
                   <input
                     id="customer-phone"
                     type="tel"
@@ -758,7 +758,7 @@ function CustomersContent() {
                   />
                 </div>
                 <div>
-                  <label htmlFor="customer-taxid" className="mb-1 block text-[9px] font-black uppercase tracking-widest text-muted">CI o pasaporte</label>
+                  <label htmlFor="customer-taxid" className="mb-1 block text-[10px] font-black uppercase tracking-widest text-muted">CI o pasaporte</label>
                   <input
                     id="customer-taxid"
                     type="text"
@@ -770,7 +770,7 @@ function CustomersContent() {
                 </div>
               </div>
               <div>
-                <label htmlFor="customer-email" className="mb-1 block text-[9px] font-black uppercase tracking-widest text-muted">Correo (opcional)</label>
+                <label htmlFor="customer-email" className="mb-1 block text-[10px] font-black uppercase tracking-widest text-muted">Correo (opcional)</label>
                 <input
                   id="customer-email"
                   type="email"
@@ -836,7 +836,7 @@ function CustomersContent() {
               <button
                 type="button"
                 onClick={() => setDeletingCustomer(null)}
-                className="flex-1 rounded-xl border border-base bg-primary px-3 py-2 text-xs font-black uppercase tracking-wide text-primary hover:bg-secondary cursor-pointer"
+                className="min-h-11 flex-1 rounded-xl border border-base bg-primary px-3 text-xs font-black uppercase tracking-wide text-primary hover:bg-secondary cursor-pointer"
               >
                 {deleteBlocked ? "Entendido" : "Cancelar"}
               </button>
@@ -844,7 +844,7 @@ function CustomersContent() {
                 <button
                   type="button"
                   onClick={confirmDelete}
-                  className="flex-1 rounded-xl bg-red-600 px-3 py-2 text-xs font-black uppercase tracking-wide text-white hover:bg-red-700 cursor-pointer"
+                  className="min-h-11 flex-1 rounded-xl bg-red-600 px-3 text-xs font-black uppercase tracking-wide text-white hover:bg-red-700 cursor-pointer"
                 >
                   Eliminar
                 </button>

@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "cu.palmyra.app",
+      "sha256_cert_fingerprints": [
+        "B8:2F:BC:7F:1D:9C:C7:8B:64:DD:C0:4E:52:CA:24:B5:11:1E:3B:13:C8:41:7F:AE:76:08:97:DC:87:05:CC:1C"
+      ]
+    }
+  }
+]

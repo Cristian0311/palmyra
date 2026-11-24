@@ -42,6 +42,16 @@ files:
 extraMetadata:
   main: dist/desktop-main.cjs
 
+# Esquema propio del enlace de acceso de dispositivo que genera el propietario
+# (src/services/deviceAccess.ts: palmyra://device-access?token=...). NSIS escribe
+# el registro HKCU\Software\Classes\palmyra para que el enlace abra la app
+# instalada y no una pestaña del navegador. main.electron.cjs además llama a
+# app.setAsDefaultProtocolClient('palmyra') al arrancar.
+protocols:
+  - name: PALMYRA POS
+    schemes:
+      - palmyra
+
 # Origen de las actualizaciones automáticas. electron-builder escribe
 # resources/app-update.yml con estos datos; electron-updater consulta
 # latest.yml del último Release y descarga el Setup del mismo Release.

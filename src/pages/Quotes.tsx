@@ -1146,7 +1146,7 @@ export default function Quotes() {
               onClick={() => setStatusFilter(filter.id)}
               aria-pressed={statusFilter === filter.id}
               className={cn(
-                'shrink-0 rounded-lg px-3 py-2 text-[11px] font-black uppercase tracking-wide transition-colors',
+                'inline-flex min-h-10 shrink-0 items-center rounded-lg px-3 text-[11px] font-black uppercase tracking-wide transition-colors',
                 statusFilter === filter.id
                   ? 'bg-violet-600 text-white shadow-sm'
                   : 'border border-base bg-secondary text-secondary hover:bg-subtle hover:text-primary',
@@ -1312,7 +1312,7 @@ export default function Quotes() {
                     type="button"
                     onClick={() => setDetailQuote(quote)}
                     aria-label={`Ver detalle de ${QUOTE_CODE(quote.id)}`}
-                    className="flex h-9 flex-1 items-center justify-center gap-1 rounded-lg border border-base bg-secondary px-2 text-[11px] font-black uppercase text-secondary"
+                    className="flex min-h-11 flex-1 items-center justify-center gap-1 rounded-lg border border-base bg-secondary px-2 text-[11px] font-black uppercase text-secondary"
                   >
                     <Eye size={14} /> Ver
                   </button>
@@ -1320,7 +1320,7 @@ export default function Quotes() {
                     type="button"
                     onClick={() => printQuote(quote, customer)}
                     aria-label={`Descargar PDF de ${QUOTE_CODE(quote.id)}`}
-                    className="flex h-9 flex-1 items-center justify-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 text-[11px] font-black uppercase text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300"
+                    className="flex min-h-11 flex-1 items-center justify-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 text-[11px] font-black uppercase text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300"
                   >
                     <FileDown size={14} /> PDF
                   </button>
@@ -1328,7 +1328,7 @@ export default function Quotes() {
                     type="button"
                     onClick={() => duplicateQuote(quote)}
                     aria-label={`Duplicar ${QUOTE_CODE(quote.id)}`}
-                    className="flex h-9 flex-1 items-center justify-center gap-1 rounded-lg border border-base bg-secondary px-2 text-[11px] font-black uppercase text-secondary"
+                    className="flex min-h-11 flex-1 items-center justify-center gap-1 rounded-lg border border-base bg-secondary px-2 text-[11px] font-black uppercase text-secondary"
                   >
                     <Copy size={14} /> Duplicar
                   </button>
@@ -1336,7 +1336,7 @@ export default function Quotes() {
                     type="button"
                     onClick={() => setQuoteToDelete(quote)}
                     aria-label={`Eliminar ${QUOTE_CODE(quote.id)}`}
-                    className="flex h-9 w-9 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-600 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300"
+                    className="flex min-h-11 w-11 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-600 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300"
                   >
                     <Trash2 size={14} />
                   </button>
@@ -1344,7 +1344,7 @@ export default function Quotes() {
                 <button
                   type="button"
                   onClick={() => handleChargeQuote(quote)}
-                  className="flex min-h-10 w-full items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-black uppercase tracking-wide text-white active:scale-[0.99]"
+                  className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-violet-600 px-3 text-[11px] font-black uppercase tracking-wide text-white active:scale-[0.99]"
                 >
                   <ShoppingCart size={14} /> Cobrar en POS
                 </button>

@@ -31,16 +31,19 @@ export default function POSStartupScreen(props: StartupProps) {
           {joiningSessionId ? (
             /* Modal Formulario de Ingreso a Turno Abierto Existente */
             <div
-              className="palmyra-mobile-modal keyboard-modal-surface bg-white dark:bg-slate-900 p-3 sm:p-3.5 rounded-2xl shadow-2xl text-center max-w-[19rem] w-full border border-white/20"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Reanudar turno existente"
+              className="palmyra-mobile-modal keyboard-modal-surface bg-white dark:bg-slate-900 p-4 rounded-2xl shadow-2xl text-center max-w-[min(94vw,24rem)] w-full border border-white/20"
               style={{ transform: 'translateY(clamp(0px, calc(var(--keyboard-inset, 0px) * 0.12), 24px))' }}
             >
-              <div className="w-8 h-8 bg-amber-50 dark:bg-amber-950/40 rounded-xl flex items-center justify-center mx-auto mb-1.5">
-                <Lock className="w-3.5 h-3.5 text-amber-600" />
+              <div className="w-9 h-9 bg-amber-50 dark:bg-amber-950/40 rounded-xl flex items-center justify-center mx-auto mb-2">
+                <Lock className="w-4 h-4 text-amber-600" />
               </div>
-              <h3 className="text-[11px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight leading-none mb-1">
+              <h3 className="text-[13px] font-black text-slate-900 dark:text-slate-100 uppercase tracking-tight leading-none mb-1">
                 Reanudar turno
               </h3>
-              <p className="text-[7px] font-bold text-slate-400 uppercase tracking-wider mb-2.5">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-3">
                 Turno de {(activeCashSessions || []).find(s => s.id === joiningSessionId)?.workerName || 'Empleado'}
                 {(() => {
                   const joining = (activeCashSessions || []).find((s: any) => s.id === joiningSessionId);
@@ -50,15 +53,15 @@ export default function POSStartupScreen(props: StartupProps) {
               </p>
 
               {posError && (
-                <div className="mb-2 p-2 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-[8px] font-bold text-left flex items-center gap-2">
+                <div className="mb-2 p-2 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-[10px] font-bold text-left flex items-center gap-2">
                   <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-600" />
-                  <span className="text-[8px] leading-tight">{posError}</span>
+                  <span className="text-[10px] leading-tight">{posError}</span>
                 </div>
               )}
 
               <form onSubmit={handleJoinExistingSession} className="space-y-2">
                 <div className="text-left">
-                  <label className="block text-[7px] font-black text-slate-400 uppercase tracking-wider mb-1">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1">
                     Contraseña para reanudar el turno
                   </label>
                   <input
@@ -70,8 +73,9 @@ export default function POSStartupScreen(props: StartupProps) {
                       if (posError) setPosError("");
                     }}
                     autoComplete="current-password"
+                    aria-label="Contraseña para reanudar el turno"
                     placeholder="Contraseña para reanudar"
-                    className="w-full px-2.5 py-2 bg-slate-50 border border-slate-100 dark:bg-slate-800 dark:border-slate-700 rounded-lg text-[9px] font-bold text-slate-900 dark:text-slate-100 outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-300"
+                    className="w-full px-3 py-2.5 bg-slate-50 border border-slate-100 dark:bg-slate-800 dark:border-slate-700 rounded-lg text-[12px] font-bold text-slate-900 dark:text-slate-100 outline-none focus:ring-1 focus:ring-amber-500 focus:border-amber-300"
                   />
                 </div>
 
@@ -83,13 +87,13 @@ export default function POSStartupScreen(props: StartupProps) {
                       setJoiningSessionPassword("");
                       setPosError("");
                     }}
-                    className="py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[8px] uppercase tracking-wider transition-colors"
+                    className="min-h-[44px] py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[10px] uppercase tracking-wider transition-colors"
                   >
                     Cancelar
                   </button>
                   <button
                     type="submit"
-                    className="py-1.5 bg-rose-600 hover:bg-indigo-700 text-white font-bold rounded-lg text-[8px] uppercase tracking-tight transition-colors shadow-sm"
+                    className="min-h-[44px] py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-[10px] uppercase tracking-tight transition-colors shadow-sm"
                   >
                     Entrar al Turno
                   </button>
@@ -142,7 +146,7 @@ export default function POSStartupScreen(props: StartupProps) {
                     <div className="grid grid-cols-2 gap-2">
                       <button                        type="button"
                         onClick={() => handlePrintClosureThermal(lastClosedSession)}
-                        className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-black text-[8px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 active:scale-95"
+                        className="min-h-[44px] py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-black text-[10px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 active:scale-95"
                       >
                         <Printer className="w-3 h-3 text-slate-500" />
                         Ticket 58mm
@@ -153,7 +157,7 @@ export default function POSStartupScreen(props: StartupProps) {
                     <button
                       type="button"
                       onClick={() => setShowOpenShiftModal(true)}
-                      className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-[9px] uppercase tracking-widest transition-all shadow-lg shadow-indigo-100 active:scale-95 flex items-center justify-center gap-2"
+                      className="w-full min-h-[44px] py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-lg shadow-indigo-100 active:scale-95 flex items-center justify-center gap-2"
                     >
                       <DollarSign className="w-3.5 h-3.5" />
                       Abrir Nuevo Turno / Caja
@@ -163,7 +167,7 @@ export default function POSStartupScreen(props: StartupProps) {
                       <button 
                         type="button"
                         onClick={() => navigate('/')}
-                        className="w-full py-2 bg-slate-100 text-slate-600 rounded-xl font-black text-[8px] uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
+                        className="w-full min-h-[44px] py-2 bg-slate-100 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
                       >
                         Volver al Menú Principal
                       </button>
@@ -171,7 +175,7 @@ export default function POSStartupScreen(props: StartupProps) {
                       <button 
                         type="button"
                         onClick={() => logout()}
-                        className="w-full py-2 bg-slate-100 text-slate-600 rounded-xl font-black text-[8px] uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
+                        className="w-full min-h-[44px] py-2 bg-slate-100 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
                       >
                         Cerrar Sesión del Empleado
                       </button>
@@ -181,32 +185,37 @@ export default function POSStartupScreen(props: StartupProps) {
 
               ) : (
                 /* Modal Formulario de Apertura de Caja */
-                <div className="palmyra-mobile-modal palmyra-open-cash-modal p-2 sm:p-2.5 rounded-2xl shadow-2xl text-center w-full max-w-[min(94vw,21rem)] max-h-[calc(100dvh-1rem)] overflow-y-auto animate-in zoom-in-95 my-auto">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white shadow-sm">
-                      <DollarSign className="w-3.5 h-3.5" />
+                <div
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Apertura de caja"
+                  className="palmyra-mobile-modal palmyra-open-cash-modal p-3 sm:p-4 rounded-2xl shadow-2xl text-center w-full max-w-[min(96vw,27rem)] max-h-[calc(100dvh-1rem)] overflow-y-auto animate-in zoom-in-95 my-auto"
+                >
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 text-white shadow-sm">
+                      <DollarSign className="w-4 h-4" />
                     </div>
                     <div className="min-w-0 flex-1 text-left">
                       <div className="flex items-center gap-1.5">
-                        <h3 className="text-[11px] font-black text-slate-900 uppercase tracking-tight leading-none">Apertura de caja</h3>
-                        <span className="rounded-full bg-violet-50 border border-violet-100 px-1.5 py-0.5 text-[5.5px] font-black uppercase tracking-wider text-violet-700">Configurar</span>
+                        <h3 className="text-[13px] font-black text-slate-900 uppercase tracking-tight leading-none">Apertura de caja</h3>
+                        <span className="rounded-full bg-violet-50 border border-violet-100 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-violet-700">Configurar</span>
                       </div>
-                      <p className="mt-0.5 text-[6.5px] font-bold leading-tight text-slate-400">Operador · almacén · fondo inicial</p>
+                      <p className="mt-1 text-[9.5px] font-bold leading-tight text-slate-400">Operador · almacén · fondo inicial</p>
                     </div>
                   </div>
 
-                  <div className="mb-2 grid grid-cols-3 gap-1 rounded-xl border border-slate-100 bg-slate-50/80 p-1">
+                  <div className="mb-2.5 grid grid-cols-3 gap-1 rounded-xl border border-slate-100 bg-slate-50/80 p-1">
                     <div className="rounded-lg bg-white px-1.5 py-1.5 border border-slate-100">
-                      <p className="text-[5.5px] font-black uppercase tracking-wider text-slate-400">01</p>
-                      <p className="mt-0.5 text-[6.5px] font-black text-slate-700">Operador</p>
+                      <p className="text-[8px] font-black uppercase tracking-wider text-slate-400">01</p>
+                      <p className="mt-0.5 text-[9.5px] font-black text-slate-700">Operador</p>
                     </div>
                     <div className="rounded-lg bg-white px-1.5 py-1.5 border border-slate-100">
-                      <p className="text-[5.5px] font-black uppercase tracking-wider text-slate-400">02</p>
-                      <p className="mt-0.5 text-[6.5px] font-black text-slate-700">Almacén</p>
+                      <p className="text-[8px] font-black uppercase tracking-wider text-slate-400">02</p>
+                      <p className="mt-0.5 text-[9.5px] font-black text-slate-700">Almacén</p>
                     </div>
                     <div className="rounded-lg bg-white px-1.5 py-1.5 border border-slate-100">
-                      <p className="text-[5.5px] font-black uppercase tracking-wider text-slate-400">03</p>
-                      <p className="mt-0.5 text-[6.5px] font-black text-slate-700">Fondo</p>
+                      <p className="text-[8px] font-black uppercase tracking-wider text-slate-400">03</p>
+                      <p className="mt-0.5 text-[9.5px] font-black text-slate-700">Fondo</p>
                     </div>
                   </div>                  {/* Inline Modal Alert */}
                   {posError && (
@@ -236,17 +245,17 @@ export default function POSStartupScreen(props: StartupProps) {
                         setShowOpenSessionsModal(true);
                         void refreshOpenSessions();
                       }}
-                      className="group w-full mb-2 flex items-center gap-2 rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-white px-2.5 py-2 text-left transition-all hover:border-emerald-300 hover:shadow-sm active:scale-[0.99]"
+                      className="group w-full min-h-[44px] mb-2 flex items-center gap-2 rounded-xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-white px-2.5 py-2 text-left transition-all hover:border-emerald-300 hover:shadow-sm active:scale-[0.99]"
                     >
                       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
                         <Wallet className="w-3.5 h-3.5" />
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-1.5">
-                          <span className="text-[8px] font-black uppercase tracking-[0.1em] text-emerald-900">Turnos abiertos</span>
-                          <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[6px] font-black text-emerald-700">{isRefreshingOpenSessions ? "…" : openSessionsForResume.length}</span>
+                          <span className="text-[10px] font-black uppercase tracking-[0.1em] text-emerald-900">Turnos abiertos</span>
+                          <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[8px] font-black text-emerald-700">{isRefreshingOpenSessions ? "…" : openSessionsForResume.length}</span>
                         </span>
-                        <span className="mt-0.5 block text-[6.5px] font-bold leading-tight text-emerald-700/75">
+                        <span className="mt-0.5 block text-[9px] font-bold leading-tight text-emerald-700/75">
                           {openSessionsForResume.length > 0 ? "Ver cajas en curso y reanudar" : "Buscar cajas en curso"}
                         </span>
                       </span>
@@ -257,7 +266,7 @@ export default function POSStartupScreen(props: StartupProps) {
                     <div className="text-left space-y-2">
                       {!false && (
                       <div>
-                        <label className="block text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
                           Empleado del turno
                         </label>
                         <div className="space-y-1.5">
@@ -289,7 +298,7 @@ export default function POSStartupScreen(props: StartupProps) {
                                   setEmployeePickerOpen(true);
                                 }}
                                 placeholder="Seleccionar empleado"
-                                className="w-full pl-9 pr-10 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[9px] font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                                className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
                                 autoComplete="off"
                                 aria-label="Seleccionar empleado"
                               />
@@ -357,11 +366,11 @@ export default function POSStartupScreen(props: StartupProps) {
                                             className="!h-8 !w-8 !rounded-xl !text-[10px]"
                                           />
                                           <div className="min-w-0 flex-1">
-                                            <span className="block text-[8px] sm:text-[9px] font-black uppercase tracking-tight leading-tight whitespace-normal break-words">
+                                            <span className="block text-[10px] font-black uppercase tracking-tight leading-tight whitespace-normal break-words">
                                               {u.name || 'Trabajador'}
                                             </span>
                                             <span className={cn(
-                                              "block text-[7px] font-black uppercase tracking-wider mt-0.5",
+                                              "block text-[8.5px] font-black uppercase tracking-wider mt-0.5",
                                               u.role === 'admin' ? "text-rose-700" : "text-slate-400"
                                             )}>
                                               {u.role === 'admin' ? "ADMINISTRADOR" : "EMPLEADO"}
@@ -369,7 +378,7 @@ export default function POSStartupScreen(props: StartupProps) {
                                             </span>
                                           </div>
                                           <span className={cn(
-                                            "shrink-0 px-1.5 py-0.5 rounded-md border text-[5.5px] font-black uppercase tracking-wider",
+                                            "shrink-0 px-1.5 py-0.5 rounded-md border text-[8px] font-black uppercase tracking-wider",
                                             open ? "bg-emerald-100 border-emerald-300 text-emerald-700" : "bg-slate-100 border-slate-200 text-slate-400"
                                           )}>
                                             {open ? "ABIERTO" : "DISPONIBLE"}
@@ -394,10 +403,10 @@ export default function POSStartupScreen(props: StartupProps) {
                                 setJoiningSessionId(selectedOpenSession.id);
                                 setJoiningSessionPassword("");
                               }}
-                              className="flex w-full items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-left active:scale-[0.99]"
+                              className="flex w-full min-h-[44px] items-center gap-1.5 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-2 text-left active:scale-[0.99]"
                             >
-                              <Wallet className="h-3 w-3 shrink-0 text-emerald-600" />
-                              <span className="text-[7.5px] font-black uppercase tracking-wide text-emerald-800">
+                              <Wallet className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+                              <span className="text-[9.5px] font-black uppercase tracking-wide text-emerald-800">
                                 Caja abierta{branchName(selectedOpenSession.branchId) ? ` en ${branchName(selectedOpenSession.branchId)}` : ''} · Reanudar turno
                               </span>
                             </button>
@@ -408,7 +417,7 @@ export default function POSStartupScreen(props: StartupProps) {
                       )}
 
                       <div>
-                        <label className="block text-[7px] font-black text-slate-400 uppercase tracking-widest mb-1">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
                           {currentUser?.role === 'admin' && detectedWorker?.id === currentUser.id
                             ? 'Contraseña de PALMYRA (Administrador)'
                             : 'Contraseña del Empleado'}
@@ -445,11 +454,11 @@ export default function POSStartupScreen(props: StartupProps) {
                       <div className="space-y-2.5">
                         <div className="text-left">
                           <div className="flex items-center justify-between mb-1">
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
                               Sucursal / Almacén a Operar
                             </label>
                             {isBranchLocked && (
-                              <span className="flex items-center gap-1 text-[8px] font-black text-amber-700 uppercase bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300">
+                              <span className="flex items-center gap-1 text-[8.5px] font-black text-amber-700 uppercase bg-amber-100 px-1.5 py-0.5 rounded border border-amber-300">
                                 <Lock className="w-2.5 h-2.5" /> Bloqueado
                               </span>
                             )}
@@ -458,8 +467,9 @@ export default function POSStartupScreen(props: StartupProps) {
                             value={sessionBranchId}
                             disabled={isBranchLocked}
                             onChange={(e) => setSessionBranchId(e.target.value)}
+                            aria-label="Sucursal o almacén a operar"
                             className={cn(
-                              "w-full px-2.5 py-2 border rounded-lg text-[9px] font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none",
+                              "w-full px-2.5 py-2.5 border rounded-lg text-[11px] font-bold text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none",
                               isBranchLocked ? "bg-amber-50/70 border-amber-200 cursor-not-allowed text-amber-900 font-black" : "bg-slate-50 border-slate-100"
                             )}
                           >
@@ -468,7 +478,7 @@ export default function POSStartupScreen(props: StartupProps) {
                             ))}
                           </select>
                           {isBranchLocked && (
-                            <p className="text-[8px] font-bold text-amber-700 mt-1 uppercase">
+                            <p className="text-[9.5px] font-bold text-amber-700 mt-1 uppercase leading-snug">
                               El vendedor tiene un almacén fijo asignado y no puede vender desde otro almacén.
                             </p>
                           )}
@@ -476,24 +486,25 @@ export default function POSStartupScreen(props: StartupProps) {
                         
                         <div className="text-left">
                           <div className="flex items-center justify-between mb-1">
-                            <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest">
-                              Fondo Inicial ({baseCurrency.symbol} CUP)
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                              Fondo Inicial ({baseCurrency.code})
                             </label>
-                            <span className="text-[7px] font-bold text-slate-400 uppercase">0 permitido</span>
+                            <span className="text-[9px] font-bold text-slate-400 uppercase">0 permitido</span>
                           </div>
                           <div className="relative">
                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                              <span className="text-slate-400 font-bold text-[9px]">{baseCurrency.symbol}</span>
+                              <span className="text-slate-400 font-bold text-[11px]">{baseCurrency.symbol}</span>
                             </div>
                             <input 
                               type="number" 
                               min="0"
                               step="0.01"
+                              aria-label={`Fondo inicial en ${baseCurrency.code}`}
                               value={openingAmount}
                               onFocus={(e) => e.target.select()}
                               onChange={e => setOpeningAmount(e.target.value)}
-                              className="w-full pl-8 pr-2.5 py-1.5 bg-slate-50 border border-slate-100 rounded-lg text-[10px] font-black text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-                              placeholder="0.00"
+                              className="w-full pl-8 pr-2.5 py-2 bg-slate-50 border border-slate-100 rounded-lg text-[13px] font-black text-slate-900 outline-none focus:ring-2 focus:ring-indigo-500 transition-all tabular-nums"
+                              placeholder="0"
                             />
                           </div>
                         </div>
@@ -502,7 +513,7 @@ export default function POSStartupScreen(props: StartupProps) {
                           <button 
                             type="submit"
                             disabled={isOpeningSession}
-                            className="w-full py-2 bg-violet-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-violet-700 transition-all shadow-lg shadow-violet-600/20 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+                            className="w-full min-h-[44px] py-2.5 bg-violet-600 text-white rounded-xl font-black text-[11px] uppercase tracking-widest hover:bg-violet-700 transition-all shadow-lg shadow-violet-600/20 active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
                           >
                             {isOpeningSession ? "Abriendo Caja..." : "Abrir Caja y Comenzar"}
                           </button>
@@ -511,7 +522,7 @@ export default function POSStartupScreen(props: StartupProps) {
                             <button
                               type="button"
                               onClick={() => setShowOpenShiftModal(false)}
-                              className="w-full py-2 bg-slate-100 text-slate-600 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
+                              className="w-full min-h-[44px] py-2 bg-slate-100 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
                             >
                               Ver Resumen de Turno Anterior
                             </button>
@@ -521,7 +532,7 @@ export default function POSStartupScreen(props: StartupProps) {
                             <button 
                               type="button"
                               onClick={() => navigate('/')}
-                              className="w-full py-2.5 bg-slate-100 text-slate-600 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
+                              className="w-full min-h-[44px] py-2.5 bg-slate-100 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
                             >
                               Volver al Menú
                             </button>
@@ -529,7 +540,7 @@ export default function POSStartupScreen(props: StartupProps) {
                             <button 
                               type="button"
                               onClick={() => logout()}
-                              className="w-full py-2.5 bg-slate-100 text-slate-600 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
+                              className="w-full min-h-[44px] py-2.5 bg-slate-100 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
                             >
                               Cerrar Sesión
                             </button>
@@ -545,7 +556,7 @@ export default function POSStartupScreen(props: StartupProps) {
                           <button 
                             type="button"
                             onClick={() => navigate('/')}
-                            className="w-full py-3 bg-slate-100 text-slate-600 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
+                            className="w-full min-h-[44px] py-3 bg-slate-100 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
                           >
                             Volver al Menú
                           </button>
@@ -553,7 +564,7 @@ export default function POSStartupScreen(props: StartupProps) {
                           <button 
                             type="button"
                             onClick={() => logout()}
-                            className="w-full py-3 bg-slate-100 text-slate-600 rounded-xl font-black text-[9px] uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
+                            className="w-full min-h-[44px] py-3 bg-slate-100 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
                           >
                             Cerrar Sesión
                           </button>

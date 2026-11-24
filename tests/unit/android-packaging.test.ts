@@ -19,6 +19,16 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const REPO_ROOT = resolve(fileURLToPath(new URL("../..", import.meta.url)));
 const MODULE_PATH = join(REPO_ROOT, "scripts/check-android-package.mjs");
 
+/** Versión y versionCode esperados: derivados de package.json, la única fuente. */
+const PACKAGE_VERSION: string = JSON.parse(
+  readFileSync(join(REPO_ROOT, "package.json"), "utf8")
+).version as string;
+const EXPECTED_VERSION_CODE: number = PACKAGE_VERSION
+  .split(".")
+  .slice(0, 3)
+  .map((part) => Number(part))
+  .reduce((code, part) => code * 100 + part, 0);
+
 type Check = { ok: boolean; section: string; name: string; detail: string };
 type ValidationResult = {
   ok: boolean;
@@ -81,8 +91,12 @@ test("el empaquetado real del repo cumple el contrato", () => {
 
   assert.equal(result.ok, true, `fallos inesperados:\n${failureText(result)}`);
   assert.equal(result.failures.length, 0);
-  assert.equal(result.version, "1.3.5");
-  assert.equal(result.expectedVersionCode, 10305, "1.3.5 debe derivar en versionCode 10305");
+  assert.equal(result.version, PACKAGE_VERSION);
+  assert.equal(
+    result.expectedVersionCode,
+    EXPECTED_VERSION_CODE,
+    `${PACKAGE_VERSION} debe derivar en versionCode ${EXPECTED_VERSION_CODE}`
+  );
   assert.ok(result.checks.length >= 30, `se esperaban las comprobaciones completas (${result.checks.length})`);
 });
 
@@ -145,7 +159,7 @@ test("detecta versionCode que no sigue el esquema de la versión", (t) => {
   const result = validator.inspect({ root });
   assert.equal(result.ok, false);
   assert.match(failureText(result), /versionCode/);
-  assert.match(failureText(result), /10305/);
+  assert.match(failureText(result), new RegExp(String(EXPECTED_VERSION_CODE)));
 });
 
 test("detecta cleartext hacia un dominio público", (t) => {

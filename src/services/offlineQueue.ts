@@ -19,6 +19,7 @@ import {
   summarizeOfflineQueue,
   type OfflineQueueHealth
 } from './offline/syncContract';
+import { INTERRUPTED_RETRY_MESSAGE, interruptedRetryDelayMs } from './offline/durability';
 export type { OfflineActionType, OfflineQueueItem } from './offlineQueueTypes';
 
 
@@ -168,10 +169,20 @@ async function migrateLegacyQueue(): Promise<void> {
   // Merge every source instead of choosing one. This prevents an enqueue that
   // happens during startup from being overwritten by the migration itself.
   const merged = new Map<string, OfflineQueueItem>();
-  const mergeCandidate = (item: OfflineQueueItem) => {
+  const mergeCandidate = (item: OfflineQueueItem, fromDurable = false) => {
     const normalized = normalizeOfflineQueueItem(item, { deviceId: item.deviceId || getDeviceId() });
     // Un 'processing' persistido por un cierre abrupto no está en vuelo aquí.
-    if (normalized.status === 'processing') normalized.status = 'pending';
+    // Vuelve a pendiente con la MISMA clave idempotente y un backoff: al abrir
+    // la caja no se reenvía la cola entera de golpe.
+    if (normalized.status === 'processing') {
+      normalized.status = 'pending';
+      if (fromDurable && !normalized.interruptedAt) {
+        const nowMs = Date.now();
+        normalized.interruptedAt = new Date(nowMs).toISOString();
+        normalized.nextRetryAt = nowMs + interruptedRetryDelayMs(Number(normalized.retryCount || 0));
+        normalized.lastError = normalized.lastError || INTERRUPTED_RETRY_MESSAGE;
+      }
+    }
     const mergeKey = `${normalized.type}:${normalized.actionId}`;
     const previous = merged.get(mergeKey);
     if (!previous) { merged.set(mergeKey, normalized); return; }
@@ -186,7 +197,7 @@ async function migrateLegacyQueue(): Promise<void> {
       merged.set(mergeKey, normalized);
     }
   };
-  for (const item of (Array.isArray(existing) ? existing : [])) mergeCandidate(item);
+  for (const item of (Array.isArray(existing) ? existing : [])) mergeCandidate(item, true);
   for (const item of (Array.isArray(legacy) ? legacy : [])) mergeCandidate(item);
   for (const item of memoryQueue) mergeCandidate(item);
   const sequenced = assignMissingDeviceSequences(
@@ -356,8 +367,11 @@ export async function refreshOfflineQueueCounts(): Promise<OfflineQueueCounts> {
           const normalized = normalizeOfflineQueueItem(raw);
           // Un elemento 'processing' en el almacén significa que otra pestaña
           // o un cierre abrupto lo dejó en vuelo: aquí no se está procesando,
-          // así que vuelve a pendiente (nunca se oculta trabajo real).
-          byId.set(id, normalized.status === 'processing' ? { ...normalized, status: 'pending' } : normalized);
+          // así que vuelve a pendiente (nunca se oculta trabajo real). Solo se
+          // marca como interrumpido: el backoff lo decide el motor de sync.
+          byId.set(id, normalized.status === 'processing'
+            ? { ...normalized, status: 'pending', interruptedAt: normalized.interruptedAt || new Date().toISOString() }
+            : normalized);
         }
         // Fin de la cadena de persistencia ya esperado: todo lo que existe en
         // memoria quedó escrito. Si IndexedDB ya no lo tiene fue drenado por

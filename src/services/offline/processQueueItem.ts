@@ -58,6 +58,13 @@ const PERMANENT_SYNC_SQL_CODES = new Set([
 const IRREVERSIBLE_BUSINESS_ERRORS =
   /sale_not_found|return_not_found|company_access_denied|transfer_not_found|unknown_table|invalid_operation_id/i;
 
+/**
+ * Tipos de movimiento bancario que la UI/RPC entienden. Un valor fuera de esta
+ * lista se marca como conflicto visible: convertirlo en `withdrawal` (como hacía
+ * la lectura de Supabase) invertía el signo del dinero sin ningún aviso.
+ */
+const KNOWN_BANK_TRANSACTION_TYPES = new Set(['deposit', 'withdrawal', 'payment_received', 'supplier_payment']);
+
 function isPermanentSyncFailure(code: unknown, message?: unknown): boolean {
   const token = String(code || '');
   if (PERMANENT_SYNC_SQL_CODES.has(token)) return true;
@@ -1079,6 +1086,12 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
       // Un ingreso generado por una venta nunca se procesa solo. Aunque su
       // dependencia haya quedado marcada como conflict, verificamos de nuevo
       // que la venta exista y siga válida en Supabase antes del banco.
+      if (!KNOWN_BANK_TRANSACTION_TYPES.has(String(d.type))) {
+        await reconcileBankCanonical();
+        throw new PermanentSyncError(
+          'El movimiento bancario tiene un tipo no reconocido. Revísalo en Bancos y vuelve a registrarlo.'
+        );
+      }
       if (d.transactionId) {
         const { data: sale, error: saleError } = await supabase
           .from('sales')
@@ -1152,8 +1165,17 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
 
           // Las garantías dependientes no pueden existir en el servidor sin la
           // venta, pero se conservan localmente como registro de lo entregado.
+          // El descarte deja rastro: nunca desaparece una operación en silencio.
           for (const queued of getOfflineQueue()) {
             if (queued.type === 'warranty' && queued.data?.transactionId === transaction.id) {
+              addSyncLog({
+                level: 'warning',
+                source: 'offline_queue',
+                title: 'Garantía retirada de la cola junto a su venta rechazada',
+                details: 'La venta fue rechazada de forma definitiva, así que la garantía no puede registrarse en la nube. Se conserva en el historial local de la venta.',
+                entityType: 'warranty',
+                actionId: queued.actionId
+              });
               removeFromOfflineQueue(queued.id);
             }
           }
@@ -1188,10 +1210,9 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
         throw new Error(res.error || 'No se pudo sincronizar la venta');
       }
 
-      // No damos la operación por completada solo porque el HTTP/RPC respondió.
-      // Confirmamos que la fila existe realmente en Supabase antes de retirar la
-      // operación de IndexedDB. Así una respuesta incompleta o una caída durante
-      // la confirmación nunca puede dejar una venta perdida y una cola vacía.
+      // Confirmamos la fila en Supabase antes de retirar la operación de
+      // IndexedDB, pero esa relectura es diagnóstica: el RPC ya confirmó el
+      // cobro, así que un fallo aquí solo deja una advertencia (ver abajo).
       const isUuid = (value: unknown) =>
         typeof value === 'string' &&
         /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -1201,27 +1222,55 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
       const persistedQuery = remoteSaleId
         ? supabase.from('sales').select('id,status,total,warehouse_id').eq('id',remoteSaleId).maybeSingle()
         : Promise.resolve({data:null,error:null});
-      const { data: persisted, error: verifyError } = await persistedQuery;
-      if (verifyError) throw verifyError;
-      if (!persisted || persisted.status !== 'completed') {
-        throw new Error('Supabase no confirmó la venta como completada después de procesarla');
+      // A partir de aquí el cobro YA está confirmado. La relectura y la
+      // reconciliación de inventario son verificación posterior: si fallan, el
+      // ítem no puede volver a la cola ni convertirse en un error de cobro en el
+      // POS (el cajero veía "Failed to fetch" después de una venta correcta).
+      // Se registra una advertencia y la conciliación normal lo reintenta sola.
+      let persisted: { id?: string; status?: string; warehouse_id?: string | null } | null = null;
+      let verificationWarning: string | null = null;
+      try {
+        const { data, error: verifyError } = await persistedQuery;
+        if (verifyError) throw verifyError;
+        persisted = data || null;
+        if (!persisted || persisted.status !== 'completed') {
+          verificationWarning = 'la relectura no devolvió la venta como completada';
+        }
+      } catch (verifyError) {
+        verificationWarning = 'la relectura de la venta no pudo completarse';
+        console.warn('[transaction] Venta confirmada; verificación posterior no disponible:', verifyError);
+      }
+      if (verificationWarning) {
+        addSyncLog({
+          level: 'warning',
+          source: 'offline_queue',
+          title: 'Venta confirmada sin verificación posterior',
+          details: `${verificationWarning}; el cobro se conserva y la conciliación la revisará en segundo plano.`,
+          entityType: 'transaction',
+          actionId: item.actionId
+        });
       }
 
       // Al reintentar tras una caída, la RPC puede haber confirmado la venta
       // antes de que la tablet muriera. El replay debe restaurar el inventario
       // local desde el servidor y no volver a confiar en el snapshot offline.
-      const branchId = persisted.warehouse_id || transaction.branchId;
+      const branchId = persisted?.warehouse_id || transaction.branchId;
       if (branchId) {
-        const inventoryRes = await pullBranchInventoryFromSupabase(branchId);
-        if (!inventoryRes.success) {
-          throw new Error(inventoryRes.message || 'No se pudo reconciliar el inventario de la venta');
+        try {
+          const inventoryRes = await pullBranchInventoryFromSupabase(branchId);
+          if (inventoryRes.success) {
+            useStore.setState(state => ({
+              inventory: [
+                ...(state.inventory || []).filter(item => item.branchId !== branchId),
+                ...inventoryRes.inventory
+              ]
+            }));
+          } else {
+            console.warn('[transaction] Venta confirmada; inventario local se reconciliará después:', inventoryRes.message);
+          }
+        } catch (inventoryError) {
+          console.warn('[transaction] Venta confirmada; no se pudo reconciliar el inventario ahora:', inventoryError);
         }
-        useStore.setState(state => ({
-          inventory: [
-            ...(state.inventory || []).filter(item => item.branchId !== branchId),
-            ...inventoryRes.inventory
-          ]
-        }));
       }
 
       // La venta ya está confirmada en Supabase: quitar la marca local pendiente
@@ -1261,9 +1310,15 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
         throw new Error('Supabase no confirmó la anulación de la venta');
       }
       if (persistedVoid.warehouse_id) {
-        const inventoryRes = await pullBranchInventoryFromSupabase(persistedVoid.warehouse_id);
-        if (!inventoryRes.success) throw new Error(inventoryRes.message || 'No se pudo reconciliar el inventario de la anulación');
-        replaceWarehouseInventory(persistedVoid.warehouse_id, inventoryRes.inventory);
+        // Conciliación posterior a la anulación confirmada: nunca devuelve el
+        // ítem a la cola por un fallo de red en la lectura de inventario.
+        try {
+          const inventoryRes = await pullBranchInventoryFromSupabase(persistedVoid.warehouse_id);
+          if (inventoryRes.success) replaceWarehouseInventory(persistedVoid.warehouse_id, inventoryRes.inventory);
+          else console.warn('[void_transaction] Anulación confirmada; inventario se reconciliará después:', inventoryRes.message);
+        } catch (inventoryError) {
+          console.warn('[void_transaction] Anulación confirmada; no se pudo reconciliar el inventario ahora:', inventoryError);
+        }
       }
       await reconcileBankCanonical();
       return true;
@@ -1298,9 +1353,15 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
           .maybeSingle();
         if (saleReadError) throw saleReadError;
         if (saleRow?.warehouse_id) {
-          const inventoryRes = await pullBranchInventoryFromSupabase(saleRow.warehouse_id);
-          if (!inventoryRes.success) throw new Error(inventoryRes.message || 'No se pudo reconciliar el inventario de la devolución');
-          replaceWarehouseInventory(saleRow.warehouse_id, inventoryRes.inventory || []);
+          // Igual que en la anulación: la devolución ya está confirmada, así que
+          // el refresco de inventario es diagnóstico y no puede fallar el ítem.
+          try {
+            const inventoryRes = await pullBranchInventoryFromSupabase(saleRow.warehouse_id);
+            if (inventoryRes.success) replaceWarehouseInventory(saleRow.warehouse_id, inventoryRes.inventory || []);
+            else console.warn('[return_complete] Devolución confirmada; inventario se reconciliará después:', inventoryRes.message);
+          } catch (inventoryError) {
+            console.warn('[return_complete] Devolución confirmada; no se pudo reconciliar el inventario ahora:', inventoryError);
+          }
         }
       }
       return true;

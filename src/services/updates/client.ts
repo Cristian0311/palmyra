@@ -6,7 +6,7 @@ import { evaluateUpdate, verifyUpdateManifest } from "./verify";
  * Cliente del manifiesto de actualizaciones.
  *
  * Consulta el manifiesto firmado (ver ./manifest.ts y ./verify.ts) como mucho
- * una vez cada 24 h, tolera que la red, el proxy o la CDN fallen y decide si
+ * una vez cada 6 h, tolera que la red, el proxy o la CDN fallen y decide si
  * hay actualización aplicable al equipo. Nunca lanza por datos del servidor:
  * toda respuesta se devuelve como UpdateCheckResult con `status` y un `code`
  * estable; `error` solo añade el texto accionable en español.
@@ -18,7 +18,15 @@ import { evaluateUpdate, verifyUpdateManifest } from "./verify";
  * La descarga del artefacto (`downloadArtifact`) queda fuera de este módulo.
  */
 
-/** Cadencia por defecto entre comprobaciones automáticas: 24 h. */
+/**
+ * Cadencia por defecto entre comprobaciones automáticas: 24 h.
+ *
+ * El servidor avisa por Realtime cuando arranca un build nuevo
+ * (`system_update_signals`), así que la comprobación periódica es solo una red
+ * de seguridad para equipos sin canal: no hace falta sondear cada 6 h y el
+ * dueño pidió no multiplicar peticiones por cada caja. El arranque, el foco y
+ * la vuelta a primer plano siguen comprobando (respetando esta cadencia).
+ */
 export const DEFAULT_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 /** Tiempo máximo de una comprobación (incluye la lectura del cuerpo). */

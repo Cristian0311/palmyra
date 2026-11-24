@@ -117,6 +117,20 @@ export function offlineQueueItemKey(item: Pick<OfflineQueueItem, 'id' | 'type' |
   return actionId ? `${item.type}:${actionId}` : `${item.type}:id:${item.id}`;
 }
 
+/**
+ * Clave idempotente explícita de una operación. Es exactamente la misma que usa
+ * la deduplicación (`tipo:actionId`), se persiste con el elemento y sobrevive a
+ * recargas y cierres: el reintento de un envío interrumpido reutiliza la clave
+ * y el servidor no puede registrar la operación dos veces.
+ */
+export function offlineIdempotencyKey(
+  item: Pick<OfflineQueueItem, 'id' | 'type' | 'actionId' | 'idempotencyKey'>
+): string {
+  const stored = String(item.idempotencyKey || '').trim();
+  if (stored) return stored;
+  return offlineQueueItemKey(item);
+}
+
 function preferredQueueItem(candidate: OfflineQueueItem, current: OfflineQueueItem): boolean {
   const rankDiff = queueStatusRank(candidate.status) - queueStatusRank(current.status);
   if (rankDiff !== 0) return rankDiff > 0;
@@ -200,6 +214,9 @@ export function normalizeOfflineQueueItem(
     ...item,
     schemaVersion: Number(item.schemaVersion) || OFFLINE_ITEM_SCHEMA_VERSION,
     queuedAt: item.queuedAt || item.timestamp || new Date(0).toISOString(),
+    // La clave idempotente se materializa al hidratar, de modo que incluso un
+    // elemento heredado sin ella la conserve en el siguiente reintento.
+    idempotencyKey: offlineIdempotencyKey(item),
   };
   const deviceId = item.deviceId || options?.deviceId;
   if (deviceId) normalized.deviceId = deviceId;

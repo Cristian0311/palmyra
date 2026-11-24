@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, shell, session, ipcMain, safeStorage } = require('electron');
+const { app, BrowserWindow, dialog, shell, session, ipcMain, safeStorage, powerMonitor } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
@@ -74,9 +74,13 @@ function logLine(message) {
 // ejecutar un instalador a mano. `publish` vive en electron-builder.yml; de ahí
 // sale resources/app-update.yml, que electron-updater lee en cada equipo.
 const UPDATE_STATE_CHANNEL = 'palmyra:update:state';
-const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000; // cada 24 h
+// Cada 6 h: un release nuevo se nota el mismo día laboral aunque la caja lleve
+// semanas abierta. Antes eran 24 h y un turno completo podía quedar sin aviso.
+const UPDATE_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const UPDATE_BOOT_DELAY_MS = 20 * 1000; // 20 s: primero abre la caja
-const UPDATE_FOCUS_MIN_GAP_MS = 24 * 60 * 60 * 1000; // al volver al foco, máx. 1/24 h
+// Volver a PALMYRA es buen momento para comprobar; el mínimo evita que un
+// alt-tab repetido multiplique las peticiones a GitHub.
+const UPDATE_FOCUS_MIN_GAP_MS = 15 * 60 * 1000;
 const UPDATE_MANIFEST_URL =
   process.env.UPDATE_MANIFEST_URL ||
   'https://github.com/Cristian0311/palmyra/releases/latest/download/update-manifest.json';
@@ -728,6 +732,16 @@ function initAutoUpdater() {
   lastUpdateCheckAt = Date.now();
   setTimeout(() => { void checkForUpdatesNow('arranque'); }, UPDATE_BOOT_DELAY_MS);
   updatePollTimer = setInterval(() => { void checkForUpdatesNow('intervalo'); }, UPDATE_CHECK_INTERVAL_MS);
+  // Una caja que suspende el equipo (o cierra la tapa) vuelve a comprobar al
+  // reanudar: el reloj de 6 h no corre mientras el equipo duerme.
+  try {
+    powerMonitor.on('resume', () => {
+      if (Date.now() - lastUpdateCheckAt < UPDATE_FOCUS_MIN_GAP_MS) return;
+      void checkForUpdatesNow('reanudar');
+    });
+  } catch (error) {
+    logLine(`No se pudo vigilar la reanudación del equipo: ${error && error.message ? error.message : error}`);
+  }
 }
 
 // ─── Hub LAN ────────────────────────────────────────────────────────────────
@@ -1910,6 +1924,101 @@ function installSerialPortHandlers(window) {
   });
 }
 
+// ─── Enlaces palmyra:// (acceso de dispositivo) ─────────────────────────────
+// El propietario comparte un enlace que abre la app instalada y no una pestaña
+// del navegador. Formato exacto: palmyra://device-access?token=<urlencoded>
+// (buildDeviceAccessDeepLink en src/services/deviceAccess.ts). Solo se acepta
+// ese destino: el token se valida y la navegación siempre va al servidor local.
+const DEEP_LINK_SCHEME = 'palmyra';
+const DEEP_LINK_HOST = 'device-access';
+const DEEP_LINK_ROUTE = '/device-access';
+const DEEP_LINK_TOKEN_RE = /^[A-Za-z0-9._~+/=-]{1,256}$/;
+// Ruta de enlace ya aceptada: el arranque (y sus reintentos) la conserva.
+let deepLinkRoute = '';
+// Enlace recibido mientras la ventana aún cargaba: se aplica al terminar.
+let pendingDeepLinkRoute = '';
+let protocolClientRegistered = false;
+
+function deepLinkRouteFrom(value) {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  let url;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    return '';
+  }
+  if (url.protocol !== `${DEEP_LINK_SCHEME}:`) return '';
+  if (url.hostname.toLowerCase() !== DEEP_LINK_HOST) return '';
+  const token = (url.searchParams.get('token') || '').trim();
+  // Sin token la página de acceso explica el problema; con un token raro no se
+  // navega a ninguna parte.
+  if (!token) return DEEP_LINK_ROUTE;
+  if (!DEEP_LINK_TOKEN_RE.test(token)) return '';
+  return `${DEEP_LINK_ROUTE}?token=${encodeURIComponent(token)}`;
+}
+
+function firstDeepLinkIn(argv) {
+  const list = Array.isArray(argv) ? argv : [];
+  for (const item of list) {
+    if (typeof item !== 'string') continue;
+    if (item.trim().toLowerCase().startsWith(`${DEEP_LINK_SCHEME}://`)) return item.trim();
+  }
+  return '';
+}
+
+function focusMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  if (!mainWindow.isVisible()) mainWindow.show();
+  mainWindow.focus();
+}
+
+/**
+ * Navega la ventana al acceso de dispositivo sobre el mismo servidor interno
+ * que usa el arranque. Si la app aún no terminó de cargar, la ruta queda
+ * pendiente y se aplica en el primer 'did-finish-load' (o en loadApp, que ya
+ * la usa como destino): una sola navegación, sin repetir la validación.
+ */
+function openDeepLink(route) {
+  if (!route) return;
+  deepLinkRoute = route;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  focusMainWindow();
+  if (!appLoaded) {
+    pendingDeepLinkRoute = route;
+    return;
+  }
+  mainWindow.loadURL(`${BASE_URL}${route}`).catch((error) => {
+    logLine(`No se pudo abrir el enlace de acceso de dispositivo: ${messageOf(error)}`);
+  });
+}
+
+function handleDeepLinkCandidate(value) {
+  const route = deepLinkRouteFrom(value);
+  if (!route) {
+    logLine('Enlace palmyra descartado: no es un acceso de dispositivo válido.');
+    return false;
+  }
+  logLine('Enlace de acceso de dispositivo recibido.');
+  openDeepLink(route);
+  return true;
+}
+
+// Se registra una sola vez y solo en la app instalada: en desarrollo el
+// ejecutable es electron.exe y apoderarse del esquema rompería la app real.
+function registerProtocolClient() {
+  if (protocolClientRegistered) return;
+  protocolClientRegistered = true;
+  if (!app.isPackaged) return;
+  try {
+    if (!app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME)) {
+      logLine('No se pudo registrar el esquema palmyra:// en este equipo.');
+    }
+  } catch (error) {
+    logLine(`No se pudo registrar el esquema palmyra://: ${messageOf(error)}`);
+  }
+}
+
 function createWindow() {
   installHardwarePermissionHandlers();
   mainWindow = new BrowserWindow({
@@ -1973,6 +2082,15 @@ function createWindow() {
     logLine(`Ventana cargada: ${url}`);
     if (!url.startsWith(BASE_URL)) return;
     appLoaded = true;
+    // Enlace recibido mientras arrancaba la app: se abre ahora, una sola vez.
+    if (pendingDeepLinkRoute) {
+      const route = pendingDeepLinkRoute;
+      pendingDeepLinkRoute = '';
+      mainWindow.loadURL(`${BASE_URL}${route}`).catch((error) => {
+        logLine(`No se pudo abrir el enlace de acceso de dispositivo: ${messageOf(error)}`);
+      });
+      return;
+    }
     // Una recarga (o la recuperación de la interfaz) pierde el último estado:
     // se reenvía para que el banner de actualización no desaparezca.
     broadcastUpdateState();
@@ -2029,7 +2147,11 @@ function createWindow() {
 
   const loadApp = (attempt = 1) => {
     if (!mainWindow || mainWindow.isDestroyed()) return Promise.resolve();
-    return mainWindow.loadURL(BASE_URL).catch((error) => {
+    // Un enlace de acceso recibido durante el arranque se abre directamente.
+    const target = deepLinkRoute ? `${BASE_URL}${deepLinkRoute}` : BASE_URL;
+    // El destino ya incluye la ruta: no queda nada pendiente por aplicar.
+    pendingDeepLinkRoute = '';
+    return mainWindow.loadURL(target).catch((error) => {
       const message = String(error && error.message ? error.message : error);
       // La página de carga puede abortar la navegación anterior: es benigno.
       if (attempt < 3 && /ERR_ABORTED|\(-3\)/.test(message)) {
@@ -2057,14 +2179,25 @@ const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
   app.quit();
 } else {
-  app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
-    }
+  // Arranque en frío desde un enlace (Windows/Linux entregan la URL en argv;
+  // macOS la entrega por 'open-url' antes de 'ready').
+  const startupDeepLink = deepLinkRouteFrom(firstDeepLinkIn(process.argv));
+  if (startupDeepLink) deepLinkRoute = startupDeepLink;
+
+  // macOS: el esquema se entrega como evento, no como argumento de proceso.
+  app.on('open-url', (event, url) => {
+    if (typeof event.preventDefault === 'function') event.preventDefault();
+    handleDeepLinkCandidate(url);
+  });
+
+  app.on('second-instance', (_event, argv) => {
+    focusMainWindow();
+    const candidate = firstDeepLinkIn(argv);
+    if (candidate) handleDeepLinkCandidate(candidate);
   });
 
   app.on('ready', async () => {
+    registerProtocolClient();
     try {
       // Una versión anterior de la app (o el servidor de desarrollo) pudo dejar
       // un Service Worker cacheado en 127.0.0.1:10000. Ese worker sirve el shell

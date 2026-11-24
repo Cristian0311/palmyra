@@ -1,7 +1,7 @@
 {
   "name": "palmyra",
   "private": true,
-  "version": "1.3.5",
+  "version": "1.3.6",
   "main": "main.electron.cjs",
   "type": "module",
   "scripts": {
@@ -17,7 +17,6 @@
     "test:unit": "tsx --test tests/unit/*.test.ts",
     "test:e2e:local": "tsx scripts/local-e2e.ts",
     "drill:restore": "tsx scripts/restore-drill.ts",
-    "pilot:sim": "tsx scripts/pilot-sim.ts",
     "test:integrity": "node scripts/integrity-smoke.mjs",
     "test:pwa:offline": "node scripts/pwa-offline-smoke.mjs",
     "check:android": "node scripts/check-android-package.mjs",

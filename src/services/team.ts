@@ -96,6 +96,10 @@ function throwRpcError(error: any): never {
     invalid_role_key: "La clave del rol no es válida.",
     invalid_role_name: "El nombre del rol no es válido.",
     reserved_role_key: "Esa clave está reservada por PALMYRA.",
+    system_role_locked: "Ese rol del sistema está protegido y no se puede editar.",
+    role_key_immutable: "La clave de un rol existente no se puede cambiar.",
+    plan_feature_required: "Tu plan actual no incluye la gestión de roles.",
+    permission_grant_denied: "No puedes otorgar permisos que tú mismo no posees.",
     invalid_permission: "Uno de los permisos seleccionados no es válido.",
     role_not_found_or_system: "Ese rol no existe o es un rol del sistema.",
     role_key_taken: "La clave del rol ya existe.",
@@ -132,7 +136,9 @@ export async function loadTeamSnapshot(): Promise<TeamSnapshot> {
   ] = await Promise.all([
     supabase
       .from("employees")
-      .select("id,user_id,employee_code,full_name,login_email,base_salary,compensation_type,sales_percentage,active,role_id,roles!inner(name,key)")
+      // Left join: un empleado con `role_id` nulo o apuntando a un rol no
+      // visible (RLS/rol borrado) desaparecía del equipo con `roles!inner`.
+      .select("id,user_id,employee_code,full_name,login_email,base_salary,compensation_type,sales_percentage,active,role_id,roles(name,key)")
       .eq("company_id", companyId)
       .order("active", { ascending: false })
       .order("full_name", { ascending: true }),
@@ -180,6 +186,17 @@ export async function loadTeamSnapshot(): Promise<TeamSnapshot> {
     invitationMap.set(invitation.employee_id, invitation);
   }
 
+  const roleRows = (roles || []) as any[];
+  // El rol de sistema "Empleado" se clona por empresa en su primera edición.
+  // Si ya existe el override de la empresa, ocultamos la plantilla global para
+  // no mostrar dos roles con la misma clave.
+  const companyRoleKeys = new Set(
+    roleRows.filter((role) => role.company_id).map((role) => role.key)
+  );
+  const visibleRoles = roleRows.filter(
+    (role) => role.company_id || !companyRoleKeys.has(role.key)
+  );
+
   return {
     companyId,
     employees: (employees || []).map((employee: any) => {
@@ -202,7 +219,7 @@ export async function loadTeamSnapshot(): Promise<TeamSnapshot> {
         pending_invitation: invitationMap.get(employee.id) || null
       };
     }),
-    roles: (roles || []).map((role: any) => ({
+    roles: visibleRoles.map((role: any) => ({
       id: role.id,
       key: role.key,
       name: role.name,
@@ -469,7 +486,9 @@ export async function upsertCompanyRole(input: {
   if (!supabase) throw new Error("Supabase no está configurado.");
   const { data, error } = await supabase.rpc("upsert_company_role", {
     p_company_id: input.companyId,
-    p_role_id: input.roleId || null,
+    // Los roles existentes (incluido el rol de sistema "Empleado") se
+    // actualizan por id; solo un rol nuevo viaja sin id.
+    p_role_id: input.roleId ?? null,
     p_key: input.key,
     p_name: input.name,
     p_description: input.description || "",

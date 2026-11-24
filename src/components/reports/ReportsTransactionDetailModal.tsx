@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
 import { CalendarDays, EyeOff, Printer, Trash2, TrendingUp, X } from "lucide-react";
+import { ticketDisplay } from "../../lib/documentCodes";
 import type { Product, Transaction, User } from "../../types";
 
 type Props = {
@@ -57,8 +58,8 @@ export function ReportsTransactionDetailModal({
               <span className="text-[9px] font-black uppercase tracking-widest text-rose-200 block">
                 Comprobante de Venta POS
               </span>
-              <h3 className="max-w-[13rem] truncate text-base font-black uppercase tracking-tight text-white sm:max-w-[18rem]" title={`Ticket #${transaction.id}`}>
-                Ticket #{transaction.id}
+              <h3 className="max-w-[13rem] truncate text-base font-black uppercase tracking-tight text-white sm:max-w-[18rem]" title={`Ticket ${ticketDisplay(transaction.ticketNumber, transaction.id)}`}>
+                Ticket {ticketDisplay(transaction.ticketNumber, transaction.id)}
               </h3>
             </div>
           </div>
@@ -95,7 +96,7 @@ export function ReportsTransactionDetailModal({
                   ?.name || "Sucursal"}
               </p>
               <p className="text-[9px] font-bold text-muted">
-                {new Date(transaction.date).toLocaleString("es-CU")}
+                {new Date(transaction.date).toLocaleString("es-CU", { timeZone: 'America/Havana', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
               </p>
             </div>
           </div>

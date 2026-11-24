@@ -26,11 +26,40 @@ export interface LicenseKeyValueStore {
   get<T = unknown>(key: string): Promise<T | null>;
   set<T = unknown>(key: string, value: T): Promise<void>;
   delete(key: string): Promise<void>;
+  /**
+   * Lectura que distingue «no hay dato» de «no se pudo leer». Opcional: sin ella
+   * se usa `get`. Un fallo transitorio de IndexedDB no puede parecer un lease
+   * ausente: eso mostraba «licencia sin verificar» con un plan ya comprado y,
+   * peor, hacía que el runtime generase una identidad nueva encima de la buena.
+   */
+  getStrict?<T = unknown>(key: string): Promise<T | null>;
+}
+
+/** El almacén no pudo leer: NO significa que el registro falte. */
+export class LicenseStorageReadError extends Error {
+  constructor(message: string = "No se pudo leer el almacén de licencia") {
+    super(message);
+    this.name = "LicenseStorageReadError";
+  }
+}
+
+/**
+ * Lectura estricta: devuelve null solo si el registro no existe. Con un almacén
+ * que no distingue (memoria, adaptadores antiguos) equivale a `get`.
+ */
+async function readStrict<T>(store: LicenseKeyValueStore, key: string): Promise<T | null> {
+  if (typeof store.getStrict === "function") return store.getStrict<T>(key);
+  return store.get<T>(key);
 }
 
 export const LICENSE_STORE_KEYS = {
   deviceKey: "device-key",
   leasePrefix: "lease:",
+  /**
+   * Clave pública del servidor anclada (TOFU) en el primer arranque con red.
+   * Sin ella un arranque offline no podría verificar el lease guardado.
+   */
+  publicKey: "public-key",
   watermark: "clock-watermark",
   /** Telemetría local de manipulación del reloj (acotada, sin datos personales). */
   clockTelemetry: "clock-telemetry"
@@ -67,6 +96,8 @@ export function createIndexedDbLicenseStore(
   const factory =
     options.factory ?? (typeof indexedDB !== "undefined" ? indexedDB : undefined);
   let opening: Promise<IDBDatabase | null> | null = null;
+  /** Último fallo real de apertura: un registro no se pudo leer, no está ausente. */
+  let openFailure: Error | null = null;
 
   function ready(): Promise<IDBDatabase | null> {
     if (!factory) return Promise.resolve(null);
@@ -75,8 +106,9 @@ export function createIndexedDbLicenseStore(
       let request: IDBOpenDBRequest;
       try {
         request = factory.open(dbName, 1);
-      } catch {
+      } catch (error) {
         opening = null;
+        openFailure = error instanceof Error ? error : new Error(String(error));
         resolve(null);
         return;
       }
@@ -88,6 +120,7 @@ export function createIndexedDbLicenseStore(
       };
       request.onsuccess = () => {
         const db = request.result;
+        openFailure = null;
         // Si otra pestaña actualiza la versión, se cierra y se reabre luego.
         db.onversionchange = () => {
           db.close();
@@ -96,10 +129,12 @@ export function createIndexedDbLicenseStore(
         resolve(db);
       };
       request.onerror = () => {
+        openFailure = request.error ?? new Error("No se pudo abrir IndexedDB");
         opening = null;
         resolve(null);
       };
       request.onblocked = () => {
+        openFailure = new Error("IndexedDB queda bloqueada por otra ventana");
         opening = null;
         resolve(null);
       };
@@ -126,6 +161,55 @@ export function createIndexedDbLicenseStore(
     });
   }
 
+  /**
+   * Igual que `get`, pero un fallo de lectura rechaza en lugar de devolver null.
+   * Así el runtime distingue «este equipo nunca tuvo lease» de «no se pudo leer
+   * el lease que sí está guardado», que es la diferencia entre la activación
+   * pendiente legítima y un aviso falso de «licencia sin verificar».
+   */
+  function getStrict<T = unknown>(key: string): Promise<T | null> {
+    return ready().then(
+      (db) =>
+        new Promise<T | null>((resolve, reject) => {
+          if (openFailure) {
+            reject(new LicenseStorageReadError(openFailure.message));
+            return;
+          }
+          if (!db || !db.objectStoreNames.contains(DEFAULT_STORE_NAME)) {
+            // Sin IndexedDB disponible no hay dato que leer ni error que ocultar.
+            resolve(null);
+            return;
+          }
+          let settled = false;
+          const fail = (error: unknown) => {
+            if (settled) return;
+            settled = true;
+            reject(
+              error instanceof LicenseStorageReadError
+                ? error
+                : new LicenseStorageReadError(
+                    error instanceof Error && error.message ? error.message : undefined
+                  )
+            );
+          };
+          try {
+            const tx = db.transaction(DEFAULT_STORE_NAME, "readonly");
+            const request = tx.objectStore(DEFAULT_STORE_NAME).get(key);
+            request.onsuccess = () => {
+              if (settled) return;
+              settled = true;
+              const record = request.result as { key?: string; value?: T } | undefined;
+              resolve(record && record.key === key && "value" in record ? (record.value as T) : null);
+            };
+            request.onerror = () => fail(request.error);
+            tx.onabort = () => fail(tx.error);
+          } catch (error) {
+            fail(error);
+          }
+        })
+    );
+  }
+
   async function mutate(key: string, value: unknown, remove: boolean): Promise<void> {
     const db = await ready();
     // Inerte sin IndexedDB: se pierde la persistencia, nunca la sesión en curso.
@@ -147,6 +231,7 @@ export function createIndexedDbLicenseStore(
 
   return {
     get,
+    getStrict,
     set: (key, value) => mutate(key, value, false),
     delete: (key) => mutate(key, undefined, true)
   };
@@ -283,15 +368,23 @@ export async function saveDeviceKey(
   await discardStaleSecureCopy(key.fingerprint);
 }
 
-/** Devuelve null si el registro falta o está corrupto; nunca lanza. */
+/**
+ * Devuelve null si el registro falta o está corrupto. Un fallo de LECTURA no se
+ * convierte en null: el llamador debe distinguirlo para no crear una identidad
+ * nueva encima de la que sí está guardada (eso invalidaría el lease pagado).
+ */
 export async function loadDeviceKey(
   store: LicenseKeyValueStore
 ): Promise<DeviceKey | null> {
   let identity: StoredDeviceIdentity | null = null;
   try {
-    identity = parseStoredIdentity(await store.get<unknown>(LICENSE_STORE_KEYS.deviceKey));
-  } catch {
-    identity = null;
+    identity = parseStoredIdentity(await readStrict<unknown>(store, LICENSE_STORE_KEYS.deviceKey));
+  } catch (error) {
+    throw error instanceof LicenseStorageReadError
+      ? error
+      : new LicenseStorageReadError(
+          error instanceof Error && error.message ? error.message : undefined
+        );
   }
 
   // Respaldo sin cifrado (navegador/PWA): la CryptoKey no extraíble ya sirve.
@@ -335,6 +428,97 @@ export async function loadDeviceKey(
 }
 
 /* ------------------------------------------------------------------ */
+/* Clave pública anclada (verificación sin red)                        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Guarda la clave pública del lease ya aceptada. Es un anclaje de confianza
+ * (TOFU): no da privilegios nuevos —el lease se sigue verificando— pero evita
+ * depender de la red al reabrir la app.
+ */
+export async function savePinnedPublicKey(
+  store: LicenseKeyValueStore,
+  jwk: JsonWebKey
+): Promise<void> {
+  if (!isPublicJwk(jwk)) return;
+  const clean: JsonWebKey = { kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y };
+  const kid = (jwk as { kid?: unknown }).kid;
+  if (typeof kid === "string" && kid.trim()) {
+    (clean as JsonWebKey & { kid?: string }).kid = kid.trim();
+  }
+  await store.set(LICENSE_STORE_KEYS.publicKey, clean);
+  // Espejo cifrado por el llavero del SO: si se limpia IndexedDB, el lease
+  // guardado sigue siendo verificable sin conexión (misma suerte que el lease).
+  try {
+    const secure = getDefaultSecureStore();
+    if (await secure.isEncryptionActive()) {
+      await secure.set(SECURE_PUBLIC_KEY, JSON.stringify(clean));
+    }
+  } catch {
+    // Best-effort: el anclaje primario ya quedó escrito.
+  }
+}
+
+function parsePinnedJwk(raw: unknown): JsonWebKey | null {
+  const record = raw && typeof raw === "object" ? (raw as { jwk?: unknown }) : null;
+  const candidate = record && isPublicJwk(record.jwk)
+    ? (record.jwk as JsonWebKey)
+    : isPublicJwk(raw)
+      ? (raw as JsonWebKey)
+      : null;
+  if (!candidate) return null;
+  const clean: JsonWebKey = {
+    kty: candidate.kty,
+    crv: candidate.crv,
+    x: candidate.x,
+    y: candidate.y
+  };
+  const kid = (candidate as { kid?: unknown }).kid;
+  if (typeof kid === "string") (clean as JsonWebKey & { kid?: string }).kid = kid;
+  return clean;
+}
+
+/** Clave anclada; null si falta o no tiene forma de EC P-256 pública. */
+export async function loadPinnedPublicKey(
+  store: LicenseKeyValueStore
+): Promise<JsonWebKey | null> {
+  let raw: unknown = null;
+  try {
+    raw = await store.get<unknown>(LICENSE_STORE_KEYS.publicKey);
+  } catch {
+    raw = null;
+  }
+  const primary = parsePinnedJwk(raw);
+  if (primary) return primary;
+  // Respaldo del llavero, igual que `loadLease`.
+  try {
+    const secure = getDefaultSecureStore();
+    if (!(await secure.isEncryptionActive())) return null;
+    const mirrored = await secure.get(SECURE_PUBLIC_KEY);
+    if (!mirrored) return null;
+    return parsePinnedJwk(JSON.parse(mirrored) as unknown);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Huella de la identidad guardada, incluso cuando la clave privada ya no se
+ * puede recuperar. Permite distinguir «equipo nuevo» de «identidad perdida»
+ * (esta última invalida el lease emitido y hay que volver a activar).
+ */
+export async function loadStoredDeviceFingerprint(
+  store: LicenseKeyValueStore
+): Promise<string | null> {
+  try {
+    const identity = parseStoredIdentity(await store.get<unknown>(LICENSE_STORE_KEYS.deviceKey));
+    return identity ? identity.fingerprint : null;
+  } catch {
+    return null;
+  }
+}
+
+/* ------------------------------------------------------------------ */
 /* Copia del secure store                                              */
 /* ------------------------------------------------------------------ */
 
@@ -342,8 +526,12 @@ export async function loadDeviceKey(
 export const LICENSE_SECURE_KEYS = {
   deviceKey: "license-device-key",
   /** Copia cifrada del lease por empresa (`license-lease:<companyId>`). */
-  leasePrefix: "license-lease:"
+  leasePrefix: "license-lease:",
+  /** Anclaje de la clave pública del lease (copia cifrada). */
+  publicKey: "license-public-key"
 } as const;
+
+const SECURE_PUBLIC_KEY = LICENSE_SECURE_KEYS.publicKey;
 
 interface SecureDeviceKeyRecord {
   /**
@@ -534,26 +722,51 @@ export async function saveLease(
   await mirrorLeaseToSecureStore(lease, companyId);
 }
 
+/** Resultado de leer el lease guardado, sin confundir ausencia con fallo. */
+export type StoredLeaseStatus = "ok" | "missing" | "invalid" | "unreadable";
+
+export interface StoredLeaseReadResult {
+  lease: SignedLease | null;
+  /**
+   * - `missing`: este equipo nunca recibió un lease (activación pendiente real).
+   * - `invalid`: hay un registro pero no es un lease utilizable (alterado).
+   * - `unreadable`: el almacén falló al leer; el lease puede seguir guardado.
+   */
+  status: StoredLeaseStatus;
+}
+
+/**
+ * Lee el lease distinguindo «no existe» de «no se pudo leer» y de «está
+ * alterado». Solo `missing` habilita el estado de primera activación; los otros
+ * dos nunca deben presentarse como «licencia sin verificar».
+ */
+export async function readStoredLease(
+  store: LicenseKeyValueStore,
+  companyId: string
+): Promise<StoredLeaseReadResult> {
+  if (!isCompanyId(companyId)) return { lease: null, status: "missing" };
+  let raw: unknown = null;
+  let unreadable = false;
+  try {
+    raw = await readStrict<unknown>(store, leaseKey(companyId));
+  } catch {
+    unreadable = true;
+  }
+  if (isLeaseLike(raw, companyId)) return { lease: raw, status: "ok" };
+  // Un registro presente pero alterado se respeta como inválido: la copia del
+  // llavero solo se usa cuando el registro primario no está.
+  if (raw !== null && raw !== undefined) return { lease: null, status: "invalid" };
+  const mirrored = await loadLeaseFromSecureStore(companyId);
+  if (mirrored) return { lease: mirrored, status: "ok" };
+  return { lease: null, status: unreadable ? "unreadable" : "missing" };
+}
+
 /** Devuelve null ante un registro ausente, alterado o de otra empresa. */
 export async function loadLease(
   store: LicenseKeyValueStore,
   companyId: string
 ): Promise<SignedLease | null> {
-  if (!isCompanyId(companyId)) return null;
-  let raw: unknown = null;
-  let missing = false;
-  try {
-    raw = await store.get<unknown>(leaseKey(companyId));
-    missing = raw === null || raw === undefined;
-  } catch {
-    // Un fallo de lectura no descarta la copia cifrada.
-    missing = true;
-  }
-  if (isLeaseLike(raw, companyId)) return raw;
-  // Un registro presente pero alterado se respeta como inválido: la copia del
-  // llavero solo se usa cuando el registro primario no está.
-  if (!missing) return null;
-  return loadLeaseFromSecureStore(companyId);
+  return (await readStoredLease(store, companyId)).lease;
 }
 
 export async function clearLease(

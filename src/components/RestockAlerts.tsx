@@ -1,9 +1,10 @@
 import { useShallow } from 'zustand/react/shallow';
 import React, { useMemo } from 'react';
 import { useStore } from '../store/useStore';
-import { AlertTriangle, Clock, TrendingUp, Calendar, AlertCircle, HelpCircle } from 'lucide-react';
+import { AlertTriangle, Clock, TrendingUp, Calendar, AlertCircle, Package } from 'lucide-react';
 import { InfoTooltip } from './InfoTooltip';
 import { isLowStockQuantity } from '../modules/inventory/utils/lowStock';
+import { cn } from '../lib/utils';
 
 export function RestockAlerts() {
   const { products, inventory, transactions, currentBranchId } = useStore(useShallow((state) => ({ products: state.products, inventory: state.inventory, transactions: state.transactions, currentBranchId: state.currentBranchId })));
@@ -63,13 +64,22 @@ export function RestockAlerts() {
   }, [products, inventory, transactions, currentBranchId]);
 
   if (restockData.length === 0) {
+    // Sin productos cargados no es «todo en orden»: es una vista vacía real.
+    const noProducts = products.length === 0;
     return (
       <div className="bg-secondary rounded-2xl border border-base p-6 sm:p-8 text-center">
-        <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-500 rounded-full flex items-center justify-center mx-auto mb-3">
-          <AlertCircle size={24} />
+        <div className={cn(
+          "w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-3",
+          noProducts ? "bg-slate-100 dark:bg-slate-800 text-slate-400" : "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-500"
+        )}>
+          {noProducts ? <Package size={24} /> : <AlertCircle size={24} />}
         </div>
-        <h3 className="text-sm font-black text-primary uppercase tracking-tight mb-1">Todo en Orden</h3>
-        <p className="text-muted font-bold text-xs">No hay productos en riesgo de agotarse pronto según el ritmo de ventas.</p>
+        <h3 className="text-sm font-black text-primary uppercase tracking-tight mb-1">{noProducts ? 'Sin productos' : 'Todo en orden'}</h3>
+        <p className="text-muted font-bold text-xs">
+          {noProducts
+            ? 'Aún no hay productos en el inventario para calcular sugerencias de compra.'
+            : 'No hay productos en riesgo de agotarse pronto según el ritmo de ventas.'}
+        </p>
       </div>
     );
   }
@@ -119,7 +129,7 @@ export function RestockAlerts() {
               <tr>
                 <th className="px-3 py-2 text-[8px] sm:text-[9px] font-black text-muted uppercase tracking-wider">Producto</th>
                 <th className="px-3 py-2 text-center text-[8px] sm:text-[9px] font-black text-muted uppercase tracking-wider">Stock</th>
-                <th className="px-3 py-2 text-center text-[8px] sm:text-[9px] font-black text-muted uppercase tracking-wider">Ventas/Día</th>
+                <th className="hidden sm:table-cell px-3 py-2 text-center text-[8px] sm:text-[9px] font-black text-muted uppercase tracking-wider">Ventas/Día</th>
                 <th className="px-3 py-2 text-center text-[8px] sm:text-[9px] font-black text-muted uppercase tracking-wider">Días Restantes</th>
                 <th className="px-3 py-2 text-center text-[8px] sm:text-[9px] font-black text-muted uppercase tracking-wider">Acción</th>
               </tr>
@@ -132,7 +142,7 @@ export function RestockAlerts() {
                     <div className="text-[9px] font-bold text-muted">SKU: {data.product.sku}</div>
                   </td>
                   <td className="px-3 py-2 text-center font-black text-xs text-primary">{data.stock}</td>
-                  <td className="px-3 py-2 text-center">
+                  <td className="hidden sm:table-cell px-3 py-2 text-center">
                     <div className="inline-flex items-center justify-center gap-1 bg-secondary border border-base px-1.5 py-0.5 rounded text-[10px] font-bold text-primary">
                       <TrendingUp className="w-2.5 h-2.5 text-indigo-500" />
                       {data.dailySalesRate.toFixed(1)}/d

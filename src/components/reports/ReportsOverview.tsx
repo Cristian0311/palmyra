@@ -130,12 +130,12 @@ export function ReportsOverview({ summary, formatMoney, onOpenSales, onOpenTrans
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[34rem] border-collapse text-left">
+            <table className="w-full border-collapse text-left sm:min-w-[34rem]">
               <thead>
                 <tr className="border-b border-base bg-subtle/60 text-[8px] font-black uppercase tracking-[0.15em] text-muted">
                   <th className="px-3 py-2">Ticket</th>
                   <th className="px-3 py-2">Fecha y hora</th>
-                  <th className="px-3 py-2">Artículos</th>
+                  <th className="hidden px-3 py-2 sm:table-cell">Artículos</th>
                   <th className="px-3 py-2 text-right">Total</th>
                   <th className="px-3 py-2 text-center">Detalle</th>
                 </tr>
@@ -152,14 +152,15 @@ export function ReportsOverview({ summary, formatMoney, onOpenSales, onOpenTrans
                           ? when.toLocaleString('es-CU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
                           : '-'}
                       </td>
-                      <td className="px-3 py-1.5 text-[9px] font-bold text-secondary">{units} uds ({(tx.items || []).length} líneas)</td>
-                      <td className="whitespace-nowrap px-3 py-1.5 text-right text-[10px] font-black text-primary">{formatMoney(tx.total)}</td>
+                      <td className="hidden whitespace-nowrap px-3 py-1.5 text-[9px] font-bold text-secondary sm:table-cell">{units} uds ({(tx.items || []).length} líneas)</td>
+                      <td className="whitespace-nowrap px-3 py-1.5 text-right text-[10px] font-black tabular-nums text-primary">{formatMoney(tx.total)}</td>
                       <td className="px-3 py-1.5 text-center">
                         <button
                           type="button"
                           onClick={() => onOpenTransaction(tx)}
-                          className="h-7 w-7 rounded-lg border border-base bg-subtle text-primary hover:bg-slate-200 dark:hover:bg-slate-800"
+                          className="h-11 w-11 rounded-lg border border-base bg-subtle text-primary hover:bg-slate-200 sm:h-8 sm:w-8 dark:hover:bg-slate-800"
                           title="Ver detalle del ticket"
+                          aria-label="Ver detalle del ticket"
                         >
                           <ArrowRight className="mx-auto h-3.5 w-3.5" />
                         </button>

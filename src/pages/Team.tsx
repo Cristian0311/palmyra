@@ -1,20 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { AtSign, ArrowUpRight, BriefcaseBusiness, Check, CheckCircle2, ChevronLeft, ChevronRight, Clock, Copy, Edit3, Eye, EyeOff, Hash, Info, Link2, LockKeyhole, Mail, MapPin, MoreHorizontal, Network, Plus, RefreshCw, ShieldCheck, UserRound, Users, UserX, WalletCards, Warehouse, Wifi, WifiOff, X, Shield, Save } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { BriefcaseBusiness, Check, ChevronLeft, ChevronRight, Clock, Copy, Edit3, Eye, EyeOff, Hash, Info, Link2, LockKeyhole, MoreHorizontal, Plus, RefreshCw, ShieldCheck, UserRound, Users, UserX, WalletCards, Warehouse, Wifi, WifiOff, X, Shield, Save } from "lucide-react";
 import { useStore } from "../store/useStore";
-import { getPalmyraPublicUrl, loadSaaSContext } from "../services/saas";
+import { loadSaaSContext } from "../services/saas";
 import { canUsePlanFeature, getPlanDisplayName } from "../services/planAccess";
 import EmployeeAvatar from "../components/team/EmployeeAvatar";
 import TeamConfirmDialog from "../components/team/TeamConfirmDialog";
+import { buildDeviceAccessLink, createDeviceAccessInvite } from "../services/deviceAccess";
 import {
   createEmployeePosSecure,
-  createEmployeeWithInvitation,
   loadTeamSnapshot,
-  resendEmployeeInvitation,
   revokeEmployeeInvitation,
   setEmployeeStatus,
   deleteCompanyEmployee,
-  updateEmployee,
   updateEmployeePosSecure,
   loadCompensationSettings,
   saveCompensationSettings,
@@ -54,6 +51,42 @@ function writeTeamCache(snapshot: TeamSnapshot | null) {
   try { localStorage.setItem(teamCacheKey(snapshot.companyId), JSON.stringify(snapshot)); } catch {}
 }
 
+/**
+ * Errores del guardado de roles traducidos al español para mostrarlos en la UI.
+ * La RPC upsert_company_role devuelve códigos cortos que ya llegan traducidos
+ * por el servicio; aquí afinamos los que dependen del contexto del rol.
+ */
+function describeRoleError(raw: unknown) {
+  const message = String((raw as { message?: string } | null)?.message || "").trim();
+  const text = message.toLowerCase();
+  if (!text) return "No se pudo guardar el rol. Inténtalo de nuevo.";
+  if (text.includes("inicia sesión") || text.includes("authentication_required")) {
+    return "Tu sesión expiró. Vuelve a iniciar sesión para guardar el rol.";
+  }
+  if (text.includes("permisos para gestionar el equipo") || text.includes("permission_denied")) {
+    return "No tienes permiso para administrar roles en esta empresa.";
+  }
+  if (text.includes("plan_feature") || text.includes("roles personalizados")) {
+    return "La gestión de roles no está incluida en tu plan. Mejora el plan para guardar cambios.";
+  }
+  if (text.includes("rol del sistema") || text.includes("role_not_found_or_system")) {
+    return "La nube todavía no permite editar este rol del sistema. Se habilitará al aplicar la actualización de roles; mientras tanto el nombre, la descripción y los permisos quedan guardados en este dispositivo.";
+  }
+  if (text.includes("reservada") || text.includes("reserved_role_key")) {
+    return "La clave «employee» está reservada y no se puede cambiar; edita el nombre, la descripción y los permisos.";
+  }
+  if (text.includes("no puedes otorgar permisos")) {
+    return "No puedes otorgar permisos que tu propia cuenta no tiene. Quita esos permisos o pide acceso primero.";
+  }
+  if (text.includes("ya existe") || text.includes("role_name_taken") || text.includes("role_already_exists")) {
+    return "Ya existe otro rol con ese nombre en la empresa. Usa un nombre distinto.";
+  }
+  if (text.includes("no es válido") || text.includes("no es valido")) {
+    return "Revisa el nombre y los permisos: hay un dato que no es válido.";
+  }
+  return message;
+}
+
 function copyText(value: string) {
   if (navigator.clipboard?.writeText) return navigator.clipboard.writeText(value);
   const area = document.createElement("textarea");
@@ -68,7 +101,6 @@ function copyText(value: string) {
 }
 
 export default function Team() {
-  const navigate = useNavigate();
   const currentUser = useStore(state => state.currentUser);
   const addNotification = useStore(state => state.addNotification);
   const cashSessions = useStore(state => state.cashSessions);
@@ -95,7 +127,9 @@ export default function Team() {
   const [editing, setEditing] = useState<TeamEmployee | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<TeamEmployee | null>(null);
-  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [accessInvite, setAccessInvite] = useState<{ employeeId: string; employeeName: string; link: string } | null>(null);
+  const [accessInviteBusy, setAccessInviteBusy] = useState(false);
+  const [accessInviteError, setAccessInviteError] = useState("");
   const [showRoleForm, setShowRoleForm] = useState(false);
   const [editingRole, setEditingRole] = useState<TeamRole | null>(null);
   const [roleForm, setRoleForm] = useState({
@@ -108,13 +142,24 @@ export default function Team() {
   const [compensationSettings, setCompensationSettings] = useState<CompanyCompensationSettings>({ mode: 'fixed_product', percentRate: 0, fixedAmount: 0, workerCount: 1, active: true });
   const [savingCompensation, setSavingCompensation] = useState(false);
   const [showPosPassword, setShowPosPassword] = useState(false);
+  // Pestañas del modal de edición: Datos (ficha + rol/almacenes) y Acceso
+  // (contraseña POS + enlace de un solo uso del trabajador).
+  const [formTab, setFormTab] = useState<'datos' | 'acceso'>('datos');
+  const [formAccessLink, setFormAccessLink] = useState('');
+  const [formAccessBusy, setFormAccessBusy] = useState(false);
+  const [formAccessError, setFormAccessError] = useState('');
+  // Caducidad del enlace de acceso: días (1-90) o 0 = sin caducidad.
+  const [accessLinkDays, setAccessLinkDays] = useState(7);
+  // Feedback inmediato del botón «Copiar»: el aviso global queda arriba y en
+  // móvil puede pasar desapercibido.
+  const [copiedLink, setCopiedLink] = useState(false);
   const [activeSection, setActiveSection] = useState<'employees' | 'roles' | 'compensation'>('employees');
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [employeeStatus, setEmployeeStatusFilter] = useState('all');
   const [employeeRole, setEmployeeRole] = useState('all');
   const filteredEmployees = useMemo(() => (snapshot?.employees || []).filter(employee => {
     const term = employeeSearch.trim().toLocaleLowerCase('es');
-    return `${employee.full_name} ${employee.employee_code} ${employee.login_email || ''}`.toLocaleLowerCase('es').includes(term)
+    return `${employee.full_name} ${employee.employee_code}`.toLocaleLowerCase('es').includes(term)
       && (employeeRole === 'all' || employee.role_id === employeeRole)
       && (employeeStatus === 'all'
         || (employeeStatus === 'pending' ? Boolean(employee.pending_invitation)
@@ -128,6 +173,11 @@ export default function Team() {
   const canUseCustomRoles = canUsePlanFeature(planCode, "custom_roles");
   const customRolesPlanName = getPlanDisplayName(planCode ? (canUseCustomRoles ? planCode : "starter") : "starter");
   const canManageEmployees = currentUser?.permissions?.includes("employees.manage") || currentUser?.role === "admin";
+  // El rol «Empleado» lo crea el sistema, pero el administrador debe poder
+  // ajustar su nombre, descripción y permisos. El rol admin y la propiedad de
+  // la empresa siguen protegidos y nunca se abren en el editor.
+  const isEmployeeSystemRole = (role: TeamRole | null | undefined) => Boolean(role?.is_system && role.key === 'employee');
+  const canEditRole = (role: TeamRole) => isEmployeeSystemRole(role) || (role.is_system ? false : canUseCustomRoles);
 
   const [form, setForm] = useState({
     fullName: "",
@@ -135,10 +185,12 @@ export default function Team() {
     baseSalary: "0",
     roleId: "",
     warehouseIds: [] as string[],
-    email: "",
-    sendInvite: true,
     posPassword: "",
   });
+
+  // La contraseña POS es obligatoria al dar de alta y al convertir un acceso
+  // heredado; en un trabajador que ya opera con POS solo es opcional (cambiarla).
+  const posPasswordRequired = !editing || Boolean(editing.user_id || editing.pending_invitation);
 
   const refresh = async () => {
     if (!canManageEmployees) { setLoading(false); return; }
@@ -198,6 +250,17 @@ export default function Team() {
 
   useEffect(() => { void refresh(); }, []);
 
+  // La nube puede no responder nunca (red que no falla ni resuelve). Sin este
+  // límite la lista quedaría en «Cargando equipo…» de forma indefinida.
+  useEffect(() => {
+    if (!loading) return;
+    const timer = window.setTimeout(() => {
+      setLoading(false);
+      setError(prev => prev || "La nube está tardando en responder. Puedes seguir viendo el equipo; los cambios se sincronizarán cuando vuelva la conexión.");
+    }, 15000);
+    return () => window.clearTimeout(timer);
+  }, [loading]);
+
   useEffect(() => {
     const onQueueChange = () => {
       if (typeof navigator !== "undefined" && navigator.onLine) void refresh();
@@ -223,6 +286,11 @@ export default function Team() {
   const planLabel = planCode && resolvedPlanName !== 'tu plan actual' ? resolvedPlanName : null;
   const employeesInShift = (snapshot?.employees || []).filter(employee => employee.active && employeeInShift(employee)).length;
   const online = typeof navigator === "undefined" ? true : navigator.onLine;
+  // Al editar se usan dos pestañas (Datos / Acceso); al crear se mantiene el
+  // asistente de tres pasos que ya guía el alta.
+  const infoSectionVisible = editing ? formTab === 'datos' : formStep === 1;
+  const operationSectionVisible = editing ? formTab === 'datos' : formStep === 2;
+  const accessSectionVisible = editing ? formTab === 'acceso' : formStep === 3;
 
   const availableRoles = useMemo(
     () => (snapshot?.roles || []).filter(role => role.key !== "admin" && (role.is_system || canManageRoles)),
@@ -252,18 +320,20 @@ export default function Team() {
       .sort((a, b) => a.label.localeCompare(b.label, 'es'));
   }, [snapshot?.permissions]);
 
-  const resetForm = (clearInvite = true) => {
+  const resetForm = () => {
     setEditing(null);
-    if (clearInvite) setInviteLink(null);
     setShowPosPassword(false);
+    setFormTab('datos');
+    setFormAccessLink('');
+    setFormAccessError('');
+    setFormAccessBusy(false);
+    setCopiedLink(false);
     setForm({
       fullName: "",
       employeeCode: "",
       baseSalary: "0",
       roleId: availableRoles.find(role => role.key === "employee")?.id || availableRoles[0]?.id || "",
       warehouseIds: snapshot?.warehouses[0] ? [snapshot.warehouses[0].id] : [],
-      email: "",
-      sendInvite: true,
       posPassword: "",
     });
   };
@@ -282,7 +352,10 @@ export default function Team() {
   };
 
   const openRoleEdit = (role: TeamRole) => {
-    if (role.is_system || !canUseCustomRoles) return;
+    if (!canEditRole(role)) {
+      if (!role.is_system) setError(`Los roles personalizados están disponibles desde el plan ${customRolesPlanName}.`);
+      return;
+    }
     setEditingRole(role);
     setRoleForm({
       key: role.key,
@@ -316,7 +389,10 @@ export default function Team() {
     }
     if (!snapshot?.companyId) return;
     if (!canManageRoles) return setError("No tienes permiso para administrar roles.");
-    if (!canUseCustomRoles) return setError(`Los roles personalizados están disponibles desde el plan ${customRolesPlanName}.`);
+    if (!(editingRole && isEmployeeSystemRole(editingRole)) && !canUseCustomRoles) {
+      return setError(`Los roles personalizados están disponibles desde el plan ${customRolesPlanName}.`);
+    }
+    if (editingRole && !canEditRole(editingRole)) return setError("Ese rol del sistema está protegido y no se puede modificar.");
     if (roleForm.name.trim().length < 2) return setError("Escribe el nombre del rol.");
     if (roleForm.key.trim().length < 2) return setError("Escribe una clave para el rol.");
     const offline = typeof navigator !== "undefined" && !navigator.onLine;
@@ -328,8 +404,8 @@ export default function Team() {
           key: roleForm.key.trim().toLowerCase(),
           name: roleForm.name.trim(),
           description: roleForm.description.trim(),
-          is_system: false,
-          company_id: snapshot.companyId,
+          is_system: editingRole?.is_system ?? false,
+          company_id: editingRole?.company_id ?? snapshot.companyId,
           permission_keys: [...roleForm.permissionKeys]
         };
         await enqueueOfflineItem("team_role_upsert", {
@@ -361,16 +437,18 @@ export default function Team() {
       await upsertCompanyRole({
         companyId: snapshot.companyId,
         roleId: editingRole?.id,
-        key: roleForm.key,
-        name: roleForm.name,
-        description: roleForm.description,
+        key: roleForm.key.trim().toLowerCase(),
+        name: roleForm.name.trim(),
+        description: roleForm.description.trim(),
         permissionKeys: roleForm.permissionKeys
       });
       await refresh();
       setShowRoleForm(false);
       addNotification(editingRole ? "Rol actualizado." : "Rol creado.", "success");
     } catch (e: any) {
-      setError(e?.message || "No se pudo guardar el rol.");
+      const detail = describeRoleError(e);
+      setError(detail);
+      addNotification(detail, "error");
     } finally {
       setBusy(false);
     }
@@ -386,8 +464,12 @@ export default function Team() {
 
   const openEdit = (employee: TeamEmployee) => {
     setEditing(employee);
-    setInviteLink(null);
     setShowPosPassword(false);
+    setFormTab('datos');
+    setFormAccessLink('');
+    setFormAccessError('');
+    setFormAccessBusy(false);
+    setCopiedLink(false);
     setMessage("");
     setError("");
     setForm({
@@ -396,8 +478,6 @@ export default function Team() {
       baseSalary: String(employee.base_salary),
       roleId: employee.role_id,
       warehouseIds: [...employee.warehouse_ids],
-      email: employee.login_email || employee.pending_invitation?.email || "",
-      sendInvite: Boolean(employee.user_id || employee.pending_invitation),
       posPassword: "",
     });
     setFormStep(1);
@@ -420,23 +500,19 @@ export default function Team() {
     if (busy) return;
     setError("");
     setMessage("");
-    setInviteLink(null);
 
     if (!snapshot?.companyId) return;
     if (form.fullName.trim().length < 2) return setError("Escribe el nombre completo.");
     if (!form.employeeCode.trim()) return setError("Escribe un código de empleado.");
     if (!form.roleId) return setError("Selecciona un rol.");
     if (!form.warehouseIds.length) return setError("Selecciona al menos un almacén.");
-    if (form.sendInvite && !editing?.user_id) {
-      const inviteEmail = form.email.trim();
-      if (!inviteEmail) return setError("Escribe el correo del trabajador para crear su acceso web.");
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(inviteEmail)) return setError("El correo del trabajador no es válido.");
+    if (posPasswordRequired && form.posPassword.trim().length < 6) {
+      // Si falta la contraseña estando en «Datos», llevamos al trabajador a la
+      // pestaña «Acceso» para que vea el campo que debe completar.
+      if (editing) setFormTab('acceso');
+      return setError("Define una contraseña POS de al menos 6 caracteres.");
     }
-    const needsNewPosPassword = !form.sendInvite && (!editing || Boolean(editing.user_id || editing.pending_invitation));
-    if (needsNewPosPassword && form.posPassword.trim().length < 6) {
-      return setError("Define una contraseña POS nueva de al menos 6 caracteres para retirar el acceso web.");
-    }
-    if (!form.sendInvite && !needsNewPosPassword && form.posPassword.trim().length > 0 && form.posPassword.trim().length < 6) {
+    if (!posPasswordRequired && form.posPassword.trim().length > 0 && form.posPassword.trim().length < 6) {
       return setError("La nueva contraseña del POS debe tener al menos 6 caracteres.");
     }
 
@@ -445,22 +521,21 @@ export default function Team() {
       setBusy(true);
       try {
         const localId = generateId("EMP-OFF");
-        const now = new Date().toISOString();
         const role = snapshot.roles.find(role => role.id === form.roleId);
         const localEmployee: TeamEmployee = {
           id: localId, user_id: null, employee_code: form.employeeCode.trim(), full_name: form.fullName.trim(),
-          login_email: form.sendInvite ? form.email.trim().toLowerCase() : null, base_salary: Number(form.baseSalary) || 0,
+          login_email: null, base_salary: Number(form.baseSalary) || 0,
           compensation_type: compensationSettings.mode === "sales_percent" ? "sales_percentage" : "fixed_product", sales_percentage: compensationSettings.mode === "sales_percent" ? Number(compensationSettings.percentRate) || 0 : 0, active: true, role_id: form.roleId,
           role_name: role?.name || "Empleado", role_key: role?.key || "employee", warehouse_ids: [...form.warehouseIds],
           default_warehouse_id: form.warehouseIds[0] || null,
-          pending_invitation: form.sendInvite ? { id: localId + "-invite", email: form.email.trim().toLowerCase(), status: "pending_offline", expires_at: new Date(Date.now()+7*86400000).toISOString(), created_at: now } : null
+          pending_invitation: null
         };
         // Primero la cola durable: si IndexedDB rechaza la operación, no debe
         // quedar un empleado fantasma visible ni un rechazo sin mensaje.
         await enqueueOfflineItem("employee_create", {
           localEmployeeId: localId, companyId: snapshot.companyId, employeeCode: form.employeeCode.trim(), fullName: form.fullName.trim(),
           baseSalary: Number(form.baseSalary) || 0, roleId: form.roleId, warehouseIds: [...form.warehouseIds],
-          email: form.email.trim().toLowerCase(), sendInvite: form.sendInvite, posPassword: form.sendInvite ? undefined : form.posPassword.trim()
+          email: "", sendInvite: false, posPassword: form.posPassword.trim()
         }, "employee-create:" + localId);
         const nextSnapshot: TeamSnapshot = { ...snapshot, employees: [localEmployee, ...snapshot.employees] };
         setSnapshot(nextSnapshot); writeTeamCache(nextSnapshot);
@@ -476,36 +551,21 @@ export default function Team() {
     }
 
     // Edición offline: actualizar la vista local y dejar el cambio durable en
-    // cola. Al volver Internet, el handler aplica los cambios y el modo de acceso
-    // real mediante las RPC protegidas.
+    // cola. Al volver Internet, el handler aplica los cambios y la contraseña
+    // POS mediante las RPC protegidas.
     if (editing && offline) {
       try {
         const role = snapshot.roles.find(item => item.id === form.roleId);
-        const now = new Date().toISOString();
-        const normalizedEmail = form.email.trim().toLowerCase() || editing.login_email || "";
-        const pendingInvitation: TeamEmployee["pending_invitation"] =
-          form.sendInvite && !editing.user_id
-            ? {
-                id: editing.pending_invitation?.id || editing.id + "-invite-offline",
-                email: normalizedEmail,
-                status: "pending_offline",
-                expires_at: new Date(Date.now() + 7 * 86400000).toISOString(),
-                created_at: editing.pending_invitation?.created_at || now
-              }
-            : form.sendInvite ? (editing.pending_invitation || null) : null;
         const nextEmployee: TeamEmployee = {
           ...editing,
           employee_code: form.employeeCode.trim(),
           full_name: form.fullName.trim(),
-          login_email: normalizedEmail || null,
           base_salary: Number(form.baseSalary) || 0,
           role_id: form.roleId,
           role_name: role?.name || editing.role_name || "Empleado",
           role_key: role?.key || editing.role_key || "employee",
           warehouse_ids: [...form.warehouseIds],
-          default_warehouse_id: form.warehouseIds[0] || null,
-          user_id: form.sendInvite ? (editing.user_id || null) : null,
-          pending_invitation: pendingInvitation
+          default_warehouse_id: form.warehouseIds[0] || null
         };
         await enqueueOfflineItem("employee_update", {
           companyId: snapshot.companyId,
@@ -516,9 +576,9 @@ export default function Team() {
           baseSalary: Number(form.baseSalary) || 0,
           roleId: form.roleId,
           warehouseIds: [...form.warehouseIds],
-          sendInvite: form.sendInvite,
-          email: normalizedEmail,
-          posPassword: form.sendInvite ? undefined : (form.posPassword.trim() || undefined)
+          sendInvite: false,
+          email: "",
+          posPassword: form.posPassword.trim() || undefined
         }, "employee-update:" + editing.id + ":" + generateId("OFF"));
         const nextSnapshot: TeamSnapshot = {
           ...snapshot,
@@ -539,87 +599,33 @@ export default function Team() {
     setBusy(true);
     try {
       if (editing) {
-        if (form.sendInvite) {
-          await updateEmployee({
-            companyId: snapshot.companyId,
-            employeeId: editing.id,
-            employeeCode: form.employeeCode,
-            fullName: form.fullName,
-            baseSalary: Number(form.baseSalary) || 0,
-            roleId: form.roleId,
-            warehouseIds: form.warehouseIds
-          });
-        } else {
-          await updateEmployeePosSecure({
-            companyId: snapshot.companyId,
-            employeeId: editing.id,
-            employeeCode: form.employeeCode,
-            fullName: form.fullName,
-            baseSalary: Number(form.baseSalary) || 0,
-            roleId: form.roleId,
-            warehouseIds: form.warehouseIds,
-            posPassword: form.posPassword.trim() || undefined
-          });
-          setEditing(previous => previous ? { ...previous, user_id: null, pending_invitation: null } : previous);
-        }
-
-        if (form.sendInvite && !editing.user_id) {
-          const invite = await resendEmployeeInvitation({
-            companyId: snapshot.companyId,
-            employeeId: editing.id,
-            email: form.email,
-            roleId: form.roleId,
-            warehouseIds: form.warehouseIds
-          });
-          const link = getPalmyraPublicUrl(`/invite?token=${encodeURIComponent(invite.token)}`);
-          setInviteLink(link);
-          setEditing(previous => previous ? {
-            ...previous,
-            user_id: null,
-            login_email: form.email.trim().toLowerCase(),
-            pending_invitation: {
-              id: invite.id,
-              email: form.email.trim().toLowerCase(),
-              status: "pending",
-              expires_at: invite.expires_at,
-              created_at: new Date().toISOString()
-            }
-          } : previous);
-          setMessage(invite.email_sent ? "Empleado actualizado y correo de invitación reenviado." : "Empleado actualizado. Se generó un enlace nuevo para compartir.");
-        } else {
-          setMessage("Empleado actualizado.");
-        }
+        await updateEmployeePosSecure({
+          companyId: snapshot.companyId,
+          employeeId: editing.id,
+          employeeCode: form.employeeCode,
+          fullName: form.fullName,
+          baseSalary: Number(form.baseSalary) || 0,
+          roleId: form.roleId,
+          warehouseIds: form.warehouseIds,
+          posPassword: form.posPassword.trim() || undefined
+        });
+        setMessage("Empleado actualizado.");
       } else {
-        if (form.sendInvite) {
-          const invite = await createEmployeeWithInvitation({
-            companyId: snapshot.companyId,
-            employeeCode: form.employeeCode,
-            fullName: form.fullName,
-            baseSalary: Number(form.baseSalary) || 0,
-            roleId: form.roleId,
-            warehouseIds: form.warehouseIds,
-            email: form.email
-          });
-          const link = getPalmyraPublicUrl(`/invite?token=${encodeURIComponent(invite.token)}`);
-          setInviteLink(link);
-          setMessage(invite.email_sent ? "Empleado creado y correo de invitación enviado." : "Empleado creado. El correo automático no fue enviado; usa el enlace generado.");
-        } else {
-          await createEmployeePosSecure({
-            companyId: snapshot.companyId,
-            employeeCode: form.employeeCode,
-            fullName: form.fullName,
-            baseSalary: Number(form.baseSalary) || 0,
-            roleId: form.roleId,
-            warehouseIds: form.warehouseIds,
-            posPassword: form.posPassword.trim()
-          });
-          setMessage("Empleado creado sin acceso web y con contraseña para POS.");
-        }
+        await createEmployeePosSecure({
+          companyId: snapshot.companyId,
+          employeeCode: form.employeeCode,
+          fullName: form.fullName,
+          baseSalary: Number(form.baseSalary) || 0,
+          roleId: form.roleId,
+          warehouseIds: form.warehouseIds,
+          posPassword: form.posPassword.trim()
+        });
+        setMessage("Empleado creado con contraseña para el POS. Genera su enlace de acceso cuando lo necesite.");
       }
       await refresh();
       setShowForm(false);
       setFormStep(1);
-      resetForm(false);
+      resetForm();
       addNotification("Cambios de equipo guardados.", "success");
     } catch (e: any) {
       setError(e?.message || "No se pudo guardar el empleado.");
@@ -726,23 +732,62 @@ export default function Team() {
     }
   };
 
-  const copyInvite = async (employee: TeamEmployee) => {
-    if (!employee.pending_invitation || !snapshot?.companyId) return;
+  // Enlace de acceso de un solo uso: el administrador lo genera y lo entrega
+  // manualmente (WhatsApp, en mano). No se envía correo ni se crea cuenta web.
+  const openAccessInvite = async (employee: TeamEmployee) => {
+    setMenuId(null);
+    setAccessInviteError("");
+    setCopiedLink(false);
+    setAccessInvite({ employeeId: employee.id, employeeName: employee.full_name, link: "" });
+    setAccessInviteBusy(true);
     try {
-      const invite = await resendEmployeeInvitation({
-        companyId: snapshot!.companyId,
-        employeeId: employee.id,
-        email: employee.pending_invitation.email,
-        roleId: employee.role_id,
-        warehouseIds: employee.warehouse_ids
-      });
-      const link = getPalmyraPublicUrl(`/invite?token=${encodeURIComponent(invite.token)}`);
-      await copyText(link);
-      setInviteLink(link);
-      addNotification("Enlace de invitación copiado.", "success");
-      await refresh();
+      const invite = await createDeviceAccessInvite(employee.id);
+      const link = invite.link || buildDeviceAccessLink(invite.token);
+      if (!link) throw new Error("El servidor no devolvió un enlace válido.");
+      setAccessInvite({ employeeId: employee.id, employeeName: employee.full_name, link });
     } catch (e: any) {
-      addNotification(e?.message || "No se pudo generar la invitación.", "error");
+      const detail = String(e?.message || "");
+      const offlineOrNetwork = !navigator.onLine || /fetch|network|conexi/i.test(detail);
+      setAccessInviteError(offlineOrNetwork
+        ? "No se pudo generar el enlace de acceso. Revisa tu conexión e inténtalo de nuevo."
+        : detail || "No se pudo generar el enlace de acceso. Inténtalo de nuevo.");
+      addNotification("No se pudo generar el enlace de acceso.", "error");
+    } finally {
+      setAccessInviteBusy(false);
+    }
+  };
+
+  const copyAccessLink = async (link: string) => {
+    try {
+      await copyText(link);
+      setCopiedLink(true);
+      window.setTimeout(() => setCopiedLink(false), 2200);
+      addNotification("Enlace de acceso copiado.", "success");
+    } catch {
+      addNotification("No se pudo copiar el enlace. Selecciónalo y cópialo manualmente.", "error");
+    }
+  };
+
+  // Enlace dentro de la pestaña «Acceso» del modal: mismo servicio, pero el
+  // resultado se muestra en línea (sin abrir otra ventana encima del formulario).
+  const generateFormAccessLink = async (employee: TeamEmployee) => {
+    setFormAccessError("");
+    setCopiedLink(false);
+    setFormAccessBusy(true);
+    try {
+      const invite = await createDeviceAccessInvite(employee.id, accessLinkDays);
+      const link = invite.link || buildDeviceAccessLink(invite.token);
+      if (!link) throw new Error("El servidor no devolvió un enlace válido.");
+      setFormAccessLink(link);
+      addNotification("Enlace de acceso generado. Cópialo y entrégalo al trabajador.", "success");
+    } catch (e: any) {
+      const detail = String(e?.message || "");
+      const offlineOrNetwork = (typeof navigator !== "undefined" && !navigator.onLine) || /fetch|network|conexi/i.test(detail);
+      setFormAccessError(offlineOrNetwork
+        ? "No se pudo generar el enlace de acceso. Revisa tu conexión e inténtalo de nuevo."
+        : detail || "No se pudo generar el enlace de acceso. Inténtalo de nuevo.");
+    } finally {
+      setFormAccessBusy(false);
     }
   };
 
@@ -759,7 +804,7 @@ export default function Team() {
   }
 
   return (
-    <OperationsSurface className="space-y-5 w-full min-w-0 max-w-6xl mx-auto pb-10" onClick={() => setMenuId(null)}>
+    <OperationsSurface className="space-y-5 w-full min-w-0 max-w-[1600px] mx-auto pb-10" onClick={() => setMenuId(null)}>
       <header className="relative overflow-hidden rounded-3xl border border-base bg-secondary p-5 md:p-6">
         <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-violet-500/10 blur-3xl" aria-hidden="true" />
         <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -778,7 +823,7 @@ export default function Team() {
                 </span>
               </div>
               <h1 data-palmi-content="team" className="mt-1 text-2xl font-black text-primary tracking-tight">Equipo y accesos</h1>
-              <p className="mt-1 max-w-2xl text-xs leading-5 text-secondary">Cada trabajador entra con su propia cuenta o contraseña POS; sus permisos y almacenes se conservan en cualquier equipo del negocio.</p>
+              <p className="mt-1 max-w-2xl text-xs leading-5 text-secondary">Cada trabajador entra con su nombre, código y contraseña POS; si necesita entrar desde otro equipo, genera su enlace de acceso de un solo uso.</p>
               {(snapshot?.employees || []).some(employee => employee.active) && (
                 <div className="mt-3 flex items-center gap-2">
                   <div className="flex -space-x-2">
@@ -794,6 +839,7 @@ export default function Team() {
             </div>
           </div>
           <button onClick={openCreate} disabled={loading || busy || remainingSlots === 0}
+            title={remainingSlots === 0 ? "Alcanzaste las plazas de tu plan" : undefined}
             className="w-full lg:w-auto h-11 px-5 rounded-xl bg-violet-600 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-violet-600/20 disabled:opacity-50 shrink-0">
             <Plus className="w-4 h-4" /> Agregar trabajador
           </button>
@@ -816,23 +862,6 @@ export default function Team() {
           </div>
         )}
       </header>
-
-      <button
-        type="button"
-        onClick={() => navigate('/settings?section=lan')}
-        className="group flex w-full items-center gap-3 rounded-2xl border border-base bg-secondary p-3 text-left transition hover:border-violet-300 hover:shadow-sm"
-      >
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 text-violet-600 dark:text-violet-300">
-          <Network className="h-5 w-5" />
-        </span>
-        <span className="min-w-0 flex-1">
-          <span className="block text-xs font-black text-primary">Varios equipos, una sola empresa</span>
-          <span className="mt-0.5 block text-[10px] font-medium leading-4 text-muted">Abre PALMYRA desde el Wi-Fi del negocio; cada trabajador inicia sesión en su propio equipo con su cuenta o contraseña POS.</span>
-        </span>
-        <span className="hidden sm:flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-violet-600 dark:text-violet-300">
-          Red local <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-        </span>
-      </button>
 
       <nav aria-label="Secciones de equipo" className="grid grid-cols-3 gap-2 rounded-2xl border border-base bg-secondary p-1.5">
         {([
@@ -859,7 +888,7 @@ export default function Team() {
         ))}
       </nav>
 
-      <section className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
+      <section className="grid grid-cols-3 gap-2.5">
         <div className="rounded-2xl border border-base bg-secondary p-4">
           <p className="text-[9px] font-black uppercase tracking-wider text-muted">Empleados activos</p>
           <p className="mt-1 text-xl font-black tabular-nums text-primary">{activeEmployees}{employeeLimit ? <span className="text-xs text-muted font-bold"> / {employeeLimit}</span> : ""}</p>
@@ -867,10 +896,6 @@ export default function Team() {
         <div className="rounded-2xl border border-base bg-secondary p-4">
           <p className="flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-muted"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />En turno</p>
           <p className="mt-1 text-xl font-black tabular-nums text-primary">{employeesInShift}</p>
-        </div>
-        <div className="rounded-2xl border border-base bg-secondary p-4">
-          <p className="text-[9px] font-black uppercase tracking-wider text-muted">Acceso web</p>
-          <p className="mt-1 text-xl font-black tabular-nums text-primary">{snapshot?.employees.filter(e => e.active && e.user_id).length || 0}</p>
         </div>
         <div className="rounded-2xl border border-base bg-secondary p-4">
           <p className="text-[9px] font-black uppercase tracking-wider text-muted">Invitaciones</p>
@@ -898,14 +923,18 @@ export default function Team() {
                 key={role.id}
                 type="button"
                 onClick={() => openRoleEdit(role)}
+                disabled={!canEditRole(role)}
+                title={canEditRole(role) ? `Editar ${role.name}` : role.is_system ? "Rol protegido del sistema" : `Disponible desde el plan ${customRolesPlanName}`}
                 className={cn(
                   "text-left p-3 rounded-2xl border transition",
-                  role.is_system ? "border-base bg-subtle cursor-default" : "border-base bg-primary hover:border-rose-300"
+                  canEditRole(role)
+                    ? "border-base bg-primary hover:border-violet-300 dark:hover:border-violet-800 cursor-pointer"
+                    : role.is_system ? "border-base bg-subtle cursor-default opacity-80" : "border-base bg-subtle cursor-not-allowed opacity-70"
                 )}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-black text-primary">{role.name}</span>
-                  <span className="text-[8px] uppercase tracking-wider font-black text-muted">{role.is_system ? "Sistema" : "Personalizado"}</span>
+                  <span className="text-[8px] uppercase tracking-wider font-black text-muted">{role.is_system ? (isEmployeeSystemRole(role) ? "Sistema · editable" : "Sistema") : "Personalizado"}</span>
                 </div>
                 <p className="text-[9px] text-muted mt-1 line-clamp-2">{role.description || "Sin descripción"}</p>
                 <div className="flex flex-wrap gap-1 mt-2">
@@ -1038,22 +1067,6 @@ export default function Team() {
               </section>
       )}
 
-      {inviteLink && (
-        <section className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4">
-          <div className="flex flex-col md:flex-row md:items-center gap-3">
-            <div className="flex-1">
-              <p className="text-xs font-black text-emerald-800">Enlace de acceso del trabajador</p>
-              <p className="text-[11px] text-emerald-700 mt-1 break-all">{inviteLink}</p>
-              <p className="text-[10px] text-emerald-700/80 mt-1">El trabajador debe registrarse con el mismo correo de la invitación.</p>
-            </div>
-            <button onClick={() => copyText(inviteLink).then(() => addNotification("Enlace copiado.", "success"))}
-              className="h-10 px-4 rounded-xl bg-emerald-600 text-white font-black text-[10px] uppercase tracking-wider flex items-center gap-2">
-              <Copy className="w-4 h-4" /> Copiar
-            </button>
-          </div>
-        </section>
-      )}
-
       {message && <div className="rounded-xl bg-slate-900 text-white text-xs font-bold p-3">{message}</div>}
       {error && <div className="rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold p-3">{error}</div>}
 
@@ -1062,11 +1075,11 @@ export default function Team() {
         <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_170px_170px] p-4 border-b border-base">
           <label className="min-w-0">
             <span className="text-[10px] font-black uppercase tracking-wider text-muted">Buscar</span>
-            <input type="search" value={employeeSearch} onChange={e => setEmployeeSearch(e.target.value)} placeholder="Nombre, código o correo" className="mt-1 w-full px-3 py-2.5 rounded-xl border border-base bg-primary text-primary text-xs font-bold outline-none focus:ring-1 focus:ring-rose-400" />
+            <input type="search" value={employeeSearch} onChange={e => setEmployeeSearch(e.target.value)} placeholder="Nombre o código" className="mt-1 w-full px-3 py-2.5 rounded-xl border border-base bg-primary text-primary text-xs font-bold outline-none focus:ring-1 focus:ring-violet-500" />
           </label>
           <label>
             <span className="text-[10px] font-black uppercase tracking-wider text-muted">Estado</span>
-            <select value={employeeStatus} onChange={e => setEmployeeStatusFilter(e.target.value)} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-base bg-primary text-primary text-xs font-bold outline-none">
+            <select value={employeeStatus} onChange={e => setEmployeeStatusFilter(e.target.value)} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-base bg-primary text-primary text-xs font-bold outline-none focus:ring-1 focus:ring-violet-500">
               <option value="all">Todos</option>
               <option value="active">Activos</option>
               <option value="shift">En turno ahora</option>
@@ -1076,7 +1089,7 @@ export default function Team() {
           </label>
           <label>
             <span className="text-[10px] font-black uppercase tracking-wider text-muted">Rol</span>
-            <select value={employeeRole} onChange={e => setEmployeeRole(e.target.value)} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-base bg-primary text-primary text-xs font-bold outline-none">
+            <select value={employeeRole} onChange={e => setEmployeeRole(e.target.value)} className="mt-1 w-full px-3 py-2.5 rounded-xl border border-base bg-primary text-primary text-xs font-bold outline-none focus:ring-1 focus:ring-violet-500">
               <option value="all">Todos</option>
               {(snapshot?.roles || []).map(role => <option key={role.id} value={role.id}>{role.name}</option>)}
             </select>
@@ -1093,12 +1106,14 @@ export default function Team() {
             </button>
           )}
         </div>
-        {loading ? (
+        {loading && !snapshot ? (
           <div className="p-10 text-center text-sm text-muted">Cargando equipo...</div>
         ) : filteredEmployees.length ? (
           <div className="divide-y divide-slate-200/70 dark:divide-slate-700/60">
             {filteredEmployees.map(employee => {
-              const warehouseNames = employee.warehouse_ids.map(id => snapshot?.warehouses.find(w => w.id === id)?.name).filter(Boolean) as string[];
+              const warehouseNames = employee.warehouse_ids
+                .map(id => ({ id, name: snapshot?.warehouses.find(w => w.id === id)?.name }))
+                .filter((item): item is { id: string; name: string } => Boolean(item.name));
               const inShift = employeeInShift(employee);
               const inviteDaysLeft = employee.pending_invitation
                 ? Math.ceil((Date.parse(employee.pending_invitation.expires_at) - Date.now()) / 86400000)
@@ -1115,11 +1130,24 @@ export default function Team() {
                     className="team-list-avatar"
                   />
                   <div className="team-employee-main">
-                    <strong>{employee.full_name}</strong>
-                    <small className="flex items-center gap-1.5 flex-wrap">
-                      <span>{employee.employee_code}</span>
-                      {inShift && <em className="not-italic inline-flex items-center gap-1 rounded-full bg-emerald-50 px-1.5 py-0.5 text-[6.5px] font-black uppercase tracking-wider text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"><span className="h-1 w-1 rounded-full bg-emerald-500" />En turno</em>}
-                    </small>
+                    <strong className="team-employee-name" title={employee.full_name}>{employee.full_name}</strong>
+                    <div className="team-employee-sub">
+                      <span className="team-employee-code">{employee.employee_code}</span>
+                      {inShift && <em className="not-italic inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 font-black uppercase tracking-wider text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />En turno</em>}
+                      <span className="team-employee-warehouses" aria-label={warehouseNames.length ? `Almacenes: ${warehouseNames.map(item => item.name).join(', ')}` : 'Sin almacén asignado'}>
+                        {warehouseNames.length ? warehouseNames.map(item => (
+                          <span key={item.id} className="team-employee-warehouse">
+                            <Warehouse className="h-3.5 w-3.5" aria-hidden="true" />
+                            {item.name}
+                          </span>
+                        )) : (
+                          <span className="team-employee-warehouse is-empty">
+                            <Warehouse className="h-3.5 w-3.5" aria-hidden="true" />
+                            Sin almacén
+                          </span>
+                        )}
+                      </span>
+                    </div>
                   </div>
                   <div className="team-employee-role">
                     <span>{employee.role_name}</span>
@@ -1130,22 +1158,12 @@ export default function Team() {
                       </em>
                     )}
                   </div>
-                  <div className="team-employee-contact">
-                    <span title={employee.user_id || employee.pending_invitation ? (employee.login_email || employee.pending_invitation?.email || 'Cuenta web') : 'Sin acceso web'}>
-                      {employee.user_id ? <CheckCircle2 className="w-3 h-3 text-emerald-500" /> : <Mail className="w-3 h-3" />}
-                      {employee.user_id || employee.pending_invitation ? (employee.login_email || employee.pending_invitation?.email || "Cuenta web") : "Sin acceso web"}
-                    </span>
-                    <span title={warehouseNames.length ? warehouseNames.join(", ") : "Sin almacén"}>
-                      <MapPin className="w-3 h-3" />
-                      {warehouseNames.length ? (warehouseNames.length === 1 ? warehouseNames[0] : `${warehouseNames[0]} +${warehouseNames.length - 1}`) : "Sin almacén"}
-                    </span>
-                  </div>
-                  <div className="relative shrink-0">
+                  <div className="team-employee-actions">
                     <button onClick={(e) => { e.stopPropagation(); setMenuId(menuId === employee.id ? null : employee.id); }}
                       aria-label={`Acciones de ${employee.full_name}`}
                       aria-expanded={menuId === employee.id}
                       title="Acciones del trabajador"
-                      className="w-10 h-10 rounded-xl border border-base bg-primary text-muted hover:text-primary flex items-center justify-center">
+                      className="team-employee-menu-button">
                       <MoreHorizontal className="w-4 h-4" />
                     </button>
                     {menuId === employee.id && (
@@ -1153,15 +1171,15 @@ export default function Team() {
                         <button onClick={() => openEdit(employee)} className="w-full px-3 py-2 text-left text-xs font-bold text-primary hover:bg-subtle rounded-xl flex items-center gap-2">
                           <Edit3 className="w-4 h-4" /> Editar empleado
                         </button>
+                        {employee.active && (
+                          <button onClick={() => void openAccessInvite(employee)} disabled={accessInviteBusy} className="w-full px-3 py-2 text-left text-xs font-bold text-primary hover:bg-subtle rounded-xl flex items-center gap-2 disabled:opacity-50">
+                            <Link2 className="w-4 h-4" /> Enlace de acceso
+                          </button>
+                        )}
                         {employee.pending_invitation && (
-                          <>
-                            <button onClick={() => copyInvite(employee)} className="w-full px-3 py-2 text-left text-xs font-bold text-primary hover:bg-subtle rounded-xl flex items-center gap-2">
-                              <Copy className="w-4 h-4" /> Regenerar enlace
-                            </button>
-                            <button onClick={() => revokeInvite(employee)} className="w-full px-3 py-2 text-left text-xs font-bold text-amber-700 hover:bg-amber-50 rounded-xl flex items-center gap-2">
-                              <Mail className="w-4 h-4" /> Revocar invitación
-                            </button>
-                          </>
+                          <button onClick={() => void revokeInvite(employee)} className="w-full px-3 py-2 text-left text-xs font-bold text-amber-700 hover:bg-amber-50 rounded-xl flex items-center gap-2">
+                            <X className="w-4 h-4" /> Revocar invitación
+                          </button>
                         )}
                         <button onClick={() => changeStatus(employee)} className="w-full px-3 py-2 text-left text-xs font-bold hover:bg-subtle rounded-xl flex items-center gap-2">
                           <RefreshCw className="w-4 h-4" /> {employee.active ? "Desactivar acceso" : "Reactivar acceso"}
@@ -1208,30 +1226,69 @@ export default function Team() {
                     <span className="team-employee-kicker">{editing ? "Equipo · Configuración" : "Equipo · Alta segura"}</span>
                     <span className="team-employee-status"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Seguro y vinculado</span>
                   </div>
-                  <h2 className="text-xl sm:text-2xl font-black text-primary tracking-tight mt-1">{editing ? "Trabajador y acceso" : "Trabajador y acceso"}</h2>
-                  <p className="text-[11px] sm:text-xs text-muted mt-1.5 leading-5 max-w-xl">Completa la ficha, define su operación y decide si tendrá una cuenta web independiente. Todo queda vinculado a la empresa sin compartir las credenciales del propietario.</p>
+                  <h2 className="text-xl sm:text-2xl font-black text-primary tracking-tight mt-1">{editing ? editing.full_name : "Trabajador y acceso"}</h2>
+                  <p className="text-[11px] sm:text-xs text-muted mt-1.5 leading-5 max-w-xl">{editing
+                    ? "Pestaña Datos: ficha, rol y almacenes. Pestaña Acceso: contraseña del POS y enlace de un solo uso de este trabajador."
+                    : "Completa la ficha, define su operación y su contraseña POS. El acceso a otro equipo se entrega después con un enlace de un solo uso."}</p>
                 </div>
               </div>
               <button type="button" onClick={() => setShowForm(false)} className="w-10 h-10 rounded-2xl bg-subtle text-muted hover:text-primary hover:bg-primary border border-base flex items-center justify-center shrink-0 transition" aria-label="Cerrar formulario"><X className="w-4 h-4" /></button>
             </div>
-            <div className="team-employee-stepbar" aria-label="Pasos para crear trabajador">
-              {[
-                [1,"Información","Datos personales"],
-                [2,"Operación","Rol y almacenes"],
-                [3,"Acceso","Cuenta web"]
-              ].map(([step,label,sub]) => {
-                const n = step as 1|2|3;
-                return <React.Fragment key={n}>
-                  <button type="button" className={cn("team-step-item", formStep===n && "team-step-active", formStep>n && "team-step-done")} onClick={() => setFormStep(n)} disabled={busy}>
-                    <span>{formStep>n ? <Check className="w-3 h-3" /> : String(n).padStart(2,"0")}</span>
-                    <div><strong>{label}</strong><small>{sub}</small></div>
-                  </button>
-                  {n<3 && <div className={cn("team-step-line", formStep>n && "is-complete")} />}
-                </React.Fragment>;
-              })}
-            </div>
+            {editing ? (
+              <div className="team-employee-tabs" role="tablist" aria-label="Secciones del trabajador">
+                <button
+                  type="button"
+                  role="tab"
+                  id="team-tab-datos"
+                  aria-selected={formTab === 'datos'}
+                  aria-controls="team-panel-datos"
+                  className={cn("team-employee-tab", formTab === 'datos' && "is-active")}
+                  onClick={() => setFormTab('datos')}
+                  disabled={busy}
+                >
+                  <UserRound className="w-4 h-4" /> Datos
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  id="team-tab-acceso"
+                  aria-selected={formTab === 'acceso'}
+                  aria-controls="team-panel-acceso"
+                  className={cn("team-employee-tab", formTab === 'acceso' && "is-active")}
+                  onClick={() => setFormTab('acceso')}
+                  disabled={busy}
+                >
+                  <LockKeyhole className="w-4 h-4" /> Acceso
+                </button>
+              </div>
+            ) : (
+              <div className="team-employee-stepbar" aria-label="Pasos para crear trabajador">
+                {[
+                  [1,"Información","Datos personales"],
+                  [2,"Operación","Rol y almacenes"],
+                  [3,"Acceso","Contraseña POS"]
+                ].map(([step,label,sub]) => {
+                  const n = step as 1|2|3;
+                  return <React.Fragment key={n}>
+                    <button type="button" className={cn("team-step-item", formStep===n && "team-step-active", formStep>n && "team-step-done")} onClick={() => setFormStep(n)} disabled={busy}>
+                      <span>{formStep>n ? <Check className="w-3 h-3" /> : String(n).padStart(2,"0")}</span>
+                      <div><strong>{label}</strong><small>{sub}</small></div>
+                    </button>
+                    {n<3 && <div className={cn("team-step-line", formStep>n && "is-complete")} />}
+                  </React.Fragment>;
+                })}
+              </div>
+            )}
             <div className="team-employee-modal-body">
-              <section className={cn("team-form-section", formStep !== 1 && "team-form-hidden")} data-section="employee-info" aria-hidden={formStep !== 1}>
+              {/* Los errores de validación deben verse dentro del modal: el
+                  aviso de la página queda detrás del fondo fijo. */}
+              {error && (
+                <div role="alert" className="mb-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold leading-5 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300">
+                  <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span className="min-w-0">{error}</span>
+                </div>
+              )}
+              <section id="team-panel-datos" className={cn("team-form-section", !infoSectionVisible && "team-form-hidden")} data-section="employee-info" aria-hidden={!infoSectionVisible}>
                 <div className="team-form-section-head"><div className="team-form-section-icon"><UserRound className="w-4 h-4" /></div><div><h3>Información del trabajador</h3><p>Identifica a la persona que formará parte del equipo.</p></div></div>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <label className="team-field-wrap sm:col-span-2"><span className="team-field-label">Nombre completo <b>*</b></span><span className="team-field"><span className="team-field-icon"><UserRound className="w-4 h-4" /></span><input value={form.fullName} onChange={e => setForm({...form, fullName:e.target.value})} disabled={busy} className="team-field-input" placeholder="Ej. María González Pérez" autoComplete="name" /></span></label>
@@ -1246,7 +1303,7 @@ export default function Team() {
                   )}
                 </div>
               </section>
-              <section className={cn("team-form-section", formStep !== 2 && "team-form-hidden")} data-section="employee-operation" aria-hidden={formStep !== 2}>
+              <section className={cn("team-form-section", !operationSectionVisible && "team-form-hidden")} data-section="employee-operation" aria-hidden={!operationSectionVisible}>
                 <div className="team-form-section-head"><div className="team-form-section-icon"><ShieldCheck className="w-4 h-4" /></div><div><h3>Rol y almacenes</h3><p>Define dónde trabaja y qué nivel de operación tendrá.</p></div></div>
                 <label className="team-field-wrap"><span className="team-field-label">Rol <b>*</b></span><span className="team-field"><span className="team-field-icon"><ShieldCheck className="w-4 h-4" /></span><select value={form.roleId} onChange={e => setForm({...form, roleId:e.target.value})} disabled={busy || availableRoles.length===0} className="team-field-input team-field-select">{availableRoles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}</select></span>{!canManageRoles && <span className="team-field-help"><Info className="w-3.5 h-3.5" />Solo puedes asignar el rol operativo estándar.</span>}</label>
                 <div className="mt-4">
@@ -1260,29 +1317,87 @@ export default function Team() {
                   {!(snapshot?.warehouses || []).some(warehouse => warehouse.active) && <div className="team-empty-inline"><Warehouse className="w-4 h-4" />No hay almacenes activos disponibles. Crea uno en Configuración antes de asignar acceso.</div>}
                 </div>
               </section>
-              <section className={cn("team-form-section team-access-section", form.sendInvite && "is-enabled", formStep !== 3 && "team-form-hidden")} data-section="employee-access" aria-hidden={formStep !== 3}>
-                <div className="team-form-section-head"><div className="team-form-section-icon"><Link2 className="w-4 h-4" /></div><div className="min-w-0"><h3>Acceso al sistema</h3><p>Elige si tendrá cuenta web o solo contraseña para operar en el POS.</p></div><label className="team-switch ml-auto shrink-0"><input type="checkbox" checked={form.sendInvite} onChange={e => { setForm({...form, sendInvite:e.target.checked, posPassword: e.target.checked ? "" : form.posPassword}); setShowPosPassword(false); }} disabled={busy} className="sr-only" /><span className="team-switch-track"><span className="team-switch-thumb" /></span></label></div>
-
-                {form.sendInvite ? (
-                  <div className="team-access-card">
-                    <div className="flex items-start gap-3"><div className="team-access-icon"><AtSign className="w-4 h-4" /></div><div className="min-w-0 flex-1"><p className="text-xs font-black text-primary">Cuenta web del trabajador</p><p className="text-[10px] sm:text-[11px] text-muted leading-5 mt-0.5">El trabajador recibirá una invitación y creará o verificará su propia cuenta PALMYRA. La contraseña que configure allí será la que podrá usar para reanudar su turno en el POS.</p></div></div>
-                    {form.sendInvite && !editing?.user_id && <label className="team-field-wrap mt-3"><span className="team-field-label">Correo del trabajador <b>*</b></span><span className="team-field"><span className="team-field-icon"><Mail className="w-4 h-4" /></span><input type="email" value={form.email} onChange={e => setForm({...form,email:e.target.value})} disabled={busy} className="team-field-input" placeholder="trabajador@empresa.com" autoComplete="email" /></span></label>}
-                    {editing?.user_id && <div className="team-linked-account"><CheckCircle2 className="w-4 h-4 shrink-0" /><span>Cuenta vinculada: {editing.login_email || form.email || "correo registrado"} · La contraseña de esa cuenta se usa también para validar el POS.</span></div>}
-                  </div>
-                ) : (
-                  <div className="team-access-card">
-                    <div className="flex items-start gap-3"><div className="team-access-icon"><LockKeyhole className="w-4 h-4" /></div><div className="min-w-0 flex-1"><p className="text-xs font-black text-primary">Solo acceso al POS</p><p className="text-[10px] sm:text-[11px] text-muted leading-5 mt-0.5">Este trabajador no tendrá cuenta web. Define aquí una contraseña que quedará protegida y se usará para seleccionar y reanudar su turno en el POS.</p></div></div>
-                    <label className="team-field-wrap mt-3"><span className="team-field-label">{editing ? "Nueva contraseña del POS" : "Contraseña del POS"} <b>{!editing || editing.user_id || editing.pending_invitation ? "*" : ""}</b></span><span className="team-field"><span className="team-field-icon"><LockKeyhole className="w-4 h-4" /></span><input type={showPosPassword ? "text" : "password"} value={form.posPassword} onChange={e => setForm({...form,posPassword:e.target.value})} disabled={busy} className="team-field-input" placeholder={editing && !editing.user_id && !editing.pending_invitation ? "Vacío = conservar la contraseña actual" : editing ? "Define una contraseña POS nueva" : "Mínimo 6 caracteres"} autoComplete="new-password" /><button type="button" onClick={() => setShowPosPassword(value => !value)} disabled={busy} aria-label={showPosPassword ? "Ocultar contraseña" : "Mostrar contraseña"} className="px-2 mr-1 text-muted hover:text-primary" title={showPosPassword ? "Ocultar contraseña" : "Mostrar contraseña"}>{showPosPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button></span></label>
-                    <div className="team-access-off"><Info className="w-4 h-4 shrink-0" />{editing && !editing.user_id && !editing.pending_invitation ? "La contraseña actual no se puede recuperar porque se guarda como hash seguro. Déjalo vacío para conservarla o escribe una nueva; el icono del ojo permite verla mientras escribes." : "Define una contraseña POS nueva. Puedes verla con el icono del ojo mientras la escribes; PALMYRA guarda únicamente su hash protegido."}</div>
+              <section id="team-panel-acceso" className={cn("team-form-section team-access-section is-enabled", !accessSectionVisible && "team-form-hidden")} data-section="employee-access" aria-hidden={!accessSectionVisible}>
+                <div className="team-form-section-head"><div className="team-form-section-icon"><LockKeyhole className="w-4 h-4" /></div><div className="min-w-0"><h3>Acceso al POS</h3><p>El trabajador opera con su nombre, su código y esta contraseña. No hay correo ni cuenta web.</p></div></div>
+                <div className="team-access-card">
+                  <div className="flex items-start gap-3"><div className="team-access-icon"><LockKeyhole className="w-4 h-4" /></div><div className="min-w-0 flex-1"><p className="text-xs font-black text-primary">Contraseña del POS</p><p className="text-[10px] sm:text-[11px] text-muted leading-5 mt-0.5">Se guarda protegida y se usa para seleccionar y reanudar su turno en el POS. Para entrar desde otro equipo o la APK, genera después su enlace de acceso.</p></div></div>
+                  <label className="team-field-wrap mt-3"><span className="team-field-label">{editing ? "Nueva contraseña del POS" : "Contraseña del POS"} <b>{posPasswordRequired ? "*" : ""}</b></span><span className="team-field"><span className="team-field-icon"><LockKeyhole className="w-4 h-4" /></span><input type={showPosPassword ? "text" : "password"} value={form.posPassword} onChange={e => setForm({...form,posPassword:e.target.value})} disabled={busy} className="team-field-input" placeholder={posPasswordRequired ? "Mínimo 6 caracteres" : "Vacío = conservar la contraseña actual"} autoComplete="new-password" /><button type="button" onClick={() => setShowPosPassword(value => !value)} disabled={busy} aria-label={showPosPassword ? "Ocultar contraseña" : "Mostrar contraseña"} className="px-2 mr-1 text-muted hover:text-primary" title={showPosPassword ? "Ocultar contraseña" : "Mostrar contraseña"}>{showPosPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button></span></label>
+                  <div className="team-access-off"><Info className="w-4 h-4 shrink-0" />{posPasswordRequired ? "Define una contraseña POS de al menos 6 caracteres; es obligatoria para operar. Puedes verla con el icono del ojo mientras escribes." : "La contraseña actual no se puede recuperar porque se guarda como hash seguro. Déjalo vacío para conservarla o escribe una nueva."}</div>
+                </div>
+                {editing && (
+                  <div className="team-access-card team-device-link-card">
+                    <div className="flex items-start gap-3">
+                      <div className="team-access-icon"><Link2 className="w-4 h-4" /></div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-black text-primary">Enlace de acceso de un solo uso</p>
+                        <p className="text-[10px] sm:text-[11px] text-muted leading-5 mt-0.5">Cada trabajador tiene su propio enlace, distinto al del resto del equipo. Genéralo aquí y entrégalo por WhatsApp o en mano para que entre desde otro equipo o la APK; no se envía por correo.</p>
+                      </div>
+                    </div>
+                    {formAccessLink && (
+                      <label className="team-field-wrap mt-3">
+                        <span className="team-field-label">Enlace de {editing.full_name}</span>
+                        <span className="team-field">
+                          <span className="team-field-icon"><Link2 className="w-4 h-4" /></span>
+                          <input readOnly value={formAccessLink} onFocus={event => event.currentTarget.select()} className="team-field-input" aria-label="Enlace de acceso generado" />
+                        </span>
+                      </label>
+                    )}
+                    <div className="team-device-link-actions">
+                      <label className="team-field-wrap min-w-[150px] flex-1">
+                        <span className="team-field-label">Caducidad del enlace</span>
+                        <span className="team-field">
+                          <span className="team-field-icon"><Clock className="w-4 h-4" /></span>
+                          <select
+                            value={accessLinkDays}
+                            onChange={e => setAccessLinkDays(Number(e.target.value))}
+                            disabled={formAccessBusy || busy}
+                            className="team-field-input team-field-select"
+                            aria-label="Caducidad del enlace de acceso"
+                          >
+                            <option value={1}>Válido 1 día</option>
+                            <option value={7}>Válido 7 días</option>
+                            <option value={30}>Válido 30 días</option>
+                            <option value={90}>Válido 90 días</option>
+                            <option value={0}>Sin caducidad</option>
+                          </select>
+                        </span>
+                      </label>
+                      <button type="button" onClick={() => void generateFormAccessLink(editing)} disabled={formAccessBusy || busy} className="team-footer-primary">
+                        {formAccessBusy
+                          ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generando…</>
+                          : <><Link2 className="w-4 h-4" /> {formAccessLink ? "Generar otro enlace" : "Generar enlace de acceso"}</>}
+                      </button>
+                      {formAccessLink && (
+                        <button type="button" onClick={() => void copyAccessLink(formAccessLink)} className="team-footer-secondary">
+                          {copiedLink ? <><Check className="w-4 h-4" /> Copiado</> : <><Copy className="w-4 h-4" /> Copiar enlace</>}
+                        </button>
+                      )}
+                    </div>
+                    <p className="team-device-link-note"><Clock className="w-3.5 h-3.5" aria-hidden="true" /> {accessLinkDays <= 0 ? "Sin caducidad" : `Válido ${accessLinkDays} ${accessLinkDays === 1 ? "día" : "días"}`} · un solo uso · personal e intransferible</p>
+                    <span className="sr-only" aria-live="polite">{copiedLink ? "Enlace de acceso copiado." : ""}</span>
+                    {formAccessError && <div className="team-access-off"><Info className="w-4 h-4 shrink-0" />{formAccessError}</div>}
                   </div>
                 )}
               </section>
             </div>
             <div className="team-employee-modal-footer">
-              <div className="flex items-start gap-2 min-w-0"><div className="team-footer-icon"><Info className="w-3.5 h-3.5" /></div><p>{formStep === 1 ? "Empieza por identificar al trabajador. Podrás revisar todo antes de guardar." : formStep === 2 ? "Define el rol y los almacenes. El trabajador solo tendrá acceso a lo que aquí autorices." : form.sendInvite ? "La cuenta web es independiente de la del propietario. El trabajador configurará sus propias credenciales." : "La contraseña POS se guarda protegida y será necesaria para abrir o reanudar su turno."}</p></div>
+              <div className="flex items-start gap-2 min-w-0"><div className="team-footer-icon"><Info className="w-3.5 h-3.5" /></div><p>{editing
+                ? formTab === 'datos'
+                  ? "Revisa el nombre, el rol y los almacenes. Un solo botón guarda toda la ficha."
+                  : "La contraseña POS es opcional al editar. El enlace de acceso se genera solo cuando lo necesitas y es personal."
+                : formStep === 1 ? "Empieza por identificar al trabajador. Podrás revisar todo antes de guardar." : formStep === 2 ? "Define el rol y los almacenes. El trabajador solo tendrá acceso a lo que aquí autorices." : "La contraseña POS se guarda protegida y será necesaria para abrir o reanudar su turno."}</p></div>
               <div className="team-footer-actions">
-                <button type="button" onClick={() => formStep === 1 ? setShowForm(false) : setFormStep((formStep-1) as 1|2|3)} className="team-footer-secondary">{formStep === 1 ? "Cancelar" : <><ChevronLeft className="w-4 h-4" /> Atrás</>}</button>
-                {formStep < 3 ? <button type="button" disabled={busy || (formStep===1 && (!form.fullName.trim() || !form.employeeCode.trim())) || (formStep===2 && (!form.roleId || !form.warehouseIds.length))} onClick={() => setFormStep((formStep+1) as 1|2|3)} className="team-footer-primary">Continuar <ChevronRight className="w-4 h-4" /></button> : <button type="submit" disabled={busy || (form.sendInvite && !form.email.trim())} className="team-footer-primary">{busy ? <><RefreshCw className="w-4 h-4 animate-spin" /> Guardando…</> : editing ? <><Save className="w-4 h-4" /> Guardar cambios</> : <><Check className="w-4 h-4" /> Crear trabajador</>}</button>}
+                {editing ? (
+                  <>
+                    <button type="button" onClick={() => setShowForm(false)} className="team-footer-secondary">Cancelar</button>
+                    <button type="submit" disabled={busy} className="team-footer-primary">{busy ? <><RefreshCw className="w-4 h-4 animate-spin" /> Guardando…</> : <><Save className="w-4 h-4" /> Guardar cambios</>}</button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" onClick={() => formStep === 1 ? setShowForm(false) : setFormStep((formStep-1) as 1|2|3)} className="team-footer-secondary">{formStep === 1 ? "Cancelar" : <><ChevronLeft className="w-4 h-4" /> Atrás</>}</button>
+                    {formStep < 3 ? <button type="button" disabled={busy || (formStep===1 && (!form.fullName.trim() || !form.employeeCode.trim())) || (formStep===2 && (!form.roleId || !form.warehouseIds.length))} onClick={() => setFormStep((formStep+1) as 1|2|3)} className="team-footer-primary">Continuar <ChevronRight className="w-4 h-4" /></button> : <button type="submit" disabled={busy || (posPasswordRequired && form.posPassword.trim().length < 6)} className="team-footer-primary">{busy ? <><RefreshCw className="w-4 h-4 animate-spin" /> Guardando…</> : <><Check className="w-4 h-4" /> Crear trabajador</>}</button>}
+                  </>
+                )}
               </div>
             </div>
           </form>
@@ -1296,7 +1411,9 @@ export default function Team() {
               <div className="min-w-0 flex-1">
                 <p className="team-employee-kicker">{editingRole ? "Editar rol" : "Crear rol"}</p>
                 <h2>{editingRole ? editingRole.name : "Nuevo perfil de trabajo"}</h2>
-                <p>Define primero la identidad del rol y después sus permisos.</p>
+                <p>{isEmployeeSystemRole(editingRole)
+                  ? "Rol del sistema: puedes ajustar su nombre, descripción y permisos. La clave «employee» se mantiene."
+                  : "Define primero la identidad del rol y después sus permisos."}</p>
               </div>
               <button type="button" onClick={() => setShowRoleForm(false)} className="team-role-flow-close"><X className="w-4 h-4" /></button>
             </div>
@@ -1310,14 +1427,25 @@ export default function Team() {
               </button>
             </div>
             <div className="team-role-flow-body">
+              {error && (
+                <div role="alert" className="mb-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold leading-5 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300">
+                  <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                  <span className="min-w-0">{error}</span>
+                </div>
+              )}
               {roleFormStep===1 ? (
                 <div className="team-form-section">
                   <div className="team-form-section-head"><div className="team-form-section-icon"><BriefcaseBusiness className="w-4 h-4"/></div><div><h3>Identidad del rol</h3><p>Información que verá el administrador al asignar trabajadores.</p></div></div>
                   <div className="grid sm:grid-cols-2 gap-3">
-                    <label className="team-field-wrap"><span className="team-field-label">Nombre del rol <b>*</b></span><div className="team-field"><span className="team-field-icon"><ShieldCheck className="w-4 h-4"/></span><input className="team-field-input" value={roleForm.name} onChange={e=>setRoleForm({...roleForm,name:e.target.value})} disabled={busy||Boolean(editingRole?.is_system)} placeholder="Ej. Supervisor"/></div></label>
+                    <label className="team-field-wrap"><span className="team-field-label">Nombre del rol <b>*</b></span><div className="team-field"><span className="team-field-icon"><ShieldCheck className="w-4 h-4"/></span><input className="team-field-input" value={roleForm.name} onChange={e=>setRoleForm({...roleForm,name:e.target.value})} disabled={busy||Boolean(editingRole && !canEditRole(editingRole))} placeholder="Ej. Supervisor"/></div></label>
                     <label className="team-field-wrap"><span className="team-field-label">Clave interna <b>*</b></span><div className="team-field"><span className="team-field-icon"><Hash className="w-4 h-4"/></span><input className="team-field-input" value={roleForm.key} onChange={e=>setRoleForm({...roleForm,key:e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g,"-")})} disabled={busy||Boolean(editingRole?.is_system)} placeholder="supervisor"/></div></label>
                   </div>
-                  <label className="team-field-wrap mt-3"><span className="team-field-label">Descripción</span><div className="team-field"><span className="team-field-icon"><Info className="w-4 h-4"/></span><input className="team-field-input" value={roleForm.description} onChange={e=>setRoleForm({...roleForm,description:e.target.value})} disabled={busy||Boolean(editingRole?.is_system)} placeholder="Qué puede hacer este perfil"/></div></label>
+                  <label className="team-field-wrap mt-3"><span className="team-field-label">Descripción</span><div className="team-field"><span className="team-field-icon"><Info className="w-4 h-4"/></span><input className="team-field-input" value={roleForm.description} onChange={e=>setRoleForm({...roleForm,description:e.target.value})} disabled={busy||Boolean(editingRole && !canEditRole(editingRole))} placeholder="Qué puede hacer este perfil"/></div></label>
+                  {editingRole?.is_system && (
+                    <div className="team-field-help mt-2"><Info className="w-3.5 h-3.5" />{isEmployeeSystemRole(editingRole)
+                      ? "Rol creado por PALMYRA: la clave no cambia, pero el nombre, la descripción y los permisos sí se pueden editar."
+                      : "Este rol del sistema está protegido y no se puede modificar."}</div>
+                  )}
                 </div>
               ) : (
                 <div className="team-form-section">
@@ -1329,7 +1457,7 @@ export default function Team() {
                           <p className="text-[8px] font-black uppercase tracking-[0.12em] text-violet-600 dark:text-violet-300">{group.label}</p>
                           <button
                             type="button"
-                            disabled={busy || Boolean(editingRole?.is_system)}
+                            disabled={busy || Boolean(editingRole && !canEditRole(editingRole))}
                             onClick={() => {
                               const keys = group.permissions.map(permission => permission.key);
                               const allSelected = keys.every(key => roleForm.permissionKeys.includes(key));
@@ -1349,7 +1477,7 @@ export default function Team() {
                           {group.permissions.map(permission => {
                             const selected = roleForm.permissionKeys.includes(permission.key);
                             return <label key={permission.id} className={cn("team-role-permission",selected&&"is-selected")}>
-                              <input type="checkbox" checked={selected} onChange={()=>toggleRolePermission(permission.key)} disabled={busy||Boolean(editingRole?.is_system)} />
+                              <input type="checkbox" checked={selected} onChange={()=>toggleRolePermission(permission.key)} disabled={busy||Boolean(editingRole && !canEditRole(editingRole))} />
                               <span><strong>{permission.name}</strong><small>{permission.description||permission.key}</small></span>
                             </label>;
                           })}
@@ -1362,9 +1490,56 @@ export default function Team() {
             </div>
             <div className="team-role-flow-footer">
               <button type="button" onClick={()=>roleFormStep===1?setShowRoleForm(false):setRoleFormStep(1)} className="team-footer-secondary">{roleFormStep===1?"Cancelar":"Atrás"}</button>
-              <button type="submit" disabled={busy||Boolean(editingRole?.is_system)} className="team-footer-primary">{busy?"Guardando…":roleFormStep===1?"Continuar":"Guardar rol"}<ChevronRight className="w-4 h-4"/></button>
+              <button type="submit" disabled={busy||Boolean(editingRole && !canEditRole(editingRole))} className="team-footer-primary">{busy?"Guardando…":roleFormStep===1?"Continuar":"Guardar rol"}<ChevronRight className="w-4 h-4"/></button>
             </div>
           </form>
+        </div>
+      )}
+
+      {accessInvite && (
+        <div className="fixed inset-0 z-[220] bg-slate-950/70 backdrop-blur-md p-3 sm:p-5 flex items-center justify-center" onClick={() => setAccessInvite(null)}>
+          <div role="dialog" aria-modal="true" aria-label="Enlace de acceso del trabajador" onClick={e => e.stopPropagation()} className="w-full max-w-lg bg-secondary border border-base rounded-3xl shadow-2xl overflow-hidden">
+            <div className="flex items-start gap-3 border-b border-base p-4 sm:p-5">
+              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-500/10 text-violet-600 dark:text-violet-300"><Link2 className="h-5 w-5" /></span>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] font-black uppercase tracking-[0.18em] text-violet-600 dark:text-violet-300">Enlace de acceso</p>
+                <h2 className="mt-1 truncate text-base font-black text-primary">{accessInvite.employeeName}</h2>
+                <p className="mt-1 text-[11px] leading-5 text-muted">Entrégalo manualmente por WhatsApp, correo interno o en mano. No se envía nada automáticamente.</p>
+              </div>
+              <button type="button" onClick={() => setAccessInvite(null)} aria-label="Cerrar" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-base bg-subtle text-muted hover:text-primary"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="space-y-3 p-4 sm:p-5">
+              {accessInviteBusy ? (
+                <div className="flex items-center justify-center gap-2 rounded-2xl border border-base bg-subtle p-6 text-xs font-bold text-muted"><RefreshCw className="h-4 w-4 animate-spin" /> Generando enlace…</div>
+              ) : accessInviteError ? (
+                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-bold leading-5 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300">{accessInviteError}</div>
+              ) : (
+                <>
+                  <label className="block min-w-0">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-muted">Enlace de un solo uso</span>
+                    <input readOnly value={accessInvite.link} onFocus={e => e.currentTarget.select()} className="mt-1 w-full rounded-xl border border-base bg-primary px-3 py-2.5 text-xs font-bold text-primary outline-none" />
+                  </label>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="inline-flex items-center gap-1.5 text-[11px] font-black text-amber-700 dark:text-amber-300"><Clock className="h-3.5 w-3.5" /> Válido 7 días, un solo uso</p>
+                    <button type="button" onClick={() => void copyAccessLink(accessInvite.link)} className="flex h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-[10px] font-black uppercase tracking-wider text-white shadow-lg shadow-violet-600/20">
+                      {copiedLink ? <><Check className="w-4 h-4" /> Copiado</> : <><Copy className="w-4 h-4" /> Copiar</>}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="flex flex-col gap-2 border-t border-base p-4 sm:flex-row sm:items-center sm:justify-end sm:p-5">
+              {accessInviteError && (
+                <p className="mr-auto text-[10px] font-bold leading-5 text-muted">Si el problema continúa, verifica tu conexión o contacta a soporte.</p>
+              )}
+              {accessInviteError && !accessInviteBusy && (
+                <button type="button" onClick={() => { const target = (snapshot?.employees || []).find(item => item.id === accessInvite.employeeId); if (target) void openAccessInvite(target); }} className="flex h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-[10px] font-black uppercase tracking-wider text-white">
+                  <RefreshCw className="w-4 h-4" /> Reintentar
+                </button>
+              )}
+              <button type="button" onClick={() => setAccessInvite(null)} className="h-10 rounded-xl border border-base bg-subtle px-4 text-[10px] font-black uppercase tracking-wider text-primary">Cerrar</button>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1383,7 +1558,7 @@ export default function Team() {
         }}
       />
 
-      <p className="text-[10px] text-muted text-center leading-5">El acceso web del trabajador es independiente del selector de empleado/PIN del POS. Ambos pueden coexistir y funcionan también sin Internet en este equipo.</p>
+      <p className="text-[10px] text-muted text-center leading-5">Cada trabajador opera con su nombre, su código y su contraseña POS. El enlace de acceso es personal, de un solo uso y lo entregas tú; no se envían invitaciones por correo.</p>
     </OperationsSurface>
   );
 }

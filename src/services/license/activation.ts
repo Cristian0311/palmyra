@@ -3,11 +3,17 @@
  *
  * Prioridad:
  *   1. `import.meta.env.VITE_LICENSE_PUBLIC_JWK` (compilada en el build).
- *   2. `GET /license-public-key.json` servida por el mismo origen.
+ *   2. Clave anclada de una sesión anterior (TOFU): permite verificar el lease
+ *      guardado sin conexión, que es el caso normal al reabrir la app.
+ *   3. `GET /license-public-key.json` servida por el mismo origen.
  *
  * La resolución nunca lanza: devuelve `missing` si no hay clave y `error` si
- * la red falló sin clave previa. El runtime traduce esos estados al modo
- * `unmanaged` sin bloquear, tal como hacía antes.
+ * la red falló sin clave previa ni anclada. El runtime traduce esos estados al
+ * modo `unmanaged` sin bloquear, tal como hacía antes.
+ *
+ * Anclar la clave no relaja la firma: el lease se sigue verificando contra una
+ * clave EC P-256 conocida; el anclaje solo evita depender de la red al arrancar.
+ * `refresh()` fuerza una lectura remota (rotación de clave) sin perder el anclaje.
  *
  * El resultado se cachea por resolver. El runtime crea uno por instancia para
  * que una prueba o una pestaña no contamine a otra; `resolveLicensePublicKey`
@@ -21,7 +27,11 @@ export type LicensePublicKeyFetch = (
   init?: RequestInit
 ) => Promise<Response>;
 
-export type LicensePublicKeySource = "env" | "remote";
+/**
+ * `pinned` = clave aceptada en un arranque anterior y guardada en el equipo.
+ * Sin ella, un arranque sin red no podría evaluar el lease cacheado.
+ */
+export type LicensePublicKeySource = "env" | "remote" | "pinned";
 
 /** Clave pública ya validada y lista para `importVerifyKey`. */
 export interface LicensePublicKey {
@@ -36,7 +46,10 @@ export type LicensePublicKeyResult =
   | { status: "error" };
 
 export interface LicensePublicKeyResolver {
+  /** Clave disponible ya (entorno → anclada → red). */
   resolve(): Promise<LicensePublicKeyResult>;
+  /** Fuerza una lectura remota (rotación); conserva el anclaje si falla. */
+  refresh(): Promise<LicensePublicKeyResult>;
   reset(): void;
 }
 
@@ -47,6 +60,13 @@ export interface LicensePublicKeyResolverOptions {
    * `undefined` = leer el entorno; `null` = forzar ausencia.
    */
   envRaw?: string | null;
+  /**
+   * Clave anclada en un arranque anterior. Sin red, es la única forma de
+   * verificar el lease guardado, así que se consulta antes de salir a la red.
+   */
+  loadPinned?: () => Promise<JsonWebKey | null>;
+  /** Guarda la clave aceptada (entorno o remota) para el siguiente arranque. */
+  savePinned?: (jwk: JsonWebKey) => Promise<void>;
 }
 
 /** EC P-256 con coordenadas presentes. Rechaza claves de otro tipo. */
@@ -151,15 +171,35 @@ export function createLicensePublicKeyResolver(
     inFlight = null;
   }
 
-  async function resolveOnce(): Promise<LicensePublicKeyResult> {
-    // 1. Clave compilada en el build: manda sobre la red.
-    const fromEnv = parseEnvKey(readEnvRaw(options.envRaw));
-    if (fromEnv) {
-      cached = fromEnv;
-      return { status: "found", key: fromEnv };
+  /** Ancla la clave aceptada; nunca lanza (el arranque no depende del disco). */
+  async function persistPinned(jwk: JsonWebKey): Promise<void> {
+    if (!options.savePinned) return;
+    try {
+      await options.savePinned(jwk);
+    } catch {
+      // Sin persistencia la app sigue verificando mientras haya red.
     }
+  }
 
-    // 2. Clave pública servida por el mismo origen.
+  function keyIdOf(jwk: JsonWebKey): string {
+    const kid = (jwk as { kid?: unknown }).kid;
+    return typeof kid === "string" ? kid : "";
+  }
+
+  /** Clave de un arranque anterior; se valida la forma antes de confiar en ella. */
+  async function readPinned(): Promise<LicensePublicKey | null> {
+    if (!options.loadPinned) return null;
+    try {
+      const jwk = await options.loadPinned();
+      if (!isPublicLeaseJwk(jwk)) return null;
+      return { jwk: sanitizeJwk(jwk), keyId: keyIdOf(jwk), source: "pinned" };
+    } catch {
+      return null;
+    }
+  }
+
+  /** Lectura remota del mismo origen. Un fallo no cachea nada. */
+  async function fetchRemote(): Promise<LicensePublicKeyResult> {
     let response: Response;
     try {
       response = await fetchImpl(LICENSE_PUBLIC_KEY_PATH, {
@@ -167,7 +207,7 @@ export function createLicensePublicKeyResolver(
         headers: { Accept: "application/json" }
       });
     } catch {
-      // Sin red y sin clave previa: se informa el fallo, no se bloquea.
+      // Sin red y sin anclaje: se informa el fallo, no se bloquea.
       return { status: "error" };
     }
 
@@ -182,8 +222,45 @@ export function createLicensePublicKeyResolver(
 
     const key = parseRemotePayload(payload);
     if (!key) return { status: "missing" };
-    cached = key;
     return { status: "found", key };
+  }
+
+  async function resolveOnce(): Promise<LicensePublicKeyResult> {
+    // 1. Clave compilada en el build: manda sobre la red y sobre el anclaje.
+    const fromEnv = parseEnvKey(readEnvRaw(options.envRaw));
+    if (fromEnv) {
+      cached = fromEnv;
+      void persistPinned(fromEnv.jwk);
+      return { status: "found", key: fromEnv };
+    }
+
+    // 2. Clave anclada: evalúa el lease guardado sin tocar la red (offline-first).
+    const pinned = await readPinned();
+    if (pinned) {
+      cached = pinned;
+      return { status: "found", key: pinned };
+    }
+
+    // 3. Clave pública servida por el mismo origen.
+    const remote = await fetchRemote();
+    if (remote.status === "found") {
+      cached = remote.key;
+      void persistPinned(remote.key.jwk);
+    }
+    return remote;
+  }
+
+  /**
+   * Relee la clave remota saltándose caché y anclaje. Si falla, la clave
+   * anclada sigue en uso: una rotación del servidor nunca rompe la app offline.
+   */
+  async function refresh(): Promise<LicensePublicKeyResult> {
+    const remote = await fetchRemote();
+    if (remote.status === "found") {
+      cached = remote.key;
+      void persistPinned(remote.key.jwk);
+    }
+    return remote;
   }
 
   async function resolve(): Promise<LicensePublicKeyResult> {
@@ -195,7 +272,7 @@ export function createLicensePublicKeyResolver(
     return inFlight;
   }
 
-  return { resolve, reset };
+  return { resolve, refresh, reset };
 }
 
 let moduleResolver: LicensePublicKeyResolver | null = null;

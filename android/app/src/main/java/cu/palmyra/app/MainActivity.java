@@ -71,6 +71,14 @@ public class MainActivity extends Activity {
     private static final long MAX_BUNDLE_BYTES = 300L * 1024L * 1024L;
     /** Un APK ronda 10-25 MB; 200 MB deja margen sin permitir abusos. */
     private static final long MAX_APK_BYTES = 200L * 1024L * 1024L;
+    /** Enlace de acceso de dispositivo (src/services/deviceAccess.ts). */
+    private static final String DEEP_LINK_SCHEME = "palmyra";
+    private static final String DEEP_LINK_HOST = "device-access";
+    private static final String DEEP_LINK_APP_LINK_HOST = "palmyracrm.onrender.com";
+    private static final String DEEP_LINK_PATH = "/device-access";
+    private static final String DEEP_LINK_ROUTE = "device-access";
+    /** Un token de acceso es opaco y corto: nada más entra en la URL local. */
+    private static final int DEEP_LINK_TOKEN_MAX = 256;
     private static final int REQUEST_FILE_CHOOSER = 1001;
     private static final int REQUEST_CAMERA_PERMISSION = 1002;
     private static final int REQUEST_APK_IMPORT = 1003;
@@ -93,6 +101,8 @@ public class MainActivity extends Activity {
     // desde la web: ambos viven en el hilo principal del Activity.
     private ValueCallback<Uri[]> fileChooserCallback;
     private PermissionRequest pendingCameraRequest;
+    /** Última ruta de acceso de dispositivo ya cargada: evita aplicarla dos veces. */
+    private volatile String lastDeepLinkRoute = "";
 
     @SuppressLint("SetJavaScriptEnabled")
     @Override
@@ -263,7 +273,91 @@ public class MainActivity extends Activity {
 
         setContentView(web, new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        web.loadUrl(BASE_URL);
+        // Arranque en frío desde un enlace: se abre directamente la ruta local
+        // del acceso de dispositivo. Al recrear la actividad (rotación) el
+        // intent original se ignora para no repetir la navegación.
+        String initialRoute = savedInstanceState == null ? deepLinkRouteFrom(getIntent()) : "";
+        if (!initialRoute.isEmpty()) {
+            lastDeepLinkRoute = initialRoute;
+        }
+        web.loadUrl(initialRoute.isEmpty() ? BASE_URL : BASE_URL + initialRoute);
+    }
+
+    /**
+     * La actividad es singleTask: un enlace abierto con la app en marcha llega
+     * aquí en lugar de crear otra instancia.
+     */
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        String route = deepLinkRouteFrom(intent);
+        if (route.isEmpty() || route.equals(lastDeepLinkRoute)) return;
+        lastDeepLinkRoute = route;
+        openDeepLinkRoute(route);
+    }
+
+    /** Carga la ruta local del enlace sobre el servidor interno de la WebView. */
+    private void openDeepLinkRoute(final String route) {
+        final WebView target = web;
+        if (target == null) return;
+        runOnUiThread(() -> {
+            try {
+                target.loadUrl(BASE_URL + route);
+            } catch (Exception error) {
+                Log.w("PALMYRA", "No se pudo abrir el enlace de acceso de dispositivo.");
+            }
+        });
+    }
+
+    /**
+     * Traduce el intent de un enlace de acceso de dispositivo a la ruta local
+     * "device-access?token=..." (relativa a BASE_URL). Devuelve "" si el intent
+     * no es un enlace de PALMYRA: la instalación del APK de actualización y el
+     * resto de flujos no se ven afectados.
+     *
+     * Acepta el esquema propio palmyra://device-access y el App Link
+     * https://palmyracrm.onrender.com/device-access. El token se valida y se
+     * vuelve a codificar: nunca se concatena texto arbitrario en la URL local.
+     */
+    private static String deepLinkRouteFrom(Intent intent) {
+        if (intent == null || !Intent.ACTION_VIEW.equals(intent.getAction())) return "";
+        Uri data = intent.getData();
+        if (data == null) return "";
+        String scheme = data.getScheme();
+        String host = data.getHost();
+        if (scheme == null || host == null) return "";
+        if (DEEP_LINK_SCHEME.equalsIgnoreCase(scheme)) {
+            if (!DEEP_LINK_HOST.equalsIgnoreCase(host)) return "";
+        } else if ("https".equalsIgnoreCase(scheme)) {
+            if (!DEEP_LINK_APP_LINK_HOST.equalsIgnoreCase(host)) return "";
+            String path = data.getPath();
+            if (path == null || !path.startsWith(DEEP_LINK_PATH)) return "";
+        } else {
+            return "";
+        }
+        String token = data.getQueryParameter("token");
+        token = token == null ? "" : token.trim();
+        if (token.isEmpty()) {
+            // Enlace de PALMYRA sin token: la propia página explica el problema.
+            return DEEP_LINK_ROUTE;
+        }
+        if (!isSafeDeepLinkToken(token)) return "";
+        return DEEP_LINK_ROUTE + "?token=" + Uri.encode(token);
+    }
+
+    /** Solo caracteres de un token opaco (Base64/hex/UUID); nada de espacios ni rutas. */
+    private static boolean isSafeDeepLinkToken(String token) {
+        if (token.length() > DEEP_LINK_TOKEN_MAX) return false;
+        for (int i = 0; i < token.length(); i++) {
+            char c = token.charAt(i);
+            boolean allowed = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+                    || (c >= '0' && c <= '9')
+                    || c == '.' || c == '_' || c == '~' || c == '+' || c == '/'
+                    || c == '=' || c == '-';
+            if (!allowed) return false;
+        }
+        return true;
     }
 
     @Override
@@ -283,6 +377,36 @@ public class MainActivity extends Activity {
             nativeDb.checkpoint();
         }
         super.onPause();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        // Volver de segundo plano es el momento de buscar una versión nueva en
+        // el manifiesto firmado. En WebView el ciclo de la actividad no siempre
+        // publica visibilitychange, así que se avisa explícitamente a la web.
+        dispatchNativeResume();
+    }
+
+    private void dispatchNativeResume() {
+        final WebView target = web;
+        if (target == null) return;
+        try {
+            target.post(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        target.evaluateJavascript(
+                                "window.dispatchEvent(new CustomEvent('palmyra:native-resume'));",
+                                null);
+                    } catch (Exception ignored) {
+                        // Sin puente la web sigue comprobando por temporizador.
+                    }
+                }
+            });
+        } catch (Exception ignored) {
+            // La actividad puede estar terminando.
+        }
     }
 
     @Override

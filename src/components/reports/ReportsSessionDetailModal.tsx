@@ -3,6 +3,7 @@ import { AlertTriangle, Calendar, Clock, Eye, EyeOff, Package, Printer, Trash2, 
 import { cn } from "../../lib/utils";
 import type { CashRegisterSession, Currency, Transaction, User } from "../../types";
 import { CashMovementTicket } from "../cash/CashMovementTicket";
+import { ticketDisplay } from "../../lib/documentCodes";
 import {
   getCompletedTransactionsForSession,
 } from "../../modules/reports/utils/reportSessionCalculations";
@@ -99,7 +100,7 @@ export function ReportsSessionDetailModal({
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center overflow-hidden bg-slate-950/70 p-2 backdrop-blur-sm sm:p-4 animate-in fade-in duration-200">
-      <div className="flex max-h-[94vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-base bg-secondary shadow-2xl sm:max-h-[90vh]">
+      <div className="flex max-h-[94dvh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-base bg-secondary shadow-2xl sm:max-h-[90dvh]">
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-base bg-rose-50/40 px-4 py-3.5 dark:bg-rose-950/30">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -182,8 +183,8 @@ export function ReportsSessionDetailModal({
                   <div key={tx.id} className="rounded-xl border border-base bg-subtle p-2">
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="truncate text-[9px] font-black uppercase tracking-tight text-primary" title={`Ticket #${tx.id}`}>
-                          Ticket #{String(tx.id).slice(0, 8)}
+                        <p className="truncate text-[9px] font-black uppercase tracking-tight text-primary" title={`Ticket ${ticketDisplay(tx.ticketNumber, tx.id)}`}>
+                          Ticket {ticketDisplay(tx.ticketNumber, tx.id)}
                         </p>
                         <p className="text-[8px] font-bold uppercase text-muted">{havanaTime(tx.date)} · {tx.items?.length || 0} productos</p>
                       </div>
@@ -193,7 +194,7 @@ export function ReportsSessionDetailModal({
                       <button
                         type="button"
                         onClick={() => onOpenTransaction(tx)}
-                        className="inline-flex min-h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-base bg-secondary px-2 text-[9px] font-black uppercase tracking-wide text-primary hover:bg-subtle"
+                        className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-base bg-secondary px-2 text-[10px] font-black uppercase tracking-wide text-primary hover:bg-subtle sm:min-h-8 sm:text-[9px]"
                         title="Ver el comprobante completo de este ticket"
                       >
                         <Eye className="h-3.5 w-3.5" /> Ver comprobante
@@ -322,16 +323,16 @@ export function ReportsSessionDetailModal({
         </div>
 
         <footer className="shrink-0 border-t border-base bg-subtle px-4 py-3">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <span className="block text-[8px] font-black uppercase tracking-widest text-muted">Total ventas turno</span>
-              <span className="text-base font-black text-rose-600 dark:text-rose-400">{formatMoney(summary.total)}</span>
+              <span className="text-base font-black tabular-nums text-rose-600 dark:text-rose-400">{formatMoney(summary.total)}</span>
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => onEditDate(session)}
-                className="inline-flex items-center gap-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[9px] font-black uppercase tracking-wider text-amber-700 hover:bg-amber-100 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-400"
+                className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-amber-700 hover:bg-amber-100 sm:min-h-9 sm:text-[9px] dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-400"
                 title="Editar fecha del turno"
               >
                 <Calendar className="h-4 w-4" /> Fecha
@@ -339,7 +340,7 @@ export function ReportsSessionDetailModal({
               <button
                 type="button"
                 onClick={() => onPrint(session.id)}
-                className="inline-flex items-center gap-1.5 rounded-xl bg-rose-600 px-3 py-2 text-[9px] font-black uppercase tracking-wider text-white hover:bg-rose-700 active:scale-95"
+                className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-rose-600 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white hover:bg-rose-700 active:scale-95 sm:min-h-9 sm:text-[9px]"
               >
                 <Printer className="h-4 w-4" /> Imprimir
               </button>

@@ -7,10 +7,17 @@
  * resuelve el respaldo local cuando el hub no responde. El token de elTOQUE
  * nunca llega a este lado: solo viajan las tasas ya capturadas.
  */
-import { canonicalRateCode, type ExchangePayload } from "../lib/exchangeRates";
+import {
+  canonicalizeRates,
+  canonicalRateCode,
+  EXCHANGE_RATE_CACHE_KEY,
+  isElToquePayload,
+  parseExchangeRates,
+  type ExchangePayload
+} from "../lib/exchangeRates";
 import { isDesktopRuntime } from "../lib/desktopRuntime";
 import { createHubClient, type HubClientOptions } from "./lanHub/client";
-import { HUB_ROUTES, type HubRateQuote, type HubRatesResponse } from "./lanHub/protocol";
+import { HUB_ROUTES, LAN_HUB_ENABLED, type HubRateQuote, type HubRatesResponse } from "./lanHub/protocol";
 import { createHubRatesProvider, hubQuotesToPayload } from "./lanHub/rates";
 import { RATE_MAX_MS } from "./lanHub/rateScheduler";
 import { getHubSession, type HubSession } from "./lanHub/session";
@@ -30,6 +37,15 @@ export const RATE_HUB_FRESH_MS = RATE_MAX_MS;
 const RATE_CODE_PATTERN = /^[A-Z][A-Z0-9_-]{1,19}$/;
 const MAX_LOCAL_PORT = 65535;
 
+/**
+ * Avisos de pantalla cuando la consulta automática falla. Copy neutral: nunca
+ * menciona hub, LAN, IP ni «servidor local».
+ */
+export const RATE_REFRESH_FALLBACK_NOTICE =
+  "No se pudo actualizar la tasa automática. Se usará la última tasa guardada; puedes ajustarla manualmente en Configuración → Monedas y tasas.";
+export const RATE_UNAVAILABLE_NOTICE =
+  "No se pudo obtener la tasa de cambio automática. Puedes ajustarla manualmente en Configuración → Monedas y tasas.";
+
 export interface HubRatesOptions {
   /** `fetch` inyectable para pruebas del hub. */
   fetchImpl?: typeof fetch;
@@ -39,6 +55,20 @@ export interface HubRatesOptions {
   timeoutMs?: number;
   /** Sesión inyectable en pruebas; por defecto se lee la del equipo. */
   session?: HubSession | null;
+  /**
+   * Fuerza el camino del hub (solo pruebas/pruebas del módulo retenido). Por
+   * defecto manda `LAN_HUB_ENABLED`, que está en `false`: sin hub en producto.
+   */
+  hubEnabled?: boolean;
+}
+
+/**
+ * Hub apagado por defecto (`LAN_HUB_ENABLED = false`). Cuando está apagado,
+ * `fetchHubRates` devuelve `null` y la resolución cae siempre a
+ * `/api/exchange-rates`.
+ */
+export function isLanHubRatesEnabled(options: { hubEnabled?: boolean } = {}): boolean {
+  return typeof options.hubEnabled === "boolean" ? options.hubEnabled : LAN_HUB_ENABLED;
 }
 
 export interface ResolvedExchangeRates {
@@ -95,13 +125,16 @@ export function normalizeHubQuotes(payload: unknown): HubRateQuote[] {
 }
 
 /**
- * Consulta `GET /lan/v1/rates` con la sesión del equipo. Lanza un error en
- * español —sin el token— si no hay sesión, el hub no responde o responde mal.
+ * Consulta `GET /lan/v1/rates` con la sesión del equipo. Devuelve `null` sin
+ * tocar la red cuando el hub está apagado (`LAN_HUB_ENABLED = false`). Lanza un
+ * error en español —sin el token y sin nombres de red— si no hay sesión, el hub
+ * no responde o responde mal.
  */
-export async function fetchHubRates(options: HubRatesOptions = {}): Promise<HubRateQuote[]> {
+export async function fetchHubRates(options: HubRatesOptions = {}): Promise<HubRateQuote[] | null> {
+  if (!isLanHubRatesEnabled(options)) return null;
   const session = hasOwnSession(options) ? (options.session ?? null) : await getHubSession();
   if (!session) {
-    throw new Error("Este equipo no tiene sesión con el hub LAN; se usará la tasa local.");
+    throw new Error("No hay una fuente de tasas emparejada; se usará la tasa guardada.");
   }
   const clientOptions: HubClientOptions = {
     baseUrl: session.baseUrl,
@@ -125,7 +158,7 @@ export async function fetchHubRates(options: HubRatesOptions = {}): Promise<HubR
   const rates = normalizeHubQuotes(payload);
   recordRequest("rates/client", { ms: Date.now() - startedAt, ok: rates.length > 0 });
   if (!rates.length) {
-    throw new Error(`El hub LAN (${sessionLabel(session)}) respondió sin cotizaciones válidas; se usará la tasa local.`);
+    throw new Error(`La fuente de tasas ${sessionLabel(session)} respondió sin cotizaciones válidas; se usará la tasa guardada.`);
   }
   return rates;
 }
@@ -144,6 +177,8 @@ export function canUseOwnServerRateRoute(context: { hasHubSession: boolean }): b
 
 /** Contexto real del equipo; sin almacenamiento de sesión se asume autónomo. */
 export async function readOwnServerRateRouteAllowed(options: HubRatesOptions = {}): Promise<boolean> {
+  // Hub apagado: la superficie siempre es autónoma y usa su propia ruta.
+  if (!isLanHubRatesEnabled(options)) return true;
   try {
     const session = hasOwnSession(options) ? (options.session ?? null) : await getHubSession();
     return canUseOwnServerRateRoute({ hasHubSession: session !== null });
@@ -283,7 +318,9 @@ export function describeExchangeRateSource(
     return {
       kind: "cached",
       label: "Última tasa guardada",
-      detail: (result && result.error) || "No hubo una consulta nueva; se muestra la última tasa guardada en este dispositivo.",
+      // El error crudo nunca se reenvía; antes de la primera consulta no se
+      // anuncia un fallo que aún no ocurrió.
+      detail: result ? RATE_UNAVAILABLE_NOTICE : "Aún no hay una consulta en esta sesión; se muestra la última tasa guardada en este dispositivo.",
       stale: true,
       capturedAt,
       ageMs
@@ -314,7 +351,7 @@ export function describeExchangeRateSource(
   return {
     kind: "cloud",
     label: "elTOQUE · nube",
-    detail: "Consulta directa al servidor de tasas.",
+    detail: "Consulta automática a elTOQUE.",
     stale: false,
     capturedAt,
     ageMs
@@ -348,64 +385,86 @@ function defaultLocalFallback(options: HubRatesOptions): Promise<HubRateQuote[]>
 }
 
 /**
- * Hub primero; respaldo después. Nunca lanza.
- *
- * Un equipo con sesión de hub es un cliente: si el hub no responde se conserva
- * la última tasa válida (lista vacía + `stale`) y NO se consulta elTOQUE desde
- * este equipo. Sin sesión, la superficie es autónoma y puede usar la ruta de su
- * propio servidor. Un respaldo inyectado por el llamador siempre se respeta.
+ * Última tasa ya guardada por la pantalla (`localStorage`). Es el respaldo
+ * final cuando la consulta automática falla: así nunca se sustituye una tasa
+ * usable por una pantalla vacía. Devuelve cotizaciones marcadas `stale`; sin
+ * almacenamiento o sin datos válidos devuelve `[]` y nunca lanza.
  */
-export async function resolveExchangeRates(
-  options: HubRatesOptions & { fallback?: () => Promise<HubRateQuote[]> } = {}
-): Promise<ResolvedExchangeRates> {
-  let session: HubSession | null = null;
+export function readStoredRateQuotes(nowMs = Date.now()): HubRateQuote[] {
   try {
-    session = hasOwnSession(options) ? (options.session ?? null) : await getHubSession();
+    if (typeof localStorage === "undefined") return [];
+    const stored: unknown = JSON.parse(localStorage.getItem(EXCHANGE_RATE_CACHE_KEY) || "null");
+    if (!isElToquePayload(stored)) return [];
+    const captured = Date.parse(stored.capturedAt);
+    const capturedAt = new Date(Number.isFinite(captured) ? captured : nowMs).toISOString();
+    return canonicalizeRates(parseExchangeRates(stored.data)).flatMap(rate => {
+      const value = rate.value ?? rate.buy ?? rate.sell;
+      if (value === undefined || !Number.isFinite(value) || value <= 0) return [];
+      return [{ code: rate.code, rate: value, capturedAt, source: stored.source, stale: true }];
+    });
   } catch {
-    session = null;
-  }
-
-  try {
-    const rates = await fetchHubRates({ ...options, session });
-    return { source: "hub", rates, stale: rates.some(rate => rate.stale) };
-  } catch {
-    if (!options.fallback && session) {
-      return {
-        source: "fallback",
-        rates: [],
-        stale: true,
-        error: "Sin conexión con el hub LAN; se conserva la última tasa válida y no se consulta elTOQUE desde este equipo."
-      };
-    }
-    const fallback = options.fallback ?? (() => defaultLocalFallback(options));
-    try {
-      const rates = await fallback();
-      const quotes = Array.isArray(rates) ? rates : [];
-      return {
-        source: "fallback",
-        rates: quotes,
-        stale: !quotes.length || quotes.some(rate => rate.stale)
-      };
-    } catch (fallbackError) {
-      return {
-        source: "fallback",
-        rates: [],
-        stale: true,
-        error: fallbackError instanceof Error ? fallbackError.message : "No se pudo obtener la tasa de cambio."
-      };
-    }
+    return [];
   }
 }
 
 /**
- * Atajo para la sincronización automática de tasas: hub si hay sesión, `null`
- * si no la hay o si el hub falla (sin lanzar, para no interrumpir el respaldo).
+ * Servidor propio primero (con el hub apagado siempre es el único camino);
+ * respaldo del hub retenido solo si se fuerza con `hubEnabled: true`. Nunca
+ * lanza: si no hay tasas nuevas devuelve la última guardada y, solo si tampoco
+ * existe, un aviso neutral sin nombres de red.
+ */
+export async function resolveExchangeRates(
+  options: HubRatesOptions & { fallback?: () => Promise<HubRateQuote[]> } = {}
+): Promise<ResolvedExchangeRates> {
+  const hubEnabled = isLanHubRatesEnabled(options);
+  let session: HubSession | null = null;
+  if (hubEnabled) {
+    try {
+      session = hasOwnSession(options) ? (options.session ?? null) : await getHubSession();
+    } catch {
+      session = null;
+    }
+    try {
+      const hubRates = await fetchHubRates({ ...options, session });
+      if (hubRates && hubRates.length) {
+        return { source: "hub", rates: hubRates, stale: hubRates.some(rate => rate.stale) };
+      }
+    } catch {
+      // Hub caído o sin sesión: se sigue con el servidor propio.
+    }
+  }
+
+  const fallback = options.fallback ?? (() => defaultLocalFallback(options));
+  try {
+    const rates = await fallback();
+    const quotes = Array.isArray(rates) ? rates : [];
+    if (quotes.length) {
+      return { source: "fallback", rates: quotes, stale: quotes.some(rate => rate.stale) };
+    }
+  } catch {
+    // Sin respuesta del servidor propio: se intenta la última tasa guardada.
+  }
+
+  // Sin consulta nueva: la última tasa guardada sigue siendo usable.
+  const stored = readStoredRateQuotes((options.now ?? (() => Date.now()))());
+  if (stored.length) {
+    return { source: "fallback", rates: stored, stale: true };
+  }
+  return { source: "fallback", rates: [], stale: true, error: RATE_UNAVAILABLE_NOTICE };
+}
+
+/**
+ * Atajo para la sincronización automática de tasas: payload del hub si está
+ * habilitado y responde, `null` en cualquier otro caso (incluido el hub
+ * apagado), sin lanzar, para que el llamador siga con `/api/exchange-rates`.
  */
 export async function fetchHubAutoRatePayload(
   options: HubRatesOptions & { rates?: () => Promise<HubRateQuote[]>; clock?: () => number } = {}
 ): Promise<ExchangePayload | null> {
+  if (!options.rates && !isLanHubRatesEnabled(options)) return null;
   try {
     const rates = options.rates ? await options.rates() : await fetchHubRates(options);
+    if (!rates || !rates.length) return null;
     return hubQuotesToPayload(rates, (options.clock ?? options.now ?? (() => Date.now()))());
   } catch {
     return null;

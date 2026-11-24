@@ -40,6 +40,160 @@ type StoreSet = (
 ) => void;
 type StoreGet = () => AppState;
 
+/**
+ * Valores canónicos que llegan desde Supabase (`credit`/`debit`/`transfer`) y
+ * los que usa la UI (`deposit`/`withdrawal`/`payment_received`/`supplier_payment`).
+ * Cualquier otro valor se trata como desconocido: NUNCA se convierte en
+ * `withdrawal`, porque eso invertiría el signo del dinero en pantalla.
+ */
+const BANK_TRANSACTION_TYPE_ALIASES: Record<string, BankTransaction['type']> = {
+  credit: 'deposit',
+  deposit: 'deposit',
+  payment_received: 'deposit',
+  debit: 'withdrawal',
+  withdrawal: 'withdrawal',
+  supplier_payment: 'withdrawal',
+  transfer: 'withdrawal',
+  transfer_out: 'withdrawal',
+  transfer_in: 'deposit'
+};
+
+/** Devuelve el tipo de movimiento normalizado o `null` si no es reconocible. */
+export function normalizeBankTransactionType(raw: unknown): BankTransaction['type'] | null {
+  const key = String(raw ?? '').trim().toLowerCase();
+  if (!key) return null;
+  return BANK_TRANSACTION_TYPE_ALIASES[key] ?? null;
+}
+
+export type BankRefreshResult = {
+  success: boolean;
+  /** No se consultó la nube: cooldown o una carga ya estaba en curso. */
+  skipped: boolean;
+  offline?: boolean;
+  message?: string;
+  transactionCount: number;
+  /** Movimientos remotos descartados por traer un tipo no reconocido. */
+  unknownTypeCount: number;
+};
+
+/** Evita que la página dispare una consulta remota por cada render/foco. */
+export const BANK_REFRESH_COOLDOWN_MS = 20_000;
+let lastBankPullAt = 0;
+let bankPullInFlight: Promise<BankRefreshResult> | null = null;
+
+/** Solo para pruebas o para forzar la primera carga tras iniciar sesión. */
+export function resetBankRefreshCooldown(): void {
+  lastBankPullAt = 0;
+}
+
+function bankQueuePendingKeys(): { transactionKeys: Set<string>; cardIds: Set<string> } {
+  const transactionKeys = new Set<string>();
+  const cardIds = new Set<string>();
+  let queue: ReturnType<typeof getOfflineQueue> = [];
+  try { queue = getOfflineQueue() || []; } catch { queue = []; }
+  for (const item of queue) {
+    if (item.status === 'conflict') continue;
+    const data: any = item.data || {};
+    if (item.type === 'bank_transaction' || item.type === 'bank_transaction_delete' ||
+        item.type === 'bank_internal_transfer' || item.type === 'bank_internal_transfer_delete') {
+      for (const key of [data.id, data.transactionId, data.operationId, data.reference]) {
+        if (key) transactionKeys.add(String(key));
+      }
+      if (data.operationId) {
+        transactionKeys.add(`${data.operationId}:OUT`);
+        transactionKeys.add(`${data.operationId}:IN`);
+      }
+      for (const cardId of [data.cardId, data.fromCardId, data.toCardId]) {
+        if (cardId) cardIds.add(String(cardId));
+      }
+    }
+    if (item.type === 'bank_card' || item.type === 'bank_card_balance' || item.type === 'bank_card_delete') {
+      if (data.id) cardIds.add(String(data.id));
+    }
+  }
+  return { transactionKeys, cardIds };
+}
+
+function bankTransactionIdentityKeys(tx: BankTransaction): string[] {
+  const keys: string[] = [];
+  if (tx.id) keys.push(`id:${tx.id}`);
+  if (tx.transactionId) keys.push(`tx:${tx.cardId}::${tx.transactionId}`);
+  if (tx.reference) keys.push(`ref:${tx.cardId}::${tx.reference}`);
+  return keys;
+}
+
+/** Valor "desnudo" de una clave de identidad (`id:X`, `tx:card::Y` → `X`, `Y`). */
+function bankIdentityValue(key: string): string {
+  const afterType = key.slice(key.indexOf(':') + 1);
+  return afterType.includes('::') ? afterType.split('::').pop() || afterType : afterType;
+}
+
+/**
+ * Una fila con id UUID vino de la nube en una carga anterior. Si hoy ya no
+ * aparece allí, se eliminó remotamente y no debe resucitar. Los ids locales
+ * (`BTX-…`, `ref:OUT`) sí se conservan porque la nube aún no los conoce.
+ */
+function isRemoteBankTransactionId(id: unknown): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id || ''));
+}
+
+/**
+ * Une el snapshot remoto con el estado local sin perder trabajo del dispositivo:
+ * los movimientos pendientes de sincronizar y las filas creadas offline siguen
+ * visibles aunque todavía no existan en la nube.
+ */
+function mergeBankState(
+  local: { bankCards: BankCard[]; bankTransactions: BankTransaction[] },
+  remote: { bankCards: BankCard[]; bankTransactions: BankTransaction[] }
+): { bankCards: BankCard[]; bankTransactions: BankTransaction[]; unknownTypeCount: number } {
+  const pending = bankQueuePendingKeys();
+  const remoteTransactions = remote.bankTransactions || [];
+  const remoteKeys = new Set<string>();
+  for (const tx of remoteTransactions) {
+    for (const key of bankTransactionIdentityKeys(tx)) remoteKeys.add(key);
+  }
+  const seen = new Set<string>();
+  const merged: BankTransaction[] = [];
+
+  const addUnique = (tx: BankTransaction): boolean => {
+    const keys = bankTransactionIdentityKeys(tx);
+    if (keys.some(key => seen.has(key))) return false;
+    for (const key of keys) seen.add(key);
+    merged.push(tx);
+    return true;
+  };
+
+  // 1) Lo local que la nube aún no conoce (o que está en la cola) se conserva.
+  for (const tx of local.bankTransactions || []) {
+    const keys = bankTransactionIdentityKeys(tx);
+    const isPending = keys.some(key => pending.transactionKeys.has(bankIdentityValue(key)));
+    if (isPending) { addUnique(tx); continue; }
+    const knownRemotely = keys.some(key => remoteKeys.has(key));
+    if (!knownRemotely && !isRemoteBankTransactionId(tx.id)) addUnique(tx);
+  }
+
+  // 2) Snapshot remoto. Un tipo no reconocido se omite y se informa; nunca se
+  //    asume "salida" por defecto (eso invertiría el signo del movimiento).
+  let unknownTypeCount = 0;
+  for (const tx of remoteTransactions) {
+    const type = normalizeBankTransactionType(tx.type);
+    if (!type) { unknownTypeCount++; continue; }
+    addUnique({ ...tx, type });
+  }
+
+  merged.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  // 3) Tarjetas: la nube manda salvo que la cuenta tenga cambios pendientes.
+  const cardById = new Map<string, BankCard>();
+  for (const card of remote.bankCards || []) cardById.set(card.id, card);
+  for (const card of local.bankCards || []) {
+    if (!cardById.has(card.id)) cardById.set(card.id, card);
+    else if (pending.cardIds.has(card.id)) cardById.set(card.id, card);
+  }
+
+  return { bankCards: Array.from(cardById.values()), bankTransactions: merged, unknownTypeCount };
+}
+
 export function createBankActions(set: StoreSet, get: StoreGet): any {
   return {
   bankCards: INITIAL_BANK_CARDS,
@@ -147,7 +301,17 @@ export function createBankActions(set: StoreSet, get: StoreGet): any {
   },
 
   bankTransactions: [],
-  addBankTransaction: async (transaction) => {
+  addBankTransaction: async (incoming) => {
+    // Un tipo no reconocido jamás se asume "salida": se rechaza y se avisa.
+    const normalizedType = normalizeBankTransactionType(incoming.type);
+    if (!normalizedType) {
+      get().addNotification(
+        'El movimiento bancario no se registró: su tipo no es reconocido.',
+        'error'
+      );
+      return false;
+    }
+    const transaction: BankTransaction = { ...incoming, type: normalizedType };
     const existing = (get().bankTransactions || []).some(t =>
       t.id === transaction.id ||
       (transaction.transactionId && t.transactionId && t.cardId === transaction.cardId && t.transactionId === transaction.transactionId) ||
@@ -358,6 +522,81 @@ export function createBankActions(set: StoreSet, get: StoreGet): any {
     } catch (e: any) {
       get().addNotification(e?.message || 'No se pudo guardar la eliminación en la cola offline.', 'error');
       return false;
+    }
+  },
+
+  /**
+   * Carga el historial bancario desde Supabase y lo fusiona con el estado local.
+   * El bootstrap del POS omite las transacciones bancarias (pull.ts llama a
+   * loadBanks con includeTransactions:false), así que la página de Bancos debe
+   * pedirlas explícitamente; si no, las tarjetas cargan pero los movimientos
+   * nunca aparecen hasta que se produce una venta o una conciliación.
+   */
+  refreshBankData: async (options?: { force?: boolean }): Promise<BankRefreshResult> => {
+    const localTransactionCount = (get().bankTransactions || []).length;
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      return {
+        success: false,
+        skipped: false,
+        offline: true,
+        transactionCount: localTransactionCount,
+        unknownTypeCount: 0,
+        message: 'Sin conexión: se muestran los movimientos guardados en este dispositivo.'
+      };
+    }
+    if (bankPullInFlight) {
+      const running = await bankPullInFlight;
+      return { ...running, skipped: true };
+    }
+    if (!options?.force && Date.now() - lastBankPullAt < BANK_REFRESH_COOLDOWN_MS) {
+      return { success: true, skipped: true, transactionCount: localTransactionCount, unknownTypeCount: 0 };
+    }
+
+    const run = (async (): Promise<BankRefreshResult> => {
+      try {
+        const remote = await pullBankDataFromSupabase();
+        if (!remote.success) {
+          // También se marca el intento fallido: evita ráfagas de consultas si
+          // la nube está caída y la página se re-monta. «Reintentar» usa force.
+          lastBankPullAt = Date.now();
+          return {
+            success: false,
+            skipped: false,
+            transactionCount: (get().bankTransactions || []).length,
+            unknownTypeCount: 0,
+            // Nunca se muestra el texto crudo del transporte/Supabase.
+            message: 'No se pudo cargar el historial bancario desde la nube. Revisa la conexión e inténtalo de nuevo.'
+          };
+        }
+        const merged = mergeBankState(
+          { bankCards: get().bankCards || [], bankTransactions: get().bankTransactions || [] },
+          { bankCards: remote.bankCards || [], bankTransactions: remote.bankTransactions || [] }
+        );
+        set({ bankCards: merged.bankCards, bankTransactions: merged.bankTransactions });
+        lastBankPullAt = Date.now();
+        return {
+          success: true,
+          skipped: false,
+          transactionCount: merged.bankTransactions.length,
+          unknownTypeCount: merged.unknownTypeCount
+        };
+      } catch (error) {
+        console.warn('[Bank] No se pudo actualizar el historial bancario:', error);
+        return {
+          success: false,
+          skipped: false,
+          transactionCount: (get().bankTransactions || []).length,
+          unknownTypeCount: 0,
+          message: 'No se pudo cargar el historial bancario desde la nube.'
+        };
+      }
+    })();
+
+    bankPullInFlight = run;
+    try {
+      return await run;
+    } finally {
+      if (bankPullInFlight === run) bankPullInFlight = null;
     }
   },
 

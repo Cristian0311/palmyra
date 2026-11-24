@@ -181,6 +181,19 @@ test("dentro de 24 h no vuelve a consultar y force lo salta", async () => {
   assert.equal(calls.length, 1, "force ignora la cadencia");
 });
 
+test("pasadas las 24 h la comprobación vuelve a salir a la red", async () => {
+  const { impl, calls } = fakeFetch(async () => jsonResponse(await signed()));
+  const stale = createMemoryUpdateStorage({
+    lastCheckAt: NOW - DEFAULT_UPDATE_INTERVAL_MS - 1000,
+    lastStatus: "up-to-date"
+  });
+
+  const result = await makeClient({ fetchImpl: impl, storage: stale }).check();
+
+  assert.equal(result.status, "available");
+  assert.equal(calls.length, 1);
+});
+
 test("una página HTML se reporta como error accionable, no como JSON", async () => {
   const { impl } = fakeFetch(async () => htmlResponse());
   const client = makeClient({ fetchImpl: impl });

@@ -2,12 +2,27 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { RefreshCw, X } from "lucide-react";
 import { isPalmyraApp } from "../lib/install";
+import { PRODUCT_DISPLAY_VERSION, PRODUCT_VERSION } from "../lib/productVersion";
+import { useAppUpdateRuntime } from "../hooks/useAppUpdateRuntime";
+import { useDesktopUpdate } from "../hooks/useDesktopUpdate";
+import { applyAndroidUpdate } from "../services/updates/android";
+import { androidUpdateKindForArtifact } from "../services/updates/runtime";
 
 /**
  * Aviso flotante de actualización para el shell PÚBLICO (landing, auth,
- * onboarding…), donde Layout no está montado. Reacciona al evento global
- * `palmyra:update-available` y a la marca persistente en localStorage, muestra
- * el progreso real de la descarga y nunca se duplica con el diálogo de Layout.
+ * onboarding…), donde Layout no está montado.
+ *
+ * Cubre las tres superficies reales:
+ *   - Web/PWA: reacciona al evento global `palmyra:update-available` y aplica
+ *     la recarga del service worker (`__palmyraApplyUpdate`).
+ *   - Android (APK): usa el manifiesto firmado (runtime compartido) y entrega
+ *     el paquete al shell con `startUpdate`/`startApkUpdate` (OTA real, sin
+ *     volver a bajar el APK a mano).
+ *   - Windows (Electron): usa el puente de electron-updater y reinicia con el
+ *     Setup ya descargado.
+ *
+ * Nunca se duplica con el diálogo de Layout: allí la ruta deja de ser pública
+ * y este aviso se apaga.
  */
 
 const PALMYRA_UPDATE_AVAILABLE_KEY = "palmyra:update-available";
@@ -18,8 +33,9 @@ const APPLY_WATCHDOG_MS = 3 * 60_000;
 // el aviso lo muestra Layout y este banner debe callarse.
 const PUBLIC_ROUTE_PATTERN = /^\/(?:landing|auth|auth\/confirm|platform-admin|invite|security|onboarding|account-status)(?:\/|$)/i;
 
-const NATIVE_SHELL =
-  isPalmyraApp() || (typeof navigator !== "undefined" && /\bElectron\//i.test(navigator.userAgent));
+const ANDROID_SHELL = isPalmyraApp();
+const DESKTOP_SHELL =
+  !ANDROID_SHELL && typeof navigator !== "undefined" && /\bElectron\//i.test(navigator.userAgent);
 
 type UpdateProgressDetail = {
   phase?: string;
@@ -61,6 +77,8 @@ function phaseLabel(detail: UpdateProgressDetail | null) {
       if (received && total) return `Descargando actualización ${received} MB de ${total} MB…`;
       return `Descargando actualización ${percent}%…`;
     }
+    case "verifying": return "Verificando el paquete descargado…";
+    case "applying":
     case "installing": return "Instalando la actualización…";
     case "reloading": return "Actualización instalada. Reiniciando…";
     case "up-to-date": return "PALMYRA ya está actualizada.";
@@ -68,20 +86,128 @@ function phaseLabel(detail: UpdateProgressDetail | null) {
   }
 }
 
-export default function PublicUpdateBanner({ signedIn }: { signedIn: boolean }) {
-  const location = useLocation();
+function percentOf(detail: UpdateProgressDetail | null) {
+  return Math.min(100, Math.max(0, Math.round(detail?.percent ?? 0)));
+}
+
+/**
+ * Tarjeta compartida por las tres superficies. El botón principal solo se
+ * habilita cuando la acción es posible; el resto del tiempo muestra progreso.
+ */
+function UpdateCard(props: {
+  version: string;
+  applying: boolean;
+  percent: number;
+  message: string;
+  error: string;
+  disabled: boolean;
+  primaryLabel: string;
+  onPrimary: () => void;
+  onDismiss: () => void;
+}) {
+  return (
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[260] flex justify-center px-3 pb-3 sm:px-4 sm:pb-4">
+      <div
+        role="status"
+        aria-live="polite"
+        className="pointer-events-auto w-full max-w-md overflow-hidden rounded-2xl border border-violet-200/80 bg-white/95 shadow-[0_18px_50px_rgba(76,29,149,0.24)] backdrop-blur dark:border-violet-900/60 dark:bg-slate-900/95"
+      >
+        <div className="flex items-start gap-3 px-3.5 py-3">
+          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300">
+            <RefreshCw className={props.applying ? "h-4 w-4 animate-spin" : "h-4 w-4"} aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[9px] font-black uppercase tracking-[0.14em] text-violet-600 dark:text-violet-300">
+              Actualización disponible
+            </p>
+            <p className="mt-0.5 text-[11px] font-bold leading-4 text-slate-700 dark:text-slate-200">
+              {props.version ? `La versión ${PRODUCT_DISPLAY_VERSION} de PALMYRA está lista.` : "Una nueva versión de PALMYRA está lista."}
+            </p>
+
+            {props.applying && (
+              <div className="mt-2">
+                <div
+                  className="h-1.5 overflow-hidden rounded-full bg-violet-100 dark:bg-violet-900/50"
+                  role="progressbar"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={props.percent}
+                >
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-violet-600 to-indigo-500 transition-[width] duration-300"
+                    style={{ width: `${Math.min(100, Math.max(3, props.percent))}%` }}
+                  />
+                </div>
+                <p className="mt-1.5 text-[10px] font-semibold leading-4 text-violet-700 dark:text-violet-300">
+                  {props.message}
+                </p>
+              </div>
+            )}
+
+            {props.error && (
+              <p className="mt-1.5 text-[10px] font-bold leading-4 text-red-600 dark:text-red-300" role="alert">
+                {props.error}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={props.onDismiss}
+            disabled={props.applying}
+            aria-label="Ocultar aviso de actualización"
+            className="shrink-0 rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40 dark:hover:bg-slate-800"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-3.5 py-2.5 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={props.onDismiss}
+            disabled={props.applying}
+            className="h-8 rounded-lg border border-slate-200 bg-slate-50 px-3 text-[9px] font-black uppercase tracking-[0.06em] text-slate-600 transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
+          >
+            Ahora no
+          </button>
+          <button
+            type="button"
+            onClick={props.onPrimary}
+            disabled={props.disabled || props.applying}
+            className="h-8 rounded-lg bg-violet-600 px-3.5 text-[9px] font-black uppercase tracking-[0.06em] text-white shadow-md shadow-violet-600/20 transition hover:bg-violet-700 disabled:cursor-wait disabled:opacity-70"
+          >
+            {props.primaryLabel}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Descarte por sesión: un aviso de OTRA versión vuelve a mostrarse. */
+function useBannerDismissal(current: string) {
+  const [dismissed, setDismissed] = useState(readDismissedVersion);
+  const key = current || "__unknown__";
+  const dismiss = useCallback(() => {
+    try { window.sessionStorage.setItem(BANNER_DISMISSED_KEY, key); } catch {}
+    setDismissed(key);
+  }, [key]);
+  return { hidden: dismissed === key, dismiss };
+}
+
+// ─── Web / PWA (service worker) ─────────────────────────────────────────────
+
+function WebUpdateBanner() {
   const [available, setAvailable] = useState(readAvailable);
   const [version, setVersion] = useState(readVersion);
-  const [dismissedVersion, setDismissedVersion] = useState(readDismissedVersion);
   const [applying, setApplying] = useState(false);
   const [progress, setProgress] = useState<UpdateProgressDetail | null>(null);
   const [error, setError] = useState("");
   const applyingRef = useRef(false);
   const watchdogRef = useRef<number | null>(null);
+  const { hidden, dismiss } = useBannerDismissal(version);
 
   useEffect(() => {
-    if (NATIVE_SHELL) return;
-
     const sync = () => {
       setAvailable(readAvailable());
       setVersion(readVersion());
@@ -95,7 +221,6 @@ export default function PublicUpdateBanner({ signedIn }: { signedIn: boolean }) 
       const snoozed = readDismissedVersion();
       if (snoozed && snoozed === (nextVersion || "__unknown__")) return;
       try { window.sessionStorage.removeItem(BANNER_DISMISSED_KEY); } catch {}
-      setDismissedVersion("");
     };
     const onProgress = (event: Event) => {
       const detail = (event as CustomEvent<UpdateProgressDetail>).detail;
@@ -129,13 +254,6 @@ export default function PublicUpdateBanner({ signedIn }: { signedIn: boolean }) 
   useEffect(() => () => {
     if (watchdogRef.current !== null) window.clearTimeout(watchdogRef.current);
   }, []);
-
-  const dismiss = useCallback(() => {
-    if (applyingRef.current) return;
-    const current = version || "__unknown__";
-    try { window.sessionStorage.setItem(BANNER_DISMISSED_KEY, current); } catch {}
-    setDismissedVersion(current);
-  }, [version]);
 
   const runBridge = useCallback(async (): Promise<"reloaded" | "up-to-date"> => {
     const bridge = (window as UpdateBridgeWindow).__palmyraApplyUpdate;
@@ -217,88 +335,204 @@ export default function PublicUpdateBanner({ signedIn }: { signedIn: boolean }) 
     }
   }, [runBridge]);
 
-  const isPublicArea = !signedIn || PUBLIC_ROUTE_PATTERN.test(location.pathname);
-  const dismissed = Boolean(dismissedVersion) && dismissedVersion === (version || "__unknown__");
-  if (NATIVE_SHELL || !available || dismissed || !isPublicArea) return null;
-
-  const percent = Math.min(100, Math.max(0, Math.round(progress?.percent ?? 0)));
-  const message = phaseLabel(progress);
-
+  if (!available || hidden) return null;
+  const percent = percentOf(progress);
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[260] flex justify-center px-3 pb-3 sm:px-4 sm:pb-4">
-      <div
-        role="status"
-        aria-live="polite"
-        className="pointer-events-auto w-full max-w-md overflow-hidden rounded-2xl border border-violet-200/80 bg-white/95 shadow-[0_18px_50px_rgba(76,29,149,0.24)] backdrop-blur dark:border-violet-900/60 dark:bg-slate-900/95"
-      >
-        <div className="flex items-start gap-3 px-3.5 py-3">
-          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300">
-            <RefreshCw className={applying ? "h-4 w-4 animate-spin" : "h-4 w-4"} aria-hidden="true" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-[9px] font-black uppercase tracking-[0.14em] text-violet-600 dark:text-violet-300">
-              Actualización disponible
-            </p>
-            <p className="mt-0.5 text-[11px] font-bold leading-4 text-slate-700 dark:text-slate-200">
-              {version ? `La versión ${version} de PALMYRA está lista.` : "Una nueva versión de PALMYRA está lista."}
-            </p>
-
-            {applying && (
-              <div className="mt-2">
-                <div
-                  className="h-1.5 overflow-hidden rounded-full bg-violet-100 dark:bg-violet-900/50"
-                  role="progressbar"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={percent}
-                >
-                  <div
-                    className="h-full rounded-full bg-gradient-to-r from-violet-600 to-indigo-500 transition-[width] duration-300"
-                    style={{ width: `${Math.min(100, Math.max(3, percent))}%` }}
-                  />
-                </div>
-                <p className="mt-1.5 text-[10px] font-semibold leading-4 text-violet-700 dark:text-violet-300">
-                  {message}
-                </p>
-              </div>
-            )}
-
-            {error && (
-              <p className="mt-1.5 text-[10px] font-bold leading-4 text-red-600 dark:text-red-300" role="alert">
-                {error}
-              </p>
-            )}
-          </div>
-          <button
-            type="button"
-            onClick={dismiss}
-            disabled={applying}
-            aria-label="Ocultar aviso de actualización"
-            className="shrink-0 rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 disabled:opacity-40 dark:hover:bg-slate-800"
-          >
-            <X className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </div>
-
-        <div className="flex items-center justify-end gap-2 border-t border-slate-100 px-3.5 py-2.5 dark:border-slate-800">
-          <button
-            type="button"
-            onClick={dismiss}
-            disabled={applying}
-            className="h-8 rounded-lg border border-slate-200 bg-slate-50 px-3 text-[9px] font-black uppercase tracking-[0.06em] text-slate-600 transition hover:bg-slate-100 disabled:opacity-50 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300"
-          >
-            Ahora no
-          </button>
-          <button
-            type="button"
-            onClick={() => void applyUpdate()}
-            disabled={applying}
-            className="h-8 rounded-lg bg-violet-600 px-3.5 text-[9px] font-black uppercase tracking-[0.06em] text-white shadow-md shadow-violet-600/20 transition hover:bg-violet-700 disabled:cursor-wait disabled:opacity-70"
-          >
-            {applying ? `Actualizando… ${percent}%` : error ? "Reintentar" : "Actualizar ahora"}
-          </button>
-        </div>
-      </div>
-    </div>
+    <UpdateCard
+      version={version}
+      applying={applying}
+      percent={percent}
+      message={phaseLabel(progress)}
+      error={error}
+      disabled={false}
+      primaryLabel={applying ? `Actualizando… ${percent}%` : error ? "Reintentar" : "Actualizar ahora"}
+      onPrimary={() => void applyUpdate()}
+      onDismiss={dismiss}
+    />
   );
+}
+
+// ─── Android (OTA desde el manifiesto firmado) ──────────────────────────────
+
+function AndroidUpdateBanner() {
+  const { state } = useAppUpdateRuntime();
+  const [applying, setApplying] = useState(false);
+  const [progress, setProgress] = useState<UpdateProgressDetail | null>(null);
+  const [error, setError] = useState("");
+  const applyingRef = useRef(false);
+  const watchdogRef = useRef<number | null>(null);
+
+  const version = state.phase === "available" ? state.result?.version || "" : "";
+  const artifact = state.artifact;
+  const { hidden, dismiss } = useBannerDismissal(version);
+
+  useEffect(() => {
+    const onProgress = (event: Event) => {
+      const detail = (event as CustomEvent<UpdateProgressDetail>).detail;
+      if (!detail) return;
+      // Un evento del shell confirma que la descarga arrancó de verdad.
+      applyingRef.current = true;
+      setApplying(true);
+      setProgress(detail);
+    };
+    const onInstalled = () => {
+      applyingRef.current = false;
+      setApplying(false);
+      setError("");
+      if (watchdogRef.current !== null) { window.clearTimeout(watchdogRef.current); watchdogRef.current = null; }
+      setProgress({ phase: "reloading", percent: 100, message: "Actualización instalada. Reiniciando…" });
+    };
+    const onFailed = (event: Event) => {
+      applyingRef.current = false;
+      setApplying(false);
+      if (watchdogRef.current !== null) { window.clearTimeout(watchdogRef.current); watchdogRef.current = null; }
+      setProgress(null);
+      const message = (event as CustomEvent<{ message?: string }>).detail?.message;
+      setError(message || "No se pudo aplicar la actualización. Reintenta en unos minutos.");
+    };
+    window.addEventListener("palmyra:ota-progress", onProgress);
+    window.addEventListener("palmyra:ota-installed", onInstalled);
+    window.addEventListener("palmyra:ota-error", onFailed);
+    return () => {
+      window.removeEventListener("palmyra:ota-progress", onProgress);
+      window.removeEventListener("palmyra:ota-installed", onInstalled);
+      window.removeEventListener("palmyra:ota-error", onFailed);
+      if (watchdogRef.current !== null) { window.clearTimeout(watchdogRef.current); watchdogRef.current = null; }
+    };
+  }, []);
+
+  const applyUpdate = useCallback(() => {
+    if (applyingRef.current) return;
+    if (!artifact || version === "") {
+      setError("Esta versión no publica un paquete para Android. Descarga el APK más reciente.");
+      return;
+    }
+    setError("");
+    applyingRef.current = true;
+    setApplying(true);
+    setProgress({ phase: "preparing", percent: 4, message: "Preparando la actualización…" });
+    if (watchdogRef.current !== null) window.clearTimeout(watchdogRef.current);
+    watchdogRef.current = window.setTimeout(() => {
+      applyingRef.current = false;
+      setApplying(false);
+      setProgress(null);
+      setError('La actualización está tardando demasiado. Revisa tu conexión y pulsa "Actualizar ahora".');
+    }, APPLY_WATCHDOG_MS);
+
+    // El shell repite en nativo todas las garantías (HTTPS, SHA-256, versión
+    // creciente y firma) antes de tocar el paquete.
+    const result = applyAndroidUpdate(
+      {
+        kind: androidUpdateKindForArtifact(artifact),
+        version,
+        url: artifact.url,
+        sha256: artifact.sha256,
+        bytes: artifact.bytes,
+      },
+      { currentVersion: PRODUCT_VERSION }
+    );
+    if (!result.ok) {
+      applyingRef.current = false;
+      setApplying(false);
+      setProgress(null);
+      if (watchdogRef.current !== null) { window.clearTimeout(watchdogRef.current); watchdogRef.current = null; }
+      setError(result.error || "Este instalador no permite actualizar desde la app. Descarga el APK más reciente.");
+    }
+  }, [artifact, version]);
+
+  if (!version || !artifact || hidden) return null;
+  const percent = percentOf(progress);
+  return (
+    <UpdateCard
+      version={version}
+      applying={applying}
+      percent={percent}
+      message={phaseLabel(progress)}
+      error={error}
+      disabled={false}
+      primaryLabel={applying ? `Actualizando… ${percent}%` : error ? "Reintentar" : "Actualizar ahora"}
+      onPrimary={applyUpdate}
+      onDismiss={dismiss}
+    />
+  );
+}
+
+// ─── Windows (Electron + electron-updater) ─────────────────────────────────
+
+function DesktopUpdateBanner() {
+  const { state, install, retry } = useDesktopUpdate();
+  const [applying, setApplying] = useState(false);
+  const [error, setError] = useState("");
+  const status = state?.status ?? "idle";
+  const version = state?.version || state?.currentVersion || "";
+  const percent = Math.min(100, Math.max(0, Math.round(state?.percent ?? 0)));
+  const { hidden, dismiss } = useBannerDismissal(version);
+
+  const applyUpdate = useCallback(async () => {
+    setError("");
+    setApplying(true);
+    try {
+      const result = await install();
+      if (!result.ok) {
+        setApplying(false);
+        setError(result.error || "No se pudo iniciar el instalador. Reintenta en unos minutos.");
+      }
+    } catch {
+      setApplying(false);
+      setError("No se pudo iniciar el instalador. Reintenta en unos minutos.");
+    }
+  }, [install]);
+
+  if (status === "idle" || status === "checking" || status === "not-available" || status === "unsupported" || hidden) {
+    return null;
+  }
+  // Un error sin versión conocida (p. ej. sin app-update.yml) no es un aviso
+  // útil antes de entrar: el Centro de actualizaciones ya lo explica.
+  if (status === "error" && !version && !state?.error) return null;
+  const message =
+    status === "available"
+      ? "Verificando la firma de la actualización…"
+      : status === "downloading"
+        ? `Descargando actualización ${percent}%…`
+        : status === "downloaded"
+          ? "Actualización lista. Reinicia PALMYRA para aplicarla."
+          : status === "error"
+            ? state?.error || "La actualización se detuvo."
+            : "Preparando la actualización…";
+  return (
+    <UpdateCard
+      version={version}
+      applying={applying || status === "available" || status === "downloading"}
+      percent={percent}
+      message={message}
+      error={status === "error" ? "" : error}
+      disabled={status !== "downloaded" && status !== "error"}
+      primaryLabel={
+        applying
+          ? "Reiniciando…"
+          : status === "downloaded"
+            ? "Reiniciar y actualizar"
+            : status === "error"
+              ? "Reintentar"
+              : `Preparando… ${percent}%`
+      }
+      onPrimary={() => {
+        if (status === "error") {
+          void retry();
+          return;
+        }
+        void applyUpdate();
+      }}
+      onDismiss={dismiss}
+    />
+  );
+}
+
+export default function PublicUpdateBanner({ signedIn }: { signedIn: boolean }) {
+  const location = useLocation();
+  const isPublicArea = !signedIn || PUBLIC_ROUTE_PATTERN.test(location.pathname);
+  if (!isPublicArea) return null;
+  if (ANDROID_SHELL) return <AndroidUpdateBanner />;
+  if (DESKTOP_SHELL) return <DesktopUpdateBanner />;
+  return <WebUpdateBanner />;
 }

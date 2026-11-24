@@ -30,6 +30,12 @@ let startedCompanyId: string | null = null;
 const REFRESH_INTERVAL_MS = 12 * 60 * 60 * 1000;
 /** Foco/online no pueden provocar más de una comprobación cada 30 min. */
 const MIN_RETRY_GAP_MS = 30 * 60 * 1000;
+/**
+ * Activación pendiente (sin lease o identidad reparada): se reintenta en
+ * segundo plano mientras haya red, sin bloquear la interfaz al arrancar.
+ */
+const ACTIVATION_RETRY_MS = 60 * 1000;
+const ACTIVATION_MAX_RETRIES = 5;
 
 /**
  * Vaciado de la telemetría de reloj desde la interfaz. El encolado real lo hace
@@ -106,11 +112,6 @@ export function useLicenseRuntime(companyId?: string | null) {
       const target = companyId || resolveLicenseCompanyId();
       if (target) scheduleClockTelemetryFlush(target);
     };
-    const unsubscribe = current.subscribe((next) => {
-      if (alive) setSnapshot(next);
-      flushIfTampered(next);
-    });
-
     // No se bloquea el render mientras carga: el snapshot inicial es 'loading'.
     let lastRunAt = 0;
     const runThrottled = (showSpinner: boolean, minGapMs = 0) => {
@@ -125,8 +126,34 @@ export function useLicenseRuntime(companyId?: string | null) {
       });
     };
 
+    // Activación pendiente o identidad reparada: reintento acotado en segundo
+    // plano (solo con red, sin bloquear la interfaz ni marcar error). Se declara
+    // antes de suscribirse: el runtime puede publicar en el mismo instante.
+    let activationRetries = 0;
+    let retryTimer: number | null = null;
+    const scheduleActivationRetry = (next: LicenseSnapshot) => {
+      if (!alive || retryTimer !== null) return;
+      if (!next.pendingActivation && next.mode !== "invalid") return;
+      if (activationRetries >= ACTIVATION_MAX_RETRIES) return;
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+      activationRetries += 1;
+      retryTimer = window.setTimeout(() => {
+        retryTimer = null;
+        runThrottled(false);
+      }, ACTIVATION_RETRY_MS);
+    };
+
+    const unsubscribe = current.subscribe((next) => {
+      if (alive) setSnapshot(next);
+      flushIfTampered(next);
+      scheduleActivationRetry(next);
+    });
+
+    // Primer arranque: el runtime evalúa el lease guardado antes de tocar la
+    // red, así que el estado útil aparece sin esperar a la nube.
     runThrottled(true);
     flushIfTampered(current.getSnapshot());
+
     const timer = window.setInterval(() => runThrottled(false), REFRESH_INTERVAL_MS);
     const handleOnline = () => {
       // Volvió la red: reintenta como mucho una vez cada 30 min.
@@ -146,6 +173,7 @@ export function useLicenseRuntime(companyId?: string | null) {
       alive = false;
       unsubscribe();
       window.clearInterval(timer);
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
       window.removeEventListener("online", handleOnline);
       document.removeEventListener("visibilitychange", handleVisibility);
     };

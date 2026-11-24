@@ -14,14 +14,14 @@ export default function ReportsSelectedTransferModal(props: ModalProps) {
     <>
       {selectedTransferModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 border border-base my-auto text-primary">
-            <div className="bg-gradient-to-r from-blue-600 to-rose-600 p-5 text-white flex items-center justify-between">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 border border-base my-auto text-primary">
+            <div className="bg-gradient-to-r from-violet-600 to-violet-800 p-5 text-white flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-white/10 rounded-2xl backdrop-blur-md">
                   <ArrowLeftRight className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <span className="text-[9px] font-black uppercase tracking-widest text-blue-200 block">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-violet-200 block">
                     Transferencia de Inventario
                   </span>
                   <h3 className="text-base font-black text-white uppercase tracking-tight">

@@ -39,7 +39,7 @@ const faqs: Array<{ question: string; answer: string; tag: string; to?: string }
   { tag:"Ventas", question:"Eliminé una venta por error", answer:"Las ventas no se borran sin rastro: al confirmar la eliminación se devuelve el stock al almacén de la venta, se revierte el cobro en banco y queda registrado el motivo y el usuario. Puedes comprobarlo en Reportes → Ventas.", to:"/reports" },
   { tag:"Inventario", question:"El stock no coincide con lo que tengo", answer:"No edites cantidades a mano. Crea una auditoría de inventario en la sección Auditoría del menú, registra la diferencia con su motivo y el sistema ajusta el almacén correcto dejando historial." },
   { tag:"Impresora", question:"La impresora no imprime el ticket", answer:"Verifica que esté encendida, con papel del ancho configurado (58 mm u 80 mm) y conectada al mismo equipo. En Configuración → Impresora y comprobantes puedes imprimir una prueba y revisar la impresora predeterminada." },
-  { tag:"Equipo", question:"¿Cómo agrego un trabajador?", answer:"Entra en Equipo → Invitar trabajador. El trabajador crea su propio acceso y recibe permisos por rol. Nunca compartas la contraseña del propietario; cada venta debe quedar asociada a quien la realizó." },
+  { tag:"Equipo", question:"¿Cómo agrego un trabajador?", answer:"Entra en Equipo → Agregar trabajador: defines su ficha, su rol, sus almacenes y su contraseña POS. Después, en Editar → pestaña Acceso, generas su enlace de acceso de un solo uso, personal e intransferible. Nunca compartas la contraseña del propietario; cada venta debe quedar asociada a quien la realizó." },
   { tag:"Acceso", question:"No puedo iniciar sesión", answer:"Comprueba el correo y la contraseña, que tu usuario esté activo y que la conexión funcione. Si el problema continúa, crea una solicitud de «Problema de acceso»: el diagnóstico se adjunta automáticamente." },
   { tag:"Tasas", question:"¿Cómo cambio la tasa de cambio de mi negocio?", answer:"En Configuración → Monedas y tasas defines la tasa con la que vendes. La referencia de elTOQUE que muestra PALMYRA es informativa y no modifica tus precios automáticamente.", to:"/settings" },
   { tag:"Plan", question:"¿Qué incluye el plan Gratis y vence?", answer:"El plan Gratis es permanente: 1 almacén, 1 empleado más el propietario y 25 tipos de productos. Incluye modo offline y respaldo comercial en la nube, igual que los planes de pago; no se vence ni pasa a modo lectura." },
@@ -48,7 +48,7 @@ const faqs: Array<{ question: string; answer: string; tag: string; to?: string }
   { tag:"Compras", question:"¿Cómo recibo mercancía de un proveedor?", answer:"En Proveedores crea la orden de compra y, cuando llegue la mercancía, recíbela desde el mismo panel: el stock se suma al almacén indicado y la orden queda marcada como recibida.", to:"/suppliers" },
   { tag:"Transferencias", question:"¿Cómo muevo stock entre almacenes?", answer:"En Transferencias crea un traslado con origen y destino; queda en tránsito hasta que el almacén destino lo reciba. También puedes enviar varias órdenes a la vez y cancelar un traslado antes de recibirlo.", to:"/transfers" },
   { tag:"Cotizaciones", question:"¿Cómo convierto una cotización en venta?", answer:"En Cotizaciones toca «Cobrar en POS»: los productos pasan al ticket con el cliente. Si eliminas la cotización antes de cobrar, el POS vacía el ticket al abrirse.", to:"/quotes" },
-  { tag:"Descargas", question:"¿Cómo instalo PALMYRA en la PC o en el Android?", answer:"En la página de descargas encuentras el instalador de Windows y el APK de Android. Para las estaciones de la red local, Configuración → Red local genera un QR con la dirección del equipo principal.", to:"/landing" },
+  { tag:"Descargas", question:"¿Cómo instalo PALMYRA en la PC o en el Android?", answer:"En la página de descargas encuentras el instalador de Windows y el APK de Android. Cada persona entra con su enlace de acceso de un solo uso, que generas en Equipo → Editar → pestaña Acceso. En Configuración → Sistema puedes comprobar y aplicar actualizaciones.", to:"/landing" },
   { tag:"Reportes", question:"¿Dónde veo las ventas de cada turno?", answer:"En Reportes → Ventas encuentras las operaciones por fecha, turno y cajero. Desde la misma tabla puedes ver el detalle, ocultar la fila en tu vista o anular la venta con motivo.", to:"/reports" },
   { tag:"Seguridad", question:"¿Cómo cierro la sesión en otro dispositivo?", answer:"En Seguridad verás los dispositivos con acceso. Revoca cualquier sesión que no reconozcas y cambia la contraseña si sospechas que alguien más la conoce.", to:"/help-center?section=security" }
 ];
@@ -118,11 +118,14 @@ export default function HelpCenter(){
   useEffect(()=>{
     let active = true;
     setCompanyName(fallbackCompanyName);
+    // Si la nube no responde, el centro de ayuda no puede quedarse en blanco:
+    // a los 3 s se muestra el contenido con el nombre guardado en este equipo.
+    const guard = window.setTimeout(() => { if (active) setLoading(false); }, 3000);
     void loadSaaSContext(true)
       .then(ctx=>{ if(active && ctx?.company?.name) setCompanyName(ctx.company.name); })
       .catch(()=>{})
-      .finally(()=>{ if(active) setLoading(false); });
-    return ()=>{active=false};
+      .finally(()=>{ if(active) setLoading(false); window.clearTimeout(guard); });
+    return ()=>{active=false; window.clearTimeout(guard)};
   },[currentUser?.id,fallbackCompanyName]);
 
   useEffect(()=>{
@@ -160,7 +163,20 @@ export default function HelpCenter(){
 
   const copyDiagnosis=async()=>{
     try {
-      await navigator.clipboard.writeText(diagnosis);
+      // En http:// (equipos sin HTTPS) navigator.clipboard no existe; se usa el
+      // respaldo por selección para que el botón siempre responda.
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(diagnosis);
+      } else {
+        const area = document.createElement("textarea");
+        area.value = diagnosis;
+        area.style.position = "fixed";
+        area.style.opacity = "0";
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand("copy");
+        document.body.removeChild(area);
+      }
       setCopied(true);
       window.setTimeout(()=>setCopied(false), 2200);
     } catch {
@@ -379,7 +395,7 @@ export default function HelpCenter(){
             <span className="help-feature-icon"><BookOpen/></span>
             <span className="help-feature-kicker">ESCUELA PALMYRA</span>
             <strong>Aprende el sistema paso a paso</strong>
-            <p>24 lecciones con pantallas ilustradas, funciones marcadas y puntos numerados que conectan cada paso. Incluye apertura y cierre de turno, POS, inventario, auditoría, transferencias, proveedores, cotizaciones, devoluciones, bancos, tasa de cambio, reportes, equipo, soporte, descargas LAN, offline y planes.</p>
+            <p>24 lecciones con pantallas ilustradas, funciones marcadas y puntos numerados que conectan cada paso. Incluye apertura y cierre de turno, POS, inventario, auditoría, transferencias, proveedores, cotizaciones, devoluciones, bancos, tasa de cambio, reportes, equipo, soporte, descargas, offline y planes.</p>
             <Link className="help-feature-cta" to="/tutorial">Entrar a la escuela <ArrowRight/></Link>
           </article>
           {[

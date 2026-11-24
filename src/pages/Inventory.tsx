@@ -1,4 +1,14 @@
 import { buildInventoryViewData } from '../modules/inventory/utils/buildInventoryViewData';
+import { summarizeInventoryProfit } from '../modules/inventory/utils/inventoryProfit';
+import {
+  currencyEquivalents,
+  formatCurrencyEquivalentParts,
+  formatCurrencyEquivalents,
+  loadServiceCurrencyRates,
+  mergeCurrencyRates,
+  ratesFromCurrencies,
+  type CurrencyRate
+} from '../modules/inventory/utils/currencyEquivalents';
 import { getWarehouseId, getAuthorizedWarehouseIds } from "../modules/warehouse/warehouseScope";
 import { getLowStockThreshold, isLowStockProduct, sumAvailableStock } from "../modules/inventory/utils/lowStock";
 import { buildInventoryCsv } from '../modules/inventory/utils/buildInventoryCsv';
@@ -15,19 +25,55 @@ import { ABCAnalysis } from "../components/ABCAnalysis";
 import { RestockAlerts } from "../components/RestockAlerts";
 import { useBarcodeScanner } from "../hooks/useBarcodeScanner";
 import { loadSaaSContext } from '../services/saas';
+import { getActiveTenant } from '../services/tenant';
+import { loadCompensationSettings } from '../services/team';
 import { pushProductToSupabase } from '../services/supabaseSync';
 import { canUsePlanFeature } from '../services/planAccess';
 import PlanFeatureGate from '../components/PlanFeatureGate';
 import "./team.css";
 
+// Equivalente USD/EUR en líneas separadas: en columnas estrechas una sola
+// línea con las dos divisas se desbordaba o se recortaba.
+function EquivalentLines({ parts, className, title }: { parts: string[]; className?: string; title?: string }) {
+  if (!parts.length) {
+    return <div className={cn("text-[8px] font-bold text-muted", className)} title={title}>—</div>;
+  }
+  return (
+    <div className={cn("flex flex-col leading-tight tabular-nums", className)} title={title}>
+      {parts.map((part) => <span key={part} className="whitespace-nowrap">{part}</span>)}
+    </div>
+  );
+}
+
 export default function Inventory() {
   const { 
     products, inventory, branches, addProduct, updateProduct, 
     setInventoryQuantity, deleteProduct, deleteCategory,
-    categories, batchDeleteProducts, batchUpdateProducts, getBaseCurrency,
+    categories, batchDeleteProducts, batchUpdateProducts, getBaseCurrency, currencies,
     currentBranchId, addNotification, users, currentUser, receiptConfig
-  } = useStore(useShallow((state) => ({ products: state.products, inventory: state.inventory, branches: state.branches, addProduct: state.addProduct, updateProduct: state.updateProduct, setInventoryQuantity: state.setInventoryQuantity, deleteProduct: state.deleteProduct, deleteCategory: state.deleteCategory, categories: state.categories, batchDeleteProducts: state.batchDeleteProducts, batchUpdateProducts: state.batchUpdateProducts, getBaseCurrency: state.getBaseCurrency, currentBranchId: state.currentBranchId, addNotification: state.addNotification, users: state.users, currentUser: state.currentUser, receiptConfig: state.receiptConfig })));
+  } = useStore(useShallow((state) => ({ products: state.products, inventory: state.inventory, branches: state.branches, addProduct: state.addProduct, updateProduct: state.updateProduct, setInventoryQuantity: state.setInventoryQuantity, deleteProduct: state.deleteProduct, deleteCategory: state.deleteCategory, categories: state.categories, batchDeleteProducts: state.batchDeleteProducts, batchUpdateProducts: state.batchUpdateProducts, getBaseCurrency: state.getBaseCurrency, currencies: state.currencies, currentBranchId: state.currentBranchId, addNotification: state.addNotification, users: state.users, currentUser: state.currentUser, receiptConfig: state.receiptConfig })));
   const baseCurrency = getBaseCurrency();
+
+  // Compensación global de la empresa: define el salario por unidad que se
+  // descuenta de la ganancia neta (porcentaje de venta o comisión fija).
+  const [companyCompensation, setCompanyCompensation] = useState<{ mode: 'fixed_product' | 'sales_percent'; percentRate: number }>({ mode: 'fixed_product', percentRate: 0 });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const tenant = await getActiveTenant();
+        if (!tenant?.companyId) return;
+        const settings = await loadCompensationSettings(tenant.companyId);
+        if (!cancelled) setCompanyCompensation({
+          mode: settings.mode,
+          percentRate: Math.max(0, Math.min(100, Number(settings.percentRate) || 0))
+        });
+      } catch (error) {
+        console.warn('[Inventory] No se pudo cargar la compensación global; la ganancia neta usará 0 de salario:', error);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   // Un empleado solo opera sobre sus almacenes autorizados; el administrador ve todos.
   const authorizedBranchIds = useMemo(
@@ -126,7 +172,11 @@ export default function Inventory() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [managingStockProduct, setManagingStockProduct] = useState<Product | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>('table');
+  // En móvil/tablet la lista ancha no cabe: se abre en tarjetas para no
+  // obligar a un desplazamiento horizontal. En escritorio sigue la tabla.
+  const [viewMode, setViewMode] = useState<'table' | 'grid'>(() =>
+    typeof window !== 'undefined' && window.matchMedia?.('(max-width: 1023px)').matches ? 'grid' : 'table'
+  );
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [stockFilter, setStockFilter] = useState<'all' | 'in_stock' | 'low' | 'out'>('all');
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
@@ -691,12 +741,14 @@ export default function Inventory() {
       selectedBranch,
       selectedCategory,
       stockFilter,
-      displayLimit
+      displayLimit,
+      companyCompensation
     ),
-    [products, inventory, debouncedSearchQuery, selectedBranch, selectedCategory, stockFilter, displayLimit]
+    [products, inventory, debouncedSearchQuery, selectedBranch, selectedCategory, stockFilter, displayLimit, companyCompensation]
   );
 
   const inventoryView = inventoryData.paginated;
+  const hasActiveFilters = Boolean(debouncedSearchQuery.trim()) || selectedCategory !== 'all' || stockFilter !== 'all' || selectedBranch !== 'all';
 
   const formatMoney = (amount: number, currency = baseCurrency, withCode = true) => {
     const converted = currency.isBase ? amount : amount / (currency.rateToBase || 1);
@@ -706,6 +758,46 @@ export default function Inventory() {
     }
     return `${currency.symbol} ${formatted}`;
   };
+
+  // La ganancia puede ser negativa: el signo siempre se muestra explícito para
+  // no depender únicamente del color.
+  const formatSignedMoney = (amount: number, currency = baseCurrency, withCode = false) => {
+    const safe = Number.isFinite(amount) ? amount : 0;
+    const sign = safe < 0 ? '-' : safe > 0 ? '+' : '';
+    return `${sign}${formatMoney(Math.abs(safe), currency, withCode)}`;
+  };
+
+  const formatMarginPct = (pct: number) => {
+    const safe = Number.isFinite(pct) ? pct : 0;
+    return `${safe > 0 ? '+' : ''}${safe.toFixed(1)}%`;
+  };
+
+  const profitToneClass = (value: number) => {
+    const safe = Number.isFinite(value) ? value : 0;
+    if (safe > 0) return 'text-emerald-600 dark:text-emerald-400';
+    if (safe < 0) return 'text-rose-600 dark:text-rose-400';
+    return 'text-muted';
+  };
+
+  // Equivalentes USD/EUR de las cifras del inventario (CUP). Mandan las tasas
+  // activas del negocio: las manuales de Monedas y tasas o las que escribe la
+  // sincronización automática. En segundo plano se consulta el servicio de
+  // tasas con enfriamiento solo para rellenar divisas sin tasa local; si no
+  // responde, la pantalla sigue en CUP, sin avisos ni bloqueos.
+  const [serviceCurrencyRates, setServiceCurrencyRates] = useState<CurrencyRate[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void loadServiceCurrencyRates().then((rates) => {
+      if (!cancelled && rates.length) setServiceCurrencyRates(rates);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  const equivalentRates = useMemo(
+    () => mergeCurrencyRates(ratesFromCurrencies(currencies, baseCurrency.code), serviceCurrencyRates),
+    [currencies, baseCurrency.code, serviceCurrencyRates]
+  );
+  const equivalentsFor = (amount: number) => currencyEquivalents(amount, equivalentRates);
 
   // Los indicadores reflejan la sucursal activa, no la búsqueda ni los filtros
   // de la tabla: buscar un producto no debe alterar las cifras globales.
@@ -721,17 +813,40 @@ export default function Inventory() {
     let totalProducts = 0;
     let totalStock = 0;
     let lowStockCount = 0;
+    const profitRows: Array<{ price: number; costPrice: number; commissionValue: number; totalStock: number }> = [];
 
     // El contador usa la misma regla que la lista: total del producto, no filas.
     for (const product of products || []) {
       const levels = levelsByProduct.get(product.id) || [];
+      const productStock = Math.max(0, sumAvailableStock(levels));
       totalProducts += 1;
-      totalStock += Math.max(0, sumAvailableStock(levels));
+      totalStock += productStock;
       if (isLowStockProduct(levels, product)) lowStockCount += 1;
+      profitRows.push({
+        price: Number(product.price || 0),
+        costPrice: Number(product.costPrice || 0),
+        commissionValue: Number(product.commissionValue || 0),
+        totalStock: productStock
+      });
     }
 
-    return { totalProducts, totalStock, lowStockCount };
-  }, [inventory, products, selectedBranch]);
+    const profit = summarizeInventoryProfit(profitRows, companyCompensation);
+
+    return { totalProducts, totalStock, lowStockCount, ...profit };
+  }, [inventory, products, selectedBranch, companyCompensation]);
+
+  const kpiEquivalents = useMemo(() => ({
+    cost: currencyEquivalents(stats.valueCost, equivalentRates),
+    sale: currencyEquivalents(stats.valueSale, equivalentRates),
+    profit: currencyEquivalents(stats.netProfit, equivalentRates)
+  }), [stats, equivalentRates]);
+
+  // Texto compacto de las equivalencias (una sola línea) calculado una vez.
+  const kpiEquivalentText = useMemo(() => ({
+    cost: formatCurrencyEquivalents(kpiEquivalents.cost, { compact: true }),
+    sale: formatCurrencyEquivalents(kpiEquivalents.sale, { compact: true }),
+    profit: formatCurrencyEquivalents(kpiEquivalents.profit, { compact: true, signed: true })
+  }), [kpiEquivalents]);
 
   return (
     <div className="space-y-3 animate-in fade-in slide-in-from-bottom-4 duration-500 h-full flex flex-col min-h-0">
@@ -742,10 +857,10 @@ export default function Inventory() {
           </h2>
           <p className="text-[9px] sm:text-[10px] font-black text-muted uppercase tracking-widest">Stock Control</p>
         </div>
-        <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide w-full sm:w-auto py-1">
+        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:flex-nowrap py-1">
           <button 
             onClick={() => setActiveTab('products')}
-            className="shrink-0 bg-emerald-600 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-emerald-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
+            className="shrink-0 min-h-11 sm:min-h-0 bg-emerald-600 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-emerald-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
           >
             <PackageCheck className="w-3.5 h-3.5" /> Stock
           </button>
@@ -762,27 +877,27 @@ export default function Inventory() {
               setActiveFormTab('general');
               setShowAddModal(true);
             }}
-            className="shrink-0 bg-indigo-600 text-white px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-95 whitespace-nowrap"
+            className="shrink-0 min-h-11 sm:min-h-0 bg-indigo-600 text-white px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-95 whitespace-nowrap"
           >
             <Plus className="w-3.5 h-3.5 shrink-0" />
             Agregar producto
           </button>
           <button 
             onClick={() => canExcel ? exportToExcel() : setActiveTab('excel')}
-            className="shrink-0 flex items-center gap-1.5 px-2.5 py-1.5 bg-secondary border border-base text-muted rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-subtle transition-all shadow-sm active:scale-95 whitespace-nowrap"
+            className="shrink-0 min-h-11 sm:min-h-0 flex items-center gap-1.5 px-2.5 py-1.5 bg-secondary border border-base text-muted rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-subtle transition-all shadow-sm active:scale-95 whitespace-nowrap"
           >
             <Download className="w-3 h-3" />
             <span>{canExcel ? 'Excel' : 'Excel · Ciudadela'}</span>
           </button>
           <button 
             onClick={() => setActiveTab('labels')}
-            className="shrink-0 bg-slate-900 dark:bg-slate-800 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-slate-800 dark:hover:bg-slate-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
+            className="shrink-0 min-h-11 sm:min-h-0 bg-slate-900 dark:bg-slate-800 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-slate-800 dark:hover:bg-slate-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
           >
             {canLabels ? 'Etiquetas' : 'Etiquetas · Ciudadela'}
           </button>
           <button 
             onClick={() => setActiveTab('abc')}
-            className="shrink-0 bg-blue-600 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-blue-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
+            className="shrink-0 min-h-11 sm:min-h-0 bg-blue-600 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-blue-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
           >
             {canABC ? 'Análisis ABC' : 'ABC · Ciudadela'}
           </button>
@@ -791,18 +906,43 @@ export default function Inventory() {
       </header>
 
       {/* Summary Cards Lineal - Responsive Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2 px-1 shrink-0">
-        <div className="bg-secondary p-1.5 sm:p-2 rounded-xl border border-base shadow-xs flex flex-col justify-between">
+      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-7 gap-1.5 sm:gap-2 px-1 shrink-0">
+        <div className="bg-secondary p-1.5 sm:p-2 rounded-xl border border-base shadow-xs flex flex-col justify-between min-w-0">
           <span className="text-[7px] sm:text-[7.5px] font-black uppercase text-muted tracking-wider">Tipos</span>
           <div className="text-[11px] font-black text-primary mt-0.5">{stats.totalProducts.toLocaleString()}</div>
         </div>
-        <div className="bg-secondary p-1.5 sm:p-2 rounded-xl border border-base shadow-xs flex flex-col justify-between">
+        <div className="bg-secondary p-1.5 sm:p-2 rounded-xl border border-base shadow-xs flex flex-col justify-between min-w-0">
           <span className="text-[7px] sm:text-[7.5px] font-black uppercase text-muted tracking-wider">Unidades</span>
           <div className="text-[11px] font-black text-primary mt-0.5">{stats.totalStock.toLocaleString()}</div>
         </div>
-        <div className="col-span-2 sm:col-span-1 bg-secondary p-1.5 sm:p-2 rounded-xl border border-base shadow-xs flex flex-col justify-between">
+        <div className="col-span-2 sm:col-span-1 bg-secondary p-1.5 sm:p-2 rounded-xl border border-base shadow-xs flex flex-col justify-between min-w-0">
           <span className="text-[7px] sm:text-[7.5px] font-black uppercase text-rose-500 tracking-wider">Bajo Stock</span>
           <div className="text-[11px] font-black text-rose-600 dark:text-rose-400 mt-0.5">{stats.lowStockCount} alertas</div>
+        </div>
+        <div className="bg-secondary p-1.5 sm:p-2 rounded-xl border border-base shadow-xs flex flex-col justify-between min-w-0">
+          <span className="text-[7px] sm:text-[7.5px] font-black uppercase text-muted tracking-wider">Valor costo · CUP</span>
+          <div className="text-[10px] font-black text-primary mt-0.5 truncate tabular-nums" title={formatMoney(stats.valueCost)}>{formatMoney(stats.valueCost, baseCurrency, false)}</div>
+          {kpiEquivalentText.cost !== '—' && (
+            <div className="text-[7px] font-bold text-muted mt-0.5 leading-tight tabular-nums" title={`${formatCurrencyEquivalents(kpiEquivalents.cost)} · tasas activas`}>{kpiEquivalentText.cost}</div>
+          )}
+        </div>
+        <div className="bg-secondary p-1.5 sm:p-2 rounded-xl border border-base shadow-xs flex flex-col justify-between min-w-0">
+          <span className="text-[7px] sm:text-[7.5px] font-black uppercase text-muted tracking-wider">Valor venta · CUP</span>
+          <div className="text-[10px] font-black text-primary mt-0.5 truncate tabular-nums" title={formatMoney(stats.valueSale)}>{formatMoney(stats.valueSale, baseCurrency, false)}</div>
+          {kpiEquivalentText.sale !== '—' && (
+            <div className="text-[7px] font-bold text-muted mt-0.5 leading-tight tabular-nums" title={`${formatCurrencyEquivalents(kpiEquivalents.sale)} · tasas activas`}>{kpiEquivalentText.sale}</div>
+          )}
+        </div>
+        <div className="bg-secondary p-1.5 sm:p-2 rounded-xl border border-base shadow-xs flex flex-col justify-between min-w-0">
+          <span className="text-[7px] sm:text-[7.5px] font-black uppercase text-muted tracking-wider">Ganancia neta · CUP</span>
+          <div className={cn("text-[10px] font-black mt-0.5 truncate tabular-nums", profitToneClass(stats.netProfit))} title={formatSignedMoney(stats.netProfit)}>{formatSignedMoney(stats.netProfit, baseCurrency, false)}</div>
+          {kpiEquivalentText.profit !== '—' && (
+            <div className="text-[7px] font-bold text-muted mt-0.5 leading-tight tabular-nums" title={`${formatCurrencyEquivalents(kpiEquivalents.profit, { signed: true })} · tasas activas`}>{kpiEquivalentText.profit}</div>
+          )}
+        </div>
+        <div className="bg-secondary p-1.5 sm:p-2 rounded-xl border border-base shadow-xs flex flex-col justify-between min-w-0">
+          <span className="text-[7px] sm:text-[7.5px] font-black uppercase text-muted tracking-wider">% margen</span>
+          <div className={cn("text-[10px] font-black mt-0.5 truncate tabular-nums", profitToneClass(stats.marginPct))} title="Margen sobre el precio de venta">{formatMarginPct(stats.marginPct)}</div>
         </div>
       </div>
 
@@ -818,7 +958,7 @@ export default function Inventory() {
               placeholder="Buscar por nombre, SKU, código..." 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-8 pr-3 h-8 bg-subtle border border-base text-primary rounded-xl text-[11px] font-semibold focus:bg-secondary focus:ring-1 focus:ring-indigo-500 outline-none transition-all placeholder:text-muted/60"
+              className="w-full pl-8 pr-3 h-11 sm:h-8 bg-subtle border border-base text-primary rounded-xl text-[12px] sm:text-[11px] font-semibold focus:bg-secondary focus:ring-1 focus:ring-indigo-500 outline-none transition-all placeholder:text-muted/60"
             />
           </div>
           
@@ -831,7 +971,7 @@ export default function Inventory() {
                 value={selectedBranch}
                 onChange={(e) => setSelectedBranch(e.target.value)}
                 aria-label="Filtrar por sucursal"
-                className="w-full pl-6 pr-7 h-8 bg-subtle border border-base text-primary rounded-lg text-[9px] sm:text-[9px] font-bold outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
+                className="w-full pl-6 pr-7 h-11 sm:h-8 bg-subtle border border-base text-primary rounded-lg text-[11px] sm:text-[9px] font-bold outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
                 title="Filtrar por sucursal"
               >
                 {!isBranchRestricted && <option value="all">Sucursal</option>}
@@ -849,7 +989,7 @@ export default function Inventory() {
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
                 aria-label="Filtrar por categoría"
-                className="w-full pl-6 pr-5 h-7 bg-subtle border border-base text-primary rounded-lg text-[8px] sm:text-[9px] font-bold outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
+                className="w-full pl-6 pr-5 h-11 sm:h-8 bg-subtle border border-base text-primary rounded-lg text-[11px] sm:text-[9px] font-bold outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
                 title="Filtrar por categoría"
               >
                 <option value="all">Categoría</option>
@@ -867,7 +1007,7 @@ export default function Inventory() {
                 value={stockFilter}
                 onChange={(e) => setStockFilter(e.target.value as any)}
                 aria-label="Filtrar por stock"
-                className="w-full px-6 pr-7 h-8 bg-subtle border border-base text-primary rounded-lg text-[9px] sm:text-[9px] font-bold outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
+                className="w-full px-6 pr-7 h-11 sm:h-8 bg-subtle border border-base text-primary rounded-lg text-[11px] sm:text-[9px] font-bold outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 hover:bg-secondary transition-colors cursor-pointer appearance-none truncate"
                 title="Filtrar por stock"
               >
                 <option value="all">Stock</option>
@@ -889,7 +1029,7 @@ export default function Inventory() {
               aria-label="Vista lista"
               aria-pressed={viewMode === 'table'}
               className={cn(
-                "p-1.5 rounded-md transition-all",
+                "min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 p-1.5 rounded-md transition-all",
                 viewMode === 'table' ? "bg-primary text-indigo-600 shadow-xs ring-1 ring-black/5" : "text-muted hover:text-primary"
               )}
             >
@@ -901,7 +1041,7 @@ export default function Inventory() {
               aria-label="Vista cuadrícula"
               aria-pressed={viewMode === 'grid'}
               className={cn(
-                "p-1.5 rounded-md transition-all",
+                "min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 p-1.5 rounded-md transition-all",
                 viewMode === 'grid' ? "bg-primary text-indigo-600 shadow-xs ring-1 ring-black/5" : "text-muted hover:text-primary"
               )}
             >
@@ -1131,7 +1271,7 @@ export default function Inventory() {
         viewMode === 'table' ? (
           <div className="bg-secondary rounded-[2rem] shadow-sm border border-base overflow-hidden flex-1 flex flex-col min-h-[500px] w-full">
           <div className="overflow-x-auto overflow-y-auto flex-1 h-full custom-scrollbar w-full">
-            <table aria-label="Productos del inventario" className="w-full text-left border-collapse table-fixed min-w-[950px]">
+            <table aria-label="Productos del inventario" className="w-full text-left border-collapse table-fixed min-w-[1040px]">
               <thead>
                 <tr className="bg-secondary border-b border-base sticky top-0 z-30 shadow-sm translate-y-[-1px]">
                   <th scope="col" className="w-14 px-4 py-3 bg-secondary">
@@ -1148,9 +1288,12 @@ export default function Inventory() {
                   </th>
                   <th scope="col" className="w-1/4 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Producto / Cat</th>
                   <th scope="col" className="w-36 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">SKU / CB</th>
-                  <th scope="col" className="w-28 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Garantía</th>
-                  <th scope="col" className="w-36 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Precio (CUP)</th>
-                  <th scope="col" className="w-40 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Stock Actual</th>
+                  <th scope="col" className="hidden xl:table-cell w-24 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Garantía</th>
+                  <th scope="col" className="w-32 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Precio (CUP)</th>
+                  <th scope="col" className="w-32 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Costo (CUP)</th>
+                  <th scope="col" className="w-36 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary" title="Ganancia neta por unidad: venta − costo − salario">Ganancia neta</th>
+                  <th scope="col" className="hidden xl:table-cell w-24 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">% margen</th>
+                  <th scope="col" className="w-36 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Stock actual</th>
                   <th scope="col" className="w-28 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest text-right bg-secondary">Acciones</th>
                 </tr>
               </thead>
@@ -1196,7 +1339,7 @@ export default function Inventory() {
                           )}
                         </div>
                         <div className="flex flex-col min-w-0">
-                          <div className="text-xs font-black text-primary uppercase tracking-tighter truncate flex items-center gap-1.5">
+                          <div className="text-xs font-black text-primary uppercase tracking-tighter truncate flex items-center gap-1.5" title={item.name}>
                             {item.name}
                             {((item.availableSizes || []).length > 0 || (item.availableColors || []).length > 0) && (
                               <span title="Este producto tiene variantes" className="inline-flex items-center rounded-md bg-violet-50 px-1 py-0.5 text-[6px] font-black uppercase text-violet-700 border border-violet-100 shrink-0">Variantes</span>
@@ -1215,7 +1358,7 @@ export default function Inventory() {
                       <div className="text-[9px] font-mono font-black text-primary uppercase truncate">{item.sku}</div>
                       <div className="text-[7px] text-muted font-mono truncate">{item.barcode || '---'}</div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="hidden xl:table-cell px-4 py-3">
                       <div className="flex items-center gap-1.5">
                         <ShieldCheck className={cn("w-3 h-3", item.warrantyDays ? "text-emerald-500" : "text-slate-300 dark:text-slate-600")} />
                         <span className="text-[9px] font-bold text-secondary">
@@ -1225,6 +1368,31 @@ export default function Inventory() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-[10px] font-black text-primary whitespace-nowrap">{formatMoney(item.price)}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="text-[10px] font-black text-secondary whitespace-nowrap">{formatMoney(item.costPrice)}</div>
+                      <EquivalentLines
+                        className="mt-0.5 text-[8px] font-bold text-muted"
+                        parts={formatCurrencyEquivalentParts(equivalentsFor(item.costPrice))}
+                        title="Costo por unidad en USD/EUR con las tasas activas"
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div
+                        className={cn("text-[10px] font-black whitespace-nowrap", profitToneClass(item.unitNetProfit))}
+                        title="Ganancia neta por unidad: venta − costo − salario"
+                      >{formatSignedMoney(item.unitNetProfit)}</div>
+                      <EquivalentLines
+                        className="mt-0.5 text-[8px] font-bold text-muted"
+                        parts={formatCurrencyEquivalentParts(equivalentsFor(item.unitNetProfit), { signed: true })}
+                        title="Ganancia neta por unidad en USD/EUR con las tasas activas"
+                      />
+                    </td>
+                    <td className="hidden xl:table-cell px-4 py-3">
+                      <div
+                        className={cn("text-[10px] font-black whitespace-nowrap", profitToneClass(item.unitMarginPct))}
+                        title="Margen sobre el precio de venta"
+                      >{formatMarginPct(item.unitMarginPct)}</div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
@@ -1254,7 +1422,7 @@ export default function Inventory() {
                       <div className="flex justify-end gap-1.5">
                         <button 
                           onClick={() => {
-                            const { totalStock, isLowStock, levels, ...productOnly } = item as any;
+                            const { totalStock, isLowStock, levels, unitNetProfit, unitMarginPct, ...productOnly } = item as any;
                             openStockManager(productOnly);
                           }}
                           className="text-muted hover:text-emerald-600 transition-colors p-1.5 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-950/50 border border-base shadow-sm"
@@ -1265,7 +1433,7 @@ export default function Inventory() {
                         </button>
                         <button 
                           onClick={() => {
-                            const { totalStock, isLowStock, levels, ...productOnly } = item as any;
+                            const { totalStock, isLowStock, levels, unitNetProfit, unitMarginPct, ...productOnly } = item as any;
                             setEditingProduct(productOnly);
                             setFormData(productOnly);
                             setShowAddModal(true);
@@ -1286,6 +1454,21 @@ export default function Inventory() {
                     </td>
                   </tr>
                 ))}
+                {inventoryView.length === 0 && (
+                  <tr>
+                    <td colSpan={10} className="px-6 py-16">
+                      <div className="flex flex-col items-center gap-2 text-center">
+                        <Package className="w-10 h-10 text-slate-300 dark:text-slate-600" aria-hidden="true" />
+                        <p className="text-xs font-black text-primary uppercase tracking-wide">Sin productos en esta vista</p>
+                        <p className="max-w-sm text-[11px] font-bold text-muted">
+                          {hasActiveFilters
+                            ? 'Ningún producto coincide con la búsqueda o los filtros activos. Ajusta la sucursal, la categoría o el estado del stock.'
+                            : 'Todavía no hay productos. Usa «Agregar producto» para crear el primero.'}
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -1337,7 +1520,7 @@ export default function Inventory() {
                 <div 
                   key={item.id} 
                   onClick={() => {
-                    const { totalStock, isLowStock, levels, ...productOnly } = item as any;
+                    const { totalStock, isLowStock, levels, unitNetProfit, unitMarginPct, ...productOnly } = item as any;
                     setEditingProduct(productOnly);
                     setFormData(productOnly);
                     setShowAddModal(true);
@@ -1345,7 +1528,7 @@ export default function Inventory() {
                   className="bg-primary p-2.5 rounded-2xl border border-base shadow-xs hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer group flex flex-col gap-1.5 h-fit relative"
                 >
                   <div className="flex justify-between items-start gap-1">
-                    <h3 className="text-[10px] font-black text-primary uppercase tracking-tight line-clamp-2 leading-tight flex-1">{item.name}</h3>
+                    <h3 className="text-[10px] font-black text-primary uppercase tracking-tight line-clamp-2 leading-tight flex-1 break-words" title={item.name}>{item.name}</h3>
                     <div className={cn(
                       "w-1.5 h-1.5 rounded-full shrink-0 mt-0.5",
                       item.totalStock === 0 ? "bg-rose-500 shadow-[0_0_5px_rgba(244,63,94,0.5)]" :
@@ -1354,26 +1537,71 @@ export default function Inventory() {
                   </div>
                   
                   <div className="flex items-center justify-between mt-auto">
-                    <p className="text-[9px] font-black text-indigo-600">{formatMoney(item.price)}</p>
+                    <p className="text-[9px] font-black text-indigo-600 truncate tabular-nums" title={formatMoney(item.price)}>{formatMoney(item.price)}</p>
                     <p className={cn(
                       "text-[9px] font-black px-1.5 py-0.5 rounded-lg",
                       item.isLowStock ? "bg-rose-50/50 text-rose-600" : "bg-emerald-50/50 text-emerald-600"
                     )}>{item.totalStock}</p>
                   </div>
 
+                  <div className="flex flex-col gap-1 border-t border-base pt-1">
+                    <div className="flex items-baseline justify-between gap-2 text-[9px] font-bold">
+                      <span className="text-muted uppercase tracking-wide shrink-0">Costo</span>
+                      <span className="text-secondary font-black text-right break-words tabular-nums">{formatMoney(item.costPrice, baseCurrency, false)}</span>
+                    </div>
+                    <EquivalentLines
+                      className="text-[8px] font-bold text-muted"
+                      parts={formatCurrencyEquivalentParts(equivalentsFor(item.costPrice))}
+                      title="Costo por unidad en USD/EUR con las tasas activas"
+                    />
+                    <div className="flex items-baseline justify-between gap-2 text-[9px] font-bold">
+                      <span className="text-muted uppercase tracking-wide shrink-0">Ganancia</span>
+                      <span
+                        className={cn("font-black text-right break-words tabular-nums", profitToneClass(item.unitNetProfit))}
+                        title="Ganancia neta por unidad: venta − costo − salario"
+                      >{formatSignedMoney(item.unitNetProfit, baseCurrency, false)}</span>
+                    </div>
+                    <EquivalentLines
+                      className="text-[8px] font-bold text-muted"
+                      parts={formatCurrencyEquivalentParts(equivalentsFor(item.unitNetProfit), { signed: true })}
+                      title="Ganancia neta por unidad en USD/EUR con las tasas activas"
+                    />
+                    <div className="flex items-center justify-between gap-2 text-[9px] font-bold">
+                      <span className="text-muted uppercase tracking-wide">% margen</span>
+                      <span
+                        className={cn("font-black tabular-nums", profitToneClass(item.unitMarginPct))}
+                        title="Margen sobre el precio de venta"
+                      >{formatMarginPct(item.unitMarginPct)}</span>
+                    </div>
+                  </div>
+
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
-                      const { totalStock, isLowStock, levels, ...productOnly } = item as any;
+                      const { totalStock, isLowStock, levels, unitNetProfit, unitMarginPct, ...productOnly } = item as any;
                       openStockManager(productOnly);
                     }}
-                    className="absolute -top-1 -right-1 p-1 bg-white border border-base rounded-lg text-slate-400 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                    aria-label={`Gestionar stock de ${item.name}`}
+                    title="Gestionar stock"
+                    className="absolute -top-1.5 -right-1.5 flex h-9 w-9 items-center justify-center bg-white border border-base rounded-xl text-slate-500 hover:text-indigo-600 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow-sm"
                   >
-                    <PackagePlus className="w-3 h-3" />
+                    <PackagePlus className="w-3.5 h-3.5" />
                   </button>
                 </div>
               ))}
               
+              {inventoryView.length === 0 && (
+                <div className="col-span-full flex flex-col items-center gap-2 py-14 text-center">
+                  <Package className="w-10 h-10 text-slate-300 dark:text-slate-600" aria-hidden="true" />
+                  <p className="text-xs font-black text-primary uppercase tracking-wide">Sin productos en esta vista</p>
+                  <p className="max-w-sm text-[11px] font-bold text-muted">
+                    {hasActiveFilters
+                      ? 'Ningún producto coincide con la búsqueda o los filtros activos.'
+                      : 'Todavía no hay productos. Usa «Agregar producto» para crear el primero.'}
+                  </p>
+                </div>
+              )}
+
               {inventoryData.full.length > displayLimit && (
                 <div className="col-span-full py-4 flex justify-center">
                   <button 

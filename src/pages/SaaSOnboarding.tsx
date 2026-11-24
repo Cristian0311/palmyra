@@ -218,7 +218,7 @@ export default function SaaSOnboarding() {
             type="button"
             onClick={() => navigate('/landing')}
             disabled={busy}
-            className="inline-flex min-h-10 items-center gap-1.5 rounded-xl border border-violet-200 bg-white px-3 text-[11px] font-black text-[#5B2DBA]"
+            className="inline-flex min-h-11 items-center gap-1.5 rounded-xl border border-violet-200 bg-white px-3 text-[11px] font-black text-[#5B2DBA]"
           >
             <ArrowLeft className="h-3.5 w-3.5" aria-hidden="true" /> Volver
           </button>
@@ -308,7 +308,7 @@ export default function SaaSOnboarding() {
                       <div className="flex items-start justify-between gap-2">
                         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#EFE8FF] text-[#5B2DBA]"><Icon className="h-4 w-4" aria-hidden="true" /></span>
                         <div className="flex items-center gap-1.5">
-                          {featured ? <span className="rounded-full bg-[#5B2DBA] px-2 py-0.5 text-[9px] font-black uppercase tracking-wide text-white">Más elegido</span> : null}
+                          {featured ? <span className="rounded-full bg-[#5B2DBA] px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-white">Más elegido</span> : null}
                           {locked ? <Lock className="h-3.5 w-3.5 text-slate-400" aria-hidden="true" /> : null}
                           <span className={'flex h-4 w-4 items-center justify-center rounded-full border-2 ' + (active ? 'border-[#5B2DBA]' : 'border-slate-300')} aria-hidden="true">
                             {active ? <span className="h-2 w-2 rounded-full bg-[#5B2DBA]" /> : null}
@@ -331,7 +331,7 @@ export default function SaaSOnboarding() {
                         ].map(([value, label]) => (
                           <div key={label} className="rounded-lg border border-violet-100 bg-white px-1.5 py-1.5 text-center">
                             <p className="text-[12px] font-black text-[#5B2DBA]">{value}</p>
-                            <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">{label}</p>
+                            <p className="text-[10px] font-bold uppercase text-slate-400">{label}</p>
                           </div>
                         ))}
                       </div>
@@ -377,7 +377,7 @@ export default function SaaSOnboarding() {
                       <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
                         {facebookUrl && (
                           <div className="rounded-xl border border-violet-200 bg-white p-2.5">
-                            <a href={facebookUrl} target="_blank" rel="noopener noreferrer" onClick={() => setFollowFacebook(true)} className="inline-flex min-h-10 w-full items-center justify-center rounded-lg bg-[#5B2DBA] px-3 text-center text-[11px] font-black text-white">
+                            <a href={facebookUrl} target="_blank" rel="noopener noreferrer" onClick={() => setFollowFacebook(true)} className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-[#5B2DBA] px-3 text-center text-[11px] font-black text-white">
                               {followFacebook ? 'Facebook abierto · ir de nuevo' : 'Seguir en Facebook'}
                             </a>
                             <p className={'mt-1.5 text-[10px] font-bold ' + (followFacebook ? 'text-emerald-700' : 'text-slate-500')}>Paso 1 · {followFacebook ? 'completado' : 'pendiente'}</p>
@@ -385,7 +385,7 @@ export default function SaaSOnboarding() {
                         )}
                         {whatsappUrl && (
                           <div className="rounded-xl border border-violet-200 bg-white p-2.5">
-                            <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" onClick={() => setFollowWhatsapp(true)} className="inline-flex min-h-10 w-full items-center justify-center rounded-lg bg-[#5B2DBA] px-3 text-center text-[11px] font-black text-white">
+                            <a href={whatsappUrl} target="_blank" rel="noopener noreferrer" onClick={() => setFollowWhatsapp(true)} className="inline-flex min-h-11 w-full items-center justify-center rounded-lg bg-[#5B2DBA] px-3 text-center text-[11px] font-black text-white">
                               {followWhatsapp ? 'Canal abierto · ir de nuevo' : 'Unirme al canal de WhatsApp'}
                             </a>
                             <p className={'mt-1.5 text-[10px] font-bold ' + (followWhatsapp ? 'text-emerald-700' : 'text-slate-500')}>Paso 2 · {followWhatsapp ? 'completado' : 'pendiente'}</p>

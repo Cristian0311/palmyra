@@ -59,26 +59,31 @@ function emitRemoteDataChanged(table: string) {
 /**
  * Bootstrap mínimo de nube: una vez por tenant/sucursal. Es el único camino de
  * lectura masiva al arrancar; con la app ya abierta no hay sondeos periódicos.
+ *
+ * La exclusión mutua se arma DE FORMA SÍNCRONA antes de cualquier `await`:
+ * dos llamadas simultáneas (inicio + evento `online` + refresco manual)
+ * comparten la misma promesa y el bootstrap nunca corre dos veces a la vez.
  */
-async function runCloudBootstrap(): Promise<boolean> {
-  if (isBrowserOffline()) return false;
-  let key = '';
-  try {
-    const { getActiveTenant } = await import('./tenant');
-    const tenant = await getActiveTenant();
-    if (!tenant.companyId) return false;
-    const { useStore } = await import('../store/useStore');
-    const branchId = useStore.getState().currentBranchId || '';
-    key = tenant.companyId + '|' + branchId;
-    if (key === bootstrappedTenantKey) return false;
-  } catch (error) {
-    warnNetworkOnly('[PALMYRA] No se pudo resolver el tenant para el bootstrap mínimo.', error);
-    return false;
-  }
-
+function runCloudBootstrap(): Promise<boolean> {
+  if (typeof window === 'undefined') return Promise.resolve(false);
+  if (isBrowserOffline()) return Promise.resolve(false);
   if (bootstrapInFlight) return bootstrapInFlight;
 
-  bootstrapInFlight = (async () => {
+  const task = (async (): Promise<boolean> => {
+    let key = '';
+    try {
+      const { getActiveTenant } = await import('./tenant');
+      const tenant = await getActiveTenant();
+      if (!tenant.companyId) return false;
+      const { useStore } = await import('../store/useStore');
+      const branchId = useStore.getState().currentBranchId || '';
+      key = tenant.companyId + '|' + branchId;
+      if (key === bootstrappedTenantKey) return false;
+    } catch (error) {
+      warnNetworkOnly('[PALMYRA] No se pudo resolver el tenant para el bootstrap mínimo.', error);
+      return false;
+    }
+
     try {
       const { useStore } = await import('../store/useStore');
       // `bootstrapCloudData` es una acción del store, no un export del módulo
@@ -104,11 +109,12 @@ async function runCloudBootstrap(): Promise<boolean> {
       warnNetworkOnly('[PALMYRA] Bootstrap mínimo en la nube diferido.', error);
       return false;
     } finally {
-      bootstrapInFlight = null;
+      if (bootstrapInFlight === task) bootstrapInFlight = null;
     }
   })();
 
-  return bootstrapInFlight;
+  bootstrapInFlight = task;
+  return task;
 }
 
 /**

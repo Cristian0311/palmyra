@@ -9,6 +9,13 @@
 import type { ChangeRecord, LocalRow } from "../localDb/contract";
 
 export const HUB_PROTOCOL_VERSION = 1;
+/**
+ * Interruptor del hub LAN. El producto se opera por Wi-Fi/nube: mientras esté
+ * en `false` ninguna superficie intenta emparejarse ni consultar
+ * `/lan/v1/rates`, y las tasas se resuelven siempre contra `/api/exchange-rates`
+ * del propio servidor. Los módulos del hub se conservan para uso futuro.
+ */
+export const LAN_HUB_ENABLED = false;
 /** Límite del cuerpo completo de una petición (5 MiB). */
 export const HUB_MAX_BODY_BYTES = 5 * 1024 * 1024;
 /** Tolerancia de reloj entre hub y cliente. */

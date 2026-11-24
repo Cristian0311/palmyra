@@ -45,7 +45,7 @@ function readableDate(value: string) {
 }
 
 function selectClass() {
-  return "h-9 w-full rounded-xl border border-base bg-secondary px-2.5 text-[11px] font-bold text-primary outline-none focus-visible:ring-2 focus-visible:ring-[#6535C5]/30 cursor-pointer";
+  return "h-11 w-full rounded-xl border border-base bg-secondary px-2.5 text-[12px] font-bold text-primary outline-none focus-visible:ring-2 focus-visible:ring-[#6535C5]/30 cursor-pointer sm:h-9 sm:text-[11px]";
 }
 
 /**
@@ -110,7 +110,7 @@ export function ReportsFilters({
                   onPeriod(option.id);
                 }}
                 className={cn(
-                  "h-8 rounded-lg px-2.5 text-[10px] font-black uppercase tracking-wider transition-colors",
+                  "h-11 rounded-lg px-2.5 text-[11px] font-black uppercase tracking-wider transition-colors sm:h-8 sm:text-[10px]",
                   !date && period === option.id
                     ? "bg-[#6535C5] text-white shadow-xs"
                     : "text-secondary hover:text-primary hover:bg-slate-200 dark:hover:bg-slate-800"
@@ -158,7 +158,7 @@ export function ReportsFilters({
             <button
               type="button"
               onClick={clear}
-              className="inline-flex items-center gap-1 rounded-lg px-1.5 py-1 text-[9px] font-black uppercase tracking-wider text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+              className="inline-flex min-h-9 items-center gap-1 rounded-lg px-1.5 py-1 text-[9px] font-black uppercase tracking-wider text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
               title="Quitar todos los filtros"
             >
               <RotateCcw className="h-3 w-3" /> Limpiar

@@ -2,6 +2,12 @@ import type { OfflineQueueItem } from './offlineQueueTypes';
 
 const DB_VERSION = 1;
 const STORE_NAME = 'operations';
+/**
+ * Una apertura bloqueada (otra pestaña con una versión antigua abierta, borrado
+ * pendiente) no emite `success` ni `error` nunca: sin plazo, la cola entera se
+ * quedaba esperando y las ventas confirmadas no se leían al arrancar.
+ */
+const OPEN_TIMEOUT_MS = 15_000;
 
 let dbPromise: Promise<IDBDatabase | null> | null = null;
 let activeDbName = '';
@@ -18,9 +24,22 @@ export function openOfflineQueueDb(
   if (typeof indexedDB === 'undefined' || !enabled) return Promise.resolve(null);
   if (dbPromise && activeDbName === dbName) return dbPromise;
 
-  dbPromise = new Promise((resolve, reject) => {
-    activeDbName = dbName;
+  activeDbName = dbName;
+  const promise = new Promise<IDBDatabase | null>((resolve, reject) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const settleFailure = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      if (timer !== null) clearTimeout(timer);
+      // Un fallo no envenena la caché: el siguiente intento vuelve a abrir.
+      if (dbPromise === promise) dbPromise = null;
+      reject(error);
+    };
+
     const request = indexedDB.open(dbName, DB_VERSION);
+    timer = setTimeout(() => settleFailure(new Error('IndexedDB open timed out')), OPEN_TIMEOUT_MS);
+    request.onblocked = () => settleFailure(new Error('IndexedDB open blocked'));
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
@@ -32,18 +51,24 @@ export function openOfflineQueueDb(
     };
     request.onsuccess = () => {
       const db = request.result;
+      if (settled) {
+        // La apertura llegó tarde (ya se rechazó): se cierra para no retener
+        // la base y bloquear la siguiente apertura.
+        try { db.close(); } catch {}
+        return;
+      }
+      settled = true;
+      if (timer !== null) clearTimeout(timer);
       db.onversionchange = () => {
         db.close();
-        dbPromise = null;
+        if (dbPromise === promise) dbPromise = null;
       };
       resolve(db);
     };
-    request.onerror = () => {
-      dbPromise = null;
-      reject(request.error || new Error('IndexedDB open failed'));
-    };
+    request.onerror = () => settleFailure(request.error || new Error('IndexedDB open failed'));
   });
-  return dbPromise;
+  dbPromise = promise;
+  return promise;
 }
 
 export async function idbGetAll(dbName: string, enabled: boolean): Promise<OfflineQueueItem[] | null> {

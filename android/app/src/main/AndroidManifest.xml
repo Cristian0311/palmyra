@@ -46,6 +46,32 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Enlace de acceso de dispositivo que genera el propietario
+                 (src/services/deviceAccess.ts): palmyra://device-access?token=...
+                 Abre la app instalada en lugar del navegador y MainActivity
+                 carga la ruta local /device-access. Solo VIEW: los intents de
+                 instalación del APK (content://) no coinciden con este filtro. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="palmyra" android:host="device-access" />
+            </intent-filter>
+
+            <!-- App Link https: el mismo enlace servido por la web
+                 (https://palmyracrm.onrender.com/device-access?token=...).
+                 autoVerify exige https://palmyracrm.onrender.com/.well-known/assetlinks.json
+                 con el paquete cu.palmyra.app y la huella del certificado de firma. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="palmyracrm.onrender.com"
+                    android:pathPrefix="/device-access" />
+            </intent-filter>
         </activity>
 
         <!-- Solo entrega el APK de actualización ya verificado al instalador

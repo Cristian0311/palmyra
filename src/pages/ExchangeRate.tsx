@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Activity, AlertCircle, ArrowDownRight, ArrowUpRight, BarChart3, Clock3, KeyRound, Minus, RefreshCw, ShieldCheck, TrendingDown, TrendingUp } from 'lucide-react';
+import { Activity, AlertCircle, ArrowDownRight, ArrowUpRight, BarChart3, Clock3, Minus, RefreshCw, ShieldCheck, TrendingDown, TrendingUp } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import OperationsSurface from '../components/OperationsSurface';
 import { getSupabase } from '../lib/supabase';
@@ -20,7 +20,9 @@ import {
 } from '../lib/exchangeRates';
 import {
   RATE_HUB_FRESH_MS,
+  RATE_REFRESH_FALLBACK_NOTICE,
   RATE_SOURCE_FRESH_MS,
+  RATE_UNAVAILABLE_NOTICE,
   describeExchangeRateSource,
   formatRateAge,
   hubQuotesToPayload,
@@ -42,7 +44,7 @@ type Period = '24h' | '7d' | '30d' | 'all';
 /** Etiqueta de pantalla de la fuente real de la tasa. */
 const SOURCE_TITLES: Record<ExchangeRateSourceKind, string> = {
   hub: 'Hub local',
-  cloud: 'Servidor local',
+  cloud: 'elTOQUE',
   cached: 'Última válida'
 };
 
@@ -161,7 +163,7 @@ export default function ExchangeRate() {
   const [loading, setLoading] = useState(false);
   const [fromCache, setFromCache] = useState(true);
   const [error, setError] = useState('');
-  const [apiConfigured, setApiConfigured] = useState<boolean | null>(null);
+  const [warning, setWarning] = useState('');
   const [storageError, setStorageError] = useState(false);
   const [period, setPeriod] = useState<Period>('7d');
   const [market, setMarket] = useState<'divisas' | 'crypto'>('divisas');
@@ -169,34 +171,46 @@ export default function ExchangeRate() {
   const [nextRefreshAt, setNextRefreshAt] = useState<number | null>(null);
   const [rateSource, setRateSource] = useState<ExchangeRateSourceView>(() => describeExchangeRateSource(null));
   const inFlight = useRef(false);
+  /** Última tasa ya visible: nunca se reemplaza por una pantalla vacía. */
+  const payloadRef = useRef<ExchangePayload | null>(payload);
   const cardIdPrefix = useId().replace(/[:]/g, '');
+  useEffect(() => { payloadRef.current = payload; }, [payload]);
 
   const load = useCallback(async () => {
     if (inFlight.current) return;
     inFlight.current = true;
     setLoading(true);
-    setError('');
     try {
-      // Hub LAN primero; si no hay sesión o no responde, la nube/elTOQUE local.
+      // El hub está apagado (LAN_HUB_ENABLED = false): siempre /api/exchange-rates.
       const resolved = await resolveExchangeRates();
       const source = describeExchangeRateSource(resolved);
       setRateSource(source);
       const body = hubQuotesToPayload(resolved.rates);
-      if (!body || !isElToquePayload(body)) throw new Error(resolved.error || 'La fuente no entregó cotizaciones válidas.');
+      if (!body || !isElToquePayload(body)) {
+        // Sin cotizaciones nuevas no se borra lo que el dueño ya estaba viendo.
+        setFromCache(true);
+        setWarning(RATE_REFRESH_FALLBACK_NOTICE);
+        setError(payloadRef.current ? '' : RATE_UNAVAILABLE_NOTICE);
+        return;
+      }
       const stale = resolved.stale || source.stale;
       const notice = stale
-        ? body.notice || 'La fuente no entregó una consulta en vivo; se conserva la última tasa válida.'
+        ? body.notice || RATE_REFRESH_FALLBACK_NOTICE
         : body.notice;
       const next: ExchangePayload = { ...body, stale, ...(notice ? { notice } : {}) };
-      setApiConfigured(true);
       setPayload(next);
       setFromCache(stale);
+      setWarning(stale || resolved.error ? RATE_REFRESH_FALLBACK_NOTICE : '');
+      setError('');
       setHistory(current => appendRateSnapshot(current, next));
       try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); setStorageError(false); }
       catch { setStorageError(true); }
-    } catch (error) {
+    } catch {
+      // Cualquier fallo queda en copy neutral: sin hub, IP ni nombres de red.
+      const hadRate = payloadRef.current !== null;
       setFromCache(true);
-      setError(error instanceof Error ? error.message : 'Sin conexión con el servicio de tasas.');
+      setWarning(RATE_REFRESH_FALLBACK_NOTICE);
+      setError(hadRate ? '' : RATE_UNAVAILABLE_NOTICE);
     } finally {
       inFlight.current = false;
       setNextRefreshAt(Date.now() + REFRESH_MS);
@@ -306,6 +320,13 @@ export default function ExchangeRate() {
           </button>
         </header>
 
+        {(error || warning) && (
+          <div role="alert" className="flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+            <AlertCircle className="mt-1 h-4 w-4 shrink-0" aria-hidden="true" />
+            <p className="min-w-0 font-semibold">{error || warning}</p>
+          </div>
+        )}
+
         <section className="rounded-2xl border border-base bg-secondary p-4 shadow-xs" aria-live="polite">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
@@ -331,20 +352,6 @@ export default function ExchangeRate() {
           </div>
         </section>
 
-        {error && (
-          <div role="alert" className={'flex items-start gap-3 rounded-2xl border p-4 text-sm leading-6 ' + (apiConfigured === false ? 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200' : 'border-rose-200 bg-rose-50 text-rose-900 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-200')}>
-            {apiConfigured === false ? <KeyRound className="mt-1 h-4 w-4 shrink-0" aria-hidden="true" /> : <AlertCircle className="mt-1 h-4 w-4 shrink-0" aria-hidden="true" />}
-            <div className="min-w-0">
-              <p className="font-bold">{apiConfigured === false ? 'Falta la credencial de elTOQUE en el servidor' : 'No se pudo actualizar la cotización'}</p>
-              <p className="mt-0.5">{apiConfigured === false
-                ? 'El administrador debe definir ELTOQUE_API_TOKEN en el servidor. Mientras tanto se muestra la última consulta guardada; PALMYRA no inventa ni sustituye tasas.'
-                : error}{error && payload && apiConfigured !== false ? ' Se mantiene la última cotización, no una tasa en vivo.' : ''}</p>
-            </div>
-          </div>
-        )}
-        {payload?.notice && !error && (
-          <p role="status" className="rounded-xl border border-base bg-subtle p-3 text-sm leading-6 text-secondary">{payload.notice}</p>
-        )}
         {storageError && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">El dispositivo no pudo guardar la consulta. No estará disponible al cerrar la aplicación.</p>}
 
         {rates.length > 0 ? (
@@ -482,7 +489,7 @@ export default function ExchangeRate() {
           </section>
         )}
 
-        <p className="text-xs leading-5 text-muted">Fuente: elTOQUE · Referencias del mercado informal, no tasas oficiales ni garantía de una operación. Compra y venta solo aparecen si la API las publica. La fecha indicada corresponde a la consulta, no necesariamente al momento de publicación del proveedor. El hub LAN consulta elTOQUE cada 45 minutos y reparte la tasa a los equipos; esta pantalla se revisa con esa misma cadencia. Sin conexión se conserva la última tasa válida y se indica su antigüedad.</p>
+        <p className="text-xs leading-5 text-muted">Fuente: elTOQUE · Referencias del mercado informal, no tasas oficiales ni garantía de una operación. Compra y venta solo aparecen si la API las publica. La fecha indicada corresponde a la consulta, no necesariamente al momento de publicación del proveedor. La tasa se consulta automáticamente cada 45 minutos por Wi-Fi y esta pantalla se revisa con esa misma cadencia. Sin conexión se conserva la última tasa válida y se indica su antigüedad; también puedes ajustarla a mano en Configuración → Monedas y tasas.</p>
       </main>
     </OperationsSurface>
   );

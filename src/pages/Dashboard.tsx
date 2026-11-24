@@ -28,7 +28,9 @@ import {
   UserCircle,
   ShoppingCart,
   Building2,
-  ShieldCheck
+  ShieldCheck,
+  Hand,
+  Undo2
 } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { cn } from "../lib/utils";
@@ -82,6 +84,18 @@ export default function Dashboard() {
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [branchPickerOpen]);
+
+  // Escape cierra los modales del dashboard sin perder el contexto de la venta.
+  useEffect(() => {
+    if (!selectedTxForDetail && !showAllSalesModal) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (selectedTxForDetail) setSelectedTxForDetail(null);
+      else setShowAllSalesModal(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedTxForDetail, showAllSalesModal]);
 
   const isCupCode = (code: string) => code === 'CUP' || code === 'MN' || code === 'CUC' || code === '₱';
 
@@ -285,9 +299,9 @@ export default function Dashboard() {
     const payments = tx.payments || [];
     if (payments.length === 0) {
       return (
-        <span className="inline-flex items-center gap-1 text-[8.5px] font-bold px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+        <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
           <Banknote className="w-3 h-3 text-slate-400" />
-          {baseCurrency.code} {baseCurrency.symbol}{formatMoney(tx.total)}
+          {baseCurrency.code} {formatMoney(tx.total)}
         </span>
       );
     }
@@ -311,18 +325,18 @@ export default function Dashboard() {
             <span 
               key={idx} 
               className={cn(
-                "inline-flex items-center gap-1 text-[8.5px] font-black px-1.5 py-0.5 rounded-md border shadow-2xs",
+                "inline-flex items-center gap-1 text-[10px] font-black px-1.5 py-0.5 rounded-md border shadow-2xs",
                 badgeStyles
               )}
             >
               {isTransfer ? (
-                <CreditCard className="w-2.5 h-2.5 opacity-75 shrink-0" />
+                <CreditCard className="w-3 h-3 opacity-75 shrink-0" />
               ) : (
-                <Banknote className="w-2.5 h-2.5 opacity-75 shrink-0" />
+                <Banknote className="w-3 h-3 opacity-75 shrink-0" />
               )}
               <span>{p.currencyCode}</span>
               <span>{curr.symbol}{formattedAmount}</span>
-              <span className="text-[7px] font-bold opacity-75 uppercase">
+              <span className="text-[9px] font-bold opacity-75 uppercase">
                 {isTransfer ? 'Transf.' : 'Efec.'}
               </span>
             </span>
@@ -343,22 +357,23 @@ export default function Dashboard() {
 
         <div className="relative z-10 flex min-h-[19rem] items-end px-5 pb-5 pt-12 sm:min-h-[18rem] sm:items-center sm:px-8 sm:py-7 lg:min-h-[19.5rem] lg:px-10">
           <div className="min-w-0 max-w-[35rem]">
-            <div className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[.16em] text-violet-50 backdrop-blur-md">
+            <div className="inline-flex items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[.16em] text-violet-50 backdrop-blur-md">
               <Sparkles className="h-3.5 w-3.5 text-violet-200" />
               <PalmyraWordmark className="h-5 w-auto shrink-0" />
-              <span className="text-[8px] font-black uppercase tracking-[.16em] text-violet-50">Centro de mando</span>
+              <span className="text-[9px] font-black uppercase tracking-[.16em] text-violet-50">Centro de mando</span>
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,.9)]" />
             </div>
 
             <h1 className="mt-3 text-[2.4rem] font-black leading-[.9] tracking-[-.055em] text-white drop-shadow-[0_3px_20px_rgba(10,3,28,.7)] sm:text-[3rem] lg:text-[3.35rem]">
-              ¡Bienvenido{dashboardUserName ? ", " + dashboardUserName.split(" ")[0] : ""}! <span className="align-[.04em] text-[.55em]" aria-hidden="true">👋</span>
+              ¡Bienvenido{dashboardUserName ? ", " + dashboardUserName.split(" ")[0] : ""}!{" "}
+              <Hand className="inline h-[.62em] w-[.62em] align-[.04em] text-amber-300" aria-hidden="true" />
             </h1>
 
             <div className="mt-2.5 flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
               <span className="text-[1.3rem] font-black uppercase leading-none tracking-[.16em] text-white sm:text-[1.55rem]">
                 Palmyra<span className="text-violet-300"> POS</span>
               </span>
-              <span className="text-[7.5px] font-black uppercase tracking-[.22em] text-violet-100/85 sm:text-[8.5px]">
+              <span className="text-[9px] font-black uppercase tracking-[.22em] text-violet-100/85 sm:text-[9.5px]">
                 Potencia tus ventas con fuerza
               </span>
             </div>
@@ -366,18 +381,18 @@ export default function Dashboard() {
             <div className="mt-4 flex flex-wrap items-center gap-2">
               <div className="inline-flex min-w-0 items-center gap-1.5 rounded-xl border border-white/12 bg-black/25 px-2.5 py-1.5 backdrop-blur-md">
                 <Building2 className="h-3.5 w-3.5 shrink-0 text-violet-300" />
-                <span className="max-w-[10rem] truncate text-[9px] font-black text-white">{businessName}</span>
+                <span className="max-w-[10rem] truncate text-[10px] font-black text-white">{businessName}</span>
               </div>
               <div className="inline-flex min-w-0 items-center gap-1.5 rounded-xl border border-white/12 bg-black/25 px-2.5 py-1.5 backdrop-blur-md">
                 <MapPin className="h-3.5 w-3.5 shrink-0 text-violet-300" />
-                <span className="text-[7.5px] font-black uppercase tracking-[.12em] text-violet-200/70">Sucursal</span>
-                <span className="max-w-[9.5rem] truncate text-[9px] font-black text-white">{selectedBranchFilter === "all" ? "Todas" : (branchById.get(selectedBranchFilter)?.name || "Sucursal")}</span>
+                <span className="text-[9px] font-black uppercase tracking-[.12em] text-violet-200/70">Sucursal</span>
+                <span className="max-w-[9.5rem] truncate text-[10px] font-black text-white">{selectedBranchFilter === "all" ? "Todas" : (branchById.get(selectedBranchFilter)?.name || "Sucursal")}</span>
               </div>
               <div className="inline-flex items-center gap-1.5 rounded-xl border border-white/12 bg-black/25 px-2.5 py-1.5 backdrop-blur-md">
                 <Banknote className="h-3.5 w-3.5 shrink-0 text-violet-300" />
-                <span className="text-[9px] font-black text-white">{baseCurrency.code} · {baseCurrency.symbol}</span>
+                <span className="text-[10px] font-black text-white">{baseCurrency.code} · {baseCurrency.symbol}</span>
               </div>
-              <span className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300/20 bg-emerald-400/15 px-2.5 py-1.5 text-[8px] font-black uppercase tracking-[.08em] text-emerald-100 backdrop-blur-md">
+              <span className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-300/20 bg-emerald-400/15 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[.08em] text-emerald-100 backdrop-blur-md">
                 <ShieldCheck className="h-3.5 w-3.5" />
                 Offline listo
               </span>
@@ -390,15 +405,15 @@ export default function Dashboard() {
       <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <div>
           <h2 className="text-sm font-black text-primary tracking-tight">Dashboard</h2>
-          <p className="text-[8px] font-bold uppercase tracking-[0.16em] text-muted mt-0.5">Resumen y actividad de tu negocio</p>
+          <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-muted mt-0.5">Resumen y actividad de tu negocio</p>
         </div>        
         <div className="flex items-center justify-end gap-1.5 w-full sm:w-auto ml-auto shrink-0">
           <button
             onClick={handleGenerateAI}
             disabled={isGeneratingAI}
-            className="btn-secondary h-7 min-h-0 px-2 rounded-lg text-[8px] font-black uppercase tracking-tight gap-1.5 shadow-none"
+            className="btn-secondary h-9 sm:h-8 min-h-0 px-2.5 rounded-lg text-[10px] font-black uppercase tracking-tight gap-1.5 shadow-none"
           >
-            {isGeneratingAI ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3 text-amber-500" />}
+            {isGeneratingAI ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Sparkles className="w-3.5 h-3.5 text-amber-500" />}
             <span>{planCode !== "pro" && planCode ? "IA · Ciudadela" : aiSummary ? "Actualizar IA" : "Analizar con IA"}</span>
           </button>
 
@@ -406,13 +421,14 @@ export default function Dashboard() {
             <button
               type="button"
               onClick={() => setBranchPickerOpen((open) => !open)}
-              className="w-full min-h-7 rounded-lg bg-secondary border border-base px-2 py-1 flex items-center gap-1.5 text-left hover:border-indigo-300 focus:outline-none focus:ring-1 focus:ring-indigo-100 transition-colors shadow-none"
+              className="w-full min-h-9 sm:min-h-8 rounded-lg bg-secondary border border-base px-2 py-1 flex items-center gap-1.5 text-left hover:border-indigo-300 focus:outline-none focus:ring-1 focus:ring-indigo-100 transition-colors shadow-none"
               aria-haspopup="listbox"
               aria-expanded={branchPickerOpen}
+              aria-label="Seleccionar almacén o sucursal"
               title="Seleccionar almacén o sucursal"
             >
               <MapPin className="w-3 h-3 shrink-0 text-indigo-500" />
-              <span className="min-w-0 flex-1 text-[8px] sm:text-[8.5px] font-black text-primary leading-tight uppercase whitespace-normal break-words">
+              <span className="min-w-0 flex-1 text-[10px] font-black text-primary leading-tight uppercase whitespace-normal break-words">
                 {selectedBranchFilter === "all"
                   ? "Todas las sucursales"
                   : (branchById.get(selectedBranchFilter)?.name || "Sucursal")}
@@ -435,11 +451,12 @@ export default function Dashboard() {
                     setBranchPickerOpen(false);
                   }}
                   className={cn(
-                    "w-full rounded-lg px-2.5 py-2 text-left text-[8.5px] font-black uppercase leading-tight",
+                    "w-full rounded-lg px-2.5 py-2.5 text-left text-[10px] font-black uppercase leading-tight inline-flex items-center gap-1.5",
                     selectedBranchFilter === "all" ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300" : "text-primary hover:bg-subtle"
                   )}
                 >
-                  🏢 Todas las sucursales
+                  <Building2 className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                  Todas las sucursales
                 </button>
                 {branches.map((branch) => {
                   const selected = branch.id === selectedBranchFilter;
@@ -455,7 +472,7 @@ export default function Dashboard() {
                         setBranchPickerOpen(false);
                       }}
                       className={cn(
-                        "w-full rounded-lg px-2.5 py-2 text-left text-[8.5px] font-black uppercase leading-tight whitespace-normal break-words",
+                        "w-full rounded-lg px-2.5 py-2.5 text-left text-[10px] font-black uppercase leading-tight whitespace-normal break-words",
                         selected ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-300" : "text-primary hover:bg-subtle"
                       )}
                     >
@@ -507,7 +524,7 @@ export default function Dashboard() {
       <div className="grid grid-cols-2 gap-2 lg:grid-cols-4">
         <StatCard
           label="Ventas de hoy"
-          value={<><span className="mr-1 text-[8px] font-black text-emerald-600 dark:text-emerald-400">{baseCurrency.code}</span>{baseCurrency.symbol}{formatMoney(totalSalesToday)}</>}
+          value={<><span className="mr-1 text-[9px] font-black text-emerald-600 dark:text-emerald-400">{baseCurrency.code}</span>{formatMoney(totalSalesToday)}</>}
           hint={secondaryCurrencies.length > 0 && totalSalesToday > 0
             ? secondaryCurrencies.map(c => `≈ ${c.code} ${(totalSalesToday / (c.rateToBase || 1)).toLocaleString('es-CU', { maximumFractionDigits: 2 })}`).join(' · ')
             : 'Acumulado del día'}
@@ -519,7 +536,7 @@ export default function Dashboard() {
         <StatCard
           label="Tickets emitidos"
           value={todayTransactions.length.toString()}
-          hint={todayTransactions.length > 0 ? `Promedio ${baseCurrency.symbol}${formatMoney(averageTicketToday)}` : 'Sin ventas hoy'}
+          hint={todayTransactions.length > 0 ? `Promedio ${formatMoney(averageTicketToday)}` : 'Sin ventas hoy'}
           icon={ShoppingBag}
           accent="bg-blue-500"
           tint="bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300"
@@ -550,7 +567,7 @@ export default function Dashboard() {
           <div className="mb-2.5 flex items-start justify-between gap-2">
             <div>
               <h3 className="text-[11px] font-black uppercase tracking-[.16em] text-primary">Funcionalidades generales</h3>
-              <p className="text-[7.5px] font-bold uppercase tracking-[.12em] text-muted">Accesos directos a lo que más usas</p>
+              <p className="text-[9px] font-bold uppercase tracking-[.12em] text-muted">Accesos directos a lo que más usas</p>
             </div>
             <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300">
               <LayoutGrid className="h-3.5 w-3.5" />
@@ -567,7 +584,7 @@ export default function Dashboard() {
                 <span className={cn("grid h-9 w-9 place-items-center rounded-full text-white shadow-sm transition-transform group-hover:scale-105", action.color)}>
                   <action.icon className="h-4 w-4" />
                 </span>
-                <span className="text-[7.5px] font-black uppercase leading-tight tracking-[.04em] text-primary">{action.label}</span>
+                <span className="text-[9.5px] font-black uppercase leading-tight tracking-[.04em] text-primary">{action.label}</span>
               </button>
             ))}
           </div>
@@ -581,14 +598,14 @@ export default function Dashboard() {
               <img src="/palmyra-mark-exact.svg" alt="" aria-hidden="true" className="h-7 w-7 object-contain" />
             </span>
             <div className="min-w-0">
-              <p className="text-[7.5px] font-black uppercase tracking-[.16em] text-violet-200/80">Filosofía Palmyra</p>
-              <p className="truncate text-[10px] font-black">Tu negocio, siempre en control</p>
+              <p className="text-[9px] font-black uppercase tracking-[.16em] text-violet-200/80">Filosofía Palmyra</p>
+              <p className="truncate text-[11px] font-black">Tu negocio, siempre en control</p>
             </div>
           </div>
-          <p className="relative mt-3 text-[9.5px] font-bold leading-relaxed text-violet-50/90">
+          <p className="relative mt-3 text-[10px] font-bold leading-relaxed text-violet-50/90">
             “Cada venta suma. Mantén tu inventario al día y deja que Palmyra cuide tus números, incluso sin conexión.”
           </p>
-          <div className="relative mt-3 inline-flex items-center gap-1.5 self-start rounded-xl border border-white/15 bg-black/20 px-2.5 py-1.5 text-[7.5px] font-black uppercase tracking-[.1em] text-emerald-200">
+          <div className="relative mt-3 inline-flex items-center gap-1.5 self-start rounded-xl border border-white/15 bg-black/20 px-2.5 py-1.5 text-[9px] font-black uppercase tracking-[.1em] text-emerald-200">
             <ShieldCheck className="h-3.5 w-3.5" /> Modo offline garantizado
           </div>
         </aside>
@@ -652,7 +669,7 @@ export default function Dashboard() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-xs font-black uppercase tracking-widest text-primary">Recaudación por Moneda</h3>
-              <p className="text-[8px] font-bold text-muted uppercase">Pagos recibidos hoy</p>
+              <p className="text-[9px] font-bold text-muted uppercase">Pagos recibidos hoy</p>
             </div>
             <div className="w-6 h-6 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
               <DollarSign className="w-3.5 h-3.5" />
@@ -672,38 +689,38 @@ export default function Dashboard() {
                 <div key={sale.code} className="bg-subtle p-3 rounded-2xl border border-base flex flex-col gap-2 group hover:border-indigo-500/30 transition-all">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <span className={cn("px-2 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider border shadow-2xs", badgeBg)}>
+                      <span className={cn("px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider border shadow-2xs", badgeBg)}>
                         {sale.code}
                       </span>
                       {isBase && (
-                        <span className="text-[7.5px] font-black uppercase text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-1 py-0.2 rounded">
+                        <span className="text-[9px] font-black uppercase text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-1 py-0.2 rounded">
                           Base
                         </span>
                       )}
                     </div>
-                    <div className="text-right">
-                      <p className="text-sm font-black text-primary leading-tight">
-                        {sale.symbol}{formatMoney(sale.total, sale.symbol, sale.code)}
+                    <div className="text-right min-w-0">
+                      <p className="text-sm font-black text-primary leading-tight whitespace-nowrap">
+                        {formatMoney(sale.total, sale.symbol, sale.code)}
                       </p>
                     </div>
                   </div>
 
                   {/* Breakdown by Method: Cash vs Transfer */}
-                  <div className="flex items-center justify-between text-[8px] font-bold text-muted pt-1 border-t border-base/60">
+                  <div className="flex flex-wrap items-center justify-between gap-1 text-[9.5px] font-bold text-muted pt-1 border-t border-base/60">
                     <div className="flex items-center gap-2">
                       <span className="inline-flex items-center gap-0.5">
-                        <Banknote className="w-2.5 h-2.5 text-slate-400" />
-                        <span>Efec: {sale.symbol}{formatMoney(sale.cash, sale.symbol, sale.code)}</span>
+                        <Banknote className="w-3 h-3 text-slate-400" />
+                        <span>Efec: {formatMoney(sale.cash, sale.symbol, sale.code)}</span>
                       </span>
                       <span>·</span>
                       <span className="inline-flex items-center gap-0.5">
-                        <CreditCard className="w-2.5 h-2.5 text-slate-400" />
-                        <span>Transf: {sale.symbol}{formatMoney(sale.transfer, sale.symbol, sale.code)}</span>
+                        <CreditCard className="w-3 h-3 text-slate-400" />
+                        <span>Transf: {formatMoney(sale.transfer, sale.symbol, sale.code)}</span>
                       </span>
                     </div>
                     {!isBase && sale.total > 0 && (
-                      <span className="font-black text-indigo-600 dark:text-indigo-400">
-                        ≈ {baseCurrency.code} ${Math.round(sale.baseEquivalent).toLocaleString('es-CU')}
+                      <span className="font-black text-indigo-600 dark:text-indigo-400 whitespace-nowrap">
+                        ≈ {baseCurrency.code} {baseCurrency.symbol}{Math.round(sale.baseEquivalent).toLocaleString('es-CU')}
                       </span>
                     )}
                   </div>
@@ -712,23 +729,23 @@ export default function Dashboard() {
             }) : (
               <div className="flex-1 flex flex-col items-center justify-center opacity-40 py-8 text-muted">
                 <DollarSign className="w-8 h-8" />
-                <p className="text-[9px] font-black uppercase tracking-widest mt-1">Sin ingresos registrados</p>
+                <p className="text-[10px] font-black uppercase tracking-widest mt-1">Sin ingresos registrados</p>
               </div>
             )}
           </div>
           
           <div className="mt-4 pt-3.5 border-t border-base">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center gap-2">
               <div>
-                <p className="text-[8px] font-black uppercase text-muted tracking-widest">Total Equivalente Hoy</p>
-                <p className="text-[8px] font-bold text-slate-400">Sumatoria en moneda base</p>
+                <p className="text-[9px] font-black uppercase text-muted tracking-widest">Total Equivalente Hoy</p>
+                <p className="text-[9px] font-bold text-slate-400">Sumatoria en moneda base</p>
               </div>
-              <div className="text-right">
-                <span className="text-[8.5px] font-black uppercase text-indigo-600 dark:text-indigo-400 mr-1">
+              <div className="text-right whitespace-nowrap">
+                <span className="text-[10px] font-black uppercase text-indigo-600 dark:text-indigo-400 mr-1">
                   {baseCurrency.code}
                 </span>
                 <span className="text-sm font-black text-indigo-600 dark:text-indigo-400">
-                  {baseCurrency.symbol}{formatMoney(totalSalesToday)}
+                  {formatMoney(totalSalesToday)}
                 </span>
               </div>
             </div>
@@ -742,9 +759,9 @@ export default function Dashboard() {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h3 className="text-xs font-black text-primary uppercase tracking-widest">Desempeño por Sucursal</h3>
-              <p className="text-[8px] font-bold text-muted uppercase">Ventas acumuladas · {baseCurrency.code}</p>
+              <p className="text-[9px] font-bold text-muted uppercase">Ventas acumuladas · {baseCurrency.code}</p>
             </div>
-            <span className="text-[8px] font-black text-muted uppercase tracking-widest bg-subtle px-2 py-1 rounded-lg border border-base">
+            <span className="text-[9px] font-black text-muted uppercase tracking-widest bg-subtle px-2 py-1 rounded-lg border border-base">
               {branches.length} Sucursales
             </span>
           </div>
@@ -765,21 +782,21 @@ export default function Dashboard() {
                         </div>
                         <p className="text-[10px] font-black text-primary uppercase tracking-tight truncate">{branch.name}</p>
                       </div>
-                      <span className="text-[8px] font-black text-slate-500 dark:text-slate-400 bg-secondary px-1.5 py-0.5 rounded border border-base">
+                      <span className="text-[9px] font-black text-slate-500 dark:text-slate-400 bg-secondary px-1.5 py-0.5 rounded border border-base">
                         {percentage}%
                       </span>
                     </div>
                     <div className="space-y-1.5">
-                      <div className="flex justify-between items-end">
-                        <p className="text-[8px] font-black text-muted uppercase tracking-widest">Ventas Totales</p>
-                        <p className="text-xs font-black text-indigo-600 dark:text-indigo-400">
-                          <span className="text-[7.5px] font-bold text-muted mr-1">{baseCurrency.code}</span>
+                      <div className="flex justify-between items-end gap-2">
+                        <p className="text-[9px] font-black text-muted uppercase tracking-widest">Ventas Totales</p>
+                        <p className="text-xs font-black text-indigo-600 dark:text-indigo-400 whitespace-nowrap">
+                          <span className="text-[9px] font-bold text-muted mr-1">{baseCurrency.code}</span>
                           {formatMoney(branchTotal)}
                         </p>
                       </div>
-                      <div className="flex justify-between items-end">
-                        <p className="text-[8px] font-black text-muted uppercase tracking-widest">Transacciones</p>
-                        <p className="text-[10px] font-black text-primary">{branchSalesCount} tickets</p>
+                      <div className="flex justify-between items-end gap-2">
+                        <p className="text-[9px] font-black text-muted uppercase tracking-widest">Transacciones</p>
+                        <p className="text-[10px] font-black text-primary whitespace-nowrap">{branchSalesCount} tickets</p>
                       </div>
                     </div>
                   </div>
@@ -796,16 +813,16 @@ export default function Dashboard() {
         </div>
 
         {/* Recent Sales with explicit Currencies and Payment Methods */}
-        <div className="bg-secondary p-5 rounded-3xl border border-base shadow-xs">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-secondary p-4 sm:p-5 rounded-2xl border border-base shadow-xs">
+          <div className="flex items-center justify-between gap-2 mb-4">
             <div>
               <h3 className="text-xs font-black text-primary uppercase tracking-widest">Últimas Ventas</h3>
-              <p className="text-[8px] font-bold text-muted uppercase">Detalle de moneda y método de cobro</p>
+              <p className="text-[9px] font-bold text-muted uppercase">Detalle de moneda y método de cobro</p>
             </div>
             {todayTransactions.length > 4 && (
               <button 
                 onClick={() => setShowAllSalesModal(true)}
-                className="text-[8.5px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:underline flex items-center gap-0.5"
+                className="text-[9.5px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest hover:underline flex items-center gap-0.5 shrink-0"
               >
                 <span>Ver Todas ({todayTransactions.length})</span>
                 <ChevronRight className="w-3 h-3" />
@@ -825,21 +842,21 @@ export default function Dashboard() {
                   onClick={() => setSelectedTxForDetail(tx)}
                   className="p-2.5 bg-subtle hover:bg-slate-100 dark:hover:bg-slate-800/80 rounded-2xl border border-base transition-all cursor-pointer group flex flex-col gap-2"
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-xl bg-secondary border border-base flex items-center justify-center text-primary group-hover:border-indigo-500/40">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-7 h-7 shrink-0 rounded-xl bg-secondary border border-base flex items-center justify-center text-primary group-hover:border-indigo-500/40">
                         <Receipt className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                       </div>
-                      <div>
-                        <div className="flex items-center gap-1.5">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           <p className="text-[10px] font-black text-primary uppercase tracking-tighter">
                             {ticketDisplay(tx.ticketNumber, tx.id)}
                           </p>
-                          <span className="text-[7.5px] font-bold text-muted bg-secondary px-1 py-0.5 rounded border border-base">
+                          <span className="text-[9px] font-bold text-muted bg-secondary px-1 py-0.5 rounded border border-base whitespace-nowrap">
                             {itemCount} {itemCount === 1 ? 'artículo' : 'artículos'}
                           </span>
                         </div>
-                        <p className="text-[7.5px] font-bold text-muted uppercase">
+                        <p className="text-[9px] font-bold text-muted uppercase truncate">
                           {new Date(tx.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                           {customer ? ` · ${customer.name}` : ''}
                           {cashier ? ` · ${cashier.name}` : (tx.cashierName ? ` · ${tx.cashierName}` : '')}
@@ -847,25 +864,26 @@ export default function Dashboard() {
                       </div>
                     </div>
 
-                    <div className="text-right">
-                      <p className="text-[11px] font-black text-primary">
-                        <span className="text-[8px] font-bold text-indigo-600 dark:text-indigo-400 mr-0.5">{baseCurrency.code}</span>
+                    <div className="text-right shrink-0">
+                      <p className="text-[11px] font-black text-primary whitespace-nowrap tabular-nums">
+                        <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 mr-0.5">{baseCurrency.code}</span>
                         {formatMoney(tx.total)}
                       </p>
-                      <span className="text-[7px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest inline-flex items-center gap-0.5">
+                      <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest inline-flex items-center gap-0.5">
                         <CheckCircle2 className="w-2.5 h-2.5" /> Cobrado
                       </span>
                     </div>
                   </div>
 
                   {/* Payment Currencies Breakdown */}
-                  <div className="flex items-center justify-between pt-1 border-t border-base/50">
-                    <div className="flex-1 overflow-x-auto no-scrollbar">
+                  <div className="flex items-center justify-between gap-1 pt-1 border-t border-base/50">
+                    <div className="flex-1 min-w-0 overflow-x-auto no-scrollbar">
                       {renderPaymentBadges(tx)}
                     </div>
                     <button 
                       type="button"
-                      className="text-[7.5px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-0.5 shrink-0 ml-1"
+                      aria-label={`Ver ticket ${ticketDisplay(tx.ticketNumber, tx.id)}`}
+                      className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-wider opacity-100 lg:opacity-0 lg:group-hover:opacity-100 focus-visible:opacity-100 transition-opacity flex items-center gap-0.5 shrink-0 ml-1 py-1"
                     >
                       <Eye className="w-2.5 h-2.5" />
                       Ver ticket
@@ -876,20 +894,20 @@ export default function Dashboard() {
             }) : (
               <div className="flex flex-col items-center justify-center py-8 text-muted opacity-40">
                 <ShoppingBag className="w-8 h-8" />
-                <p className="text-[9px] font-black uppercase tracking-widest mt-2">No hay ventas registradas hoy</p>
+                <p className="text-[10px] font-black uppercase tracking-widest mt-2 text-center">No hay ventas registradas hoy</p>
               </div>
             )}
           </div>
         </div>
 
         {/* Low Stock (Compact) */}
-        <div className="bg-secondary p-5 rounded-3xl border border-base shadow-xs">
-          <div className="flex items-center justify-between mb-4">
+        <div className="bg-secondary p-4 sm:p-5 rounded-2xl border border-base shadow-xs">
+          <div className="flex items-center justify-between gap-2 mb-4">
             <div>
               <h3 className="text-xs font-black text-rose-600 dark:text-rose-400 uppercase tracking-widest">Stock Crítico</h3>
-              <p className="text-[8px] font-bold text-muted uppercase">Requieren reposición inmediata</p>
+              <p className="text-[9px] font-bold text-muted uppercase">Requieren reposición inmediata</p>
             </div>
-            <span className="text-[8px] font-black text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-lg border border-rose-200 dark:border-rose-900/40">
+            <span className="text-[9px] font-black text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/40 px-2 py-0.5 rounded-lg border border-rose-200 dark:border-rose-900/40 whitespace-nowrap">
               {lowStockCount} alertas
             </span>
           </div>
@@ -907,7 +925,7 @@ export default function Dashboard() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-[10px] font-black text-primary uppercase tracking-tighter truncate">{product?.name || 'Producto'}</p>
-                      <p className="text-[7.5px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-widest">
+                      <p className="text-[9px] font-bold text-rose-600 dark:text-rose-400 uppercase tracking-widest">
                         Quedan: <strong>{item.quantity}</strong> {product?.unit || 'u.'} (Mín: {item.minQuantity})
                         {selectedBranchFilter === 'all' && branch ? ` · ${branch.name}` : ''}
                       </p>
@@ -924,7 +942,7 @@ export default function Dashboard() {
             {lowStockCount === 0 && (
               <div className="flex flex-col items-center justify-center py-8 text-muted">
                 <Package className="w-8 h-8 opacity-20" />
-                <p className="text-[9px] font-black uppercase tracking-widest mt-2">Inventario en niveles óptimos</p>
+                <p className="text-[10px] font-black uppercase tracking-widest mt-2 text-center">Inventario en niveles óptimos</p>
               </div>
             )}
           </div>
@@ -934,47 +952,53 @@ export default function Dashboard() {
       {/* Modal: Detalle Completo del Ticket de Venta */}
       {selectedTxForDetail && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-[2rem] max-w-lg w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Detalle de la venta"
+            className="bg-white dark:bg-slate-900 rounded-[2rem] max-w-lg w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto"
+          >
             {/* Modal Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2.5">
-                <div className="w-10 h-10 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-10 h-10 shrink-0 rounded-2xl bg-indigo-50 dark:bg-indigo-950/50 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
                   <Receipt className="w-5 h-5" />
                 </div>
-                <div>
-                  <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight">
+                <div className="min-w-0">
+                  <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight truncate">
                     Detalle de venta · {ticketDisplay(selectedTxForDetail.ticketNumber, selectedTxForDetail.id)}
                   </h3>
-                  <p className="text-[8.5px] font-bold text-slate-500 uppercase">
+                  <p className="text-[9px] font-bold text-slate-500 uppercase">
                     {new Date(selectedTxForDetail.date).toLocaleString('es-CU')}
                   </p>
                 </div>
               </div>
               <button 
                 onClick={() => setSelectedTxForDetail(null)}
-                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center transition-colors"
+                aria-label="Cerrar detalle de venta"
+                className="w-8 h-8 shrink-0 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {/* General Info */}
-            <div className="grid grid-cols-2 gap-2 text-[9px] bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
+            <div className="grid grid-cols-2 gap-2 text-[10px] bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-100 dark:border-slate-800">
               <div>
-                <span className="text-slate-400 font-bold uppercase block text-[7.5px]">Sucursal</span>
+                <span className="text-slate-400 font-bold uppercase block text-[9px]">Sucursal</span>
                 <span className="font-black text-slate-800 dark:text-slate-200">
                   {branches.find(b => b.id === selectedTxForDetail.branchId)?.name || 'Sucursal Principal'}
                 </span>
               </div>
               <div>
-                <span className="text-slate-400 font-bold uppercase block text-[7.5px]">Cajero / Vendedor</span>
+                <span className="text-slate-400 font-bold uppercase block text-[9px]">Cajero / Vendedor</span>
                 <span className="font-black text-slate-800 dark:text-slate-200">
                   {users.find(u => u.id === selectedTxForDetail.userId)?.name || selectedTxForDetail.cashierName || 'Vendedor'}
                 </span>
               </div>
               {selectedTxForDetail.customerId && (
                 <div className="col-span-2 pt-1 border-t border-slate-200/50 dark:border-slate-700/50">
-                  <span className="text-slate-400 font-bold uppercase block text-[7.5px]">Cliente</span>
+                  <span className="text-slate-400 font-bold uppercase block text-[9px]">Cliente</span>
                   <span className="font-black text-slate-800 dark:text-slate-200">
                     {customers.find(c => c.id === selectedTxForDetail.customerId)?.name || 'Cliente'}
                   </span>
@@ -984,7 +1008,7 @@ export default function Dashboard() {
 
             {/* Products List */}
             <div>
-              <h4 className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Artículos Vendidos</h4>
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Artículos Vendidos</h4>
               <div className="space-y-1.5 max-h-48 overflow-y-auto">
                 {(selectedTxForDetail.items || []).map((item, idx) => {
                   const prod = products.find(p => p.id === (typeof item.product === 'string' ? item.product : item.product?.id));
@@ -994,16 +1018,16 @@ export default function Dashboard() {
                   const itemTotal = price * qty;
 
                   return (
-                    <div key={idx} className="flex justify-between items-center p-2 rounded-xl bg-slate-50 dark:bg-slate-800/40 text-[9.5px]">
+                    <div key={idx} className="flex justify-between items-center gap-2 p-2 rounded-xl bg-slate-50 dark:bg-slate-800/40 text-[10px]">
                       <div className="min-w-0 pr-2">
                         <p className="font-black text-slate-800 dark:text-slate-200 truncate">{name}</p>
-                        <p className="text-[8px] text-slate-500 font-bold">
-                          {qty} x {baseCurrency.code} ${price.toLocaleString('es-CU')}
+                        <p className="text-[9px] text-slate-500 font-bold">
+                          {qty} x {baseCurrency.code} {baseCurrency.symbol}{price.toLocaleString('es-CU')}
                           {item.variantLabel ? ` · ${item.variantLabel}` : ''}
                         </p>
                       </div>
-                      <div className="text-right shrink-0 font-black text-slate-900 dark:text-white">
-                        {baseCurrency.code} ${itemTotal.toLocaleString('es-CU')}
+                      <div className="text-right shrink-0 font-black text-slate-900 dark:text-white whitespace-nowrap">
+                        {baseCurrency.code} {baseCurrency.symbol}{itemTotal.toLocaleString('es-CU')}
                       </div>
                     </div>
                   );
@@ -1013,7 +1037,7 @@ export default function Dashboard() {
 
             {/* Payment & Currency Breakdown Section */}
             <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <h4 className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+              <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">
                 Detalle de Monedas y Métodos de Cobro
               </h4>
               <div className="space-y-1.5">
@@ -1024,25 +1048,25 @@ export default function Dashboard() {
                   const isTransfer = p.method === 'transfer';
 
                   return (
-                    <div key={idx} className="p-2.5 rounded-xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 flex items-center justify-between text-[9px]">
-                      <div className="flex items-center gap-2">
-                        <div className="p-1 rounded-lg bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300">
+                    <div key={idx} className="p-2.5 rounded-xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/40 flex items-center justify-between gap-2 text-[10px]">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="p-1 rounded-lg bg-indigo-100 dark:bg-indigo-900 text-indigo-700 dark:text-indigo-300 shrink-0">
                           {isTransfer ? <CreditCard className="w-3.5 h-3.5" /> : <Banknote className="w-3.5 h-3.5" />}
                         </div>
-                        <div>
-                          <span className="font-black uppercase text-indigo-900 dark:text-indigo-200 block">
+                        <div className="min-w-0">
+                          <span className="font-black uppercase text-indigo-900 dark:text-indigo-200 block truncate">
                             {p.currencyCode} {curr.symbol}{p.amount.toLocaleString('es-CU', { minimumFractionDigits: isCupCode(p.currencyCode) ? 0 : 2 })}
                           </span>
-                          <span className="text-[7.5px] font-bold text-indigo-600 dark:text-indigo-400 uppercase">
+                          <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 uppercase">
                             {isTransfer ? 'Transferencia Bancaria' : 'Efectivo'} 
-                            {p.currencyCode !== baseCurrency.code ? ` · Tasa: $${rate} CUP` : ''}
+                            {p.currencyCode !== baseCurrency.code ? ` · Tasa: ${rate} ${baseCurrency.code}` : ''}
                           </span>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <span className="text-[7.5px] font-bold text-slate-400 block uppercase">Equivalente Base</span>
-                        <span className="font-black text-slate-900 dark:text-white">
-                          {baseCurrency.code} ${Math.round(equivInBase).toLocaleString('es-CU')}
+                      <div className="text-right shrink-0">
+                        <span className="text-[9px] font-bold text-slate-400 block uppercase">Equivalente Base</span>
+                        <span className="font-black text-slate-900 dark:text-white whitespace-nowrap">
+                          {baseCurrency.code} {baseCurrency.symbol}{Math.round(equivInBase).toLocaleString('es-CU')}
                         </span>
                       </div>
                     </div>
@@ -1051,10 +1075,13 @@ export default function Dashboard() {
 
                 {/* Change details if given */}
                 {selectedTxForDetail.changeGiven && selectedTxForDetail.changeGiven > 0 && (
-                  <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 flex items-center justify-between text-[9px]">
-                    <span className="font-bold text-amber-800 dark:text-amber-300">↩ Vuelto Entregado:</span>
-                    <span className="font-black text-amber-900 dark:text-amber-200">
-                      {baseCurrency.code} ${Math.round(selectedTxForDetail.changeGiven).toLocaleString('es-CU')}
+                  <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 flex items-center justify-between gap-2 text-[10px]">
+                    <span className="inline-flex items-center gap-1 font-bold text-amber-800 dark:text-amber-300">
+                      <Undo2 className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      Vuelto entregado
+                    </span>
+                    <span className="font-black text-amber-900 dark:text-amber-200 whitespace-nowrap">
+                      {baseCurrency.code} {baseCurrency.symbol}{Math.round(selectedTxForDetail.changeGiven).toLocaleString('es-CU')}
                     </span>
                   </div>
                 )}
@@ -1062,15 +1089,15 @@ export default function Dashboard() {
             </div>
 
             {/* Total Footer */}
-            <div className="pt-3 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center">
+            <div className="pt-3 border-t border-slate-200 dark:border-slate-700 flex justify-between items-center gap-2">
               <div>
-                <span className="text-[8px] font-black uppercase tracking-widest text-slate-400 block">Total de la Venta</span>
-                <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">Transacción Completada</span>
+                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 block">Total de la Venta</span>
+                <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase">Transacción Completada</span>
               </div>
-              <div className="text-right">
+              <div className="text-right whitespace-nowrap">
                 <span className="text-sm font-black text-slate-900 dark:text-white">
                   <span className="text-[10px] text-indigo-600 dark:text-indigo-400 mr-1">{baseCurrency.code}</span>
-                  {baseCurrency.symbol}{formatMoney(selectedTxForDetail.total)}
+                  {formatMoney(selectedTxForDetail.total)}
                 </span>
               </div>
             </div>
@@ -1088,19 +1115,25 @@ export default function Dashboard() {
       {/* Modal: Todas las Ventas del Día */}
       {showAllSalesModal && (
         <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-[2rem] max-w-2xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 animate-in zoom-in-95 max-h-[90vh] flex flex-col">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Ventas de hoy"
+            className="bg-white dark:bg-slate-900 rounded-[2rem] max-w-2xl w-full p-4 sm:p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 animate-in zoom-in-95 max-h-[90vh] flex flex-col"
+          >
+            <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="min-w-0">
                 <h3 className="text-sm font-black text-slate-900 dark:text-white uppercase tracking-tight">
                   Ventas de Hoy ({todayTransactions.length})
                 </h3>
-                <p className="text-[8.5px] font-bold text-slate-500 uppercase">
+                <p className="text-[9px] font-bold text-slate-500 uppercase">
                   Detalle de monedas y pagos registrados
                 </p>
               </div>
               <button 
                 onClick={() => setShowAllSalesModal(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center transition-colors"
+                aria-label="Cerrar lista de ventas"
+                className="w-8 h-8 shrink-0 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -1121,17 +1154,17 @@ export default function Dashboard() {
                     }}
                     className="p-3 bg-slate-50 dark:bg-slate-800/40 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-2xl border border-slate-200/60 dark:border-slate-700/60 transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-2 group"
                   >
-                    <div className="space-y-1">
-                      <div className="flex items-center gap-2">
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-xs font-black text-slate-900 dark:text-white">{ticketDisplay(tx.ticketNumber, tx.id)}</span>
-                        <span className="text-[8px] font-bold text-slate-500 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
+                        <span className="text-[9px] font-bold text-slate-500 bg-white dark:bg-slate-900 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700">
                           {new Date(tx.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
-                        <span className="text-[8px] font-bold text-indigo-600 dark:text-indigo-400">
+                        <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400">
                           {itemCount} {itemCount === 1 ? 'artículo' : 'artículos'}
                         </span>
                       </div>
-                      <p className="text-[8px] text-slate-500 font-bold">
+                      <p className="text-[9px] text-slate-500 font-bold truncate">
                         {cashier?.name || tx.cashierName || 'Vendedor'} 
                         {customer ? ` · Cliente: ${customer.name}` : ''}
                       </p>
@@ -1141,11 +1174,11 @@ export default function Dashboard() {
                     </div>
 
                     <div className="text-right shrink-0">
-                      <p className="text-sm font-black text-slate-900 dark:text-white">
-                        <span className="text-[8.5px] text-indigo-600 dark:text-indigo-400 mr-1">{baseCurrency.code}</span>
-                        {baseCurrency.symbol}{formatMoney(tx.total)}
+                      <p className="text-sm font-black text-slate-900 dark:text-white whitespace-nowrap">
+                        <span className="text-[9px] text-indigo-600 dark:text-indigo-400 mr-1">{baseCurrency.code}</span>
+                        {formatMoney(tx.total)}
                       </p>
-                      <span className="text-[8px] font-bold text-indigo-600 dark:text-indigo-400 group-hover:underline flex items-center justify-end gap-0.5">
+                      <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 group-hover:underline flex items-center justify-end gap-0.5">
                         <Eye className="w-2.5 h-2.5" /> Ver detalle
                       </span>
                     </div>
@@ -1178,15 +1211,15 @@ function StatCard({ label, value, hint, icon: Icon, accent, tint }: {
   tint: string;
 }) {
   return (
-    <div className="relative flex min-w-0 items-center gap-2.5 overflow-hidden rounded-2xl border border-base bg-secondary py-2.5 pl-3.5 pr-3 shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md">
+    <div className="relative flex min-w-0 items-center gap-2.5 overflow-hidden rounded-2xl border border-base bg-secondary py-2.5 pl-3 pr-3 shadow-xs transition-all hover:-translate-y-0.5 hover:shadow-md">
       <span aria-hidden="true" className={cn("absolute inset-y-2 left-0 w-[3px] rounded-full", accent)} />
       <span className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-xl", tint)}>
         <Icon className="h-4 w-4" />
       </span>
       <div className="min-w-0">
-        <p className="truncate text-[7.5px] font-black uppercase tracking-[.13em] text-muted">{label}</p>
-        <p className="truncate text-[15px] font-black leading-tight text-primary tabular-nums">{value}</p>
-        {hint ? <p className="truncate text-[7px] font-bold text-muted/90">{hint}</p> : null}
+        <p className="truncate text-[9px] font-black uppercase tracking-[.13em] text-muted">{label}</p>
+        <p className="truncate text-[13px] font-black leading-tight text-primary tabular-nums sm:text-[15px]">{value}</p>
+        {hint ? <p className="truncate text-[8.5px] font-bold text-muted/90">{hint}</p> : null}
       </div>
     </div>
   );

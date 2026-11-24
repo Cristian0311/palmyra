@@ -25,8 +25,12 @@ export const BOOTSTRAP_TRANSFERS_LIMIT = 200;
 export const BOOTSTRAP_PURCHASE_ORDERS_LIMIT = 200;
 export const BOOTSTRAP_EXTRAS_LIMIT = 200;
 export const BOOTSTRAP_CUSTOMERS_LIMIT = 2000;
-/** Presupuesto de solicitudes de la ventana operativa por arranque. */
-export const BOOTSTRAP_REQUEST_BUDGET = 25;
+/**
+ * Presupuesto de solicitudes de la ventana operativa por arranque.
+ * Incluye las páginas extra de inventario/clientes: una empresa con varios
+ * almacenes supera las 1000 filas y necesita 2-3 consultas por tabla.
+ */
+export const BOOTSTRAP_REQUEST_BUDGET = 34;
 /** Filas máximas de líneas/pagos por consulta de ventana. */
 export const BOOTSTRAP_SALE_CHILD_ROWS = 1000;
 
@@ -93,8 +97,11 @@ function wrapQueryBuilder(builder: any, table: string, metrics: CloudPullMetrics
         return (onFulfilled?: any, onRejected?: any) => {
           if (phase === 'window' && metrics.windowRequests >= BOOTSTRAP_REQUEST_BUDGET) {
             // Presupuesto agotado: se corta la consulta en lugar de gastar red.
+            // Se devuelve ERROR (no vacío) para que la sección se marque fallida
+            // y la caché local de esa sección no se sobrescriba con [].
             metrics.budgetDenied += 1;
-            return Promise.resolve(onFulfilled ? onFulfilled({ data: [], error: null }) : undefined);
+            const denied = { data: null, error: new Error('Presupuesto de red agotado durante el arranque') };
+            return Promise.resolve(onFulfilled ? onFulfilled(denied) : undefined);
           }
           const startedAt = Date.now();
           return target.then((res: any) => {
@@ -133,6 +140,85 @@ export function createCountingClient(base: any, metrics: CloudPullMetrics, phase
 
 type TenantLike = { companyId: string };
 
+/** Estado de una sección del arranque: nunca detiene a las demás. */
+export type BootstrapSectionStatus = {
+  ok: boolean;
+  /** Etiqueta humana para logs y UI ("Almacenes", "Productos"...). */
+  label: string;
+  /** Filas remotas recibidas (0 si la sección falló). */
+  rows: number;
+  /** Filas que el filtro de negocio deja fuera de la UI (archivadas/inactivas). */
+  hidden?: number;
+  error?: string;
+  ms: number;
+};
+
+/** Informe del arranque: cada sección se resuelve por separado. */
+export type BootstrapReport = {
+  ok: boolean;
+  companyId: string;
+  sinceIso: string;
+  sections: Record<string, BootstrapSectionStatus>;
+  errors: Array<{ section: string; label: string; message: string }>;
+  /** Consultas auxiliares degradadas que no invalidan su sección principal. */
+  warnings: string[];
+};
+
+export function describeBootstrapError(error: unknown): string {
+  const raw = error instanceof Error
+    ? error.message
+    : typeof error === 'string'
+      ? error
+      : (error as any)?.message ?? '';
+  const clean = String(raw).replace(/\s+/g, ' ').trim();
+  return clean || 'Error desconocido al consultar la nube';
+}
+
+/** Resultado de una consulta aislada: `ok:false` nunca detiene al resto. */
+type Settled<T> = { ok: boolean; data?: T; error?: string };
+
+/** Resuelve una consulta aislada: un error se devuelve, no se propaga. */
+async function settle<T>(work: () => PromiseLike<{ data?: T; error?: any }>): Promise<Settled<T>> {
+  try {
+    const res = await work();
+    if (res?.error) return { ok: false, error: describeBootstrapError(res.error) };
+    return { ok: true, data: (res?.data ?? ([] as unknown as T)) as T };
+  } catch (error) {
+    return { ok: false, error: describeBootstrapError(error) };
+  }
+}
+
+/** Filas por respuesta de PostgREST: más que esto no llega en una consulta. */
+export const CLOUD_PAGE_SIZE = 1000;
+
+/**
+ * Descarga una tabla completa página a página.
+ *
+ * PostgREST/Supabase corta cada respuesta en ~1000 filas: una consulta sin
+ * `range` devolvía el catálogo o el inventario a medias y las filas restantes
+ * desaparecían sin error (productos, códigos de barras y existencias "faltaban".
+ * Si cualquier página falla se devuelve `ok:false` para que la sección se marque
+ * fallida y la store conserve su copia local, nunca una lista truncada.
+ */
+async function settlePaged(
+  fetchPage: (from: number, to: number) => PromiseLike<{ data?: any[] | null; error?: any }>,
+  pageSize: number = CLOUD_PAGE_SIZE
+): Promise<Settled<any[]>> {
+  const rows: any[] = [];
+  const size = Math.max(1, Math.trunc(pageSize));
+  for (let from = 0; ; from += size) {
+    try {
+      const res = await fetchPage(from, from + size - 1);
+      if (res?.error) return { ok: false, error: describeBootstrapError(res.error) };
+      const page = Array.isArray(res?.data) ? res.data : [];
+      rows.push(...page);
+      if (page.length < size) return { ok: true, data: rows };
+    } catch (error) {
+      return { ok: false, error: describeBootstrapError(error) };
+    }
+  }
+}
+
 type CatalogRefs = {
   productRows: any[];
   variantRows: any[];
@@ -150,52 +236,109 @@ type CatalogOptions = {
   includeSaasUser?: boolean;
 };
 
-async function loadCatalog(options: CatalogOptions = {}) {
+type CatalogParts = {
+  tenant: TenantLike;
+  warehouses: any[];
+  branches: Branch[];
+  categories: any[];
+  products: Product[];
+  users: User[];
+  currencies: any[];
+  /** `null` cuando la sección de ajustes falló: no se pisa la caché local. */
+  storeConfig: any;
+  receiptConfig: any;
+  refs: CatalogRefs;
+  sections: Record<string, BootstrapSectionStatus>;
+  errors: Array<{ section: string; label: string; message: string }>;
+  warnings: string[];
+};
+
+function status(ok: boolean, label: string, rows: number, ms: number, extra?: { hidden?: number; error?: string }): BootstrapSectionStatus {
+  const entry: BootstrapSectionStatus = { ok, label, rows, ms };
+  if (extra?.hidden !== undefined) entry.hidden = extra.hidden;
+  if (extra?.error) entry.error = extra.error;
+  return entry;
+}
+
+/**
+ * Catálogo por secciones independientes. Se mantienen los filtros de negocio
+ * en la ASIGNACIÓN (una bodega archivada no se ofrece para operar), pero las
+ * filas archivadas/inactivas viajan igual y se informan en `hidden`, de modo
+ * que el arranque pueda conservar las que el dispositivo ya referencia.
+ */
+async function loadCatalogSections(options: CatalogOptions = {}): Promise<CatalogParts> {
   const tenant = (options.tenant || await getActiveTenant()) as TenantLike;
+  if (!tenant?.companyId) throw new Error('No se pudo resolver la empresa activa para el arranque.');
   const supabase = options.client || getSupabase()!;
+  if (!supabase) throw new Error('Supabase no está configurado.');
 
-  const [warehousesRes, categoriesRes, productsRes, employeesRes, accessRes, companyRes, variantsRes, barcodeRes, kitRes, currenciesRes, exchangeRatesRes, pricesRes] = await Promise.all([
-    supabase.from('warehouses').select('*').eq('company_id', tenant.companyId).eq('active', true).order('created_at', { ascending: true }),
-    supabase.from('categories').select('*').eq('company_id', tenant.companyId).eq('active', true).order('created_at', { ascending: true }),
-    supabase.from('products').select('*').eq('company_id', tenant.companyId).neq('status', 'archived').order('created_at', { ascending: true }),
-    supabase.from('employees').select('*').eq('company_id', tenant.companyId).eq('active', true).order('created_at', { ascending: true }),
-    supabase.from('employee_warehouse_access').select('*').eq('company_id', tenant.companyId),
-    supabase.from('companies').select('id,name,default_currency_code,timezone').eq('id', tenant.companyId).single(),
-    supabase.from('product_variants').select('*').eq('company_id', tenant.companyId).eq('active', true),
-    supabase.from('product_barcodes').select('*').eq('company_id', tenant.companyId).eq('active', true),
-    supabase.from('product_kit_components').select('*').eq('company_id', tenant.companyId),
-    supabase.from('currencies').select('*').eq('active', true).order('code'),
-    supabase.from('exchange_rates').select('base_currency,quote_currency,rate,effective_at').eq('company_id', tenant.companyId).order('effective_at', { ascending: false }),
-    supabase.from('product_prices').select('product_id,currency_code,price,valid_from,valid_to').eq('company_id', tenant.companyId).is('valid_to', null).order('valid_from', { ascending: false }),
+  const started = Date.now();
+  // Tablas de catálogo que pueden superar el tope de filas por respuesta se
+  // descargan paginadas; las pequeñas (almacenes, monedas, ajustes) no.
+  const [warehousesR, categoriesR, productsR, employeesR, accessR, companyR, variantsR, barcodeR, kitR, currenciesR, ratesR, pricesR, compensationR, settingsR] = await Promise.all([
+    settle<any[]>(() => supabase.from('warehouses').select('*').eq('company_id', tenant.companyId).order('created_at', { ascending: true })),
+    settle<any[]>(() => supabase.from('categories').select('*').eq('company_id', tenant.companyId).order('created_at', { ascending: true })),
+    settlePaged((from, to) => supabase.from('products').select('*').eq('company_id', tenant.companyId).order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, to)),
+    settlePaged((from, to) => supabase.from('employees').select('*').eq('company_id', tenant.companyId).eq('active', true).order('created_at', { ascending: true }).order('id', { ascending: true }).range(from, to)),
+    settlePaged((from, to) => supabase.from('employee_warehouse_access').select('*').eq('company_id', tenant.companyId).order('employee_id', { ascending: true }).range(from, to)),
+    settle<any>(() => supabase.from('companies').select('id,name,default_currency_code,timezone').eq('id', tenant.companyId).single()),
+    settlePaged((from, to) => supabase.from('product_variants').select('*').eq('company_id', tenant.companyId).eq('active', true).order('id', { ascending: true }).range(from, to)),
+    settlePaged((from, to) => supabase.from('product_barcodes').select('*').eq('company_id', tenant.companyId).eq('active', true).order('id', { ascending: true }).range(from, to)),
+    settlePaged((from, to) => supabase.from('product_kit_components').select('*').eq('company_id', tenant.companyId).order('kit_product_id', { ascending: true }).order('component_product_id', { ascending: true }).range(from, to)),
+    settle<any[]>(() => supabase.from('currencies').select('*').eq('active', true).order('code')),
+    settle<any[]>(() => supabase.from('exchange_rates').select('base_currency,quote_currency,rate,effective_at').eq('company_id', tenant.companyId).order('effective_at', { ascending: false })),
+    settlePaged((from, to) => supabase.from('product_prices').select('product_id,currency_code,price,valid_from,valid_to').eq('company_id', tenant.companyId).is('valid_to', null).order('valid_from', { ascending: false }).order('product_id', { ascending: true }).range(from, to)),
+    settle<any>(() => supabase.from('compensation_settings').select('mode,percent_rate,active').eq('company_id', tenant.companyId).maybeSingle()),
+    settle<any>(() => supabase.from('company_settings').select('settings').eq('company_id', tenant.companyId).maybeSingle()),
   ]);
+  const catalogMs = Date.now() - started;
 
-  const firstError = [warehousesRes,categoriesRes,productsRes,employeesRes,accessRes,companyRes,variantsRes,barcodeRes,kitRes,currenciesRes,exchangeRatesRes,pricesRes].find(r => r.error)?.error;
-  if (firstError) throw firstError;
+  const warehouses = warehousesR.ok ? (warehousesR.data || []) : [];
+  const categories = categoriesR.ok ? (categoriesR.data || []) : [];
+  const productRows = productsR.ok ? (productsR.data || []) : [];
+  const employeeRows = employeesR.ok ? (employeesR.data || []) : [];
+  const accessRows = employeesR.ok && accessR.ok ? (accessR.data || []) : [];
+  const companyRow = companyR.ok ? (companyR.data || null) : null;
+  const variantRows = variantsR.ok ? (variantsR.data || []) : [];
+  const barcodeRows = barcodeR.ok ? (barcodeR.data || []) : [];
+  const kitRows = kitR.ok ? (kitR.data || []) : [];
+  const currencyRows = currenciesR.ok ? (currenciesR.data || []) : [];
+  const rateRows = ratesR.ok ? (ratesR.data || []) : [];
+  const priceRows = pricesR.ok ? (pricesR.data || []) : [];
+
+  const warnings: string[] = [];
+  if (productsR.ok) {
+    if (!variantsR.ok) warnings.push('Variantes de producto no disponibles: ' + variantsR.error);
+    if (!barcodeR.ok) warnings.push('Códigos de barras no disponibles: ' + barcodeR.error);
+    if (!kitR.ok) warnings.push('Componentes de kit no disponibles: ' + kitR.error);
+    if (!pricesR.ok) warnings.push('Precios canónicos no disponibles: ' + pricesR.error);
+  }
+  if (employeesR.ok && !accessR.ok) warnings.push('Accesos a almacenes no disponibles: ' + accessR.error);
 
   const variantsByProduct = new Map<string, any[]>();
-  for (const v of variantsRes.data || []) {
+  for (const v of variantRows) {
     const arr = variantsByProduct.get(v.product_id) || [];
     arr.push(v);
     variantsByProduct.set(v.product_id, arr);
   }
   const kitsByProduct = new Map<string, any[]>();
-  for (const k of kitRes.data || []) {
+  for (const k of kitRows) {
     const arr = kitsByProduct.get(k.kit_product_id) || [];
     arr.push(k);
     kitsByProduct.set(k.kit_product_id, arr);
   }
   const barcodeByProduct = new Map<string, string>();
-  for (const b of barcodeRes.data || []) {
+  for (const b of barcodeRows) {
     if (!barcodeByProduct.has(b.product_id)) barcodeByProduct.set(b.product_id, b.barcode || '');
   }
   const productById = new Map<string, Product>();
-  const defaultCurrency = companyRes.data?.default_currency_code || 'USD';
+  const defaultCurrency = companyRow?.default_currency_code || 'USD';
   const priceByProduct = new Map<string, number>();
-  for (const row of pricesRes.data || []) {
+  for (const row of priceRows) {
     if (row.currency_code !== defaultCurrency || priceByProduct.has(row.product_id)) continue;
     priceByProduct.set(row.product_id, Number(row.price) || 0);
   }
-  const products = (productsRes.data || []).map((p:any) => {
+  const products = productRows.map((p:any) => {
     const firstBarcode = barcodeByProduct.get(p.id) || '';
     const item = mapProduct(p, firstBarcode, kitsByProduct.get(p.id) || []);
     const variants = variantsByProduct.get(p.id) || [];
@@ -210,12 +353,18 @@ async function loadCatalog(options: CatalogOptions = {}) {
     return item;
   });
 
-  const ctx = options.includeSaasUser === false ? null : await loadSaaSContext();
-  const { data: compensationSettings } = await supabase
-    .from('compensation_settings')
-    .select('mode,percent_rate,active')
-    .eq('company_id', tenant.companyId)
-    .maybeSingle();
+  let saasContext: any = null;
+  if (options.includeSaasUser !== false) {
+    try {
+      saasContext = await loadSaaSContext();
+    } catch (error) {
+      // El usuario administrador del contexto SaaS es un extra: su fallo no
+      // debe impedir que el catálogo y el equipo lleguen al POS.
+      warnings.push('Contexto de cuenta no disponible: ' + describeBootstrapError(error));
+    }
+  }
+  const ctx = saasContext;
+  const compensationSettings = compensationR.ok ? (compensationR.data || null) : null;
   const globalCompensationMode: User['compensationType'] = compensationSettings?.mode === 'sales_percent' ? 'sales_percentage' : 'fixed_product';
   const globalSalesPercentage = Math.max(0, Math.min(100, Number(compensationSettings?.percent_rate) || 0));
 
@@ -231,17 +380,17 @@ async function loadCatalog(options: CatalogOptions = {}) {
       permissions: ['pos_access','reports_access','inventory_access','admin_access','cash_audit'],
       isActive: true,
     }] : []),
-    ...(employeesRes.data || []).map((e:any) => mapUser(e, accessRes.data || []))
+    ...employeeRows.map((e:any) => mapUser(e, accessRows))
   ];
 
-  const branches = (warehousesRes.data || []).map(mapBranch);
+  const branches = warehouses.map(mapBranch);
 
   const latestRates = new Map<string, number>();
-  for (const row of (exchangeRatesRes.data || [])) {
+  for (const row of rateRows) {
     if (!latestRates.has(row.quote_currency)) latestRates.set(row.quote_currency, Number(row.rate) || 0);
   }
-  const baseCurrencyCode = companyRes.data?.default_currency_code || 'USD';
-  const currencies = (currenciesRes.data || []).map((c:any) => ({
+  const baseCurrencyCode = companyRow?.default_currency_code || 'USD';
+  const currencies = currencyRows.map((c:any) => ({
     code: c.code,
     name: c.name || c.code,
     symbol: c.symbol || c.code,
@@ -249,46 +398,95 @@ async function loadCatalog(options: CatalogOptions = {}) {
     isBase: c.code === baseCurrencyCode,
   }));
 
-  const { data: companySettings, error: settingsError } = await supabase
-    .from('company_settings')
-    .select('settings')
-    .eq('company_id', tenant.companyId)
-    .maybeSingle();
-  if (settingsError) throw settingsError;
-
-  const settings = companySettings?.settings && typeof companySettings.settings === 'object'
-    ? companySettings.settings
-    : {};
-  const storeConfig = settings.storeConfig || {
-    storeName: companyRes.data?.name || 'PALMYRA POS',
-    address: '',
-    phone: '',
-    receiptNotes: '',
-    darkMode: false,
-    manualOfflineSync: true
-  };
-  const receiptConfig = settings.receiptConfig || {
-    showLogo: false, showAddress: true, showPhone: true, showFooter: true,
-    footerText: 'Gracias por su compra.',
-    businessName: companyRes.data?.name || 'PALMYRA POS',
-    businessAddress: '',
-    businessPhone: '',
-    printerWidth: '80mm',
-    autoPrint: false
-  };
+  const settings = settingsR.ok && settingsR.data?.settings && typeof settingsR.data.settings === 'object'
+    ? settingsR.data.settings
+    : null;
+  // Sin ajustes remotos no se inventa configuración: `null` deja intacta la local.
+  const storeConfig = settingsR.ok
+    ? (settings?.storeConfig || {
+        storeName: companyRow?.name || 'PALMYRA POS',
+        address: '',
+        phone: '',
+        receiptNotes: '',
+        darkMode: false,
+        manualOfflineSync: true
+      })
+    : null;
+  const receiptConfig = settingsR.ok
+    ? (settings?.receiptConfig || {
+        showLogo: false, showAddress: true, showPhone: true, showFooter: true,
+        footerText: 'Gracias por su compra.',
+        businessName: companyRow?.name || 'PALMYRA POS',
+        businessAddress: '',
+        businessPhone: '',
+        printerWidth: '80mm',
+        autoPrint: false
+      })
+    : null;
 
   const refs: CatalogRefs = {
-    productRows: productsRes.data || [],
-    variantRows: variantsRes.data || [],
-    barcodeRows: barcodeRes.data || [],
-    employeeRows: employeesRes.data || [],
+    productRows,
+    variantRows,
+    barcodeRows,
+    employeeRows,
     defaultCurrencyCode: baseCurrencyCode,
     productMap: productById,
-    variantMap: new Map((variantsRes.data || []).map((v:any) => [String(v.id), String(v.name)])),
-    employeeNames: new Map((employeesRes.data || []).map((e:any) => [String(e.id), String(e.full_name)])),
+    variantMap: new Map(variantRows.map((v:any) => [String(v.id), String(v.name)])),
+    employeeNames: new Map(employeeRows.map((e:any) => [String(e.id), String(e.full_name)])),
   };
 
-  return { tenant, warehouses: warehousesRes.data || [], branches, categories: categoriesRes.data || [], products, users, currencies, storeConfig, receiptConfig, refs };
+  const sections: Record<string, BootstrapSectionStatus> = {
+    warehouses: status(warehousesR.ok, 'Almacenes', warehouses.length, catalogMs, {
+      hidden: warehouses.filter((w:any) => w.active === false).length,
+      error: warehousesR.ok ? undefined : warehousesR.error,
+    }),
+    categories: status(categoriesR.ok, 'Categorías', categories.length, catalogMs, {
+      hidden: categories.filter((c:any) => c.active === false).length,
+      error: categoriesR.ok ? undefined : categoriesR.error,
+    }),
+    products: status(productsR.ok, 'Productos', products.length, catalogMs, {
+      hidden: productRows.filter((p:any) => p.status === 'archived').length,
+      error: productsR.ok ? undefined : productsR.error,
+    }),
+    users: status(employeesR.ok, 'Equipo', users.length, catalogMs, {
+      error: employeesR.ok ? undefined : employeesR.error,
+    }),
+    currencies: status(currenciesR.ok, 'Monedas y tasas', currencies.length, catalogMs, {
+      error: currenciesR.ok ? undefined : currenciesR.error,
+    }),
+    settings: status(settingsR.ok, 'Configuración de la empresa', settingsR.ok ? 1 : 0, catalogMs, {
+      error: settingsR.ok ? undefined : settingsR.error,
+    }),
+  };
+  const errors = Object.entries(sections)
+    .filter(([, entry]) => !entry.ok)
+    .map(([section, entry]) => ({ section, label: entry.label, message: entry.error || 'Error desconocido' }));
+
+  return {
+    tenant,
+    warehouses,
+    branches,
+    categories,
+    products,
+    users,
+    currencies,
+    storeConfig,
+    receiptConfig,
+    refs,
+    sections,
+    errors,
+    warnings,
+  };
+}
+
+/** Catálogo estricto para los llamadores que exigen el bloque completo. */
+async function loadCatalog(options: CatalogOptions = {}) {
+  const parts = await loadCatalogSections(options);
+  const essential = ['warehouses', 'categories', 'products', 'users', 'currencies', 'settings'];
+  const failed = parts.errors.find(entry => essential.includes(entry.section));
+  if (failed) throw new Error(`${failed.label}: ${failed.message}`);
+  for (const warning of parts.warnings) console.warn('[PALMYRA] Catálogo degradado: ' + warning);
+  return parts;
 }
 
 type InventoryOptions = {
@@ -300,21 +498,38 @@ type InventoryOptions = {
 async function loadInventory(branchId?: string, options: InventoryOptions = {}) {
   const tenant = (options.tenant || await getActiveTenant()) as TenantLike;
   const supabase = options.client || getSupabase()!;
-  let q = supabase.from('stock_balances').select('*').eq('company_id', tenant.companyId);
-  if (branchId) q = q.eq('warehouse_id', branchId);
-  const { data: baseRows, error: baseErr } = await q;
-  if (baseErr) throw baseErr;
+  // Existencias: se paginan porque una empresa con varios almacenes supera con
+  // facilidad las 1000 filas por respuesta (p. ej. 214 productos × 6 almacenes)
+  // y el stock restante se perdía sin error.
+  const baseOutcome = await settlePaged((from, to) => {
+    let q = supabase.from('stock_balances').select('*').eq('company_id', tenant.companyId);
+    if (branchId) q = q.eq('warehouse_id', branchId);
+    return q
+      .order('warehouse_id', { ascending: true })
+      .order('product_id', { ascending: true })
+      .range(from, to);
+  });
+  if (!baseOutcome.ok) throw new Error(baseOutcome.error);
+  const baseRows = baseOutcome.data || [];
 
-  let vq = supabase.from('variant_stock_balances').select('*,product_variants(name)').eq('company_id', tenant.companyId);
-  if (branchId) vq = vq.eq('warehouse_id', branchId);
-  const { data: variantRows, error: variantErr } = await vq;
-  if (variantErr) throw variantErr;
+  const variantOutcome = await settlePaged((from, to) => {
+    let vq = supabase.from('variant_stock_balances').select('*,product_variants(name)').eq('company_id', tenant.companyId);
+    if (branchId) vq = vq.eq('warehouse_id', branchId);
+    return vq
+      .order('warehouse_id', { ascending: true })
+      .order('product_id', { ascending: true })
+      .order('variant_id', { ascending: true })
+      .range(from, to);
+  });
+  if (!variantOutcome.ok) throw new Error(variantOutcome.error);
+  const variantRows = variantOutcome.data || [];
 
   // El catálogo ya trae el stock mínimo: se reutiliza para no duplicar consultas.
   let productRows = options.productRows;
   if (!productRows) {
-    const productsRes = await supabase.from('products').select('id,minimum_stock').eq('company_id', tenant.companyId);
-    if (productsRes.error) throw productsRes.error;
+    const productsRes = await settlePaged((from, to) =>
+      supabase.from('products').select('id,minimum_stock').eq('company_id', tenant.companyId).order('id', { ascending: true }).range(from, to));
+    if (!productsRes.ok) throw new Error(productsRes.error);
     productRows = productsRes.data || [];
   }
   const minByProduct = new Map<string, number>((productRows || []).map((p:any) => [p.id, Number(p.minimum_stock) || 0]));
@@ -362,18 +577,20 @@ type SalesOptions = {
 
 // Referencias compartidas: sin ellas se consultan una vez por bloque.
 async function loadSaleRefs(supabase: any, companyId: string): Promise<SaleRefs> {
+  // Productos, variantes, códigos y equipo también se paginan: sin ello el
+  // historial mostraba "Producto" para todo lo que excedía una página remota.
   const [productsRes, variantsRes, companyRes, barcodeRes, employeesRes] = await Promise.all([
-    supabase.from('products').select('*').eq('company_id', companyId),
-    supabase.from('product_variants').select('id,name').eq('company_id', companyId),
-    supabase.from('companies').select('default_currency_code').eq('id', companyId).single(),
-    supabase.from('product_barcodes').select('product_id,barcode').eq('company_id', companyId).eq('active', true),
-    supabase.from('employees').select('id,full_name,user_id').eq('company_id', companyId),
+    settlePaged((from, to) => supabase.from('products').select('*').eq('company_id', companyId).order('id', { ascending: true }).range(from, to)),
+    settlePaged((from, to) => supabase.from('product_variants').select('id,name').eq('company_id', companyId).order('id', { ascending: true }).range(from, to)),
+    settle<any>(() => supabase.from('companies').select('default_currency_code').eq('id', companyId).single()),
+    settlePaged((from, to) => supabase.from('product_barcodes').select('product_id,barcode').eq('company_id', companyId).eq('active', true).order('id', { ascending: true }).range(from, to)),
+    settlePaged((from, to) => supabase.from('employees').select('id,full_name,user_id').eq('company_id', companyId).order('id', { ascending: true }).range(from, to)),
   ]);
-  if (productsRes.error) throw productsRes.error;
-  if (variantsRes.error) throw variantsRes.error;
-  if (companyRes.error) throw companyRes.error;
-  if (barcodeRes.error) throw barcodeRes.error;
-  if (employeesRes.error) throw employeesRes.error;
+  if (!productsRes.ok) throw new Error(productsRes.error);
+  if (!variantsRes.ok) throw new Error(variantsRes.error);
+  if (!companyRes.ok) throw new Error(companyRes.error);
+  if (!barcodeRes.ok) throw new Error(barcodeRes.error);
+  if (!employeesRes.ok) throw new Error(employeesRes.error);
   const barcodeByProduct = new Map<string, string>();
   for (const b of barcodeRes.data || []) {
     if (!barcodeByProduct.has(b.product_id)) barcodeByProduct.set(b.product_id, b.barcode || '');
@@ -557,7 +774,10 @@ async function loadCashSessions(branchId?: string, options: CashSessionOptions =
   const supabase = options.client || getSupabase()!;
 
   const [registersRes, employeesRes, companyRes] = await Promise.all([
-    supabase.from('cash_registers').select('*').eq('company_id',tenant.companyId).eq('active',true),
+    // Todas las cajas, también las desactivadas: se usan solo para saber a qué
+    // almacén pertenece cada turno histórico. Filtrar por `active` dejaba esos
+    // turnos con `branchId` vacío y desaparecían de los reportes por sucursal.
+    supabase.from('cash_registers').select('*').eq('company_id',tenant.companyId),
     options.refs?.employeeRows
       ? Promise.resolve({ data: options.refs.employeeRows, error: null })
       : supabase.from('employees').select('id,full_name,user_id').eq('company_id',tenant.companyId),
@@ -893,9 +1113,27 @@ async function loadTransfers(branchId?: string, options: TransfersOptions = {}) 
 async function loadCustomers(options: { client?: any; tenant?: TenantLike; limit?: number } = {}) {
   const tenant = (options.tenant || await getActiveTenant()) as TenantLike;
   const supabase = options.client || getSupabase()!;
-  const {data,error}=await supabase.from('customers').select('*').eq('company_id',tenant.companyId).eq('active',true).order('name').limit(options.limit ?? BOOTSTRAP_CUSTOMERS_LIMIT);
-  if(error)throw error;
-  return (data||[]).map((c:any):Customer=>({id:c.id,name:c.name||'',email:c.email||'',phone:c.phone||'',taxId:c.tax_id||''}));
+  // El tope de clientes es de negocio, pero PostgREST cortaba en 1000 aunque se
+  // pidieran 2000: se pagina hasta el tope real en vez de aceptar la página.
+  const total = Math.max(1, Math.trunc(options.limit ?? BOOTSTRAP_CUSTOMERS_LIMIT));
+  const pageSize = Math.min(CLOUD_PAGE_SIZE, total);
+  const data: any[] = [];
+  for (let from = 0; from < total; from += pageSize) {
+    const to = Math.min(from + pageSize, total) - 1;
+    const { data: page, error } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('company_id', tenant.companyId)
+      .eq('active', true)
+      .order('name')
+      .order('id', { ascending: true })
+      .range(from, to);
+    if (error) throw error;
+    if (!Array.isArray(page) || !page.length) break;
+    data.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return data.map((c:any):Customer=>({id:c.id,name:c.name||'',email:c.email||'',phone:c.phone||'',taxId:c.tax_id||''}));
 }
 
 type BanksOptions = {
@@ -982,10 +1220,13 @@ async function loadSuppliersOrders(options: SuppliersOptions = {}) {
   ]);
   if(s.error)throw s.error;if(o.error)throw o.error;
   const orderIds=(o.data||[]).map((x:any)=>x.id).filter(Boolean);
-  const i=orderIds.length
-    ? await supabase.from('purchase_items').select('*').in('purchase_order_id',orderIds)
-    : {data:[],error:null};
-  if(i.error)throw i.error;
+  // Las líneas de compra superan las 1000 filas con un historial normal: sin
+  // paginar, las órdenes más antiguas llegaban vacías.
+  const i = orderIds.length
+    ? await settlePaged((from, to) =>
+        supabase.from('purchase_items').select('*').in('purchase_order_id', orderIds).order('id', { ascending: true }).range(from, to))
+    : { ok: true, data: [], error: undefined } as { ok: boolean; data: any[]; error?: string };
+  if (!i.ok) throw new Error(i.error);
   const productsRes=options.productRows
     ? {data: options.productRows, error: null}
     : await supabase.from('products').select('id,name').eq('company_id',tenant.companyId);
@@ -1066,16 +1307,62 @@ export type BootstrapSnapshot = {
   window: { sinceIso: string; days: number; salesLimit: number; metrics: CloudPullMetrics };
 };
 
+export type BootstrapData = {
+  data: BootstrapSnapshot;
+  metrics: CloudPullMetrics;
+  report: BootstrapReport;
+};
+
+type SectionOutcome<T> = {
+  key: string;
+  value: T;
+  status: BootstrapSectionStatus;
+};
+
+/**
+ * Ejecuta una sección de forma aislada. Un fallo devuelve el valor de relleno
+ * (vacío) y un estado `ok:false`: la store conserva la caché de esa sección y
+ * el resto del arranque continúa.
+ */
+async function runBootstrapSection<T>(
+  key: string,
+  label: string,
+  work: () => Promise<T>,
+  fallback: T,
+  countRows: (value: T) => number = (value) => (Array.isArray(value) ? value.length : 1)
+): Promise<SectionOutcome<T>> {
+  const startedAt = Date.now();
+  try {
+    const value = await work();
+    return { key, value, status: status(true, label, countRows(value), Date.now() - startedAt) };
+  } catch (error) {
+    const message = describeBootstrapError(error);
+    // Cada sección informa con su nombre humano; nunca se propaga el error.
+    console.warn(`[PALMYRA] Arranque: la sección «${label}» no se pudo descargar; se conserva la caché local.`, message);
+    return {
+      key,
+      value: fallback,
+      status: status(false, label, 0, Date.now() - startedAt, { error: message }),
+    };
+  }
+}
+
 /**
  * Arranque acotado: catálogo completo (pequeño) + ventana operativa reciente.
  * Nunca descarga historial completo, ni siquiera con `limit = 0`.
+ *
+ * Cada sección (almacenes, categorías, productos, clientes, proveedores,
+ * bancos, ventas, turnos, traslados, extras, configuración) se resuelve por
+ * separado: una tabla caída no vacía el resto. El informe viaja al merge para
+ * que solo se reemplace la sección que realmente llegó.
  */
-export async function loadBootstrapData(options: BootstrapOptions = {}): Promise<{ data: BootstrapSnapshot; metrics: CloudPullMetrics }> {
+export async function loadBootstrapData(options: BootstrapOptions = {}): Promise<BootstrapData> {
   const metrics = createPullMetrics();
   const injected = Boolean(options.supabase);
   const tenant = (options.tenant || await getActiveTenant()) as TenantLike;
   const base = options.supabase || getSupabase();
   if (!base) throw new Error('Supabase no está configurado.');
+  if (!tenant?.companyId) throw new Error('No se pudo resolver la empresa activa para el arranque.');
 
   const nowMs = (options.now ? new Date(options.now).getTime() : Date.now());
   const sinceIso = new Date((Number.isFinite(nowMs) ? nowMs : Date.now()) - BOOTSTRAP_WINDOW_DAYS * 86_400_000).toISOString();
@@ -1083,85 +1370,155 @@ export async function loadBootstrapData(options: BootstrapOptions = {}): Promise
   const catalogClient = createCountingClient(base, metrics, 'catalog');
   const windowClient = createCountingClient(base, metrics, 'window');
 
-  // Catálogo y ajustes: siempre pequeño y sin ventana.
-  const catalog = await loadCatalog({
+  // Catálogo y ajustes: secciones independientes (almacenes, categorías,
+  // productos, equipo, monedas, configuración).
+  const catalog = await loadCatalogSections({
     client: catalogClient,
     tenant,
     includeSaasUser: options.includeSaasUser ?? !injected,
   });
   const refs = catalog.refs;
 
-  // Contactos primero: sus nombres alimentan los extras sin otra consulta.
-  const customers = await loadCustomers({ client: windowClient, tenant, limit: BOOTSTRAP_CUSTOMERS_LIMIT });
+  const sections: Record<string, BootstrapSectionStatus> = { ...catalog.sections };
+  const errors = [...catalog.errors];
+  const warnings = [...catalog.warnings];
+  const detailErrors: Array<{ section: string; label: string; message: string }> = [];
 
-  const [inventory, transactions, cashSessions, transfers, banks, extras, suppliersOrders] = await Promise.all([
-    loadInventory(options.branchId, { client: windowClient, tenant, productRows: refs.productRows }),
-    loadSales(options.branchId, BOOTSTRAP_SALES_LIMIT, undefined, {
-      client: windowClient,
-      tenant,
-      sinceIso,
-      refs: {
-        productMap: refs.productMap,
-        variantMap: refs.variantMap,
-        employeeNames: refs.employeeNames,
-        defaultCurrencyCode: refs.defaultCurrencyCode,
-      },
-      childRowCap: BOOTSTRAP_SALE_CHILD_ROWS,
-    }),
-    loadCashSessions(options.branchId, {
-      client: windowClient,
-      tenant,
-      sinceIso,
-      sessionLimit: BOOTSTRAP_CASH_SESSIONS_LIMIT,
-      movementSinceIso: sinceIso,
-      movementLimit: BOOTSTRAP_CASH_MOVEMENTS_LIMIT,
-      includeProfiles: false,
-      refs: { employeeRows: refs.employeeRows, defaultCurrencyCode: refs.defaultCurrencyCode },
-    }),
-    loadTransfers(options.branchId, {
-      client: windowClient,
-      tenant,
-      sinceIso,
-      limit: BOOTSTRAP_TRANSFERS_LIMIT,
-      refs: {
-        productNames: new Map(refs.productRows.map((p:any) => [String(p.id), String(p.name)])),
-        warehouseNames: new Map(catalog.warehouses.map((w:any) => [String(w.id), String(w.name)])),
-        variantNames: refs.variantMap,
-      },
-    }),
+  // Contactos primero: sus nombres alimentan los extras sin otra consulta.
+  const customersOutcome = await runBootstrapSection<Customer[]>(
+    'customers', 'Clientes',
+    () => loadCustomers({ client: windowClient, tenant, limit: BOOTSTRAP_CUSTOMERS_LIMIT }),
+    []
+  );
+  sections.customers = customersOutcome.status;
+  const customers = customersOutcome.value;
+  if (!customersOutcome.status.ok) {
+    const entry = {
+      section: 'customers',
+      label: customersOutcome.status.label,
+      message: customersOutcome.status.error || 'Error desconocido',
+    };
+    errors.push(entry);
+    detailErrors.push(entry);
+  }
+
+  const productNameMap = () => new Map(refs.productRows.map((p:any) => [String(p.id), String(p.name)]));
+  const warehouseNameMap = () => new Map(catalog.warehouses.map((w:any) => [String(w.id), String(w.name)]));
+
+  const [inventoryOutcome, salesOutcome, cashOutcome, transfersOutcome, banksOutcome, extrasOutcome, suppliersOutcome] = await Promise.all([
+    runBootstrapSection<InventoryLevel[]>('inventory', 'Inventario', () =>
+      loadInventory(options.branchId, { client: windowClient, tenant, productRows: refs.productRows }), []),
+    runBootstrapSection<Transaction[]>('sales', 'Ventas recientes', () =>
+      loadSales(options.branchId, BOOTSTRAP_SALES_LIMIT, undefined, {
+        client: windowClient,
+        tenant,
+        sinceIso,
+        refs: {
+          productMap: refs.productMap,
+          variantMap: refs.variantMap,
+          employeeNames: refs.employeeNames,
+          defaultCurrencyCode: refs.defaultCurrencyCode,
+        },
+        childRowCap: BOOTSTRAP_SALE_CHILD_ROWS,
+      }), []),
+    runBootstrapSection<CashRegisterSession[]>('cashSessions', 'Turnos de caja', () =>
+      loadCashSessions(options.branchId, {
+        client: windowClient,
+        tenant,
+        sinceIso,
+        sessionLimit: BOOTSTRAP_CASH_SESSIONS_LIMIT,
+        movementSinceIso: sinceIso,
+        movementLimit: BOOTSTRAP_CASH_MOVEMENTS_LIMIT,
+        includeProfiles: false,
+        refs: { employeeRows: refs.employeeRows, defaultCurrencyCode: refs.defaultCurrencyCode },
+      }), []),
+    runBootstrapSection<InventoryTransfer[]>('transfers', 'Transferencias', () =>
+      loadTransfers(options.branchId, {
+        client: windowClient,
+        tenant,
+        sinceIso,
+        limit: BOOTSTRAP_TRANSFERS_LIMIT,
+        refs: {
+          productNames: productNameMap(),
+          warehouseNames: warehouseNameMap(),
+          variantNames: refs.variantMap,
+        },
+      }), []),
     // Las cuentas bancarias son catálogo; su historial se carga bajo demanda.
-    loadBanks({ client: windowClient, tenant, includeTransactions: false }),
-    loadReturnsWarrantiesQuotesTimePayroll({
-      client: windowClient,
-      tenant,
-      sinceIso,
-      limit: BOOTSTRAP_EXTRAS_LIMIT,
-      itemsLimit: BOOTSTRAP_SALE_CHILD_ROWS,
-      refs: {
-        productNames: new Map(refs.productRows.map((p:any) => [String(p.id), String(p.name)])),
-        customerNames: new Map(customers.map((c:any) => [String(c.id), String(c.name)])),
-        employeeNames: refs.employeeNames,
-      },
-    }),
-    loadSuppliersOrders({ client: windowClient, tenant, sinceIso, orderLimit: BOOTSTRAP_PURCHASE_ORDERS_LIMIT, productRows: refs.productRows }),
+    runBootstrapSection<{ bankCards: BankCard[]; bankTransactions: BankTransaction[] }>(
+      'banks', 'Bancos y cuentas',
+      () => loadBanks({ client: windowClient, tenant, includeTransactions: false }),
+      { bankCards: [], bankTransactions: [] },
+      (value) => (value.bankCards?.length || 0) + (value.bankTransactions?.length || 0)
+    ),
+    runBootstrapSection<Awaited<ReturnType<typeof loadReturnsWarrantiesQuotesTimePayroll>>>(
+      'extras', 'Devoluciones, garantías y nómina',
+      () => loadReturnsWarrantiesQuotesTimePayroll({
+        client: windowClient,
+        tenant,
+        sinceIso,
+        limit: BOOTSTRAP_EXTRAS_LIMIT,
+        itemsLimit: BOOTSTRAP_SALE_CHILD_ROWS,
+        refs: {
+          productNames: productNameMap(),
+          customerNames: new Map(customers.map((c:any) => [String(c.id), String(c.name)])),
+          employeeNames: refs.employeeNames,
+        },
+      }),
+      { warranties: [], returns: [], quotes: [], timeShifts: [], salarySettlements: [], audits: [] } as any
+    ),
+    runBootstrapSection<{ suppliers: Supplier[]; supplierOrders: SupplierOrder[] }>(
+      'suppliers', 'Proveedores y órdenes',
+      () => loadSuppliersOrders({ client: windowClient, tenant, sinceIso, orderLimit: BOOTSTRAP_PURCHASE_ORDERS_LIMIT, productRows: refs.productRows }),
+      { suppliers: [], supplierOrders: [] },
+      (value) => (value.suppliers?.length || 0) + (value.supplierOrders?.length || 0)
+    ),
   ]);
 
+  for (const outcome of [inventoryOutcome, salesOutcome, cashOutcome, transfersOutcome, banksOutcome, extrasOutcome, suppliersOutcome]) {
+    sections[outcome.key] = outcome.status;
+    if (!outcome.status.ok) {
+      const entry = { section: outcome.key, label: outcome.status.label, message: outcome.status.error || 'Error desconocido' };
+      errors.push(entry);
+      detailErrors.push(entry);
+    }
+  }
+
+  const banks = banksOutcome.value;
+  const extras = extrasOutcome.value;
+  const suppliersOrders = suppliersOutcome.value;
+  const cashSessions = cashOutcome.value;
   const lastTurnNumber = cashSessions.reduce((m:number,s:any)=>Math.max(m,Number(s.turnNumber)||0),0);
+  const report: BootstrapReport = {
+    ok: errors.length === 0,
+    companyId: tenant.companyId,
+    sinceIso,
+    sections,
+    errors,
+    warnings,
+  };
+  if (errors.length) {
+    console.warn(
+      '[PALMYRA] Arranque parcial: ' +
+      errors.map(entry => `${entry.label} (${entry.message})`).join('; ')
+    );
+  }
+  for (const warning of warnings) console.warn('[PALMYRA] Arranque degradado: ' + warning);
 
   return {
     data: {
       products: catalog.products,
       categories: catalog.categories,
-      inventory,
+      inventory: inventoryOutcome.value,
       branches: catalog.branches,
       users: catalog.users,
       currencies: catalog.currencies,
       customers,
       bankCards: banks.bankCards,
       bankTransactions: banks.bankTransactions,
-      transactions,
+      transactions: salesOutcome.value,
       cashSessions,
-      transfers,
+      transfers: transfersOutcome.value,
       warranties: extras.warranties,
       returns: extras.returns,
       quotes: extras.quotes,
@@ -1176,6 +1533,7 @@ export async function loadBootstrapData(options: BootstrapOptions = {}): Promise
       window: { sinceIso, days: BOOTSTRAP_WINDOW_DAYS, salesLimit: BOOTSTRAP_SALES_LIMIT, metrics },
     },
     metrics,
+    report,
   };
 }
 
@@ -1291,10 +1649,10 @@ export async function pullGlobalCatalogDataFromSupabase() {
 
 export async function pullPosBootstrapFromSupabase(branchId?:string) {
   try {
-    const { data, metrics } = await loadBootstrapData({ branchId });
-    return {success:true,data,metrics};
+    const { data, metrics, report } = await loadBootstrapData({ branchId });
+    return {success:true,data,metrics,report};
   }
-  catch(e:any){ return {success:false,data:null,metrics:null,message:e?.message||'No se pudo cargar PALMYRA'}; }
+  catch(e:any){ return {success:false,data:null,metrics:null,report:null,message:e?.message||'No se pudo cargar PALMYRA'}; }
 }
 
 export async function pullAllFromSupabase():Promise<{data:any;result:SyncResult}> {

@@ -42,6 +42,28 @@ function timeLabel(iso?: string | null) {
   return date.toLocaleString('es-CU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
 }
 
+/** CUP mínimos por unidad que se consideran plausibles para USD/EUR/MLC en Cuba. */
+const MIN_PLAUSIBLE_RATE = 10;
+
+/** Validación local del campo de tasa: positiva, numérica y con 2 decimales como máximo. */
+function rateDraftError(raw: string): string | null {
+  const value = raw.trim();
+  if (!value) return 'Escribe una tasa mayor que 0.';
+  if (!/^\d*(?:\.\d*)?$/.test(value)) return 'Usa solo números y hasta 2 decimales.';
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 'La tasa debe ser mayor que 0.';
+  if (numeric < MIN_PLAUSIBLE_RATE) return `La tasa mínima plausible es ${MIN_PLAUSIBLE_RATE}.`;
+  const decimals = value.includes('.') ? value.split('.')[1].length : 0;
+  if (decimals > 2) return 'Máximo 2 decimales.';
+  return null;
+}
+
+function draftIsDirty(raw: string, rate: number) {
+  const value = raw.trim();
+  if (!value) return true;
+  return Number(value) !== rate;
+}
+
 export function SettingsCurrencySection({ active, onToast }: Props) {
   const navigate = useNavigate();
   const currencies = useStore(state => state.currencies);
@@ -65,7 +87,7 @@ export function SettingsCurrencySection({ active, onToast }: Props) {
 
   const [drafts, setDrafts] = useState<Record<string, string>>(toDrafts);
   const [dirty, setDirty] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [savingCode, setSavingCode] = useState<string | null>(null);
   const [run, setRun] = useState<AutoRateRun | null>(() => readAutoRateRun());
   const [checking, setChecking] = useState(false);
   const [thresholdDraft, setThresholdDraft] = useState(String(storeConfig.autoRateThreshold ?? AUTO_RATE_THRESHOLD_DEFAULT));
@@ -101,27 +123,28 @@ export function SettingsCurrencySection({ active, onToast }: Props) {
     }
   };
 
-  const handleSave = async () => {
-    const targets = editable.filter(currency => !currency.isBase).map(currency => ({
-      code: currency.code,
-      value: Number(drafts[currency.code])
-    }));
-    const invalid = targets.find(target => !Number.isFinite(target.value) || target.value <= 0);
-    if (invalid) {
-      onToast(`Introduce una tasa mayor que 0 para ${invalid.code}.`, 'error');
+  const handleSaveRate = async (code: string) => {
+    const raw = (drafts[code] ?? '').trim();
+    const value = Number(raw);
+    if (rateDraftError(raw)) {
+      onToast(`Introduce una tasa mayor que 0 para ${code}.`, 'error');
       return;
     }
-    setSaving(true);
+    setSavingCode(code);
     try {
-      const results = await Promise.all(targets.map(target => updateCurrencyRate(target.code, target.value)));
-      setDirty(false);
-      const confirmed = results.every(Boolean);
-      if (confirmed) onToast('Tasas guardadas y confirmadas en la nube.');
-      else onToast('Tasas guardadas en este dispositivo; una o más quedan pendientes de sincronizar.', 'info');
+      const confirmed = await updateCurrencyRate(code, value);
+      setDrafts(prev => ({ ...prev, [code]: String(value) }));
+      const stillDirty = editable.some(currency => {
+        if (currency.code === code) return false;
+        return draftIsDirty(drafts[currency.code] ?? '', currency.rateToBase);
+      });
+      setDirty(stillDirty);
+      if (confirmed) onToast(`Tasa de ${code} guardada y confirmada en la nube.`);
+      else onToast(`Tasa de ${code} guardada en este dispositivo; queda pendiente de sincronizar.`, 'info');
     } catch {
-      onToast('No se pudo confirmar el guardado remoto. Los valores locales se conservaron.', 'error');
+      onToast('No se pudo confirmar el guardado remoto. El valor local se conservó.', 'error');
     } finally {
-      setSaving(false);
+      setSavingCode(null);
     }
   };
 
@@ -171,57 +194,105 @@ export function SettingsCurrencySection({ active, onToast }: Props) {
           subtitle={`La moneda base es ${baseCurrency.code}. Las tasas de venta, caja y reportes usan estos valores.`}
         />
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-2.5">
-          {visible.map(currency => {
-            const isBase = currency.code === baseCurrency.code;
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 items-stretch">
+          {editable.map(currency => {
+            const draft = drafts[currency.code] ?? '';
+            const error = rateDraftError(draft);
+            const showError = Boolean(draft.trim()) && Boolean(error);
+            const dirtyCard = draftIsDirty(draft, currency.rateToBase);
+            const savingThis = savingCode === currency.code;
+            const applied = run?.applied.find(item => item.code === currency.code);
+            const hint = dirtyCard
+              ? 'Cambios sin guardar en este equipo'
+              : applied
+                ? `Actualizada por sincronización · ${timeLabel(run?.at)}`
+                : cachedCapturedAt
+                  ? `Última referencia automática · ${timeLabel(cachedCapturedAt)}`
+                  : 'Guardada en este dispositivo';
+            const errorId = `rate-error-${currency.code}`;
+            const hintId = `rate-hint-${currency.code}`;
             return (
-              <div key={currency.code} className={cn('min-w-0 rounded-xl border px-3 py-2.5 flex flex-col gap-2', isBase ? 'bg-subtle border-base' : 'bg-primary border-base')}>
-                <div className="flex items-center justify-between gap-2 min-w-0">
-                  <span className="flex items-center gap-2 min-w-0">
-                    <span className="w-7 h-7 rounded-lg bg-secondary text-primary font-black text-[12px] flex items-center justify-center shrink-0 border border-base">
-                      {currency.symbol || (currency.code === 'EUR' ? '€' : '$')}
-                    </span>
-                    <span className="text-sm font-bold uppercase text-primary truncate">{currency.code}</span>
+              <div
+                key={currency.code}
+                className={cn(
+                  'min-w-0 rounded-xl border bg-primary p-3.5 sm:p-4 shadow-sm flex flex-col gap-2.5 transition-colors',
+                  showError
+                    ? 'border-red-300 dark:border-red-900/60'
+                    : dirtyCard
+                      ? 'border-violet-300/80 dark:border-violet-900/60'
+                      : 'border-base'
+                )}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <span className="h-9 min-w-11 px-2 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/50 dark:bg-violet-950/30 dark:text-violet-300 text-[12px] font-black tracking-wide grid place-items-center shrink-0">
+                    {currency.code}
                   </span>
-                  {isBase && <span className="shrink-0 rounded-full border border-base bg-secondary px-2 py-0.5 text-sm font-semibold text-secondary">Base</span>}
+                  <span className="min-w-0">
+                    <span className="block text-sm font-bold text-primary truncate">1 {currency.code} equivale a</span>
+                    <span className="block text-xs font-medium text-muted truncate">{currency.name}</span>
+                  </span>
                 </div>
-                {isBase ? (
-                  <p className="text-sm font-medium text-muted">Referencia del sistema · 1 {currency.code} = 1 {baseCurrency.code}</p>
-                ) : (
-                  <label className="flex items-center gap-2 rounded-lg border border-base bg-subtle px-2.5 py-1.5 focus-within:ring-1 focus-within:ring-violet-500">
-                    <span className="text-sm font-semibold text-muted whitespace-nowrap">1 {currency.code} =</span>
+
+                <label className="block min-w-0">
+                  <span className="sr-only">{`Tasa de cambio de ${currency.code} a ${baseCurrency.code}`}</span>
+                  <span
+                    className={cn(
+                      'flex h-14 items-center gap-2 rounded-xl border bg-subtle px-3 transition-colors focus-within:ring-2',
+                      showError
+                        ? 'border-red-300 focus-within:border-red-400 focus-within:ring-red-500/20 dark:border-red-900/60'
+                        : 'border-base focus-within:border-violet-500 focus-within:ring-violet-500/20'
+                    )}
+                  >
                     <input
                       type="text"
                       inputMode="decimal"
                       aria-label={`Tasa de cambio de ${currency.code} a ${baseCurrency.code}`}
-                      value={drafts[currency.code] ?? ''}
+                      aria-invalid={showError || undefined}
+                      aria-describedby={showError ? errorId : hintId}
+                      value={draft}
                       onChange={event => {
                         setDrafts(prev => ({ ...prev, [currency.code]: event.target.value.replace(',', '.') }));
                         setDirty(true);
                       }}
-                      className="w-full min-w-0 bg-transparent text-right text-sm font-black tabular-nums text-primary outline-none"
+                      onKeyDown={event => { if (event.key === 'Enter') handleSaveRate(currency.code); }}
+                      placeholder="0"
+                      className="w-full min-w-0 bg-transparent text-2xl font-black tabular-nums tracking-tight text-primary outline-none"
                     />
-                    <span className="text-sm font-bold text-muted">{baseCurrency.code}</span>
-                  </label>
+                    <span className="shrink-0 rounded-md border border-base bg-secondary px-2 py-1 text-[11px] font-bold tracking-wide text-secondary">
+                      {baseCurrency.code}
+                    </span>
+                  </span>
+                </label>
+
+                {showError ? (
+                  <p id={errorId} role="alert" className="flex items-center gap-1.5 text-xs font-semibold text-red-600 dark:text-red-400">
+                    <TriangleAlert size={12} className="shrink-0" />
+                    <span className="min-w-0">{error}</span>
+                  </p>
+                ) : (
+                  <p id={hintId} className="flex items-center gap-1.5 text-xs font-medium text-muted">
+                    <Clock3 size={12} className="shrink-0" />
+                    <span className="min-w-0 truncate">{hint}</span>
+                  </p>
                 )}
+
+                <button
+                  type="button"
+                  onClick={() => handleSaveRate(currency.code)}
+                  disabled={savingThis || Boolean(error) || !dirtyCard}
+                  className="mt-auto h-10 w-full rounded-xl bg-violet-600 text-white text-sm font-semibold flex items-center justify-center gap-2 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {savingThis ? <RefreshCw size={14} className="animate-spin" /> : <Save size={15} />}
+                  {savingThis ? 'Guardando…' : 'Guardar tasa'}
+                </button>
               </div>
             );
           })}
         </div>
 
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <p className="text-sm font-medium leading-6 text-muted">
-            Puedes vaciar el campo y escribir la tasa completa. Se redondea al guardar según el valor introducido.
-          </p>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={saving || !dirty}
-            className="w-full sm:w-auto h-11 px-5 rounded-xl bg-violet-600 text-white text-sm font-semibold flex items-center justify-center gap-2 hover:bg-violet-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            <Save size={15} /> {saving ? 'Guardando…' : 'Guardar tasas'}
-          </button>
-        </div>
+        <p className="text-sm font-medium leading-6 text-muted">
+          Puedes vaciar el campo y escribir la tasa completa. Se aceptan hasta 2 decimales y cada tarjeta se guarda por separado.
+        </p>
       </section>
 
       <section className="rounded-2xl border border-base bg-secondary p-3 sm:p-5 shadow-sm space-y-4 min-w-0">

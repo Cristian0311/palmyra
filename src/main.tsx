@@ -28,6 +28,7 @@ import { installNativeUpdateHooks } from './lib/nativeApp';
 import { fetchWithTimeout as fetchWithLimit } from './lib/http';
 import { beginServerWarmup, SERVER_WAKE_EVENT } from './lib/serverWake';
 import { initLocalDbSource } from './services/localDb/bootHydration';
+import { useUpdateSignal } from './hooks/useUpdateSignal';
 
 // Recover gracefully when a cached HTML/service-worker version references a
 // chunk removed by a newer deployment. Vite emits this event for failed
@@ -196,6 +197,12 @@ const checkServerVersion = (): Promise<ServerVersionCheckResult> => {
   serverVersionCheckInFlight = run;
   return run.finally(() => { serverVersionCheckInFlight = null; });
 };
+
+// El aviso del servidor (Realtime) reutiliza esta misma comprobación: primero
+// marca la burbuja, después confirma contra /version.json y fija el build.
+(window as typeof window & {
+  __palmyraCheckServerVersion?: () => Promise<ServerVersionCheckResult>;
+}).__palmyraCheckServerVersion = checkServerVersion;
 
 /**
  * Lee el manifiesto de precarga que genera Workbox en /sw.js para conocer
@@ -744,10 +751,11 @@ const applyPalmyraUpdate = (): Promise<PalmyraUpdateApplyResult> => {
 
 // Chequeo de versión inmediato, independiente del registro del Service Worker.
 // Arranca con el propio bundle (antes de montar React), reintenta rápido si la
-// red falla (0 s / 3 s / 10 s) y sigue vigilando cada 60 s mientras la pestaña
-// está visible y en línea. La landing pública también lo ejecuta.
+// red falla (0 s / 3 s / 10 s) y vigila con poca frecuencia mientras la pestaña
+// está visible y en línea. Los despliegues se avisan por system_update_signals
+// (tiempo real); este sondeo es solo la red de seguridad si se pierde una señal.
 const UPDATE_BOOT_RETRY_DELAYS_MS = [0, 3_000, 10_000];
-const UPDATE_VISIBLE_CHECK_INTERVAL_MS = 60_000;
+const UPDATE_VISIBLE_CHECK_INTERVAL_MS = 600_000;
 let updateWatchStarted = false;
 
 const runBootVersionCheck = (attempt: number) => {
@@ -811,9 +819,19 @@ void protectPwaStorage().then((health) => {
   }
 }).catch(() => {});
 
+/**
+ * Raíz de la app: monta UNA sola vez la escucha de señales de actualización del
+ * servidor. El shell nativo (Electron/APK) se actualiza con su propio paquete
+ * OTA verificado, así que no se suscribe a este canal web.
+ */
+function PalmyraRoot() {
+  useUpdateSignal({ enabled: !usesNativeShell });
+  return <App />;
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <App />
+    <PalmyraRoot />
   </StrictMode>,
 );
 

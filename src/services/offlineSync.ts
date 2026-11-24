@@ -41,11 +41,65 @@ import { reconcileBankCanonical } from './offline/reconcileBank';
 import { replaceWarehouseInventory, replaceWarehousesInventory } from './offline/reconcileInventory';
 import { processQueueItem } from './offline/processQueueItem';
 import { reconcileSupplierReceiveCanonical } from './offline/reconcileSupplierReceive';
-import { compareOfflineQueueItems, summarizeOfflineQueue } from './offline/syncContract';
+import { compareOfflineQueueItems, summarizeOfflineQueue, describeOfflineQueueType } from './offline/syncContract';
+import {
+  INTERRUPTED_RETRY_MAX_MS,
+  hydrateOfflineQueueForBoot,
+  isQueueItemDeferred,
+  recoverInterruptedQueueItems
+} from './offline/durability';
 import { recordSyncMoment } from './offline/syncLedger';
 
 
 let isProcessingQueue = false;
+
+/** Referencia corta de una operación: los UUID completos no aportan al operador. */
+function shortQueueRef(actionId: unknown): string {
+  const raw = String(actionId || '').trim();
+  if (!raw) return '#sin-referencia';
+  const tail = raw.includes(':') ? raw.split(':').pop() || raw : raw;
+  return `#${tail.length > 12 ? tail.slice(0, 8) : tail}`;
+}
+
+/** Etiquetas de los avisos que no son operaciones de cola reales. */
+const QUEUE_PSEUDO_LABELS: Record<string, string> = {
+  network: 'Conexión',
+  auth: 'Sesión',
+  system: 'Sistema',
+  offline_queue: 'Cola offline'
+};
+
+/** Etiqueta legible: "Movimiento bancario #a1b2c3d4". */
+function describeQueueItem(item: { type?: string; actionId?: string }): string {
+  const type = String(item.type || '');
+  const label = QUEUE_PSEUDO_LABELS[type] || describeOfflineQueueType(type);
+  return `${label} ${shortQueueRef(item.actionId)}`;
+}
+
+/** Motivo legible: nunca texto crudo del transporte ni códigos SQL. */
+function humanSyncReason(raw?: string | null): string {
+  const text = String(raw || '').replace(/\s+/g, ' ').trim();
+  if (!text) return 'pendiente de envío';
+  if (/failed to fetch|network ?error|fetch failed|load failed|econn|enotfound|timed? ?out|abort|supabase no (?:está|disponible|configurado)/i.test(text)) {
+    return 'sin conexión con la nube';
+  }
+  if (/permission|not authorized|42501|rls|forbidden/i.test(text)) return 'la cuenta no tiene permisos';
+  if (/insufficient_stock|stock insuficiente|sin stock/i.test(text)) return 'no hay stock suficiente';
+  if (/invalid_cash_session|turno de caja/i.test(text)) return 'el turno de caja ya no está abierto';
+  if (/invalid_|sale_not_found|return_not_found|23503|23505|23514|22P02|22003/i.test(text)) {
+    return 'el servidor rechazó los datos de la operación';
+  }
+  const cleaned = text.replace(/\s*\[[A-Z0-9]{5,}\]/g, '').replace(/\s*HTTP \d{3}/g, '').trim();
+  return cleaned.length > 160 ? `${cleaned.slice(0, 157)}…` : cleaned;
+}
+
+/** "Reintentando 2/5 · motivo" en español. */
+function retrySummary(item: { retryCount?: number; lastError?: string }): string {
+  const attempts = Number(item.retryCount || 0);
+  const reason = humanSyncReason(item.lastError);
+  if (attempts > 0) return `Reintentando ${attempts}/5 · ${reason}`;
+  return reason;
+}
 
 export type OfflineQueueRunResult = {
   processed: number;
@@ -170,8 +224,22 @@ async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
   // Reanima conflictos creados por fallos de infraestructura que ya fueron
   // corregidos en Supabase. No se elimina ninguna operación: solo vuelve a
   // estado pending para que el replay normal la procese con las nuevas reglas.
+  // Antes de eso, cualquier elemento que un cierre abrupto dejó "en vuelo"
+  // vuelve a pending conservando su clave idempotente y con backoff: el envío
+  // se repite una sola vez y el servidor deduplica por esa misma clave.
   const hydratedQueue = getOfflineQueue();
-  const repairedQueue = hydratedQueue.map((item: any) => {
+  const interruption = recoverInterruptedQueueItems(hydratedQueue, { now: Date.now() });
+  if (interruption.recovered.length > 0) {
+    addSyncLog({
+      level: 'warning',
+      source: 'offline_queue',
+      title: `${interruption.recovered.length} operación(es) interrumpida(s) recuperada(s)`,
+      details: 'El dispositivo se cerró mientras se enviaban. Siguen guardadas y se reintentarán con la misma clave idempotente.',
+      entityType: 'offline_queue'
+    });
+  }
+  const recoveredQueue = interruption.items;
+  const repairedQueue = recoveredQueue.map((item: any) => {
     const message = String(item?.lastError || '');
     const adminPayrollFailure =
       /employee_not_found/i.test(message) &&
@@ -192,7 +260,7 @@ async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
       ? { ...item, status: 'pending', lastError: message, retryCount: Number(item.retryCount || 0) }
       : item;
   });
-  if (repairedQueue.some((item: any, i: number) => item !== hydratedQueue[i])) {
+  if (repairedQueue.some((item: any, i: number) => item !== recoveredQueue[i])) {
     setOfflineQueueMemory(repairedQueue);
     try { await persistOfflineQueueSnapshot(repairedQueue); } catch {}
   }
@@ -424,7 +492,7 @@ async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
     const itemDependencies = dependencies(item);
     const blockedByPermanentDependency = itemDependencies.find(d => permanentDependencyIds.has(d.id) || blockedExistingIds.has(d.id));
     if (blockedByPermanentDependency) {
-      const blockedMessage = `Bloqueada porque su dependencia ${blockedByPermanentDependency.type} / ${blockedByPermanentDependency.actionId} fue rechazada definitivamente. No se ejecutará con un estado incompleto.`;
+      const blockedMessage = `Bloqueada porque su dependencia ${describeQueueItem(blockedByPermanentDependency)} fue rechazada definitivamente. No se ejecutará con un estado incompleto.`;
       const conflictItem = {
         ...item,
         status: 'conflict' as const,
@@ -436,8 +504,20 @@ async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
       errors.push({ type: item.type, actionId: item.actionId, message: blockedMessage, retryCount: conflictItem.retryCount });
       continue;
     }
+    // Un reloj retrocedido (o una marca heredada) no puede congelar la cola: el
+    // backoff real nunca pasa del tope, así que una espera mayor se descarta.
+    if (Number(item.nextRetryAt || 0) - Date.now() > INTERRUPTED_RETRY_MAX_MS * 2) {
+      item.nextRetryAt = undefined;
+    }
     if (item.status === 'failed' && Number(item.nextRetryAt || 0) > Date.now()) {
       // Respect persisted exponential backoff and keep descendants blocked.
+      remainingFromRun.push(item);
+      failedDependencyIds.add(item.id);
+      continue;
+    }
+    if (isQueueItemDeferred(item)) {
+      // Operación recuperada de un cierre abrupto: se respeta su backoff antes
+      // de reintentarla, y sus dependientes esperan esta pasada.
       remainingFromRun.push(item);
       failedDependencyIds.add(item.id);
       continue;
@@ -460,7 +540,7 @@ async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
       await processQueueItem(supabase, item);
       processed++;
       handledIds.add(item.id);
-      addSyncLog({ level:'success', source:'offline_queue', title:`Item sincronizado (${item.type})`, details:`Operación ${item.actionId} confirmada por Supabase.`, entityType:item.type, actionId:item.actionId });
+      addSyncLog({ level:'success', source:'offline_queue', title:`Confirmado en la nube: ${describeQueueItem(item)}`, details:'La operación quedó registrada en Supabase.', entityType:item.type, actionId:item.actionId });
     } catch (err:any) {
       failed++;
       item.retryCount = (item.retryCount || 0) + 1;
@@ -490,7 +570,7 @@ async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
       if (permanent) permanentDependencyIds.add(item.id);
       remainingFromRun.push(item);
       errors.push({ type: item.type, actionId: item.actionId, message: item.lastError, retryCount: item.retryCount });
-      addSyncLog({ level:'error', source:'offline_queue', title:`Error al procesar item (${item.type})`, details: permanent ? item.lastError : `${item.lastError} — próximo reintento en ${Math.round(retryDelayMs / 1000)} s`, entityType:item.type, actionId:item.actionId, retryAttempt:item.retryCount });
+      addSyncLog({ level:'error', source:'offline_queue', title:`No se pudo sincronizar: ${describeQueueItem(item)}`, details:`${retrySummary(item)}${permanent ? ' · requiere revisión manual' : ` · próximo intento en ${Math.round(retryDelayMs / 1000)} s`}`, entityType:item.type, actionId:item.actionId, retryAttempt:item.retryCount });
       // No detener toda la cola por un fallo transitorio. Solo quedan
       // bloqueados los elementos que dependan de esta operación mediante
       // failedDependencyIds; los demás turnos/ventas pueden continuar. Esto evita
@@ -604,6 +684,87 @@ function isManualOfflineSyncEnabled(): boolean {
   }
 }
 
+/**
+ * Hidrata la cola durable + la copia en memoria y devuelve a `pending` todo lo
+ * que quedó en vuelo por un cierre abrupto. Se ejecuta en el arranque, al volver
+ * la pestaña a primer plano y en cada reconexión: ninguna pantalla puede leer
+ * datos antes de que exista una cola hidratada.
+ *
+ * Es idempotente y nunca descarta operaciones: fusiona (memoria ∪ IndexedDB),
+ * deduplica por clave idempotente y persiste solo si algo cambió.
+ */
+export async function hydrateOfflineQueueForBootWithLog(): Promise<{
+  pending: number;
+  recovered: number;
+  restored: number;
+}> {
+  const result = await hydrateOfflineQueueForBoot({
+    ready: () => waitForOfflineQueueReady(),
+    readMemory: () => getOfflineQueue(),
+    readDurable: () => readDurableOfflineQueue(),
+    writeMemory: items => setOfflineQueueMemory(items),
+    persist: items => persistOfflineQueueSnapshot(items)
+  }, {
+    // Si esta ventana está drenando la cola, un `processing` es real: no se toca.
+    recover: !isProcessingQueue
+  });
+  if (result.recovered > 0) {
+    addSyncLog({
+      level: 'warning',
+      source: 'offline_queue',
+      title: `${result.recovered} operación(es) quedaron a medio enviar`,
+      details: 'Se cerró la aplicación durante el envío. Vuelven a la cola con reintento automático y la misma clave idempotente.',
+      entityType: 'offline_queue'
+    });
+  } else if (result.restored > 0) {
+    addSyncLog({
+      level: 'info',
+      source: 'offline_queue',
+      title: `${result.restored} operación(es) recuperada(s) del almacén durable`,
+      details: 'La copia en memoria estaba incompleta; la cola se reconstruyó desde IndexedDB.',
+      entityType: 'offline_queue'
+    });
+  }
+  return {
+    pending: getOfflineQueueCount(),
+    recovered: result.recovered,
+    restored: result.restored
+  };
+}
+
+/**
+ * Arranque/reanudación: hidrata y, si hay red, drena. Es el punto de entrada
+ * único para "intenta subir lo pendiente" (boot, reconexión, foco de ventana).
+ */
+export async function resumeOfflineOperations(
+  options: { reason?: string } = {}
+): Promise<OfflineQueueRunResult> {
+  await hydrateOfflineQueueForBootWithLog();
+  if (isManualOfflineSyncEnabled()) return idleQueueResult();
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return idleQueueResult();
+  if (!getOfflineQueueCount()) return idleQueueResult();
+  try {
+    return await processOfflineQueue();
+  } catch (error) {
+    console.warn('[offlineSync] Reanudación pendiente fallida:', options.reason || 'sin motivo', error);
+    return idleQueueResult();
+  }
+}
+
+/**
+ * Intento de vaciado de mejor esfuerzo antes de cerrar/ocultar. La garantía NO
+ * es esta petición (puede morir con la pestaña): la garantía es la cola en
+ * IndexedDB, que sobrevive y se reanuda al volver a abrir.
+ */
+export function requestOfflineFlush(reason: string = 'best-effort'): void {
+  if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+  if (isManualOfflineSyncEnabled()) return;
+  if (!getOfflineQueueCount()) return;
+  void processOfflineQueue()
+    .catch(error => console.warn('[offlineSync] Vaciado antes de cerrar no confirmado:', reason, error))
+    .finally(() => { void refreshOfflineQueueCounts(); });
+}
+
 export function initOfflineSyncWatcher(): () => void {
   if (typeof window === 'undefined') return () => {};
   let intervalId: any = null;
@@ -619,6 +780,9 @@ export function initOfflineSyncWatcher(): () => void {
     // Renovar folios fiscales en segundo plano para que el próximo corte de
     // internet no deje al POS sin numeración disponible.
     try { await useStore.getState().refreshNcfRangeIfExhausted?.(); } catch {}
+    // La reconexión también hidrata: si otra ventana encoló trabajo o el
+    // arranque ocurrió sin red, el contador en memoria podía estar en cero.
+    try { await hydrateOfflineQueueForBootWithLog(); } catch {}
     const count = getOfflineQueueCount();
     if (!count) return;
     useStore.getState().addNotification(`Conexión detectada. Sincronizando ${count} operaciones pendientes...`, 'info');
@@ -627,9 +791,9 @@ export function initOfflineSyncWatcher(): () => void {
       if (res.remaining > 0 || res.conflicts > 0) {
         const pendingDetails = getOfflineQueue()
           .filter(item => item.status !== 'conflict')
-          .map(item => `${item.type} · ${item.actionId}: ${item.lastError || 'Pendiente por dependencia de otra operación.'}`);
+          .map(item => `${describeQueueItem(item)}: ${retrySummary(item)}`);
         const details = [
-          ...(res.errors || []).map(e => `${e.type} · ${e.actionId}: ${e.message}`),
+          ...(res.errors || []).map(e => `${describeQueueItem(e)}: ${humanSyncReason(String(e.message || ''))}`),
           ...pendingDetails,
           res.conflicts > 0 ? `${res.conflicts} operación(es) quedaron en conflicto y no se volverán a reintentar hasta resolverlas.` : ''
         ].filter(Boolean).filter((v,i,a) => a.indexOf(v) === i).slice(0, 12).join('\n');
@@ -642,7 +806,11 @@ export function initOfflineSyncWatcher(): () => void {
         useStore.getState().addNotification(`Sincronización completada: ${res.processed} operaciones confirmadas.`, 'success');
       }
     } catch (e: any) {
-      useStore.getState().addNotification(`No se pudo completar la sincronización: ${e?.message || 'error desconocido'}.`, 'error');
+      console.error('[offlineSync] No se pudo completar la sincronización:', e);
+      useStore.getState().addNotification(
+        'No se pudo completar la sincronización. Las operaciones siguen guardadas y se reintentará automáticamente.',
+        'error'
+      );
     } finally {
       // Ruta automática: el badge debe reflejar el estado durable aunque el
       // drenaje haya fallado o lo haya hecho otra pestaña.
@@ -650,16 +818,51 @@ export function initOfflineSyncWatcher(): () => void {
     }
   };
   const handleOffline = () => useStore.getState().addNotification('Sin conexión. El POS continúa trabajando offline.', 'warning');
+  // Best-effort antes de cerrar u ocultar: no es la garantía (la petición puede
+  // morir con la pestaña), pero ahorra el reintento si alcanza a confirmarse.
+  const handlePageHide = () => requestOfflineFlush('pagehide');
+  const handleVisibilityChange = () => {
+    if (typeof document === 'undefined') return;
+    if (document.visibilityState === 'hidden') {
+      requestOfflineFlush('hidden');
+      return;
+    }
+    void resumeOfflineOperations({ reason: 'visible' }).finally(() => { void refreshOfflineQueueCounts(); });
+  };
+  const handlePageShow = () => {
+    void resumeOfflineOperations({ reason: 'pageshow' }).finally(() => { void refreshOfflineQueueCounts(); });
+  };
   window.addEventListener('online', handleOnline);
   window.addEventListener('offline', handleOffline);
-  intervalId = setInterval(() => { 
-    if (navigator.onLine && getOfflineQueueCount() && !isProcessingQueue && !isManualOfflineSyncEnabled()) {
-      processOfflineQueue().catch(() => {}).finally(() => { void refreshOfflineQueueCounts(); }); 
+  window.addEventListener('pagehide', handlePageHide);
+  window.addEventListener('pageshow', handlePageShow);
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', handleVisibilityChange);
+  intervalId = setInterval(() => {
+    if (!navigator.onLine || isProcessingQueue || isManualOfflineSyncEnabled()) return;
+    if (getOfflineQueueCount()) {
+      processOfflineQueue().catch(() => {}).finally(() => { void refreshOfflineQueueCounts(); });
+      return;
     }
+    // Cola aparentemente vacía: puede ser una hidratación incompleta (otra
+    // ventana, un cambio de alcance o un arranque offline). Releemos el espejo
+    // durable antes de dar por hecho que no hay trabajo pendiente.
+    void refreshOfflineQueueCounts().then(counts => {
+      if (counts.pending > 0 && !isProcessingQueue && !isManualOfflineSyncEnabled()) {
+        processOfflineQueue().catch(() => {}).finally(() => { void refreshOfflineQueueCounts(); });
+      }
+    }).catch(() => {});
   }, 30000);
-  if (navigator.onLine && getOfflineQueueCount() && !isManualOfflineSyncEnabled()) {
-    processOfflineQueue().catch(() => {}).finally(() => { void refreshOfflineQueueCounts(); });
-  }
+  // Arranque: hidrata cola + espejo durable y reanuda lo pendiente. Antes se
+  // dependía del contador en memoria, que puede estar vacío mientras IndexedDB
+  // todavía tiene operaciones: eso dejaba ventas sin subir tras reabrir.
+  void resumeOfflineOperations({ reason: 'boot' }).finally(() => { void refreshOfflineQueueCounts(); });
   if (navigator.onLine) useStore.getState().refreshNcfRangeIfExhausted?.().catch(() => {});
-  return () => { window.removeEventListener('online', handleOnline); window.removeEventListener('offline', handleOffline); if (intervalId) clearInterval(intervalId); };
+  return () => {
+    window.removeEventListener('online', handleOnline);
+    window.removeEventListener('offline', handleOffline);
+    window.removeEventListener('pagehide', handlePageHide);
+    window.removeEventListener('pageshow', handlePageShow);
+    if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', handleVisibilityChange);
+    if (intervalId) clearInterval(intervalId);
+  };
 }

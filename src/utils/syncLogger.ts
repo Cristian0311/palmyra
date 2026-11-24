@@ -28,11 +28,14 @@ export function getSyncLogs(): SyncLogEntry[] {
   if (!storageKey) return [];
   try {
     const raw = localStorage.getItem(storageKey);
-    if (!raw) return getInitialDemoLogs();
-    return JSON.parse(raw) as SyncLogEntry[];
+    // Sin registros reales la lista queda vacía: nunca se inventan eventos de
+    // demostración (hacían creer que la sincronización ya había ocurrido).
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as SyncLogEntry[]) : [];
   } catch (e) {
     console.error('[syncLogger] Error al leer logs de sincronización:', e);
-    return getInitialDemoLogs();
+    return [];
   }
 }
 
@@ -103,34 +106,4 @@ export function exportSyncLogsTXT(): void {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
-}
-
-function getInitialDemoLogs(): SyncLogEntry[] {
-  const now = new Date();
-  return [
-    {
-      id: 'demo-log-1',
-      timestamp: new Date(now.getTime() - 2000).toISOString(),
-      level: 'success',
-      source: 'network',
-      title: 'Conexión a Internet Restablecida',
-      details: 'El dispositivo ha vuelto a detectar conectividad en línea de alta velocidad.',
-    },
-    {
-      id: 'demo-log-2',
-      timestamp: new Date(now.getTime() - 15000).toISOString(),
-      level: 'info',
-      source: 'offline_queue',
-      title: 'Cola Offline Comprobada',
-      details: 'Procesados 0 elementos pendientes. Estado sincronizado con Supabase.',
-    },
-    {
-      id: 'demo-log-3',
-      timestamp: new Date(now.getTime() - 45000).toISOString(),
-      level: 'success',
-      source: 'supabase_rpc',
-      title: 'Fusión de Catálogo Exitosa',
-      details: 'Sincronizados productos, sucursales y usuarios desde la nube.',
-    }
-  ];
 }

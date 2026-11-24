@@ -483,6 +483,120 @@ test("sin localStorage el almacén y el descarte no lanzan", async () => {
   assert.equal(runtime.isDismissed("1.4.0"), true);
 });
 
+test("Android acepta el bundle web (.zip) cuando el manifiesto no publica APK", () => {
+  const windows = baseManifest().artifacts[0];
+  const web = baseManifest().artifacts[2];
+  const onlyWeb = parseUpdateManifest(baseManifest({ artifacts: [windows, web] }));
+
+  const picked = selectUpdateArtifact(onlyWeb, "android");
+  assert.ok(picked);
+  assert.equal(picked?.name, "palmyra-web.zip");
+  // Se etiqueta como android para que la UI lo trate como OTA nativo; la URL y
+  // el sha256 son los mismos que cubre la firma del manifiesto.
+  assert.equal(picked?.platform, "android");
+  assert.equal(picked?.sha256, "d".repeat(64));
+  assert.equal(picked?.url, web.url);
+  assert.equal(androidUpdateKindForArtifact(picked), "bundle");
+
+  // Un artefacto web que no sea .zip no sirve como bundle OTA.
+  const notZip = parseUpdateManifest(
+    baseManifest({ artifacts: [windows, { ...web, name: "palmyra-web.tar" }] })
+  );
+  assert.equal(selectUpdateArtifact(notZip, "android"), null);
+});
+
+test("startAutoCheck comprueba al arrancar, al volver a primer plano y cada 24 h", async () => {
+  const calls: Array<boolean | undefined> = [];
+  const client = fixingClient([result("up-to-date")], calls);
+  const timers: Array<() => void> = [];
+  const windowListeners = new Map<string, Array<() => void>>();
+  const documentListeners = new Map<string, Array<() => void>>();
+  let scheduledMs = 0;
+  let cleared = 0;
+
+  const collect = (target: Map<string, Array<() => void>>) => ({
+    addEventListener(type: string, handler: () => void) {
+      const list = target.get(type) ?? [];
+      list.push(handler);
+      target.set(type, list);
+    },
+    removeEventListener(type: string, handler: () => void) {
+      const list = target.get(type) ?? [];
+      target.set(type, list.filter((item) => item !== handler));
+    }
+  });
+
+  const fakeWindow = {
+    ...collect(windowListeners),
+    setInterval(handler: () => void, ms: number) {
+      timers.push(handler);
+      scheduledMs = ms;
+      return 1;
+    },
+    clearInterval() {
+      cleared += 1;
+    }
+  };
+  const fakeDocument = { visibilityState: "visible", ...collect(documentListeners) };
+
+  const globals = globalThis as unknown as { document?: unknown };
+  installWindow(fakeWindow as unknown as Record<string, unknown>);
+  globals.document = fakeDocument;
+  try {
+    const runtime = createAppUpdateRuntime({ client, now: () => NOW });
+    // La vigilancia se instala sola al crear el runtime en un entorno con DOM.
+    assert.equal(scheduledMs, 86_400_000, "el reloj periódico es de 24 h");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.deepEqual(calls, [false], "comprueba al arrancar");
+
+    // Volver a primer plano respeta la cadencia (y no duplica peticiones).
+    windowListeners.get("focus")?.forEach((handler) => handler());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1], false);
+
+    // La reanudación del shell Android (MainActivity.onResume) también comprueba.
+    windowListeners.get("palmyra:native-resume")?.forEach((handler) => handler());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(calls.length, 3);
+    assert.equal(calls[2], false);
+
+    // El reloj periódico fuerza la consulta para no dejar pasar un release.
+    timers[0]();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(calls.length, 4);
+    assert.equal(calls[3], true);
+
+    // startAutoCheck es idempotente y stopAutoCheck limpia temporizador y listeners.
+    const again = runtime.startAutoCheck();
+    assert.equal(timers.length, 1);
+    again();
+    assert.equal(cleared, 1);
+    assert.equal(windowListeners.get("focus")?.length, 0);
+    runtime.stopAutoCheck();
+    assert.equal(cleared, 1, "parar dos veces no hace nada");
+  } finally {
+    delete globals.document;
+    installWindow(null);
+  }
+});
+
+test("sin document (Node) no se instala ninguna vigilancia automática", () => {
+  installWindow({});
+  try {
+    const runtime = createAppUpdateRuntime({
+      client: fixingClient([result("up-to-date")]),
+      now: () => NOW
+    });
+    // Sin document no hay temporizadores ni listeners: el proceso de pruebas
+    // no queda vivo por la vigilancia.
+    assert.equal(typeof runtime.startAutoCheck(), "function");
+    runtime.stopAutoCheck();
+  } finally {
+    installWindow(null);
+  }
+});
+
 test("un descarte corrupto en el almacén no se interpreta como versión", () => {
   installLocalStorage(fakeStorage({ [UPDATE_DISMISSED_STORAGE_KEY]: "   " }));
   try {

@@ -96,7 +96,13 @@ export default function ReportsMovementDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center overflow-hidden bg-slate-950/70 p-2 backdrop-blur-sm sm:p-4" role="presentation">
+    <div
+      className="fixed inset-0 z-[95] flex items-center justify-center overflow-hidden bg-slate-950/70 p-2 backdrop-blur-sm sm:p-4"
+      role="presentation"
+      onMouseDown={event => {
+        if (event.target === event.currentTarget && !editing && !confirming) setSelectedMovementDetail(null);
+      }}
+    >
       <section
         role="dialog"
         aria-modal="true"
@@ -113,7 +119,7 @@ export default function ReportsMovementDetailModal({
                 {isIncome ? 'Ingreso de caja' : 'Egreso / gasto de caja'}
               </p>
               <h2 id="movement-detail-title" className="text-base font-black text-primary">
-                Vale #{movement.id.slice(0, 10)}
+                Vale {movement.turnLabel || 'de caja'} · {dateObj.toLocaleDateString('es-CU', { timeZone: 'America/Havana', day: '2-digit', month: 'short' })}
               </h2>
             </div>
           </div>

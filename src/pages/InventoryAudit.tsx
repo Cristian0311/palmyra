@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
   AlertTriangle,
+  Building2,
   CheckCircle2,
   ClipboardCheck,
   Clock3,
@@ -712,7 +713,7 @@ export default function InventoryAuditPage() {
             </div>
           </div>
 
-          <div className="overflow-x-auto">
+          <div className="hidden overflow-x-auto lg:block">
             <table className="w-full min-w-[760px] text-left text-sm [&_td]:px-3 [&_td]:py-3 [&_th]:px-3 [&_th]:py-2.5">
               <thead className="border-b border-base bg-subtle text-[11px] font-black uppercase tracking-wider text-muted">
                 <tr>
@@ -831,6 +832,99 @@ export default function InventoryAuditPage() {
               </tbody>
             </table>
           </div>
+
+          {/* Movil/tablet: las mismas auditorías en tarjetas, sin tabla de 760px. */}
+          <ul className="divide-y divide-base lg:hidden">
+            {filteredHistory.map(audit => {
+              const stats = statsOf(audit);
+              const review = reviewOf(audit);
+              const pct = stats.total ? Math.round((stats.counted / stats.total) * 100) : 0;
+              return (
+                <li key={audit.id} className="space-y-2 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="break-words font-mono text-xs font-black text-primary">{auditCode(audit.id)}</p>
+                      <p className="mt-0.5 text-[11px] font-semibold text-muted">{shortDate(audit.date)}</p>
+                    </div>
+                    <span className={cn(
+                      "inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-0.5 text-[10px] font-black uppercase tracking-wide",
+                      review === "approved" && "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300",
+                      review === "pending_approval" && "bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300",
+                      review === "recount_requested" && "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300",
+                      review === "counting" && "bg-subtle text-secondary",
+                    )}>
+                      {review === "approved" && <CheckCircle2 size={11} />}
+                      {review === "pending_approval" && <ShieldCheck size={11} />}
+                      {review === "recount_requested" && <RotateCcw size={11} />}
+                      {review === "counting" && <Clock3 size={11} />}
+                      {reviewLabel[review] || "En curso"}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-muted">
+                    <span className="flex items-center gap-1 font-bold text-primary"><Building2 size={12} /> {branchName(audit.branchId)}</span>
+                    <span className="rounded bg-subtle px-1.5 py-0.5 font-bold text-secondary">{audit.mode === "physical" ? "Inventario físico" : "Conteo cíclico"}</span>
+                  </div>
+
+                  <div className="rounded-xl border border-base bg-subtle px-2.5 py-2">
+                    <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-secondary">
+                      <span>Avance del conteo</span>
+                      <span className="tabular-nums text-primary">{stats.counted}/{stats.total} · {pct}%</span>
+                    </div>
+                    <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-secondary">
+                      <div className={cn("h-full rounded-full", pct === 100 ? "bg-emerald-500" : "bg-violet-500")} style={{ width: `${Math.max(4, pct)}%` }} />
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-bold">
+                      {stats.changed === 0 ? (
+                        <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><CheckCircle2 size={11} /> Sin variación</span>
+                      ) : (
+                        <>
+                          <span className="flex items-center gap-1 text-red-600 dark:text-red-400"><TrendingDown size={11} /> −{fmtNum(stats.shortage)}</span>
+                          <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400"><TrendingUp size={11} /> +{fmtNum(stats.overage)}</span>
+                          <span className="text-muted">{stats.changed} línea(s) con diferencia</span>
+                        </>
+                      )}
+                    </div>
+                    <div className="mt-1 flex items-center justify-between gap-2 text-[11px] font-semibold text-muted">
+                      <span>Valor diferencia</span>
+                      <span className={cn("font-black tabular-nums", stats.value > 0 ? "text-primary" : "text-muted")}>{fmtMoney(stats.value, baseCurrency.code)}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => openAudit(audit)}
+                      className="flex min-h-11 flex-1 items-center justify-center gap-1 rounded-lg border border-base text-xs font-bold text-secondary transition-colors hover:bg-subtle hover:text-primary"
+                    >
+                      <Eye size={13} /> {review === "counting" ? "Continuar conteo" : "Abrir auditoría"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={review === "approved"}
+                      onClick={() => setPendingDelete(audit)}
+                      aria-label={`Eliminar auditoría ${auditCode(audit.id)}`}
+                      title={review === "approved" ? "Las auditorías aprobadas conservan el ajuste de stock" : "Eliminar auditoría"}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-base text-muted transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40 dark:hover:bg-rose-950/40"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+            {filteredHistory.length === 0 && (
+              <li className="px-6 py-12 text-center">
+                <ClipboardCheck size={28} className="mx-auto text-muted" aria-hidden="true" />
+                <p className="mt-2 text-sm font-black text-primary">Sin auditorías en esta vista</p>
+                <p className="mt-1 text-[11px] font-semibold text-muted">
+                  {historySearch || historyFilter !== "all" || historyBranch !== "all"
+                    ? "Ajusta la búsqueda o los filtros."
+                    : "Inicia una nueva auditoría para tomar el primer snapshot del stock."}
+                </p>
+              </li>
+            )}
+          </ul>
         </section>
 
         {showModal && (

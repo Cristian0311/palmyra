@@ -5,10 +5,13 @@ import { fingerprintFromPublicJwk, createDeviceKey, type DeviceKey } from "./dev
 import {
   loadDeviceKey,
   saveDeviceKey,
-  loadLease,
+  readStoredLease,
   saveLease,
   loadWatermark,
   saveWatermark,
+  loadPinnedPublicKey,
+  savePinnedPublicKey,
+  loadStoredDeviceFingerprint,
   createIndexedDbLicenseStore,
   type LicenseKeyValueStore
 } from "./storage";
@@ -56,6 +59,16 @@ export interface LicenseSnapshot {
   lastCheckedAt: number;
   keyConfigured: boolean;
   leasePresent: boolean;
+  /**
+   * El lease guardado se verificó y evaluó sin respuesta de la nube en este
+   * arranque. Es el estado normal del POS offline: NO es un error.
+   */
+  offlineVerified: boolean;
+  /**
+   * Este equipo nunca recibió un lease (primera vez). Distinto de
+   * `offlineVerified`: aquí la activación todavía está pendiente.
+   */
+  pendingActivation: boolean;
 }
 
 export type LicenseFetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -120,8 +133,22 @@ const LOADING_SNAPSHOT: LicenseSnapshot = {
   clockWarning: false,
   lastCheckedAt: 0,
   keyConfigured: false,
-  leasePresent: false
+  leasePresent: false,
+  offlineVerified: false,
+  pendingActivation: false
 };
+
+/**
+ * La licencia local se evalúa siempre; la red solo confirma. Con el navegador
+ * declarando «sin conexión» no se intenta activar ni renovar.
+ */
+function isOnline(): boolean {
+  try {
+    return typeof navigator === "undefined" || navigator.onLine !== false;
+  } catch {
+    return true;
+  }
+}
 
 function readDeviceId(prefix: string): string {
   const fallback = "dispositivo-local";
@@ -146,8 +173,13 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
   const getClient = options.getClient ?? (() => null);
   const storageKeyPrefix = options.storageKeyPrefix ?? "";
   // Un resolver por runtime: la caché de la clave pública no se comparte entre
-  // pestañas ni entre pruebas con respuestas de red distintas.
-  const publicKeyResolver = createLicensePublicKeyResolver({ fetchImpl });
+  // pestañas ni entre pruebas con respuestas de red distintas. La clave se
+  // ancla en el almacén para poder verificar el lease sin conexión.
+  const publicKeyResolver = createLicensePublicKeyResolver({
+    fetchImpl,
+    loadPinned: () => loadPinnedPublicKey(store),
+    savePinned: (jwk) => savePinnedPublicKey(store, jwk)
+  });
 
   const listeners = new Set<(snapshot: LicenseSnapshot) => void>();
   let snapshot: LicenseSnapshot = LOADING_SNAPSHOT;
@@ -185,7 +217,9 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
       clockWarning: false,
       lastCheckedAt: atMs,
       keyConfigured,
-      leasePresent: false
+      leasePresent: false,
+      offlineVerified: false,
+      pendingActivation: false
     });
   }
 
@@ -211,7 +245,9 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
       clockWarning: false,
       lastCheckedAt: atMs,
       keyConfigured: true,
-      leasePresent: true
+      leasePresent: true,
+      offlineVerified: false,
+      pendingActivation: false
     };
     lastValid = next;
     lastValidRawReadOnly = true;
@@ -286,7 +322,11 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
     deviceSpki: ArrayBuffer;
     activeCompany: string;
     atMs: number;
+    /** Renovar aunque el lease no esté por vencer (identidad reparada). */
+    force?: boolean;
   }): Promise<SignedLease | null> {
+    // Sin conexión no se intenta activar: el arranque nunca espera a la red.
+    if (!isOnline()) return null;
     let client: LicenseRuntimeClient | null = null;
     try {
       client = getClient();
@@ -356,8 +396,22 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
   async function runRefresh(input?: { companyId?: string }): Promise<LicenseSnapshot> {
     if (disposed) return snapshot;
     const atMs = now();
-    if (input?.companyId) companyId = input.companyId;
+    if (input?.companyId && input.companyId !== companyId) {
+      // Otra empresa en la misma pestaña: nada evaluado antes (plan, lease,
+      // reintentos) puede reutilizarse para la nueva, ni siquiera como último
+      // estado válido.
+      companyId = input.companyId;
+      lastValid = null;
+      lastValidRawReadOnly = false;
+      currentLeaseId = null;
+      lastRenewAttemptAt = 0;
+      completed = false;
+      snapshot = LOADING_SNAPSHOT;
+    }
 
+    // 1) Clave de verificacion: build -> anclada de un arranque anterior -> red.
+    //    El anclaje permite evaluar el lease guardado sin conexion, que es el
+    //    caso normal al reabrir la app (offline-first).
     const keyResult = await resolvePublicKey();
     if (keyResult.status === "error") {
       if (completed) return snapshot;
@@ -366,100 +420,123 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
     if (keyResult.status === "missing") {
       return publishUnmanaged(atMs, "license-key-missing", false);
     }
-    const key = keyResult.key;
 
     const activeCompany = companyId;
     if (!activeCompany) return publishUnmanaged(atMs, "no-company", true);
 
     let verifyKey: CryptoKey;
     try {
-      verifyKey = await importVerifyKey(key.jwk);
+      verifyKey = await importVerifyKey(keyResult.key.jwk);
     } catch {
+      // Un fallo local transitorio no degrada una licencia ya evaluada.
+      if (completed) return snapshot;
       return publishUnmanaged(atMs, "verify-key-import-failed", true);
+    }
+
+    // 2) Lease y marca de agua guardados: lectura local, sin red. La lectura
+    //    distingue «no hay lease» (primera activación) de «no se pudo leer» y de
+    //    «está alterado»: solo la primera puede avisar «sin verificar».
+    let lease: SignedLease | null;
+    let watermarkMs: number | null;
+    let leaseStatus: "ok" | "missing" | "invalid" | "unreadable" = "missing";
+    try {
+      const stored = await readStoredLease(store, activeCompany);
+      lease = stored.lease;
+      leaseStatus = stored.status;
+      watermarkMs = await loadWatermark(store, activeCompany);
+    } catch {
+      lease = null;
+      leaseStatus = "unreadable";
+      watermarkMs = null;
+    }
+
+    if (leaseStatus === "unreadable") {
+      // Fallo de lectura del disco: el lease puede seguir guardado. No se sale a
+      // la red a emitir otro encima ni se publica `lease-missing`; se conserva
+      // la última evaluación buena y se reintenta en el siguiente refresco.
+      if (lastValid) {
+        return publish({ ...lastValid, lastCheckedAt: atMs }, lastValidRawReadOnly);
+      }
+      if (completed) return snapshot;
+      return publishUnmanaged(atMs, "storage-error", true);
+    }
+    currentLeaseId = lease ? lease.leaseId : null;
+
+    // 3) Identidad del equipo. La huella previa distingue un equipo nuevo (no
+    //    hubo lease nunca) de una identidad perdida/regenerada (el lease
+    //    emitido deja de valer y hay que volver a activar con red).
+    let previousFingerprint: string | null = null;
+    try {
+      previousFingerprint = await loadStoredDeviceFingerprint(store);
+    } catch {
+      previousFingerprint = null;
     }
 
     let identity: { devicePublicKeySpki: ArrayBuffer; fingerprint: string };
     try {
       identity = await ensureDeviceIdentity();
     } catch {
-      // Sin WebCrypto/IndexedDB no se puede verificar: nunca se bloquea por eso.
+      // Sin WebCrypto o con el almacén ilegible no se puede verificar. Nunca se
+      // bloquea ni se degrada una evaluación ya buena por eso, y `loadDeviceKey`
+      // tampoco habrá creado una identidad nueva encima de la guardada.
+      if (lastValid) {
+        return publish({ ...lastValid, lastCheckedAt: atMs }, lastValidRawReadOnly);
+      }
+      if (completed) return snapshot;
       return publishUnmanaged(atMs, "device-key-unavailable", true);
     }
+    const identityRotated =
+      typeof previousFingerprint === "string" && previousFingerprint !== identity.fingerprint;
 
-    let lease: SignedLease | null;
-    let watermarkMs: number | null;
-    try {
-      lease = await loadLease(store, activeCompany);
-      watermarkMs = await loadWatermark(store, activeCompany);
-    } catch {
-      if (completed) return snapshot;
-      return publishUnmanaged(atMs, "storage-error", true);
-    }
-    currentLeaseId = lease ? lease.leaseId : null;
-
-    // Verificación temprana del lease guardado para poder aplicar revocación
-    // solo sobre un lease auténtico: una firma rota no puede forzar solo
-    // lectura. El resultado se reutiliza más abajo si no hubo renovación.
-    let storedVerification: Awaited<ReturnType<typeof verifyLeaseForDevice>> | null = null;
-    if (lease) {
+    const verifyWith = async (
+      candidate: SignedLease,
+      key: CryptoKey
+    ): Promise<Awaited<ReturnType<typeof verifyLeaseForDevice>>> => {
       try {
-        storedVerification = await verifyLeaseForDevice(lease, {
-          verifyKey,
+        return await verifyLeaseForDevice(candidate, {
+          verifyKey: key,
           devicePublicKeySpki: identity.devicePublicKeySpki
         });
       } catch {
-        storedVerification = { ok: false as const, reason: "invalid-lease" as const };
+        return { ok: false as const, reason: "invalid-lease" as const };
       }
-      if (storedVerification.ok && (await leaseIsRevoked(lease))) {
-        return publishRevoked(lease, atMs);
-      }
-    }
+    };
 
-    const renewed = await maybeRenew({
-      lease,
-      verifyKey,
-      deviceFp: identity.fingerprint,
-      deviceSpki: identity.devicePublicKeySpki,
-      activeCompany,
-      atMs
-    });
-    if (renewed) {
-      lease = renewed;
-      currentLeaseId = renewed.leaseId;
-      // Un lease recién emitido también puede llegar ya revocado.
-      if (await leaseIsRevoked(renewed)) return publishRevoked(renewed, atMs);
-    }
+    let verification = lease ? await verifyWith(lease, verifyKey) : null;
 
-    const anchorRaw = lease ? Date.parse(lease.serverTimeAnchor) : Number.NaN;
-    const serverAnchorMs = Number.isFinite(anchorRaw) ? anchorRaw : null;
-
-    // Reparación de una marca de agua envenenada: si el reloj del equipo estuvo
-    // adelantado y luego se corrigió, la marca queda en el futuro y bloquearía
-    // para siempre. Un lease recién emitido y firmado por el servidor es una
-    // referencia de hora fiable y puede bajar la marca a su ancla.
+    // Una clave anclada puede haber rotado: si la firma falla se comprueba la
+    // red una sola vez. Ni el lease ni la evaluacion ya validada se tocan aqui.
     if (
-      renewed &&
-      serverAnchorMs !== null &&
-      watermarkMs !== null &&
-      serverAnchorMs < watermarkMs - CLOCK_ROLLBACK_TOLERANCE_MS
+      lease &&
+      verification &&
+      !verification.ok &&
+      keyResult.key.source === "pinned" &&
+      isOnline()
     ) {
-      try {
-        await saveWatermark(store, activeCompany, serverAnchorMs);
-        watermarkMs = serverAnchorMs;
-      } catch {
-        // Si no se puede persistir, la guarda sigue protegiendo la ventana.
+      const refreshedKey = await publicKeyResolver.refresh();
+      if (refreshedKey.status === "found") {
+        try {
+          verifyKey = await importVerifyKey(refreshedKey.key.jwk);
+          verification = await verifyWith(lease, verifyKey);
+        } catch {
+          // La verificacion fallida se conserva: nunca se relaja la firma.
+        }
       }
     }
 
-    // La guarda de reloj se aplica en toda evaluación, incluso sin lease: una
+    // La guarda de reloj se aplica en toda evaluacion, incluso sin lease: una
     // hora retrocedida no debe habilitar escrituras ni alargar la ventana.
-    const applyClockGuard = async (evaluationReadOnly: boolean, offlineUntilMs?: number | null) => {
+    const applyClockGuard = async (
+      evaluationReadOnly: boolean,
+      serverAnchorMs?: number | null,
+      offlineUntilMs?: number | null
+    ) => {
       try {
         return await applyLicenseClockGuard(store, {
           companyId: activeCompany,
           nowMs: atMs,
           evaluationReadOnly,
-          serverAnchorMs,
+          serverAnchorMs: serverAnchorMs ?? null,
           offlineUntilMs
         });
       } catch {
@@ -467,43 +544,110 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
       }
     };
 
-    if (!lease) {
-      const clock = await applyClockGuard(false);
-      const tampered = Boolean(clock?.tampered);
-      return publish(
-        {
-          mode: "unmanaged",
-          readOnly: tampered,
-          reason: tampered ? "clock-tampered" : "lease-missing",
-          clockWarning: tampered,
-          lastCheckedAt: atMs,
-          keyConfigured: true,
-          leasePresent: false
-        },
-        false
+    const evaluateAndPublish = async (args: {
+      lease: SignedLease;
+      watermarkMs: number | null;
+      offlineVerified: boolean;
+    }): Promise<LicenseSnapshot> => {
+      const evaluation = evaluateLease({
+        lease: args.lease,
+        nowMs: atMs,
+        watermarkMs: args.watermarkMs,
+        devicePublicKeyFp: identity.fingerprint,
+        signatureValid: true
+      });
+
+      const anchorMs = Date.parse(args.lease.serverTimeAnchor);
+      const offlineUntilRaw = Date.parse(evaluation.offlineUntil);
+      const clock = await applyClockGuard(
+        evaluation.readOnly,
+        Number.isFinite(anchorMs) ? anchorMs : null,
+        Number.isFinite(offlineUntilRaw) ? offlineUntilRaw : null
       );
-    }
+      const tampered = Boolean(clock?.tampered);
 
-    let verification: Awaited<ReturnType<typeof verifyLeaseForDevice>>;
-    if (!renewed && storedVerification) {
-      verification = storedVerification;
-    } else {
+      const advanced = nextWatermark({
+        previousMs: args.watermarkMs,
+        nowMs: atMs,
+        serverTimeMs: Number.isFinite(anchorMs) ? anchorMs : null
+      });
       try {
-        verification = await verifyLeaseForDevice(lease, {
-          verifyKey,
-          devicePublicKeySpki: identity.devicePublicKeySpki
-        });
+        // Solo avanza: si el reloj local retrocede, la ventana no se reabre.
+        await saveWatermark(store, activeCompany, advanced);
       } catch {
-        verification = { ok: false as const, reason: "invalid-lease" as const };
+        // La marca en memoria de esta sesion sigue protegiendo el calculo.
       }
-    }
 
-    if (!verification.ok) {
+      const next: LicenseSnapshot = {
+        mode: evaluation.mode,
+        readOnly: evaluation.readOnly || tampered,
+        planCode: args.lease.planCode,
+        paidThrough: evaluation.paidThrough,
+        offlineUntil: evaluation.offlineUntil,
+        expiresAt: evaluation.expiresAt,
+        reason: tampered && !evaluation.readOnly ? "clock-tampered" : evaluation.reason,
+        clockWarning: evaluation.clockWarning || tampered,
+        lastCheckedAt: atMs,
+        keyConfigured: true,
+        leasePresent: true,
+        offlineVerified: args.offlineVerified,
+        pendingActivation: false
+      };
+      lastValid = next;
+      lastValidRawReadOnly = evaluation.readOnly;
+      currentLeaseId = args.lease.leaseId;
+      return publish(next, evaluation.readOnly);
+    };
+
+    // 4) Primera publicacion: solo con lo que hay en disco. Nunca espera a la red.
+    if (!lease) {
+      if (leaseStatus === "invalid") {
+        // El registro existe pero no es un lease utilizable (alterado o
+        // truncado): NO es una primera activación, así que no se anuncia «sin
+        // verificar». Sin bloquear; la renovación con red lo repara.
+        publish(
+          {
+            mode: "invalid",
+            readOnly: false,
+            reason: "invalid-lease",
+            clockWarning: false,
+            lastCheckedAt: atMs,
+            keyConfigured: true,
+            leasePresent: true,
+            offlineVerified: false,
+            pendingActivation: false
+          },
+          false
+        );
+      } else {
+        // Primera vez en el equipo (no es un fallo de red): se puede operar y la
+        // activacion se reintenta sola cuando haya conexion.
+        const clock = await applyClockGuard(false);
+        const tampered = Boolean(clock?.tampered);
+        publish(
+          {
+            mode: "unmanaged",
+            readOnly: tampered,
+            reason: tampered ? "clock-tampered" : "lease-missing",
+            clockWarning: tampered,
+            lastCheckedAt: atMs,
+            keyConfigured: true,
+            leasePresent: false,
+            offlineVerified: false,
+            pendingActivation: true
+          },
+          false
+        );
+      }
+    } else if (verification && !verification.ok) {
       const failureReason = "reason" in verification ? verification.reason : "invalid-lease";
-      const clock = await applyClockGuard(false);
+      const reason =
+        identityRotated && failureReason === "wrong-device" ? "device-key-rotated" : failureReason;
+      const anchorMs = Date.parse(lease.serverTimeAnchor);
+      const clock = await applyClockGuard(false, Number.isFinite(anchorMs) ? anchorMs : null);
       const tampered = Boolean(clock?.tampered);
       if (lastValid) {
-        return publish(
+        publish(
           {
             ...lastValid,
             readOnly: lastValidRawReadOnly || tampered,
@@ -513,66 +657,72 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
           },
           lastValidRawReadOnly
         );
+      } else {
+        publish(
+          {
+            mode: "invalid",
+            readOnly: tampered,
+            reason: tampered ? "clock-tampered" : reason,
+            clockWarning: tampered,
+            lastCheckedAt: atMs,
+            keyConfigured: true,
+            leasePresent: true,
+            offlineVerified: false,
+            pendingActivation: false
+          },
+          false
+        );
       }
-      return publish(
-        {
-          mode: "invalid",
-          readOnly: tampered,
-          reason: tampered ? "clock-tampered" : failureReason,
-          clockWarning: tampered,
-          lastCheckedAt: atMs,
-          keyConfigured: true,
-          leasePresent: true
-        },
-        false
-      );
+    } else {
+      await evaluateAndPublish({ lease, watermarkMs, offlineVerified: true });
     }
 
-    const evaluation = evaluateLease({
+    // 5) Fase de red (mejor esfuerzo, despues de publicar): revocacion y
+    //    renovacion. Cualquier fallo conserva el lease guardado y su evaluacion.
+    if (!isOnline()) return snapshot;
+
+    if (lease && verification?.ok && (await leaseIsRevoked(lease))) {
+      return publishRevoked(lease, atMs);
+    }
+
+    const needsIdentityRepair = identityRotated || Boolean(verification && !verification.ok);
+    const renewed = await maybeRenew({
       lease,
-      nowMs: atMs,
-      watermarkMs,
-      devicePublicKeyFp: identity.fingerprint,
-      signatureValid: true
+      verifyKey,
+      deviceFp: identity.fingerprint,
+      deviceSpki: identity.devicePublicKeySpki,
+      activeCompany,
+      atMs,
+      force: needsIdentityRepair
     });
+    if (!renewed) return snapshot;
 
-    const anchorMs = Date.parse(lease.serverTimeAnchor);
-    const offlineUntilRaw = Date.parse(evaluation.offlineUntil);
-    const clock = await applyClockGuard(
-      evaluation.readOnly,
-      Number.isFinite(offlineUntilRaw) ? offlineUntilRaw : null
-    );
-    const tampered = Boolean(clock?.tampered);
+    // Un lease solo se adopta si su firma y su vinculo con el equipo verifican.
+    const renewedVerification = await verifyWith(renewed, verifyKey);
+    if (!renewedVerification.ok) return snapshot;
+    currentLeaseId = renewed.leaseId;
 
-    const advanced = nextWatermark({
-      previousMs: watermarkMs,
-      nowMs: atMs,
-      serverTimeMs: Number.isFinite(anchorMs) ? anchorMs : null
-    });
-    try {
-      // Solo avanza: si el reloj local retrocede, la ventana no se reabre.
-      await saveWatermark(store, activeCompany, advanced);
-    } catch {
-      // La marca en memoria de esta sesión sigue protegiendo el cálculo.
+    // Reparacion de una marca de agua envenenada: si el reloj del equipo estuvo
+    // adelantado y luego se corrigio, la marca queda en el futuro y bloquearia
+    // para siempre. Un lease nuevo y firmado es una referencia fiable.
+    const renewedAnchor = Date.parse(renewed.serverTimeAnchor);
+    if (
+      Number.isFinite(renewedAnchor) &&
+      watermarkMs !== null &&
+      renewedAnchor < watermarkMs - CLOCK_ROLLBACK_TOLERANCE_MS
+    ) {
+      try {
+        await saveWatermark(store, activeCompany, renewedAnchor);
+        watermarkMs = renewedAnchor;
+      } catch {
+        // Si no se puede persistir, la guarda sigue protegiendo la ventana.
+      }
     }
 
-    const next: LicenseSnapshot = {
-      mode: evaluation.mode,
-      readOnly: evaluation.readOnly || tampered,
-      planCode: lease.planCode,
-      paidThrough: evaluation.paidThrough,
-      offlineUntil: evaluation.offlineUntil,
-      expiresAt: evaluation.expiresAt,
-      reason: tampered && !evaluation.readOnly ? "clock-tampered" : evaluation.reason,
-      clockWarning: evaluation.clockWarning || tampered,
-      lastCheckedAt: atMs,
-      keyConfigured: true,
-      leasePresent: true
-    };
-    lastValid = next;
-    lastValidRawReadOnly = evaluation.readOnly;
-    currentLeaseId = lease.leaseId;
-    return publish(next, evaluation.readOnly);
+    // Un lease recien emitido tambien puede llegar ya revocado.
+    if (await leaseIsRevoked(renewed)) return publishRevoked(renewed, atMs);
+
+    return evaluateAndPublish({ lease: renewed, watermarkMs, offlineVerified: false });
   }
 
   /**

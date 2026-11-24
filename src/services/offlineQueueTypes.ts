@@ -30,4 +30,15 @@ export interface OfflineQueueItem {
   deviceSequence?: number;
   /** Original enqueue time, kept even if the item is later updated. */
   queuedAt?: string;
+  /**
+   * Clave idempotente explícita de la operación (`tipo:actionId`). Se persiste
+   * junto a la operación para que un reintento tras un cierre abrupto use
+   * exactamente la misma clave aunque cambie el id de la fila.
+   */
+  idempotencyKey?: string;
+  /**
+   * Marca de una operación que quedó "en vuelo" al cerrarse la aplicación.
+   * Solo aporta diagnóstico y respeta el backoff de `nextRetryAt`.
+   */
+  interruptedAt?: string;
 }

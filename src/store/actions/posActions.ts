@@ -84,6 +84,53 @@ function availableStockFor(state: any, productId: string, variantLabel?: string)
   return scoped.reduce((sum: number, row: any) => sum + Math.max(0, Number(row.quantity) || 0), 0);
 }
 
+/**
+ * `P0001` es el `raise_exception` genérico de Postgres: la mayoría son reglas
+ * de negocio que se pueden corregir y reintentar. Solo los mensajes
+ * irreversibles descartan la venta. Debe coincidir con la clasificación de
+ * `services/offline/processQueueItem.ts`; si el POS y el replay clasifican
+ * distinto, la misma venta aparecía cobrada para uno y rechazada para el otro.
+ */
+const IRREVERSIBLE_SALE_REJECTION =
+  /sale_not_found|return_not_found|company_access_denied|transfer_not_found|unknown_table|invalid_operation_id/i;
+const PERMANENT_SALE_SQL_CODES = new Set(['23503', '23505', '23502', '23514', '42501', '42883', '22P02', '22003', '22007', 'IDEMPOTENCY_CONFLICT']);
+
+function isPermanentSaleRejection(code: string, message?: unknown): boolean {
+  if (PERMANENT_SALE_SQL_CODES.has(code)) return true;
+  if (code === 'P0001') return IRREVERSIBLE_SALE_REJECTION.test(String(message || ''));
+  return false;
+}
+
+/**
+ * Traduce cualquier fallo del cobro a un mensaje corto en español. El texto
+ * crudo de Supabase o del transporte («Failed to fetch», «Supabase no está
+ * configurado») nunca debe llegar a la pantalla del cajero.
+ */
+export function describeCheckoutError(error: unknown): string {
+  const text = String(
+    (error as { message?: unknown } | null)?.message ?? error ?? ''
+  );
+  if (/failed to fetch|networkerror|network request failed|fetch failed|load failed|network ?connection|econn|enotfound|socket|timed? ?out|abort/i.test(text)) {
+    return 'Sin conexión estable con la nube. La venta quedó guardada en este dispositivo y se enviará al reconectar.';
+  }
+  if (/supabase|jwt|apikey|api key/i.test(text)) {
+    return 'La venta no pudo confirmarse con la nube. Quedó guardada en este dispositivo; se reintentará automáticamente.';
+  }
+  if (/insufficient_stock|stock_record_missing|no hay stock|stock insuficiente|sin stock/i.test(text)) {
+    return 'No hay stock suficiente para completar la venta. Revisa el inventario e inténtalo de nuevo.';
+  }
+  if (/permission|permission_denied|42501|42501|no autorizado|denied|rls|forbidden|\b401\b|\b403\b/i.test(text)) {
+    return 'Tu cuenta no tiene permisos para completar esta operación. Pide acceso a un administrador.';
+  }
+  if (/invalid_cash_session|turno de caja|cash_session/i.test(text)) {
+    return 'El turno de caja ya no está abierto. Actualiza la pantalla y vuelve a intentarlo.';
+  }
+  if (/invalid|23514|22P02|22003|23502|mismatch|check constraint|null value/i.test(text)) {
+    return 'Los datos de la venta no son válidos. Revisa productos, pagos y turno antes de reintentar.';
+  }
+  return 'No se pudo completar el cobro. La operación no se ha marcado como completada.';
+}
+
 export function createPosActions(set: StoreSet, get: StoreGet): any {
   const cancellingSessions = new Set<string>();
   return {
@@ -260,7 +307,13 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
     // La cola debe estar hidratada antes de aceptar una venta. Esto evita que
     // una venta creada justo después de abrir/recargar el POS compita con la
     // migración inicial de IndexedDB y quede fuera del snapshot durable.
-    await waitForOfflineQueueReady();
+    try {
+      await waitForOfflineQueueReady();
+    } catch (error) {
+      console.warn('[processTransaction] La cola offline no está disponible todavía:', error);
+      get().addNotification('No se pudo preparar el cobro offline.', 'error', describeCheckoutError(error));
+      return false;
+    }
 
     // Asignamos una identidad remota UUID estable ANTES de encolar la venta.
     // Los tickets antiguos pueden usar IDs legibles (PALMYRA-TK..., INF-..., etc.)
@@ -278,7 +331,17 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
     // Primero persistimos la operación en la cola durable. Así, aunque la
     // pestaña se cierre durante el cobro, existe una operación reintentable.
     const durableTransaction = { ...transactionForSync, offlinePending: true };
-    await enqueueOfflineItem('transaction', durableTransaction, transaction.id);
+    try {
+      await enqueueOfflineItem('transaction', durableTransaction, transaction.id);
+    } catch (error) {
+      console.warn('[processTransaction] No se pudo encolar la venta:', error);
+      get().addNotification(
+        'No se pudo guardar la venta en este dispositivo.',
+        'error',
+        describeCheckoutError(error)
+      );
+      return false;
+    }
 
     // Offline real o conexión inestable: el POS debe conservar inmediatamente
     // la venta localmente. En una conexión mala navigator.onLine puede seguir
@@ -310,7 +373,13 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
 
     // El plan Gratis no tiene nube: la venta es local aunque el teléfono esté online.
     if (typeof navigator === 'undefined' || navigator.onLine === false || !isCloudBusinessSyncAllowed()) {
-      await applyLocalSale(true);
+      try {
+        await applyLocalSale(true);
+      } catch (error) {
+        // La cola durable ya tiene la venta: el espejo local puede reintentarse
+        // sin convertir un cobro válido en un error frente al cajero.
+        console.warn('[processTransaction] Venta encolada; espejo local pendiente:', error);
+      }
       return true;
     }
 
@@ -320,12 +389,10 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
       if (!res.success) {
         const code = String(res.errorCode || '');
         // Solo rechazos de negocio/consistencia explícitos son definitivos.
-        // Los errores de transporte permanecen pendientes para reintento.
-        const permanentCodes = new Set([
-          'P0001', '23503', '23505', '23502', '23514', '42501', '42883', '22P02', '22003', '22007', 'IDEMPOTENCY_CONFLICT'
-        ]);
-
-        if (permanentCodes.has(code)) {
+        // `P0001` por sí mismo no lo es: es el raise_exception genérico y sus
+        // mensajes reintentables (stock, alcance) deben conservar la venta en la
+        // cola, igual que el replay offline. Los errores de transporte tampoco.
+        if (isPermanentSaleRejection(code, res.error)) {
           removeFromOfflineQueueByTransactionId(transaction.id);
           console.error('[processTransaction] Operación rechazada por servidor:', res.error);
           const friendly = {
@@ -355,8 +422,15 @@ export function createPosActions(set: StoreSet, get: StoreGet): any {
       }
 
       // Confirmada en Supabase: reflejarla localmente como confirmada antes de
-      // retirar la operación de la cola durable.
-      await applyLocalSale(false);
+      // retirar la operación de la cola durable. La RPC ya confirmó el cobro, así
+      // que ningún fallo posterior puede convertir la venta en un error: a lo
+      // sumo se deja la operación en la cola para que el replay repare el espejo.
+      try {
+        await applyLocalSale(false);
+      } catch (mirrorError) {
+        console.warn('[processTransaction] Venta confirmada; espejo local pendiente de reparación:', mirrorError);
+        return true;
+      }
 
       // La confirmación remota ya ocurrió. Si este refresh falla, la venta no
       // vuelve a un estado de error ni se vuelve a cobrar; el sincronizador

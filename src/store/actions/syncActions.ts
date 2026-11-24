@@ -15,8 +15,8 @@ import { getSupabaseCredentials } from '../../lib/supabase';
 import { loadSaaSContext, signInSaaSAccount, signOutSaaSAccount } from '../../services/saas';
 import { getOfflineQueue, enqueueOfflineItem, removeFromOfflineQueue, waitForOfflineQueueReady } from '../../services/offlineQueue';
 import { areSemanticallyEqual } from '../../utils/textUtils';
-import { localStateStorage, clearLocalStateStorage, flushLocalStateStorage } from '../../services/localStateStorage';
-import { getPalmyraScopedStorageKey } from '../../services/localScope';
+import { localStateStorage, clearLocalStateStorage, flushLocalStateStorage, readLocalStateStorage } from '../../services/localStateStorage';
+import { getPalmyraScopedStorageKey, getPalmyraLocalScope } from '../../services/localScope';
 import { setCanonicalInventoryQuantity, validateTransferStock } from '../utils/inventoryTransforms';
 import { buildLocalVoidTransactionPatch } from '../utils/localVoidTransaction';
 import { buildLocalCompletedSalePatch } from '../utils/localCompletedSale';
@@ -47,6 +47,7 @@ import {
   loadBootstrapData,
   pullSalesHistoryPage,
   HISTORY_PAGE_DEFAULT_LIMIT,
+  type BootstrapReport,
 } from '../../services/supabaseSync';
 
 
@@ -59,9 +60,15 @@ type StoreGet = () => AppState;
 export const BOOTSTRAP_COOLDOWN_MS = 10 * 60 * 1000;
 
 let bootstrapInFlight: Promise<boolean> | null = null;
-let lastBootstrapSuccessAt = 0;
 let historyCursor: string | null = null;
 let historyExhausted = false;
+
+/** Éxito del arranque POR EMPRESA: una empresa nunca valida la caché de otra. */
+const bootstrapSuccessByCompany = new Map<string, number>();
+/** Última empresa con la que se ejecutó el arranque (para detectar cambio de tenant). */
+let bootstrapCompanyId = '';
+/** Autocuración: como mucho una descarga completa por empresa y sesión. */
+const selfHealDoneFor = new Set<string>();
 
 export type BootstrapActionOptions = {
   force?: boolean;
@@ -69,12 +76,28 @@ export type BootstrapActionOptions = {
   supabase?: any;
   tenant?: { companyId: string };
   now?: Date | string;
+  /** Inyección para pruebas: estado de conexión. */
+  isOnline?: () => boolean;
+  /** Inyección para pruebas: snapshot persistido (JSON de zustand). */
+  localSnapshot?: string | null;
+  /** Inyección para pruebas: descarga completa de autocuración. */
+  fullPull?: (companyId: string) => Promise<unknown>;
 };
 
-function lastPullMomentMs(): number {
+function isOnlineNow(options?: BootstrapActionOptions): boolean {
+  try {
+    if (options?.isOnline) return options.isOnline() !== false;
+    return !(typeof navigator !== 'undefined' && navigator.onLine === false);
+  } catch {
+    return false;
+  }
+}
+
+function lastPullMomentMs(companyId?: string): number {
   const ledger = readSyncLedger().lastPullAt;
   const parsed = ledger ? Date.parse(ledger) : NaN;
-  return Math.max(lastBootstrapSuccessAt, Number.isFinite(parsed) ? parsed : 0);
+  const companyMoment = companyId ? bootstrapSuccessByCompany.get(companyId) || 0 : 0;
+  return Math.max(companyMoment, Number.isFinite(parsed) ? parsed : 0);
 }
 
 function oldestTransactionIso(transactions: Transaction[]): string | null {
@@ -96,11 +119,49 @@ function pendingIds(queue: { type: string; data?: any; actionId?: string }[], ty
   );
 }
 
+/** ¿La sección remota llegó completa? Sin informe se asume que sí. */
+export function sectionLoaded(report: BootstrapReport | undefined, key: string): boolean {
+  if (!report?.sections) return true;
+  const entry = report.sections[key];
+  return !entry || entry.ok !== false;
+}
+
+function referencedBranchIds(state: AppState): Set<string> {
+  const ids = new Set<string>();
+  if (state.currentBranchId) ids.add(String(state.currentBranchId));
+  for (const item of state.inventory || []) if (item?.branchId) ids.add(String(item.branchId));
+  for (const tx of state.transactions || []) if ((tx as any)?.branchId) ids.add(String((tx as any).branchId));
+  for (const session of state.cashSessions || []) if ((session as any)?.branchId) ids.add(String((session as any).branchId));
+  for (const transfer of state.transfers || []) {
+    if ((transfer as any)?.fromBranchId) ids.add(String((transfer as any).fromBranchId));
+    if ((transfer as any)?.toBranchId) ids.add(String((transfer as any).toBranchId));
+  }
+  return ids;
+}
+
+function referencedProductIds(state: AppState): Set<string> {
+  const ids = new Set<string>();
+  for (const item of state.inventory || []) if (item?.productId) ids.add(String(item.productId));
+  const pushItems = (items: any) => {
+    if (!Array.isArray(items)) return;
+    for (const item of items) if (item?.productId) ids.add(String(item.productId));
+  };
+  for (const tx of state.transactions || []) pushItems((tx as any)?.items);
+  for (const ret of state.returns || []) pushItems((ret as any)?.items);
+  for (const order of state.supplierOrders || []) pushItems((order as any)?.items);
+  for (const quote of state.quotes || []) pushItems((quote as any)?.items);
+  return ids;
+}
+
 /**
  * Fusiona el arranque acotado con el estado local sin purgar historial:
  * lo que no entró en la ventana sigue disponible desde la caché del equipo.
+ *
+ * Con `report`, cada sección se reemplaza SOLO si su consulta remota terminó
+ * bien. Una sección caída (red, RLS, presupuesto) conserva la caché local y
+ * nunca se sobrescribe con `[]`.
  */
-export function mergeBootstrapSnapshot(d: any, state: AppState): Partial<AppState> {
+export function mergeBootstrapSnapshot(d: any, state: AppState, report?: BootstrapReport): Partial<AppState> {
   const queue = getOfflineQueue();
   const pendingTransactions = collectPendingTransactionIds(queue);
   const pendingSessions = collectPendingCashSessionIds(queue);
@@ -110,8 +171,10 @@ export function mergeBootstrapSnapshot(d: any, state: AppState): Partial<AppStat
     returns: state.returns || [],
     supplierOrders: state.supplierOrders || []
   });
+  const loaded = (key: string) => sectionLoaded(report, key);
 
   const mergedTransactions = (() => {
+    if (!loaded('sales')) return state.transactions || [];
     const map = new Map<string, Transaction>();
     for (const tx of state.transactions || []) map.set(String(tx.id), tx);
     for (const tx of d.transactions || []) {
@@ -125,6 +188,7 @@ export function mergeBootstrapSnapshot(d: any, state: AppState): Partial<AppStat
   })();
 
   const mergedCashSessions = (() => {
+    if (!loaded('cashSessions')) return state.cashSessions || [];
     const map = new Map<string, CashRegisterSession>();
     for (const session of state.cashSessions || []) map.set(String(session.id), session);
     for (const session of d.cashSessions || []) {
@@ -138,6 +202,7 @@ export function mergeBootstrapSnapshot(d: any, state: AppState): Partial<AppStat
   })();
 
   const mergedTransfers = (() => {
+    if (!loaded('transfers')) return state.transfers || [];
     const map = new Map<string, InventoryTransfer>();
     const keyOf = (item: any) => String(item?.id || item?.operationId || '');
     for (const transfer of state.transfers || []) map.set(keyOf(transfer), transfer);
@@ -160,14 +225,26 @@ export function mergeBootstrapSnapshot(d: any, state: AppState): Partial<AppStat
   const pendingCustomerIds = pendingIds(queue, ['customer_delete', 'customer']);
   const pendingCustomerDeleteIds = pendingIds(queue, ['customer_delete']);
 
-  const branches = replaceRemoteRecords(d.branches || [], state.branches || [], pendingBranchIds)
-    .filter(b => !pendingBranchDeleteIds.has(b.id));
+  // Almacenes: se conservan los inactivos/archivados que ESTE equipo ya usa
+  // (sucursal activa, inventario, ventas, turnos o traslados), para que una
+  // bodega archivada en la nube no deje operaciones huérfanas.
+  const branches = (() => {
+    if (!loaded('warehouses')) return state.branches || [];
+    const referenced = referencedBranchIds(state);
+    const localIds = new Set((state.branches || []).map(b => b.id));
+    const remoteRows = (d.branches || []).filter((b: any) =>
+      b.isActive !== false || referenced.has(b.id) || localIds.has(b.id)
+    );
+    return replaceRemoteRecords(remoteRows, state.branches || [], pendingBranchIds)
+      .filter(b => !pendingBranchDeleteIds.has(b.id));
+  })();
   const validBranchIds = new Set(branches.map(b => b.id));
   const nextBranchId = state.currentBranchId && validBranchIds.has(state.currentBranchId)
     ? state.currentBranchId
     : (branches[0]?.id || state.currentBranchId);
 
   const users = (() => {
+    if (!loaded('users')) return state.users || [];
     const merged = mergeById(d.users || [], state.users || [], pendingUserIds);
     const map = new Map(merged.map(u => [String(u.id), u]));
     for (const local of state.users || []) {
@@ -176,12 +253,33 @@ export function mergeBootstrapSnapshot(d: any, state: AppState): Partial<AppStat
     return Array.from(map.values()).filter(u => !pendingUserDeleteIds.has(String(u.id)));
   })();
 
-  const products = replaceRemoteRecords(d.products || [], state.products || [], pendingProductIds)
-    .filter(p => !pendingProductDeleteIds.has(p.id));
-  const categories = replaceRemoteRecords(d.categories || [], state.categories || [], pendingCategoryIds)
-    .filter(c => !pendingCategoryDeleteIds.has(c.id));
-  const customers = mergeById(d.customers || [], state.customers || [], pendingCustomerIds)
-    .filter(c => !pendingCustomerDeleteIds.has(String(c.id)));
+  // Productos y categorías: los archivados/inactivos solo desaparecen de la UI
+  // si nada local los referencia; una venta o un stock viejo conserva su fila.
+  const products = (() => {
+    if (!loaded('products')) return state.products || [];
+    const localIds = new Set((state.products || []).map(p => p.id));
+    const referenced = referencedProductIds(state);
+    const remoteRows = (d.products || []).filter((p: any) =>
+      p.status !== 'archived' || localIds.has(p.id) || referenced.has(p.id)
+    );
+    return replaceRemoteRecords(remoteRows, state.products || [], pendingProductIds)
+      .filter(p => !pendingProductDeleteIds.has(p.id));
+  })();
+  const categories = (() => {
+    if (!loaded('categories')) return state.categories || [];
+    const referenced = new Set((state.products || []).map(p => String(p.categoryId || '')).filter(Boolean));
+    for (const product of products) if (product.categoryId) referenced.add(String(product.categoryId));
+    const localIds = new Set((state.categories || []).map(c => c.id));
+    const remoteRows = (d.categories || []).filter((c: any) =>
+      c.active !== false || localIds.has(c.id) || referenced.has(c.id)
+    );
+    return replaceRemoteRecords(remoteRows, state.categories || [], pendingCategoryIds)
+      .filter(c => !pendingCategoryDeleteIds.has(c.id));
+  })();
+  const customers = loaded('customers')
+    ? mergeById(d.customers || [], state.customers || [], pendingCustomerIds)
+        .filter(c => !pendingCustomerDeleteIds.has(String(c.id)))
+    : state.customers || [];
 
   return {
     branches,
@@ -190,53 +288,251 @@ export function mergeBootstrapSnapshot(d: any, state: AppState): Partial<AppStat
     categories,
     users,
     customers,
-    currencies: Array.isArray(d.currencies) && d.currencies.length
+    currencies: loaded('currencies') && Array.isArray(d.currencies) && d.currencies.length
       ? mergeUnique(d.currencies, state.currencies || [], { idKey: 'code' })
       : state.currencies,
-    inventory: mergeBranchInventory(d.inventory, state.inventory || [], '', pendingInventoryKeys),
+    inventory: loaded('inventory')
+      ? mergeBranchInventory(d.inventory, state.inventory || [], '', pendingInventoryKeys)
+      : state.inventory,
     transactions: mergedTransactions,
     cashSessions: mergedCashSessions,
     transfers: mergedTransfers,
-    bankCards: mergeById(d.bankCards || [], state.bankCards || []),
-    bankTransactions: mergeById(d.bankTransactions || [], state.bankTransactions || []),
-    suppliers: mergeById(d.suppliers || [], state.suppliers || []),
-    supplierOrders: mergeById(d.supplierOrders || [], state.supplierOrders || []),
-    returns: mergeById(d.returns || [], state.returns || []),
-    warranties: mergeById(d.warranties || [], state.warranties || []),
-    quotes: mergeById(d.quotes || [], state.quotes || []),
-    timeShifts: mergeById(d.timeShifts || [], state.timeShifts || []),
-    salarySettlements: mergeById(d.salarySettlements || [], state.salarySettlements || []),
-    inventoryAudits: mergeById(d.inventoryAudits || [], state.inventoryAudits || []),
-    storeConfig: d.storeConfig ? { ...state.storeConfig, ...d.storeConfig } : state.storeConfig,
-    receiptConfig: d.receiptConfig ? { ...state.receiptConfig, ...d.receiptConfig } : state.receiptConfig,
+    bankCards: loaded('banks') ? mergeById(d.bankCards || [], state.bankCards || []) : state.bankCards,
+    bankTransactions: loaded('banks') ? mergeById(d.bankTransactions || [], state.bankTransactions || []) : state.bankTransactions,
+    suppliers: loaded('suppliers') ? mergeById(d.suppliers || [], state.suppliers || []) : state.suppliers,
+    supplierOrders: loaded('suppliers') ? mergeById(d.supplierOrders || [], state.supplierOrders || []) : state.supplierOrders,
+    returns: loaded('extras') ? mergeById(d.returns || [], state.returns || []) : state.returns,
+    warranties: loaded('extras') ? mergeById(d.warranties || [], state.warranties || []) : state.warranties,
+    quotes: loaded('extras') ? mergeById(d.quotes || [], state.quotes || []) : state.quotes,
+    timeShifts: loaded('extras') ? mergeById(d.timeShifts || [], state.timeShifts || []) : state.timeShifts,
+    salarySettlements: loaded('extras') ? mergeById(d.salarySettlements || [], state.salarySettlements || []) : state.salarySettlements,
+    inventoryAudits: loaded('extras') ? mergeById(d.inventoryAudits || [], state.inventoryAudits || []) : state.inventoryAudits,
+    storeConfig: loaded('settings') && d.storeConfig ? { ...state.storeConfig, ...d.storeConfig } : state.storeConfig,
+    receiptConfig: loaded('settings') && d.receiptConfig ? { ...state.receiptConfig, ...d.receiptConfig } : state.receiptConfig,
     lastTurnNumber: Math.max(Number(state.lastTurnNumber) || 0, Number(d.lastTurnNumber) || 0),
+  };
+}
+
+// --- Hidratación inmediata desde el snapshot local -------------------------
+
+type SnapshotSections = Partial<Record<keyof AppState, any[]>>;
+
+function parsePersistedSnapshot(raw: string | null | undefined): any | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && parsed.state ? parsed.state : parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Rellena SOLO secciones vacías con el snapshot persistido. La nube puede
+ * tardar; al reabrir la app el usuario ve sus datos de inmediato y el pull
+ * solo añade/actualiza después.
+ */
+export function hydrateStoreFromSnapshot(state: AppState, snapshot: any): Partial<AppState> | null {
+  if (!snapshot || typeof snapshot !== 'object') return null;
+  const patch: Record<string, any[]> = {};
+  const arrays: Array<keyof SnapshotSections> = [
+    'branches', 'categories', 'products', 'customers', 'inventory', 'transactions',
+    'cashSessions', 'transfers', 'bankCards', 'bankTransactions', 'suppliers',
+    'supplierOrders', 'returns', 'warranties', 'quotes', 'timeShifts',
+    'salarySettlements', 'inventoryAudits', 'users', 'currencies'
+  ];
+  for (const key of arrays) {
+    const local = (state as any)[key];
+    const cached = snapshot[key];
+    if ((!Array.isArray(local) || local.length === 0) && Array.isArray(cached) && cached.length) {
+      patch[key as string] = cached;
+    }
+  }
+  const nextBranchId = !state.currentBranchId && typeof snapshot.currentBranchId === 'string'
+    ? snapshot.currentBranchId
+    : undefined;
+  if (!Object.keys(patch).length && !nextBranchId) return null;
+  return { ...(patch as Partial<AppState>), ...(nextBranchId ? { currentBranchId: nextBranchId } : {}) };
+}
+
+async function hydrateCachedState(
+  set: StoreSet,
+  get: StoreGet,
+  companyId: string,
+  options?: BootstrapActionOptions
+): Promise<boolean> {
+  try {
+    const scope = getPalmyraLocalScope();
+    // Una caché de OTRA empresa nunca hidrata este ámbito.
+    if (scope?.companyId && scope.companyId !== companyId) {
+      console.warn('[PALMYRA] Arranque: la copia local pertenece a otra empresa; se ignora la caché ajena.');
+      return false;
+    }
+    const raw = options?.localSnapshot !== undefined ? options.localSnapshot : await readLocalStateStorage();
+    const snapshot = parsePersistedSnapshot(raw);
+    if (!snapshot) return false;
+    let applied = false;
+    set((state) => {
+      const patch = hydrateStoreFromSnapshot(state, snapshot);
+      if (!patch) return {};
+      applied = true;
+      return patch;
+    });
+    return applied;
+  } catch (error) {
+    console.warn('[PALMYRA] Arranque: no se pudo hidratar la copia local.', error);
+    return false;
+  }
+}
+
+async function resolveBootstrapCompanyId(options?: BootstrapActionOptions): Promise<string> {
+  const provided = options?.tenant?.companyId?.trim();
+  if (provided) return provided;
+  const { getActiveTenant } = await import('../../services/tenant');
+  const tenant = await getActiveTenant();
+  return tenant?.companyId?.trim() || '';
+}
+
+/**
+ * Autocuración: si el ámbito local quedó sin catálogo pero la nube sí tiene
+ * filas, se fuerza UNA descarga completa (sin cursores incrementales).
+ */
+function needsFullCatalogPull(state: AppState, d: any, report: BootstrapReport): boolean {
+  const remoteCount = (key: string) => (Array.isArray(d?.[key]) ? d[key].length : 0);
+  const localCount = (key: keyof AppState) => (Array.isArray((state as any)[key]) ? (state as any)[key].length : 0);
+  const remoteHasCatalog = remoteCount('products') > 0 || remoteCount('categories') > 0 || remoteCount('branches') > 0;
+  if (!remoteHasCatalog) return false;
+  return (
+    (remoteCount('products') > 0 && localCount('products') === 0) ||
+    (remoteCount('categories') > 0 && localCount('categories') === 0) ||
+    (remoteCount('branches') > 0 && localCount('branches') === 0)
+  );
+}
+
+async function requestFullCloudPull(companyId: string, options?: BootstrapActionOptions): Promise<boolean> {
+  try {
+    const runFull = options?.fullPull || (async (id: string) => {
+      const engine = await import('../../services/cloudSync/pullEngine');
+      return engine.requestFullCloudPull(id, 'bootstrap-self-heal');
+    });
+    const outcome: any = await runFull(companyId);
+    if (outcome === false || outcome === null) {
+      console.info('[PALMYRA] Autocuración: no hay motor de descarga completo activo; se reintentará en el próximo arranque.');
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.warn('[PALMYRA] Autocuración: la descarga completa falló.', error);
+    return false;
+  }
+}
+
+function buildBootstrapResult(report: BootstrapReport, data: any): SyncResult {
+  const labels = Object.values(report.sections || {}).map(entry => entry.label);
+  const failed = report.errors || [];
+  if (!failed.length) {
+    return {
+      success: true,
+      message: `Arranque: ${data.products?.length || 0} productos, ${data.branches?.length || 0} almacenes, ${data.categories?.length || 0} categorías.`,
+      counts: {
+        products: data.products?.length || 0,
+        categories: data.categories?.length || 0,
+        branches: data.branches?.length || 0,
+        customers: data.customers?.length || 0,
+        transactions: data.transactions?.length || 0,
+        inventory: data.inventory?.length || 0,
+      },
+    };
+  }
+  const anyOk = (report.sections ? Object.values(report.sections) : []).some(entry => entry.ok);
+  if (!anyOk) {
+    // Nada llegó: se conserva TODO lo local y se informa el error real.
+    return { success: false, message: failed[0].message, errors: failed.map(entry => `${entry.label}: ${entry.message}`) };
+  }
+  return {
+    success: false,
+    message: `Arranque parcial: ${failed.map(entry => entry.label).join(', ')} no se pudieron actualizar; se conserva la copia local.`,
+    counts: {
+      products: data.products?.length || 0,
+      categories: data.categories?.length || 0,
+      branches: data.branches?.length || 0,
+      customers: data.customers?.length || 0,
+      transactions: data.transactions?.length || 0,
+      inventory: data.inventory?.length || 0,
+      sections: labels.length,
+    },
+    errors: failed.map(entry => `${entry.label}: ${entry.message}`),
   };
 }
 
 async function runBootstrap(set: StoreSet, get: StoreGet, options?: BootstrapActionOptions): Promise<boolean> {
   const force = options?.force === true;
-  if (typeof navigator !== 'undefined' && navigator.onLine === false) return false;
+  if (!isOnlineNow(options)) {
+    // Offline: se muestra la copia local y no se toca nada más.
+    const offlineCompany = options?.tenant?.companyId || getPalmyraLocalScope()?.companyId || '';
+    if (offlineCompany) await hydrateCachedState(set, get, offlineCompany, options);
+    set({ syncResult: { success: false, message: 'Sin conexión: se muestra la copia local del equipo.' } });
+    return false;
+  }
   if (bootstrapInFlight) return bootstrapInFlight;
-  if (!force && Date.now() - lastPullMomentMs() < BOOTSTRAP_COOLDOWN_MS) return false;
 
   const run = (async () => {
     try {
-      const { data } = await loadBootstrapData({
+      // La empresa SIEMPRE se resuelve antes de pedir nada: sin ámbito no hay
+      // arranque válido y nunca se cachea un snapshot vacío.
+      const companyId = await resolveBootstrapCompanyId(options);
+      if (!companyId) {
+        set({ syncResult: { success: false, message: 'No se pudo resolver la empresa activa; se muestra la copia local.' } });
+        return false;
+      }
+      if (bootstrapCompanyId && bootstrapCompanyId !== companyId) {
+        // Cambio de empresa: los cursores y la ventana de gracia eran de otra.
+        historyCursor = null;
+        historyExhausted = false;
+        console.info('[PALMYRA] Arranque: empresa activa cambiada; se descarta el estado de sincronización anterior.');
+      }
+      bootstrapCompanyId = companyId;
+
+      // 1) Mostrar ya lo que hay en disco, sin esperar a la red.
+      await hydrateCachedState(set, get, companyId, options);
+
+      if (!force && Date.now() - lastPullMomentMs(companyId) < BOOTSTRAP_COOLDOWN_MS) return false;
+
+      const before = get();
+      const { data, report } = await loadBootstrapData({
         supabase: options?.supabase,
-        tenant: options?.tenant,
+        tenant: { companyId },
         now: options?.now,
         includeSaasUser: options?.supabase ? false : undefined,
       });
+
+      // 2) Reemplazar solo las secciones que llegaron completas.
       set((state) => ({
-        ...mergeBootstrapSnapshot(data, state),
-        lastSyncTime: new Date().toISOString(),
-        syncResult: { success: true, message: 'Arranque acotado: catálogo y actividad reciente.' }
+        ...mergeBootstrapSnapshot(data, state, report),
+        syncResult: buildBootstrapResult(report, data),
+        ...(report.ok ? { lastSyncTime: new Date().toISOString() } : {}),
       }));
-      lastBootstrapSuccessAt = Date.now();
-      historyCursor = null;
-      historyExhausted = false;
-      recordSyncMoment('pull');
-      return true;
+
+      const anySection = Object.values(report.sections).some(entry => entry.ok);
+      if (report.ok) {
+        bootstrapSuccessByCompany.set(companyId, Date.now());
+        historyCursor = null;
+        historyExhausted = false;
+        recordSyncMoment('pull');
+      }
+
+      // 3) Autocuración: ámbito local vacío + nube con filas → pull completo.
+      if (needsFullCatalogPull(before, data, report) && !selfHealDoneFor.has(companyId)) {
+        selfHealDoneFor.add(companyId);
+        console.info(
+          `[PALMYRA] Autocuración: el catálogo local de ${companyId} estaba vacío y la nube tiene ` +
+          `${data.products?.length || 0} productos / ${data.categories?.length || 0} categorías / ${data.branches?.length || 0} almacenes. ` +
+          'Se fuerza una descarga completa sin cursores.'
+        );
+        await requestFullCloudPull(companyId, options);
+      }
+
+      return report.ok || anySection;
     } catch (e: any) {
       // Un fallo de red no toca los datos locales: el POS sigue offline.
       set({ syncResult: { success: false, message: e?.message || 'No se pudo actualizar desde la nube' } });

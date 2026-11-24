@@ -8,6 +8,8 @@ additional_redirect_urls = [
   "http://127.0.0.1:3000/**"
 ]
 enable_signup = true
+
+[auth.email]
 enable_confirmations = true
 
 [auth.email.template.confirmation]
@@ -43,4 +45,10 @@ verify_jwt = true
 # El planificador llama con x-worker-secret (sin JWT) o el equipo con la
 # service role; la función valida ambos casos por su cuenta.
 [functions.materialize-local-changes]
+verify_jwt = false
+
+# Canje del enlace de dispositivo desde el PC/APK sin sesión previa: el token
+# es el secreto, así que no hay JWT que verificar. La RPC interna es
+# security definer y solo service_role puede ejecutarla.
+[functions.device-access]
 verify_jwt = false

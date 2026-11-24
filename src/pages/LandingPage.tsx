@@ -199,18 +199,18 @@ function AreaPanel({ area, compact = false, onOpen }: { area: LandingArea; compa
       <div className="flex items-start justify-between gap-3">
         <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#EFE8FF] text-[#5B2DBA]"><Icon className="h-5 w-5" /></span>
         <div className="flex flex-wrap justify-end gap-1.5">
-          <span className="rounded-full bg-[#F7F5FC] px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-slate-500">{area.group}</span>
-          <span className="rounded-full bg-[#EFE8FF] px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-[#5B2DBA]">Plan {area.plan}</span>
+          <span className="rounded-full bg-[#F7F5FC] px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-slate-500">{area.group}</span>
+          <span className="rounded-full bg-[#EFE8FF] px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-[#5B2DBA]">Plan {area.plan}</span>
         </div>
       </div>
-      <p className="mt-4 text-[9px] font-black uppercase tracking-[.18em] text-[#7C4DDE]">
+      <p className="mt-4 text-[10px] font-black uppercase tracking-[.18em] text-[#7C4DDE]">
         {area.label} <span className="normal-case tracking-normal text-slate-500">· {area.route}</span>
       </p>
       <h3 className="mt-1.5 text-lg font-black tracking-[-.02em] text-[#3B1B78] sm:text-xl">{area.title}</h3>
       <p className="mt-2 text-xs leading-6 text-slate-500">{area.summary}</p>
       {!compact && (
         <>
-          <p className="mt-4 text-[9px] font-black uppercase tracking-[.18em] text-slate-500">Cómo se usa</p>
+          <p className="mt-4 text-[10px] font-black uppercase tracking-[.18em] text-slate-500">Cómo se usa</p>
           <ol className="mt-2 grid gap-1.5">
             {area.steps.map((step, index) => (
               <li key={step} className="flex items-center gap-2.5 rounded-xl border border-violet-100 bg-[#F8F6FC] px-3 py-2">
@@ -222,7 +222,7 @@ function AreaPanel({ area, compact = false, onOpen }: { area: LandingArea; compa
         </>
       )}
       <div className="mt-4 rounded-2xl bg-[#3B1B78] p-3.5 text-white">
-        <p className="text-[8px] font-black uppercase tracking-[.18em] text-violet-200">Qué puedes hacer</p>
+        <p className="text-[10px] font-black uppercase tracking-[.18em] text-violet-200">Qué puedes hacer</p>
         <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
           {area.capabilities.map((capability) => (
             <li key={capability} className="flex items-start gap-1.5 text-[10px] font-bold leading-4 text-white/90">
@@ -290,7 +290,7 @@ function DownloadCta({
           </span>
         )}
       </a>
-      <div className="mt-2 flex items-start justify-between gap-2 text-[9px] leading-4 text-slate-600">
+      <div className="mt-2 flex items-start justify-between gap-2 text-[10px] leading-4 text-slate-600">
         <span>
           {started
             ? "Revisa la barra de descargas de tu navegador. Si no aparece, vuelve a tocar el botón."
@@ -334,7 +334,7 @@ function DownloadCenter() {
                 <span className="w-11 h-11 rounded-2xl bg-[#5B2DBA] text-white flex items-center justify-center">
                   <MonitorSmartphone className="w-5 h-5" />
                 </span>
-                <span className="px-2.5 py-1 rounded-full bg-white border border-violet-100 text-[8px] font-black uppercase tracking-wider text-[#5B2DBA]">
+                <span className="px-2.5 py-1 rounded-full bg-white border border-violet-100 text-[10px] font-black uppercase tracking-wider text-[#5B2DBA]">
                   Windows 10 / 11 · 64 bits
                 </span>
               </div>
@@ -357,7 +357,7 @@ function DownloadCenter() {
               <div className="mt-auto pt-5">
                 <div className="rounded-xl border border-violet-100 bg-white px-3 py-2">
                   <p className="text-[10px] font-black text-[#3B1B78]">Versión actual · v{PRODUCT_DISPLAY_VERSION}</p>
-                  <p className="mt-0.5 text-[9px] font-semibold text-slate-600">Siempre la última versión publicada</p>
+                  <p className="mt-0.5 text-[10px] font-semibold text-slate-600">Siempre la última versión publicada</p>
                 </div>
                 <DownloadCta
                   href={DESKTOP_DOWNLOAD_URL}
@@ -365,7 +365,7 @@ function DownloadCenter() {
                   sizeLabel="Instalador para Windows · aprox. 84 MB"
                   className="mt-2"
                 />
-                <p className="mt-2 text-[9px] leading-4 text-slate-600">
+                <p className="mt-2 text-[10px] leading-4 text-slate-600">
                   Si Windows muestra el aviso de SmartScreen por ser un instalador nuevo, elige «Más información →
                   Ejecutar de todas formas».
                 </p>
@@ -380,7 +380,7 @@ function DownloadCenter() {
                 <span className="w-11 h-11 rounded-2xl bg-[#3B1B78] text-white flex items-center justify-center">
                   <Smartphone className="w-5 h-5" />
                 </span>
-                <span className="px-2.5 py-1 rounded-full bg-white border border-violet-100 text-[8px] font-black uppercase tracking-wider text-[#5B2DBA]">
+                <span className="px-2.5 py-1 rounded-full bg-white border border-violet-100 text-[10px] font-black uppercase tracking-wider text-[#5B2DBA]">
                   Android 7 o superior
                 </span>
               </div>
@@ -404,7 +404,7 @@ function DownloadCenter() {
               <div className="mt-auto pt-5">
                 <div className="rounded-xl border border-violet-100 bg-white px-3 py-2">
                   <p className="text-[10px] font-black text-[#3B1B78]">Versión actual · v{PRODUCT_DISPLAY_VERSION}</p>
-                  <p className="mt-0.5 text-[9px] font-semibold text-slate-600">Siempre la última versión publicada</p>
+                  <p className="mt-0.5 text-[10px] font-semibold text-slate-600">Siempre la última versión publicada</p>
                 </div>
                 <DownloadCta
                   href={ANDROID_APK_URL}
@@ -412,7 +412,7 @@ function DownloadCenter() {
                   sizeLabel="APK para Android 7 o superior · aprox. 2 MB"
                   className="mt-2"
                 />
-                <p className="mt-2 text-[9px] leading-4 text-slate-600">
+                <p className="mt-2 text-[10px] leading-4 text-slate-600">
                   Si Android lo solicita, activa «Instalar apps desconocidas» para este archivo.
                 </p>
               </div>
@@ -425,7 +425,7 @@ function DownloadCenter() {
                 <span className="w-11 h-11 rounded-2xl bg-[#EFE8FF] text-[#5B2DBA] flex items-center justify-center">
                   <Tablet className="w-5 h-5" />
                 </span>
-                <span className="px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-[8px] font-black uppercase tracking-wider text-amber-700">
+                <span className="px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-[10px] font-black uppercase tracking-wider text-amber-700">
                   Próximamente
                 </span>
               </div>
@@ -450,7 +450,7 @@ function DownloadCenter() {
                   <Tablet className="h-4 w-4 shrink-0" />
                   Disponible próximamente
                 </div>
-                <p className="mt-2 text-[9px] leading-4 text-slate-600">
+                <p className="mt-2 text-[10px] leading-4 text-slate-600">
                   Mientras tanto, trabaja desde Windows o Android con la misma cuenta: todo se sincroniza igual.
                 </p>
               </div>
@@ -538,16 +538,16 @@ export default function LandingPage({ signedIn = false }: { signedIn?: boolean }
             <a href="#producto">Producto</a><a href="#modulos">Módulos</a><a href="#descargas">Descargas</a><a href="#planes">Planes</a><a href="#historia">Historia</a>
           </nav>
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
-            <button type="button" onClick={() => goAuth("signin")} aria-label="Entrar a tu cuenta" className="inline-flex h-10 min-h-10 items-center justify-center gap-1 rounded-xl border border-violet-200 bg-white px-2.5 text-[11px] font-black text-[#5B2DBA] transition active:scale-95 sm:border-0 sm:bg-transparent sm:px-4 sm:text-xs sm:hover:bg-white">
+            <button type="button" onClick={() => goAuth("signin")} aria-label="Entrar a tu cuenta" className="inline-flex h-11 min-h-11 items-center justify-center gap-1 rounded-xl border border-violet-200 bg-white px-2.5 text-[11px] font-black text-[#5B2DBA] transition active:scale-95 sm:border-0 sm:bg-transparent sm:px-4 sm:text-xs sm:hover:bg-white">
               {pendingAuth === "signin" ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null}
               Entrar
             </button>
-            <button type="button" onClick={() => goAuth("signup")} aria-label="Crear cuenta" className="inline-flex h-10 min-h-10 items-center justify-center gap-1 whitespace-nowrap rounded-xl bg-[#5B2DBA] px-3 text-[11px] font-black text-white shadow-[0_12px_28px_-12px_rgba(101,53,197,.65)] transition active:scale-95 sm:px-5 sm:text-xs">
+            <button type="button" onClick={() => goAuth("signup")} aria-label="Crear cuenta" className="inline-flex h-11 min-h-11 items-center justify-center gap-1 whitespace-nowrap rounded-xl bg-[#5B2DBA] px-3 text-[11px] font-black text-white shadow-[0_12px_28px_-12px_rgba(101,53,197,.65)] transition active:scale-95 sm:px-5 sm:text-xs">
               {pendingAuth === "signup" ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : null}
               <span className="sm:hidden">Crear</span>
               <span className="hidden sm:inline">Crear cuenta</span>
             </button>
-            <button type="button" onClick={() => setMobileMenu(v => !v)} className="w-10 h-10 shrink-0 rounded-xl border border-violet-100 bg-white text-[#5B2DBA]" aria-label={mobileMenu ? "Cerrar menú" : "Abrir menú"} aria-expanded={mobileMenu}>{mobileMenu ? <X className="w-4 h-4 mx-auto" /> : <Menu className="w-4 h-4 mx-auto" />}</button>
+            <button type="button" onClick={() => setMobileMenu(v => !v)} className="h-11 w-11 shrink-0 rounded-xl border border-violet-100 bg-white text-[#5B2DBA]" aria-label={mobileMenu ? "Cerrar menú" : "Abrir menú"} aria-expanded={mobileMenu}>{mobileMenu ? <X className="w-4 h-4 mx-auto" /> : <Menu className="w-4 h-4 mx-auto" />}</button>
           </div>
         </div>
         {mobileMenu && <div className="lg:hidden border-t border-violet-100 bg-white px-4 py-3"><div className="flex flex-col gap-3 text-xs font-bold text-slate-600"><a href="#producto" onClick={() => setMobileMenu(false)}>Producto</a><a href="#modulos" onClick={() => setMobileMenu(false)}>Módulos</a><a href="#descargas" onClick={() => setMobileMenu(false)}>Descargas</a><a href="#planes" onClick={() => setMobileMenu(false)}>Planes</a><a href="#historia" onClick={() => setMobileMenu(false)}>Historia</a></div><div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-violet-100"><button type="button" onClick={() => goAuth("signin")} className="h-11 rounded-xl border border-violet-200 bg-white text-[11px] font-black text-[#5B2DBA] active:scale-[.98]">Entrar</button><button type="button" onClick={() => goAuth("signup")} className="h-11 rounded-xl bg-[#5B2DBA] text-white text-[11px] font-black active:scale-[.98]">Crear cuenta</button></div></div>}
@@ -617,7 +617,7 @@ export default function LandingPage({ signedIn = false }: { signedIn?: boolean }
                   const groupAreas = areas.filter(area => area.group === group);
                   return (
                     <div key={group} className="mb-3 last:mb-0">
-                      <p className="px-2 pb-1.5 text-[9px] font-black uppercase tracking-[.18em] text-slate-500">{group}</p>
+                      <p className="px-2 pb-1.5 text-[10px] font-black uppercase tracking-[.18em] text-slate-500">{group}</p>
                       <div className="space-y-1">
                         {groupAreas.map(area => {
                           const Icon = area.icon;
@@ -627,7 +627,7 @@ export default function LandingPage({ signedIn = false }: { signedIn?: boolean }
                               className={"flex min-h-10 w-full items-center gap-2.5 rounded-xl px-2.5 text-left text-[11px] font-bold transition " + (isActive ? "bg-white text-[#5B2DBA] shadow-sm ring-1 ring-violet-200" : "text-slate-500 hover:bg-white/70 hover:text-[#5B2DBA]")}>
                               <span className={"flex h-7 w-7 shrink-0 items-center justify-center rounded-lg " + (isActive ? "bg-[#5B2DBA] text-white" : "bg-white text-[#7C4DDE]")}><Icon className="w-3.5 h-3.5"/></span>
                               <span className="min-w-0 flex-1 truncate">{area.label}</span>
-                              <span className="shrink-0 text-[8px] font-black uppercase tracking-wider text-slate-500">{area.plan}</span>
+                              <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-slate-500">{area.plan}</span>
                             </button>
                           );
                         })}
@@ -677,12 +677,12 @@ export default function LandingPage({ signedIn = false }: { signedIn?: boolean }
                 return (
                   <article key={plan.code} className={"relative flex h-full min-w-0 flex-col rounded-2xl p-4 border " + (plan.featured ? "border-[#8B63E6] bg-white shadow-[0_25px_60px_-34px_rgba(101,53,197,.55)]" : "border-violet-100 bg-white/80")}>
                     {plan.featured && <div className="absolute -top-2.5 left-4 px-2.5 py-1 rounded-full bg-[#5B2DBA] text-white text-[11px] font-black uppercase tracking-wider whitespace-nowrap">Más elegido</div>}
-                    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1"><div className="flex min-w-0 flex-1 items-center gap-2"><span className="w-8 h-8 shrink-0 rounded-xl bg-[#EFE8FF] text-[#5B2DBA] flex items-center justify-center"><Icon className="w-4 h-4"/></span><div className="min-w-0"><p className="text-[11px] uppercase tracking-wide text-slate-500 font-black leading-tight break-words">{plan.note}</p><h3 className="text-base font-black text-[#3B1B78] leading-tight break-words">{plan.name}</h3></div></div><p className="shrink-0 whitespace-nowrap text-lg font-black leading-none text-[#3B1B78]">{plan.price}{plan.code !== "free" && <span className="text-[11px] text-slate-500 font-bold">/mes</span>}</p></div>
+                    <div className="flex items-start justify-between gap-2"><div className="flex min-w-0 flex-1 items-center gap-2"><span className="w-8 h-8 shrink-0 rounded-xl bg-[#EFE8FF] text-[#5B2DBA] flex items-center justify-center"><Icon className="w-4 h-4"/></span><div className="min-w-0"><p className="text-[10px] uppercase tracking-wide text-slate-500 font-black leading-tight break-words">{plan.note}</p><h3 className="text-base font-black text-[#3B1B78] leading-tight break-words">{plan.name}</h3></div></div><p className="shrink-0 whitespace-nowrap text-right text-lg font-black leading-none text-[#3B1B78]">{plan.price}{plan.code !== "free" && <span className="text-[11px] text-slate-500 font-bold">/mes</span>}</p></div>
                     <div className="mt-4 rounded-lg bg-[#F7F5FC] border border-violet-50 divide-y divide-violet-100">{[plan.warehouses, plan.employees, plan.products].map((value, index) => <div key={index} className="flex items-baseline justify-between gap-2 px-2.5 py-1.5"><p className="shrink-0 text-[11px] text-slate-500 uppercase font-black leading-tight">{["Almacenes","Empleados","Productos"][index]}</p><p className="min-w-0 text-right text-[11px] font-black text-[#5B2DBA] leading-tight break-words">{value}</p></div>)}</div>
                     <p className="text-[11px] text-slate-500 leading-5 mt-3 break-words">{plan.description}</p>
                     <div className="space-y-1.5 mt-4">{plan.features.map(f => <div key={f} className="flex items-start gap-2 text-[11px] leading-5 text-slate-500"><span className="w-4 h-4 mt-0.5 rounded-md bg-[#EFE8FF] text-[#5B2DBA] flex items-center justify-center shrink-0"><Check className="w-2.5 h-2.5"/></span><span className="min-w-0 break-words">{f}</span></div>)}</div>
                     <div className="mt-auto pt-5">
-                      <button type="button" onClick={() => choosePlanAndSignup(plan.code)} className={"w-full h-10 px-2 rounded-xl text-[11px] leading-tight font-black active:scale-[.98] " + (plan.featured ? "bg-[#5B2DBA] text-white" : "bg-[#F0EBFA] text-[#5B2DBA]")}>{plan.code === "free" ? "Comenzar con Gratis" : "Elegir plan"}</button>
+                      <button type="button" onClick={() => choosePlanAndSignup(plan.code)} className={"w-full min-h-11 px-2 rounded-xl text-xs leading-tight font-black active:scale-[.98] " + (plan.featured ? "bg-[#5B2DBA] text-white" : "bg-[#F0EBFA] text-[#5B2DBA]")}>{plan.code === "free" ? "Comenzar con Gratis" : "Elegir plan"}</button>
                       <p className="text-[11px] leading-4 text-center text-slate-500 mt-2 break-words">{plan.code === "free" ? "Gratis permanente · modo offline · respaldo comercial en la nube" : "CUP en efectivo o transferencia · USD en efectivo · confirmación manual"}</p>
                     </div>
                   </article>

@@ -237,7 +237,7 @@ export function hubQuotesToPayload(quotes: HubRateQuote[], nowMs = Date.now()): 
     capturedAt: new Date(captured || nowMs).toISOString(),
     data: { tasas: data },
     ...(stale
-      ? { stale: true, notice: "El hub LAN entregó su última tasa válida; no es una consulta en vivo." }
+      ? { stale: true, notice: "Se muestra la última tasa válida guardada; no es una consulta en vivo." }
       : {})
   };
 }
@@ -336,19 +336,20 @@ export function createHubRatesProvider(
         ...(signal ? { signal } : {})
       });
     } catch {
-      throw new Error("No se pudo consultar la tasa en el servidor local del hub; revisa que esté en ejecución.");
+      // Copy neutral: nunca se nombra hub, LAN ni servidor local hacia la UI.
+      throw new Error("No se pudo consultar la tasa automática; se conserva la última tasa conocida.");
     }
     if (!response.ok) {
       throw new Error(
         response.status === 429
-          ? "El servidor local está limitando las consultas de tasa; se reintentará más tarde."
-          : "El servidor local no pudo entregar la tasa de cambio en este momento."
+          ? "Se alcanzó el límite de consultas de tasa; se reintentará más tarde."
+          : "La consulta de tasa no está disponible en este momento; se conserva la última tasa conocida."
       );
     }
     const body: unknown = await response.json().catch(() => null);
     const rates = normalizeLocalRatesPayload(body, clock());
     if (!rates.length) {
-      throw new Error("El servidor local respondió sin cotizaciones válidas; se conserva la última tasa conocida.");
+      throw new Error("La consulta de tasa respondió sin cotizaciones válidas; se conserva la última tasa conocida.");
     }
     return rates;
   }
@@ -374,10 +375,10 @@ export function createHubRatesProvider(
       // Sin copia todavía: solo una credencial configurada permite consultar y
       // nunca más de una vez cada 5 minutos tras un fallo.
       if (!tokenText()) {
-        throw new Error("El hub LAN todavía no tiene una tasa válida; se conserva la última tasa conocida.");
+        throw new Error("Todavía no hay una tasa válida; se conserva la última tasa conocida.");
       }
       if (lastFailureAt !== null && current - lastFailureAt < HUB_RATES_FAILURE_COOLDOWN_MS) {
-        throw new Error("El hub LAN está reintentando obtener la tasa; se conserva la última tasa conocida.");
+        throw new Error("La consulta de tasa se está reintentando; se conserva la última tasa conocida.");
       }
     }
 
@@ -401,7 +402,7 @@ export function createHubRatesProvider(
       if (cached) return markRatesByAge(cached.rates.map(rate => ({ ...rate, stale: true })), current, maxAgeMs);
       throw error instanceof Error
         ? error
-        : new Error("No se pudo consultar la tasa local del hub LAN.");
+        : new Error("No se pudo consultar la tasa de cambio automática.");
     }
   };
 }

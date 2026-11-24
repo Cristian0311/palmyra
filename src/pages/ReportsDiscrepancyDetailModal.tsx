@@ -5,6 +5,7 @@ import {
   ShieldAlert, Wallet, X,
 } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { ticketDisplay } from '../lib/documentCodes';
 import type { CashRegisterSession, Transaction } from '../types';
 import type { SessionDiscrepancyDetail, SessionDiscrepancyInfo } from '../modules/reports/utils/getSessionDiscrepancyInfo';
 import { getSessionTurnLabel } from '../modules/reports/utils/sessionTurnLabels';
@@ -314,7 +315,7 @@ export default function ReportsDiscrepancyDetailModal({
                     <div key={tx.id} className="flex items-center justify-between gap-2 rounded-lg border border-base bg-secondary px-2 py-1.5">
                       <span className="inline-flex min-w-0 items-center gap-1.5">
                         <Receipt size={13} className="shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
-                        <span className="truncate font-bold text-primary" style={metaStyle}>#{tx.id.slice(0, 8)}</span>
+                        <span className="truncate font-bold text-primary" style={metaStyle}>{ticketDisplay(tx.ticketNumber, tx.id)}</span>
                         <span className="shrink-0 font-bold text-muted" style={{ fontSize: 11 }}>{fmtTime(tx.date)}</span>
                       </span>
                       <span className="shrink-0 font-black text-primary" style={metaStyle}>{formatMoney(tx.total, baseCurrency.code)}</span>

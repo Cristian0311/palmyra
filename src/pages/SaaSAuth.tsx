@@ -364,7 +364,7 @@ export default function SaaSAuth() {
           <button onClick={() => navigate("/landing")} className="flex items-center gap-2.5" aria-label="Ir a la página de inicio de PALMYRA">
             <PalmyraWordmark className="h-8 w-auto sm:h-10" />
           </button>
-          <button onClick={() => navigate("/landing")} className="text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-[#6535C5]">Volver al inicio</button>
+          <button onClick={() => navigate("/landing")} className="text-[11px] font-black uppercase tracking-wider text-slate-500 hover:text-[#6535C5]">Volver al inicio</button>
         </div>
 
         <div className="grid lg:grid-cols-[.9fr_1.1fr] bg-white border border-violet-100 rounded-[26px] overflow-hidden shadow-[0_30px_90px_-52px_rgba(59,27,110,.55)]">
@@ -417,8 +417,8 @@ export default function SaaSAuth() {
             </div>
 
             {mode !== "recovery" && mode !== "sent" && <div className="grid grid-cols-2 gap-1 p-1 bg-[#F7F5FC] rounded-xl mt-5">
-              <button type="button" onClick={() => switchMode("signin")} className={"h-10 min-h-10 rounded-lg text-[10px] font-black " + (mode==="signin"?"bg-white text-[#3B1B6E] shadow-sm":"text-slate-500")}>Iniciar sesión</button>
-              <button type="button" onClick={() => switchMode("signup")} className={"h-10 min-h-10 rounded-lg text-[10px] font-black " + (mode==="signup"?"bg-white text-[#3B1B6E] shadow-sm":"text-slate-500")}>Crear cuenta</button>
+              <button type="button" onClick={() => switchMode("signin")} className={"h-11 min-h-11 rounded-lg text-[11px] font-black " + (mode==="signin"?"bg-white text-[#3B1B6E] shadow-sm":"text-slate-500")}>Iniciar sesión</button>
+              <button type="button" onClick={() => switchMode("signup")} className={"h-11 min-h-11 rounded-lg text-[11px] font-black " + (mode==="signup"?"bg-white text-[#3B1B6E] shadow-sm":"text-slate-500")}>Crear cuenta</button>
             </div>}
 
             {mode === "sent" ? (
@@ -447,7 +447,7 @@ export default function SaaSAuth() {
                   {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
                   {resendIn > 0 ? `Reenviar en ${resendIn} s` : "Reenviar correo de confirmación"}
                 </button>
-                <button type="button" onClick={() => { setSentTo(""); switchMode("signup"); }} className="mt-2 h-10 w-full rounded-xl bg-[#EFE8FF] text-[10px] font-black text-[#5B2DBA]">
+                <button type="button" onClick={() => { setSentTo(""); switchMode("signup"); }} className="mt-2 h-11 w-full rounded-xl bg-[#EFE8FF] text-[11px] font-black text-[#5B2DBA]">
                   Usar otro correo
                 </button>
               </div>
@@ -494,7 +494,7 @@ export default function SaaSAuth() {
                     type="button"
                     onClick={()=>setShowPassword(v=>!v)}
                     aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 text-slate-500"
+                    className="absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4 mx-auto"/> : <Eye className="w-4 h-4 mx-auto"/>}
                   </button>
@@ -529,7 +529,7 @@ export default function SaaSAuth() {
                   type="button"
                   disabled={busy || resendIn > 0}
                   onClick={() => void resendConfirmation(email)}
-                  className="w-full h-10 rounded-xl border border-violet-200 bg-white text-[11px] font-black text-[#5B2DBA] disabled:opacity-50"
+                  className="h-11 w-full rounded-xl border border-violet-200 bg-white text-[11px] font-black text-[#5B2DBA] disabled:opacity-50"
                 >
                   {resendIn > 0 ? `Reenviar en ${resendIn} s` : "Reenviar correo de confirmación"}
                 </button>
@@ -553,8 +553,8 @@ export default function SaaSAuth() {
             </form>
             )}
 
-            {mode === "signin" && <button type="button" onClick={()=>{setMode("reset");setError("");setMessage("");}} className="w-full mt-3 text-[10px] font-black text-[#6535C5]">¿Olvidaste tu contraseña?</button>}
-            {mode === "reset" && <button type="button" onClick={()=>switchMode("signin")} className="w-full mt-3 text-[10px] font-black text-slate-500">Volver a iniciar sesión</button>}
+            {mode === "signin" && <button type="button" onClick={()=>{setMode("reset");setError("");setMessage("");}} className="mt-3 min-h-11 w-full text-[11px] font-black text-[#6535C5]">¿Olvidaste tu contraseña?</button>}
+            {mode === "reset" && <button type="button" onClick={()=>switchMode("signin")} className="mt-3 min-h-11 w-full text-[11px] font-black text-slate-500">Volver a iniciar sesión</button>}
 
             <div className="mt-5 pt-4 border-t border-violet-100 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[10px] text-slate-500">
               <span className="inline-flex items-center gap-1"><Check className="w-3 h-3 text-emerald-600"/> Datos aislados</span>

@@ -8,7 +8,7 @@ import {
   localExchangeRatesUrl,
   resolveLocalServerBaseUrl
 } from "../../src/services/lanHub/rates";
-import { formatRateAge, resolveExchangeRates } from "../../src/services/exchangeRatesHub";
+import { formatRateAge, fetchHubAutoRatePayload, resolveExchangeRates } from "../../src/services/exchangeRatesHub";
 
 const FIXED_MS = Date.parse("2026-05-01T12:00:00.000Z");
 const FIXED_ISO = new Date(FIXED_MS).toISOString();
@@ -245,7 +245,7 @@ test("resolveExchangeRates firma la petición al hub y cae al respaldo sin filtr
       serverTime: FIXED_ISO
     }
   }]);
-  const fromHub = await resolveExchangeRates({ session, fetchImpl: impl, now: () => FIXED_MS });
+  const fromHub = await resolveExchangeRates({ session, hubEnabled: true, fetchImpl: impl, now: () => FIXED_MS });
   assert.equal(fromHub.source, "hub");
   assert.equal(fromHub.stale, false);
   assert.equal(fromHub.rates[0].rate, 400);
@@ -259,6 +259,7 @@ test("resolveExchangeRates firma la petición al hub y cae al respaldo sin filtr
   const unavailable = scriptedFetch([{ status: 503, body: { error: "rates_unavailable" } }]);
   const fromFallback = await resolveExchangeRates({
     session,
+    hubEnabled: true,
     fetchImpl: unavailable.impl,
     now: () => FIXED_MS,
     fallback: async () => [{ code: "USD", rate: 390, capturedAt: FIXED_ISO, source: "local", stale: false }]
@@ -273,8 +274,7 @@ test("resolveExchangeRates firma la petición al hub y cae al respaldo sin filtr
   assert.equal(withoutSession.stale, true);
 });
 
-test("hubQuotesToPayload produce el payload que ya consume el POS y propaga stale", () => {
-  const live = hubQuotesToPayload([
+test("hubQuotesToPayload produce el payload que ya consume el POS y propaga stale", () => {  const live = hubQuotesToPayload([
     { code: "USD", rate: 400, capturedAt: FIXED_ISO, source: "elTOQUE API", stale: false },
     { code: "EUR", rate: 450, capturedAt: FIXED_ISO, source: "elTOQUE API", stale: false }
   ], FIXED_MS);
@@ -291,4 +291,57 @@ test("hubQuotesToPayload produce el payload que ya consume el POS y propaga stal
   assert.match(String(stale?.notice), /no es una consulta en vivo/i);
 
   assert.equal(hubQuotesToPayload([], FIXED_MS), null);
+});
+
+/* ------------------------------------------------------------------ */
+/* Hub apagado en producto (LAN_HUB_ENABLED = false)                   */
+/* ------------------------------------------------------------------ */
+
+test("con el hub apagado la resolución va directo a /api/exchange-rates", async () => {
+  const session = {
+    hubId: "hub-1",
+    deviceId: "dev-1",
+    token: "token-secreto-dev-1_ABC123",
+    baseUrl: "http://192.168.1.10:48900",
+    joinedAt: FIXED_ISO,
+    cursor: 0
+  };
+  const { calls, impl } = scriptedFetch([{ body: payload() }]);
+
+  // Sin `hubEnabled`, el hub no se consulta aunque haya sesión guardada.
+  const resolved = await resolveExchangeRates({ session, fetchImpl: impl, now: () => FIXED_MS });
+  assert.equal(resolved.source, "fallback");
+  assert.ok(resolved.rates.length > 0);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /\/api\/exchange-rates$/);
+  // Nada de hub/LAN/servidor local en lo que se resuelve para la UI.
+  assert.doesNotMatch(JSON.stringify(resolved), /hub|LAN|servidor local/i);
+
+  // El atajo de la sincronización automática tampoco toca el hub.
+  assert.equal(await fetchHubAutoRatePayload({ now: () => FIXED_MS }), null);
+});
+
+test("si la consulta automática falla se conserva la última tasa guardada sin error", async () => {
+  const cached = JSON.stringify(payload(FIXED_ISO));
+  const previous = Object.getOwnPropertyDescriptor(globalThis, "localStorage");
+  Object.defineProperty(globalThis, "localStorage", {
+    value: { getItem: (key: string) => (key.includes("exchange-rate") ? cached : null) },
+    configurable: true
+  });
+  try {
+    const resolved = await resolveExchangeRates({
+      session: null,
+      fallback: async () => { throw new Error("sin conexión con la fuente"); }
+    });
+
+    assert.equal(resolved.source, "fallback");
+    assert.equal(resolved.stale, true);
+    assert.equal(resolved.error, undefined);
+    assert.deepEqual(resolved.rates.map(item => [item.code, item.rate]), [["USD", 400], ["EUR", 450], ["MLC", 220]]);
+    assert.ok(resolved.rates.every(item => item.stale === true));
+    assert.doesNotMatch(JSON.stringify(resolved), /hub|LAN|servidor local/i);
+  } finally {
+    if (previous) Object.defineProperty(globalThis, "localStorage", previous);
+    else delete (globalThis as { localStorage?: unknown }).localStorage;
+  }
 });

@@ -191,7 +191,8 @@ export const POSCatalog = React.memo(function POSCatalog({
       <select 
         value={activeCategoryId}
         onChange={(e) => setActiveCategoryId(e.target.value)}
-        className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[9px] font-black uppercase tracking-[0.06em] outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all appearance-none cursor-pointer shadow-sm"
+        aria-label="Filtrar por categoría"
+        className="w-full pl-9 pr-8 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-black uppercase tracking-[0.06em] outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 transition-all appearance-none cursor-pointer shadow-sm"
       >
         <option value="Todos">Todas las Categorías</option>
         {categories.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -209,14 +210,16 @@ export const POSCatalog = React.memo(function POSCatalog({
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         placeholder="Busca productos por nombre, SKU o código de barras..." 
-        className="w-full pl-10 pr-9 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-colors text-[9px] font-bold text-slate-900 placeholder:text-slate-400 shadow-sm"
+        aria-label="Buscar producto"
+        className="w-full pl-10 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500/10 focus:border-indigo-500 outline-none transition-colors text-[12px] font-bold text-slate-900 placeholder:text-slate-400 shadow-sm"
       />
       {searchQuery && (
         <button
           type="button"
           onClick={() => setSearchQuery("")}
-          className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 transition-all"
+          className="absolute right-3 top-1/2 -translate-y-1/2 p-2 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-rose-50 transition-all"
           title="Limpiar búsqueda"
+          aria-label="Limpiar búsqueda"
         >
           <X className="w-3.5 h-3.5" />
         </button>
@@ -226,7 +229,7 @@ export const POSCatalog = React.memo(function POSCatalog({
 </div>
 
     <div className="px-3 pb-2 flex items-center justify-end gap-2">
-      <span className="text-[8px] font-bold text-slate-400">Di: “agrega 15 tenis”</span>
+      <span className="text-[10px] font-bold text-slate-400">Di: “agrega 15 tenis”</span>
       <VoiceCommandButton onCommand={handleVoiceCommand} />
     </div>
 
@@ -245,7 +248,7 @@ export const POSCatalog = React.memo(function POSCatalog({
           {currentUserRole === 'admin' && (
             <div className="absolute top-1.5 left-1.5 z-20">
               <span className={cn(
-                "text-[8px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-tight shadow-2xs border",
+                "text-[9.5px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-tight shadow-2xs border",
                 stock > 5 ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800" : stock > 0 ? "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800" : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-800"
               )}>
                 {stock} u.
@@ -254,7 +257,7 @@ export const POSCatalog = React.memo(function POSCatalog({
           )}
 
           {(product.warrantyDays ?? 0) > 0 && (
-            <div className="absolute top-1.5 right-1.5 bg-indigo-600 text-white text-[7px] font-black px-1.5 py-0.5 rounded-md shadow-2xs z-20 uppercase tracking-tight">
+            <div className="absolute top-1.5 right-1.5 bg-indigo-600 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md shadow-2xs z-20 uppercase tracking-tight">
               {product.warrantyDays}d Gda
             </div>
           )}
@@ -280,10 +283,10 @@ export const POSCatalog = React.memo(function POSCatalog({
           </div>
 
           <div className="w-full space-y-1">
-            <p className="font-bold text-primary text-[9px] leading-tight line-clamp-2 h-[2.2em]">{product?.name || "Producto"}</p>
-            <div className="flex items-center justify-between pt-1 border-t border-base">
-              <span className="text-[8px] font-mono text-muted uppercase truncate max-w-[45%]">{product.sku || 'S/SKU'}</span>
-              <span className="text-indigo-600 dark:text-indigo-400 font-black text-[9px] sm:text-[10px]">
+            <p className="font-bold text-primary text-[11px] leading-tight line-clamp-2 h-[2.5em]">{product?.name || "Producto"}</p>
+            <div className="flex items-center justify-between gap-1.5 pt-1 border-t border-base">
+              <span className="text-[9px] font-mono text-muted uppercase truncate min-w-0 max-w-[45%]">{product.sku || 'S/SKU'}</span>
+              <span className="text-indigo-600 dark:text-indigo-400 font-black text-[11px] sm:text-[12px] whitespace-nowrap tabular-nums">
                 {formatMoney(product.price)}
               </span>
             </div>

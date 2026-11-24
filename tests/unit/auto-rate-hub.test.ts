@@ -185,6 +185,7 @@ test("resolveExchangeRates prefiere el hub y no toca el respaldo", async () => {
 
   const resolved = await resolveExchangeRates({
     session,
+    hubEnabled: true,
     fetchImpl: hubFetch,
     now: () => Date.parse(NOW_ISO),
     fallback: async () => { fallbackCalls += 1; return [quote("USD", 480)]; }

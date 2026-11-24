@@ -595,7 +595,7 @@ function SuppliersContent() {
                   <div className="mt-4 flex items-end justify-between gap-2 border-t border-base pt-3">
                     <div className="min-w-0">
                       <span className="block font-black uppercase text-muted" style={{ fontSize: 10, letterSpacing: '0.08em' }}>Total con transporte</span>
-                      <span className="block truncate text-lg font-black tabular-nums text-primary">{money(order.total + (order.transportCost || 0))}</span>
+                      <span className="block break-words text-lg font-black leading-tight tabular-nums text-primary">{money(order.total + (order.transportCost || 0))}</span>
                     </div>
                     <button type="button" onClick={() => setDetailOrderId(order.id)} aria-label={`Ver orden ${documentCode('OC', order.id)}`} className={secondaryButton} style={{ fontSize: 12 }}>
                       Ver orden

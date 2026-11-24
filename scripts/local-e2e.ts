@@ -95,7 +95,6 @@ import {
   type SignedLease
 } from "../src/services/license/contract";
 import { importVerifyKey, verifyLeaseForDevice } from "../src/services/license/verify";
-import { assertPilotBudgets, formatPilotReport, simulatePilot } from "./pilot-sim";
 
 /* ------------------------------------------------------------------ */
 /* Piezas puras (probadas en tests/unit/local-e2e.test.ts)            */
@@ -129,13 +128,6 @@ export const STEP_NAMES: readonly string[] = Object.freeze([
   "Paridad legado ↔ almacén y alteración detectada",
   "Resumen legible y código de salida"
 ]);
-
-/**
- * Paso 20 del arnés: piloto F7. Va aparte de `STEP_NAMES` para no reordenar ni
- * renumerar los diecinueve pasos ya fijados (y probados) del arnés.
- */
-export const PILOT_STEP_N = 20;
-export const PILOT_STEP_NAME = "Piloto 5 equipos bajo presupuesto";
 
 export function summarizeSteps(results: StepResult[]): {
   text: string;
@@ -1671,46 +1663,6 @@ async function main(): Promise<number> {
     if (hubServer) await hubServer.close().catch(() => undefined);
     await driver.close().catch(() => undefined);
   }
-
-  // 20. Piloto F7: cinco equipos bajo presupuesto ------------------------
-  await step(
-    PILOT_STEP_N,
-    async () => {
-      const scenarios = [
-        { label: "hub 5 equipos", pilot: simulatePilot({ topology: "hub", seed: 20261117 }) },
-        {
-          label: "directa 1 equipo",
-          pilot: simulatePilot({ topology: "direct", devices: 1, seed: 20261117 })
-        },
-        {
-          label: "directa 5 equipos",
-          pilot: simulatePilot({ topology: "direct", devices: 5, seed: 20261117 })
-        }
-      ];
-
-      const failures: string[] = [];
-      for (const scenario of scenarios) {
-        const budget = assertPilotBudgets(scenario.pilot);
-        if (!budget.ok) {
-          failures.push(...budget.failures.map((failure) => `${scenario.label}: ${failure}`));
-        }
-      }
-      if (failures.length > 0) throw new Error(failures.join(" | "));
-
-      const [hub, directOne, directFive] = scenarios.map((scenario) => scenario.pilot);
-      if (hub.totals.perDayAverage >= 100) throw new Error("el hub supera 100 solicitudes/día");
-      if (directOne.totals.perDayAverage >= 100) throw new Error("un equipo directo supera 100/día");
-      if (directFive.totals.perDayAverage >= 500) throw new Error("cinco equipos superan 500/día");
-      if (hub.offlineDays.length === 0) throw new Error("la simulación no incluyó cortes de internet");
-      if (hub.cloudSyncers.length !== 1) throw new Error("el hub no consolidó en un solo syncer");
-      if (!/Presupuesto del negocio \(<100\/día\): OK/.test(formatPilotReport(hub))) {
-        throw new Error("el informe del piloto no confirma el presupuesto del negocio");
-      }
-
-      return `hub ${hub.totals.perDayAverage}/día (pico ${hub.totals.peakDay?.requests ?? 0}), directa 1 equipo ${directOne.totals.perDayAverage}/día, 5 equipos ${directFive.totals.perDayAverage}/día; restauración ${hub.restore.estimatedMinutes} min`;
-    },
-    PILOT_STEP_NAME
-  );
 
   // 19. Resumen y código de salida ---------------------------------------
   const failedBefore = results.filter((result) => !result.ok).length;

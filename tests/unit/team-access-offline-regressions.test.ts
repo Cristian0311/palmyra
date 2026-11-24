@@ -5,10 +5,15 @@ import { join } from "node:path";
 
 const source = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
 
-test("Team restores web access from the actual employee link or pending invitation", () => {
+test("Team creates POS-only employees and issues device access links instead of web invitations", () => {
   const team = source("src/pages/Team.tsx");
-  assert.match(team, /sendInvite:\s*Boolean\(employee\.user_id\s*\|\|\s*employee\.pending_invitation\)/);
-  assert.doesNotMatch(team, /disabled=\{busy \|\| Boolean\(editing\?\.user_id\)\}/);
+  assert.match(team, /import \{ buildDeviceAccessLink, createDeviceAccessInvite \} from "\.\.\/services\/deviceAccess"/);
+  assert.match(team, /createDeviceAccessInvite\(/);
+  assert.doesNotMatch(team, /sendInvite:\s*Boolean|sendInvite:\s*true/);
+  assert.match(team, /sendInvite:\s*false/);
+  assert.doesNotMatch(team, /createEmployeeWithInvitation/);
+  assert.doesNotMatch(team, /Acceso web del trabajador|Cuenta web/);
+  assert.match(team, /createEmployeePosSecure\(/);
   assert.match(team, /showPosPassword \? "text" : "password"/);
   assert.match(team, /La contraseña actual no se puede recuperar porque se guarda como hash seguro/);
 });

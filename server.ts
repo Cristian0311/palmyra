@@ -13,6 +13,122 @@ dotenv.config();
 // __dirname no existe; el bundle de producción es CJS y sí lo define.
 const moduleDir = typeof __dirname === 'string' ? __dirname : process.cwd();
 
+// --- Señal de actualización al arrancar -------------------------------------
+// Las apps instaladas escuchan public.system_update_signals (Realtime): un
+// INSERT les avisa de que hay un build nuevo sin que cada caja sondee. Esta
+// llamada es idempotente por build (unique(build_id)), así que un reinicio del
+// mismo commit no genera filas ni avisos falsos. Best-effort: si la red, la RPC
+// o la migración no están, el arranque sigue igual. La clave anon es pública,
+// pero nunca se registra en el log.
+
+export const UPDATE_SIGNAL_RPC = 'signal_system_update';
+export const UPDATE_SIGNAL_TIMEOUT_MS = 8_000;
+
+export interface UpdateSignalRequest {
+  url: string;
+  headers: Record<string, string>;
+  body: { p_version: string; p_build_id: string };
+}
+
+/**
+ * Construye la petición REST a la RPC. Función pura: sin red, sin reloj. Devuelve
+ * null cuando falta la URL, la clave o algún dato del build (nada que enviar).
+ */
+export function buildUpdateSignalRequest(input: {
+  supabaseUrl?: string | null;
+  anonKey?: string | null;
+  version?: string | null;
+  buildId?: string | null;
+}): UpdateSignalRequest | null {
+  const url = String(input.supabaseUrl || '').trim().replace(/\/+$/, '');
+  const anonKey = String(input.anonKey || '').trim();
+  const version = String(input.version || '').trim();
+  const buildId = String(input.buildId || '').trim();
+  if (!url || !anonKey || !version || !buildId) return null;
+  return {
+    url: `${url}/rest/v1/rpc/${UPDATE_SIGNAL_RPC}`,
+    headers: {
+      'content-type': 'application/json',
+      apikey: anonKey,
+      authorization: `Bearer ${anonKey}`,
+      prefer: 'return=minimal',
+    },
+    body: { p_version: version, p_build_id: buildId },
+  };
+}
+
+/** Versión y build que se están sirviendo: version.json del build > package.json. */
+async function readDeployedBuildMetadata(): Promise<{ version: string; buildId: string }> {
+  const versionFiles = [
+    path.join(moduleDir, 'version.json'),
+    path.join(moduleDir, 'public', 'version.json'),
+    path.join(process.cwd(), 'public', 'version.json'),
+  ];
+  for (const candidate of versionFiles) {
+    try {
+      const raw = await fs.readFile(candidate, 'utf8');
+      const parsed = JSON.parse(raw) as { version?: unknown; buildId?: unknown };
+      const version = String(parsed.version || '').trim();
+      if (version) {
+        return { version, buildId: String(parsed.buildId || '').trim() };
+      }
+    } catch {
+      // Se prueba el siguiente candidato.
+    }
+  }
+  try {
+    const raw = await fs.readFile(path.join(process.cwd(), 'package.json'), 'utf8');
+    const version = String((JSON.parse(raw) as { version?: unknown }).version || '').trim();
+    if (version) return { version, buildId: '' };
+  } catch {
+    // Sin metadatos no se anuncia nada: no inventamos una versión.
+  }
+  return { version: '', buildId: '' };
+}
+
+/**
+ * Anota el build en la nube al arrancar (solo producción). Nunca lanza y nunca
+ * bloquea el arranque: se invoca con `void` desde el callback del listen.
+ */
+export async function signalSystemUpdateOnBoot(
+  env: Record<string, string | undefined> = process.env
+): Promise<void> {
+  try {
+    if (!(env.RENDER || env.NODE_ENV === 'production')) return;
+    const supabaseUrl = env.SUPABASE_URL || 'https://hmcvujyqloyjdvngpdxz.supabase.co';
+    const anonKey = env.SUPABASE_ANON_KEY || env.VITE_SUPABASE_ANON_KEY || '';
+    if (!anonKey) return;
+
+    const metadata = await readDeployedBuildMetadata();
+    if (!metadata.version) return;
+    const buildId = String(
+      env.RENDER_GIT_COMMIT || env.VITE_BUILD_ID || metadata.buildId || `boot-${Date.now()}`
+    ).trim();
+    const request = buildUpdateSignalRequest({
+      supabaseUrl,
+      anonKey,
+      version: metadata.version,
+      buildId,
+    });
+    if (!request) return;
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), UPDATE_SIGNAL_TIMEOUT_MS);
+    try {
+      await fetch(request.url, {
+        method: 'POST',
+        headers: request.headers,
+        body: JSON.stringify(request.body),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    // Fire-and-forget: un aviso perdido no puede tumbar el servidor.
+  }
+}
+
 // release/ se ignora en git para no inflar el repositorio, así que el servidor
 // desplegado (Render) no tiene los binarios: si no hay artefacto local, redirige
 // a los assets de nombre estable publicados en GitHub Releases.
@@ -1636,6 +1752,13 @@ Responde ESTRICTAMENTE con un objeto JSON:
     // express.static responde max-age=0 y cada arranque revalida ~4 MB de JS
     // contra la instancia (que además puede estar dormida). Con immutable el
     // navegador y Cloudflare reutilizan el archivo hasta que cambie el hash.
+    // App Links de Android: express.static ignora dotfiles, así que el archivo
+    // de verificación se sirve explícitamente (sin redirect y como JSON).
+    app.get('/.well-known/assetlinks.json', (_req, res) => {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=300');
+      res.sendFile(path.join(distPath, '.well-known', 'assetlinks.json'));
+    });
     const HASHED_ASSET = /-[A-Za-z0-9_-]{8,}\.(?:js|css|woff2?|ttf|otf|png|jpe?g|webp|avif|svg|map)$/i;
     app.use(express.static(distPath, {
       setHeaders(res, filePath) {
@@ -1673,6 +1796,10 @@ Responde ESTRICTAMENTE con un objeto JSON:
 
   const httpServer = app.listen(PORT, HOST, () => {
     console.log(`[PALMYRA API] Server running on http://${HOST}:${PORT}`);
+    // Aviso a las apps instaladas (fire-and-forget, solo producción): con el
+    // servidor ya escuchando, un build nuevo aparece como burbuja sin que las
+    // cajas tengan que sondear.
+    void signalSystemUpdateOnBoot();
   });
   // Node cierra las conexiones keep-alive a los 5 s por defecto. Cloudflare
   // (delante de Render) reutiliza sockets durante más tiempo y puede recibir un

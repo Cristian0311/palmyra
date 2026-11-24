@@ -31,10 +31,18 @@ function writeFlag(key: string): void {
 /** Avisos no bloqueantes: el runtime nunca pone readOnly por estas causas. */
 function unverifiedMessage(snapshot: LicenseSnapshot): string | null {
   if (!snapshot.keyConfigured || snapshot.readOnly) return null;
+  // Verificado con el lease guardado dentro de la ventana firmada: aunque no
+  // haya red, la licencia está verificada y no hay nada que avisar.
+  if (snapshot.offlineVerified) return null;
   if (snapshot.mode === "invalid") {
+    if (snapshot.reason === "device-key-rotated") {
+      return "La identidad de este equipo cambió y la licencia emitida ya no le corresponde. Conéctate a internet y pulsa Renovar para activarla de nuevo; mientras tanto puedes seguir operando. Tus datos no se borran.";
+    }
     return "No pudimos verificar la licencia de este equipo. Puedes seguir operando; renueva para evitar bloqueos. Tus datos no se borran.";
   }
   if (snapshot.mode === "unmanaged" && snapshot.reason === "lease-missing") {
+    // Solo es «sin verificar» la primera vez: nunca hubo lease en este equipo.
+    if (!snapshot.pendingActivation) return null;
     return "Licencia sin verificar: este equipo todavía no tiene una licencia emitida. Conéctate a internet y pulsa Renovar; mientras tanto puedes seguir operando.";
   }
   return null;

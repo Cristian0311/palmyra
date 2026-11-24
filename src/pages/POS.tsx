@@ -34,6 +34,7 @@ import { getLocalDateYMD } from "../utils/dateUtils";
 import { buildSessionTurnLabelMap, getSessionTurnLabel } from "../modules/reports/utils/sessionTurnLabels";
 import { usePendingQuote, setPendingQuoteId } from "../modules/pos/hooks/usePendingQuote";
 import PendingQuoteBanner from "../components/pos/PendingQuoteBanner";
+import { describeCheckoutError } from "../store/actions/posActions";
 const POSStartupScreen = lazy(() => import("./POSStartupScreen"));
 const CheckoutModal = lazy(() => import("../components/pos/CheckoutModal"));
 
@@ -1224,7 +1225,7 @@ export default function POS() {
     // real aún sigue en vuelo y permitir una segunda venta accidental.
     const saleConfirmed = await processTransaction(tx);
     if (!saleConfirmed) {
-      setPosError('La venta no fue confirmada. Verifique el stock, turno y conexión antes de continuar.');
+      setPosError('La venta no fue confirmada. Revisa el stock, el turno y la conexión antes de reintentar; no se cobró nada.');
       setTimeout(() => setPosError(''), 5000);
       return;
     }
@@ -1294,8 +1295,8 @@ export default function POS() {
       }
     } catch (err: any) {
       console.error('[POS] Error al confirmar cobro:', err);
-      const message = err?.message || 'No se pudo completar el cobro. La operación no se ha marcado como completada.';
-      setPosError(message);
+      // Nunca mostrar texto crudo de Supabase/transporte al cajero.
+      setPosError(describeCheckoutError(err));
       setTimeout(() => setPosError(''), 8000);
     } finally {
       setIsSubmittingCheckout(false);
@@ -1883,20 +1884,25 @@ export default function POS() {
       {/* Discrepancy Modal */}
       {showDiscrepancyModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="palmyra-mobile-modal bg-white rounded-2xl sm:rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 border border-rose-100 flex flex-col max-h-[calc(100dvh-1rem)]">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Discrepancia detectada en el cierre"
+            className="palmyra-mobile-modal bg-white rounded-2xl sm:rounded-[2rem] shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 border border-rose-100 flex flex-col max-h-[calc(100dvh-1rem)]"
+          >
             <div className="p-3 sm:p-6 text-center space-y-2.5 sm:space-y-4 shrink-0 border-b border-slate-100 bg-rose-50/30">
               <div className="w-16 h-16 bg-rose-100 text-rose-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
                 <AlertCircle className="w-8 h-8" />
               </div>
               <div>
                 <h3 className="text-lg font-black text-slate-900 uppercase tracking-tighter">Discrepancia Detectada</h3>
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mt-1">Revisión del Descuadre</p>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mt-1">Revisión del Descuadre</p>
               </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-3 sm:space-y-6">
               <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-3">Resumen de Descuadres</p>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Resumen de Descuadres</p>
                     <div className="space-y-2">
                       {expectedBalances.map(eb => {
                         const actual = finalBalancesToClose.find(fb => fb.currencyCode === eb.currencyCode && fb.method === eb.method)?.amount || 0;
@@ -1905,13 +1911,13 @@ export default function POS() {
                         
                         return (
                           <div key={`${eb.currencyCode}-${eb.method}`} className="space-y-2 border-b border-slate-200 pb-2 last:border-0 last:pb-0">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[10px] font-bold text-slate-600 uppercase">{eb.currencyCode} ({eb.method === 'cash' ? 'Efectivo' : 'Transf.'})</span>
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-[11px] font-bold text-slate-600 uppercase">{eb.currencyCode} ({eb.method === 'cash' ? 'Efectivo' : 'Transf.'})</span>
                               <span className={cn(
-                                "text-xs font-black",
+                                "text-xs font-black whitespace-nowrap",
                                 diff > 0 ? "text-emerald-600" : "text-rose-600"
                               )}>
-                                {diff > 0 ? 'SOBRANTE: ' : 'FALTANTE: '}{Math.abs(diff).toLocaleString('es-CU')}
+                                {diff > 0 ? 'SOBRANTE: ' : 'FALTANTE: '}{formatMoney(Math.abs(diff), currencies.find(c => c.code === eb.currencyCode)?.symbol || eb.currencyCode)}
                               </span>
                             </div>
                             
@@ -1923,16 +1929,19 @@ export default function POS() {
                   </div>
 
                   <div className="p-4 bg-rose-50 rounded-2xl border border-rose-100 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-[10px] font-black text-rose-900 uppercase tracking-widest">¿Descontar faltante del salario?</p>
-                        <p className="text-[8px] font-bold text-rose-500 uppercase">Se aplicará automáticamente a la liquidación</p>
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[11px] font-black text-rose-900 uppercase tracking-widest">¿Descontar faltante del salario?</p>
+                        <p className="text-[10px] font-bold text-rose-500 uppercase">Se aplicará automáticamente a la liquidación</p>
                       </div>
                       <button 
                         type="button"
+                        role="switch"
+                        aria-checked={deductFromSalary}
+                        aria-label="Descontar faltante del salario"
                         onClick={() => setDeductFromSalary(!deductFromSalary)}
                         className={cn(
-                          "w-12 h-6 rounded-full transition-all relative border-2",
+                          "w-12 h-6 shrink-0 rounded-full transition-all relative border-2",
                           deductFromSalary ? "bg-rose-600 border-rose-600" : "bg-slate-200 border-slate-200"
                         )}
                       >
@@ -1945,17 +1954,17 @@ export default function POS() {
                 </div>
             </div>
 
-            <div className="p-6 bg-slate-50 border-t border-slate-100 flex gap-3 shrink-0">
+            <div className="p-4 sm:p-6 bg-slate-50 border-t border-slate-100 flex gap-3 shrink-0">
               <button 
                 onClick={() => setShowDiscrepancyModal(false)}
-                className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-colors shadow-sm"
+                className="flex-1 py-3 bg-white border border-slate-200 text-slate-600 rounded-xl font-black text-[11px] uppercase tracking-widest hover:bg-slate-50 transition-colors shadow-sm"
               >
                 Volver a Revisar
               </button>
               <button 
                 onClick={confirmClose}
                 disabled={isClosingSession}
-                className="flex-1 py-3 bg-rose-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-200 disabled:opacity-60 disabled:cursor-not-allowed"
+                className="flex-1 py-3 bg-rose-600 text-white rounded-xl font-black text-[11px] uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-200 disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 {isClosingSession ? "Confirmando..." : "Forzar Cierre"}
               </button>
@@ -1982,19 +1991,19 @@ export default function POS() {
       {/* POS Tablet & Desktop Professional Top Bar */}
       <header className="bg-slate-900 text-white px-3 sm:px-4 py-2 flex items-center justify-between gap-2 border-b border-slate-800 shrink-0 z-20">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <div className="flex items-center gap-1.5 bg-slate-800/90 px-2.5 py-1 rounded-lg border border-slate-700/80">
+          <div className="flex items-center gap-1.5 bg-slate-800/90 px-2.5 py-1.5 rounded-lg border border-slate-700/80 min-w-0">
             <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-            <span className="text-[8px] font-black uppercase tracking-[0.05em] text-slate-200 truncate max-w-[100px] sm:max-w-[140px]">
+            <span className="text-[10px] font-black uppercase tracking-[0.05em] text-slate-200 truncate max-w-[100px] sm:max-w-[140px]" title={currentSession?.workerName || currentUser?.name || 'Caja Activa'}>
               {currentSession?.workerName || currentUser?.name || 'Caja Activa'}
             </span>
           </div>
 
-          <div className="hidden sm:flex items-center gap-1.5 text-slate-400 text-[8px] font-bold">
+          <div className="hidden sm:flex items-center gap-1.5 text-slate-400 text-[9.5px] font-bold min-w-0">
             <span>•</span>
             <span className="truncate max-w-[160px] text-slate-300 flex items-center gap-1.5">
               {branches.find(b => b.id === currentBranchId)?.name || branches[0]?.name || 'Sucursal General'}
               {isBranchLocked && (
-                <span className="flex items-center gap-0.5 bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded text-[8px] border border-amber-500/30">
+                <span className="flex items-center gap-0.5 bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded text-[9px] border border-amber-500/30 whitespace-nowrap">
                   <Lock className="w-2.5 h-2.5" /> Bloqueado
                 </span>
               )}
@@ -2004,14 +2013,14 @@ export default function POS() {
           {/* Exchange Rates Ticker */}
           <div className="hidden md:flex items-center gap-2 bg-indigo-950/60 border border-indigo-500/20 px-2.5 py-1 rounded-lg">
             {currencies.filter(c => !c.isBase).slice(0, 2).map(c => (
-              <span key={c.code} className="text-[8px] font-black text-indigo-300">
+              <span key={c.code} className="text-[9.5px] font-black text-indigo-300 whitespace-nowrap">
                 1 {c.code} = {c.rateToBase.toLocaleString('es-CU')} {baseCurrency.code}
               </span>
             ))}
           </div>
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {/* Cierre de Caja Button - High Priority & Clearly Visible */}
           <button
             type="button"
@@ -2019,8 +2028,9 @@ export default function POS() {
               setCashManagementTab('close');
               setShowCashManagementModal(true);
             }}
-            className="px-2.5 sm:px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[8px] sm:text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-rose-950/40 active:scale-95 border border-rose-500/40"
+            className="px-2.5 sm:px-3 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-[10px] sm:text-[10.5px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-rose-950/40 active:scale-95 border border-rose-500/40 whitespace-nowrap"
             title="Cerrar Caja y Finalizar Turno"
+            aria-label="Cerrar caja y finalizar turno"
           >
             <Lock className="w-3.5 h-3.5 text-rose-200" />
             <span>Cerrar Caja</span>
@@ -2031,8 +2041,9 @@ export default function POS() {
             <button
               type="button"
               onClick={() => setShowCancelShiftModal(true)}
-              className="px-2 sm:px-2.5 py-1 bg-slate-100 hover:bg-rose-50 text-rose-600 rounded-lg text-[8px] sm:text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border border-slate-200 active:scale-95"
+              className="px-2 sm:px-2.5 py-2 bg-slate-100 hover:bg-rose-50 text-rose-600 rounded-lg text-[10px] sm:text-[10.5px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 border border-slate-200 active:scale-95"
               title="Anular Turno Completo"
+              aria-label="Anular turno completo"
             >
               <Trash2 className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Cancelar Turno</span>
@@ -2043,8 +2054,9 @@ export default function POS() {
           <button
             type="button"
             onClick={() => setShowPrinterSetupModal(true)}
-            className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-all active:scale-95"
+            className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg border border-slate-700 transition-all active:scale-95"
             title="Configurar Impresora Térmica"
+            aria-label="Configurar impresora térmica"
           >
             <Printer className="w-3.5 h-3.5" />
           </button>
@@ -2065,7 +2077,7 @@ export default function POS() {
         {/* Sidebar: Cart / Ticket (Side-by-side on Tablet md+ and Desktop, overlay on Mobile) */}
         {Boolean(currentSession) && (
           <aside className={cn(
-            "w-full md:w-[310px] lg:w-[340px] xl:w-[360px] bg-secondary border-l border-base flex flex-col shrink-0 z-50 transition-all duration-300",
+            "w-full md:w-[320px] lg:w-[360px] xl:w-[380px] bg-secondary border-l border-base flex flex-col shrink-0 z-50 transition-all duration-300",
             showMobileCart ? "fixed inset-0 md:relative md:inset-auto" : "hidden md:flex"
           )}>
           {/* Sidebar Header */}
@@ -2076,14 +2088,14 @@ export default function POS() {
               </div>
               <div>
                 <h3 className="font-black text-[11px] uppercase tracking-wider text-primary leading-none">Ticket de Venta</h3>
-                <p className="text-[8px] font-bold text-muted uppercase tracking-tight mt-0.5">{cart.reduce((s, i) => s + i.quantity, 0)} {cart.reduce((s, i) => s + i.quantity, 0) === 1 ? 'artículo' : 'artículos'}</p>
+                <p className="text-[10px] font-bold text-muted uppercase tracking-tight mt-0.5">{cart.reduce((s, i) => s + i.quantity, 0)} {cart.reduce((s, i) => s + i.quantity, 0) === 1 ? 'artículo' : 'artículos'}</p>
               </div>
             </div>
             <div className="flex items-center gap-1.5">
-              <button onClick={clearCart} className="p-1.5 text-muted hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-all" title="Limpiar Ticket">
-                <Trash2 className="w-3.5 h-3.5" />
+              <button onClick={clearCart} className="p-2 text-muted hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 rounded-lg transition-all" title="Limpiar Ticket" aria-label="Limpiar ticket">
+                <Trash2 className="w-4 h-4" />
               </button>
-              <button onClick={() => setShowMobileCart(false)} className="md:hidden p-1.5 text-muted hover:bg-subtle rounded-lg transition-all">
+              <button onClick={() => setShowMobileCart(false)} className="md:hidden p-2 text-muted hover:bg-subtle rounded-lg transition-all" title="Cerrar ticket" aria-label="Cerrar ticket">
                 <X className="w-4 h-4" />
               </button>
             </div>
@@ -2103,18 +2115,19 @@ export default function POS() {
           {/* Customer Selector */}
           <div className="p-2.5 bg-secondary border-b border-base flex gap-1.5">
             <div className="flex-1 relative">
-              <User className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted" />
+              <User className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted" />
               <select 
                 value={currentCustomerId || ""}
                 onChange={(e) => setCartCustomer(e.target.value || undefined)}
-                className="w-full pl-7 pr-3 py-1.5 bg-subtle border border-base rounded-lg outline-none text-[9px] font-bold uppercase tracking-tight text-primary focus:ring-1 focus:ring-indigo-500 transition-all appearance-none"
+                aria-label="Cliente del ticket"
+                className="w-full pl-8 pr-3 py-2 bg-subtle border border-base rounded-lg outline-none text-[11px] font-bold uppercase tracking-tight text-primary focus:ring-1 focus:ring-indigo-500 transition-all appearance-none"
               >
                 <option value="">Consumidor Final</option>
                 {customers.map(c => (<option key={c.id} value={c.id}>{c?.name || "Cliente"}</option>))}
               </select>
             </div>
-            <button onClick={() => setShowAddCustomerModal(true)} className="p-1.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-lg border border-indigo-100 dark:border-indigo-900 hover:bg-indigo-100 transition-all" title="Registrar Cliente">
-              <UserPlus className="w-3.5 h-3.5" />
+            <button onClick={() => setShowAddCustomerModal(true)} className="p-2 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-lg border border-indigo-100 dark:border-indigo-900 hover:bg-indigo-100 transition-all" title="Registrar Cliente" aria-label="Registrar cliente">
+              <UserPlus className="w-4 h-4" />
             </button>
           </div>
 
@@ -2126,8 +2139,8 @@ export default function POS() {
                   <ShoppingCart className="w-6 h-6 text-muted" />
                 </div>
                 <div className="text-center">
-                  <p className="text-[10px] font-black uppercase tracking-wider text-secondary mb-0.5">Ticket Vacío</p>
-                  <p className="text-[8px] font-medium uppercase text-muted">Toca productos del inventario</p>
+                  <p className="text-[11px] font-black uppercase tracking-wider text-secondary mb-0.5">Ticket Vacío</p>
+                  <p className="text-[10px] font-medium uppercase text-muted">Toca productos del inventario</p>
                 </div>
               </div>
             ) : (
@@ -2173,18 +2186,19 @@ export default function POS() {
                     <div className="flex-1 min-w-0 space-y-0.5">
                       <div className="flex justify-between items-start gap-1">
                         <div className="min-w-0 flex-1">
-                          <h4 className="text-[10px] font-bold text-primary leading-tight line-clamp-1">{prodName}</h4>
-                          <p className="text-[8px] font-semibold text-muted">{formatMoney(prodPrice, baseCurrency.symbol)} / u.</p>
+                          <h4 className="text-[11px] font-bold text-primary leading-tight line-clamp-2">{prodName}</h4>
+                          <p className="text-[10px] font-semibold text-muted">{formatMoney(prodPrice, baseCurrency.symbol)} / u.</p>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
-                          <span className="text-[9px] sm:text-[10px] font-black text-primary font-mono">{formatMoney(displayedLineTotal, baseCurrency.symbol)}</span>
+                          <span className="text-[10px] sm:text-[11px] font-black text-primary font-mono whitespace-nowrap">{formatMoney(displayedLineTotal, baseCurrency.symbol)}</span>
                           <button
                             type="button"
                             onClick={() => updateCartQty(item.id, -item.quantity)}
-                            className="p-0.5 text-muted hover:text-rose-500 rounded transition-colors cursor-pointer"
+                            className="p-1 text-muted hover:text-rose-500 rounded transition-colors cursor-pointer"
                             title="Eliminar producto"
+                            aria-label={`Eliminar ${prodName} del ticket`}
                           >
-                            <Trash2 className="w-3 h-3" />
+                            <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </div>
@@ -2192,10 +2206,11 @@ export default function POS() {
                         <div className="flex items-center bg-secondary rounded-md p-0.5 border border-base">
                           <button 
                             onClick={() => updateCartQty(item.id, -1)} 
-                            className="p-0.5 sm:p-1 rounded hover:bg-subtle text-secondary hover:text-rose-500 transition-all active:scale-90 cursor-pointer"
+                            className="p-1.5 sm:p-1 rounded hover:bg-subtle text-secondary hover:text-rose-500 transition-all active:scale-90 cursor-pointer"
                             title="Disminuir"
+                            aria-label="Disminuir cantidad"
                           >
-                            <Minus className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                            <Minus className="w-3.5 h-3.5" />
                           </button>
                           <input
                             type="number"
@@ -2217,7 +2232,7 @@ export default function POS() {
                               setPosError(requested > maxQuantity ? 'La cantidad supera el stock disponible.' : '');
                               updateCartQty(item.id, nextQuantity - item.quantity);
                             }}
-                            className="w-10 text-center text-[10px] font-black text-primary font-mono bg-transparent border border-transparent focus:border-indigo-400 focus:bg-primary rounded outline-none"
+                            className="w-12 text-center text-[11px] font-black text-primary font-mono bg-transparent border border-transparent focus:border-indigo-400 focus:bg-primary rounded outline-none tabular-nums"
                           />
                           <button 
                             onClick={() => {
@@ -2226,15 +2241,16 @@ export default function POS() {
                               } else updateCartQty(item.id, 1);
                             }} 
                             disabled={prodHasSerial}
-                            className="p-0.5 sm:p-1 rounded hover:bg-subtle text-secondary hover:text-indigo-600 transition-all disabled:opacity-20 active:scale-90 cursor-pointer"
+                            className="p-1.5 sm:p-1 rounded hover:bg-subtle text-secondary hover:text-indigo-600 transition-all disabled:opacity-20 active:scale-90 cursor-pointer"
                             title="Aumentar"
+                            aria-label="Aumentar cantidad"
                           >
-                            <Plus className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+                            <Plus className="w-3.5 h-3.5" />
                           </button>
                         </div>
                         <div className="flex gap-1 flex-wrap justify-end">
-                          {item.variantLabel && <span className="px-1 py-0.2 bg-subtle text-secondary text-[7px] font-black rounded uppercase border border-base">{item.variantLabel}</span>}
-                          {item.serialNumber && <span className="px-1 py-0.2 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-[7px] font-black rounded border border-indigo-100 dark:border-indigo-900">SN: {item.serialNumber}</span>}
+                          {item.variantLabel && <span className="px-1 py-0.5 bg-subtle text-secondary text-[9px] font-black rounded uppercase border border-base">{item.variantLabel}</span>}
+                          {item.serialNumber && <span className="px-1 py-0.5 bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 text-[9px] font-black rounded border border-indigo-100 dark:border-indigo-900">SN: {item.serialNumber}</span>}
                         </div>
                       </div>
                     </div>
@@ -2247,20 +2263,20 @@ export default function POS() {
           {/* Footer Summary */}
           <div className="p-3 bg-secondary border-t border-base space-y-2.5">
             <div className="space-y-1">
-              <div className="flex justify-between text-[9px] font-bold text-muted uppercase tracking-wider">
+              <div className="flex justify-between gap-2 text-[10px] font-bold text-muted uppercase tracking-wider">
                 <span>Subtotal</span>
-                <span className="text-primary font-black">{formatMoney(subtotalBase, baseCurrency.symbol)}</span>
+                <span className="text-primary font-black whitespace-nowrap">{formatMoney(subtotalBase, baseCurrency.symbol)}</span>
               </div>
-              <div className="flex justify-between items-center pt-1 border-t border-base">
-                <span className="text-[9px] font-black text-primary uppercase tracking-wider">Total</span>
-                <span className="text-lg font-black text-indigo-600 dark:text-indigo-400 tracking-tight">{formatMoney(totalBase, baseCurrency.symbol)}</span>
+              <div className="flex justify-between items-center gap-2 pt-1 border-t border-base">
+                <span className="text-[10px] font-black text-primary uppercase tracking-wider">Total</span>
+                <span className="text-lg font-black text-indigo-600 dark:text-indigo-400 tracking-tight whitespace-nowrap tabular-nums">{formatMoney(totalBase, baseCurrency.symbol)}</span>
               </div>
             </div>
 
             <button
               disabled={cart.length === 0}
               onClick={() => openCheckout()}
-              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-[10px] uppercase tracking-wider transition-all shadow-md shadow-indigo-600/20 disabled:opacity-20 active:scale-98 flex items-center justify-center gap-1.5"
+              className="w-full min-h-[44px] py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-[11px] uppercase tracking-wider transition-all shadow-md shadow-indigo-600/20 disabled:opacity-40 active:scale-98 flex items-center justify-center gap-1.5"
             >
               <Receipt className="w-4 h-4" />
               Cobrar
@@ -2285,26 +2301,26 @@ export default function POS() {
 
       {returnConfirm && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
-          <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 border border-rose-100">
-            <div className="p-8 text-center space-y-4">
+          <div role="dialog" aria-modal="true" aria-label="Confirmar devolución" className="bg-white rounded-[2rem] shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 border border-rose-100">
+            <div className="p-6 sm:p-8 text-center space-y-4">
               <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center mx-auto mb-2 animate-bounce">
                 <ArrowLeftRight className="w-8 h-8" />
               </div>
               <h3 className="text-sm font-black text-slate-900 uppercase tracking-widest">¿Confirmar Devolución?</h3>
-              <p className="text-[10px] font-bold text-slate-500 uppercase leading-relaxed">
+              <p className="text-[11px] font-bold text-slate-500 uppercase leading-relaxed">
                 Estás a punto de devolver <span className="text-rose-600">{returnConfirm.item.quantity}x {typeof returnConfirm.item.product === "object" ? (returnConfirm.item.product?.name || "Producto") : (products.find(p => p.id === returnConfirm.item.product)?.name || returnConfirm.item.product || "Producto")}</span>. 
                 Esto reintegrará el stock a la sucursal actual.
               </p>
               <div className="grid grid-cols-2 gap-3 pt-4">
                 <button 
                   onClick={() => setReturnConfirm(null)}
-                  className="py-3 bg-slate-100 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
+                  className="min-h-[44px] py-3 bg-slate-100 text-slate-600 rounded-xl font-black text-[11px] uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-95"
                 >
                   Cancelar
                 </button>
                 <button 
                   onClick={handleReturnItem}
-                  className="py-3 bg-rose-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-200 active:scale-95"
+                  className="min-h-[44px] py-3 bg-rose-600 text-white rounded-xl font-black text-[11px] uppercase tracking-widest hover:bg-rose-700 transition-all shadow-lg shadow-rose-200 active:scale-95"
                 >
                   Confirmar
                 </button>
@@ -2333,18 +2349,19 @@ export default function POS() {
           <button
             type="button"
             onClick={() => setIsBottomBarMinimized(false)}
-            className="md:hidden fixed bottom-3 right-3 z-40 bg-slate-900 text-white p-2.5 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-2 active:scale-95 animate-in fade-in"
+            className="md:hidden fixed bottom-3 right-3 z-40 bg-slate-900 text-white min-h-[44px] px-3 py-2.5 rounded-2xl shadow-2xl border border-slate-700 flex items-center gap-2 active:scale-95 animate-in fade-in"
             title="Expandir barra de ticket"
+            aria-label="Expandir barra de ticket"
           >
             <div className="relative shrink-0">
               <ShoppingCart className="w-4 h-4 text-indigo-400" />
               {cart.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[8px] font-black w-3.5 h-3.5 rounded-full flex items-center justify-center border border-slate-900">
+                <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[9px] font-black min-w-4 h-4 px-0.5 rounded-full flex items-center justify-center border border-slate-900">
                   {cart.reduce((s, i) => s + i.quantity, 0)}
                 </span>
               )}
             </div>
-            <span className="text-[9px] font-black uppercase pr-1">
+            <span className="text-[10px] font-black uppercase pr-1">
               {cart.length === 0 ? "Ticket" : formatMoney(totalBase, baseCurrency.symbol)}
             </span>
             <ChevronUp className="w-3.5 h-3.5 text-slate-400" />
@@ -2356,20 +2373,20 @@ export default function POS() {
               className="flex items-center gap-2 cursor-pointer flex-1 min-w-0"
             >
               <div className="relative shrink-0">
-                <div className="w-8 h-8 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-md shadow-indigo-950">
-                  <ShoppingCart className="w-3.5 h-3.5" />
+                <div className="w-9 h-9 bg-indigo-600 rounded-xl flex items-center justify-center text-white shadow-md shadow-indigo-950">
+                  <ShoppingCart className="w-4 h-4" />
                 </div>
                 {cart.length > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-black w-4 h-4 rounded-full flex items-center justify-center border border-slate-900 animate-pulse">
+                  <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-black min-w-4 h-4 px-0.5 rounded-full flex items-center justify-center border border-slate-900 animate-pulse">
                     {cart.reduce((s, i) => s + i.quantity, 0)}
                   </span>
                 )}
               </div>
               <div className="min-w-0">
-                <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5 truncate">
+                <div className="text-[9.5px] font-black text-slate-400 uppercase tracking-widest leading-none mb-0.5 truncate">
                   {cart.length === 0 ? "Ticket" : "Total"}
                 </div>
-                <div className="text-xs font-black text-white truncate">
+                <div className="text-[13px] font-black text-white truncate tabular-nums">
                   {cart.length === 0 ? "0 prod." : formatMoney(totalBase, baseCurrency.symbol)}
                 </div>
               </div>
@@ -2379,27 +2396,28 @@ export default function POS() {
               <button
                 type="button"
                 onClick={() => setShowMobileCart(true)}
-                className="h-8 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1 active:scale-95 border border-slate-700 shadow-sm"
+                className="min-h-[44px] px-3 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 active:scale-95 border border-slate-700 shadow-sm"
               >
-                <Receipt className="w-3.5 h-3.5 text-indigo-400" />
+                <Receipt className="w-4 h-4 text-indigo-400" />
                 <span>Ticket</span>
               </button>
               <button
                 type="button"
                 disabled={cart.length === 0}
                 onClick={() => openCheckout()}
-                className="h-8 px-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[9px] font-black uppercase tracking-wider transition-all shadow-lg shadow-indigo-950 active:scale-95 flex items-center gap-1 disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none"
+                className="min-h-[44px] px-3.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-lg shadow-indigo-950 active:scale-95 flex items-center gap-1 disabled:opacity-40 disabled:pointer-events-none disabled:shadow-none"
               >
-                <Receipt className="w-3.5 h-3.5" />
+                <Receipt className="w-4 h-4" />
                 <span>Cobrar</span>
               </button>
               <button
                 type="button"
                 onClick={() => setIsBottomBarMinimized(true)}
-                className="h-8 w-7 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl transition-colors flex items-center justify-center shrink-0 border border-slate-700"
+                className="min-h-[44px] w-9 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded-xl transition-colors flex items-center justify-center shrink-0 border border-slate-700"
                 title="Minimizar barra"
+                aria-label="Minimizar barra de ticket"
               >
-                <ChevronDown className="w-3.5 h-3.5" />
+                <ChevronDown className="w-4 h-4" />
               </button>
             </div>
           </div>

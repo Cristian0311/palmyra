@@ -59,7 +59,7 @@ export default function POSCashManagementModal(props: ModalProps) {
     <>
       {showCashManagementModal && currentSession && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-          <div className="palmyra-mobile-modal bg-white rounded-2xl sm:rounded-[2rem] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 border border-white/20 flex flex-col max-h-[calc(100dvh-1rem)]">
+          <div role="dialog" aria-modal="true" aria-label="Caja y ventas del turno" className="palmyra-mobile-modal bg-white rounded-2xl sm:rounded-[2rem] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 border border-white/20 flex flex-col max-h-[calc(100dvh-1rem)]">
             <div className="p-4 border-b border-slate-50 flex items-center justify-between bg-slate-900 text-white shrink-0">
               <div className="flex items-center gap-2">
                 <Receipt className="w-4 h-4 text-violet-400" />
@@ -67,7 +67,8 @@ export default function POSCashManagementModal(props: ModalProps) {
               </div>
               <button 
                 onClick={() => setShowCashManagementModal(false)}
-                className="p-1.5 hover:bg-white/10 rounded-full transition-colors text-slate-400"
+                className="p-2 hover:bg-white/10 rounded-full transition-colors text-slate-400"
+                aria-label="Cerrar caja y ventas"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -77,7 +78,7 @@ export default function POSCashManagementModal(props: ModalProps) {
               <button
                 onClick={() => setCashManagementTab('movements')}
                 className={cn(
-                  "flex-1 py-2.5 text-[9px] font-black uppercase tracking-widest transition-colors",
+                  "flex-1 py-3 text-[11px] font-black uppercase tracking-widest transition-colors",
                   cashManagementTab === 'movements' ? "text-violet-600 border-b-2 border-violet-600 bg-white" : "text-slate-400 hover:text-slate-600"
                 )}
               >
@@ -86,7 +87,7 @@ export default function POSCashManagementModal(props: ModalProps) {
               <button
                 onClick={() => setCashManagementTab('sales')}
                 className={cn(
-                  "flex-1 py-2.5 text-[9px] font-black uppercase tracking-widest transition-colors",
+                  "flex-1 py-3 text-[11px] font-black uppercase tracking-widest transition-colors",
                   cashManagementTab === 'sales' ? "text-violet-600 border-b-2 border-violet-600 bg-white" : "text-slate-400 hover:text-slate-600"
                 )}
               >
@@ -95,7 +96,7 @@ export default function POSCashManagementModal(props: ModalProps) {
               <button
                 onClick={() => setCashManagementTab('close')}
                 className={cn(
-                  "flex-1 py-2.5 text-[9px] font-black uppercase tracking-widest transition-colors",
+                  "flex-1 py-3 text-[11px] font-black uppercase tracking-widest transition-colors",
                   cashManagementTab === 'close' ? "text-violet-600 border-b-2 border-violet-600 bg-white" : "text-slate-400 hover:text-slate-600"
                 )}
               >
@@ -103,28 +104,28 @@ export default function POSCashManagementModal(props: ModalProps) {
               </button>
             </div>
 
-            <div className="p-5 max-h-[70vh] overflow-y-auto custom-scrollbar">
+            <div className="p-4 sm:p-5 max-h-[70vh] overflow-y-auto custom-scrollbar">
               {cashManagementTab === 'movements' ? (
                 <div className="space-y-6">
                   <form onSubmit={handleAddMovement} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Tipo</label>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tipo</label>
                         <select 
                           value={movementData.type}
                           onChange={e => setMovementData({...movementData, type: e.target.value as any})}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-violet-500"
+                          className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-[12px] font-black uppercase outline-none focus:ring-2 focus:ring-violet-500"
                         >
                           <option value="expense">Egreso (Gasto)</option>
                           <option value="income">Ingreso (Entrada)</option>
                         </select>
                       </div>
                       <div>
-                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Moneda</label>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Moneda</label>
                         <select 
                           value={movementData.currencyCode}
                           onChange={e => setMovementData({...movementData, currencyCode: e.target.value})}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black uppercase outline-none focus:ring-2 focus:ring-violet-500"
+                          className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-[12px] font-black uppercase outline-none focus:ring-2 focus:ring-violet-500"
                         >
                           {currencies.map(c => <option key={c.code} value={c.code}>{c.code}</option>)}
                         </select>
@@ -132,7 +133,7 @@ export default function POSCashManagementModal(props: ModalProps) {
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Monto</label>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Monto</label>
                         <input 
                           type="number" 
                           step="0.01" 
@@ -140,29 +141,29 @@ export default function POSCashManagementModal(props: ModalProps) {
                           value={movementData.amount}
                           onFocus={(e) => e.target.select()}
                           onChange={e => setMovementData({...movementData, amount: e.target.value})}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black outline-none focus:ring-2 focus:ring-violet-500"
+                          className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-[12px] font-black outline-none focus:ring-2 focus:ring-violet-500"
                           placeholder="0.00"
                         />
                       </div>
                       <div>
-                        <label className="block text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Descripción</label>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Descripción</label>
                         <input 
                           type="text" 
                           required
                           value={movementData.description}
                           onChange={e => setMovementData({...movementData, description: e.target.value})}
-                          className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-[10px] font-black outline-none focus:ring-2 focus:ring-violet-500"
+                          className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-[12px] font-black outline-none focus:ring-2 focus:ring-violet-500"
                           placeholder="Ej: Pago de almuerzo"
                         />
                       </div>
                     </div>
-                    <button type="submit" className="w-full py-2 bg-violet-600 text-white rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-violet-700 transition-colors shadow-md shadow-violet-100">
+                    <button type="submit" className="w-full min-h-[44px] py-2.5 bg-violet-600 text-white rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-violet-700 transition-colors shadow-md shadow-violet-100">
                       {movementData.type === 'income' ? 'Registrar ingreso' : 'Registrar egreso'}
                     </button>
                   </form>
 
                   <div className="space-y-2">
-                    <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Historial de Turno</h4>
+                    <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Historial de Turno</h4>
                     {currentSession?.movements && currentSession.movements.length > 0 ? (
                       currentSession.movements.map(m => (
                         <div key={m.id} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-xl shadow-sm hover:border-slate-200 transition-all group">
@@ -174,14 +175,14 @@ export default function POSCashManagementModal(props: ModalProps) {
                               {m.type === 'income' ? <TrendingUp className="w-4 h-4" /> : <AlertCircle className="w-4 h-4" />}
                             </div>
                             <div>
-                              <p className="text-[10px] font-black text-slate-900 uppercase tracking-tight">{m.description}</p>
-                              <p className="text-[8px] font-bold text-slate-400 uppercase">{new Date(m.date).toLocaleTimeString()}</p>
+                              <p className="text-[11px] font-black text-slate-900 uppercase tracking-tight">{m.description}</p>
+                              <p className="text-[9.5px] font-bold text-slate-400 uppercase">{new Date(m.date).toLocaleTimeString()}</p>
                             </div>
                           </div>
                           
                           <div className="flex items-center gap-3">
                             <p className={cn(
-                              "text-[11px] font-black",
+                              "text-[12px] font-black whitespace-nowrap tabular-nums",
                               m.type === 'income' ? "text-emerald-600" : "text-rose-600"
                             )}>
                               {m.type === 'income' ? '+' : '-'}{m.amount.toLocaleString('es-CU', { minimumFractionDigits: 2 })} {m.currencyCode}
@@ -194,8 +195,9 @@ export default function POSCashManagementModal(props: ModalProps) {
                                   addNotification("Movimiento de caja eliminado", 'info');
                                 }
                               }}
-                              className="p-1 text-slate-400 hover:text-rose-600 rounded-full hover:bg-rose-50 transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
+                              className="p-2 text-slate-400 hover:text-rose-600 rounded-full hover:bg-rose-50 transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
                               title="Eliminar movimiento"
+                              aria-label="Eliminar movimiento"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -210,7 +212,7 @@ export default function POSCashManagementModal(props: ModalProps) {
                 <div className="space-y-4">
                   {(() => {
                     const sessionTx = activeTransactions.filter(t => 
-                      t.sessionId === currentSession?.id && !t.deletedAt
+                      t.sessionId === currentSession?.id && !t.deletedAt && t.status === 'completed' && !String(t.notes || '').startsWith('AJUSTE_')
                     );
 
                     // Categorize payment types
@@ -364,82 +366,82 @@ export default function POSCashManagementModal(props: ModalProps) {
                     return (
                       <div className="space-y-4">
                         {/* Financial Cards Grid */}
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 sm:gap-2">
-                          <div className="min-w-0 bg-emerald-50/80 border border-emerald-100 rounded-xl p-2 sm:p-2.5 flex min-h-[68px] flex-col justify-between shadow-sm">
-                            <div className="flex items-center justify-between text-emerald-700 mb-0.5">
-                              <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-wider">Efectivo CUP</span>
-                              <Banknote className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          <div className="min-w-0 bg-emerald-50/80 border border-emerald-100 rounded-xl p-2.5 flex min-h-[72px] flex-col justify-between shadow-sm">
+                            <div className="flex items-center justify-between text-emerald-700 mb-1">
+                              <span className="text-[9px] font-black uppercase tracking-wider">Efectivo {baseCurrency.code}</span>
+                              <Banknote className="w-3.5 h-3.5 shrink-0" />
                             </div>
-                            <span className="text-[11px] sm:text-xs font-black text-emerald-900 truncate">
-                              {formatMoney(cashCupSum, '')} CUP
+                            <span className="text-[12px] sm:text-[13px] font-black text-emerald-900 leading-tight tabular-nums">
+                              {formatMoney(cashCupSum, baseCurrency.symbol)}
                             </span>
                           </div>
 
-                          <div className="min-w-0 bg-amber-50/80 border border-amber-100 rounded-xl p-2 sm:p-2.5 flex min-h-[68px] flex-col justify-between shadow-sm">
-                            <div className="flex items-center justify-between text-amber-700 mb-0.5">
-                              <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-wider">Efectivo USD</span>
-                              <DollarSign className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                          <div className="min-w-0 bg-amber-50/80 border border-amber-100 rounded-xl p-2.5 flex min-h-[72px] flex-col justify-between shadow-sm">
+                            <div className="flex items-center justify-between text-amber-700 mb-1">
+                              <span className="text-[9px] font-black uppercase tracking-wider">Efectivo USD</span>
+                              <DollarSign className="w-3.5 h-3.5 shrink-0" />
                             </div>
                             <div className="min-w-0">
-                              <span className="text-[11px] sm:text-xs font-black text-amber-900 block truncate">
+                              <span className="text-[12px] sm:text-[13px] font-black text-amber-900 block leading-tight tabular-nums">
                                 ${cashUsdSum.toFixed(2)} USD
                               </span>
-                              <span className="text-[7px] sm:text-[8px] font-bold text-amber-600 block truncate">
-                                {formatMoney(cashUsdSum * (currencies.find(c => c.code === 'USD')?.rateToBase || 1), baseCurrency.symbol)} CUP eq.
+                              <span className="text-[9px] font-bold text-amber-600 block leading-tight tabular-nums">
+                                {formatMoney(cashUsdSum * (currencies.find(c => c.code === 'USD')?.rateToBase || 1), baseCurrency.symbol)} {baseCurrency.code} eq.
                               </span>
                             </div>
                           </div>
 
-                          <div className="min-w-0 bg-blue-50/80 border border-blue-100 rounded-xl p-2 sm:p-2.5 flex min-h-[68px] flex-col justify-between shadow-sm">
-                            <div className="flex items-center justify-between text-blue-700 mb-0.5">
-                              <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-wider">Transferencia CUP</span>
-                              <CreditCard className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                          <div className="min-w-0 bg-blue-50/80 border border-blue-100 rounded-xl p-2.5 flex min-h-[72px] flex-col justify-between shadow-sm">
+                            <div className="flex items-center justify-between text-blue-700 mb-1">
+                              <span className="text-[9px] font-black uppercase tracking-wider">Transferencia {baseCurrency.code}</span>
+                              <CreditCard className="w-3.5 h-3.5 shrink-0" />
                             </div>
-                            <span className="text-[11px] sm:text-xs font-black text-blue-900 truncate">
-                              {formatMoney(transferCupSum, '')} CUP
+                            <span className="text-[12px] sm:text-[13px] font-black text-blue-900 leading-tight tabular-nums">
+                              {formatMoney(transferCupSum, baseCurrency.symbol)}
                             </span>
                           </div>
 
-                          <div className="min-w-0 bg-violet-50/80 border border-violet-100 rounded-xl p-2 sm:p-2.5 flex min-h-[68px] flex-col justify-between shadow-sm">
-                            <div className="flex items-center justify-between text-violet-700 mb-0.5">
-                              <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-wider">Total Ventas</span>
-                              <Package className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                          <div className="min-w-0 bg-violet-50/80 border border-violet-100 rounded-xl p-2.5 flex min-h-[72px] flex-col justify-between shadow-sm">
+                            <div className="flex items-center justify-between text-violet-700 mb-1">
+                              <span className="text-[9px] font-black uppercase tracking-wider">Total Ventas</span>
+                              <Package className="w-3.5 h-3.5 shrink-0" />
                             </div>
                             <div className="min-w-0">
-                              <span className="text-[11px] sm:text-xs font-black text-violet-900 block truncate">
-                                {formatMoney(totalSalesAmount, baseCurrency.symbol)} CUP
+                              <span className="text-[12px] sm:text-[13px] font-black text-violet-900 block leading-tight tabular-nums">
+                                {formatMoney(totalSalesAmount, baseCurrency.symbol)}
                               </span>
-                              <span className="text-[7px] sm:text-[8px] font-bold text-violet-600 block truncate">
+                              <span className="text-[9px] font-bold text-violet-600 block leading-tight">
                                 {sessionTx.length} {sessionTx.length === 1 ? 'ticket' : 'tickets'}
                               </span>
                             </div>
                           </div>
 
-                          <div className="min-w-0 bg-rose-50/80 border border-rose-100 rounded-xl p-2 sm:p-2.5 flex min-h-[68px] flex-col justify-between shadow-sm">
-                            <div className="flex items-center justify-between text-rose-700 mb-0.5">
-                              <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-wider">Egreso</span>
-                              <AlertCircle className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                          <div className="min-w-0 bg-rose-50/80 border border-rose-100 rounded-xl p-2.5 flex min-h-[72px] flex-col justify-between shadow-sm">
+                            <div className="flex items-center justify-between text-rose-700 mb-1">
+                              <span className="text-[9px] font-black uppercase tracking-wider">Egreso</span>
+                              <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                             </div>
                             <div className="min-w-0">
-                              <span className="text-[11px] sm:text-xs font-black text-rose-900 block truncate">
-                                {formatMoney(movementTotals.expenseBase, baseCurrency.symbol)} CUP
+                              <span className="text-[12px] sm:text-[13px] font-black text-rose-900 block leading-tight tabular-nums">
+                                {formatMoney(movementTotals.expenseBase, baseCurrency.symbol)}
                               </span>
-                              <span className="text-[6.5px] sm:text-[7px] font-bold text-rose-600 block truncate">
+                              <span className="text-[9px] font-bold text-rose-600 block leading-tight">
                                 {movementTotals.expenseBase > 0 ? 'Ya descontado del efectivo' : 'Sin egresos registrados'}
                               </span>
                             </div>
                           </div>
 
-                          <div className="min-w-0 bg-violet-50/80 border border-violet-100 rounded-xl p-2 sm:p-2.5 flex min-h-[68px] flex-col justify-between shadow-sm">
-                            <div className="flex items-center justify-between text-violet-700 mb-0.5">
-                              <span className="text-[7px] sm:text-[8px] font-black uppercase tracking-wider">Ingreso</span>
-                              <TrendingUp className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+                          <div className="min-w-0 bg-violet-50/80 border border-violet-100 rounded-xl p-2.5 flex min-h-[72px] flex-col justify-between shadow-sm">
+                            <div className="flex items-center justify-between text-violet-700 mb-1">
+                              <span className="text-[9px] font-black uppercase tracking-wider">Ingreso</span>
+                              <TrendingUp className="w-3.5 h-3.5 shrink-0" />
                             </div>
                             <div className="min-w-0">
-                              <span className="text-[11px] sm:text-xs font-black text-violet-900 block truncate">
-                                {formatMoney(movementTotals.incomeBase, baseCurrency.symbol)} CUP
+                              <span className="text-[12px] sm:text-[13px] font-black text-violet-900 block leading-tight tabular-nums">
+                                {formatMoney(movementTotals.incomeBase, baseCurrency.symbol)}
                               </span>
-                              <span className="text-[6.5px] sm:text-[7px] font-bold text-violet-600 block truncate">
+                              <span className="text-[9px] font-bold text-violet-600 block leading-tight">
                                 {movementTotals.incomeBase > 0 ? 'Ya agregado al efectivo' : 'Sin ingresos registrados'}
                               </span>
                             </div>
@@ -449,35 +451,35 @@ export default function POSCashManagementModal(props: ModalProps) {
                         {/* Subtabs & Filters */}
                         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 pt-1 border-t border-slate-100">
                           {/* Subtabs */}
-                          <div className="flex bg-slate-100 p-0.5 rounded-xl text-[9px] font-black uppercase">
+                          <div className="flex bg-slate-100 p-0.5 rounded-xl text-[10.5px] font-black uppercase">
                             <button
                               onClick={() => setSalesSubTab('tickets')}
                               className={cn(
-                                "px-3 py-1.5 rounded-lg transition-all flex items-center gap-1",
+                                "px-3 py-2 rounded-lg transition-all flex items-center gap-1",
                                 salesSubTab === 'tickets' ? "bg-white text-violet-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
                               )}
                             >
-                              <Receipt className="w-3 h-3" />
+                              <Receipt className="w-3.5 h-3.5" />
                               Tickets ({sessionTx.length})
                             </button>
                             <button
                               onClick={() => setSalesSubTab('products')}
                               className={cn(
-                                "px-3 py-1.5 rounded-lg transition-all flex items-center gap-1",
+                                "px-3 py-2 rounded-lg transition-all flex items-center gap-1",
                                 salesSubTab === 'products' ? "bg-white text-violet-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
                               )}
                             >
-                              <Package className="w-3 h-3" />
+                              <Package className="w-3.5 h-3.5" />
                               Productos ({consolidatedList.reduce((s, p) => s + p.quantity, 0)} u.)
                             </button>
                             <button
                               onClick={() => setSalesSubTab('movements')}
                               className={cn(
-                                "px-3 py-1.5 rounded-lg transition-all flex items-center gap-1",
+                                "px-3 py-2 rounded-lg transition-all flex items-center gap-1",
                                 salesSubTab === 'movements' ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500 hover:text-slate-800"
                               )}
                             >
-                              <Wallet className="w-3 h-3" />
+                              <Wallet className="w-3.5 h-3.5" />
                               Egreso y gasto ({(currentSession?.movements || []).length})
                             </button>
                           </div>
@@ -488,7 +490,7 @@ export default function POSCashManagementModal(props: ModalProps) {
                               <button
                                 onClick={() => setSalesFilter('all')}
                                 className={cn(
-                                  "px-2 py-1 rounded-lg text-[8px] font-black uppercase tracking-wider whitespace-nowrap transition-all",
+                                  "px-2.5 py-1.5 rounded-lg text-[9.5px] font-black uppercase tracking-wider whitespace-nowrap transition-all",
                                   salesFilter === 'all' ? "bg-violet-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                                 )}
                               >
@@ -497,7 +499,7 @@ export default function POSCashManagementModal(props: ModalProps) {
                               <button
                                 onClick={() => setSalesFilter('usd')}
                                 className={cn(
-                                  "px-2 py-1 rounded-lg text-[8px] font-black uppercase tracking-wider whitespace-nowrap transition-all flex items-center gap-0.5",
+                                  "px-2.5 py-1.5 rounded-lg text-[9.5px] font-black uppercase tracking-wider whitespace-nowrap transition-all flex items-center gap-0.5",
                                   salesFilter === 'usd' ? "bg-amber-600 text-white" : "bg-amber-50 text-amber-700 hover:bg-amber-100"
                                 )}
                               >
@@ -507,7 +509,7 @@ export default function POSCashManagementModal(props: ModalProps) {
                               <button
                                 onClick={() => setSalesFilter('transfer')}
                                 className={cn(
-                                  "px-2 py-1 rounded-lg text-[8px] font-black uppercase tracking-wider whitespace-nowrap transition-all flex items-center gap-0.5",
+                                  "px-2.5 py-1.5 rounded-lg text-[9.5px] font-black uppercase tracking-wider whitespace-nowrap transition-all flex items-center gap-0.5",
                                   salesFilter === 'transfer' ? "bg-blue-600 text-white" : "bg-blue-50 text-blue-700 hover:bg-blue-100"
                                 )}
                               >
@@ -517,12 +519,12 @@ export default function POSCashManagementModal(props: ModalProps) {
                               <button
                                 onClick={() => setSalesFilter('cash_cup')}
                                 className={cn(
-                                  "px-2 py-1 rounded-lg text-[8px] font-black uppercase tracking-wider whitespace-nowrap transition-all flex items-center gap-0.5",
+                                  "px-2.5 py-1.5 rounded-lg text-[9.5px] font-black uppercase tracking-wider whitespace-nowrap transition-all flex items-center gap-0.5",
                                   salesFilter === 'cash_cup' ? "bg-emerald-600 text-white" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
                                 )}
                               >
                                 <Banknote className="h-3 w-3 shrink-0" aria-hidden="true" />
-                                Efectivo CUP
+                                Efectivo {baseCurrency.code}
                               </button>
                             </div>
                           )}
@@ -564,41 +566,43 @@ export default function POSCashManagementModal(props: ModalProps) {
                                     <div className="flex items-center justify-between gap-2">
                                       <div>
                                         <div className="flex items-center gap-1.5 flex-wrap">
-                                          <span className="font-mono text-[9px] font-black text-violet-700 bg-violet-50 px-1.5 py-0.5 rounded-md border border-violet-100">
+                                          <span className="font-mono text-[10px] font-black text-violet-700 bg-violet-50 px-1.5 py-0.5 rounded-md border border-violet-100">
                                             {ticketDisplay(tx.ticketNumber, tx.id)}
                                           </span>
                                           {tx.offlinePending && (
-                                            <span className="text-[8px] font-black uppercase tracking-wide text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-100">
+                                            <span className="text-[9px] font-black uppercase tracking-wide text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded-md border border-amber-100">
                                               Pendiente
                                             </span>
                                           )}
-                                          <span className="text-[9px] font-bold text-slate-400">
+                                          <span className="text-[9.5px] font-bold text-slate-400">
                                             {new Date(tx.date).toLocaleDateString("es-CU", { day: "2-digit", month: "2-digit", year: "2-digit" })} · {new Date(tx.date).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                                           </span>
-                                          <span className="text-[9px] font-bold text-slate-600">
+                                          <span className="text-[9.5px] font-bold text-slate-600">
                                             • {customer?.name || 'Consumidor Final'}
                                           </span>
                                         </div>
                                       </div>
 
                                       <div className="flex items-center gap-2 shrink-0">
-                                        <span className="text-xs font-black text-slate-900 dark:text-white">
+                                        <span className="text-[12px] font-black text-slate-900 dark:text-white whitespace-nowrap tabular-nums">
                                           {formatMoney(tx.total, baseCurrency.symbol)}
                                         </span>
                                         <div className="flex items-center gap-1">
                                           <button
                                             onClick={() => setShowReceiptModal(tx)}
-                                            className="p-1 text-slate-400 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-950/40 rounded-lg transition-colors cursor-pointer"
+                                            className="p-2 text-slate-400 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-950/40 rounded-lg transition-colors cursor-pointer"
                                             title="Ver Comprobante Flotante"
+                                            aria-label="Ver comprobante"
                                           >
-                                            <Receipt className="w-3.5 h-3.5" />
+                                            <Receipt className="w-4 h-4" />
                                           </button>
                                           <button
                                             onClick={() => handleThermalPrint(tx)}
-                                            className="p-1 text-slate-400 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-950/40 rounded-lg transition-colors cursor-pointer"
+                                            className="p-2 text-slate-400 hover:text-violet-600 hover:bg-violet-50 dark:hover:bg-violet-950/40 rounded-lg transition-colors cursor-pointer"
                                             title="Imprimir Ticket Térmico"
+                                            aria-label="Imprimir ticket térmico"
                                           >
-                                            <Printer className="w-3.5 h-3.5" />
+                                            <Printer className="w-4 h-4" />
                                           </button>
                                           <button
                                             onClick={() => {
@@ -607,20 +611,21 @@ export default function POSCashManagementModal(props: ModalProps) {
                                                 addNotification(`Ticket ${tx.id} eliminado y stock restaurado.`, 'info');
                                               }
                                             }}
-                                            className="p-1 text-slate-300 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
+                                            className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
                                             title="Anular Venta"
+                                            aria-label="Anular venta"
                                           >
-                                            <Trash2 className="w-3.5 h-3.5" />
+                                            <Trash2 className="w-4 h-4" />
                                           </button>
                                         </div>
                                       </div>
                                     </div>
 
                                     {/* Products list in this ticket - Compact & Contained */}
-                                    <div className="bg-slate-50 dark:bg-slate-800/40 rounded-lg p-1.5 space-y-0.5 text-[8px] max-h-20 sm:max-h-24 overflow-y-auto custom-scrollbar">
+                                    <div className="bg-slate-50 dark:bg-slate-800/40 rounded-lg p-2 space-y-1 text-[9.5px] max-h-24 sm:max-h-28 overflow-y-auto custom-scrollbar">
                                       {tx.items.map((item, idx) => (
                                         <div key={idx} className="flex justify-between items-center text-slate-700 font-bold">
-                                          <span className="truncate pr-2">
+                                          <span className="truncate pr-2" title={`${item.quantity}x ${typeof (item.product as any) === "object" ? ((item.product as any)?.name || "Producto") : (products.find(p => p.id === (item.product as any))?.name || (item.product as any) || "Producto")}${item.variantLabel ? ` (${item.variantLabel})` : ''}`}>
                                             {item.quantity}x {typeof (item.product as any) === "object" ? ((item.product as any)?.name || "Producto") : (products.find(p => p.id === (item.product as any))?.name || (item.product as any) || "Producto")}
                                             {item.variantLabel ? ` (${item.variantLabel})` : ''}
                                           </span>
@@ -634,7 +639,7 @@ export default function POSCashManagementModal(props: ModalProps) {
 
 
                         {/* Payment Method Badges & Breakdown */}
-                                    <div className="flex items-center justify-between gap-1.5 flex-wrap pt-0.5 border-t border-slate-100 text-[7px] font-black">
+                                    <div className="flex items-center justify-between gap-1.5 flex-wrap pt-1 border-t border-slate-100 text-[9px] font-black">
                                       <div className="flex items-center gap-1 flex-wrap">
                                         {cat === 'usd' && (
                                           <span className="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
@@ -651,7 +656,7 @@ export default function POSCashManagementModal(props: ModalProps) {
                                         {cat === 'cash_cup' && (
                                           <span className="bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full inline-flex items-center gap-1">
                                             <Banknote className="h-3 w-3 shrink-0" aria-hidden="true" />
-                                            Pagado en Efectivo CUP
+                                            Pagado en Efectivo {baseCurrency.code}
                                           </span>
                                         )}
                                         {cat === 'mixed' && (
@@ -703,19 +708,19 @@ export default function POSCashManagementModal(props: ModalProps) {
                                       </span>
                                       <div className="min-w-0">
                                         <span className="font-black text-slate-900 text-xs uppercase block truncate">{prod?.name || "Producto"}</span>
-                                        <span className="text-[9px] font-bold text-slate-400 block">
+                                        <span className="text-[10px] font-bold text-slate-400 block">
                                           Precio unitario: {formatMoney(prod.unitPrice, baseCurrency.symbol)}
                                         </span>
                                       </div>
                                     </div>
-                                    <span className="font-black text-violet-600 text-xs shrink-0 ml-2">
+                                    <span className="font-black text-violet-600 text-xs shrink-0 ml-2 whitespace-nowrap tabular-nums">
                                       {formatMoney(prod.total, baseCurrency.symbol)}
                                     </span>
                                   </div>
 
                                   {/* Payment method breakdown for this product */}
-                                  <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-slate-100 text-[8px] font-bold">
-                                    <span className="text-slate-400 uppercase tracking-widest text-[7px] font-black">Pagado en:</span>
+                                  <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t border-slate-100 text-[9px] font-bold">
+                                    <span className="text-slate-400 uppercase tracking-widest text-[9px] font-black">Pagado en:</span>
                                     {prod.usdQty > 0 && (
                                       <span className="bg-amber-50 text-amber-800 border border-amber-200 px-1.5 py-0.5 rounded inline-flex items-center gap-1">
                                         <Banknote className="h-3 w-3 shrink-0" aria-hidden="true" />
@@ -771,10 +776,10 @@ export default function POSCashManagementModal(props: ModalProps) {
                     <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                       <div className="flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/70 px-3 py-2">
                         <div className="min-w-0">
-                          <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-900">Resumen del turno</h4>
-                          <p className="text-[8px] font-bold uppercase tracking-wide text-slate-400">Calculado con las ventas y movimientos registrados</p>
+                          <h4 className="text-[11px] font-black uppercase tracking-widest text-slate-900">Resumen del turno</h4>
+                          <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Calculado con las ventas y movimientos registrados</p>
                         </div>
-                        <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[8px] font-black uppercase text-slate-500 ring-1 ring-slate-200">Paso 1</span>
+                        <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[9px] font-black uppercase text-slate-500 ring-1 ring-slate-200">Paso 1</span>
                       </div>
                       <div className="grid grid-cols-2 gap-1.5 p-2 sm:grid-cols-4">
                         {[
@@ -783,9 +788,9 @@ export default function POSCashManagementModal(props: ModalProps) {
                           { label: 'Egresos', value: `-${formatMoney(closeExpenseBase, baseCurrency.symbol)}`, tone: 'border-rose-200 bg-rose-50 text-rose-900' },
                           { label: 'Ingresos', value: `+${formatMoney(closeIncomeBase, baseCurrency.symbol)}`, tone: 'border-emerald-200 bg-emerald-50 text-emerald-900' },
                         ].map(item => (
-                          <div key={item.label} className={cn('min-w-0 rounded-xl border px-2 py-1.5', item.tone)}>
-                            <p className="text-[7px] font-black uppercase tracking-wider opacity-70">{item.label}</p>
-                            <p className="truncate text-[11px] font-black">{item.value}</p>
+                          <div key={item.label} className={cn('min-w-0 rounded-xl border px-2 py-2', item.tone)}>
+                            <p className="text-[9px] font-black uppercase tracking-wider opacity-70">{item.label}</p>
+                            <p className="text-[11.5px] font-black leading-tight tabular-nums break-words">{item.value}</p>
                           </div>
                         ))}
                       </div>
@@ -983,11 +988,25 @@ export default function POSCashManagementModal(props: ModalProps) {
                             <div className="pt-3 border-t border-amber-100 space-y-2">
                               <div className="flex items-center justify-between gap-2"><span className="text-[9px] font-black text-amber-900 uppercase tracking-widest">Detalle de comisión</span><span className="text-[8px] font-black text-amber-700 uppercase whitespace-nowrap">{turnProductSalaryRows.reduce((sum: number, row: any) => sum + row.quantity, 0)} uds</span></div>
                               {turnProductSalaryRows.length > 0 ? (
-                                <div className="overflow-x-auto rounded-xl border border-amber-100 bg-white">
-                                  <table className="w-full min-w-[560px] text-left">
-                                    <thead><tr className="bg-amber-50 border-b border-amber-100"><th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase">Empleado</th><th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase">Producto</th><th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase text-right">Cantidad</th><th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase text-right">Valor / unidad</th><th className="px-3 py-2 text-[7px] font-black text-amber-700 uppercase text-right">Comisión total</th></tr></thead>
-                                    <tbody className="divide-y divide-amber-50">{turnProductSalaryRows.map((row: any) => (<tr key={row.key}><td className="px-3 py-2 text-[8px] font-black text-slate-700 uppercase break-words">{row.employeeName}</td><td className="px-3 py-2 text-[8px] font-black text-slate-900 uppercase break-words">{row.productName}</td><td className="px-3 py-2 text-[8px] font-black text-slate-800 text-right">{row.quantity}</td><td className="px-3 py-2 text-[8px] font-black text-violet-700 text-right">{formatSalaryCUP(row.salaryPerUnit)}</td><td className="px-3 py-2 text-[8px] font-black text-violet-900 text-right">{formatSalaryCUP(row.salaryTotal)}</td></tr>))}</tbody>
-                                  </table>
+                                <div className="overflow-hidden rounded-xl border border-amber-100 bg-white">
+                                  <div className="hidden sm:block overflow-x-auto">
+                                    <table className="w-full min-w-[560px] text-left">
+                                      <thead><tr className="bg-amber-50 border-b border-amber-100"><th className="px-3 py-2 text-[8px] font-black text-amber-700 uppercase">Empleado</th><th className="px-3 py-2 text-[8px] font-black text-amber-700 uppercase">Producto</th><th className="px-3 py-2 text-[8px] font-black text-amber-700 uppercase text-right">Cantidad</th><th className="px-3 py-2 text-[8px] font-black text-amber-700 uppercase text-right">Valor / unidad</th><th className="px-3 py-2 text-[8px] font-black text-amber-700 uppercase text-right">Comisión total</th></tr></thead>
+                                      <tbody className="divide-y divide-amber-50">{turnProductSalaryRows.map((row: any) => (<tr key={row.key}><td className="px-3 py-2 text-[9px] font-black text-slate-700 uppercase break-words">{row.employeeName}</td><td className="px-3 py-2 text-[9px] font-black text-slate-900 uppercase break-words">{row.productName}</td><td className="px-3 py-2 text-[9px] font-black text-slate-800 text-right tabular-nums">{row.quantity}</td><td className="px-3 py-2 text-[9px] font-black text-violet-700 text-right tabular-nums">{formatSalaryCUP(row.salaryPerUnit)}</td><td className="px-3 py-2 text-[9px] font-black text-violet-900 text-right tabular-nums">{formatSalaryCUP(row.salaryTotal)}</td></tr>))}</tbody>
+                                    </table>
+                                  </div>
+                                  <ul className="sm:hidden divide-y divide-amber-50">
+                                    {turnProductSalaryRows.map((row: any) => (
+                                      <li key={row.key} className="space-y-1 px-3 py-2.5">
+                                        <div className="flex items-start justify-between gap-2">
+                                          <span className="min-w-0 text-[10px] font-black uppercase leading-snug text-slate-700 break-words">{row.employeeName}</span>
+                                          <span className="shrink-0 text-[10px] font-black text-violet-900 whitespace-nowrap tabular-nums">{formatSalaryCUP(row.salaryTotal)}</span>
+                                        </div>
+                                        <p className="text-[9px] font-black uppercase leading-snug text-slate-900 break-words">{row.productName}</p>
+                                        <p className="text-[8px] font-bold uppercase text-slate-500 tabular-nums">{row.quantity} uds × {formatSalaryCUP(row.salaryPerUnit)}</p>
+                                      </li>
+                                    ))}
+                                  </ul>
                                 </div>
                               ) : <div className="bg-white rounded-xl border border-amber-100 px-3 py-4 text-center"><p className="text-[7px] font-black text-slate-400 uppercase tracking-wider">No hay ventas cobradas en este turno</p></div>}
                             </div>

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   HUB_RATES_TIMEOUT_MS,
   RATE_SOURCE_FRESH_MS,
+  RATE_UNAVAILABLE_NOTICE,
   describeExchangeRateSource,
   resolveLocalHubBaseUrl,
   type ResolvedExchangeRates
@@ -60,7 +61,7 @@ test("un respaldo marcado stale se resume como última tasa guardada", () => {
   assert.match(view.detail, /última tasa válida/i);
 });
 
-test("sin cotizaciones la pantalla muestra la última guardada y el error", () => {
+test("sin cotizaciones la pantalla muestra la última guardada y un aviso neutral", () => {
   const view = describeExchangeRateSource({
     source: "fallback",
     rates: [],
@@ -70,7 +71,9 @@ test("sin cotizaciones la pantalla muestra la última guardada y el error", () =
   assert.equal(view.kind, "cached");
   assert.equal(view.label, "Última tasa guardada");
   assert.equal(view.stale, true);
-  assert.match(view.detail, /hub LAN/);
+  // El error crudo nunca llega a la pantalla: ni hub, ni LAN, ni servidor local.
+  assert.equal(view.detail, RATE_UNAVAILABLE_NOTICE);
+  assert.doesNotMatch(view.detail, /hub|LAN|servidor local/i);
 });
 
 test("una captura de más de 30 minutos se considera stale aunque la fuente no lo diga", () => {

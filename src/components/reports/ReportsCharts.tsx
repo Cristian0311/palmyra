@@ -14,7 +14,7 @@ export interface ReportsChartsProps {
   formatMoney: (amount: number) => string;
 }
 
-const COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+const COLORS = ['#6535C5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
 function CustomTooltip({ active, payload, label, formatMoney }: any) {
   if (!active || !payload || !payload.length) return null;
@@ -25,7 +25,7 @@ function CustomTooltip({ active, payload, label, formatMoney }: any) {
   return (
     <div className="bg-white dark:bg-slate-900 border border-base p-2 rounded-xl shadow-xl">
       <p className="text-[10px] font-black text-primary uppercase mb-1">{label ?? payload[0]?.name}</p>
-      <p className="text-[11px] font-bold text-indigo-600">{formatted}</p>
+      <p className="text-[11px] font-bold text-violet-600">{formatted}</p>
     </div>
   );
 }
@@ -34,16 +34,16 @@ export default function ReportsCharts({ hourData, categoryData, formatMoney }: R
   return (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
         {/* Sales by Hour Bar Chart */}
-        <div className="lg:col-span-2 bg-secondary rounded-[2rem] p-5 shadow-sm border border-base flex flex-col gap-4">
+        <div className="lg:col-span-2 bg-secondary rounded-2xl p-5 shadow-sm border border-base flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-xs font-black text-primary uppercase tracking-wider flex items-center gap-2">
-                <BarChart3 className="w-4 h-4 text-indigo-600" />
+                <BarChart3 className="w-4 h-4 text-violet-600" />
                 Ventas por Horario
               </h3>
               <p className="text-[8px] font-bold text-muted uppercase tracking-tight">Distribución del volumen de facturación por hora</p>
             </div>
-            <div className="px-2 py-1 bg-white dark:bg-slate-800 rounded-lg border border-base text-[8px] font-black uppercase text-indigo-600">
+            <div className="px-2 py-1 bg-white dark:bg-slate-800 rounded-lg border border-base text-[8px] font-black uppercase text-violet-600">
               Actividad Diaria
             </div>
           </div>
@@ -64,7 +64,7 @@ export default function ReportsCharts({ hourData, categoryData, formatMoney }: R
                 <Tooltip content={<CustomTooltip formatMoney={formatMoney} />} />
                 <Bar 
                   dataKey="total" 
-                  fill="#6366f1" 
+                  fill="#6535C5" 
                   radius={[4, 4, 0, 0]} 
                   barSize={20}
                 />
@@ -74,7 +74,7 @@ export default function ReportsCharts({ hourData, categoryData, formatMoney }: R
         </div>
 
         {/* Top Categories Pie Chart */}
-        <div className="bg-secondary rounded-[2rem] p-5 shadow-sm border border-base flex flex-col gap-4">
+        <div className="bg-secondary rounded-2xl p-5 shadow-sm border border-base flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-xs font-black text-primary uppercase tracking-wider flex items-center gap-2">
