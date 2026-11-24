@@ -1,0 +1,25 @@
+{
+  "v": 1,
+  "version": "1.3.9",
+  "channel": "stable",
+  "releasedAt": "2026-11-24T19:13:57.412Z",
+  "rollout": 100,
+  "artifacts": [
+    {
+      "platform": "windows",
+      "name": "PALMYRA-POS-Setup.exe",
+      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.9/PALMYRA-POS-Setup.exe",
+      "sha256": "3a85c8e67f7a325d915e02db6a4566884ab653ec89cf979cafe7aef4dac1c02f",
+      "bytes": 78523957
+    },
+    {
+      "platform": "android",
+      "name": "PALMYRA-Android.apk",
+      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.9/PALMYRA-Android.apk",
+      "sha256": "b57b49897d3aaa29fa9ab2376cb8c496ea805f29c6b7cd4cecebaf2721287924",
+      "bytes": 2679878
+    }
+  ],
+  "keyId": "palmyra-stable-2026-11",
+  "signature": "VCIEQltU9zaaqLrb6PI_s0An8GDSUwyXUTVD6BGbCAs66hM7iR5GxzHyJJ315z8wExZujhFSYtdDaqfPLOsUWQ"
+}
