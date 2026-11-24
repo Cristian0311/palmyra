@@ -592,6 +592,12 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
     // El stock se reconciliará desde el servidor en el siguiente intento.
     if (!bulkPartial && !canonicalRefreshed && !serverConfirmed) {
       set(state => {
+        // La mercancía queda EN TRÁNSITO: se descuenta del origen y el destino
+        // solo se acredita al confirmar la recepción (igual que el traslado
+        // unitario). Acreditar aquí el destino inflaba el stock de la sucursal
+        // receptora antes de recibir el lote y duplicaba unidades si el
+        // operador confirmaba la recepción sin pasar por la reconciliación
+        // canónica de la cola.
         const nextInventory = [...state.inventory];
         for (const item of validItems) {
           const label = item.variant || '';
@@ -602,23 +608,6 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
           );
           if (idx >= 0) {
             nextInventory[idx] = { ...nextInventory[idx], quantity: Math.max(0, Number(nextInventory[idx].quantity || 0) - item.quantity) };
-          }
-          const targetIdx = nextInventory.findIndex(i =>
-            i.productId === item.productId &&
-            i.branchId === toBranchId &&
-            (i.variantLabel || '') === label
-          );
-          if (targetIdx >= 0) {
-            nextInventory[targetIdx] = { ...nextInventory[targetIdx], quantity: Number(nextInventory[targetIdx].quantity || 0) + item.quantity };
-          } else {
-            nextInventory.push({
-              id: crypto.randomUUID(),
-              productId: item.productId,
-              branchId: toBranchId,
-              variantLabel: label || undefined,
-              quantity: item.quantity,
-              minQuantity: 5
-            });
           }
         }
         return { inventory: nextInventory };

@@ -356,7 +356,7 @@ export default function HelpCenter(){
             <button type="button" className="help-resource-card is-primary" onClick={()=>changeSection("tutorial")}>
               <span className="help-resource-icon"><BookOpen/></span>
               <strong>Aprende PALMYRA paso a paso</strong>
-              <p>24 lecciones con pantallas: POS, caja, inventario, auditoría, proveedores, tasa de cambio, equipo, reportes y trabajo sin conexión.</p>
+              <p>28 lecciones con pantallas: POS, caja, inventario, auditoría, proveedores, tasa de cambio, equipo, reportes y trabajo sin conexión.</p>
               <span className="help-resource-cta">Abrir tutorial <ArrowRight/></span>
             </button>
             <button type="button" className="help-resource-card" onClick={()=>changeSection("security")}>
@@ -395,7 +395,7 @@ export default function HelpCenter(){
             <span className="help-feature-icon"><BookOpen/></span>
             <span className="help-feature-kicker">ESCUELA PALMYRA</span>
             <strong>Aprende el sistema paso a paso</strong>
-            <p>24 lecciones con pantallas ilustradas, funciones marcadas y puntos numerados que conectan cada paso. Incluye apertura y cierre de turno, POS, inventario, auditoría, transferencias, proveedores, cotizaciones, devoluciones, bancos, tasa de cambio, reportes, equipo, soporte, descargas, offline y planes.</p>
+            <p>28 lecciones con pantallas ilustradas, funciones marcadas y puntos numerados que conectan cada paso. Incluye apertura y cierre de turno, POS, inventario, auditoría, transferencias, proveedores, cotizaciones, devoluciones, bancos, tasa de cambio, reportes, equipo, soporte, descargas, offline y planes.</p>
             <Link className="help-feature-cta" to="/tutorial">Entrar a la escuela <ArrowRight/></Link>
           </article>
           {[

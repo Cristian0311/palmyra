@@ -723,6 +723,9 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       cashSessions: state.cashSessions.map(s => s.id === sessionId ? updatedSession : s),
       salarySettlements: [...(state.salarySettlements || []).filter(st => st.sessionId !== sessionId), settlement]
     }));
+    // Sin conexión o plan Gratis: el cierre ya quedó encolado ('cash-close:…'),
+    // pero el snapshot local debe persistirse como en el camino con error online.
+    await flushLocalStateStorage();
     return { success: true };
   },
   };

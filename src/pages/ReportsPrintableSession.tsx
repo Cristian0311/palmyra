@@ -4,7 +4,9 @@ import { PalmyraWordmark } from "../components/PalmyraWordmark";
 import { getSessionTurnLabel } from "../modules/reports/utils/sessionTurnLabels";
 
 export default function ReportsPrintableSession(props: ModalProps) {
-  const { String, formatMoney, getProductName, printBranch, printPayrollItem, printSession, products, sessionTurnMap, transactions, users } = props;
+  // Nunca desestructurar `String`: props no lo trae y la variable local
+  // quedaría `undefined`, reventando el filtro AJUSTE_ al imprimir el ticket.
+  const { formatMoney, getProductName, printBranch, printPayrollItem, printSession, products, sessionTurnMap, transactions, users } = props;
   return (
     <>
       {printSession && (

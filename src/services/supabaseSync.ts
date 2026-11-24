@@ -8,4 +8,3 @@ export * from './supabaseSync/pull';
 export * from './supabaseSync/mutations';
 export * from './supabaseSync/rpc';
 export * from './supabaseSync/diagnostics';
-export * from './supabaseSync/cleanup';

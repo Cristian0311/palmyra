@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import {
   AlertTriangle,
@@ -62,6 +62,74 @@ const countedValue = (value: unknown): number | null => {
   return Number.isFinite(num) ? num : null;
 };
 
+// Borrador local del conteo: "Guardar y salir" persiste el progreso en este
+// equipo para no perder líneas ya contadas al cerrar el modal sin enviar.
+type AuditDraft = {
+  counts: { index: number; productId: string; variantLabel: string; counted: number }[];
+  notes: string;
+  savedAt: string;
+};
+
+const auditDraftKey = (auditId: string) => `palmyra:audit-draft:${auditId}`;
+
+const saveAuditDraft = (auditId: string, items: AuditItem[], notes: string) => {
+  try {
+    const draft: AuditDraft = {
+      counts: items
+        .map((item, index) => ({ index, productId: item.productId, variantLabel: item.variantLabel || "", counted: countedValue(item.counted) }))
+        .filter((entry): entry is AuditDraft["counts"][number] => entry.counted !== null)
+        .map(entry => ({ ...entry, counted: entry.counted as number })),
+      notes: notes || "",
+      savedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(auditDraftKey(auditId), JSON.stringify(draft));
+  } catch {
+    // Almacenamiento lleno o no disponible: el borrador no es crítico.
+  }
+};
+
+const loadAuditDraft = (auditId: string): AuditDraft | null => {
+  try {
+    const raw = localStorage.getItem(auditDraftKey(auditId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as AuditDraft;
+    return Array.isArray(parsed?.counts) ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const clearAuditDraft = (auditId: string) => {
+  try {
+    localStorage.removeItem(auditDraftKey(auditId));
+  } catch {
+    // Sin almacenamiento disponible: nada que limpiar.
+  }
+};
+
+const applyAuditDraft = (items: AuditItem[], draft: AuditDraft): AuditItem[] => {
+  const next = items.map(item => ({ ...item }));
+  for (const entry of draft.counts) {
+    let target = next.findIndex((item, index) =>
+      index === entry.index && item.productId === entry.productId && (item.variantLabel || "") === entry.variantLabel
+    );
+    if (target === -1) {
+      target = next.findIndex(item =>
+        item.productId === entry.productId && (item.variantLabel || "") === entry.variantLabel && item.counted == null
+      );
+    }
+    if (target !== -1) {
+      next[target] = {
+        ...next[target],
+        counted: entry.counted,
+        actual: entry.counted,
+        difference: entry.counted - Number(next[target].expected || 0),
+      };
+    }
+  }
+  return next;
+};
+
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, ch => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[ch] as string));
 }
@@ -113,6 +181,16 @@ export default function InventoryAuditPage() {
   const [countDraft, setCountDraft] = useState<AuditItem[]>([]);
   const [isBusy, setIsBusy] = useState(false);
   const [pendingDelete, setPendingDelete] = useState<InventoryAudit | null>(null);
+
+  // Persiste el progreso del conteo en este equipo (debounced) para que
+  // "Guardar y salir" o un cierre accidental no pierdan líneas ya contadas.
+  useEffect(() => {
+    if (!showModal || !selectedAuditId || step !== "count") return;
+    const timer = setTimeout(() => {
+      saveAuditDraft(selectedAuditId, countDraft, notes);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [showModal, selectedAuditId, step, countDraft, notes]);
 
   const productById = useMemo(() => new Map(products.map(p => [p.id, p])), [products]);
   const branchName = (id: string) => branches.find(b => b.id === id)?.name || "Sucursal";
@@ -285,7 +363,11 @@ export default function InventoryAuditPage() {
     } else if (audit.status === "completed") {
       setStep("review");
     } else {
-      setCountDraft(audit.items);
+      // Continúa un conteo en curso: restaura el borrador local si existe para
+      // no perder las líneas ya contadas antes de "Guardar y salir".
+      const draft = loadAuditDraft(audit.id);
+      setCountDraft(draft ? applyAuditDraft(audit.items, draft) : audit.items);
+      if (draft?.notes) setNotes(draft.notes);
       setStep("count");
     }
     setShowModal(true);
@@ -368,6 +450,7 @@ export default function InventoryAuditPage() {
         addNotification(res.error || "No se pudo enviar el conteo a revisión.", "error");
         return;
       }
+      clearAuditDraft(selectedAuditId);
       setStep("review");
       const updated = useStore.getState().inventoryAudits.find(a => a.id === selectedAuditId);
       if (updated) setCountDraft(updated.items);
@@ -386,6 +469,7 @@ export default function InventoryAuditPage() {
         addNotification(res.error || "No se pudo aprobar el ajuste. Puede ser necesario un nuevo conteo.", "error");
         return;
       }
+      clearAuditDraft(selectedAuditId);
       addNotification(
         res.pending
           ? "Auditoría aprobada localmente; el ajuste se sincronizará al reconectar."
@@ -427,6 +511,7 @@ export default function InventoryAuditPage() {
         addNotification(res.error || "No se pudo eliminar la auditoría.", "error");
         return;
       }
+      clearAuditDraft(pendingDelete.id);
       if (selectedAuditId === pendingDelete.id) {
         setShowModal(false);
         setSelectedAuditId(null);
@@ -967,7 +1052,10 @@ export default function InventoryAuditPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => setShowModal(false)}
+                    onClick={() => {
+                      if (step === "count" && selectedAuditId) saveAuditDraft(selectedAuditId, countDraft, notes);
+                      setShowModal(false);
+                    }}
                     className="flex h-9 w-9 items-center justify-center rounded-xl border border-base text-muted transition-colors hover:bg-secondary hover:text-primary"
                     aria-label="Cerrar"
                   >
@@ -1317,7 +1405,17 @@ export default function InventoryAuditPage() {
               <div className="flex flex-col gap-2 border-t border-base bg-subtle px-4 py-3 sm:flex-row sm:px-5">
                 {step === "count" && selectedAudit && (
                   <>
-                    <button type="button" onClick={() => setShowModal(false)} className="min-h-[42px] rounded-xl border border-base bg-secondary px-4 text-sm font-bold text-secondary transition-colors hover:bg-subtle hover:text-primary">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (selectedAuditId) {
+                          saveAuditDraft(selectedAuditId, countDraft, notes);
+                          addNotification("Progreso del conteo guardado en este equipo. Puedes continuar cuando quieras.", "info");
+                        }
+                        setShowModal(false);
+                      }}
+                      className="min-h-[42px] rounded-xl border border-base bg-secondary px-4 text-sm font-bold text-secondary transition-colors hover:bg-subtle hover:text-primary"
+                    >
                       Guardar y salir
                     </button>
                     <button

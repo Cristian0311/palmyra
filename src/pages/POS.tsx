@@ -789,7 +789,6 @@ export default function POS() {
         .filter(([_, amount]) => (amount as number) > 0)
         .map(([key, amount]) => {
           const [code, method] = key.split('-');
-          const currency = currencies.find(c => c.code === code)!;
           return {
             currencyCode: code as any,
             amount: amount as number,

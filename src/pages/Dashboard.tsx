@@ -38,6 +38,7 @@ import { ticketDisplay } from "../lib/documentCodes";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { getBusinessSummaryAI } from "../services/gemini";
 import { loadSaaSContext } from "../services/saas";
+import { getLocalDateYMD } from "../hooks/useReportsAnalytics";
 import PlanFeatureGate from "../components/PlanFeatureGate";
 import { PalmyraWordmark } from "../components/PalmyraWordmark";
 import type { Transaction, CartItem, Payment } from "../types";
@@ -112,20 +113,27 @@ export default function Dashboard() {
 
   const isToday = (dateStr: string) => {
     if (!dateStr) return false;
-    const d = new Date(dateStr);
-    const now = new Date();
-    return d.getFullYear() === now.getFullYear() &&
-           d.getMonth() === now.getMonth() &&
-           d.getDate() === now.getDate();
+    return getLocalDateYMD(dateStr) === getLocalDateYMD(new Date().toISOString());
   };
 
-  // Filter transactions based on selected branch or all
+  // Filter transactions based on selected branch or all.
+  // Solo las ventas efectivas cuentan para los KPIs: el mismo criterio que usan
+  // el arqueo del POS, los reportes y el resumen salarial (completadas, no
+  // anuladas y sin regularizaciones AJUSTE_*). Sin esto, una venta anulada o
+  // devuelta seguía sumando en "Ventas de hoy", el gráfico y el desempeño.
+  const effectiveTransactions = useMemo(
+    () => transactions.filter(t =>
+      t.status === 'completed' && !t.deletedAt && !String(t.notes || '').startsWith('AJUSTE_')
+    ),
+    [transactions]
+  );
+
   const filteredTransactions = useMemo(() => {
     if (selectedBranchFilter === 'all') {
-      return transactions;
+      return effectiveTransactions;
     }
-    return transactions.filter(t => t.branchId === selectedBranchFilter);
-  }, [transactions, selectedBranchFilter]);
+    return effectiveTransactions.filter(t => t.branchId === selectedBranchFilter);
+  }, [effectiveTransactions, selectedBranchFilter]);
 
   const todayTransactions = useMemo(() => 
     filteredTransactions.filter(t => isToday(t.date)),
@@ -142,9 +150,9 @@ export default function Dashboard() {
   // Antes se filtraba y sumaba el histórico completo por cada sucursal y en
   // cada render (incluido el total global), lo que crecía con branches × ventas.
   const branchPerformance = useMemo(() => {
-    const allTxSum = transactions.reduce((sum, t) => sum + (t.total || 0), 0) || 1;
+    const allTxSum = effectiveTransactions.reduce((sum, t) => sum + (t.total || 0), 0) || 1;
     const totalsByBranch = new Map<string, { total: number; count: number }>();
-    for (const tx of transactions) {
+    for (const tx of effectiveTransactions) {
       const entry = totalsByBranch.get(tx.branchId);
       if (entry) {
         entry.total += tx.total || 0;
@@ -163,7 +171,7 @@ export default function Dashboard() {
       });
     }
     return map;
-  }, [branches, transactions]);
+  }, [branches, effectiveTransactions]);
 
   const topCategories = useMemo(() => {
     const data: Record<string, number> = {};
@@ -205,10 +213,14 @@ export default function Dashboard() {
   }, [inventory, selectedBranchFilter]);
 
   // Chart Data: Sales last 7 days
+  // Los días se agrupan por fecha operativa (América/La Habana), igual que
+  // isToday y los reportes: sin esto, una venta de la noche cubana caía en la
+  // barra del día siguiente (UTC) y el KPI "hoy" no cuadraba con el gráfico.
   const last7DaysData = useMemo(() => {
     const totalsByDay = new Map<string, number>();
     for (const tx of filteredTransactions) {
-      const dayKey = tx.date.slice(0, 10);
+      const dayKey = getLocalDateYMD(tx.date);
+      if (!dayKey) continue;
       totalsByDay.set(dayKey, (totalsByDay.get(dayKey) || 0) + (tx.total || 0));
     }
 
@@ -216,9 +228,9 @@ export default function Dashboard() {
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const dayStr = d.toISOString().split('T')[0];
+      const dayStr = getLocalDateYMD(d.toISOString());
       data.push({
-        name: d.toLocaleDateString('es-DO', { weekday: 'short' }),
+        name: dayStr ? new Date(dayStr + 'T12:00:00').toLocaleDateString('es-DO', { weekday: 'short' }) : '',
         total: totalsByDay.get(dayStr) || 0
       });
     }
@@ -869,8 +881,16 @@ export default function Dashboard() {
                         <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 mr-0.5">{baseCurrency.code}</span>
                         {formatMoney(tx.total)}
                       </p>
-                      <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest inline-flex items-center gap-0.5">
-                        <CheckCircle2 className="w-2.5 h-2.5" /> Cobrado
+                      <span className="flex items-center justify-end gap-1 flex-wrap">
+                        <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest inline-flex items-center gap-0.5">
+                          <CheckCircle2 className="w-2.5 h-2.5" /> Cobrado
+                        </span>
+                        {tx.offlinePending && (
+                          <span className="text-[8px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-wider bg-amber-50 dark:bg-amber-950/40 px-1 py-0.5 rounded border border-amber-200 dark:border-amber-900/40 whitespace-nowrap">Sin sincronizar</span>
+                        )}
+                        {tx.syncRejected && (
+                          <span className="text-[8px] font-black text-rose-600 dark:text-rose-400 uppercase tracking-wider bg-rose-50 dark:bg-rose-950/40 px-1 py-0.5 rounded border border-rose-200 dark:border-rose-900/40 whitespace-nowrap">Requiere revisión</span>
+                        )}
                       </span>
                     </div>
                   </div>

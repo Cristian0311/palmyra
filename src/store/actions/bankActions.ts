@@ -199,12 +199,17 @@ export function createBankActions(set: StoreSet, get: StoreGet): any {
   bankCards: INITIAL_BANK_CARDS,
   addBankCard: (card) => {
     set(state => {
-      // Deduplicación por ID, Número de Cuenta o Nombre+Banco
-      const isDuplicate = state.bankCards.some(c => 
-        c.id === card.id || 
-        (c.accountNumber && card.accountNumber && c.accountNumber === card.accountNumber) ||
-        (c.name.toLowerCase().trim() === card.name.toLowerCase().trim() && c.bankName?.toLowerCase().trim() === card.bankName?.toLowerCase().trim())
-      );
+      // Deduplicación por ID, Número de Cuenta o Nombre+Banco. `name` y
+      // `bankName` son opcionales (la nube puede traerlos null): acceder al
+      // nombre sin guardas lanzaba TypeError al añadir una cuenta.
+      const nameOf = (value?: string) => (value ?? '').trim().toLowerCase();
+      const bankOf = (value: import('../../types').BankCard) => nameOf(value.bankName ?? value.bank);
+      const isDuplicate = state.bankCards.some(c => {
+        if (c.id === card.id) return true;
+        if (c.accountNumber && card.accountNumber && c.accountNumber === card.accountNumber) return true;
+        const cName = nameOf(c.name);
+        return cName !== '' && cName === nameOf(card.name) && bankOf(c) === bankOf(card);
+      });
       if (isDuplicate) return state;
       return { bankCards: [...state.bankCards, card] };
     });

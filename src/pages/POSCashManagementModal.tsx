@@ -12,7 +12,9 @@ type ModalProps = Record<string, any>;
 
 export default function POSCashManagementModal(props: ModalProps) {
   const { activeTransactions, addNotification, bankCards, baseCurrency, cashDisplayCurrencies, cashManagementTab, closingBalances, companyCompensation, currencies, currentSession, currentUser, expectedBalances, formatSalaryCUP, handleAddMovement, handleClose, handlePrintClosureThermal, handleThermalPrint, isClosingSession, movementData, products, removeCashMovement, salesFilter, salesSubTab, sessionClosingDate, sessionWorkerName, setCashManagementTab, setClosingBalances, setMovementData, setSalesFilter, setSalesSubTab, setSessionClosingDate, setShowCashManagementModal, setShowReceiptModal, showCashManagementModal, turnProductSalaryRows, users } = props;
-  const [confirmAction, setConfirmAction] = useState<{ kind: 'movement' | 'sale'; id: string; description?: string } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{ kind: 'movement' | 'sale'; id: string; description?: string; ticketLabel?: string } | null>(null);
+  const [voidReason, setVoidReason] = useState("");
+  const [confirming, setConfirming] = useState(false);
   const rateFor = (code: string) => code === baseCurrency?.code
     ? 1
     : (currencies.find((c: Currency) => c.code === code)?.rateToBase || 1);
@@ -61,12 +63,19 @@ export default function POSCashManagementModal(props: ModalProps) {
     if (!showCashManagementModal) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      if (confirming) return;
       if (confirmAction) { setConfirmAction(null); return; }
       if (!isClosingSession) setShowCashManagementModal(false);
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [showCashManagementModal, confirmAction, isClosingSession, setShowCashManagementModal]);
+  }, [showCashManagementModal, confirmAction, confirming, isClosingSession, setShowCashManagementModal]);
+
+  // Cada confirmación parte con un motivo vacío: nunca se hereda el motivo de
+  // una anulación anterior ni queda un texto obsoleto al cambiar de ticket.
+  useEffect(() => {
+    setVoidReason("");
+  }, [confirmAction]);
 
   return (
     <>
@@ -617,7 +626,7 @@ export default function POSCashManagementModal(props: ModalProps) {
                                             <Printer className="w-4 h-4" />
                                           </button>
                                           <button
-                                            onClick={() => setConfirmAction({ kind: 'sale', id: tx.id })}
+                                            onClick={() => setConfirmAction({ kind: 'sale', id: tx.id, ticketLabel: ticketDisplay(tx.ticketNumber, tx.id) })}
                                             className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
                                             title="Anular Venta"
                                             aria-label="Anular venta"
@@ -1063,33 +1072,59 @@ export default function POSCashManagementModal(props: ModalProps) {
                 <p className="mt-1 text-xs font-semibold leading-relaxed text-muted">
                   {confirmAction.kind === 'movement'
                     ? `¿Estás seguro de que deseas eliminar este movimiento: "${confirmAction.description}"?`
-                    : `¿Estás seguro de eliminar el ticket ${confirmAction.id}? Esto devolverá los productos al inventario.`}
+                    : `¿Estás seguro de anular el ticket ${confirmAction.ticketLabel || confirmAction.id}? Esto devolverá los productos al inventario.`}
                 </p>
               </div>
             </div>
+            {confirmAction.kind === 'sale' && (
+              <div className="mt-3">
+                <label htmlFor="void-reason" className="block text-[9px] font-black uppercase tracking-widest text-muted mb-1">
+                  Motivo de la anulación
+                </label>
+                <textarea
+                  id="void-reason"
+                  value={voidReason}
+                  onChange={e => setVoidReason(e.target.value)}
+                  placeholder="Escribe el motivo (mínimo 3 caracteres)"
+                  rows={2}
+                  maxLength={500}
+                  disabled={confirming}
+                  className="w-full px-3 py-2 bg-white border border-base rounded-xl text-xs font-semibold text-primary outline-none focus:ring-2 focus:ring-rose-500 resize-none disabled:opacity-60"
+                />
+              </div>
+            )}
             <div className="mt-4 flex gap-2">
               <button
                 type="button"
                 onClick={() => setConfirmAction(null)}
-                className="h-11 flex-1 rounded-2xl border border-base bg-secondary text-xs font-black uppercase tracking-wider text-primary transition-colors hover:bg-subtle"
+                disabled={confirming}
+                className="h-11 flex-1 rounded-2xl border border-base bg-secondary text-xs font-black uppercase tracking-wider text-primary transition-colors hover:bg-subtle disabled:opacity-60"
               >
                 Cancelar
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  if (confirmAction.kind === 'movement') {
-                    removeCashMovement(currentSession.id, confirmAction.id);
-                    addNotification("Movimiento de caja eliminado", 'info');
-                  } else {
-                    useStore.getState().deleteTransaction(confirmAction.id);
-                    addNotification(`Ticket ${confirmAction.id} eliminado y stock restaurado.`, 'info');
+                disabled={confirming || (confirmAction.kind === 'sale' && voidReason.trim().length < 3)}
+                onClick={async () => {
+                  if (confirming) return;
+                  setConfirming(true);
+                  try {
+                    if (confirmAction.kind === 'movement') {
+                      const ok = await removeCashMovement(currentSession.id, confirmAction.id);
+                      if (ok !== false) addNotification("Movimiento de caja eliminado", 'info');
+                    } else {
+                      const ok = await useStore.getState().deleteTransaction(confirmAction.id, voidReason.trim());
+                      if (ok) addNotification(`Ticket ${confirmAction.ticketLabel || confirmAction.id} anulado y stock restaurado.`, 'info');
+                    }
+                  } finally {
+                    setConfirming(false);
+                    setConfirmAction(null);
                   }
-                  setConfirmAction(null);
                 }}
-                className="h-11 flex-[1.4] rounded-2xl bg-rose-600 text-xs font-black uppercase tracking-wider text-white transition-all hover:bg-rose-700 active:scale-95"
+                className="h-11 flex-[1.4] rounded-2xl bg-rose-600 text-xs font-black uppercase tracking-wider text-white transition-all hover:bg-rose-700 active:scale-95 flex items-center justify-center gap-1.5 disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                Eliminar
+                {confirming ? <RefreshCw className="h-4 w-4 animate-spin" /> : null}
+                {confirming ? "Eliminando..." : "Eliminar"}
               </button>
             </div>
           </section>
