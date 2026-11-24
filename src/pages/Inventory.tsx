@@ -605,6 +605,24 @@ export default function Inventory() {
   const [showKitPicker, setShowKitPicker] = useState(false);
   const [kitQuery, setKitQuery] = useState("");
 
+  // Escape cierra los diálogos flotantes de Inventario, del más superficial al
+  // más profundo. El gestor de stock consolida sus borradores antes de cerrar.
+  useEffect(() => {
+    const anyOpen = pendingDelete || showKitPicker || showBatchPriceModal || managingStockProduct || showCategoryModal || showAddModal;
+    if (!anyOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (pendingDelete) setPendingDelete(null);
+      else if (showKitPicker) setShowKitPicker(false);
+      else if (showBatchPriceModal) setShowBatchPriceModal(false);
+      else if (managingStockProduct) { commitAllStockDrafts(); setManagingStockProduct(null); }
+      else if (showCategoryModal) setShowCategoryModal(false);
+      else if (showAddModal) { setShowAddModal(false); setEditingProduct(null); setActiveFormTab('general'); }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [pendingDelete, showKitPicker, showBatchPriceModal, managingStockProduct, showCategoryModal, showAddModal]);
+
   const handleCostPriceChange = (cost: number, price: number) => {
     const margin = price - cost;
     setFormData(prev => ({ ...prev, costPrice: cost, price, margin }));
@@ -626,9 +644,14 @@ export default function Inventory() {
       addNotification("Usa un solo tipo de variante: tallas o colores, no ambos. Así el stock y el POS coinciden exactamente.", 'error');
       return;
     }
+    // La garantía se normaliza a entero ≥ 0 antes de persistir (nunca NaN ni string).
+    const warrantyDays = Number.isFinite(Number(formData.warrantyDays))
+      ? Math.max(0, Math.floor(Number(formData.warrantyDays)))
+      : 0;
     if (editingProduct) {
       updateProduct(editingProduct.id, {
         ...formData,
+        warrantyDays,
         commissionValue: hasFixedProductEmployees ? Number(formData.commissionValue || 0) : 0,
       });
       addNotification("Producto actualizado correctamente.", 'success');
@@ -636,6 +659,7 @@ export default function Inventory() {
       const newProduct: Product = {
         ...formData as Product,
         id: generateId('PRD'),
+        warrantyDays,
         commissionValue: hasFixedProductEmployees ? Number(formData.commissionValue || 0) : 0,
       };
       const created = addProduct(newProduct);
@@ -646,7 +670,7 @@ export default function Inventory() {
     setActiveFormTab('general');
     setFormData({ 
       name: "", sku: "", barcode: "", costPrice: 0, price: 0, margin: 0, categoryId: "", 
-      color: "bg-slate-100 text-slate-700", commissionValue: 0,
+      color: "bg-slate-100 text-slate-700", commissionValue: 0, warrantyDays: undefined,
       availableSizes: [], availableColors: []
     });
   };
@@ -680,6 +704,7 @@ export default function Inventory() {
         unit: item.unit || 'uds',
         price: Number(item.price) || 0,
         costPrice: Number(item.costPrice) || 0,
+        warrantyDays: Number.isFinite(Number(item.warrantyDays)) ? Math.max(0, Math.floor(Number(item.warrantyDays))) : 0,
         totalStock: Number(item.totalStock ?? item.quantity ?? 0),
         minQuantity: minFromLevels || Number(item.minStockAlert) || 0,
         lowStockThreshold: getLowStockThreshold(item, minFromLevels),
@@ -1288,12 +1313,12 @@ export default function Inventory() {
                   </th>
                   <th scope="col" className="w-1/4 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Producto / Cat</th>
                   <th scope="col" className="w-36 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">SKU / CB</th>
-                  <th scope="col" className="hidden xl:table-cell w-24 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Garantía</th>
                   <th scope="col" className="w-32 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Precio (CUP)</th>
                   <th scope="col" className="w-32 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Costo (CUP)</th>
                   <th scope="col" className="w-36 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary" title="Ganancia neta por unidad: venta − costo − salario">Ganancia neta</th>
                   <th scope="col" className="hidden xl:table-cell w-24 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">% margen</th>
                   <th scope="col" className="w-36 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Stock actual</th>
+                  <th scope="col" className="w-28 px-3 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Garantía</th>
                   <th scope="col" className="w-28 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest text-right bg-secondary">Acciones</th>
                 </tr>
               </thead>
@@ -1342,11 +1367,11 @@ export default function Inventory() {
                           <div className="text-xs font-black text-primary uppercase tracking-tighter truncate flex items-center gap-1.5" title={item.name}>
                             {item.name}
                             {((item.availableSizes || []).length > 0 || (item.availableColors || []).length > 0) && (
-                              <span title="Este producto tiene variantes" className="inline-flex items-center rounded-md bg-violet-50 px-1 py-0.5 text-[6px] font-black uppercase text-violet-700 border border-violet-100 shrink-0">Variantes</span>
+                              <span title="Este producto tiene variantes" className="palmyra-pill border-[color-mix(in_srgb,var(--primary)_40%,transparent)] bg-[color-mix(in_srgb,var(--primary)_12%,var(--bg-secondary))] text-[var(--primary)] shrink-0">Variantes</span>
                             )}
                             {item.isLowStock && (
                               <span title="Bajo Stock" className="inline-flex items-center">
-                                <AlertCircle className="w-3 h-3 text-rose-500 shrink-0" />
+                                <AlertCircle className="w-3 h-3 text-[var(--danger)] shrink-0" />
                               </span>
                             )}
                           </div>
@@ -1357,14 +1382,6 @@ export default function Inventory() {
                     <td className="px-4 py-3">
                       <div className="text-[9px] font-mono font-black text-primary uppercase truncate">{item.sku}</div>
                       <div className="text-[7px] text-muted font-mono truncate">{item.barcode || '---'}</div>
-                    </td>
-                    <td className="hidden xl:table-cell px-4 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <ShieldCheck className={cn("w-3 h-3", item.warrantyDays ? "text-emerald-500" : "text-slate-300 dark:text-slate-600")} />
-                        <span className="text-[9px] font-bold text-secondary">
-                          {item.warrantyDays ? `${item.warrantyDays}d` : '---'}
-                        </span>
-                      </div>
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-[10px] font-black text-primary whitespace-nowrap">{formatMoney(item.price)}</div>
@@ -1397,17 +1414,17 @@ export default function Inventory() {
                     <td className="px-4 py-3">
                       <div className="flex flex-col gap-1">
                         <span className={cn(
-                          "px-2 py-0.5 rounded-lg text-[9px] font-black inline-block w-fit whitespace-nowrap",
-                          item.totalStock === 0 ? "bg-rose-100 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400" :
-                          item.isLowStock ? "bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400" : 
-                          "bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400"
+                          "palmyra-pill w-fit whitespace-nowrap",
+                          item.totalStock === 0 ? "bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)]" :
+                          item.isLowStock ? "bg-[color-mix(in_srgb,var(--warning)_10%,transparent)] text-[var(--warning)]" : 
+                          "bg-[color-mix(in_srgb,var(--success)_10%,transparent)] text-[var(--success)]"
                         )}>
                           {item.totalStock} {item.unit || 'uds'}
                         </span>
                         {item.variantLevels.length > 0 && (
                           <div className="flex flex-wrap gap-1">
                             {item.variantLevels.slice(0, 3).map((lvl, idx) => (
-                              <span key={idx} className="text-[8px] font-bold text-slate-400 uppercase bg-slate-50 px-1.5 py-0.5 rounded border border-slate-100">
+                              <span key={idx} className="palmyra-pill border border-base bg-subtle text-[var(--text-muted)]">
                                 {lvl.variantLabel}: {lvl.quantity}
                               </span>
                             ))}
@@ -1416,6 +1433,14 @@ export default function Inventory() {
                             )}
                           </div>
                         )}
+                      </div>
+                    </td>
+                    <td className="px-3 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <ShieldCheck className={cn("w-3 h-3 shrink-0", Number(item.warrantyDays) > 0 ? "text-emerald-500" : "text-slate-300 dark:text-slate-600")} />
+                        <span className="text-[10px] font-bold text-secondary tabular-nums whitespace-nowrap">
+                          {Number(item.warrantyDays) > 0 ? `${Number(item.warrantyDays)} días` : 'Sin garantía'}
+                        </span>
                       </div>
                     </td>
                     <td className="px-4 py-3 text-right">
@@ -1531,17 +1556,23 @@ export default function Inventory() {
                     <h3 className="text-[10px] font-black text-primary uppercase tracking-tight line-clamp-2 leading-tight flex-1 break-words" title={item.name}>{item.name}</h3>
                     <div className={cn(
                       "w-1.5 h-1.5 rounded-full shrink-0 mt-0.5",
-                      item.totalStock === 0 ? "bg-rose-500 shadow-[0_0_5px_rgba(244,63,94,0.5)]" :
-                      item.isLowStock ? "bg-amber-500" : "bg-emerald-500"
+                      item.totalStock === 0 ? "bg-[var(--danger)] shadow-[0_0_5px_color-mix(in_srgb,var(--danger)_50%,transparent)]" :
+                      item.isLowStock ? "bg-[var(--warning)]" : "bg-[var(--success)]"
                     )} />
                   </div>
                   
-                  <div className="flex items-center justify-between mt-auto">
-                    <p className="text-[9px] font-black text-indigo-600 truncate tabular-nums" title={formatMoney(item.price)}>{formatMoney(item.price)}</p>
-                    <p className={cn(
-                      "text-[9px] font-black px-1.5 py-0.5 rounded-lg",
-                      item.isLowStock ? "bg-rose-50/50 text-rose-600" : "bg-emerald-50/50 text-emerald-600"
-                    )}>{item.totalStock}</p>
+                  <div className="flex items-center justify-between gap-1 mt-auto">
+                    <p className="text-[9px] font-black text-[var(--primary)] truncate tabular-nums min-w-0" title={formatMoney(item.price)}>{formatMoney(item.price)}</p>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <p className={cn(
+                        "palmyra-pill tabular-nums",
+                        item.isLowStock ? "bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)]" : "bg-[color-mix(in_srgb,var(--success)_10%,transparent)] text-[var(--success)]"
+                      )}>{item.totalStock}</p>
+                      <p className="palmyra-pill border border-base bg-subtle text-[var(--text-muted)] tabular-nums" title="Garantía del producto">
+                        <ShieldCheck className={cn("w-2.5 h-2.5", Number(item.warrantyDays) > 0 ? "text-emerald-500" : "text-slate-300 dark:text-slate-600")} />
+                        {Number(item.warrantyDays) > 0 ? `${Number(item.warrantyDays)}d` : '—'}
+                      </p>
+                    </div>
                   </div>
 
                   <div className="flex flex-col gap-1 border-t border-base pt-1">
@@ -1583,7 +1614,7 @@ export default function Inventory() {
                     }}
                     aria-label={`Gestionar stock de ${item.name}`}
                     title="Gestionar stock"
-                    className="absolute -top-1.5 -right-1.5 flex h-9 w-9 items-center justify-center bg-white border border-base rounded-xl text-slate-500 hover:text-indigo-600 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow-sm"
+                    className="absolute -top-1.5 -right-1.5 flex h-9 w-9 items-center justify-center bg-[var(--bg-secondary)] border border-base rounded-xl text-[var(--text-muted)] hover:text-[var(--primary)] opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow-sm"
                   >
                     <PackagePlus className="w-3.5 h-3.5" />
                   </button>
@@ -1619,7 +1650,7 @@ export default function Inventory() {
 
       {showAddModal && (
         <div
-          className="fixed inset-0 z-[200] bg-slate-950/70 backdrop-blur-md p-1 md:p-4 flex items-center justify-center overflow-hidden"
+          className="palmyra-overlay z-[var(--z-modal)] p-1 md:p-4 flex items-center justify-center overflow-hidden"
           style={{
             top: 'var(--palmyra-vv-top, 0px)',
             bottom: 'auto',
@@ -1630,7 +1661,7 @@ export default function Inventory() {
           }}
         >
           <div className="absolute inset-0" aria-hidden="true" />
-          <div className="team-employee-modal inventory-product-modal relative z-10 w-full max-w-5xl bg-secondary border border-base rounded-[28px] shadow-2xl overflow-hidden flex flex-col min-h-0"
+          <div className="team-employee-modal inventory-product-modal palmyra-modal-panel palmyra-mobile-modal relative z-10 w-full max-w-5xl overflow-hidden flex flex-col min-h-0"
             style={{
               maxHeight: 'calc(var(--palmyra-vv-height, 100dvh) - 1rem)'
             }}>
@@ -1840,7 +1871,7 @@ export default function Inventory() {
                       <div className="inventory-price-group">
                         <div className="inventory-price-heading"><ShieldCheck className="w-3.5 h-3.5" /><span>Garantía y alertas</span></div>
                         <div className="inventory-product-row inventory-product-row-two">
-                          <div className="inventory-product-field"><label className="inventory-product-label">Días de garantía</label><input type="number" min="0" value={formData.warrantyDays===0?'':(formData.warrantyDays??'')} placeholder="0 = Sin garantía" onFocus={e=>e.target.select()} onChange={e=>setFormData({...formData,warrantyDays:e.target.value===''?0:(parseInt(e.target.value)||0)})} className="inventory-product-input" /></div>
+                          <div className="inventory-product-field"><label className="inventory-product-label">Garantía (días)</label><input type="number" min="0" step="1" inputMode="numeric" value={formData.warrantyDays===0?'':(formData.warrantyDays??'')} placeholder="0 = Sin garantía" onFocus={e=>e.target.select()} onChange={e=>{const parsed=parseInt(e.target.value,10);setFormData({...formData,warrantyDays:Number.isFinite(parsed)?Math.max(0,Math.floor(parsed)):0});}} className="inventory-product-input" /></div>
                           <div className="inventory-product-field"><label className="inventory-product-label">Stock mínimo · alerta</label><input type="number" min="0" value={formData.minStockAlert===0?'':(formData.minStockAlert??'')} placeholder="5" onFocus={e=>e.target.select()} onChange={e=>setFormData({...formData,minStockAlert:e.target.value===''?0:(parseInt(e.target.value)||0)})} className="inventory-product-input" /></div>
                         </div>
                       </div>
@@ -1881,8 +1912,8 @@ export default function Inventory() {
       {/* (Categoría funcionalidad eliminada) */}
 
       {managingStockProduct && (
-        <div className="fixed inset-x-0 bg-slate-900/70 backdrop-blur-sm z-50 flex justify-center items-center p-2 sm:p-4 stock-manage-overlay" style={{ top: `${stockViewport.top}px`, height: stockViewport.height ? `${stockViewport.height}px` : "100dvh" }}>
-          <div className="bg-white dark:bg-slate-900 rounded-2xl w-full max-w-2xl flex flex-col shadow-2xl border border-slate-200 dark:border-slate-800 animate-in zoom-in-95 duration-200 overflow-hidden stock-manage-modal" style={{ maxHeight: stockViewport.height ? `${Math.max(160, stockViewport.height - 16)}px` : "calc(100dvh - 16px)", minHeight: 0 }}>
+        <div className="palmyra-overlay z-[var(--z-modal)] flex justify-center items-center p-2 sm:p-4 stock-manage-overlay" style={{ top: `${stockViewport.top}px`, height: stockViewport.height ? `${stockViewport.height}px` : "100dvh" }}>
+          <div className="palmyra-modal-panel palmyra-mobile-modal w-full max-w-2xl flex flex-col animate-in zoom-in-95 duration-200 overflow-hidden stock-manage-modal" style={{ maxHeight: stockViewport.height ? `${Math.max(160, stockViewport.height - 16)}px` : "calc(100dvh - 16px)", minHeight: 0 }}>
             <div className="flex justify-between items-center px-4 py-3 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60">
               <div className="flex items-center gap-2.5">
                 <div className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-600 flex items-center justify-center shrink-0">
@@ -1962,7 +1993,7 @@ export default function Inventory() {
                           <button type="button" onClick={(event) => { event.stopPropagation(); moveWarehouseCard(branch.id, 1); }} disabled={branchIndex === orderedBranches.length - 1} aria-label={`Mover ${branch.name} después`} title="Mover después" className="w-6 h-6 rounded-md border border-base bg-primary text-secondary hover:text-indigo-600 disabled:opacity-30 disabled:cursor-not-allowed">
                             <ChevronDown className="w-3 h-3 mx-auto" />
                           </button>
-                          <span className="text-[10px] font-black px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 border border-indigo-200/50 dark:border-indigo-800/50">
+                          <span className="palmyra-pill border-[color-mix(in_srgb,var(--primary)_40%,transparent)] bg-[color-mix(in_srgb,var(--primary)_12%,var(--bg-secondary))] text-[var(--primary)]">
                             {totalInBranch} uds
                           </span>
                         </div>
@@ -2038,11 +2069,11 @@ export default function Inventory() {
       )}
 
       {showBatchPriceModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex justify-center items-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h3 className="text-lg font-black text-slate-900 uppercase tracking-tight">Ajuste de Precios Masivo</h3>
-              <button onClick={() => setShowBatchPriceModal(false)} className="p-2 hover:bg-slate-200 rounded-full transition-colors"><X className="w-5 h-5 text-slate-400" /></button>
+        <div className="palmyra-overlay z-[var(--z-modal)] flex justify-center items-center p-4">
+          <div className="palmyra-modal-panel palmyra-mobile-modal w-full max-w-md animate-in zoom-in-95 duration-200 overflow-hidden">
+            <div className="p-6 border-b border-base flex justify-between items-center bg-subtle">
+              <h3 className="text-lg font-black text-primary uppercase tracking-tight">Ajuste de Precios Masivo</h3>
+              <button onClick={() => setShowBatchPriceModal(false)} className="p-2 hover:bg-primary rounded-full transition-colors"><X className="w-5 h-5 text-muted" /></button>
             </div>
             <div className="p-6 space-y-4">
               <p className="text-xs text-slate-500 font-bold uppercase tracking-widest text-center mb-4">Afectando a {selectedItems.length} productos</p>
@@ -2088,11 +2119,11 @@ export default function Inventory() {
 
       {/* Kit Component Picker Modal */}
       {showKitPicker && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex justify-center items-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200 overflow-hidden">
-            <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h3 className="text-sm font-black text-slate-900 uppercase tracking-tight">Seleccionar Componente</h3>
-              <button onClick={() => setShowKitPicker(false)} className="p-1.5 hover:bg-slate-200 rounded-full transition-colors"><X className="w-4 h-4 text-slate-400" /></button>
+        <div className="palmyra-overlay z-[var(--z-modal)] flex justify-center items-center p-4">
+          <div className="palmyra-modal-panel palmyra-mobile-modal w-full max-w-md animate-in zoom-in-95 duration-200 overflow-hidden">
+            <div className="p-5 border-b border-base flex justify-between items-center bg-subtle">
+              <h3 className="text-sm font-black text-primary uppercase tracking-tight">Seleccionar Componente</h3>
+              <button onClick={() => setShowKitPicker(false)} className="p-1.5 hover:bg-primary rounded-full transition-colors"><X className="w-4 h-4 text-muted" /></button>
             </div>
             <div className="p-4 space-y-4">
               <div className="relative">
@@ -2140,13 +2171,13 @@ export default function Inventory() {
       {/* Modal Categorías */}
       {showCategoryModal && (
         <div
-          className="fixed inset-x-0 z-[60] flex items-center justify-center bg-slate-900/60 p-3 sm:p-4"
+          className="palmyra-overlay z-[var(--z-modal)] flex items-center justify-center p-3 sm:p-4"
           style={{
             top: categoryViewport.top,
             height: categoryViewport.height || undefined,
           }}
         >
-          <div className="inventory-category-modal">
+          <div className="inventory-category-modal palmyra-modal-panel palmyra-mobile-modal">
             <div className="inventory-category-header">
               <div className="inventory-category-title">
                 <div className="inventory-category-icon"><Tag className="w-4 h-4" /></div>
@@ -2185,10 +2216,10 @@ export default function Inventory() {
       )}
 
       {pendingDelete && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center bg-slate-900/60 p-4" role="dialog" aria-modal="true" aria-labelledby="inventory-delete-title">
-          <div className="w-full max-w-md rounded-2xl border border-base bg-secondary p-5 shadow-xl animate-in zoom-in-95">
+        <div className="palmyra-overlay z-[var(--z-confirm)] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-labelledby="inventory-delete-title">
+          <div className="palmyra-modal-panel palmyra-mobile-modal w-full max-w-md p-5 animate-in zoom-in-95">
             <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-400">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]">
                 <Trash2 className="h-5 w-5" />
               </div>
               <div className="min-w-0">
@@ -2213,7 +2244,7 @@ export default function Inventory() {
                   else deleteCategory(pendingDelete.id);
                   setPendingDelete(null);
                 }}
-                className="min-h-10 flex-1 rounded-xl bg-rose-600 text-sm font-bold text-white hover:bg-rose-700"
+                className="min-h-10 flex-1 rounded-xl bg-[var(--danger)] text-sm font-bold text-white hover:opacity-90"
               >
                 Eliminar
               </button>

@@ -98,6 +98,20 @@ export function startLicenseRuntime(companyId?: string | null): Promise<LicenseS
   return current.start({ companyId: target });
 }
 
+/**
+ * Renovación manual desde la UI (botón Renovar de los avisos): re-evalúa y
+ * fuerza el intento de `issue-lease` aunque el runtime lo tenga en espera
+ * (RENEW_RETRY_MS) o el lease guardado no esté por vencer. El estado publicado
+ * se actualiza solo: no es un cierre cosmético del aviso.
+ */
+export function renewLicenseRuntime(companyId?: string | null): Promise<LicenseSnapshot> {
+  const current = getRuntime();
+  const target = companyId || startedCompanyId || resolveLicenseCompanyId();
+  if (!target) return Promise.resolve(current.getSnapshot());
+  startedCompanyId = target;
+  return current.refresh({ companyId: target, forceRenew: true });
+}
+
 export function useLicenseRuntime(companyId?: string | null) {
   const current = getRuntime();
   const [snapshot, setSnapshot] = useState<LicenseSnapshot>(() => current.getSnapshot());

@@ -286,10 +286,11 @@ test('Inventario agrega valorización por categoría, estado y totales', async (
 
   assert.deepEqual(workbook.worksheets.map(sheet => sheet.name), ['Portada y Resumen', 'Inventario', 'Valorización por Categoría']);
   const inventory = workbook.getWorksheet('Inventario')!;
-  assert.equal(inventory.getCell(5, 11).value, 120);
-  assert.equal(inventory.getCell(6, 13).value, 'Bajo mínimo');
-  assert.equal(inventory.getCell(7, 13).value, 'Agotado');
-  assert.equal(inventory.getCell(8, 11).value, 140);
+  // La columna «Garantía (días)» ocupa la posición 6: valorización pasa a 12 y estado a 14.
+  assert.equal(inventory.getCell(5, 12).value, 120);
+  assert.equal(inventory.getCell(6, 14).value, 'Bajo mínimo');
+  assert.equal(inventory.getCell(7, 14).value, 'Agotado');
+  assert.equal(inventory.getCell(8, 12).value, 140);
   const categories = workbook.getWorksheet('Valorización por Categoría')!;
   assert.equal(categories.getCell(5, 1).value, 'Climatización');
   assert.equal(categories.getCell(5, 4).value, 140);

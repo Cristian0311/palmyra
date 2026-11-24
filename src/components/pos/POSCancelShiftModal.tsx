@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { TriangleAlert } from "lucide-react";
 
 type Props = {
@@ -20,11 +21,24 @@ export function POSCancelShiftModal({
   onCancel,
   onClose,
 }: Props) {
+  useEffect(() => {
+    if (!open) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-md">
-      <div className="w-full max-w-sm overflow-hidden rounded-3xl border border-base bg-secondary shadow-2xl animate-in zoom-in-95">
+    <div
+      className="palmyra-overlay z-[var(--z-confirm)] flex items-center justify-center p-4"
+      role="presentation"
+      onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}
+    >
+      <div className="palmyra-modal-panel w-full max-w-sm max-h-[92dvh] overflow-y-auto animate-in zoom-in-95">
         <div className="space-y-4 p-5">
           <div className="flex items-start gap-3">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] text-[var(--danger)]">

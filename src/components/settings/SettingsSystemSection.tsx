@@ -69,6 +69,7 @@ function desktopCopy(status: string, percent: number): { label: string; tone: To
     case "downloading": return { label: `Descargando actualización ${percent}%…`, tone: "warn" };
     case "downloaded": return { label: "Actualización lista para instalar", tone: "warn" };
     case "not-available": return { label: "Ya tienes la última versión", tone: "ok" };
+    case "blocked": return { label: "La descarga está bloqueada; vuelve a intentarlo", tone: "bad" };
     case "error": return { label: "No se pudo completar la actualización", tone: "bad" };
     case "unsupported": return { label: "Esta instalación no permite actualizar desde la app", tone: "idle" };
     default: return { label: "Sin comprobar todavía", tone: "idle" };
@@ -320,7 +321,7 @@ export function SettingsSystemSection() {
         });
       return;
     }
-    if (desktopStatus === "error" || desktopStatus === "available") {
+    if (desktopStatus === "error" || desktopStatus === "blocked" || desktopStatus === "available") {
       void desktop.retry();
       return;
     }
@@ -364,7 +365,7 @@ export function SettingsSystemSection() {
       ? Math.min(100, Math.max(0, Math.round((storage.usageBytes / storage.quotaBytes) * 100)))
       : 0;
   const canApplyAndroid = ANDROID_SHELL && Boolean(androidArtifact) && androidVersion !== "";
-  const canApplyDesktop = DESKTOP_SHELL && (desktopStatus === "downloaded" || desktopStatus === "error" || desktopStatus === "available");
+  const canApplyDesktop = DESKTOP_SHELL && (desktopStatus === "downloaded" || desktopStatus === "error" || desktopStatus === "blocked" || desktopStatus === "available");
   const canApplyWeb = !ANDROID_SHELL && !DESKTOP_SHELL && app.state.phase === "available";
   const showApply = canApplyAndroid || canApplyDesktop || canApplyWeb;
 

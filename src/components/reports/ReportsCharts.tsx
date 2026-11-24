@@ -1,9 +1,8 @@
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, PieChart, Pie, Cell
+  ResponsiveContainer,
 } from "recharts";
 import { PieChart as PieChartIcon, BarChart3 } from "lucide-react";
-import { cn } from "../../lib/utils";
 
 type HourRow = { hour: string | number; total: number };
 type CategoryRow = { name: string; value: number };
@@ -14,8 +13,6 @@ export interface ReportsChartsProps {
   formatMoney: (amount: number) => string;
 }
 
-const COLORS = ['#6535C5', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
-
 function CustomTooltip({ active, payload, label, formatMoney }: any) {
   if (!active || !payload || !payload.length) return null;
   const value = Number(payload[0]?.value);
@@ -23,14 +20,20 @@ function CustomTooltip({ active, payload, label, formatMoney }: any) {
     ? formatMoney(Number.isFinite(value) ? value : 0)
     : String(payload[0]?.value ?? '');
   return (
-    <div className="bg-white dark:bg-slate-900 border border-base p-2 rounded-xl shadow-xl">
+    <div className="rounded-xl border p-2"
+      style={{ background: 'var(--bg-secondary)', borderColor: 'var(--border-base)', boxShadow: 'var(--shadow-md)' }}
+    >
       <p className="text-[10px] font-black text-primary uppercase mb-1">{label ?? payload[0]?.name}</p>
-      <p className="text-[11px] font-bold text-violet-600">{formatted}</p>
+      <p className="text-[11px] font-bold text-violet-600 dark:text-violet-300">{formatted}</p>
     </div>
   );
 }
 
 export default function ReportsCharts({ hourData, categoryData, formatMoney }: ReportsChartsProps) {
+  const totalCategoryValue = categoryData.reduce((sum, item) => sum + (Number(item.value) || 0), 0);
+  const rankedCategories = categoryData.slice(0, 8);
+  const maxCategoryValue = Math.max(1, ...rankedCategories.map(item => Number(item.value) || 0));
+
   return (
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4">
         {/* Sales by Hour Bar Chart */}
@@ -73,7 +76,7 @@ export default function ReportsCharts({ hourData, categoryData, formatMoney }: R
           </div>
         </div>
 
-        {/* Top Categories Pie Chart */}
+        {/* Top Categories ranked list with proportional bars */}
         <div className="bg-secondary rounded-2xl p-5 shadow-sm border border-base flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <div>
@@ -85,40 +88,41 @@ export default function ReportsCharts({ hourData, categoryData, formatMoney }: R
             </div>
           </div>
 
-          <div className="flex-1 flex flex-col">
-            <div className="h-[140px] w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={categoryData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={40}
-                    outerRadius={60}
-                    paddingAngle={5}
-                    dataKey="value"
-                  >
-                    {categoryData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip content={<CustomTooltip formatMoney={formatMoney} />} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="mt-2 space-y-1.5">
-              {categoryData.map((item, index) => (
-                <div key={item.name} className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[index % COLORS.length] }} />
-                    <span className="text-[9px] font-bold text-secondary uppercase truncate max-w-[100px]">{item.name}</span>
-                  </div>
-                  <span className="text-[9px] font-black text-primary">{formatMoney(item.value)}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+          {rankedCategories.length === 0 ? (
+            <p className="py-6 text-center text-[10px] font-bold uppercase tracking-wider text-muted">
+              Sin ventas por categoría en el periodo seleccionado.
+            </p>
+          ) : (
+            <ol className="flex flex-1 flex-col justify-center gap-2.5">
+              {rankedCategories.map((item, index) => {
+                const value = Number(item.value) || 0;
+                const pct = totalCategoryValue > 0 ? (value / totalCategoryValue) * 100 : 0;
+                return (
+                  <li key={item.name} className="space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex min-w-0 items-center gap-1.5">
+                        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded bg-subtle text-[8px] font-black text-muted">
+                          {index + 1}
+                        </span>
+                        <span className="truncate text-[9px] font-bold uppercase tracking-tight text-secondary" title={item.name}>
+                          {item.name}
+                        </span>
+                      </span>
+                      <span className="shrink-0 text-[9px] font-black tabular-nums text-primary">
+                        {formatMoney(value)} · {pct.toFixed(0)}%
+                      </span>
+                    </div>
+                    <div className="h-1.5 w-full overflow-hidden rounded-full bg-subtle">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-violet-600 to-indigo-600"
+                        style={{ width: `${Math.max(4, (value / maxCategoryValue) * 100)}%` }}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
         </div>
       </div>
 

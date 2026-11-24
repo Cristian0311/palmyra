@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { 
   TrendingUp, DollarSign, Calendar, Calculator, Package, User, Users, Eye,
   X, ArrowDownRight, ArrowUpRight, ArrowLeftRight, ArrowRight, History, Download, Printer, CheckCircle2, 
@@ -10,12 +11,22 @@ type ModalProps = Record<string, any>;
 
 export default function ReportsSelectedTransferModal(props: ModalProps) {
   const { branches, selectedTransferModal, setSelectedTransferModal } = props;
+
+  useEffect(() => {
+    if (!selectedTransferModal) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectedTransferModal(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedTransferModal, setSelectedTransferModal]);
+
   return (
     <>
       {selectedTransferModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 border border-base my-auto text-primary">
-            <div className="bg-gradient-to-r from-violet-600 to-violet-800 p-5 text-white flex items-center justify-between">
+        <div className="palmyra-overlay z-[var(--z-modal)] flex items-center justify-center p-4">
+          <div className="palmyra-modal-panel palmyra-mobile-modal flex w-full max-w-lg flex-col overflow-hidden animate-in zoom-in-95 my-auto text-primary">
+            <div className="shrink-0 bg-gradient-to-r from-violet-600 to-violet-800 p-5 text-white flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div className="p-2.5 bg-white/10 rounded-2xl backdrop-blur-md">
                   <ArrowLeftRight className="w-6 h-6 text-white" />
@@ -37,7 +48,7 @@ export default function ReportsSelectedTransferModal(props: ModalProps) {
               </button>
             </div>
 
-            <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto custom-scrollbar">
+            <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5 custom-scrollbar">
               {/* Origin to Dest visual block */}
               <div className="p-4 bg-subtle rounded-2xl border border-base flex items-center justify-between gap-3">
                 <div className="flex-1 text-center">

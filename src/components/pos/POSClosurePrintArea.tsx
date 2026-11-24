@@ -96,14 +96,14 @@ export function POSClosurePrintArea({
   return (
     <div
       id="print-closure-area"
-      className="hidden font-mono text-[11px] leading-tight text-black bg-white p-2"
+      className="hidden font-mono text-[11px] leading-tight text-black bg-white p-2 tabular-nums"
     >
       <div className="space-y-1">
-        <div className="text-center font-black text-sm uppercase">
+        <div className="text-center font-black text-sm uppercase break-words">
           {receiptConfig.businessName || "PALMYRA POS"}
         </div>
         {receiptConfig.showAddress && receiptConfig.businessAddress && (
-          <div className="text-center text-[9px]">
+          <div className="text-center text-[9px] break-words">
             {receiptConfig.businessAddress}
           </div>
         )}

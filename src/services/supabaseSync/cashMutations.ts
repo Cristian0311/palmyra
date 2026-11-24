@@ -3,6 +3,7 @@ import { enqueueOfflineItem } from '../offlineQueue';
 import type { OfflineActionType } from '../offlineQueue';
 import { getActiveTenant, getEmployeeForIdentity } from '../tenant';
 import type { CashRegisterSession } from '../../types';
+import { round6 } from '../cash/expectedCash';
 
 async function onlineClient() {
   const supabase = getSupabase();
@@ -28,6 +29,11 @@ async function ensureCashRegister(supabase: any, companyId: string, warehouseId:
   return String(data);
 }
 
+// Escritura directa por tabla: único camino cuando el cierre llega desde la
+// cola offline (el RPC palmyra_close_cash_session no puede repetirse sobre una
+// sesión ya cerrada en servidor). expectedBalance debe venir calculado por la
+// MISMA función unificada (services/cash/expectedCash.ts) con la que cerró el
+// POS; aquí nunca se inventa un descuadre.
 export async function pushCashSessionToSupabase(session: CashRegisterSession): Promise<boolean> {
   try {
     const supabase = await onlineClient();
@@ -46,9 +52,14 @@ export async function pushCashSessionToSupabase(session: CashRegisterSession): P
     if (companyRes.error) throw companyRes.error;
 
     const defaultCurrency = companyRes.data?.default_currency_code || 'CUP';
-    const expected = Number.isFinite(Number(session.expectedBalance))
-      ? Number(session.expectedBalance)
-      : null;
+    const storedExpected = Number(session.expectedBalance);
+    const expected = Number.isFinite(storedExpected) ? storedExpected : null;
+    if (session.status !== 'open' && expected === null) {
+      // Un turno cerrado sin esperado unificado es un dato corrupto: no
+      // grabamos un descuadre arbitrario; el difference queda en 0 y el
+      // esperado en null para que no alimente reportes con basura.
+      console.warn('[pushCashSessionToSupabase] Turno cerrado sin expectedBalance; no se grabará descuadre.');
+    }
 
     const physicalCashBase = (session.closingBalances || [])
       .filter((payment: any) => payment?.method === 'cash')
@@ -89,7 +100,9 @@ export async function pushCashSessionToSupabase(session: CashRegisterSession): P
       opening_amount: Number(session.openingAmount ?? session.openingBalance) || 0,
       expected_cash: expected,
       physical_cash: session.status === 'open' ? null : physicalCashBase,
-      difference: expected === null ? 0 : physicalCashBase - expected,
+      // Mismo redondeo que ROUND(..., 6) del servidor para que la fila directa
+      // y el RPC de cierre nunca discrepen.
+      difference: expected === null ? 0 : round6(physicalCashBase - expected),
       turn_number: Number(session.turnNumber) || null,
       metadata,
     };

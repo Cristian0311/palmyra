@@ -5,15 +5,15 @@ import type {
   SalarySettlement,
   Transaction,
 } from '../../../types';
-import { calculateExpectedBalances } from '../../../services/cash/expectedCash';
+import {
+  buildDiscrepancyDetails,
+  calculateExpectedBalances,
+  resolveCloseRate,
+  round6,
+  type ExpectedDiscrepancyDetail,
+} from '../../../services/cash/expectedCash';
 
-export type SessionDiscrepancyDetail = {
-  currencyCode: string;
-  method: 'cash' | 'transfer';
-  expected: number;
-  actual: number;
-  difference: number;
-};
+export type SessionDiscrepancyDetail = ExpectedDiscrepancyDetail;
 
 export type SessionDiscrepancyInfo = {
   hasDiscrepancy: true;
@@ -61,13 +61,9 @@ export function getSessionDiscrepancyInfo(
 
   // Un faltante histórico se valora con la tasa registrada al cerrar la caja;
   // usar la tasa de hoy hacía que el reporte cambiara de un día para otro.
-  const rateAtClose = (currencyCode: string): number => {
-    const recorded = session.closingBalances?.find(
-      balance => balance.currencyCode === currencyCode && Number(balance.exchangeRate) > 0,
-    )?.exchangeRate;
-    if (Number(recorded) > 0) return Number(recorded);
-    return currencies.find(currency => currency.code === currencyCode)?.rateToBase || 1;
-  };
+  // Es la MISMA tasa que aplicó la deducción salarial en el POS al cerrar.
+  const rateAtClose = (currencyCode: string): number =>
+    resolveCloseRate(currencyCode, session.closingBalances, currencies);
 
   if (session.discrepancyDetails && session.discrepancyDetails.length > 0) {
     let totalShortageBase = 0;
@@ -85,9 +81,9 @@ export function getSessionDiscrepancyInfo(
       hasDiscrepancy: true,
       isForcedClose: Boolean(session.isForcedClose),
       details: session.discrepancyDetails,
-      totalShortageBase,
-      totalOverageBase,
-      netDifferenceBase: totalOverageBase - totalShortageBase,
+      totalShortageBase: round6(totalShortageBase),
+      totalOverageBase: round6(totalOverageBase),
+      netDifferenceBase: round6(totalOverageBase - totalShortageBase),
       deducted: session.deductedFromSalary || deductionAmount > 0,
       deductionAmount,
       aiDiagnostic: session.aiDiagnostic,
@@ -103,31 +99,7 @@ export function getSessionDiscrepancyInfo(
   }
 
   const expected = calculateExpectedBalances(session, transactions, baseCurrency);
-
-  const details: SessionDiscrepancyDetail[] = [];
-  expected.forEach(eb => {
-    const act = session.closingBalances?.find(cb => cb.currencyCode === eb.currencyCode && cb.method === eb.method)?.amount || 0;
-    const diff = act - eb.amount;
-    if (Math.abs(diff) > 0.01) details.push({
-      currencyCode: eb.currencyCode,
-      method: eb.method,
-      expected: eb.amount,
-      actual: act,
-      difference: diff
-    });
-  });
-
-  session.closingBalances?.forEach(cb => {
-    if (!expected.some(eb => eb.currencyCode === cb.currencyCode && eb.method === cb.method) && cb.amount > 0.01) {
-      details.push({
-        currencyCode: cb.currencyCode,
-        method: cb.method as any,
-        expected: 0,
-        actual: cb.amount,
-        difference: cb.amount
-      });
-    }
-  });
+  const details = buildDiscrepancyDetails(expected, session.closingBalances);
 
   if (details.length === 0 && !session.isForcedClose && !session.hasDiscrepancy) return null;
 
@@ -161,9 +133,9 @@ export function getSessionDiscrepancyInfo(
     hasDiscrepancy: true,
     isForcedClose: Boolean(session.isForcedClose),
     details,
-    totalShortageBase,
-    totalOverageBase,
-    netDifferenceBase: totalOverageBase - totalShortageBase,
+    totalShortageBase: round6(totalShortageBase),
+    totalOverageBase: round6(totalOverageBase),
+    netDifferenceBase: round6(totalOverageBase - totalShortageBase),
     deducted: deductionAmount > 0,
     deductionAmount,
     aiDiagnostic: session.aiDiagnostic,

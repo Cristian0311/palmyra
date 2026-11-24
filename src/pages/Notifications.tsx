@@ -1,8 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
-import { Bell, BellRing, CheckCheck, ChevronDown, RefreshCw, Smartphone, Clock3, ShieldAlert, Laugh, AlertTriangle } from "lucide-react";
+import { Bell, BellRing, CheckCheck, ChevronDown, RefreshCw, Smartphone, Clock3, ShieldAlert, Laugh, AlertTriangle, Package, WifiOff } from "lucide-react";
 import { getSupabase } from "../lib/supabase";
 import { loadSaaSContext } from "../services/saas";
 import { SettingsSectionHeader } from "../components/settings/SettingsSectionHeader";
+import { ToastHost, useToastStack } from "../components/ui/toast";
+import {
+  collectOperationalLocalNotices,
+  installLocalNoticeBridge,
+  listLocalNotices,
+  markAllLocalNoticesRead,
+  markLocalNoticeRead,
+  type LocalCenterNotice,
+} from "../services/notifications/localCenter";
+import { useStore } from "../store/useStore";
 import { cn } from "../lib/utils";
 
 type Notice = {
@@ -134,6 +144,29 @@ function kindLabel(kind: string) {
   return "Información";
 }
 
+// Última copia del historial en la nube: el centro no queda vacío sin conexión.
+const CLOUD_CACHE_KEY = "palmyra:notices-cache:v1";
+type CloudCache = { notices: Notice[]; prefs: Preferences; at: number };
+
+function readCloudCache(): CloudCache | null {
+  try {
+    const raw = localStorage.getItem(CLOUD_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as CloudCache;
+    return parsed && Array.isArray(parsed.notices) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCloudCache(notices: Notice[], prefs: Preferences): void {
+  try {
+    localStorage.setItem(CLOUD_CACHE_KEY, JSON.stringify({ notices, prefs, at: Date.now() }));
+  } catch {
+    // Sin cuota o sin permisos: el historial simplemente no se cachea.
+  }
+}
+
 export default function Notifications() {
   const [companyId, setCompanyId] = useState("");
   const [userId, setUserId] = useState("");
@@ -147,7 +180,8 @@ export default function Notifications() {
   const [markingAll, setMarkingAll] = useState(false);
   const [view, setView] = useState<"history" | "prefs">("history");
   const [filter, setFilter] = useState<"all" | "unread" | "rates">("all");
-  const [message, setMessage] = useState("");
+  const { toasts, push: pushToast, dismiss: dismissToast } = useToastStack();
+  const [localNotices, setLocalNotices] = useState<LocalCenterNotice[]>([]);
   const [error, setError] = useState("");
   const [pushDeviceStatus, setPushDeviceStatus] = useState<"checking" | "unsupported" | "missing_key" | "permission_denied" | "registered" | "not_registered">("checking");
   const [rateOptions, setRateOptions] = useState<RateOption[]>(DEFAULT_RATE_OPTIONS);
@@ -266,12 +300,14 @@ export default function Notifications() {
       if (readResult.error) throw readResult.error;
       if (prefResult.error) throw prefResult.error;
       const readById = new Map((readResult.data || []).map((receipt) => [receipt.notification_id, receipt.read_at]));
-      setNotices(((noticeResult.data || []) as Notice[]).map((notice) => ({
+      const mappedNotices = ((noticeResult.data || []) as Notice[]).map((notice) => ({
         ...notice,
         read_at: notice.user_id === null ? (readById.get(notice.id) || null) : notice.read_at,
-      })));
+      }));
+      setNotices(mappedNotices);
+      let nextPrefs: Preferences = defaults;
       if (prefResult.data) {
-        setPrefs({
+        nextPrefs = {
           push_enabled: prefResult.data.push_enabled,
           critical_push_enabled: prefResult.data.critical_push_enabled,
           routine_summary_enabled: prefResult.data.routine_summary_enabled,
@@ -287,12 +323,21 @@ export default function Notifications() {
           exchange_alert_mode: prefResult.data.exchange_alert_mode === "absolute" ? "absolute" : "percent",
           exchange_alert_min_change_pct: Number(prefResult.data.exchange_alert_min_change_pct ?? 0),
           exchange_alert_min_change_abs: Number(prefResult.data.exchange_alert_min_change_abs ?? 0),
-        });
+        };
+        setPrefs(nextPrefs);
       }
+      writeCloudCache(mappedNotices, nextPrefs);
     } catch (e: any) {
       if (typeof navigator !== "undefined" && !navigator.onLine) {
         setNeedsAccount(false);
-        setError("Sin conexión: el historial y las preferencias se actualizarán cuando vuelvas a estar en línea.");
+        const cached = readCloudCache();
+        if (cached && cached.notices.length) {
+          setNotices(cached.notices);
+          setPrefs(cached.prefs);
+          setError("Sin conexión: se muestra la última copia guardada en este dispositivo. El historial se actualizará al reconectar.");
+        } else {
+          setError("Sin conexión: el historial y las preferencias se actualizarán cuando vuelvas a estar en línea.");
+        }
         return;
       }
       setError("No se pudieron cargar las notificaciones. Revisa tu conexión y vuelve a intentarlo.");
@@ -302,6 +347,30 @@ export default function Notifications() {
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
+
+  // Avisos locales del dispositivo: recolecta stock bajo, cierres de turno y
+  // actualizaciones pendientes desde el almacén local y los mantiene vivos
+  // aunque no haya conexión. El puente re-colecta con cada señal relevante.
+  useEffect(() => {
+    setLocalNotices(listLocalNotices());
+    collectOperationalLocalNotices(useStore.getState());
+    setLocalNotices(listLocalNotices());
+    const cleanup = installLocalNoticeBridge(() => {
+      collectOperationalLocalNotices(useStore.getState());
+      setLocalNotices(listLocalNotices());
+    });
+    return cleanup;
+  }, []);
+
+  const markLocalRead = (id: string) => {
+    markLocalNoticeRead(id);
+    setLocalNotices(listLocalNotices());
+  };
+
+  const markAllLocalRead = () => {
+    markAllLocalNoticesRead();
+    setLocalNotices(listLocalNotices());
+  };
 
   // Live updates: new notices appear without pressing refresh. Realtime is
   // optional; if the table is not published the page keeps working manually.
@@ -332,7 +401,6 @@ export default function Notifications() {
       return;
     }
     setSaving(true);
-    setMessage("");
     setError("");
     try {
       const { error: saveError } = await supabase.from("notification_preferences").upsert({
@@ -342,7 +410,7 @@ export default function Notifications() {
         updated_at: new Date().toISOString(),
       }, { onConflict: "company_id,user_id" });
       if (saveError) throw saveError;
-      setMessage("Preferencias guardadas.");
+      pushToast("success", "Preferencias guardadas.");
     } catch (e: any) {
       setError("No se pudieron guardar las preferencias. Revisa tu conexión y vuelve a intentarlo.");
     } finally {
@@ -391,7 +459,7 @@ export default function Notifications() {
         if (sharedError) throw sharedError;
       }
       setNotices((items) => items.map((item) => pending.some((notice) => notice.id === item.id) ? { ...item, read_at: readAt } : item));
-      setMessage("Todos los avisos quedaron como leídos.");
+      pushToast("success", "Todos los avisos quedaron como leídos.");
     } catch (e: any) {
       setError(e?.message || "No se pudieron marcar los avisos como leídos.");
     } finally {
@@ -401,7 +469,6 @@ export default function Notifications() {
 
   const enablePush = async () => {
     setError("");
-    setMessage("");
     setPushBusy(true);
     try {
       if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
@@ -485,7 +552,7 @@ export default function Notifications() {
       if (prefError) throw prefError;
       setPrefs((p) => ({ ...p, push_enabled: true }));
       setPushDeviceStatus("registered");
-      setMessage("Dispositivo registrado. PALMYRA puede enviarte avisos a este móvil.");
+      pushToast("success", "Dispositivo registrado. PALMYRA puede enviarte avisos a este móvil.");
     } catch (e: any) {
       setError("No se pudo activar el push. Revisa los permisos del navegador y vuelve a intentarlo.");
     } finally {
@@ -497,23 +564,43 @@ export default function Notifications() {
     const supabase = getSupabase();
     if (!supabase || !companyId) return;
     setTestBusy(true);
-    setMessage("");
     setError("");
     try {
-      const { data: notificationId, error: testError } = await supabase.rpc("create_my_notification_test", { p_company_id: companyId });
-      if (testError) throw testError;
+      let notificationId: string | null = null;
+      const { data: rpcId, error: testError } = await supabase.rpc("create_my_notification_test", { p_company_id: companyId });
+      if (testError) {
+        // El RPC de prueba puede no estar desplegado en la base; la fila directa
+        // produce el mismo resultado (historial + disparo de push al propio usuario).
+        const missingFunction = /(could not find the function|PGRST202|does not exist)/i.test(String(testError?.message || testError?.hint || ""));
+        if (!missingFunction) throw testError;
+        const { data: inserted, error: insertError } = await supabase
+          .from("notifications")
+          .insert({
+            company_id: companyId,
+            user_id: userId || null,
+            kind: "test",
+            title: "Prueba de notificaciones",
+            body: "Si recibes este aviso en el móvil, el push ya está funcionando.",
+          })
+          .select("id")
+          .single();
+        if (insertError) throw insertError;
+        notificationId = inserted?.id ? String(inserted.id) : null;
+      } else {
+        notificationId = rpcId != null ? String(rpcId) : null;
+      }
       if (notificationId) {
         setNotices((items) => [{
-          id: String(notificationId),
+          id: notificationId as string,
           kind: "test",
           title: "Prueba de notificaciones",
           body: "Si recibes este aviso en el móvil, el push ya está funcionando.",
           read_at: null,
           created_at: new Date().toISOString(),
           user_id: userId,
-        }, ...items.filter((item) => item.id !== String(notificationId))].slice(0, 50));
+        }, ...items.filter((item) => item.id !== notificationId)].slice(0, 50));
       }
-      setMessage("Prueba creada. El envío al móvil puede tardar unos segundos.");
+      pushToast("success", "Prueba creada. El envío al móvil puede tardar unos segundos.");
     } catch (e: any) {
       setError(e?.message || "No se pudo crear la notificación de prueba.");
     } finally {
@@ -523,6 +610,8 @@ export default function Notifications() {
 
   const update = <K extends keyof Preferences,>(key: K, value: Preferences[K]) => setPrefs((current) => ({ ...current, [key]: value }));
   const unread = notices.filter((notice) => !notice.read_at).length;
+  const localUnread = localNotices.filter((notice) => !notice.read_at).length;
+  const totalUnread = unread + localUnread;
   const filteredNotices = notices.filter((notice) => {
     if (filter === "unread") return !notice.read_at;
     if (filter === "rates") return /exchange|currency|rate/i.test(notice.kind);
@@ -544,7 +633,7 @@ export default function Notifications() {
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
               <h2 className="text-xl font-bold leading-tight text-primary">Notificaciones</h2>
-              {unread > 0 && <span className="rounded-full bg-violet-600 px-2 py-0.5 text-xs font-bold text-white">{unread} sin leer</span>}
+              {totalUnread > 0 && <span className="palmyra-badge palmyra-badge-info">{totalUnread > 99 ? "99+" : totalUnread} sin leer</span>}
             </div>
             <p className="text-sm font-medium text-secondary">Tus avisos y la forma en que quieres recibirlos.</p>
           </div>
@@ -588,8 +677,7 @@ export default function Notifications() {
         </button>
       </div>
 
-      {message && <div role="status" className="break-words rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium leading-6 text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">{message}</div>}
-      {error && <div role="alert" className="break-words rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium leading-6 text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"><AlertTriangle size={15} className="mr-1.5 inline" />{error}</div>}
+      {error && <div role="alert" className="palmyra-toast palmyra-toast-warning"><AlertTriangle size={15} className="shrink-0" /><span className="min-w-0 flex-1 break-words">{error}</span></div>}
       {needsAccount && !error && (
         <div role="status" className="break-words rounded-xl border border-violet-200 bg-violet-50/70 p-3 text-sm font-medium leading-6 text-violet-900 dark:border-violet-900/50 dark:bg-violet-950/20 dark:text-violet-200">
           El historial y las preferencias se guardan en tu cuenta PALMYRA. Inicia sesión con tu empresa para verlos y recibir avisos en el móvil; el modo local no envía notificaciones push.
@@ -652,6 +740,59 @@ export default function Notifications() {
                     </div>
                     {!notice.read_at && (notice.user_id === userId || notice.user_id === null) && (
                       <button type="button" title="Marcar esta notificación como leída" aria-label="Marcar como leída" onClick={() => void markRead(notice)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-violet-700 transition-colors hover:bg-violet-100 dark:text-violet-300 dark:hover:bg-violet-950/40"><CheckCheck size={16} /></button>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {view === "history" && (
+        <section className="min-w-0 space-y-3">
+          <div className="flex min-w-0 flex-col gap-2 rounded-2xl border border-base bg-secondary p-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-primary">De este dispositivo</h3>
+              <p className="text-sm font-medium leading-5 text-muted">Stock bajo, cierres de turno y actualizaciones detectadas aquí, disponibles incluso sin conexión.</p>
+            </div>
+            <button
+              type="button"
+              title="Marcar todos los avisos locales como leídos"
+              onClick={markAllLocalRead}
+              disabled={localUnread === 0}
+              className="flex h-11 shrink-0 items-center justify-center gap-2 rounded-xl border border-base bg-primary px-3 text-sm font-semibold text-primary transition-colors hover:bg-subtle disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <CheckCheck size={15} /> {localUnread > 0 ? `Marcar todo leído (${localUnread})` : "Sin pendientes"}
+            </button>
+          </div>
+          {localNotices.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-base bg-secondary p-6 text-center">
+              <Package size={26} className="mx-auto text-muted" />
+              <p className="mt-2 text-sm font-bold text-primary">Sin avisos locales</p>
+              <p className="mt-1 text-sm font-medium text-muted">Cuando haya stock bajo, cierres de turno o una actualización pendiente, aparecerán aquí.</p>
+            </div>
+          ) : (
+            <div className="grid min-w-0 gap-2 xl:grid-cols-2">
+              {localNotices.map((notice) => (
+                <article key={notice.id} className={cn("min-w-0 rounded-xl border p-3", notice.read_at ? "border-base bg-secondary" : "border-violet-200 bg-violet-50/70 dark:border-violet-900 dark:bg-violet-950/20")}>
+                  <div className="flex min-w-0 items-start gap-2.5">
+                    <div className={cn("shrink-0 rounded-xl p-2", notice.read_at ? "bg-subtle text-muted" : "bg-violet-100 text-violet-700 dark:bg-violet-950/40 dark:text-violet-300")}>
+                      {notice.kind === "low_stock" ? <Package size={16} /> : notice.kind === "shift_closed" ? <Clock3 size={16} /> : notice.kind === "offline_error" ? <WifiOff size={16} /> : <RefreshCw size={16} />}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                        <h3 className="min-w-0 break-words text-sm font-bold text-primary">{notice.title}</h3>
+                        <span className={cn("palmyra-badge shrink-0", notice.kind === "low_stock" ? "palmyra-badge-warning" : "palmyra-badge-info")}>
+                          {notice.kind === "low_stock" ? "Stock bajo" : notice.kind === "shift_closed" ? "Turno" : notice.kind === "offline_error" ? "Sin conexión" : "Actualización"}
+                        </span>
+                        {!notice.read_at && <span className="palmyra-badge palmyra-badge-info shrink-0">Nuevo</span>}
+                      </div>
+                      <p className="mt-1 whitespace-pre-line break-words text-sm font-medium leading-6 text-secondary">{notice.body}</p>
+                      <p className="mt-1.5 text-xs font-medium text-muted">{new Date(notice.created_at).toLocaleString("es-CU")}</p>
+                    </div>
+                    {!notice.read_at && (
+                      <button type="button" title="Marcar esta notificación local como leída" aria-label="Marcar como leída" onClick={() => markLocalRead(notice.id)} className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-violet-700 transition-colors hover:bg-violet-100 dark:text-violet-300 dark:hover:bg-violet-950/40"><CheckCheck size={16} /></button>
                     )}
                   </div>
                 </article>
@@ -810,6 +951,7 @@ export default function Notifications() {
         </div>
       )}
 
+      <ToastHost toasts={toasts} onDismiss={dismissToast} />
     </div>
   );
 }

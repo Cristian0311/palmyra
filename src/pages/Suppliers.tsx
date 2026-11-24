@@ -107,7 +107,7 @@ function ProductSearch({ products, currency, excludeIds = [], onPick, placeholde
         />
       </div>
       {open && term && (
-        <div className="absolute inset-x-0 z-30 mt-1 overflow-hidden rounded-xl border border-base bg-secondary shadow-xl">
+        <div className="palmyra-popover absolute inset-x-0 z-[var(--z-dropdown)] mt-1">
           <ul className="max-h-60 overflow-y-auto py-1" role="listbox" aria-label="Productos encontrados">
             {results.map(product => (
               <li key={product.id}>
@@ -507,10 +507,10 @@ function SuppliersContent() {
                       </div>
 
                       <div className="flex flex-wrap items-center gap-1.5 lg:contents">
-                        <span className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full border border-base bg-subtle px-2 py-1 font-bold text-secondary" style={{ fontSize: 11 }} title={`${linked} productos asociados`}>
+                        <span className="palmyra-pill border border-base bg-subtle text-secondary" title={`${linked} productos asociados`}>
                           <Package size={11} aria-hidden="true" /> <span className="truncate">{linked} {linked === 1 ? 'producto' : 'productos'}</span>
                         </span>
-                        <span className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full border border-base bg-subtle px-2 py-1 font-bold text-secondary lg:justify-self-center" style={{ fontSize: 11 }} title={`${count} órdenes registradas`}>
+                        <span className="palmyra-pill border border-base bg-subtle text-secondary lg:justify-self-center" title={`${count} órdenes registradas`}>
                           <Truck size={11} aria-hidden="true" />
                           <span className="font-black tabular-nums text-primary">{count}</span> <span className="truncate">{count === 1 ? 'orden' : 'órdenes'}</span>
                         </span>

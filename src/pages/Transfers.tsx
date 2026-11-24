@@ -503,14 +503,14 @@ export default function Transfers() {
                     <li key={group.key} className="flex flex-col gap-2 px-3 py-3 lg:flex-row lg:items-center lg:justify-between">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-1.5">
-                          <span className="max-w-full truncate rounded-md border border-base bg-subtle px-2 py-1 text-[11px] font-black uppercase text-secondary" title={group.fromBranchName}>
+                          <span className="palmyra-pill border border-base bg-subtle text-secondary" title={group.fromBranchName}>
                             {group.fromBranchName}
                           </span>
-                          <ArrowRight className="h-3 w-3 shrink-0 text-amber-500" aria-hidden="true" />
-                          <span className="max-w-full truncate rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-black uppercase text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300" title={group.toBranchName}>
+                          <ArrowRight className="h-3 w-3 shrink-0 text-[var(--warning)]" aria-hidden="true" />
+                          <span className="palmyra-pill border-[color-mix(in_srgb,var(--warning)_40%,transparent)] bg-[color-mix(in_srgb,var(--warning)_12%,var(--bg-secondary))] text-[var(--warning)]" title={group.toBranchName}>
                             {group.toBranchName}
                           </span>
-                          <span className="rounded-md bg-slate-900 px-2 py-1 text-[11px] font-black text-white">{group.totalQty} uds</span>
+                          <span className="palmyra-pill border-transparent bg-[var(--text-primary)] text-[var(--text-inverse)]">{group.totalQty} uds</span>
                         </div>
                         <p className="mt-1.5 truncate text-[11px] font-semibold text-muted" title={`${new Date(group.dateMs).toLocaleString()} · ${group.rows.map((row) => row.productName).join(', ')}`}>
                           {new Date(group.dateMs).toLocaleString('es-CU')} · {group.rows.slice(0, 3).map((row) => row.productName).join(', ')}
@@ -577,27 +577,27 @@ export default function Transfers() {
                         <td className="whitespace-nowrap px-3 py-3 align-top">
                           <p className="text-[12px] font-black text-primary">{group.dateLabel}</p>
                           <p className="font-mono text-[11px] text-muted">{group.timeLabel}</p>
-                          <p className="font-mono text-[10px] font-black uppercase tracking-wide text-violet-600 dark:text-violet-300">{documentCode('TR', group.first.id)}</p>
+                          <p className="font-mono text-[10px] font-black uppercase tracking-wide text-[var(--primary)]">{documentCode('TR', group.first.id)}</p>
                           {group.rows.length > 1 && (
-                            <span className="mt-1 inline-block rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-black uppercase text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300">
+                            <span className="palmyra-pill mt-1 border-[color-mix(in_srgb,var(--primary)_40%,transparent)] bg-[color-mix(in_srgb,var(--primary)_12%,var(--bg-secondary))] text-[var(--primary)]">
                               Lote de {group.rows.length}
                             </span>
                           )}
                         </td>
                         <td className="px-3 py-3 align-top">
                           <div className="flex flex-wrap items-center gap-1.5">
-                            <span className="max-w-[150px] truncate rounded-md border border-base bg-secondary px-2 py-1 text-[11px] font-black uppercase text-secondary" title={group.first.fromBranchName}>
+                            <span className="palmyra-pill max-w-[150px] border border-base bg-secondary text-secondary" title={group.first.fromBranchName}>
                               {group.first.fromBranchName}
                             </span>
-                            <ArrowRight className="h-3 w-3 shrink-0 text-violet-500" aria-hidden="true" />
-                            <span className="max-w-[150px] truncate rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-black uppercase text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300" title={group.first.toBranchName}>
+                            <ArrowRight className="h-3 w-3 shrink-0 text-[var(--primary)]" aria-hidden="true" />
+                            <span className="palmyra-pill max-w-[150px] border-[color-mix(in_srgb,var(--primary)_40%,transparent)] bg-[color-mix(in_srgb,var(--primary)_12%,var(--bg-secondary))] text-[var(--primary)]" title={group.first.toBranchName}>
                               {group.first.toBranchName}
                             </span>
                           </div>
                         </td>
                         <td className="px-3 py-3 align-top">
                           <div className="flex flex-col items-center gap-1">
-                            <span className="whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-[11px] font-black tabular-nums text-white">{group.totalQty} uds</span>
+                            <span className="palmyra-pill whitespace-nowrap border-transparent bg-[var(--text-primary)] text-[var(--text-inverse)] tabular-nums">{group.totalQty} uds</span>
                             {group.direction && <DirectionBadge direction={group.direction} />}
                           </div>
                         </td>
@@ -661,7 +661,7 @@ export default function Transfers() {
                         </p>
                         <p className="font-mono text-[10px] font-black uppercase tracking-wide text-muted">{documentCode('TR', group.first.id)}</p>
                         {group.rows.length > 1 && (
-                          <span className="mt-0.5 inline-block rounded border border-violet-200 bg-violet-50 px-1.5 py-0.5 text-[11px] font-black uppercase text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300">
+                          <span className="palmyra-pill mt-0.5 border-[color-mix(in_srgb,var(--primary)_40%,transparent)] bg-[color-mix(in_srgb,var(--primary)_12%,var(--bg-secondary))] text-[var(--primary)]">
                             Lote de {group.rows.length}
                           </span>
                         )}
@@ -670,11 +670,11 @@ export default function Transfers() {
                     </div>
 
                     <div className="flex min-w-0 items-center gap-1.5">
-                      <span className="min-w-0 flex-1 truncate rounded-md border border-base bg-subtle px-2 py-1 text-[11px] font-black uppercase text-secondary" title={group.first.fromBranchName}>
+                      <span className="palmyra-pill min-w-0 flex-1 border border-base bg-subtle text-secondary" title={group.first.fromBranchName}>
                         {group.first.fromBranchName}
                       </span>
-                      <ArrowRight className="h-3 w-3 shrink-0 text-violet-500" aria-hidden="true" />
-                      <span className="min-w-0 flex-1 truncate rounded-md border border-violet-200 bg-violet-50 px-2 py-1 text-[11px] font-black uppercase text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300" title={group.first.toBranchName}>
+                      <ArrowRight className="h-3 w-3 shrink-0 text-[var(--primary)]" aria-hidden="true" />
+                      <span className="palmyra-pill min-w-0 flex-1 border-[color-mix(in_srgb,var(--primary)_40%,transparent)] bg-[color-mix(in_srgb,var(--primary)_12%,var(--bg-secondary))] text-[var(--primary)]" title={group.first.toBranchName}>
                         {group.first.toBranchName}
                       </span>
                     </div>
@@ -682,7 +682,7 @@ export default function Transfers() {
                     <div className="flex items-center justify-between gap-2 rounded-lg border border-base bg-subtle px-2.5 py-1.5">
                       <span className="text-[10px] font-black uppercase tracking-wider text-muted">Cantidad</span>
                       <span className="flex items-center gap-1.5">
-                        <span className="rounded-md bg-slate-900 px-2 py-1 text-[11px] font-black tabular-nums text-white">{group.totalQty} uds</span>
+                        <span className="palmyra-pill border-transparent bg-[var(--text-primary)] text-[var(--text-inverse)] tabular-nums">{group.totalQty} uds</span>
                         {group.direction && <DirectionBadge direction={group.direction} />}
                       </span>
                     </div>

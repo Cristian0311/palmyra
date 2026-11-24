@@ -119,7 +119,7 @@ export function ReportsOverview({ summary, formatMoney, onOpenSales, onOpenTrans
           <button
             type="button"
             onClick={onOpenSales}
-            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[9px] font-black uppercase tracking-wider text-[#6535C5] hover:bg-[#6535C5]/10"
+            className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[9px] font-black uppercase tracking-wider text-[var(--primary)] hover:bg-[var(--primary)]/10"
           >
             Ver todos <ArrowRight className="h-3 w-3" />
           </button>
@@ -129,48 +129,82 @@ export function ReportsOverview({ summary, formatMoney, onOpenSales, onOpenTrans
             No hay ventas completadas para el filtro seleccionado.
           </p>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left sm:min-w-[34rem]">
-              <thead>
-                <tr className="border-b border-base bg-subtle/60 text-[8px] font-black uppercase tracking-[0.15em] text-muted">
-                  <th className="px-3 py-2">Ticket</th>
-                  <th className="px-3 py-2">Fecha y hora</th>
-                  <th className="hidden px-3 py-2 sm:table-cell">Artículos</th>
-                  <th className="px-3 py-2 text-right">Total</th>
-                  <th className="px-3 py-2 text-center">Detalle</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-base">
-                {recent.map(tx => {
-                  const units = (tx.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
-                  const when = new Date(tx.date);
-                  return (
-                    <tr key={tx.id} className="hover:bg-subtle/60">
-                      <td className="px-3 py-1.5 font-mono text-[9px] font-black text-rose-700 dark:text-rose-300">{ticketDisplay(tx.ticketNumber, tx.id)}</td>
-                      <td className="whitespace-nowrap px-3 py-1.5 text-[9px] font-bold text-secondary">
+          <>
+            <div className="hidden md:block">
+              <table className="w-full border-collapse text-left">
+                <thead>
+                  <tr className="border-b border-base bg-subtle/60 text-[8px] font-black uppercase tracking-[0.15em] text-muted">
+                    <th className="px-3 py-2">Ticket</th>
+                    <th className="px-3 py-2">Fecha y hora</th>
+                    <th className="px-3 py-2">Artículos</th>
+                    <th className="px-3 py-2 text-right">Total</th>
+                    <th className="px-3 py-2 text-center">Detalle</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-base">
+                  {recent.map(tx => {
+                    const units = (tx.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+                    const when = new Date(tx.date);
+                    return (
+                      <tr key={tx.id} className="hover:bg-subtle/60">
+                        <td className="px-3 py-1.5 font-mono text-[9px] font-black text-rose-700 dark:text-rose-300">{ticketDisplay(tx.ticketNumber, tx.id)}</td>
+                        <td className="whitespace-nowrap px-3 py-1.5 text-[9px] font-bold text-secondary">
+                          {Number.isFinite(when.getTime())
+                            ? when.toLocaleString('es-CU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                            : '-'}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-1.5 text-[9px] font-bold text-secondary">{units} uds ({(tx.items || []).length} líneas)</td>
+                        <td className="whitespace-nowrap px-3 py-1.5 text-right text-[10px] font-black tabular-nums text-primary">{formatMoney(tx.total)}</td>
+                        <td className="px-3 py-1.5 text-center">
+                          <button
+                            type="button"
+                            onClick={() => onOpenTransaction(tx)}
+                            className="h-8 w-8 rounded-lg border border-base bg-subtle text-primary hover:bg-slate-200 dark:hover:bg-slate-800"
+                            title="Ver detalle del ticket"
+                            aria-label="Ver detalle del ticket"
+                          >
+                            <ArrowRight className="mx-auto h-3.5 w-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <ul className="divide-y divide-base md:hidden">
+              {recent.map(tx => {
+                const units = (tx.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
+                const when = new Date(tx.date);
+                return (
+                  <li key={tx.id} className="flex items-center gap-2 px-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-mono text-[10px] font-black text-rose-700 dark:text-rose-300">
+                        {ticketDisplay(tx.ticketNumber, tx.id)}
+                      </p>
+                      <p className="truncate text-[9px] font-bold text-secondary">
                         {Number.isFinite(when.getTime())
                           ? when.toLocaleString('es-CU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
                           : '-'}
-                      </td>
-                      <td className="hidden whitespace-nowrap px-3 py-1.5 text-[9px] font-bold text-secondary sm:table-cell">{units} uds ({(tx.items || []).length} líneas)</td>
-                      <td className="whitespace-nowrap px-3 py-1.5 text-right text-[10px] font-black tabular-nums text-primary">{formatMoney(tx.total)}</td>
-                      <td className="px-3 py-1.5 text-center">
-                        <button
-                          type="button"
-                          onClick={() => onOpenTransaction(tx)}
-                          className="h-11 w-11 rounded-lg border border-base bg-subtle text-primary hover:bg-slate-200 sm:h-8 sm:w-8 dark:hover:bg-slate-800"
-                          title="Ver detalle del ticket"
-                          aria-label="Ver detalle del ticket"
-                        >
-                          <ArrowRight className="mx-auto h-3.5 w-3.5" />
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        {' '}· {units} uds ({(tx.items || []).length} líneas)
+                      </p>
+                    </div>
+                    <span className="shrink-0 text-[11px] font-black tabular-nums text-primary">{formatMoney(tx.total)}</span>
+                    <button
+                      type="button"
+                      onClick={() => onOpenTransaction(tx)}
+                      className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-base bg-subtle text-primary active:scale-95"
+                      title="Ver detalle del ticket"
+                      aria-label="Ver detalle del ticket"
+                    >
+                      <ArrowRight className="h-3.5 w-3.5" />
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </>
         )}
       </section>
     </div>

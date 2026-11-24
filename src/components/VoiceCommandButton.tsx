@@ -104,12 +104,12 @@ export function VoiceCommandButton({ onCommand, disabled }: Props) {
         {listening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
       </button>
       {listening && (
-        <div className="absolute right-0 top-11 z-50 whitespace-nowrap rounded-lg bg-slate-900 px-2.5 py-1.5 text-[10px] font-bold text-white shadow-lg">
+        <div className="palmyra-tooltip absolute right-0 top-11 z-[var(--z-tooltip)] whitespace-nowrap px-2.5 py-1.5 font-bold">
           Escuchando...
         </div>
       )}
       {message && !listening && (
-        <div className="absolute right-0 top-11 z-50 max-w-64 rounded-lg bg-amber-50 border border-amber-200 px-2.5 py-1.5 text-[10px] font-bold text-amber-800 shadow-lg">
+        <div className="palmyra-tooltip absolute right-0 top-11 z-[var(--z-tooltip)] max-w-64 px-2.5 py-1.5 font-bold">
           {message}
         </div>
       )}

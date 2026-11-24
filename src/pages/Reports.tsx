@@ -278,6 +278,21 @@ export default function Reports() {
   const [newSessionDate, setNewSessionDate] = useState<string>("");
   const [isUpdatingSessionDate, setIsUpdatingSessionDate] = useState(false);
 
+  // Escape closes the page-level confirmation and edit modals when they are not busy.
+  useEffect(() => {
+    if (!shiftVoidTarget && !editingSessionDateId) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (shiftVoidTarget && !isVoidingShift) {
+        setShiftVoidTarget(null);
+      } else if (editingSessionDateId && !isUpdatingSessionDate) {
+        setEditingSessionDateId(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [shiftVoidTarget, editingSessionDateId, isVoidingShift, isUpdatingSessionDate]);
+
   const {
     categoryData,
     hourData,
@@ -781,7 +796,7 @@ export default function Reports() {
             </div>
 
             {showExportMenu && (
-              <div className="absolute right-0 mt-1.5 w-72 bg-secondary rounded-2xl shadow-2xl border border-base p-2 z-50 animate-in zoom-in-95">
+              <div className="palmyra-popover absolute right-0 top-full z-[var(--z-dropdown)] mt-1.5 w-72 p-2 animate-in zoom-in-95">
                 <div className="px-2.5 py-1.5 border-b border-subtle mb-1.5">
                   <p className="text-[9px] font-black uppercase tracking-widest text-muted">Exportar a Excel (.xlsx)</p>
                   <p className="text-[10px] font-bold text-primary">Elige el alcance de la descarga</p>
@@ -835,29 +850,29 @@ export default function Reports() {
         <div className="flex snap-x gap-1.5 overflow-x-auto p-0.5 custom-scrollbar sm:min-w-max sm:items-center sm:overflow-visible">
           {[
             { id: 'overview', label: 'Resumen', icon: BarChart3 },
-            { id: 'sales', label: 'Ventas', icon: TrendingUp },
+            { id: 'sales', label: 'Ventas', icon: TrendingUp, badge: filteredTransactions.length, badgeClass: '' },
             { id: 'payroll', label: 'Nómina', icon: Calculator },
-            { id: 'sessions', label: 'Cajas', icon: History },
+            { id: 'sessions', label: 'Cajas', icon: History, badge: filteredCashSessions.length, badgeClass: '' },
             { 
               id: 'discrepancies', 
               label: 'Descuadres', 
               icon: AlertTriangle, 
               badge: allDiscrepancySessions.length,
-              badgeClass: 'bg-red-600 text-white shadow-xs'
+              badgeClass: 'palmyra-badge-danger'
             },
             { 
               id: 'movements', 
               label: 'Movimientos', 
               icon: ArrowDownRight, 
               badge: allDetailedMovements.length,
-              badgeClass: 'bg-slate-700 text-white'
+              badgeClass: 'palmyra-badge-info'
             },
             { 
               id: 'transfers', 
               label: 'Transferencias', 
               icon: ArrowLeftRight, 
               badge: filteredTransfers.length,
-              badgeClass: 'bg-blue-600 text-white'
+              badgeClass: 'palmyra-badge-info'
             },
           ].map(tab => {
             const Icon = tab.icon;
@@ -868,17 +883,17 @@ export default function Reports() {
                 className={cn(
                   "btn-compact h-10 shrink-0 snap-start whitespace-nowrap !px-2.5 !text-[10px] font-black min-[420px]:!text-[11px] sm:h-8 sm:w-auto",
                   activeTab === tab.id 
-                    ? "bg-[#6535C5] text-white shadow-md shadow-[#6535C5]/25" 
+                    ? "bg-[var(--primary)] text-[var(--primary-fg)] shadow-md" 
                     : "bg-subtle text-secondary hover:text-primary hover:bg-slate-200 dark:hover:bg-slate-800 border-none"
                 )}
               >
                 <Icon className="w-3 h-3 shrink-0" />
                 {tab.label}
                 {tab.badge !== undefined && tab.badge > 0 && (
-                  <span className={cn(
-                    "ml-1 inline-flex min-w-[17px] shrink-0 items-center justify-center rounded-full px-1.5 py-0.5 text-[9px] font-black leading-none tabular-nums",
-                    activeTab === tab.id ? "bg-white/30 text-white" : (tab.badgeClass || "bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300")
-                  )}>
+                  <span
+                    className={cn("palmyra-badge ml-1 shrink-0 tabular-nums", tab.badgeClass)}
+                    style={activeTab === tab.id ? { background: 'rgba(255,255,255,0.35)' } : undefined}
+                  >
                     {tab.badge > 99 ? '99+' : tab.badge}
                   </span>
                 )}
@@ -957,105 +972,93 @@ export default function Reports() {
             ]}
           />
 
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {filteredCashSessions.map(session => {
-              const branch = branches.find(b => b.id === session.branchId);
-              const worker = findSessionEmployeeUser(session, users)?.name || session.workerName || 'Cajero';
-              const initials = (worker.match(/\b\w/g) || []).slice(0, 2).join('').toUpperCase() || 'CA';
-              const info = getSessionDiscrepancyInfo(session);
-              const hasShortage = (info?.totalShortageBase || 0) > 0.01;
-              const hasOverage = (info?.totalOverageBase || 0) > 0.01;
-              return (
-                <article key={session.id} className="flex flex-col rounded-2xl border border-base bg-secondary p-3.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="inline-flex items-center rounded-lg border border-base bg-subtle px-2 py-0.5 font-black text-primary" style={{ fontSize: 12 }}>
-                      {getSessionTurnLabel(session, sessionTurnMap)}
-                    </span>
-                    <span className={cn(
-                      'rounded-lg px-2 py-0.5 font-black uppercase',
-                      session.status === 'open'
-                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
-                        : session.status === 'cancelled'
-                          ? 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300'
-                          : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
-                    )} style={{ fontSize: 11, letterSpacing: '0.06em' }}>
-                      {session.status === 'open' ? 'Abierta' : session.status === 'cancelled' ? 'Cancelada' : 'Cerrada'}
-                    </span>
-                  </div>
+          <div className="overflow-hidden rounded-2xl border border-base bg-secondary">
+            <ul className="divide-y divide-base">
+              {filteredCashSessions.map(session => {
+                const branch = branches.find(b => b.id === session.branchId);
+                const worker = findSessionEmployeeUser(session, users)?.name || session.workerName || 'Cajero';
+                const initials = (worker.match(/\b\w/g) || []).slice(0, 2).join('').toUpperCase() || 'CA';
+                const info = getSessionDiscrepancyInfo(session);
+                const hasShortage = (info?.totalShortageBase || 0) > 0.01;
+                const hasOverage = (info?.totalOverageBase || 0) > 0.01;
+                const fmtWhen = (value: string | Date) => new Date(value).toLocaleString('es-CU', { timeZone: 'America/Havana', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+                const whenLabel = `${branch?.name || 'Sucursal principal'} · ${fmtWhen(session.openedAt)}${session.closedAt ? ` → cierre ${fmtWhen(session.closedAt)}` : ' · abierta'}`;
+                return (
+                  <li key={session.id} className="flex flex-col gap-2 px-3 py-2.5 transition-colors hover:bg-subtle/60 sm:flex-row sm:items-center sm:gap-3">
+                    <div className="flex min-w-0 flex-1 items-center gap-2.5">
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 text-[11px] font-black text-white">{initials}</span>
+                      <div className="min-w-0">
+                        <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                          <p className="truncate text-[13px] font-black text-primary" title={worker}>{worker}</p>
+                          <span className="shrink-0 rounded-md border border-base bg-subtle px-1.5 py-0.5 text-[11px] font-black text-secondary">
+                            {getSessionTurnLabel(session, sessionTurnMap)}
+                          </span>
+                          <span className={cn(
+                            'palmyra-pill shrink-0',
+                            session.status === 'open'
+                              ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
+                              : session.status === 'cancelled'
+                                ? 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300'
+                                : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
+                          )}>
+                            {session.status === 'open' ? 'Abierta' : session.status === 'cancelled' ? 'Cancelada' : 'Cerrada'}
+                          </span>
+                        </div>
+                        <p className="truncate text-[12px] font-bold text-muted" title={whenLabel}>{whenLabel}</p>
+                      </div>
+                    </div>
 
-                  <div className="mt-2.5 flex items-center gap-2.5">
-                    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 font-black text-white">{initials}</span>
-                    <div className="min-w-0">
-                      <p className="truncate font-black text-primary" style={{ fontSize: 14 }}>{worker}</p>
-                      <p className="truncate font-bold text-muted" style={{ fontSize: 12 }}>{branch?.name || 'Sucursal principal'}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-2.5 grid grid-cols-2 gap-2 rounded-xl border border-base bg-subtle p-2.5">
-                    <div>
-                      <p className="font-black uppercase text-muted" style={{ fontSize: 10, letterSpacing: '0.06em' }}>Apertura</p>
-                      <p className="font-bold text-primary" style={{ fontSize: 12 }}>{new Date(session.openedAt).toLocaleString('es-CU', { timeZone: 'America/Havana', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</p>
-                    </div>
-                    <div>
-                      <p className="font-black uppercase text-muted" style={{ fontSize: 10, letterSpacing: '0.06em' }}>Cierre</p>
-                      <p className="font-bold text-primary" style={{ fontSize: 12 }}>{session.closedAt ? new Date(session.closedAt).toLocaleString('es-CU', { timeZone: 'America/Havana', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'}</p>
-                    </div>
-                  </div>
-
-                  <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="font-black uppercase text-muted" style={{ fontSize: 10, letterSpacing: '0.06em' }}>Fondo inicial</p>
-                      <p className="font-black text-primary" style={{ fontSize: 14 }}>{formatMoney(session.openingBalance)}</p>
-                    </div>
-                    {hasShortage ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-1 font-black text-red-700 dark:bg-red-950/50 dark:text-red-300" style={{ fontSize: 12 }}>
-                        <ArrowDownRight size={13} aria-hidden="true" /> Faltante {formatMoney(info?.totalShortageBase || 0)}
+                    <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0 sm:justify-end">
+                      <span className="rounded-lg border border-base bg-subtle px-2 py-0.5 text-[11px] font-bold text-secondary">
+                        Fondo {formatMoney(session.openingBalance)}
                       </span>
-                    ) : hasOverage ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 font-black text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300" style={{ fontSize: 12 }}>
-                        <ArrowUpRight size={13} aria-hidden="true" /> Sobrante {formatMoney(info?.totalOverageBase || 0)}
-                      </span>
-                    ) : (
-                      <span className="rounded-full bg-slate-100 px-2.5 py-1 font-black text-slate-600 dark:bg-slate-800 dark:text-slate-300" style={{ fontSize: 12 }}>
-                        Sin diferencia
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="mt-auto flex flex-wrap items-center gap-1.5 pt-2.5">
-                    <button
-                      type="button"
-                      onClick={() => openSessionDetail(session.id, 'sessions')}
-                      className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-xl border border-base bg-subtle px-3 py-2 font-black uppercase text-primary transition-colors hover:bg-secondary"
-                      style={{ fontSize: 11, letterSpacing: '0.06em' }}
-                    >
-                      <Eye size={14} aria-hidden="true" /> Detalle
-                    </button>
-                    {session.status === 'closed' && (
+                      {hasShortage ? (
+                        <span className="palmyra-pill bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300">
+                          <ArrowDownRight size={12} aria-hidden="true" /> Faltante {formatMoney(info?.totalShortageBase || 0)}
+                        </span>
+                      ) : hasOverage ? (
+                        <span className="palmyra-pill bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                          <ArrowUpRight size={12} aria-hidden="true" /> Sobrante {formatMoney(info?.totalOverageBase || 0)}
+                        </span>
+                      ) : (
+                        <span className="palmyra-pill bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                          Sin diferencia
+                        </span>
+                      )}
                       <button
                         type="button"
-                        onClick={() => handlePrintShiftTicket(session.id)}
-                        aria-label="Imprimir ticket de cierre"
-                        className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-base bg-secondary text-primary transition-colors hover:bg-subtle"
+                        onClick={() => openSessionDetail(session.id, 'sessions')}
+                        className="inline-flex min-h-9 items-center justify-center gap-1 rounded-lg bg-gradient-to-r from-violet-600 to-indigo-600 px-2.5 py-1.5 text-[11px] font-black uppercase text-white shadow-sm transition-all hover:shadow-md"
+                        style={{ letterSpacing: '0.06em' }}
                       >
-                        <Printer size={16} aria-hidden="true" />
+                        <Eye size={13} aria-hidden="true" /> Detalle
                       </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingSessionDateId(session.id);
-                        setNewSessionDate(getLocalDateYMD(session.openedAt));
-                      }}
-                      aria-label="Editar fecha del turno"
-                      className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-base bg-secondary text-amber-700 transition-colors hover:bg-subtle dark:text-amber-400"
-                    >
-                      <Calendar size={16} aria-hidden="true" />
-                    </button>
-                  </div>
-                </article>
-              );
-            })}
+                      {session.status === 'closed' && (
+                        <button
+                          type="button"
+                          onClick={() => handlePrintShiftTicket(session.id)}
+                          aria-label="Imprimir ticket de cierre"
+                          className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-base bg-secondary text-primary transition-colors hover:bg-subtle"
+                        >
+                          <Printer size={15} aria-hidden="true" />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingSessionDateId(session.id);
+                          setNewSessionDate(getLocalDateYMD(session.openedAt));
+                        }}
+                        aria-label="Editar fecha del turno"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-base bg-secondary text-amber-700 transition-colors hover:bg-subtle dark:text-amber-400"
+                      >
+                        <Calendar size={15} aria-hidden="true" />
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
           </div>
 
           {filteredCashSessions.length === 0 && (
@@ -1096,7 +1099,7 @@ export default function Reports() {
                   className={cn(
                     'inline-flex min-h-9 items-center rounded-lg px-3 py-1.5 font-black uppercase tracking-wide transition-colors',
                     discrepancyTypeFilter === filter.id
-                      ? 'bg-[#6535C5] text-white shadow-sm'
+                      ? 'bg-[var(--primary)] text-[var(--primary-fg)] shadow-sm'
                       : 'bg-subtle text-secondary hover:text-primary',
                   )}
                   style={{ fontSize: 11 }}
@@ -1139,30 +1142,30 @@ export default function Reports() {
 
                     <div className="flex flex-wrap items-center gap-1.5 sm:shrink-0 sm:justify-end">
                       {info.totalShortageBase > 0 && (
-                        <span className="rounded-lg border border-red-200 bg-red-50 px-2 py-0.5 text-[12px] font-black text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300">
+                        <span className="palmyra-pill bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300">
                           −{formatMoney(info.totalShortageBase)}
                         </span>
                       )}
                       {info.totalOverageBase > 0 && (
-                        <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[12px] font-black text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+                        <span className="palmyra-pill bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
                           +{formatMoney(info.totalOverageBase)}
                         </span>
                       )}
                       {info.deducted && (
-                        <span className="rounded-lg border border-base bg-subtle px-2 py-0.5 text-[11px] font-black uppercase text-secondary" title="Descuento aplicado al salario">
+                        <span className="palmyra-pill bg-subtle text-secondary" title="Descuento aplicado al salario">
                           Salario −{formatMoney(info.deductionAmount)}
                         </span>
                       )}
                       {info.auditStatus === 'resolved' ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-black uppercase text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
+                        <span className="palmyra-pill bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300">
                           <CheckCircle2 size={12} aria-hidden="true" /> Conciliado
                         </span>
                       ) : info.auditStatus === 'reviewed' ? (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2 py-0.5 text-[11px] font-black uppercase text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
+                        <span className="palmyra-pill bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
                           <Eye size={12} aria-hidden="true" /> Auditado
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-black uppercase text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
+                        <span className="palmyra-pill bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300">
                           <Clock size={12} aria-hidden="true" /> Pendiente
                         </span>
                       )}
@@ -1227,7 +1230,7 @@ export default function Reports() {
                   className={cn(
                     "min-h-11 sm:min-h-0 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer",
                     movementTypeFilter === f.id
-                      ? "bg-[#6535C5] text-white shadow-xs"
+                      ? "bg-[var(--primary)] text-[var(--primary-fg)] shadow-xs"
                       : "bg-subtle text-secondary hover:text-primary"
                   )}
                 >
@@ -1257,8 +1260,8 @@ export default function Reports() {
 
           {/* Movements Table */}
           <div className="bg-secondary rounded-2xl shadow-xs border border-base overflow-hidden">
-            <div className="overflow-x-auto">
-              <table aria-label="Movimientos detallados de caja" className="w-full text-left border-collapse">
+            <div className="hidden md:block overflow-x-auto">
+              <table aria-label="Movimientos detallados de caja" className="w-full min-w-[720px] text-left border-collapse">
                 <thead>
                   <tr className="bg-subtle border-b border-base text-[8px] font-black text-muted uppercase tracking-[0.15em]">
                     <th scope="col" className="px-3 py-2.5">Fecha y Hora</th>
@@ -1373,6 +1376,83 @@ export default function Reports() {
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile list */}
+            <ul className="divide-y divide-base md:hidden">
+              {filteredDetailedMovements.map((m) => {
+                const dateObj = new Date(m.date);
+                const curr = currencies.find(c => c.code === m.currencyCode);
+                const rate = curr?.rateToBase || 1;
+                const cupAmount = m.amount * rate;
+                return (
+                  <li key={m.id} className="space-y-2 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[11px] font-bold text-primary">
+                            {dateObj.toLocaleDateString('es-CU', { timeZone: 'America/Havana', day: '2-digit', month: '2-digit', year: 'numeric' })}
+                            {' '}
+                            <span className="font-mono text-[9px] text-muted">
+                              {dateObj.toLocaleTimeString('es-CU', { timeZone: 'America/Havana', hour: '2-digit', minute: '2-digit' })}
+                            </span>
+                          </span>
+                          <span className="rounded border border-base bg-subtle px-1.5 py-0.5 text-[10px] font-black tracking-wider text-secondary">
+                            {m.turnLabel}
+                          </span>
+                          <span
+                            className={cn(
+                              "palmyra-pill",
+                              m.type === 'income'
+                                ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+                                : "bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300"
+                            )}
+                          >
+                            {m.type === 'income' ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+                            {m.type === 'income' ? 'Ingreso' : 'Egreso'}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[12px] font-black uppercase text-primary">{m.workerName}</p>
+                        <p className="text-[11px] font-bold uppercase text-muted">{m.branchName}</p>
+                        <p className="mt-0.5 break-words text-[11px] font-bold text-secondary">{m.description}</p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className={cn(
+                          "whitespace-nowrap font-mono text-[13px] font-black tabular-nums",
+                          m.type === 'income' ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
+                        )}>
+                          {m.type === 'income' ? '+' : '-'}{formatMoney(m.amount, m.currencyCode)}
+                        </p>
+                        <p className="whitespace-nowrap text-[10px] font-bold text-muted">
+                          {formatMoney(cupAmount, baseCurrency.code)}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setSelectedMovementDetail(m)}
+                        title="Ver Detalle del Movimiento"
+                        className="inline-flex min-h-9 flex-1 items-center justify-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 text-[11px] font-black uppercase text-violet-700 transition-all active:scale-95 dark:border-violet-900/50 dark:bg-violet-950/50 dark:text-violet-300"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        Detalle
+                      </button>
+                      <button
+                        onClick={() => handlePrintCashMovementTicket(m)}
+                        title="Imprimir Vale de Movimiento (58mm)"
+                        className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-base bg-subtle text-primary transition-all active:scale-95"
+                      >
+                        <Printer className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+              {filteredDetailedMovements.length === 0 && (
+                <li className="px-6 py-12 text-center text-muted text-[10px] font-bold uppercase">
+                  No hay movimientos de caja registrados para el filtro seleccionado.
+                </li>
+              )}
+            </ul>
           </div>
         </div>
       )}
@@ -1444,8 +1524,8 @@ export default function Reports() {
 
           {/* Transfers Table */}
           <div className="bg-secondary rounded-2xl shadow-xs border border-base overflow-hidden">
-            <div className="overflow-x-auto">
-              <table aria-label="Transferencias entre sucursales" className="w-full text-left border-collapse">
+            <div className="hidden md:block overflow-x-auto">
+              <table aria-label="Transferencias entre sucursales" className="w-full min-w-[720px] text-left border-collapse">
                 <thead>
                   <tr className="bg-subtle border-b border-base text-[8px] font-black text-muted uppercase tracking-[0.15em]">
                     <th scope="col" className="px-3 py-2.5">Fecha y Hora</th>
@@ -1540,6 +1620,64 @@ export default function Reports() {
                 </tbody>
               </table>
             </div>
+
+            {/* Mobile list */}
+            <ul className="divide-y divide-base md:hidden">
+              {filteredTransfers.map((t) => {
+                const dateObj = new Date(t.date);
+                const fromBranch = branches.find(b => b.id === t.fromBranchId);
+                const toBranch = branches.find(b => b.id === t.toBranchId);
+                const worker = users.find(u => u.id === t.userId);
+                const workerName = worker?.name || 'Sistema';
+                return (
+                  <li key={t.id} className="space-y-2 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-[12px] font-black uppercase text-primary">{t.productName}</p>
+                        {t.variantLabel && (
+                          <p className="text-[10px] font-bold uppercase text-muted">Variante: {t.variantLabel}</p>
+                        )}
+                        <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] font-bold uppercase">
+                          <span className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-amber-700 dark:border-amber-900/40 dark:bg-amber-950/40 dark:text-amber-300">
+                            {fromBranch?.name || t.fromBranchName || 'Origen'}
+                          </span>
+                          <ArrowRight className="h-3 w-3 shrink-0 text-muted" />
+                          <span className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/40 dark:text-emerald-300">
+                            {toBranch?.name || t.toBranchName || 'Destino'}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-[11px] font-medium text-muted">
+                          {dateObj.toLocaleDateString('es-CU', { timeZone: 'America/Havana', day: '2-digit', month: '2-digit', year: 'numeric' })}
+                          {' '}
+                          <span className="font-mono text-[9px]">
+                            {dateObj.toLocaleTimeString('es-CU', { timeZone: 'America/Havana', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                          {' '}· {workerName}
+                        </p>
+                      </div>
+                      <span className="shrink-0 rounded border border-base bg-subtle px-2 py-0.5 text-[11px] font-black text-secondary">
+                        {t.quantity} uds
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        onClick={() => setSelectedTransferModal(t)}
+                        title="Ver Detalle de Transferencia"
+                        className="inline-flex min-h-9 flex-1 items-center justify-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 text-[11px] font-black uppercase text-violet-700 transition-all active:scale-95 dark:border-violet-900/50 dark:bg-violet-950/50 dark:text-violet-300"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        Detalle
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+              {filteredTransfers.length === 0 && (
+                <li className="px-6 py-12 text-center text-muted text-[10px] font-bold uppercase">
+                  No hay transferencias de inventario registradas para el filtro seleccionado.
+                </li>
+              )}
+            </ul>
           </div>
         </div>
       )}
@@ -1580,7 +1718,7 @@ export default function Reports() {
       {/* Modal: Eliminar turno completo (motivo auditado + reposición de stock) */}
       {shiftVoidTarget && (
         <div
-          className="fixed inset-0 z-[95] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm animate-in fade-in duration-150"
+          className="palmyra-overlay z-[var(--z-confirm)] flex items-center justify-center p-4"
           role="presentation"
           onMouseDown={event => {
             if (event.target === event.currentTarget && !isVoidingShift) setShiftVoidTarget(null);
@@ -1590,7 +1728,7 @@ export default function Reports() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="void-shift-title"
-            className="w-full max-w-md overflow-hidden rounded-3xl border border-base bg-secondary shadow-2xl"
+            className="palmyra-modal-panel palmyra-mobile-modal w-full max-w-md"
           >
             <div className="flex items-start gap-2.5 border-b border-base bg-rose-50/60 px-4 py-3.5 dark:bg-rose-950/30">
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
@@ -1702,10 +1840,10 @@ export default function Reports() {
 
       {/* Modal: Editar fecha del turno */}
       {editingSessionDateId && (
-        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-slate-950/60 p-4" role="presentation" onMouseDown={(event) => {
+        <div className="palmyra-overlay z-[var(--z-modal)] flex items-center justify-center p-4" role="presentation" onMouseDown={(event) => {
           if (event.target === event.currentTarget && !isUpdatingSessionDate) setEditingSessionDateId(null);
         }}>
-          <section className="w-full max-w-md rounded-2xl border border-base bg-secondary p-5 shadow-2xl" role="dialog" aria-modal="true" aria-labelledby="edit-session-date-title">
+          <section className="palmyra-modal-panel palmyra-mobile-modal w-full max-w-md p-5" role="dialog" aria-modal="true" aria-labelledby="edit-session-date-title">
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
                 <h3 id="edit-session-date-title" className="text-sm font-black text-primary">Editar fecha del turno</h3>

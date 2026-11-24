@@ -27,6 +27,7 @@ import { POSClosurePrintArea } from "../components/pos/POSClosurePrintArea";
 import { getAuthorizedWarehouseIds, getSingleAuthorizedWarehouseId, getWarehouseId } from "../modules/warehouse/warehouseScope";
 import { pullOpenCashSessionsFromSupabase } from "../services/supabaseSync";
 import { calculateExpectedSessionBalances } from "../modules/pos/utils/cashMath";
+import { buildDiscrepancyDetails, calculateExpectedCashBase, hasRealDifference, round6, shortageBaseAtClose } from "../services/cash/expectedCash";
 import { aggregateTransferPayments, buildTransactionTicketId, finalizeCheckoutPayments } from '../modules/pos/utils/checkoutUtils';
 import { rememberOfflinePosCredential, verifyOfflinePosCredential, rememberOfflinePosResumeGrant, verifyOfflinePosResumeGrant } from "../services/offlinePosAuth";
 import { findSessionEmployeeUser } from "../services/employeeCompensation";
@@ -679,7 +680,6 @@ export default function POS() {
   const baseCurrency = getBaseCurrency();
   const productById = React.useMemo(() => new Map((products || []).map(product => [product.id, product])), [products]);
   const userById = React.useMemo(() => new Map((users || []).map(user => [user.id, user])), [users]);
-  const currencyByCode = React.useMemo(() => new Map((currencies || []).map(currency => [currency.code, currency])), [currencies]);
 
   // Las liquidaciones de empleados se expresan siempre en CUP/MN, independientemente de la moneda base del POS.
   const formatSalaryCUP = (value: number) => `${Math.round(Number(value) || 0).toLocaleString('es-ES')} CUP`;
@@ -743,13 +743,11 @@ export default function POS() {
   }, [currentSession, activeTransactions, currentBranchId, productById, userById, companyCompensation]);
 
   const totalExpectedToDeliver = React.useMemo(() => {
-    return expectedBalances.reduce((sum, line) => {
-      const rate = line.currencyCode === baseCurrency.code
-        ? 1
-        : Number(line.exchangeRate || currencyByCode.get(line.currencyCode)?.rateToBase || 1);
-      return sum + Number(line.amount || 0) * rate;
-    }, 0);
-  }, [expectedBalances, baseCurrency, currencyByCode]);
+    // Mismo número que graba closeSession y que contrasta el RPC de cierre.
+    return currentSession
+      ? calculateExpectedCashBase(currentSession, activeTransactions, currencies)
+      : 0;
+  }, [currentSession, activeTransactions, currencies]);
 
 
   const handleReturnItem = async () => {
@@ -802,13 +800,13 @@ export default function POS() {
       let hasDiscrepancy = false;
       expectedBalances.forEach(eb => {
         const actual = finalBalances.find(fb => fb.currencyCode === eb.currencyCode && fb.method === eb.method)?.amount || 0;
-        if (Math.abs(actual - eb.amount) > 0.01) {
+        if (hasRealDifference(actual - eb.amount)) {
           hasDiscrepancy = true;
         }
       });
       finalBalances.forEach(fb => {
         const exp = expectedBalances.find(eb => fb.currencyCode === eb.currencyCode && fb.method === eb.method)?.amount || 0;
-        if (Math.abs(fb.amount - exp) > 0.01) {
+        if (hasRealDifference(fb.amount - exp)) {
           hasDiscrepancy = true;
         }
       });
@@ -842,9 +840,14 @@ export default function POS() {
         }
       }
 
-      const expectedCashBase = expectedBalances
-        .filter(line => line.method === 'cash')
-        .reduce((sum, line) => sum + (Number(line.amount) || 0) * (Number(line.exchangeRate) || getSafeRateToBase(line.currencyCode) || 1), 0);
+      // Esperado en efectivo (moneda base) con la MISMA función que usa
+      // closeSession y que contrasta el RPC de cierre: cualquier divergencia
+      // entre ambas la rechaza el servidor con cash_difference_mismatch.
+      const expectedCashBase = calculateExpectedCashBase(
+        { ...currentSession, closedAt: finalClosingDate },
+        activeTransactions,
+        currencies
+      );
 
       const sessionToClose: CashRegisterSession = {
         ...currentSession,
@@ -863,7 +866,9 @@ export default function POS() {
         sessionWorkerName || currentSession.workerName,
         finalClosingDate,
         discrepancyDeduction,
-        { ...(sessionMeta || {}), expectedBalance: expectedCashBase },
+        // Sin override de expectedBalance: closeSession calcula y graba el
+        // esperado con la función unificada para que coincida con el RPC.
+        sessionMeta || {},
         companyCompensation
       );
 
@@ -894,53 +899,15 @@ export default function POS() {
 
   const confirmClose = async () => {
     if (currentSession) {
-      let totalDeduction = 0;
-      if (deductFromSalary) {
-        expectedBalances.forEach(eb => {
-          const actual = finalBalancesToClose.find(fb => fb.currencyCode === eb.currencyCode && fb.method === eb.method)?.amount || 0;
-          const diff = actual - eb.amount;
-          if (diff < 0) {
-            // Convert to base currency
-            const currency = currencies.find(c => c.code === eb.currencyCode);
-            totalDeduction += Math.abs(diff) * (currency?.rateToBase || 1);
-          }
-        });
-      }
+      // Descuadres con la fuente unificada: toda diferencia real cuenta
+      // (0.00 solo si es exactamente cero), incluidas las declaradas extra.
+      const discrepancyDetails = buildDiscrepancyDetails(expectedBalances, finalBalancesToClose);
 
-      // Build discrepancy details
-      const discrepancyDetails: {
-        currencyCode: string;
-        method: 'cash' | 'transfer';
-        expected: number;
-        actual: number;
-        difference: number;
-      }[] = [];
-
-      expectedBalances.forEach(eb => {
-        const actual = finalBalancesToClose.find(fb => fb.currencyCode === eb.currencyCode && fb.method === eb.method)?.amount || 0;
-        const diff = actual - eb.amount;
-        if (Math.abs(diff) > 0.01) {
-          discrepancyDetails.push({
-            currencyCode: eb.currencyCode,
-            method: eb.method as any,
-            expected: eb.amount,
-            actual,
-            difference: diff
-          });
-        }
-      });
-
-      finalBalancesToClose.forEach(fb => {
-        if (!expectedBalances.some(eb => eb.currencyCode === fb.currencyCode && eb.method === fb.method)) {
-          discrepancyDetails.push({
-            currencyCode: fb.currencyCode,
-            method: fb.method as any,
-            expected: 0,
-            actual: fb.amount,
-            difference: fb.amount
-          });
-        }
-      });
+      // Deducción salarial por faltante valorada con la tasa del cierre (la
+      // registrada en closingBalances), la misma que usa Reportes.
+      const totalDeduction = deductFromSalary
+        ? shortageBaseAtClose(discrepancyDetails, finalBalancesToClose, currencies)
+        : 0;
 
       const matchingProductsAnalysis = discrepancyDetails.map(dd => {
         const matchedProducts = products
@@ -1802,7 +1769,7 @@ export default function POS() {
     >
       {/* Global High-Priority Toast Overlay */}
       {(posError || posSuccess) && (
-        <div className="fixed top-2 sm:top-6 left-1/2 -translate-x-1/2 z-[200] w-[calc(100vw-1rem)] sm:w-full max-w-md min-w-0 px-0 sm:px-4 animate-in fade-in slide-in-from-top-4 duration-300">
+        <div className="fixed top-2 sm:top-6 left-1/2 -translate-x-1/2 z-[var(--z-toast)] w-[calc(100vw-1rem)] sm:w-full max-w-md min-w-0 px-0 sm:px-4 animate-in fade-in slide-in-from-top-4 duration-300">
           {posError && (
             <div className="bg-rose-600 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center justify-between gap-3 border border-rose-500">
               <div className="flex items-center gap-3">
@@ -1837,7 +1804,7 @@ export default function POS() {
       {showCheckoutModal && (
         <Suspense
           fallback={
-            <div className="pos-keyboard-overlay fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[80] flex items-center justify-center p-4">
+            <div className="pos-keyboard-overlay palmyra-overlay z-[var(--z-drawer)] flex items-center justify-center p-4">
               <div className="palmyra-mobile-modal keyboard-modal-surface bg-white dark:bg-slate-900 rounded-2xl p-5 shadow-2xl text-center text-[9px] font-bold text-slate-500">
                 Cargando cobro…
               </div>
@@ -1906,8 +1873,8 @@ export default function POS() {
                     <div className="space-y-2">
                       {expectedBalances.map(eb => {
                         const actual = finalBalancesToClose.find(fb => fb.currencyCode === eb.currencyCode && fb.method === eb.method)?.amount || 0;
-                        const diff = actual - eb.amount;
-                        if (Math.abs(diff) < 0.01) return null;
+                        const diff = round6(actual - eb.amount);
+                        if (!hasRealDifference(diff)) return null;
                         
                         return (
                           <div key={`${eb.currencyCode}-${eb.method}`} className="space-y-2 border-b border-slate-200 pb-2 last:border-0 last:pb-0">
@@ -2356,7 +2323,7 @@ export default function POS() {
             <div className="relative shrink-0">
               <ShoppingCart className="w-4 h-4 text-indigo-400" />
               {cart.length > 0 && (
-                <span className="absolute -top-1.5 -right-1.5 bg-rose-500 text-white text-[9px] font-black min-w-4 h-4 px-0.5 rounded-full flex items-center justify-center border border-slate-900">
+                <span className="palmyra-badge palmyra-badge-danger absolute -top-1.5 -right-1.5 border border-slate-900">
                   {cart.reduce((s, i) => s + i.quantity, 0)}
                 </span>
               )}
@@ -2377,7 +2344,7 @@ export default function POS() {
                   <ShoppingCart className="w-4 h-4" />
                 </div>
                 {cart.length > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-rose-500 text-white text-[9px] font-black min-w-4 h-4 px-0.5 rounded-full flex items-center justify-center border border-slate-900 animate-pulse">
+                  <span className="palmyra-badge palmyra-badge-danger absolute -top-1 -right-1 border border-slate-900 animate-pulse">
                     {cart.reduce((s, i) => s + i.quantity, 0)}
                   </span>
                 )}

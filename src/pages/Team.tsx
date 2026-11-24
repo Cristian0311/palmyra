@@ -274,6 +274,19 @@ export default function Team() {
     };
   }, [snapshot?.companyId, context?.companyId]);
 
+  // Escape cierra los diálogos flotantes de Equipo (el confirm de borrado tiene su propio manejo).
+  useEffect(() => {
+    if (!showForm && !showRoleForm && !accessInvite) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (showForm) setShowForm(false);
+      else if (showRoleForm) setShowRoleForm(false);
+      else if (accessInvite) setAccessInvite(null);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [showForm, showRoleForm, accessInvite]);
+
   const employeeLimit = Number((context?.subscription?.limits as any)?.employees || 0);
   // Una invitación sin aceptar no es un trabajador operativo, pero sí reserva
   // su plaza en el plan hasta que se cancele o caduque.
@@ -1167,7 +1180,7 @@ export default function Team() {
                       <MoreHorizontal className="w-4 h-4" />
                     </button>
                     {menuId === employee.id && (
-                      <div onClick={e => e.stopPropagation()} className="absolute right-0 top-12 z-30 w-56 bg-primary border border-base rounded-2xl shadow-2xl p-2">
+                      <div onClick={e => e.stopPropagation()} className="palmyra-popover absolute right-0 top-12 z-[var(--z-dropdown)] w-56 p-2">
                         <button onClick={() => openEdit(employee)} className="w-full px-3 py-2 text-left text-xs font-bold text-primary hover:bg-subtle rounded-xl flex items-center gap-2">
                           <Edit3 className="w-4 h-4" /> Editar empleado
                         </button>
@@ -1214,39 +1227,29 @@ export default function Team() {
       )}
 
       {showForm && (
-        <div className="fixed inset-0 z-[200] bg-slate-950/70 backdrop-blur-md p-3 sm:p-5 flex items-center justify-center" onClick={() => setShowForm(false)}>
-          <form onSubmit={submit} onClick={e => e.stopPropagation()} className="team-employee-modal w-full max-w-2xl bg-secondary border border-base rounded-[28px] shadow-2xl overflow-hidden">
-            <div className="team-employee-modal-head">
-              <div className="flex items-start gap-3 min-w-0">
-                {form.fullName.trim()
-                  ? <EmployeeAvatar name={form.fullName} seed={form.employeeCode || form.fullName} size="lg" className="shrink-0" />
-                  : <div className="team-employee-hero-icon" aria-hidden="true"><BriefcaseBusiness className="w-5 h-5" /></div>}
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="team-employee-kicker">{editing ? "Equipo · Configuración" : "Equipo · Alta segura"}</span>
-                    <span className="team-employee-status"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />Seguro y vinculado</span>
-                  </div>
-                  <h2 className="text-xl sm:text-2xl font-black text-primary tracking-tight mt-1">{editing ? editing.full_name : "Trabajador y acceso"}</h2>
-                  <p className="text-[11px] sm:text-xs text-muted mt-1.5 leading-5 max-w-xl">{editing
-                    ? "Pestaña Datos: ficha, rol y almacenes. Pestaña Acceso: contraseña del POS y enlace de un solo uso de este trabajador."
-                    : "Completa la ficha, define su operación y su contraseña POS. El acceso a otro equipo se entrega después con un enlace de un solo uso."}</p>
-                </div>
+        <div className="palmyra-overlay z-[var(--z-modal)] p-3 sm:p-5 flex items-center justify-center" onClick={() => setShowForm(false)}>
+          <form onSubmit={submit} onClick={e => e.stopPropagation()} className="team-emp-modal keyboard-modal-surface palmyra-modal-panel palmyra-mobile-modal w-full min-w-0">
+            <div className="team-emp-head">
+              <span className="team-emp-head-icon" aria-hidden="true"><UserRound className="h-4 w-4 sm:h-5 sm:w-5" /></span>
+              <div className="min-w-0 flex-1">
+                <p className="team-emp-kicker truncate">{editing ? "Equipo · Configuración" : "Equipo · Alta segura"}</p>
+                <h2 className="truncate">{editing ? editing.full_name : "Trabajador y acceso"}</h2>
               </div>
-              <button type="button" onClick={() => setShowForm(false)} className="w-10 h-10 rounded-2xl bg-subtle text-muted hover:text-primary hover:bg-primary border border-base flex items-center justify-center shrink-0 transition" aria-label="Cerrar formulario"><X className="w-4 h-4" /></button>
+              <button type="button" onClick={() => setShowForm(false)} className="team-emp-close" aria-label="Cerrar formulario"><X className="h-4 w-4" /></button>
             </div>
             {editing ? (
-              <div className="team-employee-tabs" role="tablist" aria-label="Secciones del trabajador">
+              <div className="team-emp-tabs" role="tablist" aria-label="Secciones del trabajador">
                 <button
                   type="button"
                   role="tab"
                   id="team-tab-datos"
                   aria-selected={formTab === 'datos'}
                   aria-controls="team-panel-datos"
-                  className={cn("team-employee-tab", formTab === 'datos' && "is-active")}
+                  className={cn("team-emp-tab", formTab === 'datos' && "is-active")}
                   onClick={() => setFormTab('datos')}
                   disabled={busy}
                 >
-                  <UserRound className="w-4 h-4" /> Datos
+                  <UserRound className="h-3.5 w-3.5 shrink-0" /> Datos
                 </button>
                 <button
                   type="button"
@@ -1254,104 +1257,119 @@ export default function Team() {
                   id="team-tab-acceso"
                   aria-selected={formTab === 'acceso'}
                   aria-controls="team-panel-acceso"
-                  className={cn("team-employee-tab", formTab === 'acceso' && "is-active")}
+                  className={cn("team-emp-tab", formTab === 'acceso' && "is-active")}
                   onClick={() => setFormTab('acceso')}
                   disabled={busy}
                 >
-                  <LockKeyhole className="w-4 h-4" /> Acceso
+                  <LockKeyhole className="h-3.5 w-3.5 shrink-0" /> Acceso
                 </button>
               </div>
             ) : (
-              <div className="team-employee-stepbar" aria-label="Pasos para crear trabajador">
-                {[
-                  [1,"Información","Datos personales"],
-                  [2,"Operación","Rol y almacenes"],
-                  [3,"Acceso","Contraseña POS"]
-                ].map(([step,label,sub]) => {
-                  const n = step as 1|2|3;
-                  return <React.Fragment key={n}>
-                    <button type="button" className={cn("team-step-item", formStep===n && "team-step-active", formStep>n && "team-step-done")} onClick={() => setFormStep(n)} disabled={busy}>
-                      <span>{formStep>n ? <Check className="w-3 h-3" /> : String(n).padStart(2,"0")}</span>
-                      <div><strong>{label}</strong><small>{sub}</small></div>
+              <div className="team-emp-steps" aria-label="Pasos para crear trabajador">
+                {([["Información", "Datos personales"], ["Operación", "Rol y almacenes"], ["Acceso", "Contraseña POS"]] as [string, string][]).map(([label, sub], index) => {
+                  const n = (index + 1) as 1 | 2 | 3;
+                  return (
+                    <button key={n} type="button" aria-current={formStep === n ? "step" : undefined} className={cn("team-emp-step", formStep === n && "is-active", formStep > n && "is-done")} onClick={() => setFormStep(n)} disabled={busy}>
+                      <span className="team-emp-step-dot">{formStep > n ? <Check className="h-3 w-3" /> : n}</span>
+                      <span className="min-w-0"><strong>{label}</strong><small>{sub}</small></span>
                     </button>
-                    {n<3 && <div className={cn("team-step-line", formStep>n && "is-complete")} />}
-                  </React.Fragment>;
+                  );
                 })}
               </div>
             )}
-            <div className="team-employee-modal-body">
+            <div className="team-emp-body keyboard-safe-scroll">
               {/* Los errores de validación deben verse dentro del modal: el
                   aviso de la página queda detrás del fondo fijo. */}
               {error && (
-                <div role="alert" className="mb-3 flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-3 text-xs font-bold leading-5 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300">
-                  <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <div role="alert" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-[11px] font-bold leading-4 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300">
+                  <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                   <span className="min-w-0">{error}</span>
                 </div>
               )}
-              <section id="team-panel-datos" className={cn("team-form-section", !infoSectionVisible && "team-form-hidden")} data-section="employee-info" aria-hidden={!infoSectionVisible}>
-                <div className="team-form-section-head"><div className="team-form-section-icon"><UserRound className="w-4 h-4" /></div><div><h3>Información del trabajador</h3><p>Identifica a la persona que formará parte del equipo.</p></div></div>
-                <div className="grid sm:grid-cols-2 gap-3">
-                  <label className="team-field-wrap sm:col-span-2"><span className="team-field-label">Nombre completo <b>*</b></span><span className="team-field"><span className="team-field-icon"><UserRound className="w-4 h-4" /></span><input value={form.fullName} onChange={e => setForm({...form, fullName:e.target.value})} disabled={busy} className="team-field-input" placeholder="Ej. María González Pérez" autoComplete="name" /></span></label>
-                  <label className="team-field-wrap"><span className="team-field-label">Código de empleado <b>*</b></span><span className="team-field"><span className="team-field-icon"><Hash className="w-4 h-4" /></span><input value={form.employeeCode} onChange={e => setForm({...form, employeeCode:e.target.value})} disabled={busy} className="team-field-input" placeholder="Ej. EMP-001" autoComplete="off" /></span></label>
+              <section id="team-panel-datos" className={cn("team-emp-section", !infoSectionVisible && "hidden")} data-section="employee-info" aria-hidden={!infoSectionVisible}>
+                <div className="mb-3 flex items-center gap-2.5 min-w-0">
+                  <span className="team-emp-section-icon"><UserRound className="h-4 w-4" /></span>
+                  <div className="min-w-0">
+                    <h3 className="text-xs font-black text-primary leading-tight">Información del trabajador</h3>
+                    <p className="mt-0.5 text-[11px] text-muted leading-4">Identifica a la persona que formará parte del equipo.</p>
+                  </div>
+                </div>
+                <div className="grid gap-2.5 sm:grid-cols-2">
+                  <label className="team-emp-field sm:col-span-2"><span className="team-emp-label">Nombre completo <b>*</b></span><span className="team-emp-control"><span className="team-emp-control-icon"><UserRound className="h-4 w-4" /></span><input value={form.fullName} onChange={e => setForm({...form, fullName:e.target.value})} disabled={busy} className="team-emp-input" placeholder="Ej. María González Pérez" autoComplete="name" /></span></label>
+                  <label className="team-emp-field"><span className="team-emp-label">Código de empleado <b>*</b></span><span className="team-emp-control"><span className="team-emp-control-icon"><Hash className="h-4 w-4" /></span><input value={form.employeeCode} onChange={e => setForm({...form, employeeCode:e.target.value})} disabled={busy} className="team-emp-input" placeholder="Ej. EMP-001" autoComplete="off" /></span></label>
                   {compensationSettings.mode === 'fixed_product' ? (
-                    <label className="team-field-wrap"><span className="team-field-label">Salario base</span><span className="team-field"><span className="team-field-icon"><WalletCards className="w-4 h-4" /></span><input type="number" min="0" step="0.01" inputMode="decimal" value={form.baseSalary} onChange={e => setForm({...form, baseSalary:e.target.value})} disabled={busy} className="team-field-input" placeholder="0.00" /></span></label>
+                    <label className="team-emp-field"><span className="team-emp-label">Salario base</span><span className="team-emp-control"><span className="team-emp-control-icon"><WalletCards className="h-4 w-4" /></span><input type="number" min="0" step="0.01" inputMode="decimal" value={form.baseSalary} onChange={e => setForm({...form, baseSalary:e.target.value})} disabled={busy} className="team-emp-input" placeholder="0.00" /></span></label>
                   ) : (
-                    <div className="team-field-wrap">
-                      <span className="team-field-label">Modalidad de pago</span>
-                      <div className="team-field bg-violet-50/70 dark:bg-violet-950/25 border-violet-100 dark:border-violet-900/40"><span className="team-field-icon"><WalletCards className="w-4 h-4" /></span><span className="team-field-input text-violet-700 dark:text-violet-300 font-black">Porcentaje sobre el total de la venta · {Number(compensationSettings.percentRate || 0)}%</span></div>
+                    <div className="team-emp-field">
+                      <span className="team-emp-label">Modalidad de pago</span>
+                      <span className="team-emp-control"><span className="team-emp-control-icon"><WalletCards className="h-4 w-4" /></span><span className="team-emp-input flex items-center truncate text-[var(--primary)]">Porcentaje sobre el total de la venta · {Number(compensationSettings.percentRate || 0)}%</span></span>
                     </div>
                   )}
                 </div>
               </section>
-              <section className={cn("team-form-section", !operationSectionVisible && "team-form-hidden")} data-section="employee-operation" aria-hidden={!operationSectionVisible}>
-                <div className="team-form-section-head"><div className="team-form-section-icon"><ShieldCheck className="w-4 h-4" /></div><div><h3>Rol y almacenes</h3><p>Define dónde trabaja y qué nivel de operación tendrá.</p></div></div>
-                <label className="team-field-wrap"><span className="team-field-label">Rol <b>*</b></span><span className="team-field"><span className="team-field-icon"><ShieldCheck className="w-4 h-4" /></span><select value={form.roleId} onChange={e => setForm({...form, roleId:e.target.value})} disabled={busy || availableRoles.length===0} className="team-field-input team-field-select">{availableRoles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}</select></span>{!canManageRoles && <span className="team-field-help"><Info className="w-3.5 h-3.5" />Solo puedes asignar el rol operativo estándar.</span>}</label>
-                <div className="mt-4">
-                  <div className="flex items-end justify-between gap-3 mb-2"><div><span className="team-field-label">Almacenes permitidos <b>*</b></span><span className="team-field-subtext">Selecciona uno o varios almacenes a los que podrá acceder.</span></div><span className="team-selection-count">{form.warehouseIds.length} seleccionado{form.warehouseIds.length === 1 ? "" : "s"}</span></div>
-                  <div className="grid sm:grid-cols-2 gap-2">
+              <section className={cn("team-emp-section", !operationSectionVisible && "hidden")} data-section="employee-operation" aria-hidden={!operationSectionVisible}>
+                <div className="mb-3 flex items-center gap-2.5 min-w-0">
+                  <span className="team-emp-section-icon"><ShieldCheck className="h-4 w-4" /></span>
+                  <div className="min-w-0">
+                    <h3 className="text-xs font-black text-primary leading-tight">Rol y almacenes</h3>
+                    <p className="mt-0.5 text-[11px] text-muted leading-4">Define dónde trabaja y qué nivel de operación tendrá.</p>
+                  </div>
+                </div>
+                <label className="team-emp-field"><span className="team-emp-label">Rol <b>*</b></span><span className="team-emp-control"><span className="team-emp-control-icon"><ShieldCheck className="h-4 w-4" /></span><select value={form.roleId} onChange={e => setForm({...form, roleId:e.target.value})} disabled={busy || availableRoles.length===0} className="team-emp-input team-emp-select">{availableRoles.map(role => <option key={role.id} value={role.id}>{role.name}</option>)}</select></span>{!canManageRoles && <span className="team-emp-help"><Info className="h-3.5 w-3.5 shrink-0" />Solo puedes asignar el rol operativo estándar.</span>}</label>
+                <div className="mt-3">
+                  <div className="mb-2 flex items-end justify-between gap-3 min-w-0">
+                    <div className="min-w-0"><span className="team-emp-label block">Almacenes permitidos <b>*</b></span><span className="team-emp-help !mt-0.5">Uno o varios almacenes a los que podrá acceder.</span></div>
+                    <span className="team-emp-count">{form.warehouseIds.length} seleccionado{form.warehouseIds.length === 1 ? "" : "s"}</span>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
                     {(snapshot?.warehouses || []).filter(warehouse => warehouse.active).map(warehouse => {
                       const selected = form.warehouseIds.includes(warehouse.id);
-                      return <label key={warehouse.id} className={cn("team-warehouse-option", selected && "is-selected")}><input type="checkbox" checked={selected} onChange={() => toggleWarehouse(warehouse.id)} disabled={busy} className="sr-only" /><span className="team-warehouse-icon"><Warehouse className="w-4 h-4" /></span><span className="min-w-0 flex-1"><span className="team-warehouse-name">{warehouse.name}</span>{snapshot?.warehouses[0]?.id === warehouse.id && <span className="team-warehouse-main">Principal sugerido</span>}</span><span className={cn("team-check", selected && "is-selected")}>{selected && <Check className="w-3.5 h-3.5" />}</span></label>;
+                      return <label key={warehouse.id} className={cn("team-emp-warehouse", selected && "is-selected")}><input type="checkbox" checked={selected} onChange={() => toggleWarehouse(warehouse.id)} disabled={busy} className="sr-only" /><Warehouse className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1 truncate text-[11px] sm:text-xs font-bold text-primary">{warehouse.name}</span>{snapshot?.warehouses[0]?.id === warehouse.id && <span className="team-emp-warehouse-main">Principal</span>}<span className={cn("team-emp-check", selected && "is-selected")}>{selected && <Check className="h-3.5 w-3.5" />}</span></label>;
                     })}
                   </div>
-                  {!(snapshot?.warehouses || []).some(warehouse => warehouse.active) && <div className="team-empty-inline"><Warehouse className="w-4 h-4" />No hay almacenes activos disponibles. Crea uno en Configuración antes de asignar acceso.</div>}
+                  {!(snapshot?.warehouses || []).some(warehouse => warehouse.active) && <div className="team-emp-note"><Warehouse className="h-4 w-4 shrink-0" />No hay almacenes activos disponibles. Crea uno en Configuración antes de asignar acceso.</div>}
                 </div>
               </section>
-              <section id="team-panel-acceso" className={cn("team-form-section team-access-section is-enabled", !accessSectionVisible && "team-form-hidden")} data-section="employee-access" aria-hidden={!accessSectionVisible}>
-                <div className="team-form-section-head"><div className="team-form-section-icon"><LockKeyhole className="w-4 h-4" /></div><div className="min-w-0"><h3>Acceso al POS</h3><p>El trabajador opera con su nombre, su código y esta contraseña. No hay correo ni cuenta web.</p></div></div>
-                <div className="team-access-card">
-                  <div className="flex items-start gap-3"><div className="team-access-icon"><LockKeyhole className="w-4 h-4" /></div><div className="min-w-0 flex-1"><p className="text-xs font-black text-primary">Contraseña del POS</p><p className="text-[10px] sm:text-[11px] text-muted leading-5 mt-0.5">Se guarda protegida y se usa para seleccionar y reanudar su turno en el POS. Para entrar desde otro equipo o la APK, genera después su enlace de acceso.</p></div></div>
-                  <label className="team-field-wrap mt-3"><span className="team-field-label">{editing ? "Nueva contraseña del POS" : "Contraseña del POS"} <b>{posPasswordRequired ? "*" : ""}</b></span><span className="team-field"><span className="team-field-icon"><LockKeyhole className="w-4 h-4" /></span><input type={showPosPassword ? "text" : "password"} value={form.posPassword} onChange={e => setForm({...form,posPassword:e.target.value})} disabled={busy} className="team-field-input" placeholder={posPasswordRequired ? "Mínimo 6 caracteres" : "Vacío = conservar la contraseña actual"} autoComplete="new-password" /><button type="button" onClick={() => setShowPosPassword(value => !value)} disabled={busy} aria-label={showPosPassword ? "Ocultar contraseña" : "Mostrar contraseña"} className="px-2 mr-1 text-muted hover:text-primary" title={showPosPassword ? "Ocultar contraseña" : "Mostrar contraseña"}>{showPosPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}</button></span></label>
-                  <div className="team-access-off"><Info className="w-4 h-4 shrink-0" />{posPasswordRequired ? "Define una contraseña POS de al menos 6 caracteres; es obligatoria para operar. Puedes verla con el icono del ojo mientras escribes." : "La contraseña actual no se puede recuperar porque se guarda como hash seguro. Déjalo vacío para conservarla o escribe una nueva."}</div>
+              <section id="team-panel-acceso" className={cn("team-emp-section", !accessSectionVisible && "hidden")} data-section="employee-access" aria-hidden={!accessSectionVisible}>
+                <div className="mb-3 flex items-center gap-2.5 min-w-0">
+                  <span className="team-emp-section-icon"><LockKeyhole className="h-4 w-4" /></span>
+                  <div className="min-w-0">
+                    <h3 className="text-xs font-black text-primary leading-tight">Acceso al POS</h3>
+                    <p className="mt-0.5 text-[11px] text-muted leading-4">El trabajador opera con su nombre, su código y esta contraseña.</p>
+                  </div>
+                </div>
+                <div className="team-emp-access">
+                  <label className="team-emp-field"><span className="team-emp-label">{editing ? "Nueva contraseña del POS" : "Contraseña del POS"} <b>{posPasswordRequired ? "*" : ""}</b></span><span className="team-emp-control"><span className="team-emp-control-icon"><LockKeyhole className="h-4 w-4" /></span><input type={showPosPassword ? "text" : "password"} value={form.posPassword} onChange={e => setForm({...form,posPassword:e.target.value})} disabled={busy} className="team-emp-input" placeholder={posPasswordRequired ? "Mínimo 6 caracteres" : "Vacío = conservar la contraseña actual"} autoComplete="new-password" /><button type="button" onClick={() => setShowPosPassword(value => !value)} disabled={busy} aria-label={showPosPassword ? "Ocultar contraseña" : "Mostrar contraseña"} className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted hover:text-primary" title={showPosPassword ? "Ocultar contraseña" : "Mostrar contraseña"}>{showPosPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></span></label>
+                  <p className="team-emp-note"><Info className="h-3.5 w-3.5 shrink-0" />{posPasswordRequired ? "Define una contraseña POS de al menos 6 caracteres; es obligatoria para operar. Puedes verla con el icono del ojo mientras escribes." : "La contraseña actual no se puede recuperar porque se guarda como hash seguro. Déjalo vacío para conservarla o escribe una nueva."}</p>
                 </div>
                 {editing && (
-                  <div className="team-access-card team-device-link-card">
-                    <div className="flex items-start gap-3">
-                      <div className="team-access-icon"><Link2 className="w-4 h-4" /></div>
-                      <div className="min-w-0 flex-1">
+                  <div className="team-emp-access mt-2.5">
+                    <div className="flex items-start gap-2.5 min-w-0">
+                      <span className="team-emp-section-icon"><Link2 className="h-4 w-4" /></span>
+                      <div className="min-w-0">
                         <p className="text-xs font-black text-primary">Enlace de acceso de un solo uso</p>
-                        <p className="text-[10px] sm:text-[11px] text-muted leading-5 mt-0.5">Cada trabajador tiene su propio enlace, distinto al del resto del equipo. Genéralo aquí y entrégalo por WhatsApp o en mano para que entre desde otro equipo o la APK; no se envía por correo.</p>
+                        <p className="mt-0.5 text-[11px] text-muted leading-4">Cada trabajador tiene su propio enlace. Genéralo y entrégalo por WhatsApp o en mano; no se envía por correo.</p>
                       </div>
                     </div>
                     {formAccessLink && (
-                      <label className="team-field-wrap mt-3">
-                        <span className="team-field-label">Enlace de {editing.full_name}</span>
-                        <span className="team-field">
-                          <span className="team-field-icon"><Link2 className="w-4 h-4" /></span>
-                          <input readOnly value={formAccessLink} onFocus={event => event.currentTarget.select()} className="team-field-input" aria-label="Enlace de acceso generado" />
+                      <label className="team-emp-field mt-3">
+                        <span className="team-emp-label">Enlace de {editing.full_name}</span>
+                        <span className="team-emp-control">
+                          <span className="team-emp-control-icon"><Link2 className="h-4 w-4" /></span>
+                          <input readOnly value={formAccessLink} onFocus={event => event.currentTarget.select()} className="team-emp-input" aria-label="Enlace de acceso generado" />
                         </span>
                       </label>
                     )}
-                    <div className="team-device-link-actions">
-                      <label className="team-field-wrap min-w-[150px] flex-1">
-                        <span className="team-field-label">Caducidad del enlace</span>
-                        <span className="team-field">
-                          <span className="team-field-icon"><Clock className="w-4 h-4" /></span>
+                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
+                      <label className="team-emp-field min-w-0 flex-1">
+                        <span className="team-emp-label">Caducidad del enlace</span>
+                        <span className="team-emp-control">
+                          <span className="team-emp-control-icon"><Clock className="h-4 w-4" /></span>
                           <select
                             value={accessLinkDays}
                             onChange={e => setAccessLinkDays(Number(e.target.value))}
                             disabled={formAccessBusy || busy}
-                            className="team-field-input team-field-select"
+                            className="team-emp-input team-emp-select"
                             aria-label="Caducidad del enlace de acceso"
                           >
                             <option value={1}>Válido 1 día</option>
@@ -1362,50 +1380,45 @@ export default function Team() {
                           </select>
                         </span>
                       </label>
-                      <button type="button" onClick={() => void generateFormAccessLink(editing)} disabled={formAccessBusy || busy} className="team-footer-primary">
-                        {formAccessBusy
-                          ? <><RefreshCw className="w-4 h-4 animate-spin" /> Generando…</>
-                          : <><Link2 className="w-4 h-4" /> {formAccessLink ? "Generar otro enlace" : "Generar enlace de acceso"}</>}
-                      </button>
-                      {formAccessLink && (
-                        <button type="button" onClick={() => void copyAccessLink(formAccessLink)} className="team-footer-secondary">
-                          {copiedLink ? <><Check className="w-4 h-4" /> Copiado</> : <><Copy className="w-4 h-4" /> Copiar enlace</>}
+                      <div className="flex flex-col gap-2 min-w-0 sm:flex-row">
+                        <button type="button" onClick={() => void generateFormAccessLink(editing)} disabled={formAccessBusy || busy} className="team-emp-btn team-emp-btn-primary">
+                          {formAccessBusy
+                            ? <><RefreshCw className="h-4 w-4 animate-spin" /> Generando…</>
+                            : <><Link2 className="h-4 w-4" /> {formAccessLink ? "Generar otro enlace" : "Generar enlace"}</>}
                         </button>
-                      )}
+                        {formAccessLink && (
+                          <button type="button" onClick={() => void copyAccessLink(formAccessLink)} className="team-emp-btn team-emp-btn-secondary">
+                            {copiedLink ? <><Check className="h-4 w-4" /> Copiado</> : <><Copy className="h-4 w-4" /> Copiar</>}
+                          </button>
+                        )}
+                      </div>
                     </div>
-                    <p className="team-device-link-note"><Clock className="w-3.5 h-3.5" aria-hidden="true" /> {accessLinkDays <= 0 ? "Sin caducidad" : `Válido ${accessLinkDays} ${accessLinkDays === 1 ? "día" : "días"}`} · un solo uso · personal e intransferible</p>
+                    <p className="team-emp-note team-emp-note-warn"><Clock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {accessLinkDays <= 0 ? "Sin caducidad" : `Válido ${accessLinkDays} ${accessLinkDays === 1 ? "día" : "días"}`} · un solo uso · personal e intransferible</p>
                     <span className="sr-only" aria-live="polite">{copiedLink ? "Enlace de acceso copiado." : ""}</span>
-                    {formAccessError && <div className="team-access-off"><Info className="w-4 h-4 shrink-0" />{formAccessError}</div>}
+                    {formAccessError && <div className="team-emp-note"><Info className="h-3.5 w-3.5 shrink-0" />{formAccessError}</div>}
                   </div>
                 )}
               </section>
             </div>
-            <div className="team-employee-modal-footer">
-              <div className="flex items-start gap-2 min-w-0"><div className="team-footer-icon"><Info className="w-3.5 h-3.5" /></div><p>{editing
-                ? formTab === 'datos'
-                  ? "Revisa el nombre, el rol y los almacenes. Un solo botón guarda toda la ficha."
-                  : "La contraseña POS es opcional al editar. El enlace de acceso se genera solo cuando lo necesitas y es personal."
-                : formStep === 1 ? "Empieza por identificar al trabajador. Podrás revisar todo antes de guardar." : formStep === 2 ? "Define el rol y los almacenes. El trabajador solo tendrá acceso a lo que aquí autorices." : "La contraseña POS se guarda protegida y será necesaria para abrir o reanudar su turno."}</p></div>
-              <div className="team-footer-actions">
-                {editing ? (
-                  <>
-                    <button type="button" onClick={() => setShowForm(false)} className="team-footer-secondary">Cancelar</button>
-                    <button type="submit" disabled={busy} className="team-footer-primary">{busy ? <><RefreshCw className="w-4 h-4 animate-spin" /> Guardando…</> : <><Save className="w-4 h-4" /> Guardar cambios</>}</button>
-                  </>
-                ) : (
-                  <>
-                    <button type="button" onClick={() => formStep === 1 ? setShowForm(false) : setFormStep((formStep-1) as 1|2|3)} className="team-footer-secondary">{formStep === 1 ? "Cancelar" : <><ChevronLeft className="w-4 h-4" /> Atrás</>}</button>
-                    {formStep < 3 ? <button type="button" disabled={busy || (formStep===1 && (!form.fullName.trim() || !form.employeeCode.trim())) || (formStep===2 && (!form.roleId || !form.warehouseIds.length))} onClick={() => setFormStep((formStep+1) as 1|2|3)} className="team-footer-primary">Continuar <ChevronRight className="w-4 h-4" /></button> : <button type="submit" disabled={busy || (posPasswordRequired && form.posPassword.trim().length < 6)} className="team-footer-primary">{busy ? <><RefreshCw className="w-4 h-4 animate-spin" /> Guardando…</> : <><Check className="w-4 h-4" /> Crear trabajador</>}</button>}
-                  </>
-                )}
-              </div>
+            <div className="team-emp-footer">
+              {editing ? (
+                <>
+                  <button type="button" onClick={() => setShowForm(false)} className="team-emp-btn team-emp-btn-secondary">Cancelar</button>
+                  <button type="submit" disabled={busy} className="team-emp-btn team-emp-btn-primary">{busy ? <><RefreshCw className="h-4 w-4 animate-spin" /> Guardando…</> : <><Save className="h-4 w-4" /> Guardar cambios</>}</button>
+                </>
+              ) : (
+                <>
+                  <button type="button" onClick={() => formStep === 1 ? setShowForm(false) : setFormStep((formStep-1) as 1|2|3)} className="team-emp-btn team-emp-btn-secondary">{formStep === 1 ? "Cancelar" : <><ChevronLeft className="h-4 w-4" /> Atrás</>}</button>
+                  {formStep < 3 ? <button type="button" disabled={busy || (formStep===1 && (!form.fullName.trim() || !form.employeeCode.trim())) || (formStep===2 && (!form.roleId || !form.warehouseIds.length))} onClick={() => setFormStep((formStep+1) as 1|2|3)} className="team-emp-btn team-emp-btn-primary">Continuar <ChevronRight className="h-4 w-4" /></button> : <button type="submit" disabled={busy || (posPasswordRequired && form.posPassword.trim().length < 6)} className="team-emp-btn team-emp-btn-primary">{busy ? <><RefreshCw className="h-4 w-4 animate-spin" /> Guardando…</> : <><Check className="h-4 w-4" /> Crear trabajador</>}</button>}
+                </>
+              )}
             </div>
           </form>
         </div>
       )}
       {showRoleForm && (
-        <div className="fixed inset-0 z-[210] bg-slate-950/60 backdrop-blur-sm p-3 sm:p-5 flex items-center justify-center" onClick={() => setShowRoleForm(false)}>
-          <form onSubmit={submitRole} onClick={e => e.stopPropagation()} className="team-role-flow w-full max-w-xl bg-secondary border border-base rounded-2xl sm:rounded-3xl shadow-2xl overflow-hidden">
+        <div className="palmyra-overlay z-[var(--z-modal)] p-3 sm:p-5 flex items-center justify-center" onClick={() => setShowRoleForm(false)}>
+          <form onSubmit={submitRole} onClick={e => e.stopPropagation()} className="team-role-flow palmyra-modal-panel palmyra-mobile-modal w-full max-w-xl overflow-hidden">
             <div className="team-role-flow-head">
               <div className="team-employee-hero-icon"><ShieldCheck className="w-5 h-5" /></div>
               <div className="min-w-0 flex-1">
@@ -1497,8 +1510,8 @@ export default function Team() {
       )}
 
       {accessInvite && (
-        <div className="fixed inset-0 z-[220] bg-slate-950/70 backdrop-blur-md p-3 sm:p-5 flex items-center justify-center" onClick={() => setAccessInvite(null)}>
-          <div role="dialog" aria-modal="true" aria-label="Enlace de acceso del trabajador" onClick={e => e.stopPropagation()} className="w-full max-w-lg bg-secondary border border-base rounded-3xl shadow-2xl overflow-hidden">
+        <div className="palmyra-overlay z-[var(--z-modal)] p-3 sm:p-5 flex items-center justify-center" onClick={() => setAccessInvite(null)}>
+          <div role="dialog" aria-modal="true" aria-label="Enlace de acceso del trabajador" onClick={e => e.stopPropagation()} className="palmyra-modal-panel palmyra-mobile-modal w-full max-w-lg overflow-hidden">
             <div className="flex items-start gap-3 border-b border-base p-4 sm:p-5">
               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-violet-500/10 text-violet-600 dark:text-violet-300"><Link2 className="h-5 w-5" /></span>
               <div className="min-w-0 flex-1">

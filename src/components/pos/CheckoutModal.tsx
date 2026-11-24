@@ -85,16 +85,20 @@ export default function CheckoutModal({
   }, [isSubmittingCheckout, onClose]);
 
   return (
-        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-sm z-[80] flex items-center justify-center p-2 sm:p-4 overflow-hidden animate-in fade-in duration-200">
+        <div
+          className="palmyra-overlay z-[var(--z-modal)] flex items-center justify-center p-2 sm:p-4 overflow-hidden animate-in fade-in duration-200"
+          role="presentation"
+          onMouseDown={event => { if (event.target === event.currentTarget && !isSubmittingCheckout) onClose(); }}
+        >
           <div
             role="dialog"
             aria-modal="true"
             aria-label="Cobro"
-            className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-md sm:max-w-lg overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[94dvh] sm:max-h-[90dvh] border border-slate-200 dark:border-slate-800"
+            className="palmyra-modal-panel w-full max-w-md sm:max-w-lg overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[94dvh] sm:max-h-[90dvh]"
           >
             
             {/* Header: Total Summary (Compact) */}
-            <div className="bg-slate-900 text-white p-3.5 sm:p-4 relative shrink-0">
+            <div className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white p-3.5 sm:p-4 relative shrink-0">
               <button 
                 onClick={onClose}
                 className="absolute right-3 top-3 p-1.5 hover:bg-white/10 rounded-full transition-colors text-slate-400 hover:text-white"

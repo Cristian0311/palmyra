@@ -17,7 +17,7 @@ export function mapProduct(p: any, barcode?: string, kitComponents: any[] = []):
     status: p.status || 'active',
     minStockAlert: Number(p.minimum_stock) || 0,
     hasSerial: Boolean(p.track_serial),
-    warrantyDays: 0,
+    warrantyDays: Number(p.warranty_days) || 0,
     isKit: Boolean(p.is_kit),
     kitItems: kitComponents,
     kitComponents: kitComponents.map((item: any) => ({

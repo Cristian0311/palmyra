@@ -132,10 +132,10 @@ export function ABCAnalysis() {
                 <tr key={item.product.id} className="hover:bg-slate-50/50">
                   <td className="px-4 py-3">
                     <span className={cn(
-                      "px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-widest",
-                      item.classification === 'A' ? "bg-emerald-100 text-emerald-700" :
-                      item.classification === 'B' ? "bg-blue-100 text-blue-700" :
-                      "bg-slate-200 text-slate-600"
+                      "palmyra-pill",
+                      item.classification === 'A' ? "bg-[color-mix(in_srgb,var(--success)_12%,transparent)] text-[var(--success)]" :
+                      item.classification === 'B' ? "bg-[color-mix(in_srgb,var(--info)_12%,transparent)] text-[var(--info)]" :
+                      "border border-base bg-subtle text-[var(--text-muted)]"
                     )}>
                       Clase {item.classification}
                     </span>
@@ -143,7 +143,7 @@ export function ABCAnalysis() {
                   <td className="px-4 py-3 text-sm font-bold text-slate-900">{item.product.name}</td>
                   <td className="px-4 py-3 text-sm text-right font-medium">
                     {item.currentStock}
-                    {item.currentStock <= 0 && <span className="ml-2 text-[8px] bg-rose-100 text-rose-600 px-1 py-0.5 rounded">Agotado</span>}
+                    {item.currentStock <= 0 && <span className="palmyra-pill ml-2 bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]">Agotado</span>}
                   </td>
                   <td className="px-4 py-3 text-sm text-right font-medium">{formatMoney(item.totalSales, baseCurrency.symbol)}</td>
                   <td className="px-4 py-3 text-sm text-right font-black text-slate-700">{formatMoney(item.valueMetric, baseCurrency.symbol)}</td>

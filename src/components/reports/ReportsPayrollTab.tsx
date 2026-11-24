@@ -87,7 +87,7 @@ export function ReportsPayrollTab({
           </span>
         </div>
 
-        <div className="overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full min-w-[940px] text-left border-collapse">
             <thead>
               <tr className="bg-subtle border-b border-base text-[8px] font-black text-muted uppercase tracking-[0.15em]">
@@ -208,6 +208,94 @@ export function ReportsPayrollTab({
             </tbody>
           </table>
         </div>
+
+        <ul className="divide-y divide-base md:hidden">
+          {payroll.map((item, idx) => {
+            const dateObj = new Date(item.date);
+            const branchName = branches.find(b => b.id === item.branchId)?.name || 'Sucursal Principal';
+            return (
+              <li key={`m-${item.sessionId || 'pay'}-${item.date || ''}-${idx}`} className="space-y-2 p-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="inline-flex items-center rounded border border-base bg-subtle px-2 py-0.5 text-[11px] font-black tracking-wider text-secondary">
+                        {item.turnLabel}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void onTogglePayment(item)}
+                        aria-label={item.status === 'paid' ? 'Marcar liquidación como pendiente' : 'Marcar liquidación como pagada'}
+                        className={cn(
+                          "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer",
+                          item.status === 'paid'
+                            ? "bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/50"
+                            : "bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-900/50"
+                        )}
+                      >
+                        {item.status === 'paid' ? <CheckCircle2 className="h-3 w-3" /> : <Clock className="h-3 w-3" />}
+                        {item.status === 'paid' ? 'Pagado' : 'Pendiente'}
+                      </button>
+                    </div>
+                    <p className="mt-1 truncate text-[12px] font-black uppercase text-primary" title={item.workerName}>
+                      {item.workerName}
+                    </p>
+                    <p className="truncate text-[11px] font-bold uppercase text-muted" title={branchName}>
+                      {branchName}
+                    </p>
+                    <p className="text-[11px] font-medium text-muted">
+                      {dateObj.toLocaleDateString('es-CU', { timeZone: 'America/Havana', day: '2-digit', month: '2-digit', year: 'numeric' })}
+                      {' '}·{' '}
+                      {dateObj.toLocaleTimeString('es-CU', { timeZone: 'America/Havana', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="whitespace-nowrap text-[12px] font-black text-primary">
+                      {formatMoney(item.totalSalary)}
+                    </p>
+                    {item.discrepancyDeduction > 0 && (
+                      <p className="whitespace-nowrap text-[11px] font-bold text-rose-600 dark:text-rose-400">
+                        −{formatMoney(item.discrepancyDeduction)} descuadre
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-bold text-secondary">
+                  <span>Ventas {formatMoney(item.totalSales)} ({item.totalItems}p)</span>
+                  <span>Base {formatMoney(item.baseSalary)}</span>
+                  <span className="text-emerald-600 dark:text-emerald-400">+{formatMoney(item.commissions)} comisión</span>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => onOpenSession(item.sessionId)}
+                    title="Ver Detalle del Turno y Liquidación"
+                    aria-label="Ver detalle del turno y liquidación"
+                    className="inline-flex min-h-9 flex-1 items-center justify-center gap-1 rounded-lg border border-violet-200 bg-violet-50 px-2 text-[11px] font-black uppercase text-violet-700 transition-all active:scale-95 dark:border-violet-900/50 dark:bg-violet-950/50 dark:text-violet-300"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    Detalle
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onPrintShiftTicket(item.sessionId)}
+                    title="Imprimir Comprobante de Liquidación"
+                    aria-label="Imprimir comprobante de liquidación"
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-base bg-subtle text-primary transition-all active:scale-95"
+                  >
+                    <Printer className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+          {payroll.length === 0 && (
+            <li className="px-6 py-10 text-center text-muted font-bold uppercase text-[10px]">
+              No hay turnos cerrados con nómina calculada para el filtro seleccionado.
+            </li>
+          )}
+        </ul>
       </div>
 
       <div className="bg-secondary rounded-2xl shadow-sm border border-base overflow-hidden">
@@ -217,7 +305,7 @@ export function ReportsPayrollTab({
             Resumen Acumulado por Trabajador
           </h3>
         </div>
-        <div className="overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full min-w-[860px] text-left border-collapse">
             <thead>
               <tr className="bg-subtle border-b border-base text-[8px] font-black text-muted uppercase tracking-[0.15em]">
@@ -276,6 +364,43 @@ export function ReportsPayrollTab({
             </tbody>
           </table>
         </div>
+
+        <ul className="divide-y divide-base md:hidden">
+          {aggregatedByWorker.map((agg, idx) => (
+            <li key={`m-${agg.userId || agg.workerName || idx}`} className="space-y-2 p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-[12px] font-black uppercase tracking-tight text-primary" title={agg.workerName}>
+                    {agg.workerName}
+                  </p>
+                  <p className="text-[11px] font-bold text-secondary">{agg.shiftsCount} turnos</p>
+                </div>
+                <p className="shrink-0 whitespace-nowrap text-[13px] font-black text-primary">
+                  {formatMoney(agg.totalSalary)}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-bold text-secondary">
+                <span>Ventas {formatMoney(agg.totalSales)}</span>
+                <span>Base {formatMoney(agg.totalBaseSalary)}</span>
+                <span className="text-emerald-600 dark:text-emerald-400">+{formatMoney(agg.totalCommissions)}</span>
+                {agg.totalDeductions ? (
+                  <span className="text-rose-600 dark:text-rose-400">−{formatMoney(agg.totalDeductions)}</span>
+                ) : null}
+              </div>
+              <p className={cn(
+                "text-[11px] font-black",
+                agg.pendingSalary > 0 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"
+              )}>
+                Pendiente de pago: {formatMoney(agg.pendingSalary)}
+              </p>
+            </li>
+          ))}
+          {aggregatedByWorker.length === 0 && (
+            <li className="px-6 py-6 text-center text-muted text-[10px] font-bold uppercase">
+              No hay acumulación registrada de trabajadores.
+            </li>
+          )}
+        </ul>
       </div>
     </div>
   );

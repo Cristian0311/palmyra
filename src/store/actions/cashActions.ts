@@ -23,7 +23,7 @@ import { setCanonicalInventoryQuantity, validateTransferStock } from '../utils/i
 import { buildLocalVoidTransactionPatch } from '../utils/localVoidTransaction';
 import { buildLocalCompletedSalePatch } from '../utils/localCompletedSale';
 import { replaceRemoteRecords } from '../utils/replaceRemoteRecords';
-import { calculateExpectedCashBase, calculateExpectedBalances } from '../../services/cash/expectedCash';
+import { calculateExpectedCashBase, calculateExpectedBalances, buildDiscrepancyDetails } from '../../services/cash/expectedCash';
 import { findSessionEmployeeUser } from '../../services/employeeCompensation';
 import { removeFromOfflineQueueByAction, removeFromOfflineQueueByTransactionId } from '../../services/offlineQueue/outboxUtils';
 import {
@@ -651,41 +651,18 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       date: finalClosingDate,
       status: 'pending'
     };
-    const expectedCashBase = calculateExpectedCashBase(session, sessionTxs, get().currencies || []);
+    // El esperado se calcula con la ventana del cierre (closedAt) para que lo
+    // grabado sea el esperado del cierre, no el de "ahora".
+    const expectedCashBase = calculateExpectedCashBase({ ...session, closedAt: finalClosingDate }, sessionTxs, get().currencies || []);
     const baseCurrency = get().getBaseCurrency();
     const expectedBalances = calculateExpectedBalances(
       { ...session, closedAt: finalClosingDate },
       sessionTxs,
       baseCurrency,
     );
-    const discrepancyDetails: NonNullable<CashRegisterSession['discrepancyDetails']> = [];
-    expectedBalances.forEach(expectedRow => {
-      const declared = finalBalances.find(b => b.currencyCode === expectedRow.currencyCode && b.method === expectedRow.method);
-      const actual = Number(declared?.amount) || 0;
-      const difference = Math.round((actual - expectedRow.amount) * 1000000) / 1000000;
-      if (Math.abs(difference) > 0.01) {
-        discrepancyDetails.push({
-          currencyCode: expectedRow.currencyCode,
-          method: expectedRow.method,
-          expected: expectedRow.amount,
-          actual,
-          difference,
-        });
-      }
-    });
-    finalBalances.forEach(declared => {
-      if (Number(declared.amount) <= 0.01) return;
-      const alreadyExpected = expectedBalances.some(r => r.currencyCode === declared.currencyCode && r.method === declared.method);
-      if (!alreadyExpected) {
-        discrepancyDetails.push({
-          currencyCode: declared.currencyCode,
-          method: declared.method,
-          expected: 0,
-          actual: Number(declared.amount),
-          difference: Number(declared.amount),
-        });
-      }
-    });
+    // Misma función de descuadre que usa Reportes: toda diferencia real cuenta
+    // y las diferencias se redondean igual que el esperado.
+    const discrepancyDetails = buildDiscrepancyDetails(expectedBalances, finalBalances);
     const updatedSession: CashRegisterSession = {
       ...session,
       expectedBalance: expectedCashBase,

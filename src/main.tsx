@@ -29,6 +29,7 @@ import { fetchWithTimeout as fetchWithLimit } from './lib/http';
 import { beginServerWarmup, SERVER_WAKE_EVENT } from './lib/serverWake';
 import { initLocalDbSource } from './services/localDb/bootHydration';
 import { useUpdateSignal } from './hooks/useUpdateSignal';
+import { pushLocalNotice } from './services/notifications/localCenter';
 
 // Recover gracefully when a cached HTML/service-worker version references a
 // chunk removed by a newer deployment. Vite emits this event for failed
@@ -74,6 +75,17 @@ window.addEventListener('vite:preloadError', (event) => {
     window.location.reload();
   }
 });
+
+// Un módulo diferido falló por falta de conexión: lo dejamos visible en el
+// centro de notificaciones local en lugar de una pantalla en blanco silenciosa.
+window.addEventListener('palmyra:chunk-offline-error', (() => {
+  pushLocalNotice({
+    kind: 'offline_error',
+    title: 'Sin conexión: módulo no disponible',
+    body: 'Un módulo de la aplicación no pudo cargarse porque el dispositivo está sin conexión. Conéctate a internet y vuelve a abrir la sección.',
+    dedupeKey: `chunk-offline:${new Date().toISOString().slice(0, 10)}`,
+  });
+}) as EventListener);
 
 // Register Service Worker for Offline-First PWA support.
 // The app must update itself after every Render deployment without requiring

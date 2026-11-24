@@ -991,8 +991,8 @@ export default function Quotes() {
         </div>
 
         {showNewCustomer && (
-          <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
-            <form onSubmit={handleCreateCustomer} className="w-full max-w-md overflow-hidden rounded-2xl border border-base bg-secondary shadow-2xl">
+          <div className="palmyra-overlay z-[var(--z-modal)] flex items-center justify-center p-3 sm:p-4">
+            <form onSubmit={handleCreateCustomer} className="palmyra-modal-panel palmyra-mobile-modal w-full max-w-md overflow-hidden">
               <div className="flex items-center justify-between border-b border-base bg-subtle px-4 py-3">
                 <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-tight text-primary">
                   <UserPlus size={16} className="text-violet-600 dark:text-violet-300" /> Nuevo cliente
@@ -1361,8 +1361,8 @@ export default function Quotes() {
       </div>
 
       {detailQuote && (
-        <div className="fixed inset-0 z-[120] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm">
-          <div className="flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-base bg-secondary shadow-2xl">
+        <div className="palmyra-overlay z-[var(--z-modal)] flex items-center justify-center p-3 sm:p-4">
+          <div className="palmyra-modal-panel flex max-h-[92dvh] w-full max-w-2xl flex-col overflow-hidden">
             <div className="flex items-start justify-between border-b border-base bg-subtle px-4 py-3">
               <div>
                 <p className="font-mono text-sm font-black tracking-wide text-primary">{QUOTE_CODE(detailQuote.id)}</p>
@@ -1478,8 +1478,12 @@ export default function Quotes() {
       )}
 
       {quoteToDelete && (
-        <div className="fixed inset-0 z-[130] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-base bg-secondary shadow-2xl">
+        <div
+          className="palmyra-overlay z-[var(--z-confirm)] flex items-center justify-center p-3 sm:p-4"
+          role="presentation"
+          onMouseDown={event => { if (event.target === event.currentTarget) setQuoteToDelete(null); }}
+        >
+          <div className="palmyra-modal-panel w-full max-w-sm overflow-hidden max-h-[92dvh] overflow-y-auto">
             <div className="flex items-start gap-3 px-4 pt-4">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-300">
                 <Trash2 size={18} />

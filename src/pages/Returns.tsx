@@ -28,6 +28,7 @@ import { useStore } from "../store/useStore";
 import { cn } from "../lib/utils";
 import { documentCode, ticketDisplay } from "../lib/documentCodes";
 import type { BankCard, Customer, ReturnItem, Transaction, Warranty } from "../types";
+import { hasRefundMovement, resolveRefundTargetSession } from "../services/cash/expectedCash";
 
 type ReturnFilter = 'all' | 'pending' | 'completed' | 'rejected';
 type WarrantyFilter = 'all' | 'active' | 'expiring' | 'expired' | 'closed';
@@ -450,7 +451,7 @@ function ReturnsContent() {
 
         <div className="hidden overflow-x-auto md:block">
           {activeTab === 'returns' ? (
-            <table className="w-full min-w-[960px] text-left text-sm [&_td]:px-3 [&_td]:py-3 [&_th]:px-3 [&_th]:py-2.5">
+            <table className="w-full min-w-[960px] text-left text-sm [&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2.5">
               <thead className="border-b border-base bg-subtle text-[11px] font-black uppercase tracking-wider text-muted">
                 <tr>
                   <th>Devolución</th>
@@ -621,7 +622,7 @@ function ReturnsContent() {
               </tbody>
             </table>
           ) : (
-            <table className="w-full min-w-[980px] text-left text-sm [&_td]:px-3 [&_td]:py-3 [&_th]:px-3 [&_th]:py-2.5">
+            <table className="w-full min-w-[980px] text-left text-sm [&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2.5">
               <thead className="border-b border-base bg-subtle text-[11px] font-black uppercase tracking-wider text-muted">
                 <tr>
                   <th>Garantía</th>
@@ -998,7 +999,16 @@ function ReturnsContent() {
             let refundTransactionId: string | undefined;
 
             if (data.status === 'paid' && data.method === 'cash') {
-              if (!openCashSession) {
+              // El egreso debe quedar en un turno ABIERTO de la misma caja para
+              // que el arqueo cuadre: primero el turno abierto de la sucursal;
+              // si no hay, el turno aún abierto de la venta original; si nada
+              // está abierto, solo se avisa sin registrar reembolso.
+              const targetSession = resolveRefundTargetSession(
+                openCashSession,
+                ticket?.sessionId,
+                cashSessions
+              );
+              if (!targetSession) {
                 addNotification(
                   'Abre un turno de caja para pagar el reembolso',
                   'warning',
@@ -1006,18 +1016,24 @@ function ReturnsContent() {
                 );
                 return;
               }
-              refundTransactionId = crypto.randomUUID();
-              await addCashMovement(openCashSession.id, {
-                id: refundTransactionId,
-                type: 'expense',
-                amount: data.amount,
-                currencyCode: data.currency,
-                description: `Reembolso ${returnCode(returnItem)} · ticket ${label}`,
-                date: paidAt,
-                sessionId: openCashSession.id,
-                branchId: currentBranchId,
-                category: 'devolucion',
-              });
+              // Idempotente: si la devolución ya registró su egreso (mismo id o
+              // misma descripción) no se duplica aunque se confirme dos veces.
+              const movementId = returnItem.refundTransactionId || crypto.randomUUID();
+              const alreadyRecorded = hasRefundMovement(targetSession, movementId, returnCode(returnItem));
+              if (!alreadyRecorded) {
+                await addCashMovement(targetSession.id, {
+                  id: movementId,
+                  type: 'expense',
+                  amount: data.amount,
+                  currencyCode: data.currency,
+                  description: `Reembolso ${returnCode(returnItem)} · ticket ${label}`,
+                  date: paidAt,
+                  sessionId: targetSession.id,
+                  branchId: targetSession.branchId || currentBranchId,
+                  category: 'devolucion',
+                });
+              }
+              refundTransactionId = movementId;
             } else if (data.status === 'paid' && data.method === 'transfer') {
               if (!data.bankCardId) {
                 addNotification('Selecciona la cuenta bancaria del reembolso', 'warning');
@@ -1134,6 +1150,12 @@ function NewReturnModal({ transactions, returns, warranties, customers, currentB
     }
   }, [lines, prefill]);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose]);
+
   const results = useMemo(() => {
     const q = query.trim().toLowerCase();
     let list = transactions.filter(t => t.status !== 'refunded');
@@ -1194,7 +1216,11 @@ function NewReturnModal({ transactions, returns, warranties, customers, currentB
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 backdrop-blur-sm sm:items-center sm:p-4">
+    <div
+      className="palmyra-overlay z-[var(--z-modal)] flex items-end justify-center sm:items-center sm:p-4"
+      role="presentation"
+      onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}
+    >
       <div className="flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-base bg-secondary shadow-2xl animate-in zoom-in-95 duration-200 sm:max-w-2xl sm:rounded-2xl">
         <div className="flex items-center justify-between border-b border-base px-4 py-3">
           <div>
@@ -1477,8 +1503,19 @@ type ReturnActionModalProps = {
 function ReturnActionModal({ returnItem, action, productName, customerName, busy, onClose, onConfirm }: ReturnActionModalProps) {
   const [note, setNote] = useState('');
   const complete = action === 'complete';
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape' && !busy) onClose(); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose, busy]);
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 backdrop-blur-sm sm:items-center sm:p-4">
+    <div
+      className="palmyra-overlay z-[var(--z-modal)] flex items-end justify-center sm:items-center sm:p-4"
+      role="presentation"
+      onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}
+    >
       <div className="w-full max-h-[92dvh] overflow-y-auto rounded-t-3xl border border-base bg-secondary p-4 shadow-2xl animate-in zoom-in-95 duration-200 sm:max-w-md sm:rounded-2xl">
         <div className="flex items-start gap-3">
           <span className={cn('flex h-10 w-10 shrink-0 items-center justify-center rounded-xl', complete ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400' : 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400')}>
@@ -1554,6 +1591,12 @@ function RefundModal({ returnItem, maxAmount, currencies, baseCurrency, bankCard
   const blocked = saving || exceedsMax;
   const codes = Array.from(new Set([baseCurrency, ...currencies].filter(Boolean)));
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape' && !saving) onClose(); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClose, saving]);
+
   const submit = async (status: 'paid' | 'approved') => {
     if (blocked || transferMissingCard) return;
     setSaving(true);
@@ -1565,7 +1608,11 @@ function RefundModal({ returnItem, maxAmount, currencies, baseCurrency, bankCard
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/60 backdrop-blur-sm sm:items-center sm:p-4">
+    <div
+      className="palmyra-overlay z-[var(--z-modal)] flex items-end justify-center sm:items-center sm:p-4"
+      role="presentation"
+      onMouseDown={event => { if (event.target === event.currentTarget && !saving) onClose(); }}
+    >
       <div className="w-full max-h-[92dvh] overflow-y-auto rounded-t-3xl border border-base bg-secondary p-4 shadow-2xl animate-in zoom-in-95 duration-200 sm:max-w-md sm:rounded-2xl">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-start gap-3">

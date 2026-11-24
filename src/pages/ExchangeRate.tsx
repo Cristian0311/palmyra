@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Activity, AlertCircle, ArrowDownRight, ArrowUpRight, BarChart3, Clock3, Minus, RefreshCw, ShieldCheck, TrendingDown, TrendingUp } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Activity, AlertCircle, ArrowDownRight, ArrowUpRight, BarChart3, CircleDollarSign, Clock3, Minus, RefreshCw, ShieldCheck, TrendingDown, TrendingUp } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import OperationsSurface from '../components/OperationsSurface';
+import { useStore } from '../store/useStore';
 import { getSupabase } from '../lib/supabase';
 import {
   appendRateSnapshot,
@@ -49,6 +51,9 @@ const SOURCE_TITLES: Record<ExchangeRateSourceKind, string> = {
 };
 
 const PERIOD_DAYS: Record<Period, number | null> = { '24h': 1, '7d': 7, '30d': 30, all: null };
+
+/** Códigos que el dueño puede guardar a mano en Configuración → Monedas y tasas. */
+const MANUAL_RATE_CODES = ['USD', 'EUR', 'MLC'];
 
 function cachedPayload(): ExchangePayload | null {
   try {
@@ -157,6 +162,8 @@ function RefreshCountdown({ target, onRefresh, loading }: { target: number | nul
 }
 
 export default function ExchangeRate() {
+  const navigate = useNavigate();
+  const currencies = useStore(state => state.currencies);
   const [payload, setPayload] = useState<ExchangePayload | null>(cachedPayload);
   const [history, setHistory] = useState<RateSnapshot[]>(localHistory);
   const [remoteHistory, setRemoteHistory] = useState<RateSnapshot[]>([]);
@@ -188,9 +195,11 @@ export default function ExchangeRate() {
       const body = hubQuotesToPayload(resolved.rates);
       if (!body || !isElToquePayload(body)) {
         // Sin cotizaciones nuevas no se borra lo que el dueño ya estaba viendo.
+        // El aviso trae el motivo real (credencial, límite, fuente caída) cuando
+        // se pudo leer, y siempre indica cómo reintentar y ajustar a mano.
         setFromCache(true);
-        setWarning(RATE_REFRESH_FALLBACK_NOTICE);
-        setError(payloadRef.current ? '' : RATE_UNAVAILABLE_NOTICE);
+        setWarning('');
+        setError(resolved.error || RATE_UNAVAILABLE_NOTICE);
         return;
       }
       const stale = resolved.stale || source.stale;
@@ -247,6 +256,21 @@ export default function ExchangeRate() {
   }, [period, payload?.capturedAt]);
 
   const rates = useMemo(() => canonicalizeRates(parseExchangeRates(payload?.data)), [payload]);
+  /** Moneda base del negocio (CUP por defecto) para etiquetar las tasas manuales. */
+  const baseCode = useMemo(() => {
+    const base = (currencies || []).find(currency => currency.isBase);
+    return base?.code || 'CUP';
+  }, [currencies]);
+  /**
+   * Tasas de venta guardadas a mano en Configuración → Monedas y tasas. Son la
+   * última red de seguridad de la pantalla: cuando la fuente automática no
+   * entrega nada, se muestran estas en lugar de un panel vacío.
+   */
+  const manualRates = useMemo(() => (currencies || [])
+    .filter(currency => MANUAL_RATE_CODES.includes(currency.code) && !currency.isBase
+      && Number.isFinite(currency.rateToBase) && currency.rateToBase > 0)
+    .map(currency => ({ code: currency.code, value: currency.rateToBase }))
+    .sort((a, b) => MANUAL_RATE_CODES.indexOf(a.code) - MANUAL_RATE_CODES.indexOf(b.code)), [currencies]);
   const visibleRates = useMemo(() => {
     const filtered = rates.filter(rate => isCryptoRate(rate.code) === (market === 'crypto'));
     return filtered.slice().sort((a, b) => {
@@ -321,9 +345,14 @@ export default function ExchangeRate() {
         </header>
 
         {(error || warning) && (
-          <div role="alert" className="flex items-start gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
-            <AlertCircle className="mt-1 h-4 w-4 shrink-0" aria-hidden="true" />
-            <p className="min-w-0 font-semibold">{error || warning}</p>
+          <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200 sm:flex-row sm:items-start">
+            <div className="flex min-w-0 flex-1 items-start gap-3">
+              <AlertCircle className="mt-1 h-4 w-4 shrink-0" aria-hidden="true" />
+              <p className="min-w-0 font-semibold">{error || warning}</p>
+            </div>
+            <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-10 shrink-0 items-center gap-2 self-start rounded-xl border border-amber-400 bg-white px-3 text-xs font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-60 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-100 sm:self-auto">
+              <RefreshCw className={'h-3.5 w-3.5 ' + (loading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />Reintentar
+            </button>
           </div>
         )}
 
@@ -337,7 +366,7 @@ export default function ExchangeRate() {
                 <p className="flex flex-wrap items-center gap-2 text-sm font-bold text-primary">
                   {payload ? (stale ? 'Última consulta guardada' : 'Conexión activa con elTOQUE') : loading ? 'Consultando la fuente…' : 'Sin cotizaciones disponibles'}
                   {payload && !stale && <LiveDot />}
-                  {payload && stale && <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">Sin conexión en vivo</span>}
+                  {payload && stale && <span className="palmyra-pill border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">Sin conexión en vivo{rateAge > 0 ? ` · ${formatRateAge(rateAge)}` : ''}</span>}
                   <SourceBadge source={rateSource} />
                 </p>
                 <p className="mt-0.5 text-[11px] font-semibold text-muted">{payload ? `Consultado el ${dateLabel(payload.capturedAt)} · ${formatRateAge(rateAge)} · ${rateSource.detail}` : rateSource.detail}</p>
@@ -353,6 +382,18 @@ export default function ExchangeRate() {
         </section>
 
         {storageError && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">El dispositivo no pudo guardar la consulta. No estará disponible al cerrar la aplicación.</p>}
+
+        {rates.length > 0 && manualRates.length > 0 && (
+          <section aria-label="Tasas manuales de tu negocio" className="flex flex-wrap items-center gap-2 rounded-2xl border border-base bg-secondary p-3">
+            <span className="palmyra-pill border border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300">Tasas de tu negocio · venta</span>
+            {manualRates.map(rate => (
+              <span key={rate.code} className="palmyra-pill border border-base bg-subtle text-primary">
+                {rate.code} <b className="tabular-nums">{money(rate.value)}</b> {baseCode}
+              </span>
+            ))}
+            <button type="button" onClick={() => navigate('/settings?section=currency')} className="palmyra-pill border border-base bg-subtle font-bold text-primary hover:border-violet-300">Ajustar</button>
+          </section>
+        )}
 
         {rates.length > 0 ? (
           <>
@@ -481,15 +522,49 @@ export default function ExchangeRate() {
               </section>
             )}
           </>
+        ) : manualRates.length > 0 ? (
+          <section aria-label="Tasas guardadas a mano" className="rounded-2xl border border-base bg-secondary p-5">
+            <header className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="text-lg font-bold text-primary">Tasas guardadas a mano</h2>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-secondary">La fuente automática (elTOQUE) no está disponible ahora mismo. Estas son las tasas de venta que guardaste en Configuración → Monedas y tasas, y son las que sigue usando tu negocio.</p>
+              </div>
+              <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-60">
+                <RefreshCw className={'h-4 w-4 ' + (loading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />{loading ? 'Consultando…' : 'Reintentar'}
+              </button>
+            </header>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {manualRates.map(rate => (
+                <div key={rate.code} className="rounded-2xl border border-base bg-subtle p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-lg font-black leading-none text-primary">{rate.code}</p>
+                      <p className="mt-1 truncate text-[11px] font-semibold text-secondary" title={rateTitle({ code: rate.code })}>{rateTitle({ code: rate.code })}</p>
+                    </div>
+                    <span className="palmyra-pill border border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300">Manual · venta</span>
+                  </div>
+                  <p className="mt-3 text-3xl font-black tabular-nums leading-none text-primary">{money(rate.value)} <span className="text-xs font-semibold text-muted">{baseCode}</span></p>
+                </div>
+              ))}
+            </div>
+          </section>
         ) : (
           <section className="rounded-2xl border border-dashed border-base bg-secondary px-5 py-12 text-center">
             <Activity className="mx-auto h-10 w-10 text-muted" aria-hidden="true" />
-            <h2 className="mt-4 text-lg font-semibold text-primary">{loading ? 'Esperando cotizaciones' : 'No hay tasas de elTOQUE para mostrar'}</h2>
-            <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">Cuando la fuente responda aparecerán únicamente sus monedas y valores. No se usarán tasas de otro proveedor ni conversiones calculadas para llenar esta pantalla.</p>
+            <h2 className="mt-4 text-lg font-semibold text-primary">{loading ? 'Esperando cotizaciones' : 'Sin tasas todavía'}</h2>
+            <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">La fuente elTOQUE no respondió y este dispositivo aún no tiene tasas guardadas. Pulsa Reintentar para volver a consultarla, o guarda tus tasas de venta a mano y se mostrarán aquí al instante.</p>
+            <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
+              <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-60">
+                <RefreshCw className={'h-4 w-4 ' + (loading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />{loading ? 'Consultando…' : 'Reintentar'}
+              </button>
+              <button type="button" onClick={() => navigate('/settings?section=currency')} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-base bg-secondary px-4 text-sm font-semibold text-primary hover:border-violet-300">
+                <CircleDollarSign className="h-4 w-4" aria-hidden="true" />Guardar tasas manuales
+              </button>
+            </div>
           </section>
         )}
 
-        <p className="text-xs leading-5 text-muted">Fuente: elTOQUE · Referencias del mercado informal, no tasas oficiales ni garantía de una operación. Compra y venta solo aparecen si la API las publica. La fecha indicada corresponde a la consulta, no necesariamente al momento de publicación del proveedor. La tasa se consulta automáticamente cada 45 minutos por Wi-Fi y esta pantalla se revisa con esa misma cadencia. Sin conexión se conserva la última tasa válida y se indica su antigüedad; también puedes ajustarla a mano en Configuración → Monedas y tasas.</p>
+        <p className="text-xs leading-5 text-muted">Fuente: elTOQUE · Referencias del mercado informal, no tasas oficiales ni garantía de una operación. Compra y venta solo aparecen si la API las publica. La fecha indicada corresponde a la consulta, no necesariamente al momento de publicación del proveedor. La tasa se consulta automáticamente cada 45 minutos por Wi-Fi y esta pantalla se revisa con esa misma cadencia. Sin conexión se conserva la última tasa válida y se indica su antigüedad. Si no hay ninguna guardada, se muestran tus tasas manuales de Configuración → Monedas y tasas; si tampoco las has guardado, esta pantalla te indica cómo hacerlo.</p>
       </main>
     </OperationsSurface>
   );
@@ -502,7 +577,7 @@ function SourceBadge({ source }: { source: ExchangeRateSourceView }) {
       ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300'
       : 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300';
   return (
-    <span className={'rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ' + tone}>
+    <span className={'palmyra-pill border ' + tone}>
       {SOURCE_TITLES[source.kind] ?? source.label}{source.stale && source.kind !== 'cached' ? ' · vencida' : ''}
     </span>
   );
@@ -510,7 +585,7 @@ function SourceBadge({ source }: { source: ExchangeRateSourceView }) {
 
 function LiveDot() {
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
+    <span className="palmyra-pill border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300">
       <span className="relative flex h-1.5 w-1.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-500 opacity-70 motion-reduce:animate-none" /><span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" /></span>
       En vivo
     </span>

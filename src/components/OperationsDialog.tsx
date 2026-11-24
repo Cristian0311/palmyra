@@ -1,22 +1,39 @@
-import { useEffect, useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '../lib/utils';
 
 export default function OperationsDialog({ title, onClose, busy = false, size = 'md', children }: { title: string; onClose: () => void; busy?: boolean; size?: 'md' | 'lg'; children: ReactNode }) {
-  const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   useEffect(() => {
-    const dialog = ref.current;
     const previous = document.activeElement as HTMLElement | null;
-    dialog?.showModal();
-    return () => { dialog?.close(); previous?.focus(); };
-  }, []);
-  return <dialog ref={ref} aria-labelledby={titleId} onCancel={event => { event.preventDefault(); if (!busy) onClose(); }}
-    className={cn('fixed m-auto w-[calc(100%-2rem)] max-h-[90dvh] rounded-2xl border border-base bg-secondary p-0 text-primary shadow-xl backdrop:bg-slate-950/60', size === 'lg' ? 'max-w-4xl' : 'max-w-2xl')}>
-    <div className="flex justify-between items-center gap-3 p-5 border-b border-base">
-      <h2 id={titleId} className="text-xl font-bold">{title}</h2>
-      <button type="button" onClick={onClose} disabled={busy} aria-label="Cerrar ventana" className="rounded-xl border border-base flex items-center justify-center"><X size={20} /></button>
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape' && !busy) onClose(); };
+    document.addEventListener('keydown', onKey);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKey);
+      document.body.style.overflow = previousOverflow;
+      previous?.focus?.();
+    };
+  }, [busy, onClose]);
+  return (
+    <div
+      role="presentation"
+      className="palmyra-overlay z-[var(--z-modal)] flex items-end justify-center p-0 sm:items-center sm:p-4"
+      onMouseDown={event => { if (event.target === event.currentTarget && !busy) onClose(); }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className={cn('palmyra-modal-panel palmyra-mobile-modal flex max-h-[92dvh] w-full flex-col overflow-hidden p-0 text-primary', size === 'lg' ? 'sm:max-w-4xl' : 'sm:max-w-2xl')}
+      >
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-base p-4">
+          <h2 id={titleId} className="text-base font-semibold text-primary">{title}</h2>
+          <button type="button" onClick={onClose} disabled={busy} aria-label="Cerrar ventana" className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-base text-muted transition-colors hover:bg-subtle hover:text-primary disabled:opacity-50"><X size={18} /></button>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
+      </section>
     </div>
-    <div className="p-5 max-h-[calc(90dvh-5.5rem)] overflow-y-auto">{children}</div>
-  </dialog>;
+  );
 }

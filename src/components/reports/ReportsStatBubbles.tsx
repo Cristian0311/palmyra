@@ -13,13 +13,14 @@ export type ReportsStat = {
   valueClassName?: string;
 };
 
-const TONE: Record<ReportsStatTone, string> = {
-  violet: "bg-violet-100 text-violet-700 dark:bg-violet-950/60 dark:text-violet-300",
-  red: "bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300",
-  emerald: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300",
-  amber: "bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300",
-  blue: "bg-blue-100 text-blue-700 dark:bg-blue-950/60 dark:text-blue-300",
-  slate: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
+/** Un acento único por tarjeta: color del borde izquierdo y tinte del ícono. */
+const TONE: Record<ReportsStatTone, { border: string; icon: string }> = {
+  violet: { border: "border-l-[var(--primary)]", icon: "bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-[var(--primary)]" },
+  red: { border: "border-l-[var(--danger)]", icon: "bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)]" },
+  emerald: { border: "border-l-[var(--success)]", icon: "bg-[color-mix(in_srgb,var(--success)_12%,transparent)] text-[var(--success)]" },
+  amber: { border: "border-l-[var(--warning)]", icon: "bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] text-[var(--warning)]" },
+  blue: { border: "border-l-[var(--info)]", icon: "bg-[color-mix(in_srgb,var(--info)_12%,transparent)] text-[var(--info)]" },
+  slate: { border: "border-l-[var(--border-accent)]", icon: "bg-[var(--bg-subtle)] text-[var(--text-muted)]" },
 };
 
 /** One KPI bubble style for every Reports tab, so the section keeps a single visual line. */
@@ -27,7 +28,7 @@ export function ReportsStatBubbles({ items }: { items: ReportsStat[] }) {
   return (
     <div className="grid grid-cols-2 gap-2.5 lg:grid-cols-4">
       {items.map(({ label, value, hint, icon: Icon, tone = "violet", valueClassName }) => (
-        <div key={label} className="rounded-2xl border border-base bg-secondary p-3 shadow-xs">
+        <div key={label} className={cn("border-l-[3px] rounded-[var(--radius-2xl)] border border-base bg-secondary p-3 shadow-[var(--shadow-md)]", TONE[tone].border)}>
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
               <p className="line-clamp-2 text-[11px] font-black uppercase leading-tight tracking-widest text-muted" title={label}>
@@ -37,7 +38,7 @@ export function ReportsStatBubbles({ items }: { items: ReportsStat[] }) {
                 {value}
               </p>
             </div>
-            <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-xl", TONE[tone])}>
+            <span className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-xl", TONE[tone].icon)}>
               <Icon className="h-4 w-4" aria-hidden="true" />
             </span>
           </div>

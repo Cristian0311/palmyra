@@ -1,4 +1,12 @@
 import type { CashRegisterSession, Currency, Transaction } from '../../types';
+import {
+  calculateExpectedCashBaseTotal,
+  calculateExpectedSessionBalances,
+  hasRealDifference,
+  round6,
+} from '../../modules/pos/utils/cashMath';
+
+export { hasRealDifference, round6 } from '../../modules/pos/utils/cashMath';
 
 export type ExpectedBalance = {
   currencyCode: string;
@@ -6,111 +14,164 @@ export type ExpectedBalance = {
   amount: number;
 };
 
-const normalizeMethod = (method: string): 'cash' | 'transfer' => (
-  method === 'transfer' || method === 'bank_transfer' ? 'transfer' : 'cash'
-);
-
-const round6 = (value: number) => Math.round(value * 1000000) / 1000000;
+export type ExpectedDiscrepancyDetail = {
+  currencyCode: string;
+  method: 'cash' | 'transfer';
+  expected: number;
+  actual: number;
+  difference: number;
+};
 
 /**
- * Expected balance per currency and method for a shift, built from completed
- * sales, change given and registered cash movements.
+ * Esperado por moneda y medio de pago de un turno. Delega en la fuente única
+ * de verdad (modules/pos/utils/cashMath) para que el arqueo del POS, el cierre
+ * y Reportes vean exactamente los mismos números.
  */
 export function calculateExpectedBalances(
   session: CashRegisterSession,
   transactions: Transaction[],
   baseCurrency: Currency
 ): ExpectedBalance[] {
-  const expected: ExpectedBalance[] = [
-    { currencyCode: baseCurrency.code, method: 'cash', amount: Number(session.openingBalance) || 0 },
-  ];
-
-  const findRow = (currencyCode: string, method: 'cash' | 'transfer') => {
-    const existing = expected.find(e => e.currencyCode === currencyCode && e.method === method);
-    if (existing) return existing;
-    const created = { currencyCode, method, amount: 0 };
-    expected.push(created);
-    return created;
-  };
-
-  const sessionTxs = (transactions || []).filter(tx =>
-    tx.status === 'completed' &&
-    !tx.deletedAt &&
-    !String(tx.notes || '').startsWith('AJUSTE_') &&
-    (tx.sessionId
-      ? tx.sessionId === session.id
-      : tx.branchId === session.branchId &&
-        new Date(tx.date).getTime() >= new Date(session.openedAt).getTime() &&
-        (!session.closedAt || new Date(tx.date).getTime() <= new Date(session.closedAt).getTime()))
-  );
-
-  for (const tx of sessionTxs) {
-    for (const payment of tx.payments || []) {
-      if (!payment || !payment.currencyCode || !Number.isFinite(Number(payment.amount))) continue;
-      findRow(payment.currencyCode, normalizeMethod(String(payment.method))).amount += Number(payment.amount);
-    }
-    if (tx.changePayments && tx.changePayments.length > 0) {
-      for (const change of tx.changePayments) {
-        if (!change || !change.currencyCode || !Number.isFinite(Number(change.amount))) continue;
-        findRow(change.currencyCode, normalizeMethod(String(change.method))).amount -= Number(change.amount);
-      }
-    } else if (tx.changeGiven && tx.changeGiven > 0) {
-      findRow(baseCurrency.code, 'cash').amount -= Number(tx.changeGiven);
-    }
-  }
-
-  for (const movement of session.movements || []) {
-    const amount = Number(movement.amount) || 0;
-    findRow(movement.currencyCode, 'cash').amount += movement.type === 'income' ? amount : -amount;
-  }
-
-  return expected.map(row => ({ ...row, amount: round6(row.amount) }));
+  return calculateExpectedSessionBalances(session, transactions, session.branchId, baseCurrency, [])
+    .map(row => ({
+      currencyCode: String(row.currencyCode),
+      method: row.method as 'cash' | 'transfer',
+      amount: round6(Number(row.amount)),
+    }));
 }
 
+/**
+ * Esperado en efectivo convertido a moneda base: fondo + pagos cash − vuelto +
+ * movimientos de ingreso/egreso, excluyendo ventas borradas, no completadas y
+ * AJUSTE_*. Mismo cálculo que usa el arqueo del POS y que se envía al RPC de
+ * cierre; cualquier divergencia entre ambos la rechaza el servidor con
+ * cash_difference_mismatch.
+ */
 export function calculateExpectedCashBase(
   session: CashRegisterSession,
   transactions: Transaction[],
   currencies: Currency[]
 ): number {
-  const currencyRate = (code: string, fallback = 1) => {
-    const row = currencies.find((item) => item.code === code);
-    const rate = Number(row?.rateToBase);
-    return Number.isFinite(rate) && rate > 0 ? rate : fallback;
-  };
-  let expected = Number(session.openingBalance) || 0;
-  const sessionTxs = (transactions || []).filter((tx) =>
-    tx.status === 'completed' &&
-    !tx.deletedAt &&
-    !String(tx.notes || '').startsWith('AJUSTE_') &&
-    (tx.sessionId
-      ? tx.sessionId === session.id
-      : (tx.branchId === session.branchId &&
-         new Date(tx.date).getTime() >= new Date(session.openedAt).getTime() &&
-         (!session.closedAt || new Date(tx.date).getTime() <= new Date(session.closedAt).getTime())))
+  const baseCurrency =
+    currencies.find(currency => currency.isBase) ??
+    currencies[0] ??
+    ({ code: 'CUP', name: 'Peso cubano', symbol: '$', rateToBase: 1, isBase: true } as Currency);
+  return calculateExpectedCashBaseTotal(session, transactions, baseCurrency, currencies);
+}
+
+/**
+ * Tasa con la que se valora un faltante/sobrante histórico: la registrada en
+ * closingBalances al cerrar la caja; si no existe, la tasa vigente de la
+ * moneda; si no, 1. La deducción salarial del POS y Reportes usan la misma.
+ */
+export function resolveCloseRate(
+  currencyCode: string,
+  closingBalances: { currencyCode: string; exchangeRate?: number }[] | undefined,
+  currencies: Currency[],
+): number {
+  const recorded = Number(
+    (closingBalances || []).find(
+      balance => balance.currencyCode === currencyCode && Number(balance.exchangeRate) > 0,
+    )?.exchangeRate,
   );
-  for (const tx of sessionTxs) {
-    for (const payment of tx.payments || []) {
-      if (payment.method !== 'cash') continue;
-      const amount = Number(payment.amount) || 0;
-      const explicitRate = Number(payment.exchangeRate);
-      const rate = Number.isFinite(explicitRate) && explicitRate > 0 ? explicitRate : currencyRate(payment.currencyCode);
-      expected += amount * rate;
+  if (Number.isFinite(recorded) && recorded > 0) return recorded;
+  const rate = Number(currencies.find(currency => currency.code === currencyCode)?.rateToBase);
+  return Number.isFinite(rate) && rate > 0 ? rate : 1;
+}
+
+/**
+ * Descuadres por moneda/medio comparando lo declarado con el esperado. Toda
+ * diferencia real cuenta (0.00 solo si es exactamente cero), y las diferencias
+ * se redondean igual que el esperado para que POS y Reportes coincidan.
+ */
+export function buildDiscrepancyDetails(
+  expected: { currencyCode: string; method: string; amount: number }[],
+  closingBalances: { currencyCode: string; method: string; amount: number }[] | undefined,
+): ExpectedDiscrepancyDetail[] {
+  const declared = closingBalances || [];
+  const details: ExpectedDiscrepancyDetail[] = [];
+
+  expected.forEach(row => {
+    const actual = Number(
+      declared.find(balance => balance.currencyCode === row.currencyCode && balance.method === row.method)?.amount,
+    ) || 0;
+    const difference = round6(actual - Number(row.amount));
+    if (hasRealDifference(difference)) {
+      details.push({
+        currencyCode: row.currencyCode,
+        method: row.method as 'cash' | 'transfer',
+        expected: round6(Number(row.amount)),
+        actual,
+        difference,
+      });
     }
-    if (tx.changePayments?.length) {
-      for (const change of tx.changePayments) {
-        if (change.method !== 'cash') continue;
-        const amount = Number(change.amount) || 0;
-        const explicitRate = Number(change.exchangeRate);
-        const rate = Number.isFinite(explicitRate) && explicitRate > 0 ? explicitRate : currencyRate(change.currencyCode);
-        expected -= amount * rate;
-      }
-    } else if (Number(tx.changeGiven) > 0) {
-      expected -= Number(tx.changeGiven) || 0;
+  });
+
+  declared.forEach(balance => {
+    if (Number(balance.amount) <= 0) return;
+    const alreadyExpected = expected.some(
+      row => row.currencyCode === balance.currencyCode && row.method === balance.method,
+    );
+    if (!alreadyExpected) {
+      details.push({
+        currencyCode: balance.currencyCode,
+        method: balance.method as 'cash' | 'transfer',
+        expected: 0,
+        actual: Number(balance.amount),
+        difference: round6(Number(balance.amount)),
+      });
     }
-  }
-  for (const movement of session.movements || []) {
-    const amount = Number(movement.amount) || 0;
-    expected += (movement.type === 'income' ? amount : -amount) * currencyRate(movement.currencyCode);
-  }
-  return Math.round(expected * 1000000) / 1000000;
+  });
+
+  return details;
+}
+
+/** Faltante total en moneda base valorado con la tasa del cierre (deducción salarial). */
+export function shortageBaseAtClose(
+  details: { currencyCode: string; difference: number }[],
+  closingBalances: { currencyCode: string; exchangeRate?: number }[] | undefined,
+  currencies: Currency[],
+): number {
+  return round6(
+    details.reduce(
+      (sum, detail) =>
+        detail.difference < 0
+          ? sum + Math.abs(detail.difference) * resolveCloseRate(detail.currencyCode, closingBalances, currencies)
+          : sum,
+      0,
+    ),
+  );
+}
+
+/**
+ * Turno donde registrar el egreso de un reembolso en efectivo fuera de turno:
+ * el turno abierto de la caja o, si no lo hay, el turno aún abierto de la
+ * venta original. undefined si no hay ningún turno abierto (solo se avisa).
+ */
+export function resolveRefundTargetSession<
+  T extends { id: string; status: string; deletedAt?: string | null },
+>(openCashSession: T | undefined, ticketSessionId: string | undefined, cashSessions: T[] | undefined): T | undefined {
+  if (openCashSession) return openCashSession;
+  if (!ticketSessionId) return undefined;
+  return (cashSessions || []).find(
+    session => session.id === ticketSessionId && session.status === 'open' && !session.deletedAt,
+  );
+}
+
+/**
+ * Idempotencia del egreso de reembolso: ya está registrado si existe un
+ * movimiento con el mismo id (el RPC palmyra_record_cash_movement es
+ * idempotente por movement_id) o con categoría devolucion y la misma
+ * referencia de la devolución.
+ */
+export function hasRefundMovement(
+  targetSession: { movements?: { id: string; category?: string; description?: string }[] } | undefined,
+  movementId: string,
+  returnCode: string,
+): boolean {
+  return (targetSession?.movements || []).some(
+    movement =>
+      movement.id === movementId ||
+      (movement.category === 'devolucion' && (movement.description || '').includes(returnCode)),
+  );
 }

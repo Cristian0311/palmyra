@@ -153,8 +153,8 @@ export function LicenseBanner() {
       aria-live="polite"
       className={
         danger
-          ? "fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-[272] rounded-2xl border border-rose-300 bg-rose-50/95 px-3.5 py-3 shadow-lg backdrop-blur-sm dark:border-rose-900/60 dark:bg-rose-950/90 sm:inset-x-auto sm:right-4 sm:w-[min(92vw,24rem)] motion-safe:transition-colors"
-          : "fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-[272] rounded-2xl border border-amber-300 bg-amber-50/95 px-3.5 py-3 shadow-lg backdrop-blur-sm dark:border-amber-900/60 dark:bg-amber-950/90 sm:inset-x-auto sm:right-4 sm:w-[min(92vw,24rem)] motion-safe:transition-colors"
+          ? "fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-[var(--z-tooltip)] rounded-2xl border border-rose-300 bg-rose-50/95 px-3.5 py-3 shadow-lg backdrop-blur-sm dark:border-rose-900/60 dark:bg-rose-950/90 sm:inset-x-auto sm:right-4 sm:w-[min(92vw,24rem)] motion-safe:transition-colors"
+          : "fixed inset-x-3 bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-[var(--z-tooltip)] rounded-2xl border border-amber-300 bg-amber-50/95 px-3.5 py-3 shadow-lg backdrop-blur-sm dark:border-amber-900/60 dark:bg-amber-950/90 sm:inset-x-auto sm:right-4 sm:w-[min(92vw,24rem)] motion-safe:transition-colors"
       }
     >
       <div className="flex items-start gap-2.5">

@@ -1,6 +1,6 @@
 import PlanFeatureGate from "../components/PlanFeatureGate";
 import { useShallow } from 'zustand/react/shallow';
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Clock3,
@@ -78,6 +78,16 @@ function CustomersContent() {
   const [formData, setFormData] = useState({ name: "", email: "", phone: "", taxId: "" });
   const [savingCustomer, setSavingCustomer] = useState(false);
   const [formError, setFormError] = useState("");
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (viewingCustomer) setViewingCustomer(null);
+      else if (showForm) setShowForm(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [viewingCustomer, showForm]);
 
   const validTransactions = useMemo(
     () => transactions.filter(tx => !tx.deletedAt && tx.status !== 'refunded'),
@@ -565,10 +575,11 @@ function CustomersContent() {
       {/* Ficha del cliente */}
       {viewingCustomer && (
         <div
-          className="fixed inset-0 z-50 flex justify-end bg-slate-900/60 backdrop-blur-sm"
+          className="palmyra-overlay z-[var(--z-drawer)] flex justify-end"
           role="dialog"
           aria-modal="true"
           aria-label={`Ficha de ${viewingCustomer.name}`}
+          onMouseDown={event => { if (event.target === event.currentTarget) setViewingCustomer(null); }}
         >
           <div className="flex h-full w-full max-w-md flex-col border-l border-base bg-secondary shadow-2xl animate-in slide-in-from-right duration-300">
             <div className="border-b border-base bg-subtle p-4">
@@ -715,8 +726,12 @@ function CustomersContent() {
 
       {/* Alta / edición */}
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/60 p-3 backdrop-blur-sm sm:p-4">
-          <div className="palmyra-mobile-modal w-full max-w-md overflow-hidden rounded-2xl border border-base bg-secondary shadow-2xl animate-in zoom-in-95" role="dialog" aria-modal="true" aria-label={editingCustomer ? "Editar cliente" : "Nuevo cliente"}>
+        <div
+          className="palmyra-overlay z-[var(--z-modal)] flex items-center justify-center overflow-y-auto p-3 sm:p-4"
+          role="presentation"
+          onMouseDown={event => { if (event.target === event.currentTarget) setShowForm(false); }}
+        >
+          <div className="palmyra-mobile-modal palmyra-modal-panel w-full max-w-md overflow-hidden animate-in zoom-in-95" role="dialog" aria-modal="true" aria-label={editingCustomer ? "Editar cliente" : "Nuevo cliente"}>
             <div className="flex items-center justify-between border-b border-base bg-subtle px-4 py-3">
               <div>
                 <h3 className="text-sm font-black text-primary">{editingCustomer ? "Editar cliente" : "Nuevo cliente"}</h3>
@@ -813,8 +828,12 @@ function CustomersContent() {
 
       {/* Confirmación de eliminación */}
       {deletingCustomer && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/60 p-3 backdrop-blur-sm">
-          <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-base bg-secondary shadow-2xl" role="alertdialog" aria-modal="true" aria-label="Eliminar cliente">
+        <div
+          className="palmyra-overlay z-[var(--z-confirm)] flex items-center justify-center p-3 sm:p-4"
+          role="presentation"
+          onMouseDown={event => { if (event.target === event.currentTarget) setDeletingCustomer(null); }}
+        >
+          <div className="palmyra-modal-panel w-full max-w-sm overflow-hidden max-h-[92dvh] overflow-y-auto" role="alertdialog" aria-modal="true" aria-label="Eliminar cliente">
             <div className="p-4">
               <div className="flex items-start gap-2.5">
                 <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-300">

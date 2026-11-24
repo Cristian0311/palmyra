@@ -53,6 +53,9 @@ type Lesson = {
 
 const PROGRESS_KEY = "palmyra.school.progress.v1";
 
+/** Lecciones publicadas en esta versión: se marcan «Nueva» hasta completarlas. */
+const NEW_LESSON_IDS = new Set(["primer-producto", "acceso-dispositivo", "actualizaciones", "licencia", "descargas"]);
+
 const lessons: Lesson[] = [
   {
     id: "inicio",
@@ -92,8 +95,8 @@ const lessons: Lesson[] = [
       },
       {
         title: "Revisa las monedas y sus tasas",
-        detail: "PALMYRA guarda los precios en la moneda base (normalmente CUP) y usa la tasa de cada divisa solo para convertir en el momento del cobro. La pantalla Tasa de cambio muestra el mercado, pero no modifica los precios de tus productos.",
-        where: "Configuración → Monedas · Menú lateral → Tasa de cambio",
+        detail: "PALMYRA guarda los precios en la moneda base (normalmente CUP) y usa la tasa de cada divisa solo para convertir en el momento del cobro. La pestaña Monedas y tasas permite tasas manuales o automáticas; la pantalla Tasa de cambio muestra el mercado, pero no modifica los precios de tus productos.",
+        where: "Configuración → Monedas y tasas · Menú lateral → Tasa de cambio",
         zone: 3,
       },
       {
@@ -110,8 +113,8 @@ const lessons: Lesson[] = [
       },
       {
         title: "Crea el primer producto",
-        detail: "Abre Inventario → Agregar producto y completa datos, precio y existencia del almacén. Sin productos con stock no se puede vender, aunque el turno esté abierto.",
-        where: "Inventario → Agregar producto",
+        detail: "Abre Inventario → Agregar producto y completa datos, precio y, si aplica, variantes. Después carga la existencia inicial con «Gestionar stock»: el producto nuevo nace sin existencias y sin stock no se puede vender, aunque el turno esté abierto.",
+        where: "Inventario → Agregar producto · Gestionar stock",
         note: "Guarda el código de barras: acelera muchísimo la venta en el POS.",
         zone: 6,
       },
@@ -147,7 +150,7 @@ const lessons: Lesson[] = [
     steps: [
       {
         title: "Usa el menú por áreas, no de memoria",
-        detail: "El menú lateral está agrupado: Operación (POS, cotizaciones, transferencias, devoluciones), Gestión (clientes, inventario, auditoría, proveedores), Finanzas (bancos, reportes) y Administración (configuración, equipo, plan, tutorial).",
+        detail: "El menú lateral está agrupado: Operación (dashboard, POS, cotizaciones, transferencias, devoluciones), Gestión (clientes, inventario, auditoría, proveedores), Finanzas (bancos, reportes) y Administración (configuración, equipo, plan, tasa de cambio, tutorial y centro de atención).",
         where: "Barra lateral izquierda",
         zone: 1,
       },
@@ -327,66 +330,66 @@ const lessons: Lesson[] = [
   },
   {
     id: "cierre",
-    title: "Arqueo y cierre de turno (POS y Reportes)",
+    title: "Cierre de turno: arqueo, cuadre y liquidación",
     short: "Cerrar turno",
     icon: CheckCircle2,
     level: "Intermedio",
     minutes: 6,
-    summary: "Cuenta el efectivo y las transferencias, compara con lo esperado, documenta diferencias y cierra el turno.",
+    summary: "Cuenta el efectivo y las transferencias, compara con el cuadre, documenta diferencias y finaliza el turno en el POS.",
     objective: "Cerrar el turno sin dejar la caja abierta ni diferencias sin explicación.",
     prereq: "Turno abierto con ventas o movimientos registrados.",
     result: "Turno cerrado, comprobante de cierre y descuadre documentado si existe.",
-    route: "/reports",
-    routeLabel: "Cerrar desde Reportes",
-    figureTitle: "Pantalla Caja y Ventas del Turno",
+    route: "/pos",
+    routeLabel: "Abrir POS",
+    figureTitle: "Caja y Ventas del Turno",
     shell: "modal",
-    flow: ["Cerrar Caja", "Ventas", "Movimientos", "Arqueo", "Diferencia", "Cerrar"],
+    flow: ["Cerrar Caja", "Movimientos", "Ventas", "Arqueo", "Cuadre", "Cerrar"],
     zones: [
       { n: 1, label: "Pestañas del turno", x: 18, y: 10, w: 64, h: 8 },
       { n: 2, label: "Ventas del Turno", x: 18, y: 22, w: 30, h: 14 },
       { n: 3, label: "Movimientos de caja", x: 50, y: 22, w: 30, h: 14 },
-      { n: 4, label: "Arqueo: efectivo y esperado", x: 18, y: 38, w: 62, h: 14 },
-      { n: 5, label: "Cerrar Turno y Finalizar", x: 18, y: 58, w: 64, h: 12 },
-      { n: 6, label: "Forzar Cierre (con diferencia)", x: 18, y: 74, w: 64, h: 10 },
+      { n: 4, label: "Arqueo de efectivo y transferencias", x: 18, y: 38, w: 62, h: 14 },
+      { n: 5, label: "Cuadre del arqueo", x: 18, y: 54, w: 62, h: 12 },
+      { n: 6, label: "Fecha y liquidación · Cerrar", x: 18, y: 70, w: 64, h: 14 },
     ],
     steps: [
       {
-        title: "Abre el cierre desde POS o desde Reportes",
-        detail: "En el POS pulsa «Cerrar Caja». También puedes cerrar desde Reportes → pestaña Cajas → botón «Cerrar» del turno abierto, o desde Ventas → Por Turnos. Ambos caminos usan el mismo arqueo.",
-        where: "POS → Cerrar Caja · Reportes → Cajas → Cerrar",
-        note: "Si el turno no aparece en Reportes, revisa el filtro de Estado: debe estar en «Abiertos» o «Todos».",
+        title: "Abre el cierre desde el POS",
+        detail: "Con el turno abierto pulsa «Cerrar Caja» en el POS. Se abre «Caja y Ventas del Turno» con las pestañas Movimientos, Ventas del Turno y Arqueo y Cierre. El cierre es del turno y del equipo de quien opera: ya no se cierra desde Reportes.",
+        where: "POS → Cerrar Caja",
         zone: 1,
       },
       {
-        title: "Revisa las ventas del turno",
-        detail: "La pestaña «Ventas del Turno» muestra Tickets, Productos y Egreso y gasto, además de tarjetas por forma de pago. Úsala para detectar una venta que no debería estar o un gasto sin comprobante.",
-        where: "Caja y Ventas del Turno → Ventas del Turno",
-        zone: 2,
-      },
-      {
         title: "Registra los movimientos antes de cerrar",
-        detail: "En «Movimientos» añade ingresos y egresos con moneda, monto y descripción. Hazlo antes del cierre: después el turno queda cerrado y no admite movimientos nuevos.",
+        detail: "En «Movimientos» añade ingresos y egresos con moneda, monto y descripción. Hazlo antes del arqueo: un turno cerrado ya no admite movimientos nuevos.",
         where: "Caja y Ventas del Turno → Movimientos",
         zone: 3,
       },
       {
+        title: "Revisa las ventas del turno",
+        detail: "La pestaña «Ventas del Turno» muestra tickets, productos y tarjetas por forma de pago. Úsala para detectar una venta que no debería estar o un gasto sin comprobante.",
+        where: "Caja y Ventas del Turno → Ventas del Turno",
+        zone: 2,
+      },
+      {
         title: "Cuenta el efectivo real y decláralo",
-        detail: "En «Arqueo y Cierre» escribe lo que realmente hay en caja por moneda y método. El sistema muestra «Esperado en arqueo» al lado. No escribas lo que crees que debería haber: cuenta billetes y monedas.",
-        where: "Arqueo y Cierre → Efectivo CUP / Transferencias",
+        detail: "En «Arqueo y Cierre» escribe el conteo físico de cada moneda (Efectivo CUP/MN y las demás) y de cada transferencia. Cuenta billetes y monedas de verdad: el botón «Cuadre perfecto» solo rellena los conteos con lo esperado y puedes ajustarlos antes de cerrar.",
+        where: "Arqueo y Cierre → Arqueo de efectivo",
+        note: "No escribas lo que «debería» haber en caja: escribe lo que realmente hay.",
         zone: 4,
       },
       {
-        title: "Decide qué hacer si hay diferencia",
-        detail: "Si lo declarado no coincide, aparece «Discrepancia Detectada». Puedes volver a revisar el conteo o «Forzar Cierre». Si el faltante es del empleado, el sistema permite descontarlo del salario; el cierre quedará en Descuadres para conciliación.",
-        where: "Discrepancia Detectada → Volver a Revisar / Forzar Cierre",
-        zone: 6,
+        title: "Lee el cuadre y decide si hay diferencia",
+        detail: "«Cuadre del arqueo» marca Cuadrado, Faltante o Sobrante por moneda y método. Si hay diferencia se abre la Revisión del Descuadre: vuelve a contar o cierra con el descuadre documentado; si el faltante es del empleado, puedes descontarlo del salario y el turno queda en Descuadres para conciliación.",
+        where: "Cuadre del arqueo → Revisión del Descuadre",
+        zone: 5,
       },
       {
-        title: "Confirma el cierre y guarda el comprobante",
-        detail: "Pulsa «Cerrar Turno y Finalizar» (o desde Reportes: «Confirmar y cerrar turno»). El turno pasa a cerrado, se calcula la liquidación y puedes imprimir el comprobante. Si la nube no responde, el cierre se guarda en el dispositivo y se sincroniza al reconectar.",
-        where: "Cerrar Turno y Finalizar · Confirmar y cerrar turno",
-        note: "Desde Reportes, declara también las transferencias: dejarlas en blanco se registra como faltante.",
-        zone: 5,
+        title: "Confirma fecha, liquidación y cierra",
+        detail: "Revisa la Fecha de Cierre, el empleado asignado y la liquidación calculada, y pulsa «Cerrar Caja y Finalizar Turno». El turno pasa a cerrado y puedes guardar el comprobante. Si la nube no responde, el cierre queda en el dispositivo y se sincroniza al reconectar.",
+        where: "Fecha y liquidación → Cerrar Caja y Finalizar Turno",
+        note: "La deducción salarial por descuadre se registra en el cierre y aparece en la liquidación.",
+        zone: 6,
       },
     ],
     mistakes: [
@@ -891,20 +894,20 @@ const lessons: Lesson[] = [
     icon: FileBarChart2,
     level: "Intermedio",
     minutes: 7,
-    summary: "Resumen, ventas, cajas, descuadres, movimientos y nómina; filtros por fecha, almacén y personal; cierre de turno y Excel.",
-    objective: "Encontrar la explicación de cualquier cifra y cerrar un turno abierto sin ir al POS.",
+    summary: "Resumen, ventas, cajas, descuadres, movimientos, nómina y transferencias; filtros por fecha, almacén y personal; detalle de cada cifra y Excel.",
+    objective: "Encontrar la explicación de cualquier cifra y vigilar turnos y diferencias sin ir al POS.",
     prereq: "Permiso para ver reportes.",
-    result: "Reportes filtrados correctamente y turnos cerrados desde Reportes cuando haga falta.",
+    result: "Reportes filtrados correctamente y diferencias revisadas desde Descuadres.",
     route: "/reports",
     routeLabel: "Abrir Reportes",
     figureTitle: "Pantalla de Reportes",
-    flow: ["Pestaña", "Filtros", "Indicador", "Detalle", "Acción", "Excel"],
+    flow: ["Pestaña", "Filtros", "Indicador", "Detalle", "Excel"],
     zones: [
       { n: 1, label: "Pestañas de reportes", x: 17, y: 10, w: 81, h: 8 },
       { n: 2, label: "Filtros de fecha y almacén", x: 17, y: 20, w: 81, h: 8 },
       { n: 3, label: "Indicadores del periodo", x: 17, y: 30, w: 81, h: 16 },
       { n: 4, label: "Detalle de operaciones", x: 17, y: 48, w: 56, h: 36 },
-      { n: 5, label: "Botón Cerrar del turno", x: 75, y: 48, w: 23, h: 14 },
+      { n: 5, label: "Detalle de venta / turno", x: 75, y: 48, w: 23, h: 14 },
       { n: 6, label: "Exportar a Excel", x: 75, y: 64, w: 23, h: 14 },
     ],
     steps: [
@@ -916,7 +919,7 @@ const lessons: Lesson[] = [
       },
       {
         title: "Acota con filtros antes de interpretar",
-        detail: "Selecciona almacén, personal, fecha (Hoy, Ayer o un día concreto) y estado (Abiertos, Cerrados, Anulados). Un total sin filtro puede incluir varias sucursales o periodos.",
+        detail: "Selecciona almacén, personal, fecha (Hoy, Ayer o un día concreto) y estado del turno (Abierta, Cerrada, Cancelada). Un total sin filtro puede incluir varias sucursales o periodos.",
         where: "Reportes → Filtros",
         zone: 2,
       },
@@ -927,29 +930,28 @@ const lessons: Lesson[] = [
         zone: 4,
       },
       {
-        title: "Cierra un turno desde Reportes",
-        detail: "En Cajas localiza el turno abierto y pulsa «Cerrar». También desde Ventas → Por Turnos. Se abre el modal «Cerrar Turno desde Reportes»: elige fecha, declara efectivo y transferencias por moneda, añade notas y pulsa «Confirmar y cerrar turno».",
-        where: "Reportes → Cajas → Cerrar",
-        note: "Si hay diferencia, el turno aparece en Descuadres. Si la nube falla, el cierre queda local y se sincroniza después.",
+        title: "Vigila los turnos desde Cajas",
+        detail: "La pestaña Cajas lista los turnos con su estado, empleado, almacén, fondos y totales, e indica cuáles están abiertos, cerrados o con diferencia. El cierre de turno se hace en el POS: aquí revisas y auditas lo que ya pasó.",
+        where: "Reportes → Cajas",
         zone: 5,
       },
       {
         title: "Documenta las diferencias",
-        detail: "La pestaña Descuadres filtra faltantes, sobrantes, con descuento y pendientes. Úsala para conciliar la caja y explicar cada diferencia en lugar de dejarla sin revisar.",
+        detail: "La pestaña Descuadres muestra faltantes, sobrantes, con descuento y pendientes en formato de lista. Úsala para conciliar la caja y explicar cada diferencia en lugar de dejarla sin revisar.",
         where: "Reportes → Descuadres",
         zone: 3,
       },
       {
         title: "Exporta a Excel cuando lo necesites",
-        detail: "El botón Excel ofrece «Reporte completo (8 hojas)» y secciones sueltas: Ventas, Cajas, Nómina, Inventario, Resumen, Cuentas, Devoluciones, Descuadres, Movimientos y Traslados. Es una función del plan Ciudadela.",
+        detail: "El botón Excel ofrece «Reporte completo (todas las hojas)» y secciones sueltas: Ventas, Cajas, Nómina, Inventario, Resumen, Cuentas, Devoluciones, Descuadres, Movimientos y Traslados. Es una función del plan Ciudadela.",
         where: "Reportes → Excel",
         zone: 6,
       },
     ],
     mistakes: [
       "Comparar dos periodos con filtros distintos.",
-      "Ver un turno «Cobrado» pero no cerrarlo: sigue abierto hasta que se cierra.",
-      "Buscar el turno en Cajas con el filtro «Cerrados» puesto.",
+      "Ver un turno «Abierta» en Cajas y olvidar que el cierre se hace en el POS.",
+      "Buscar un turno en Cajas con el filtro de estado equivocado.",
       "Intentar exportar Excel sin plan Ciudadela.",
     ],
     related: ["cierre", "dashboard", "bancos", "plan"],
@@ -967,18 +969,18 @@ const lessons: Lesson[] = [
     route: "/team",
     routeLabel: "Abrir Equipo",
     figureTitle: "Pantalla de Equipo",
-    flow: ["Empleados", "Rol", "Permisos", "Pago", "Revisión"],
+    flow: ["Empleados", "Rol", "Permisos", "Pago", "Enlace"],
     zones: [
       { n: 1, label: "Empleados / Roles / Pago", x: 17, y: 10, w: 40, h: 8 },
       { n: 2, label: "Crear rol", x: 17, y: 20, w: 24, h: 10 },
       { n: 3, label: "Permisos del rol", x: 43, y: 20, w: 40, h: 30 },
       { n: 4, label: "Pago del equipo", x: 17, y: 32, w: 24, h: 18 },
-      { n: 5, label: "Invitación por correo", x: 17, y: 52, w: 81, h: 12 },
+      { n: 5, label: "Enlace de acceso", x: 17, y: 52, w: 81, h: 12 },
     ],
     steps: [
       {
-        title: "Crea el empleado y su contraseña",
-        detail: "En Equipo → Empleados registra nombre, almacén y contraseña. El cajero usará esa contraseña al abrir el turno y solo podrá operar su turno y almacén.",
+        title: "Crea el empleado y su contraseña POS",
+        detail: "En Equipo → Empleados registra nombre, código y contraseña del POS. El cajero usará su nombre y contraseña al abrir el turno y solo podrá operar su turno y almacén.",
         where: "Equipo → Empleados",
         zone: 1,
       },
@@ -990,7 +992,7 @@ const lessons: Lesson[] = [
       },
       {
         title: "Ajusta permisos finos",
-        detail: "Si necesitas un rol propio, «Crear rol» permite marcar permisos por área. Los roles personalizados requieren plan Caravana. Cambiar un rol afecta de inmediato al empleado.",
+        detail: "Si necesitas un rol propio, «Crear rol» permite marcar permisos por área. Los roles personalizados requieren plan Oasis. Cambiar un rol afecta de inmediato al empleado.",
         where: "Equipo → Roles y permisos → Crear rol",
         zone: 3,
       },
@@ -1001,10 +1003,10 @@ const lessons: Lesson[] = [
         zone: 4,
       },
       {
-        title: "Invita y revisa accesos",
-        detail: "La invitación llega por correo y debe aceptarse desde el enlace. Al cambiar una responsabilidad, revisa los permisos para retirar accesos que ya no correspondan.",
-        where: "Equipo → Invitaciones",
-        note: "Una invitación enviada a Gmail debe abrirse desde esa misma cuenta para entrar a la empresa correcta.",
+        title: "Genera el enlace de acceso de un solo uso",
+        detail: "Cuando el trabajador vaya a entrar desde otro equipo, genera su enlace de acceso: es personal, de un solo uso y con caducidad configurable. Cópialo y entrégalo tú; no se envían invitaciones por correo. En el otro equipo el enlace valida el dispositivo y pide la contraseña POS.",
+        where: "Equipo → Empleado → Enlace de acceso",
+        note: "Un enlace usado o caducado ya no sirve: genera otro cuando haga falta.",
         zone: 5,
       },
     ],
@@ -1012,32 +1014,32 @@ const lessons: Lesson[] = [
       "Compartir la contraseña del administrador con los cajeros.",
       "Dar permisos de administración para «evitar problemas».",
       "Cambiar un rol sin avisar al empleado.",
-      "Invitar con un correo distinto al que usará la persona.",
+      "Compartir un enlace de acceso con otra persona: es personal y de un solo uso.",
     ],
-    related: ["inicio", "pos-apertura", "plan"],
+    related: ["inicio", "pos-apertura", "acceso-dispositivo"],
   },
   {
     id: "offline",
-    title: "Trabajar sin internet: offline y LAN",
-    short: "Offline y LAN",
+    title: "Trabajar sin internet: cola local y sincronización",
+    short: "Offline",
     icon: WifiOff,
     level: "Avanzado",
     minutes: 6,
-    summary: "Qué se guarda localmente, cómo sincronizar, qué significan los conflictos y qué es (y qué no es) la LAN.",
+    summary: "Qué se guarda localmente, cómo saber si hay trabajo pendiente y qué hacer con los conflictos y los cambios de equipo.",
     objective: "Operar sin conexión sin perder ventas ni cierres.",
     prereq: "App instalada o abierta al menos una vez con conexión.",
     result: "Operaciones guardadas localmente y sincronizadas al reconectar.",
-    route: "/settings",
-    routeLabel: "Abrir Configuración",
+    route: "/settings?section=system",
+    routeLabel: "Abrir Sistema",
     figureTitle: "Cómo viaja una operación",
     shell: "network",
-    flow: ["Dispositivo", "Cola local", "Internet", "Nube", "Verificar"],
+    flow: ["Dispositivo", "Cola local", "Internet", "Nube", "Sincronizar"],
     zones: [
       { n: 1, label: "Este dispositivo", x: 6, y: 62, w: 26, h: 22 },
       { n: 2, label: "Cola local", x: 38, y: 62, w: 24, h: 22 },
-      { n: 3, label: "Wi-Fi del negocio", x: 6, y: 10, w: 26, h: 20 },
+      { n: 3, label: "Internet", x: 6, y: 10, w: 26, h: 20 },
       { n: 4, label: "Nube PALMYRA", x: 74, y: 10, w: 20, h: 18 },
-      { n: 5, label: "Estado de sincronización", x: 38, y: 24, w: 24, h: 18 },
+      { n: 5, label: "Aviso de cola", x: 38, y: 24, w: 24, h: 18 },
       { n: 6, label: "Conflictos", x: 38, y: 46, w: 24, h: 12 },
     ],
     steps: [
@@ -1055,63 +1057,63 @@ const lessons: Lesson[] = [
         zone: 2,
       },
       {
-        title: "Revisa la Salud offline",
-        detail: "En Configuración → Conexión y datos → Salud offline verás pendientes, conflictos, último sync y almacenamiento. «Sincronizar ahora» fuerza el envío.",
-        where: "Configuración → Conexión y datos",
+        title: "Mira el aviso de cola de la barra lateral",
+        detail: "Cuando hay trabajo sin enviar, la barra lateral muestra una burbuja con las operaciones pendientes de sincronizar y los conflictos. Si no ves el aviso, no hay nada pendiente.",
+        where: "Barra lateral → Aviso de cola",
         zone: 5,
       },
       {
         title: "Resuelve conflictos, no los ignores",
-        detail: "Un conflicto aparece cuando dos dispositivos modificaron lo mismo. Si queda pendiente, la operación no se consolida en la nube; revisa el panel de conflictos y decide.",
-        where: "Salud offline → Conflictos",
+        detail: "Un conflicto aparece cuando dos dispositivos modificaron lo mismo. Si queda pendiente, la operación no se consolida en la nube; revisa el aviso y decide antes de seguir operando.",
+        where: "Aviso de cola → Conflictos",
         zone: 6,
       },
       {
-        title: "Sincronización manual: solo si está configurada",
-        detail: "Si tu negocio usa «Sincronización Manual», el sistema no sube datos automáticamente: debes pulsar «Sincronizar ahora» cuando tengas conexión. Confirma esta política con el administrador.",
-        where: "Configuración → Administración avanzada",
+        title: "Comprueba el estado en Sistema",
+        detail: "Configuración → Sistema muestra la Última sincronización y el almacenamiento de este equipo. Si dudas de que algo subió, mira la fecha antes de borrar datos o cambiar de equipo.",
+        where: "Configuración → Sistema",
         zone: 2,
       },
       {
-        title: "La LAN comparte los datos entre cajas emparejadas",
-        detail: "El hub LAN comparte los datos del negocio entre los equipos emparejados del mismo Wi-Fi: una venta hecha en una caja aparece en las demás. El equipo principal debe estar encendido y cada caja vinculada con su código.",
-        where: "Configuración → Red local",
+        title: "El enlace de acceso vincula otro equipo",
+        detail: "Para operar desde otro dispositivo, el trabajador abre su enlace de acceso de un solo uso: valida el dispositivo y entra con su contraseña POS. Cada equipo guarda y sincroniza su propia cola.",
+        where: "Equipo → Enlace de acceso",
         zone: 3,
       },
     ],
     mistakes: [
-      "Esperar que la LAN comparta las ventas con el equipo principal apagado o con las cajas sin vincular.",
       "Limpiar los datos del navegador con operaciones pendientes.",
-      "Asumir que todo se sincronizó sin revisar la Salud offline.",
+      "Asumir que todo se sincronizó sin mirar el aviso de cola ni la última sincronización.",
+      "Cambiar de equipo sin generar un enlace de acceso nuevo para ese dispositivo.",
     ],
-    related: ["configuracion", "cierre", "inicio"],
+    related: ["configuracion", "cierre", "inicio", "acceso-dispositivo"],
   },
   {
     id: "configuracion",
-    title: "Configuración, impresora y tasa de cambio",
+    title: "Configuración: empresa, impresora y sistema",
     short: "Configuración",
     icon: Settings,
     level: "Intermedio",
     minutes: 5,
-    summary: "Empresa, almacenes, impresora, apariencia, notificaciones, conexión y administración avanzada.",
+    summary: "Empresa, almacenes, categorías, monedas y tasas, impresora, apariencia, notificaciones y sistema.",
     objective: "Ajustar el sistema al negocio sin romper operaciones existentes.",
     result: "Preferencias correctas y comprobantes listos para entregar.",
     route: "/settings",
     routeLabel: "Abrir Configuración",
     figureTitle: "Pantalla de Configuración",
-    flow: ["Sección", "Empresa", "Impresora", "Conexión", "Tasa"],
+    flow: ["Sección", "Empresa", "Impresora", "Monedas", "Sistema"],
     zones: [
-      { n: 1, label: "Secciones de configuración", x: 17, y: 10, w: 20, h: 78 },
+      { n: 1, label: "Pestañas de configuración", x: 17, y: 10, w: 20, h: 78 },
       { n: 2, label: "Empresa y almacenes", x: 39, y: 10, w: 59, h: 18 },
       { n: 3, label: "Impresora y comprobantes", x: 39, y: 30, w: 59, h: 18 },
-      { n: 4, label: "Conexión y datos", x: 39, y: 50, w: 59, h: 14 },
-      { n: 5, label: "Tasa de cambio", x: 39, y: 66, w: 29, h: 14 },
-      { n: 6, label: "Apariencia y notificaciones", x: 70, y: 66, w: 28, h: 14 },
+      { n: 4, label: "Monedas y tasas", x: 39, y: 50, w: 29, h: 14 },
+      { n: 5, label: "Apariencia y notificaciones", x: 70, y: 50, w: 28, h: 14 },
+      { n: 6, label: "Sistema: versión, actualización y licencia", x: 39, y: 66, w: 59, h: 14 },
     ],
     steps: [
       {
         title: "Entra con el permiso correcto",
-        detail: "Solo los administradores ven todas las secciones. Un empleado sin permiso de configuración únicamente puede abrir Notificaciones.",
+        detail: "Solo los administradores ven todas las pestañas. Un empleado sin permiso de configuración únicamente puede abrir Notificaciones.",
         where: "Menú lateral → Configuración",
         zone: 1,
       },
@@ -1128,16 +1130,22 @@ const lessons: Lesson[] = [
         zone: 3,
       },
       {
-        title: "Revisa conexión y respaldo",
-        detail: "En Conexión y datos están la Salud offline, la sincronización manual y el servidor LAN. No actives ni limpies nada sin entender el estado de la cola.",
-        where: "Configuración → Conexión y datos",
+        title: "Configura monedas y tasas",
+        detail: "La pestaña Monedas y tasas permite tasas manuales o automáticas. La pantalla Tasa de cambio del menú muestra la cotización de elTOQUE sin alterar los precios de los productos: actualiza precios en Inventario.",
+        where: "Configuración → Monedas y tasas · Menú lateral → Tasa de cambio",
+        note: "La tasa sirve para convertir al cobrar; el precio del producto se define en su ficha.",
         zone: 4,
       },
       {
-        title: "La tasa de cambio informa, no fija precios",
-        detail: "La pantalla Tasa de cambio muestra elTOQUE para divisas y criptoactivos en distintos periodos. No altera automáticamente los precios de los productos: actualiza precios en Inventario.",
-        where: "Menú lateral → Tasa de cambio",
-        note: "La tasa sirve para convertir al cobrar; el precio del producto se define en su ficha.",
+        title: "Revisa Sistema de vez en cuando",
+        detail: "En Sistema están la versión, la comprobación de actualizaciones, la licencia (activa, por vencer o solo lectura) y el almacenamiento y última sincronización de este equipo.",
+        where: "Configuración → Sistema",
+        zone: 6,
+      },
+      {
+        title: "Ajusta apariencia y notificaciones",
+        detail: "Apariencia cambia el tamaño del texto de la interfaz; Notificaciones concentra tus avisos y preferencias. Ninguna de las dos afecta los datos del negocio.",
+        where: "Configuración → Apariencia / Notificaciones",
         zone: 5,
       },
     ],
@@ -1146,7 +1154,7 @@ const lessons: Lesson[] = [
       "Cambiar la tasa y esperar que los precios cambien solos.",
       "Probar la impresora con la caja ya abierta y clientes esperando.",
     ],
-    related: ["inicio", "offline", "pos-venta"],
+    related: ["inicio", "offline", "pos-venta", "actualizaciones", "licencia"],
   },
   {
     id: "plan",
@@ -1155,7 +1163,7 @@ const lessons: Lesson[] = [
     icon: Sparkles,
     level: "Básico",
     minutes: 4,
-    summary: "Qué incluye cada plan, qué funciones están bloqueadas y cómo se solicita una extensión.",
+    summary: "Qué incluye cada plan (Gratis, Oasis, Caravana y Ciudadela), qué funciones están bloqueadas y cómo se solicita una extensión.",
     objective: "Entender qué puedes usar hoy y qué necesitas para desbloquear lo demás.",
     result: "Sabes tu plan actual y cómo solicitar una ampliación sin perder acceso.",
     route: "/subscription",
@@ -1172,36 +1180,36 @@ const lessons: Lesson[] = [
     steps: [
       {
         title: "Consulta el plan actual",
-        detail: "La sección Plan muestra el nivel activo, su vencimiento y el período de gracia. El plan Gratis no vence; en los planes de pago, al vencer y agotarse la gracia PALMYRA pasa a modo lectura: puedes consultar, pero no operar hasta renovar.",
+        detail: "La sección Plan muestra el nivel activo, su vencimiento y el período de gracia. El plan Gratis no vence; en los planes de pago, al vencer y agotarse la gracia PALMYRA pasa a solo lectura: puedes consultar y exportar, pero no operar hasta renovar.",
         where: "Menú lateral → Plan",
         zone: 1,
       },
       {
         title: "Identifica las funciones premium",
-        detail: "El plan Gratis (permanente) incluye 1 almacén, el propietario, 1 empleado y 25 tipos de producto. Transferencias, compras, auditoría, bancos, clientes/proveedores y estilo visual requieren plan Caravana. Excel, etiquetas, ABC, garantías y analítica avanzada requieren Ciudadela. Verás una pantalla «Función premium» con el botón de planes.",
+        detail: "El plan Gratis (permanente) incluye 1 almacén, el propietario, 1 empleado y 25 tipos de producto. Los roles personalizados requieren Oasis. Transferencias, compras, auditoría, bancos, clientes/proveedores y estilo visual requieren Caravana. Excel, etiquetas, ABC, garantías y analítica avanzada requieren Ciudadela. Verás una pantalla «Función premium» con el botón de planes.",
         where: "Cualquier módulo bloqueado → Ver planes y actualizar",
         zone: 5,
       },
       {
         title: "Solicita la extensión o renovación",
-        detail: "«Extender plan» o «Solicitar o renovar» abre la solicitud. «Enviar solicitud de pago» registra la petición; la aprobación es manual por administración.",
-        where: "Plan → Extender / Solicitar",
+        detail: "«Extender plan» o «Elegir plan» abre la solicitud con plan y duración; elige la forma de pago y envía «Solicitar extensión» o «Enviar solicitud de pago». Los precios son de referencia en USD y el importe en CUP se acuerda y confirma manualmente.",
+        where: "Plan → Extender / Elegir",
         zone: 2,
       },
       {
         title: "Espera la aprobación sin duplicar solicitudes",
-        detail: "Una vez enviada, la solicitud queda registrada. La aprobación actualiza el plan sin que el trabajador tenga que hacer nada. Enviar varias solicitudes no acelera el proceso.",
+        detail: "Una vez enviada, la solicitud queda registrada. La aprobación actualiza el plan sin que tengas que hacer nada. Enviar varias solicitudes no acelera el proceso.",
         where: "Plan → Solicitudes",
-        note: "Los límites se validan también en la base de datos: no se saltan alterando la interfaz.",
+        note: "La licencia se comprueba sola; su estado (activa, por vencer o solo lectura) se ve en Configuración → Sistema → Licencia.",
         zone: 3,
       },
     ],
     mistakes: [
-      "Dejar vencer el plan y descubrir el modo lectura en plena venta.",
+      "Dejar vencer el plan y descubrir la solo lectura en plena venta.",
       "Enviar la misma solicitud varias veces.",
       "Confundir «extender» con cambiar de plan.",
     ],
-    related: ["transferencias", "auditoria", "reportes", "equipo"],
+    related: ["transferencias", "auditoria", "reportes", "equipo", "licencia"],
   },
   {
     id: "auditoria-ajuste",
@@ -1226,7 +1234,7 @@ const lessons: Lesson[] = [
       { n: 5, label: "Solicitar recuento", x: 17, y: 56, w: 38, h: 10 },
       { n: 6, label: "Enviar a revisión", x: 57, y: 56, w: 41, h: 10 },
       { n: 7, label: "Aprobar y ajustar", x: 17, y: 70, w: 81, h: 10 },
-      { n: 8, label: "Salud offline", x: 17, y: 84, w: 81, h: 10 },
+      { n: 8, label: "Sincronización", x: 17, y: 84, w: 81, h: 10 },
     ],
     steps: [
       {
@@ -1270,7 +1278,7 @@ const lessons: Lesson[] = [
       {
         title: "Opera sin conexión y sincroniza",
         detail: "Iniciar, contar, pedir recuento y aprobar se guardan en este equipo si la red falla, y suben al reconectar. No borres los datos del navegador ni cambies de equipo con la cola pendiente.",
-        where: "Automático · Configuración → Conexión y datos → Salud offline",
+        where: "Automático · Aviso de cola en la barra lateral",
         zone: 8,
       },
     ],
@@ -1419,7 +1427,7 @@ const lessons: Lesson[] = [
       {
         title: "Un traslado sin conexión",
         detail: "Si confirmas el envío sin red, queda en la cola local y solo descuenta el origen hasta que el destino reciba. Al reconectar se sincroniza; no repitas el traslado ni borres la cola.",
-        where: "Automático · Configuración → Conexión y datos → Salud offline",
+        where: "Automático · Aviso de cola en la barra lateral",
         zone: 7,
       },
     ],
@@ -1438,19 +1446,19 @@ const lessons: Lesson[] = [
     icon: CreditCard,
     level: "Básico",
     minutes: 4,
-    summary: "Tasas por divisa, variación, minigráficos e historial de 24 h, 7 y 30 días; aviso claro si falta la credencial de elTOQUE.",
+    summary: "Tasas por divisa, variación, minigráficos e historial de 24 h, 7 y 30 días; respaldo automático con la última tasa conocida.",
     objective: "Interpretar la cotización del mercado informal sin alterar los precios del negocio.",
     result: "Sabes leer la tasa, su tendencia y de dónde sale cada número.",
     route: "/exchange-rate",
     routeLabel: "Abrir Tasa de cambio",
     figureTitle: "Pantalla de Tasa de cambio",
-    flow: ["Divisa", "Tasa", "Variación", "Historial", "Aviso"],
+    flow: ["Divisa", "Tasa", "Variación", "Historial", "Respaldo"],
     zones: [
       { n: 1, label: "Divisas / Criptoactivos", x: 17, y: 10, w: 26, h: 10 },
       { n: 2, label: "Tasa por divisa", x: 45, y: 10, w: 38, h: 10 },
       { n: 3, label: "Variación", x: 85, y: 10, w: 13, h: 10 },
       { n: 4, label: "Historial 24 h / 7 d / 30 d", x: 17, y: 24, w: 81, h: 12 },
-      { n: 5, label: "Aviso de credencial", x: 17, y: 40, w: 81, h: 12 },
+      { n: 5, label: "Aviso de respaldo automático", x: 17, y: 40, w: 81, h: 12 },
     ],
     steps: [
       {
@@ -1469,7 +1477,7 @@ const lessons: Lesson[] = [
         title: "Interpreta la variación y el minigráfico",
         detail: "El indicador de variación y la línea de la tarjeta resumen el movimiento reciente. Sirven para decidir cuándo cambiar, no para fijar precios.",
         where: "Tasa de cambio → Variación",
-        note: "La cotización es del mercado informal y se actualiza cada 5 minutos con la pantalla abierta.",
+        note: "La cotización es del mercado informal y se consulta automáticamente; la pantalla muestra cuándo es la próxima actualización y permite forzarla.",
         zone: 3,
       },
       {
@@ -1479,8 +1487,8 @@ const lessons: Lesson[] = [
         zone: 4,
       },
       {
-        title: "Atiende el aviso de credencial",
-        detail: "Si el servidor no tiene ELTOQUE_API_TOKEN, la pantalla avisa y muestra la última consulta guardada. Pide al administrador que publique la credencial; la tasa nunca se reemplaza por datos inventados.",
+        title: "Reconoce el respaldo automático",
+        detail: "Si la consulta automática falla, la pantalla no queda vacía: muestra la última tasa conocida con un aviso y el botón Reintentar, y sugiere ajustar las tasas a mano en Configuración → Monedas y tasas. PALMYRA nunca sustituye la tasa por un número inventado.",
         where: "Tasa de cambio → Aviso de la fuente",
         zone: 5,
       },
@@ -1553,75 +1561,332 @@ const lessons: Lesson[] = [
     related: ["offline", "configuracion", "plan"],
   },
   {
-    id: "descargas-lan",
-    title: "Descargas y modo LAN: varios equipos sin internet",
-    short: "Descargas y LAN",
+    id: "descargas",
+    title: "Instalar PALMYRA en PC y móvil",
+    short: "Instalación",
     icon: Download,
     level: "Avanzado",
     minutes: 5,
-    summary: "Instala PALMYRA en Windows o en el móvil y abre el sistema desde varios equipos conectados al mismo Wi-Fi del negocio.",
-    objective: "Dejar cada equipo listo para operar y entender qué hace —y qué no— la red local.",
-    prereq: "App abierta al menos una vez con conexión y equipos en la misma red.",
-    result: "Equipos instalados, acceso LAN activo y máquinas reconocidas por nombre.",
-    route: "/settings",
-    routeLabel: "Abrir Configuración",
-    figureTitle: "Red local del negocio",
+    summary: "Instala PALMYRA en Windows o en el móvil, entra desde otro equipo con el enlace de acceso y mantén cada instalación al día.",
+    objective: "Dejar cada equipo listo para operar con su propia cola y sus actualizaciones.",
+    prereq: "Cuenta activa y un enlace de acceso generado para cada trabajador.",
+    result: "Equipos instalados, accesos vinculados por dispositivo y actualizaciones aplicadas.",
+    route: "/settings?section=system",
+    routeLabel: "Abrir Sistema",
+    figureTitle: "Equipos del negocio",
     shell: "network",
-    flow: ["Instalador", "Móvil", "Wi-Fi", "URL local", "Equipos"],
+    flow: ["Instalador", "Móvil", "Enlace de acceso", "Cola local", "Actualización"],
     zones: [
       { n: 1, label: "Instalador Windows", x: 4, y: 8, w: 28, h: 16 },
-      { n: 2, label: "App móvil", x: 4, y: 72, w: 28, h: 16 },
-      { n: 3, label: "Wi-Fi del negocio", x: 36, y: 8, w: 28, h: 14 },
-      { n: 4, label: "Dirección local", x: 68, y: 8, w: 28, h: 14 },
-      { n: 5, label: "Equipos conectados", x: 36, y: 72, w: 28, h: 16 },
-      { n: 6, label: "Permitir acceso LAN", x: 68, y: 36, w: 28, h: 14 },
+      { n: 2, label: "App móvil (APK)", x: 4, y: 72, w: 28, h: 16 },
+      { n: 3, label: "Enlace de acceso por dispositivo", x: 36, y: 8, w: 28, h: 14 },
+      { n: 4, label: "Cola local de cada equipo", x: 68, y: 8, w: 28, h: 14 },
+      { n: 5, label: "Actualización en Sistema", x: 68, y: 36, w: 28, h: 14 },
+      { n: 6, label: "Nube PALMYRA", x: 36, y: 72, w: 28, h: 16 },
     ],
     steps: [
       {
         title: "Instala la versión de Windows",
-        detail: "Descarga el instalador .exe desde la sección Descargas del sitio de PALMYRA y ejecútalo con el asistente. Abre la app una vez con internet para que la cola offline quede habilitada en ese equipo.",
+        detail: "Descarga el instalador desde la sección Descargas del sitio de PALMYRA y ejecútalo con el asistente. Abre la app una vez con internet para que la cola offline quede habilitada en ese equipo.",
         where: "Sitio PALMYRA → Descargas → Instalador Windows",
         zone: 1,
       },
       {
         title: "Instala en el móvil o la tablet",
-        detail: "Descarga el APK para Android o instala la aplicación desde el navegador. El mismo usuario puede operar desde varios equipos, pero cada uno guarda su propia cola.",
+        detail: "Descarga el APK para Android o instala la aplicación desde el navegador. El mismo usuario puede operar desde varios equipos, pero cada uno guarda y sincroniza su propia cola.",
         where: "Sitio PALMYRA → Descargas → App móvil",
         zone: 2,
       },
       {
-        title: "Comparte el mismo Wi-Fi",
-        detail: "Los equipos deben estar en la red del negocio; la LAN no sustituye internet para sincronizar. Con la red local activa puedes abrir PALMYRA aunque el proveedor de internet falle.",
-        where: "Wi-Fi del negocio",
+        title: "Entra en el otro equipo con el enlace de acceso",
+        detail: "Para vincular un dispositivo nuevo, el trabajador abre su enlace de acceso de un solo uso: el sistema valida el dispositivo, pide su contraseña POS y deja la sesión lista. No se comparten turnos: cada caja abre y cierra el suyo.",
+        where: "Equipo → Empleado → Enlace de acceso",
+        note: "Un enlace usado o caducado ya no sirve: genera otro en Equipo.",
         zone: 3,
       },
       {
-        title: "Activa el acceso desde otros equipos",
-        detail: "En Configuración → Sistema → Red local activa «Permitir acceso LAN». La pantalla muestra la dirección y un código QR para abrir el sistema en otro equipo.",
-        where: "Configuración → Sistema → Red local",
-        zone: 6,
-      },
-      {
-        title: "Abre la URL local en el otro equipo",
-        detail: "Escribe esa dirección en el navegador del móvil, tablet o PC; nunca uses localhost desde otro dispositivo porque apunta a sí mismo.",
-        where: "Navegador del otro equipo → Dirección local",
+        title: "Cuida la cola de cada equipo",
+        detail: "Lo que se opera sin internet queda en la cola local del equipo y se sincroniza al reconectar. No borres los datos del navegador ni cambies de equipo con operaciones pendientes.",
+        where: "Aviso de cola en la barra lateral",
         zone: 4,
       },
       {
-        title: "Reconoce y ordena las máquinas",
-        detail: "En «Máquinas conectadas» revisa las que están en línea, renómbralas por caja o área y olvida las que ya no se usan.",
-        where: "Configuración → Sistema → Red local → Máquinas conectadas",
-        note: "La LAN comparte el acceso, no los turnos: cada caja abre y cierra su propio turno.",
+        title: "Mantén la instalación al día",
+        detail: "Las actualizaciones se avisan solas. En Configuración → Sistema puedes forzar la comprobación con «Buscar actualización» y aplicar la versión nueva cuando esté lista.",
+        where: "Configuración → Sistema → Actualización",
         zone: 5,
       },
     ],
     mistakes: [
-      "Abrir la URL local desde otra red o con el equipo principal apagado.",
-      "Escribir localhost en el móvil: apunta al propio teléfono.",
-      "Intentar operar dos cajas con el mismo turno.",
-      "Limpiar los datos del equipo principal con operaciones pendientes.",
+      "Operar en dos equipos con el mismo turno: cada caja abre y cierra el suyo.",
+      "Limpiar los datos de un equipo con operaciones pendientes.",
+      "Ignorar el aviso de actualización y operar con otra versión que las demás cajas.",
     ],
-    related: ["offline", "configuracion", "inicio"],
+    related: ["offline", "configuracion", "acceso-dispositivo", "actualizaciones"],
+  },
+  {
+    id: "primer-producto",
+    title: "Tu primer producto: datos, precio y stock",
+    short: "Primer producto",
+    icon: Package,
+    level: "Básico",
+    minutes: 4,
+    summary: "Crea la primera ficha con SKU, código de barras, categoría y precio, carga la existencia inicial y verifica que aparece en el POS.",
+    objective: "Dejar al menos un producto con precio y stock correctos, listo para vender.",
+    prereq: "Almacén, monedas y categorías configurados.",
+    result: "Producto creado, con existencia en el almacén y disponible en el POS.",
+    route: "/inventory",
+    routeLabel: "Abrir Inventario",
+    figureTitle: "Agregar producto",
+    shell: "modal",
+    flow: ["Datos", "SKU", "Variantes", "Precio", "Existencia", "POS"],
+    zones: [
+      { n: 1, label: "Datos del producto", x: 17, y: 12, w: 38, h: 14 },
+      { n: 2, label: "SKU y código de barras", x: 57, y: 12, w: 41, h: 14 },
+      { n: 3, label: "Variantes (opcional)", x: 17, y: 30, w: 38, h: 14 },
+      { n: 4, label: "Precio y costo", x: 57, y: 30, w: 41, h: 14 },
+      { n: 5, label: "Gestionar stock", x: 17, y: 48, w: 38, h: 14 },
+      { n: 6, label: "Probar en el POS", x: 57, y: 48, w: 41, h: 14 },
+    ],
+    steps: [
+      {
+        title: "Completa los datos básicos",
+        detail: "En Inventario → Agregar producto escribe nombre, categoría y unidad de medida. El nombre y el SKU deben ser únicos: el sistema avisa si ya existen y no guarda duplicados.",
+        where: "Inventario → Agregar producto → Datos",
+        zone: 1,
+      },
+      {
+        title: "Guarda SKU y código de barras",
+        detail: "El SKU identifica la ficha en reportes y transferencias; el código de barras permite escanear en el POS. Si el proveedor ya trae código impreso, usa ese mismo.",
+        where: "Agregar producto → SKU / Código de barras",
+        note: "Con lector de barras, la venta se arma en segundos y sin errores de tecleo.",
+        zone: 2,
+      },
+      {
+        title: "Define variantes solo si hace falta",
+        detail: "Si el producto se vende en talla o color con existencias separadas, crea variantes en un único eje. Si comparten stock y precio, deja la ficha simple y no dupliques productos.",
+        where: "Agregar producto → Variantes",
+        zone: 3,
+      },
+      {
+        title: "Fija precio y costo reales",
+        detail: "El precio es lo que cobras; el costo alimenta la ganancia por producto y los reportes. Revisa también la comisión del personal si aplica.",
+        where: "Agregar producto → Precios y extras",
+        zone: 4,
+      },
+      {
+        title: "Carga la existencia con Gestionar stock",
+        detail: "El producto nuevo nace sin existencias. Usa «Gestionar stock» para cargar la cantidad inicial en el almacén correcto; el ajuste queda registrado y se descuenta con cada venta.",
+        where: "Inventario → Gestionar stock",
+        note: "Un producto sin stock no aparece listo para vender aunque el turno esté abierto.",
+        zone: 5,
+      },
+      {
+        title: "Prueba en el POS antes de abrir al público",
+        detail: "Busca el producto en el POS y confirma que aparece con su precio y stock. Si no aparece, revisa la sucursal del turno y el filtro de stock del inventario.",
+        where: "POS → Buscador",
+        zone: 6,
+      },
+    ],
+    mistakes: [
+      "Crear dos fichas para el mismo producto y repartir el stock entre ambas.",
+      "Olvidar cargar la existencia inicial y descubrirlo en la primera venta.",
+      "Poner un precio de venta sin revisar el costo y perder dinero en cada ticket.",
+    ],
+    related: ["inicio", "inventario", "pos-venta"],
+  },
+  {
+    id: "acceso-dispositivo",
+    title: "Entrar desde otro equipo: el enlace de acceso",
+    short: "Acceso por dispositivo",
+    icon: KeyRound,
+    level: "Intermedio",
+    minutes: 4,
+    summary: "Cómo un trabajador entra en un equipo nuevo con su enlace de un solo uso y su contraseña POS, sin invitaciones por correo.",
+    objective: "Vincular cada dispositivo a la persona correcta y al turno correcto.",
+    prereq: "Empleado creado en Equipo con su contraseña POS.",
+    result: "Equipo vinculado y sesión iniciada con la cuenta del trabajador.",
+    route: "/team",
+    routeLabel: "Abrir Equipo",
+    figureTitle: "Enlace de acceso",
+    shell: "modal",
+    flow: ["Empleado", "Enlace", "Dispositivo", "Contraseña POS", "Acceso"],
+    zones: [
+      { n: 1, label: "Generar enlace en Equipo", x: 17, y: 12, w: 38, h: 14 },
+      { n: 2, label: "Copiar y entregar", x: 57, y: 12, w: 41, h: 14 },
+      { n: 3, label: "Caducidad (1–90 días)", x: 17, y: 30, w: 38, h: 14 },
+      { n: 4, label: "Abrir en el otro equipo", x: 57, y: 30, w: 41, h: 14 },
+      { n: 5, label: "Contraseña POS", x: 17, y: 48, w: 38, h: 14 },
+      { n: 6, label: "Acceso listo", x: 57, y: 48, w: 41, h: 14 },
+    ],
+    steps: [
+      {
+        title: "Genera el enlace para el trabajador",
+        detail: "En Equipo abre la ficha del empleado y pulsa «Generar enlace de acceso». El enlace es personal y de un solo uso: solo sirve para esa persona y ese momento.",
+        where: "Equipo → Empleado → Enlace de acceso",
+        zone: 1,
+      },
+      {
+        title: "Cópialo y entrégalo tú",
+        detail: "PALMYRA no envía invitaciones por correo: copia el enlace y entrégalo por el canal que controles. Define la caducidad (de 1 a 90 días) según la urgencia del acceso.",
+        where: "Enlace de acceso → Copiar / Caducidad",
+        note: "Un enlace usado o vencido deja de funcionar: genera otro sin afectar el resto.",
+        zone: 2,
+      },
+      {
+        title: "Ábrelo en el equipo nuevo",
+        detail: "En el móvil, la tablet o el PC del trabajador, abre el enlace. El sistema valida el enlace y vincula ese dispositivo a la cuenta.",
+        where: "Navegador del otro equipo → Enlace",
+        zone: 4,
+      },
+      {
+        title: "Escribe la contraseña POS",
+        detail: "El enlace pide la contraseña POS del trabajador. Sin la contraseña correcta no se vincula el dispositivo: cada acceso queda asociado a su persona.",
+        where: "Enlace → Contraseña POS",
+        zone: 5,
+      },
+      {
+        title: "Confirma el acceso y opera",
+        detail: "Al validar, el dispositivo queda vinculado y la sesión lista. Cada equipo sincroniza su propia cola y cada caja abre su propio turno: el acceso no comparte turnos.",
+        where: "Acceso listo → POS / módulos",
+        zone: 6,
+      },
+    ],
+    mistakes: [
+      "Compartir el enlace con otra persona: es personal y de un solo uso.",
+      "Olvidar la contraseña POS del trabajador y bloquear el vínculo.",
+      "Reutilizar un enlace ya usado y culpar al sistema de que no abre.",
+    ],
+    related: ["equipo", "offline", "descargas", "pos-apertura"],
+  },
+  {
+    id: "actualizaciones",
+    title: "Actualizaciones: mantener PALMYRA al día",
+    short: "Actualizaciones",
+    icon: Download,
+    level: "Básico",
+    minutes: 3,
+    summary: "Cómo se avisan las versiones nuevas, cómo forzar la comprobación y qué pasa al aplicar una actualización.",
+    objective: "Tener siempre la última versión sin interrumpir la operación.",
+    result: "Versión nueva aplicada y equipo listo para seguir operando.",
+    route: "/settings?section=system",
+    routeLabel: "Abrir Sistema",
+    figureTitle: "Actualización en Sistema",
+    flow: ["Aviso", "Buscar", "Descargar", "Aplicar", "Reiniciar"],
+    zones: [
+      { n: 1, label: "Aviso automático", x: 17, y: 10, w: 40, h: 12 },
+      { n: 2, label: "Buscar actualización", x: 59, y: 10, w: 39, h: 12 },
+      { n: 3, label: "Versión disponible", x: 17, y: 26, w: 40, h: 12 },
+      { n: 4, label: "Descarga con progreso", x: 59, y: 26, w: 39, h: 12 },
+      { n: 5, label: "Actualizar ahora", x: 17, y: 42, w: 40, h: 12 },
+      { n: 6, label: "Reinicio y verificación", x: 59, y: 42, w: 39, h: 12 },
+    ],
+    steps: [
+      {
+        title: "Deja que el aviso te avise",
+        detail: "PALMYRA comprueba las actualizaciones sola y muestra un aviso cuando hay una versión nueva. No hace falta buscar nada a mano en el día a día.",
+        where: "Aviso automático de actualización",
+        zone: 1,
+      },
+      {
+        title: "Fuerza la comprobación si lo necesitas",
+        detail: "En Configuración → Sistema, «Buscar actualización» comprueba ahora mismo la versión publicada. Si el canal no está disponible, la pantalla lo dice con claridad.",
+        where: "Configuración → Sistema → Actualización",
+        zone: 2,
+      },
+      {
+        title: "Revisa la versión disponible",
+        detail: "Cuando hay novedad, la sección muestra la versión disponible y el estado del equipo (Android, Windows o web). El estado puede ser «Ya tienes la última versión» o «Hay una versión nueva».",
+        where: "Sistema → Actualización → Estado",
+        zone: 3,
+      },
+      {
+        title: "Descarga con progreso visible",
+        detail: "En el escritorio y en Android la descarga muestra porcentaje. No cierres la app a mitad de la descarga; si se corta, la próxima vez se reanuda la comprobación.",
+        where: "Actualización → Progreso",
+        zone: 4,
+      },
+      {
+        title: "Aplica cuando convenga",
+        detail: "«Actualizar ahora» (o «Reiniciar y actualizar» en el escritorio) instala la versión nueva. Elige un momento sin ventas en curso: la app se reinicia para aplicar.",
+        where: "Actualización → Actualizar ahora",
+        note: "Las operaciones pendientes no se pierden con la actualización: quedan en la cola del equipo.",
+        zone: 5,
+      },
+      {
+        title: "Verifica la versión después de reiniciar",
+        detail: "Tras el reinicio, abre Configuración → Sistema y confirma que la versión visible es la nueva. Si algo falló, «Buscar actualización» vuelve a intentarlo.",
+        where: "Configuración → Sistema → Versión",
+        zone: 6,
+      },
+    ],
+    mistakes: [
+      "Actualizar en plena venta y cortar el flujo de la caja.",
+      "Cerrar la app durante la descarga y luego no volver a comprobar.",
+      "Confundir la versión de una caja con la de otra y operar desalineados.",
+    ],
+    related: ["configuracion", "descargas", "licencia"],
+  },
+  {
+    id: "licencia",
+    title: "Licencia y solo lectura",
+    short: "Licencia",
+    icon: ShieldCheck,
+    level: "Básico",
+    minutes: 3,
+    summary: "Qué muestra la licencia, qué significa cada estado y qué pasa si el plan vence mientras operas.",
+    objective: "Entender el estado de la licencia y evitar sorpresas en la caja.",
+    result: "Sabes cuándo renueva tu plan y qué hacer si aparece la solo lectura.",
+    route: "/settings?section=system",
+    routeLabel: "Abrir Sistema",
+    figureTitle: "Licencia en Sistema",
+    flow: ["Modalidad", "Pagado hasta", "Sin internet hasta", "Estado", "Renovar"],
+    zones: [
+      { n: 1, label: "Estado de la licencia", x: 17, y: 10, w: 40, h: 14 },
+      { n: 2, label: "Modalidad (Gratis / Pagado)", x: 59, y: 10, w: 39, h: 14 },
+      { n: 3, label: "Pagado hasta", x: 17, y: 28, w: 40, h: 14 },
+      { n: 4, label: "Sin internet hasta", x: 59, y: 28, w: 39, h: 14 },
+      { n: 5, label: "Aviso de solo lectura", x: 17, y: 46, w: 40, h: 14 },
+      { n: 6, label: "Renovar en Plan", x: 59, y: 46, w: 39, h: 14 },
+    ],
+    steps: [
+      {
+        title: "Lee el estado en Sistema",
+        detail: "Configuración → Sistema → Licencia muestra el estado en palabras: Activa, Por vencer o Solo lectura. Se comprueba sola en segundo plano, sin que hagas nada.",
+        where: "Configuración → Sistema → Licencia",
+        zone: 1,
+      },
+      {
+        title: "Entiende la modalidad",
+        detail: "«Gratis» no vence; «Pagado» muestra el plan contratado. Si el equipo aún no recibió la licencia del plan, verás «Activación pendiente» y se reintenta sola con conexión.",
+        where: "Licencia → Modalidad",
+        zone: 2,
+      },
+      {
+        title: "Mira las dos fechas",
+        detail: "«Pagado hasta» es el vencimiento del plan; «Sin internet hasta» es hasta cuándo este equipo puede operar desconectado. Ambas se renuevan solas cuando hay conexión.",
+        where: "Licencia → Pagado hasta / Sin internet hasta",
+        zone: 3,
+      },
+      {
+        title: "Actúa antes de la solo lectura",
+        detail: "Si el plan vence y se agota la gracia, PALMYRA pasa a solo lectura: puedes consultar y exportar, pero no operar. Tus datos se conservan intactos.",
+        where: "Aviso de solo lectura",
+        zone: 5,
+      },
+      {
+        title: "Renueva desde Plan",
+        detail: "Para volver a operar, abre Plan y envía la solicitud de extensión o renovación. La aprobación reactiva la operación sin perder nada de lo registrado.",
+        where: "Menú lateral → Plan",
+        zone: 6,
+      },
+    ],
+    mistakes: [
+      "Ignorar el estado «Por vencer» y descubrir la solo lectura en plena venta.",
+      "Confundir el vencimiento del plan con el permiso para operar sin internet.",
+      "Creer que la solo lectura borra datos: solo bloquea la operación.",
+    ],
+    related: ["plan", "configuracion", "actualizaciones"],
   },
 ];
 
@@ -1630,19 +1895,19 @@ const rolePaths: Array<{ label: string; icon: LucideIcon; hint: string; ids: str
     label: "Vender hoy",
     icon: ShoppingCart,
     hint: "Cajero y vendedor",
-    ids: ["pos-apertura", "pos-venta", "cierre", "clientes"],
+    ids: ["pos-apertura", "pos-venta", "cierre", "clientes", "primer-producto"],
   },
   {
     label: "Controlar inventario",
     icon: Package,
     hint: "Encargado de almacén",
-    ids: ["inventario", "transferencias", "auditoria", "proveedores"],
+    ids: ["inventario", "transferencias", "auditoria", "proveedores", "primer-producto"],
   },
   {
     label: "Administrar el negocio",
     icon: ShieldCheck,
     hint: "Dueño y administrador",
-    ids: ["inicio", "equipo", "reportes", "configuracion", "plan"],
+    ids: ["inicio", "equipo", "reportes", "configuracion", "plan", "acceso-dispositivo", "actualizaciones", "licencia", "descargas"],
   },
 ];
 
@@ -1816,10 +2081,15 @@ export default function Tutorial() {
   const [query, setQuery] = useState("");
   const [completed, setCompleted] = useState<Set<string>>(() => new Set(loadCompleted()));
   const [activeZone, setActiveZone] = useState<number | null>(null);
+  const [confirmReset, setConfirmReset] = useState(false);
   const figureRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
 
-  const requestedId = params.get("lesson");
+  // La lección puede llegar por ?lesson= (canónica), ?section= (alias) o #hash
+  // (enlaces antiguos o impresos). Cualquier id desconocido abre la portada.
+  const paramLesson = params.get("lesson") || params.get("section");
+  const hashLesson = typeof window !== "undefined" ? window.location.hash.replace(/^#\/?/, "") : "";
+  const requestedId = paramLesson || hashLesson;
   const currentLesson = lessons.find((lesson) => lesson.id === requestedId) || lessons[0];
   const currentIndex = lessons.findIndex((lesson) => lesson.id === currentLesson.id);
   const completedCount = lessons.filter((lesson) => completed.has(lesson.id)).length;
@@ -2070,6 +2340,7 @@ export default function Tutorial() {
                   const Icon = lesson.icon;
                   const active = lesson.id === currentLesson.id;
                   const done = completed.has(lesson.id);
+                  const isNew = NEW_LESSON_IDS.has(lesson.id) && !done;
                   return (
                     <li key={lesson.id}>
                       <button
@@ -2089,15 +2360,22 @@ export default function Tutorial() {
                             done
                               ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300"
                               : active
-                                ? "bg-[#6535C5] text-white"
+                                ? "bg-[var(--primary)] text-white"
                                 : "bg-subtle text-muted",
                           )}
                         >
                           {done ? <CheckCircle2 size={14} aria-hidden="true" /> : String(index + 1).padStart(2, "0")}
                         </span>
                         <span className="min-w-0 flex-1">
-                          <span className={cn("block truncate text-[12px] font-bold", active ? "text-primary" : "text-secondary")}>
-                            {lesson.short}
+                          <span className="flex min-w-0 items-center gap-1.5">
+                            <span className={cn("truncate text-[12px] font-bold", active ? "text-primary" : "text-secondary")}>
+                              {lesson.short}
+                            </span>
+                            {isNew ? (
+                              <span className="shrink-0 rounded-full bg-[#6535C5] px-1.5 py-0.5 text-[9px] font-black uppercase leading-none tracking-wide text-white dark:bg-violet-400 dark:text-violet-950">
+                                Nueva
+                              </span>
+                            ) : null}
                           </span>
                           <span className="block text-[10px] font-semibold text-muted">
                             {lesson.level} · {lesson.minutes} min
@@ -2112,15 +2390,28 @@ export default function Tutorial() {
               <div className="mt-2 border-t border-base pt-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    if (window.confirm("¿Reiniciar el progreso de la Escuela PALMYRA en este dispositivo?")) {
-                      setCompleted(new Set());
-                    }
-                  }}
-                  className="w-full rounded-lg px-2 py-1.5 text-left text-[10px] font-bold text-muted hover:bg-subtle hover:text-[#6535C5] dark:hover:text-violet-300"
+                  onClick={() => setConfirmReset(true)}
+                  className="w-full rounded-lg px-2 py-1.5 text-left text-[10px] font-bold text-muted hover:bg-subtle hover:text-primary dark:hover:text-violet-300"
                 >
                   Reiniciar mi progreso
                 </button>
+                {confirmReset && (
+                  <div
+                    className="palmyra-overlay z-[var(--z-confirm)] flex items-center justify-center p-4"
+                    role="presentation"
+                    onMouseDown={(event) => { if (event.target === event.currentTarget) setConfirmReset(false); }}
+                    onKeyDown={(event) => { if (event.key === 'Escape') setConfirmReset(false); }}
+                  >
+                    <div role="alertdialog" aria-modal="true" className="palmyra-modal-panel palmyra-mobile-modal w-full space-y-3 p-4">
+                      <p className="text-sm font-bold text-primary">Reiniciar mi progreso</p>
+                      <p className="text-xs text-muted">¿Reiniciar el progreso de la Escuela PALMYRA en este dispositivo? No podrás deshacerlo.</p>
+                      <div className="flex justify-end gap-2 pt-1">
+                        <button type="button" onClick={() => setConfirmReset(false)} className="rounded-lg border border-base px-3 py-1.5 text-xs font-bold text-secondary hover:bg-subtle">Cancelar</button>
+                        <button type="button" onClick={() => { setCompleted(new Set()); setConfirmReset(false); }} className="rounded-lg bg-[var(--primary)] px-3 py-1.5 text-xs font-bold text-white hover:opacity-90">Reiniciar</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </nav>
           </aside>
@@ -2139,7 +2430,7 @@ export default function Tutorial() {
                 {lessons.map((lesson, index) => (
                   <option key={lesson.id} value={lesson.id}>
                     {String(index + 1).padStart(2, "0")} · {lesson.short}
-                    {completed.has(lesson.id) ? " ✓" : ""}
+                    {completed.has(lesson.id) ? " ✓" : NEW_LESSON_IDS.has(lesson.id) ? " · Nueva" : ""}
                   </option>
                 ))}
               </select>

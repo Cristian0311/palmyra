@@ -136,6 +136,15 @@ function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
   const [categoryToDelete, setCategoryToDelete] = useState<{ id: string; name: string } | null>(null);
 
   useEffect(() => {
+    if (!branchToDelete && !categoryToDelete) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { setBranchToDelete(null); setCategoryToDelete(null); }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [branchToDelete, categoryToDelete]);
+
+  useEffect(() => {
     try {
       setIsInIframe(window.self !== window.top);
     } catch (e) {
@@ -318,7 +327,7 @@ function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
     <div data-palmi-content="settings" className="settings-page space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-500 w-full min-w-0 pb-8 relative overflow-x-hidden">
       {/* In-App Toast Notification */}
       {toast && (
-        <div role="status" aria-live="polite" className="fixed top-2 right-2 sm:top-4 sm:right-4 z-[200] w-[calc(100vw-1rem)] sm:w-auto max-w-md min-w-0 animate-in slide-in-from-top-4 fade-in duration-300">
+        <div role="status" aria-live="polite" className="fixed top-2 right-2 sm:top-4 sm:right-4 z-[var(--z-toast)] w-[calc(100vw-1rem)] sm:w-auto max-w-md min-w-0 animate-in slide-in-from-top-4 fade-in duration-300">
           <div className={cn(
             "p-4 rounded-2xl shadow-2xl border flex items-center gap-3 backdrop-blur-md",
             toast.type === 'success' ? "bg-emerald-950/95 text-emerald-100 border-emerald-800/80 shadow-emerald-900/30" :
@@ -549,8 +558,12 @@ function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
         )}
 
         {(branchToDelete || categoryToDelete) && (
-          <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-slate-950/50 backdrop-blur-sm">
-            <div className="w-full max-w-sm rounded-3xl bg-secondary border border-base shadow-2xl p-5">
+          <div
+            className="palmyra-overlay z-[var(--z-confirm)] flex items-center justify-center p-4"
+            role="presentation"
+            onMouseDown={event => { if (event.target === event.currentTarget) { setBranchToDelete(null); setCategoryToDelete(null); } }}
+          >
+            <div className="palmyra-modal-panel w-full max-w-sm p-5 max-h-[92dvh] overflow-y-auto">
               <div className="flex items-center gap-3"><AlertTriangle className="w-5 h-5 text-rose-600"/><h3 className="text-base font-bold text-primary">Confirmar eliminación</h3></div>
               <p className="mt-3 text-sm text-secondary">¿Seguro que deseas eliminar <strong>{branchToDelete?.name || categoryToDelete?.name}</strong>? Los registros históricos no se borrarán.</p>
               <div className="mt-5 flex gap-2"><button type="button" onClick={() => { setBranchToDelete(null); setCategoryToDelete(null); }} className="flex-1 h-11 rounded-xl border border-base text-sm font-semibold text-primary hover:bg-subtle">Cancelar</button><button type="button" onClick={() => branchToDelete ? confirmDeleteBranch() : confirmDeleteCategory()} className="flex-1 h-11 rounded-xl bg-rose-600 text-white text-sm font-semibold hover:bg-rose-700">Eliminar</button></div>

@@ -18,7 +18,7 @@ import {
 import { isDesktopRuntime } from "../lib/desktopRuntime";
 import { createHubClient, type HubClientOptions } from "./lanHub/client";
 import { HUB_ROUTES, LAN_HUB_ENABLED, type HubRateQuote, type HubRatesResponse } from "./lanHub/protocol";
-import { createHubRatesProvider, hubQuotesToPayload } from "./lanHub/rates";
+import { createHubRatesProvider, hubQuotesToPayload, localExchangeRatesUrl } from "./lanHub/rates";
 import { RATE_MAX_MS } from "./lanHub/rateScheduler";
 import { getHubSession, type HubSession } from "./lanHub/session";
 import { recordRequest } from "./requestBudget";
@@ -39,12 +39,13 @@ const MAX_LOCAL_PORT = 65535;
 
 /**
  * Avisos de pantalla cuando la consulta automática falla. Copy neutral: nunca
- * menciona hub, LAN, IP ni «servidor local».
+ * menciona hub, LAN, IP ni «servidor local». Siempre accionable: qué se muestra
+ * ahora, cómo reintentar y dónde ajustar las tasas a mano.
  */
 export const RATE_REFRESH_FALLBACK_NOTICE =
-  "No se pudo actualizar la tasa automática. Se usará la última tasa guardada; puedes ajustarla manualmente en Configuración → Monedas y tasas.";
+  "No se pudo actualizar la tasa automática. Se muestra la última tasa conocida; pulsa Reintentar o ajústala manualmente en Configuración → Monedas y tasas.";
 export const RATE_UNAVAILABLE_NOTICE =
-  "No se pudo obtener la tasa de cambio automática. Puedes ajustarla manualmente en Configuración → Monedas y tasas.";
+  "No se pudo obtener la tasa de cambio automática. Pulsa Reintentar para volver a consultar elTOQUE o guarda tus tasas a mano en Configuración → Monedas y tasas.";
 
 export interface HubRatesOptions {
   /** `fetch` inyectable para pruebas del hub. */
@@ -407,11 +408,70 @@ export function readStoredRateQuotes(nowMs = Date.now()): HubRateQuote[] {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Diagnóstico accionable del fallo                                    */
+/* ------------------------------------------------------------------ */
+
+/** La sonda extra no debe esperar más que la consulta principal (4 s). */
+const LOCAL_RATE_PROBE_TIMEOUT_MS = 4_000;
+
+/**
+ * Limpia el motivo que publica la ruta de tasas para mostrarlo en pantalla:
+ * sin HTML, sin credenciales y sin nombres de red («servidor local», «LAN»,
+ * «hub» se sustituyen). Corto, para que el aviso siga siendo una sola línea.
+ */
+function sanitizeRateFailureDetail(raw: unknown): string {
+  const text = String(raw ?? "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/\b(servidor\s+local|lan\b|hub\b)/gi, "la fuente")
+    .trim();
+  if (!text) return "";
+  return text.length > 160 ? `${text.slice(0, 157)}…` : text;
+}
+
+/**
+ * Cuando la consulta automática falla, un único intento adicional para leer el
+ * motivo real que publica la ruta de tasas (credencial ausente o rechazada,
+ * límite temporal, fuente caída). Nunca inventa cotizaciones ni muestra
+ * credenciales; si la lectura falla devuelve `undefined` y la pantalla usa el
+ * aviso genérico. Solo se usa tras un fallo, nunca en el camino feliz.
+ */
+export async function probeLocalRateFailure(options: HubRatesOptions = {}): Promise<string | undefined> {
+  try {
+    const doFetch = options.fetchImpl
+      ?? ((input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init));
+    const endpoint = localExchangeRatesUrl(await resolvedLocalBaseUrl());
+    const signal = typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function"
+      ? AbortSignal.timeout(LOCAL_RATE_PROBE_TIMEOUT_MS)
+      : undefined;
+    const response = await doFetch(endpoint, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      ...(signal ? { signal } : {})
+    });
+    const body: unknown = await response.json().catch(() => null);
+    const detail = sanitizeRateFailureDetail(
+      body && typeof body === "object" && !Array.isArray(body)
+        ? (body as Record<string, unknown>).error
+        : undefined
+    );
+    if (detail) return detail;
+    if (!response.ok) {
+      if (response.status === 429) return "La fuente limitó temporalmente las consultas de tasa; espera unos minutos y reintenta.";
+      if (response.status >= 500) return "La fuente de tasas no está disponible en este momento.";
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Servidor propio primero (con el hub apagado siempre es el único camino);
  * respaldo del hub retenido solo si se fuerza con `hubEnabled: true`. Nunca
  * lanza: si no hay tasas nuevas devuelve la última guardada y, solo si tampoco
- * existe, un aviso neutral sin nombres de red.
+ * existe, un aviso accionable con el motivo real del fallo y cómo reintentar.
  */
 export async function resolveExchangeRates(
   options: HubRatesOptions & { fallback?: () => Promise<HubRateQuote[]> } = {}
@@ -435,14 +495,23 @@ export async function resolveExchangeRates(
   }
 
   const fallback = options.fallback ?? (() => defaultLocalFallback(options));
+  let quotes: HubRateQuote[] | null = null;
   try {
     const rates = await fallback();
-    const quotes = Array.isArray(rates) ? rates : [];
-    if (quotes.length) {
-      return { source: "fallback", rates: quotes, stale: quotes.some(rate => rate.stale) };
-    }
+    quotes = Array.isArray(rates) && rates.length ? rates : null;
   } catch {
     // Sin respuesta del servidor propio: se intenta la última tasa guardada.
+  }
+
+  // Sin cotizaciones nuevas, una única lectura del motivo real para un aviso
+  // accionable. Con un `fallback` inyectado (pruebas/camino alternativo) no se
+  // duplica ninguna petición.
+  let failureDetail: string | undefined;
+  if (!quotes && !options.fallback) {
+    failureDetail = await probeLocalRateFailure(options);
+  }
+  if (quotes) {
+    return { source: "fallback", rates: quotes, stale: quotes.some(rate => rate.stale) };
   }
 
   // Sin consulta nueva: la última tasa guardada sigue siendo usable.
@@ -450,7 +519,14 @@ export async function resolveExchangeRates(
   if (stored.length) {
     return { source: "fallback", rates: stored, stale: true };
   }
-  return { source: "fallback", rates: [], stale: true, error: RATE_UNAVAILABLE_NOTICE };
+  return {
+    source: "fallback",
+    rates: [],
+    stale: true,
+    error: failureDetail
+      ? `${failureDetail} Pulsa Reintentar o guarda tus tasas a mano en Configuración → Monedas y tasas.`
+      : RATE_UNAVAILABLE_NOTICE
+  };
 }
 
 /**

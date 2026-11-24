@@ -38,8 +38,8 @@ const CAUSES = [
   'Otro (explicar en las notas)',
 ];
 
-const labelStyle = { fontSize: 11, letterSpacing: '0.08em' } as const;
-const metaStyle = { fontSize: 12 } as const;
+const labelStyle = { fontSize: 10, letterSpacing: '0.06em' } as const;
+const metaStyle = { fontSize: 11 } as const;
 
 const fmtDate = (value?: string) => value
   ? new Date(value).toLocaleString('es-CU', { timeZone: 'America/Havana', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
@@ -112,6 +112,16 @@ export default function ReportsDiscrepancyDetailModal({
     };
   }, [session, transactions, currencies]);
 
+  // Escape closes the discrepancy detail modal.
+  useEffect(() => {
+    if (!session) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSelectedDiscrepancyDetailSession(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [session, setSelectedDiscrepancyDetailSession]);
+
   if (!session || !info || !sessionData) return null;
 
   const branch = branches.find(b => b.id === session.branchId);
@@ -172,28 +182,28 @@ export default function ReportsDiscrepancyDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 z-[95] flex items-center justify-center overflow-hidden bg-slate-950/70 p-2 backdrop-blur-sm sm:p-4" role="presentation">
+    <div className="palmyra-overlay z-[var(--z-modal)] flex items-center justify-center p-2 sm:p-4" role="presentation">
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="discrepancy-detail-title"
-        className="flex max-h-[94dvh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-base bg-secondary shadow-2xl"
+        className="palmyra-modal-panel palmyra-mobile-modal flex w-full max-w-4xl flex-col overflow-hidden"
       >
         {/* Header */}
-        <header className="flex items-start justify-between gap-3 border-b border-base bg-subtle px-4 py-3.5 sm:px-5">
-          <div className="flex min-w-0 items-start gap-3">
+        <header className="flex items-center justify-between gap-2.5 border-b border-base bg-secondary px-3.5 py-2.5 sm:px-4 sm:py-3">
+          <div className="flex min-w-0 items-center gap-2.5">
             <span className={cn(
-              'flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-white shadow-sm',
+              'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-white shadow-sm',
               isReconciled ? 'bg-gradient-to-br from-emerald-500 to-teal-600' : 'bg-gradient-to-br from-red-500 to-rose-600',
             )}>
-              {isReconciled ? <CheckCircle2 size={22} aria-hidden="true" /> : <ShieldAlert size={22} aria-hidden="true" />}
+              {isReconciled ? <CheckCircle2 size={18} aria-hidden="true" /> : <ShieldAlert size={18} aria-hidden="true" />}
             </span>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="rounded-lg border border-base bg-secondary px-2 py-0.5 font-black text-primary" style={{ fontSize: 12 }}>{turnLabel}</span>
+                <span className="rounded-lg border border-base bg-secondary px-2 py-0.5 font-black text-primary tabular-nums" style={{ fontSize: 11 }}>{turnLabel}</span>
                 {info.isForcedClose ? (
                   <span className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2 py-0.5 font-black uppercase text-red-700 dark:border-red-900/60 dark:bg-red-950/40 dark:text-red-300" style={labelStyle}>
-                    <AlertTriangle size={12} aria-hidden="true" /> Cierre forzado
+                    <AlertTriangle size={11} aria-hidden="true" /> Cierre forzado
                   </span>
                 ) : (
                   <span className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-0.5 font-black uppercase text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300" style={labelStyle}>
@@ -202,16 +212,16 @@ export default function ReportsDiscrepancyDetailModal({
                 )}
                 {isReconciled && (
                   <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-0.5 font-black uppercase text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300" style={labelStyle}>
-                    <CheckCircle2 size={12} aria-hidden="true" /> Conciliado
+                    <CheckCircle2 size={11} aria-hidden="true" /> Conciliado
                   </span>
                 )}
               </div>
-              <h2 id="discrepancy-detail-title" className="mt-1 truncate text-base font-black text-primary sm:text-lg">
+              <h2 id="discrepancy-detail-title" className="mt-0.5 truncate text-sm font-black text-primary sm:text-base">
                 Descuadre del turno — {worker}
               </h2>
-              <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-bold text-muted" style={metaStyle}>
-                <span className="inline-flex items-center gap-1"><MapPin size={13} aria-hidden="true" />{branch?.name || 'Sucursal principal'}</span>
-                <span className="inline-flex items-center gap-1"><CalendarDays size={13} aria-hidden="true" />{fmtDate(session.openedAt)} → {fmtDate(session.closingDate || session.closedAt)}</span>
+              <p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 font-bold text-muted tabular-nums" style={metaStyle}>
+                <span className="inline-flex items-center gap-1"><MapPin size={12} aria-hidden="true" />{branch?.name || 'Sucursal principal'}</span>
+                <span className="inline-flex items-center gap-1"><CalendarDays size={12} aria-hidden="true" />{fmtDate(session.openedAt)} → {fmtDate(session.closingDate || session.closedAt)}</span>
               </p>
             </div>
           </div>
@@ -219,56 +229,56 @@ export default function ReportsDiscrepancyDetailModal({
             type="button"
             onClick={() => setSelectedDiscrepancyDetailSession(null)}
             aria-label="Cerrar el detalle del descuadre"
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-base bg-secondary text-muted transition-colors hover:bg-subtle hover:text-primary"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-base bg-secondary text-muted transition-colors hover:bg-subtle hover:text-primary"
           >
-            <X size={20} />
+            <X size={16} />
           </button>
         </header>
 
         {/* Body */}
-        <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-5">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-3.5 py-3 sm:px-4 sm:py-3.5">
           {/* Resultado del arqueo */}
           <section aria-label="Resultado del arqueo">
-            <div className="grid gap-2.5 sm:grid-cols-3">
-              <div className="relative overflow-hidden rounded-2xl border border-red-200 bg-red-50/70 p-3.5 dark:border-red-900/60 dark:bg-red-950/30">
+            <div className="grid gap-2 sm:grid-cols-3">
+              <div className="min-w-0 relative overflow-hidden rounded-2xl border border-red-200 bg-red-50/70 p-3 dark:border-red-900/60 dark:bg-red-950/30">
                 <div className="flex items-center gap-2">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-600 text-white"><ArrowDownRight size={16} aria-hidden="true" /></span>
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-red-600 text-white"><ArrowDownRight size={14} aria-hidden="true" /></span>
                   <span className="font-black uppercase text-red-800 dark:text-red-300" style={labelStyle}>Faltante en caja</span>
                 </div>
-                <p className="mt-2 font-black leading-none text-red-700 dark:text-red-300" style={{ fontSize: 26 }}>
+                <p className="mt-2 truncate font-black leading-none text-red-700 dark:text-red-300 tabular-nums text-lg sm:text-xl">
                   {hasShortage ? `−${formatMoney(info.totalShortageBase, baseCurrency.code)}` : formatMoney(0, baseCurrency.code)}
                 </p>
-                <p className="mt-1 font-bold text-red-900/80 dark:text-red-200/80" style={{ fontSize: 12 }}>
+                <p className="mt-1 font-bold text-red-900/80 dark:text-red-200/80" style={{ fontSize: 11 }}>
                   {hasShortage
                     ? 'Se declaró menos dinero del que el sistema esperaba en el turno.'
                     : 'No falta dinero en este turno.'}
                 </p>
               </div>
 
-              <div className="relative overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3.5 dark:border-emerald-900/60 dark:bg-emerald-950/30">
+              <div className="min-w-0 relative overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3 dark:border-emerald-900/60 dark:bg-emerald-950/30">
                 <div className="flex items-center gap-2">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white"><ArrowUpRight size={16} aria-hidden="true" /></span>
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white"><ArrowUpRight size={14} aria-hidden="true" /></span>
                   <span className="font-black uppercase text-emerald-800 dark:text-emerald-300" style={labelStyle}>Sobrante en caja</span>
                 </div>
-                <p className="mt-2 font-black leading-none text-emerald-700 dark:text-emerald-300" style={{ fontSize: 26 }}>
+                <p className="mt-2 truncate font-black leading-none text-emerald-700 dark:text-emerald-300 tabular-nums text-lg sm:text-xl">
                   {hasOverage ? `+${formatMoney(info.totalOverageBase, baseCurrency.code)}` : formatMoney(0, baseCurrency.code)}
                 </p>
-                <p className="mt-1 font-bold text-emerald-900/80 dark:text-emerald-200/80" style={{ fontSize: 12 }}>
+                <p className="mt-1 font-bold text-emerald-900/80 dark:text-emerald-200/80" style={{ fontSize: 11 }}>
                   {hasOverage
                     ? 'Se declaró más dinero del esperado. Revisa cobros duplicados o vueltos.'
                     : 'No sobra dinero en este turno.'}
                 </p>
               </div>
 
-              <div className="relative overflow-hidden rounded-2xl border border-base bg-subtle p-3.5">
+              <div className="min-w-0 relative overflow-hidden rounded-2xl border border-base bg-subtle p-3">
                 <div className="flex items-center gap-2">
-                  <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 text-white"><Scale size={16} aria-hidden="true" /></span>
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-600 to-indigo-600 text-white"><Scale size={14} aria-hidden="true" /></span>
                   <span className="font-black uppercase text-muted" style={labelStyle}>Diferencia neta</span>
                 </div>
-                <p className={cn('mt-2 font-black leading-none', netBase < -0.01 ? 'text-red-600 dark:text-red-400' : netBase > 0.01 ? 'text-emerald-600 dark:text-emerald-400' : 'text-primary')} style={{ fontSize: 26 }}>
+                <p className={cn('mt-2 truncate font-black leading-none tabular-nums text-lg sm:text-xl', netBase < -0.01 ? 'text-red-600 dark:text-red-400' : netBase > 0.01 ? 'text-emerald-600 dark:text-emerald-400' : 'text-primary')}>
                   {netBase > 0.01 ? '+' : ''}{formatMoney(netBase, baseCurrency.code)}
                 </p>
-                <p className="mt-1 font-bold text-muted" style={{ fontSize: 12 }}>
+                <p className="mt-1 font-bold text-muted tabular-nums" style={{ fontSize: 11 }}>
                   Fondo inicial: {formatMoney(session.openingBalance, baseCurrency.code)}
                 </p>
               </div>
@@ -276,60 +286,60 @@ export default function ReportsDiscrepancyDetailModal({
           </section>
 
           {/* Qué pasó en el turno */}
-          <section aria-label="Qué pasó en el turno" className="rounded-2xl border border-base bg-secondary p-3.5">
+          <section aria-label="Qué pasó en el turno" className="rounded-2xl border border-base bg-secondary p-3">
             <div className="flex items-center gap-2">
-              <Receipt size={17} className="text-violet-600 dark:text-violet-400" aria-hidden="true" />
+              <Receipt size={15} className="shrink-0 text-violet-600 dark:text-violet-400" aria-hidden="true" />
               <h3 className="font-black uppercase text-primary" style={labelStyle}>Qué pasó en este turno</h3>
             </div>
-            <div className="mt-2.5 grid grid-cols-2 gap-2 lg:grid-cols-4">
-              <div className="rounded-xl border border-base bg-subtle p-2.5">
+            <div className="mt-2 grid grid-cols-2 gap-1.5 sm:gap-2 lg:grid-cols-4">
+              <div className="min-w-0 rounded-xl border border-base bg-subtle p-2.5">
                 <p className="font-black uppercase text-muted" style={labelStyle}>Ventas cobradas</p>
-                <p className="mt-0.5 text-lg font-black text-primary">{formatMoney(sessionData.totalSales, baseCurrency.code)}</p>
-                <p className="font-bold text-muted" style={{ fontSize: 11 }}>{sessionData.completed.length} ticket(s)</p>
+                <p className="mt-0.5 truncate text-base sm:text-lg font-black text-primary tabular-nums">{formatMoney(sessionData.totalSales, baseCurrency.code)}</p>
+                <p className="font-bold text-muted tabular-nums" style={{ fontSize: 10 }}>{sessionData.completed.length} ticket(s)</p>
               </div>
-              <div className="rounded-xl border border-base bg-subtle p-2.5">
+              <div className="min-w-0 rounded-xl border border-base bg-subtle p-2.5">
                 <p className="font-black uppercase text-muted" style={labelStyle}>Ingresos de caja</p>
-                <p className="mt-0.5 text-lg font-black text-emerald-600 dark:text-emerald-400">+{formatMoney(sessionData.incomeBase, baseCurrency.code)}</p>
-                <p className="font-bold text-muted" style={{ fontSize: 11 }}>{sessionData.movements.filter(m => m.type === 'income').length} entrada(s)</p>
+                <p className="mt-0.5 truncate text-base sm:text-lg font-black text-emerald-600 dark:text-emerald-400 tabular-nums">+{formatMoney(sessionData.incomeBase, baseCurrency.code)}</p>
+                <p className="font-bold text-muted tabular-nums" style={{ fontSize: 10 }}>{sessionData.movements.filter(m => m.type === 'income').length} entrada(s)</p>
               </div>
-              <div className="rounded-xl border border-base bg-subtle p-2.5">
+              <div className="min-w-0 rounded-xl border border-base bg-subtle p-2.5">
                 <p className="font-black uppercase text-muted" style={labelStyle}>Egresos y gastos</p>
-                <p className="mt-0.5 text-lg font-black text-red-600 dark:text-red-400">−{formatMoney(sessionData.expenseBase, baseCurrency.code)}</p>
-                <p className="font-bold text-muted" style={{ fontSize: 11 }}>{sessionData.movements.filter(m => m.type === 'expense').length} salida(s)</p>
+                <p className="mt-0.5 truncate text-base sm:text-lg font-black text-red-600 dark:text-red-400 tabular-nums">−{formatMoney(sessionData.expenseBase, baseCurrency.code)}</p>
+                <p className="font-bold text-muted tabular-nums" style={{ fontSize: 10 }}>{sessionData.movements.filter(m => m.type === 'expense').length} salida(s)</p>
               </div>
-              <div className="rounded-xl border border-base bg-subtle p-2.5">
+              <div className="min-w-0 rounded-xl border border-base bg-subtle p-2.5">
                 <p className="font-black uppercase text-muted" style={labelStyle}>Ventas anuladas</p>
-                <p className="mt-0.5 text-lg font-black text-amber-600 dark:text-amber-400">{sessionData.voided.length}</p>
-                <p className="font-bold text-muted" style={{ fontSize: 11 }}>No suman en el arqueo</p>
+                <p className="mt-0.5 truncate text-base sm:text-lg font-black text-amber-600 dark:text-amber-400 tabular-nums">{sessionData.voided.length}</p>
+                <p className="font-bold text-muted" style={{ fontSize: 10 }}>No suman en el arqueo</p>
               </div>
             </div>
 
-            <div className="mt-2.5 grid gap-2 sm:grid-cols-2">
-              <div className="rounded-xl border border-base bg-subtle p-2.5">
-                <div className="mb-1 flex items-center justify-between">
+            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+              <div className="min-w-0 rounded-xl border border-base bg-subtle p-2.5">
+                <div className="mb-1 flex items-center justify-between gap-2">
                   <span className="font-black uppercase text-muted" style={labelStyle}>Tickets del turno</span>
-                  <span className="font-black text-primary" style={metaStyle}>{formatMoney(sessionData.totalSales, baseCurrency.code)}</span>
+                  <span className="shrink-0 font-black text-primary tabular-nums" style={metaStyle}>{formatMoney(sessionData.totalSales, baseCurrency.code)}</span>
                 </div>
                 <div className="max-h-36 space-y-1 overflow-y-auto pr-1">
                   {sessionData.completed.map(tx => (
                     <div key={tx.id} className="flex items-center justify-between gap-2 rounded-lg border border-base bg-secondary px-2 py-1.5">
                       <span className="inline-flex min-w-0 items-center gap-1.5">
-                        <Receipt size={13} className="shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
-                        <span className="truncate font-bold text-primary" style={metaStyle}>{ticketDisplay(tx.ticketNumber, tx.id)}</span>
-                        <span className="shrink-0 font-bold text-muted" style={{ fontSize: 11 }}>{fmtTime(tx.date)}</span>
+                        <Receipt size={12} className="shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                        <span className="truncate font-bold text-primary tabular-nums" style={metaStyle}>{ticketDisplay(tx.ticketNumber, tx.id)}</span>
+                        <span className="shrink-0 font-bold text-muted tabular-nums" style={{ fontSize: 10 }}>{fmtTime(tx.date)}</span>
                       </span>
-                      <span className="shrink-0 font-black text-primary" style={metaStyle}>{formatMoney(tx.total, baseCurrency.code)}</span>
+                      <span className="shrink-0 font-black text-primary tabular-nums" style={metaStyle}>{formatMoney(tx.total, baseCurrency.code)}</span>
                     </div>
                   ))}
                   {sessionData.completed.length === 0 && <p className="py-3 text-center font-bold text-muted" style={metaStyle}>Sin ventas registradas.</p>}
                 </div>
               </div>
 
-              <div className="rounded-xl border border-base bg-subtle p-2.5">
-                <div className="mb-1 flex items-center justify-between">
+              <div className="min-w-0 rounded-xl border border-base bg-subtle p-2.5">
+                <div className="mb-1 flex items-center justify-between gap-2">
                   <span className="font-black uppercase text-muted" style={labelStyle}>Movimientos de caja</span>
-                  <span className="inline-flex items-center gap-1 font-bold text-muted" style={{ fontSize: 11 }}>
-                    <Wallet size={12} aria-hidden="true" /> entra y sale
+                  <span className="inline-flex items-center gap-1 font-bold text-muted" style={{ fontSize: 10 }}>
+                    <Wallet size={11} aria-hidden="true" /> entra y sale
                   </span>
                 </div>
                 <div className="max-h-36 space-y-1 overflow-y-auto pr-1">
@@ -337,18 +347,18 @@ export default function ReportsDiscrepancyDetailModal({
                     <div key={m.id} className="flex items-center justify-between gap-2 rounded-lg border border-base bg-secondary px-2 py-1.5">
                       <span className="inline-flex min-w-0 items-center gap-1.5">
                         {m.type === 'income'
-                          ? <ArrowUpRight size={13} className="shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
-                          : <ArrowDownRight size={13} className="shrink-0 text-red-600 dark:text-red-400" aria-hidden="true" />}
+                          ? <ArrowUpRight size={12} className="shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                          : <ArrowDownRight size={12} className="shrink-0 text-red-600 dark:text-red-400" aria-hidden="true" />}
                         <span className="truncate font-bold text-primary" style={metaStyle}>{m.description || (m.type === 'income' ? 'Ingreso de caja' : 'Egreso de caja')}</span>
                       </span>
-                      <span className={cn('shrink-0 font-black', m.type === 'income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')} style={metaStyle}>
+                      <span className={cn('shrink-0 font-black tabular-nums', m.type === 'income' ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400')} style={metaStyle}>
                         {m.type === 'income' ? '+' : '−'}{formatMoney(m.amount, m.currencyCode)}
                       </span>
                     </div>
                   ))}
                   {sessionData.movements.length === 0 && <p className="py-3 text-center font-bold text-muted" style={metaStyle}>Sin movimientos de caja.</p>}
                 </div>
-                <p className="mt-1.5 font-bold text-muted" style={{ fontSize: 11 }}>
+                <p className="mt-1.5 font-bold text-muted" style={{ fontSize: 10 }}>
                   Los egresos y gastos reducen el efectivo esperado; si uno está mal registrado, corrígelo desde la pestaña Movimientos.
                 </p>
               </div>
@@ -359,37 +369,37 @@ export default function ReportsDiscrepancyDetailModal({
           <section aria-label="Comparación por moneda y método">
             <div className="mb-2 flex items-center justify-between gap-2">
               <h3 className="inline-flex items-center gap-1.5 font-black uppercase text-muted" style={labelStyle}>
-                <Scale size={15} aria-hidden="true" /> Esperado contra declarado
+                <Scale size={14} aria-hidden="true" /> Esperado contra declarado
               </h3>
-              <span className="font-bold text-muted" style={metaStyle}>{info.details.length} diferencia(s)</span>
+              <span className="font-bold text-muted tabular-nums" style={metaStyle}>{info.details.length} diferencia(s)</span>
             </div>
             <div className="space-y-2">
               {info.details.map((detail: SessionDiscrepancyDetail) => {
                 const ratio = detail.expected > 0 ? Math.max(0, Math.min(1, detail.actual / detail.expected)) : detail.actual > 0 ? 1 : 0;
                 const positive = detail.difference > 0;
                 return (
-                  <div key={`${detail.currencyCode}-${detail.method}`} className="rounded-2xl border border-base bg-secondary p-3">
+                  <div key={`${detail.currencyCode}-${detail.method}`} className="rounded-2xl border border-base bg-secondary p-2.5 sm:p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <span className="inline-flex items-center gap-1.5">
-                        <span className="rounded-lg border border-base bg-subtle px-2 py-0.5 font-black text-primary" style={{ fontSize: 12 }}>{detail.currencyCode}</span>
+                        <span className="rounded-lg border border-base bg-subtle px-2 py-0.5 font-black text-primary" style={{ fontSize: 11 }}>{detail.currencyCode}</span>
                         <span className="font-black uppercase text-muted" style={labelStyle}>{methodLabel(detail.method)}</span>
                       </span>
                       <span className={cn(
-                        'inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-black',
+                        'inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 font-black tabular-nums',
                         positive ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300',
-                      )} style={{ fontSize: 12 }}>
-                        {positive ? <ArrowUpRight size={13} aria-hidden="true" /> : <ArrowDownRight size={13} aria-hidden="true" />}
+                      )} style={{ fontSize: 11 }}>
+                        {positive ? <ArrowUpRight size={12} aria-hidden="true" /> : <ArrowDownRight size={12} aria-hidden="true" />}
                         {positive ? '+' : '−'}{formatMoney(Math.abs(detail.difference), detail.currencyCode)}
                       </span>
                     </div>
-                    <div className="mt-2 grid grid-cols-2 gap-2" style={{ fontSize: 12 }}>
-                      <div>
+                    <div className="mt-2 grid grid-cols-2 gap-2" style={{ fontSize: 11 }}>
+                      <div className="min-w-0">
                         <p className="font-black uppercase text-muted" style={labelStyle}>El sistema esperaba</p>
-                        <p className="font-black text-primary">{formatMoney(detail.expected, detail.currencyCode)}</p>
+                        <p className="truncate font-black text-primary tabular-nums">{formatMoney(detail.expected, detail.currencyCode)}</p>
                       </div>
-                      <div className="text-right">
+                      <div className="min-w-0 text-right">
                         <p className="font-black uppercase text-muted" style={labelStyle}>El cajero declaró</p>
-                        <p className="font-black text-primary">{formatMoney(detail.actual, detail.currencyCode)}</p>
+                        <p className="truncate font-black text-primary tabular-nums">{formatMoney(detail.actual, detail.currencyCode)}</p>
                       </div>
                     </div>
                     <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-subtle" role="img" aria-label={`Declarado ${Math.round(ratio * 100)}% de lo esperado`}>
@@ -399,8 +409,8 @@ export default function ReportsDiscrepancyDetailModal({
                 );
               })}
               {info.details.length === 0 && (
-                <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-3 dark:border-emerald-900/60 dark:bg-emerald-950/30">
-                  <CheckCircle2 size={17} className="text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                <div className="flex items-center gap-2 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-2.5 sm:p-3 dark:border-emerald-900/60 dark:bg-emerald-950/30">
+                  <CheckCircle2 size={15} className="shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
                   <p className="font-bold text-emerald-800 dark:text-emerald-300" style={metaStyle}>
                     El arqueo coincide con lo esperado en todas las monedas y métodos.
                   </p>
@@ -410,7 +420,7 @@ export default function ReportsDiscrepancyDetailModal({
           </section>
 
           {/* Posibles causas */}
-          <section aria-label="Posibles causas" className="rounded-2xl border border-amber-200 bg-amber-50/60 p-3.5 dark:border-amber-900/60 dark:bg-amber-950/25">
+          <section aria-label="Posibles causas" className="rounded-2xl border border-amber-200 bg-amber-50/60 p-3 dark:border-amber-900/60 dark:bg-amber-950/25">
             <h3 className="inline-flex items-center gap-1.5 font-black uppercase text-amber-800 dark:text-amber-300" style={labelStyle}>
               <Brain size={15} aria-hidden="true" /> Posibles causas de la diferencia
             </h3>
@@ -426,7 +436,7 @@ export default function ReportsDiscrepancyDetailModal({
                 <p className="font-black uppercase text-amber-800 dark:text-amber-300" style={labelStyle}>El monto coincide con el precio de:</p>
                 <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {info.matchingProducts.map(match => match.matchedProducts.map(product => (
-                    <span key={`${match.currencyCode}-${product.id}`} className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-0.5 font-black text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200" style={{ fontSize: 12 }}>
+                    <span key={`${match.currencyCode}-${product.id}`} className="rounded-lg border border-amber-300 bg-amber-50 px-2 py-0.5 font-black text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200" style={{ fontSize: 11 }}>
                       {product.name} · {formatMoney(product.price, baseCurrency.code)}
                     </span>
                   )))}
@@ -448,7 +458,7 @@ export default function ReportsDiscrepancyDetailModal({
           </section>
 
           {/* Conciliación */}
-          <section aria-label="Conciliar caja" className="rounded-2xl border border-base bg-secondary p-3.5">
+          <section aria-label="Conciliar caja" className="rounded-2xl border border-base bg-secondary p-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="inline-flex items-center gap-1.5 font-black uppercase text-primary" style={labelStyle}>
                 <ListChecks size={15} className="text-violet-600 dark:text-violet-400" aria-hidden="true" /> Cuadrar la caja
@@ -469,7 +479,7 @@ export default function ReportsDiscrepancyDetailModal({
                   <CheckCircle2 size={17} className="mt-0.5 shrink-0 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
                   <div className="min-w-0">
                     <p className="font-black text-emerald-800 dark:text-emerald-300" style={metaStyle}>Este turno ya fue conciliado.</p>
-                    <p className="font-bold text-emerald-900/80 dark:text-emerald-200/80" style={{ fontSize: 12 }}>
+                    <p className="font-bold text-emerald-900/80 dark:text-emerald-200/80" style={{ fontSize: 11 }}>
                       {session.discrepancyNote ? `Causa registrada: ${session.discrepancyNote}. ` : ''}
                       {info.deducted ? `Deducción salarial: ${formatMoney(info.deductionAmount, baseCurrency.code)}.` : 'Sin deducción salarial.'}
                     </p>
@@ -478,11 +488,11 @@ export default function ReportsDiscrepancyDetailModal({
                 {auditLog.length > 0 && (
                   <div className="max-h-32 space-y-1 overflow-y-auto rounded-xl border border-base bg-subtle p-2.5">
                     {auditLog.map((line, index) => (
-                      <p key={index} className="font-bold text-muted" style={{ fontSize: 12 }}>{line}</p>
+                      <p key={index} className="font-bold text-muted" style={{ fontSize: 11 }}>{line}</p>
                     ))}
                   </div>
                 )}
-                <button type="button" onClick={reopenReview} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-base bg-secondary px-4 py-2 font-black uppercase text-primary transition-colors hover:bg-subtle" style={labelStyle}>
+                <button type="button" onClick={reopenReview} className="inline-flex h-9 items-center gap-2 rounded-xl border border-base bg-secondary px-4 py-2 font-black uppercase text-primary transition-colors hover:bg-subtle" style={labelStyle}>
                   <RefreshCw size={15} aria-hidden="true" /> Reabrir revisión
                 </button>
               </div>
@@ -490,16 +500,16 @@ export default function ReportsDiscrepancyDetailModal({
               <div className="mt-2.5 space-y-2.5">
                 <div className="rounded-xl border border-violet-200 bg-violet-50/70 p-3 dark:border-violet-900/60 dark:bg-violet-950/30">
                   <p className="font-black text-violet-900 dark:text-violet-200" style={metaStyle}>Confirma la conciliación</p>
-                  <p className="mt-0.5 font-bold text-violet-900/80 dark:text-violet-200/80" style={{ fontSize: 12 }}>
+                  <p className="mt-0.5 font-bold text-violet-900/80 dark:text-violet-200/80" style={{ fontSize: 11 }}>
                     Causa: {cause}. {deduct && deductAmount > 0 ? `Se descontarán ${formatMoney(deductAmount, baseCurrency.code)} del salario del turno. ` : ''}
                     La diferencia, el arqueo original y las ventas se conservan como evidencia.
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={applyReconciliation} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2 font-black uppercase text-white shadow-md shadow-violet-600/20 transition-all hover:shadow-lg" style={labelStyle}>
+                  <button type="button" onClick={applyReconciliation} className="inline-flex h-9 items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2 font-black uppercase text-white shadow-md shadow-violet-600/20 transition-all hover:shadow-lg" style={labelStyle}>
                     <CheckCircle2 size={16} aria-hidden="true" /> Aplicar conciliación
                   </button>
-                  <button type="button" onClick={() => setConfirming(false)} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-base bg-secondary px-4 py-2 font-black uppercase text-primary transition-colors hover:bg-subtle" style={labelStyle}>
+                  <button type="button" onClick={() => setConfirming(false)} className="inline-flex h-9 items-center gap-2 rounded-xl border border-base bg-secondary px-4 py-2 font-black uppercase text-primary transition-colors hover:bg-subtle" style={labelStyle}>
                     Volver
                   </button>
                 </div>
@@ -516,8 +526,7 @@ export default function ReportsDiscrepancyDetailModal({
                     <select
                       value={cause}
                       onChange={event => setCause(event.target.value)}
-                      className="mt-1 block w-full rounded-xl border border-base bg-primary px-3 py-2.5 font-bold text-primary outline-none focus:border-violet-500"
-                      style={{ fontSize: 14 }}
+                      className="mt-1 block h-9 w-full rounded-xl border border-base bg-primary px-3 font-bold text-primary outline-none focus:border-violet-500 text-[13px] sm:text-sm"
                     >
                       <option value="">Selecciona una causa…</option>
                       {CAUSES.map(item => <option key={item} value={item}>{item}</option>)}
@@ -525,7 +534,7 @@ export default function ReportsDiscrepancyDetailModal({
                   </label>
                   <div className="sm:col-span-1">
                     <span className="font-black uppercase text-muted" style={labelStyle}>Descuento salarial</span>
-                    <label className={cn('mt-1 flex min-h-11 items-center gap-2 rounded-xl border border-base bg-primary px-3 py-2', !hasShortage && 'opacity-50')}>
+                    <label className={cn('mt-1 flex h-9 items-center gap-2 rounded-xl border border-base bg-primary px-3', !hasShortage && 'opacity-50')}>
                       <input
                         type="checkbox"
                         checked={deduct && hasShortage}
@@ -533,15 +542,15 @@ export default function ReportsDiscrepancyDetailModal({
                         onChange={event => setDeduct(event.target.checked)}
                         className="h-4 w-4 accent-violet-600"
                       />
-                      <span className="font-bold text-primary" style={{ fontSize: 13 }}>Descontar el faltante</span>
+                      <span className="font-bold text-primary" style={{ fontSize: 12 }}>Descontar el faltante</span>
                       {deduct && hasShortage && (
                         <input
                           type="number"
                           min={0}
                           value={deductAmount}
                           onChange={event => setDeductAmount(Math.max(0, Number(event.target.value) || 0))}
-                          className="ml-auto w-24 rounded-lg border border-base bg-secondary px-2 py-1 text-right font-black text-primary outline-none"
-                          style={{ fontSize: 13 }}
+                          className="ml-auto h-8 w-24 rounded-lg border border-base bg-secondary px-2 text-right font-black text-primary tabular-nums outline-none"
+                          style={{ fontSize: 12 }}
                           aria-label="Monto a descontar del salario"
                         />
                       )}
@@ -555,8 +564,7 @@ export default function ReportsDiscrepancyDetailModal({
                     onChange={event => setNotes(event.target.value)}
                     rows={3}
                     placeholder="Ej: Se recontó el efectivo y faltaban 250 CUP; el cajero reconoce el faltante. Se acuerda descontar de la nómina."
-                    className="mt-1 block w-full resize-none rounded-xl border border-base bg-primary px-3 py-2.5 font-bold text-primary outline-none focus:border-violet-500"
-                    style={{ fontSize: 14 }}
+                    className="mt-1 block w-full resize-none rounded-xl border border-base bg-primary px-3 py-2 font-bold text-primary outline-none focus:border-violet-500 text-[13px] sm:text-sm"
                   />
                 </label>
                 <div className="flex flex-wrap gap-2">
@@ -567,12 +575,12 @@ export default function ReportsDiscrepancyDetailModal({
                       if (notes.trim().length < 5) { addNotification?.('Escribe una nota breve antes de continuar.', 'warning'); return; }
                       setConfirming(true);
                     }}
-                    className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2 font-black uppercase text-white shadow-md shadow-violet-600/20 transition-all hover:shadow-lg"
+                    className="inline-flex h-9 items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-4 py-2 font-black uppercase text-white shadow-md shadow-violet-600/20 transition-all hover:shadow-lg"
                     style={labelStyle}
                   >
                     <Scale size={16} aria-hidden="true" /> Cuadrar caja
                   </button>
-                  <button type="button" onClick={saveReview} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-base bg-secondary px-4 py-2 font-black uppercase text-primary transition-colors hover:bg-subtle" style={labelStyle}>
+                  <button type="button" onClick={saveReview} className="inline-flex h-9 items-center gap-2 rounded-xl border border-base bg-secondary px-4 py-2 font-black uppercase text-primary transition-colors hover:bg-subtle" style={labelStyle}>
                     <Save size={15} aria-hidden="true" /> Guardar revisión
                   </button>
                 </div>
@@ -582,7 +590,7 @@ export default function ReportsDiscrepancyDetailModal({
 
           <div className="flex items-start gap-2 rounded-xl border border-base bg-subtle p-2.5">
             <Info size={15} className="mt-0.5 shrink-0 text-muted" aria-hidden="true" />
-            <p className="font-bold text-muted" style={{ fontSize: 12 }}>
+            <p className="font-bold text-muted" style={{ fontSize: 11 }}>
               Si el problema es un egreso o gasto mal registrado, corrígelo en la pestaña Movimientos: el descuadre se recalcula
               automáticamente. Si no encuentras el error, deja el turno en revisión para investigarlo después.
             </p>
@@ -590,12 +598,12 @@ export default function ReportsDiscrepancyDetailModal({
         </div>
 
         {/* Footer */}
-        <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-base bg-subtle px-4 py-3">
+        <footer className="flex flex-wrap items-center justify-end gap-2 border-t border-base bg-subtle px-3.5 py-2.5 sm:px-4 sm:py-3">
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
               onClick={() => handlePrintDiscrepancyTicket(session)}
-              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3.5 py-2 font-black uppercase text-violet-700 transition-colors hover:bg-violet-100 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300 dark:hover:bg-violet-950/60"
+              className="inline-flex h-9 items-center gap-2 rounded-xl border border-violet-200 bg-violet-50 px-3.5 py-2 font-black uppercase text-violet-700 transition-colors hover:bg-violet-100 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300 dark:hover:bg-violet-950/60"
               style={labelStyle}
             >
               <Printer size={15} aria-hidden="true" /> Comprobante de descuadre
@@ -603,7 +611,7 @@ export default function ReportsDiscrepancyDetailModal({
             <button
               type="button"
               onClick={() => handlePrintShiftTicket(session.id)}
-              className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-base bg-secondary px-3.5 py-2 font-black uppercase text-primary transition-colors hover:bg-subtle"
+              className="inline-flex h-9 items-center gap-2 rounded-xl border border-base bg-secondary px-3.5 py-2 font-black uppercase text-primary transition-colors hover:bg-subtle"
               style={labelStyle}
             >
               <FileText size={15} aria-hidden="true" /> Ticket del turno
@@ -612,7 +620,7 @@ export default function ReportsDiscrepancyDetailModal({
           <button
             type="button"
             onClick={() => setSelectedDiscrepancyDetailSession(null)}
-            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 font-black uppercase text-white transition-colors hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600"
+            className="inline-flex h-9 items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 font-black uppercase text-white transition-colors hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600"
             style={labelStyle}
           >
             Cerrar

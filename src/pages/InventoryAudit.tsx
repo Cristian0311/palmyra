@@ -928,8 +928,8 @@ export default function InventoryAuditPage() {
         </section>
 
         {showModal && (
-          <div className="fixed inset-0 z-[90] flex items-end justify-center bg-slate-950/70 backdrop-blur-sm sm:items-center sm:p-4">
-            <div className="flex max-h-[94dvh] w-full max-w-5xl flex-col overflow-hidden rounded-t-3xl border border-base bg-secondary shadow-2xl sm:rounded-3xl">
+          <div className="palmyra-overlay z-[var(--z-modal)] flex items-end justify-center sm:items-center sm:p-4">
+            <div className="palmyra-modal-panel flex max-h-[92dvh] w-full max-w-5xl flex-col overflow-hidden rounded-t-3xl! rounded-b-none! sm:rounded-2xl!">
               <div className="flex items-center justify-between gap-3 border-b border-base bg-subtle px-4 py-3 sm:px-5">
                 <div>
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -1367,8 +1367,12 @@ export default function InventoryAuditPage() {
           </div>
         )}
       {pendingDelete && (
-        <div className="fixed inset-0 z-[120] flex items-end justify-center bg-slate-950/70 p-3 backdrop-blur-sm sm:items-center">
-          <div className="w-full max-w-md rounded-t-3xl border border-base bg-secondary p-4 shadow-2xl sm:rounded-3xl sm:p-5">
+        <div
+          className="palmyra-overlay z-[var(--z-confirm)] flex items-end justify-center p-3 sm:items-center"
+          role="presentation"
+          onMouseDown={event => { if (event.target === event.currentTarget) setPendingDelete(null); }}
+        >
+          <div className="palmyra-modal-panel w-full max-w-md p-4 sm:p-5 max-h-[92dvh] overflow-y-auto rounded-t-3xl! rounded-b-none! sm:rounded-2xl!">
             <div className="flex items-start gap-3">
               <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400">
                 <Trash2 size={18} />

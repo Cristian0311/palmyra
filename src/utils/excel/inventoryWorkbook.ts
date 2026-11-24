@@ -16,6 +16,8 @@ export interface InventoryExportRow {
   unit?: string;
   price: number;
   costPrice: number;
+  /** Días de garantía del producto (0 = sin garantía). */
+  warrantyDays?: number;
   totalStock: number;
   minQuantity?: number;
   /** Umbral efectivo de alerta (producto → nivel → 5 por defecto). */
@@ -64,21 +66,27 @@ function aggregateCategories(rows: InventoryExportRow[]): CategoryAggregate[] {
 }
 
 function inventoryDataRows(rows: InventoryExportRow[]): ExportRows {
-  return rows.map(row => [
-    row.sku || 'S/SKU',
-    row.name || 'Producto',
-    row.barcode || 'S/C',
-    row.categoryName || 'Sin categoría',
-    row.unit || 'uds',
-    Number(row.price) || 0,
-    Number(row.costPrice) || 0,
-    (Number(row.price) || 0) - (Number(row.costPrice) || 0),
-    Number(row.totalStock) || 0,
-    Number(row.minQuantity) || 0,
-    (Number(row.costPrice) || 0) * (Number(row.totalStock) || 0),
-    (Number(row.price) || 0) * (Number(row.totalStock) || 0),
-    statusFor(row),
-  ]);
+  return rows.map(row => {
+    const warrantyDays = Number.isFinite(Number(row.warrantyDays))
+      ? Math.max(0, Math.floor(Number(row.warrantyDays)))
+      : 0;
+    return [
+      row.sku || 'S/SKU',
+      row.name || 'Producto',
+      row.barcode || 'S/C',
+      row.categoryName || 'Sin categoría',
+      row.unit || 'uds',
+      warrantyDays,
+      Number(row.price) || 0,
+      Number(row.costPrice) || 0,
+      (Number(row.price) || 0) - (Number(row.costPrice) || 0),
+      Number(row.totalStock) || 0,
+      Number(row.minQuantity) || 0,
+      (Number(row.costPrice) || 0) * (Number(row.totalStock) || 0),
+      (Number(row.price) || 0) * (Number(row.totalStock) || 0),
+      statusFor(row),
+    ];
+  });
 }
 
 function categoryDataRows(categories: CategoryAggregate[]): ExportRows {
@@ -176,6 +184,7 @@ export async function buildInventoryWorkbook(
       { header: 'Código de Barras', kind: 'mono', width: 14 },
       { header: 'Categoría', kind: 'text', width: 18 },
       { header: 'Unidad', kind: 'text', width: 9 },
+      { header: 'Garantía (días)', kind: 'integer', width: 11 },
       { header: `Precio Venta (${currency})`, kind: 'currency', width: 13 },
       { header: `Costo (${currency})`, kind: 'currency', width: 13 },
       { header: `Margen Unitario (${currency})`, kind: 'currency', width: 13 },

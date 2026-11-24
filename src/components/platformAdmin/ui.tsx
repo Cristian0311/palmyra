@@ -180,8 +180,8 @@ export function Modal({ title, description, onClose, children, footer, wide = fa
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-[95] flex items-end justify-center bg-[#1B1030]/55 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section role="dialog" aria-modal="true" aria-label={title} className={`flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl border border-base bg-secondary shadow-2xl sm:rounded-3xl ${wide ? "sm:max-w-3xl" : "sm:max-w-lg"}`}>
+    <div className="palmyra-overlay z-[var(--z-modal)] flex items-end justify-center p-0 sm:items-center sm:p-4" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section role="dialog" aria-modal="true" aria-label={title} className={`palmyra-modal-panel flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-3xl! rounded-b-none! sm:rounded-2xl! ${wide ? "sm:max-w-3xl" : "sm:max-w-lg"}`}>
         <header className="flex items-start justify-between gap-3 border-b border-base px-4 py-3.5 sm:px-5">
           <div>
             <h2 className="text-sm font-black text-primary">{title}</h2>

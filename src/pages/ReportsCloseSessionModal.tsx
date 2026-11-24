@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
   AlertTriangle, ArrowDownRight, ArrowUpRight, CheckCircle, CheckCircle2, Loader2, X,
@@ -66,6 +66,16 @@ export default function ReportsCloseSessionModal({
         (!sessionToCloseModal.closedAt || txTime <= new Date(sessionToCloseModal.closedAt).getTime());
     });
   }, [transactions, sessionToCloseModal]);
+
+  // Escape cancels the close-shift modal unless the operation is already running.
+  useEffect(() => {
+    if (!sessionToCloseModal) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !isClosingShiftFromReports) setSessionToCloseModal(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sessionToCloseModal, isClosingShiftFromReports, setSessionToCloseModal]);
 
   if (!sessionToCloseModal) return null;
 
@@ -151,12 +161,12 @@ export default function ReportsCloseSessionModal({
   };
 
   return createPortal((
-    <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden bg-slate-950/75 p-2 backdrop-blur-sm sm:p-4" role="presentation">
+    <div className="palmyra-overlay z-[var(--z-confirm)] flex items-center justify-center p-2 sm:p-4" role="presentation">
       <section
         role="dialog"
         aria-modal="true"
         aria-labelledby="close-session-title"
-        className="flex max-h-[94dvh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-base bg-secondary shadow-2xl animate-in zoom-in-95"
+        className="palmyra-modal-panel palmyra-mobile-modal flex w-full max-w-2xl flex-col overflow-hidden animate-in zoom-in-95"
       >
         <header className="flex items-start justify-between gap-3 border-b border-base px-4 py-3.5">
           <div className="flex items-center gap-3">
@@ -182,7 +192,7 @@ export default function ReportsCloseSessionModal({
           </button>
         </header>
 
-        <div className="flex-1 space-y-3.5 overflow-y-auto px-4 py-4">
+        <div className="min-h-0 flex-1 space-y-3.5 overflow-y-auto px-4 py-4">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {[
               { label: 'Sucursal', value: branches.find(b => b.id === sessionToCloseModal.branchId)?.name || 'Central' },

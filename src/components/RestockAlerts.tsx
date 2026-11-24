@@ -88,30 +88,30 @@ export function RestockAlerts() {
     <div className="space-y-2.5">
       {/* Compact summary bubbles: 2 columns even on mobile */}
       <div className="grid grid-cols-2 gap-2">
-        <div className="bg-secondary border border-rose-200/80 dark:border-rose-900/40 p-2 sm:p-2.5 rounded-xl shadow-xs flex items-center justify-between">
+        <div className="bg-secondary border border-[color-mix(in_srgb,var(--danger)_40%,transparent)] p-2 sm:p-2.5 rounded-xl shadow-xs flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-rose-50 dark:bg-rose-950/50 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0">
+            <div className="w-6 h-6 rounded-lg bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] flex items-center justify-center text-[var(--danger)] shrink-0">
               <AlertTriangle className="w-3.5 h-3.5" />
             </div>
             <div>
-              <h3 className="font-black text-rose-700 dark:text-rose-300 uppercase tracking-wider text-[8px] sm:text-[9px] truncate">Crítico (&lt; 7 días)</h3>
+              <h3 className="font-black text-[var(--danger)] uppercase tracking-wider text-[8px] sm:text-[9px] truncate">Crítico (&lt; 7 días)</h3>
               <p className="text-[7px] text-muted font-bold">Agotamiento inminente</p>
             </div>
           </div>
-          <p className="text-lg sm:text-xl font-black text-rose-600 dark:text-rose-400 leading-none">{restockData.filter(d => d.isCritical).length}</p>
+          <p className="text-lg sm:text-xl font-black text-[var(--danger)] leading-none">{restockData.filter(d => d.isCritical).length}</p>
         </div>
 
-        <div className="bg-secondary border border-amber-200/80 dark:border-amber-900/40 p-2 sm:p-2.5 rounded-xl shadow-xs flex items-center justify-between">
+        <div className="bg-secondary border border-[color-mix(in_srgb,var(--warning)_40%,transparent)] p-2 sm:p-2.5 rounded-xl shadow-xs flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-lg bg-amber-50 dark:bg-amber-950/50 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
+            <div className="w-6 h-6 rounded-lg bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] flex items-center justify-center text-[var(--warning)] shrink-0">
               <Clock className="w-3.5 h-3.5" />
             </div>
             <div>
-              <h3 className="font-black text-amber-700 dark:text-amber-300 uppercase tracking-wider text-[8px] sm:text-[9px] truncate">Stock Bajo</h3>
+              <h3 className="font-black text-[var(--warning)] uppercase tracking-wider text-[8px] sm:text-[9px] truncate">Stock Bajo</h3>
               <p className="text-[7px] text-muted font-bold">Por debajo del mínimo</p>
             </div>
           </div>
-          <p className="text-lg sm:text-xl font-black text-amber-600 dark:text-amber-400 leading-none">{restockData.filter(d => !d.isCritical && d.isLow).length}</p>
+          <p className="text-lg sm:text-xl font-black text-[var(--warning)] leading-none">{restockData.filter(d => !d.isCritical && d.isLow).length}</p>
         </div>
       </div>
 
@@ -143,24 +143,24 @@ export function RestockAlerts() {
                   </td>
                   <td className="px-3 py-2 text-center font-black text-xs text-primary">{data.stock}</td>
                   <td className="hidden sm:table-cell px-3 py-2 text-center">
-                    <div className="inline-flex items-center justify-center gap-1 bg-secondary border border-base px-1.5 py-0.5 rounded text-[10px] font-bold text-primary">
-                      <TrendingUp className="w-2.5 h-2.5 text-indigo-500" />
+                    <div className="palmyra-pill border border-base bg-secondary text-primary">
+                      <TrendingUp className="w-2.5 h-2.5 text-[var(--info)]" />
                       {data.dailySalesRate.toFixed(1)}/d
                     </div>
                   </td>
                   <td className="px-3 py-2 text-center">
-                    <div className="inline-flex items-center justify-center gap-1 bg-secondary border border-base px-1.5 py-0.5 rounded text-[10px] font-bold text-primary">
+                    <div className="palmyra-pill border border-base bg-secondary text-primary">
                       <Calendar className="w-2.5 h-2.5 text-muted" />
                       {data.daysUntilStockout === Infinity ? 'N/A' : `${data.daysUntilStockout} d`}
                     </div>
                   </td>
                   <td className="px-3 py-2 text-center">
                     {data.isCritical ? (
-                      <span className="bg-rose-100 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider inline-block whitespace-nowrap">
+                      <span className="palmyra-pill bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] text-[var(--danger)] whitespace-nowrap">
                         Comprar Ya
                       </span>
                     ) : (
-                      <span className="bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded-lg text-[8px] font-black uppercase tracking-wider inline-block whitespace-nowrap">
+                      <span className="palmyra-pill bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] text-[var(--warning)] whitespace-nowrap">
                         Alerta
                       </span>
                     )}

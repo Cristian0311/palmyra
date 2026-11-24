@@ -373,6 +373,26 @@ async function verifyInstallerWithManifest(filePath, size) {
 }
 
 async function verifyInstallerFile(filePath, size) {
+  // El tamaño solo se recibe en la instalación manual desde archivo. En el
+  // camino automático (Setup descargado por electron-updater) no se pasa, así
+  // que se mide el archivo real: el chequeo de `bytes` del manifiesto firmado
+  // debe comparar contra el archivo efectivamente descargado, nunca contra
+  // un valor indefinido.
+  const requestedSize = Number(size);
+  let resolvedSize = Number.isFinite(requestedSize) && requestedSize > 0 ? requestedSize : 0;
+  if (resolvedSize <= 0) {
+    try {
+      const stat = fs.statSync(filePath);
+      if (!stat.isFile() || stat.size <= 0) {
+        logLine('Actualización: no se pudo medir el instalador (archivo vacío o no válido).');
+      } else {
+        resolvedSize = stat.size;
+      }
+    } catch (error) {
+      logLine(`Actualización: no se pudo medir el instalador descargado: ${messageOf(error)}`);
+    }
+  }
+
   let signature = null;
   try {
     signature = parseAuthenticodeJson(await runPowerShellScript(SIGNATURE_PS_SCRIPT, filePath));
@@ -403,7 +423,7 @@ async function verifyInstallerFile(filePath, size) {
     logLine(`Actualización: firma Authenticode rechazada (${evaluation.code}).`);
   }
 
-  const fallback = await verifyInstallerWithManifest(filePath, size);
+  const fallback = await verifyInstallerWithManifest(filePath, resolvedSize);
   if (fallback.ok) return fallback;
   return {
     ok: false,

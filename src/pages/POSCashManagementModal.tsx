@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Search, Wifi, WifiOff, RefreshCw, Plus, Minus, CreditCard, Receipt, Trash2, ShoppingCart, ShieldCheck, DollarSign, Banknote, QrCode, ArrowLeftRight, UserPlus, X, Lock, Unlock, Camera, AlertCircle, TrendingUp, Wallet, MessageSquare, Mail, HelpCircle, Calculator, ArrowRight, Package, User, RotateCcw, Printer, Bluetooth, Usb, Smartphone, Send, Copy, Check, CheckCircle, Share2, Store, ChevronDown, ChevronUp, Filter } from "lucide-react";
 import { cn, generateId } from "../lib/utils";
 import { ticketDisplay } from "../lib/documentCodes";
@@ -11,6 +12,7 @@ type ModalProps = Record<string, any>;
 
 export default function POSCashManagementModal(props: ModalProps) {
   const { activeTransactions, addNotification, bankCards, baseCurrency, cashDisplayCurrencies, cashManagementTab, closingBalances, companyCompensation, currencies, currentSession, currentUser, expectedBalances, formatSalaryCUP, handleAddMovement, handleClose, handlePrintClosureThermal, handleThermalPrint, isClosingSession, movementData, products, removeCashMovement, salesFilter, salesSubTab, sessionClosingDate, sessionWorkerName, setCashManagementTab, setClosingBalances, setMovementData, setSalesFilter, setSalesSubTab, setSessionClosingDate, setShowCashManagementModal, setShowReceiptModal, showCashManagementModal, turnProductSalaryRows, users } = props;
+  const [confirmAction, setConfirmAction] = useState<{ kind: 'movement' | 'sale'; id: string; description?: string } | null>(null);
   const rateFor = (code: string) => code === baseCurrency?.code
     ? 1
     : (currencies.find((c: Currency) => c.code === code)?.rateToBase || 1);
@@ -55,11 +57,26 @@ export default function POSCashManagementModal(props: ModalProps) {
     setClosingBalances(next);
   };
 
+  useEffect(() => {
+    if (!showCashManagementModal) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (confirmAction) { setConfirmAction(null); return; }
+      if (!isClosingSession) setShowCashManagementModal(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [showCashManagementModal, confirmAction, isClosingSession, setShowCashManagementModal]);
+
   return (
     <>
       {showCashManagementModal && currentSession && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[70] flex items-center justify-center p-4">
-          <div role="dialog" aria-modal="true" aria-label="Caja y ventas del turno" className="palmyra-mobile-modal bg-white rounded-2xl sm:rounded-[2rem] shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 border border-white/20 flex flex-col max-h-[calc(100dvh-1rem)]">
+        <div
+          className="palmyra-overlay z-[var(--z-modal)] flex items-center justify-center p-3 sm:p-4"
+          role="presentation"
+          onMouseDown={event => { if (event.target === event.currentTarget && !isClosingSession) setShowCashManagementModal(false); }}
+        >
+          <div role="dialog" aria-modal="true" aria-label="Caja y ventas del turno" className="palmyra-mobile-modal palmyra-modal-panel w-full max-w-2xl overflow-hidden animate-in zoom-in-95 flex flex-col max-h-[92dvh]">
             <div className="p-4 border-b border-slate-50 flex items-center justify-between bg-slate-900 text-white shrink-0">
               <div className="flex items-center gap-2">
                 <Receipt className="w-4 h-4 text-violet-400" />
@@ -74,12 +91,12 @@ export default function POSCashManagementModal(props: ModalProps) {
               </button>
             </div>
             
-            <div className="flex border-b border-slate-100 bg-slate-50/50 shrink-0">
+            <div className="flex border-b border-base bg-subtle shrink-0">
               <button
                 onClick={() => setCashManagementTab('movements')}
                 className={cn(
                   "flex-1 py-3 text-[11px] font-black uppercase tracking-widest transition-colors",
-                  cashManagementTab === 'movements' ? "text-violet-600 border-b-2 border-violet-600 bg-white" : "text-slate-400 hover:text-slate-600"
+                  cashManagementTab === 'movements' ? "text-violet-600 border-b-2 border-violet-600 bg-secondary" : "text-muted hover:text-primary"
                 )}
               >
                 Movimientos
@@ -88,7 +105,7 @@ export default function POSCashManagementModal(props: ModalProps) {
                 onClick={() => setCashManagementTab('sales')}
                 className={cn(
                   "flex-1 py-3 text-[11px] font-black uppercase tracking-widest transition-colors",
-                  cashManagementTab === 'sales' ? "text-violet-600 border-b-2 border-violet-600 bg-white" : "text-slate-400 hover:text-slate-600"
+                  cashManagementTab === 'sales' ? "text-violet-600 border-b-2 border-violet-600 bg-secondary" : "text-muted hover:text-primary"
                 )}
               >
                 Ventas del Turno
@@ -97,7 +114,7 @@ export default function POSCashManagementModal(props: ModalProps) {
                 onClick={() => setCashManagementTab('close')}
                 className={cn(
                   "flex-1 py-3 text-[11px] font-black uppercase tracking-widest transition-colors",
-                  cashManagementTab === 'close' ? "text-violet-600 border-b-2 border-violet-600 bg-white" : "text-slate-400 hover:text-slate-600"
+                  cashManagementTab === 'close' ? "text-violet-600 border-b-2 border-violet-600 bg-secondary" : "text-muted hover:text-primary"
                 )}
               >
                 Arqueo y Cierre
@@ -189,12 +206,7 @@ export default function POSCashManagementModal(props: ModalProps) {
                             </p>
                             <button
                               type="button"
-                              onClick={() => {
-                                if (window.confirm(`¿Estás seguro de que deseas eliminar este movimiento: "${m.description}"?`)) {
-                                  removeCashMovement(currentSession.id, m.id);
-                                  addNotification("Movimiento de caja eliminado", 'info');
-                                }
-                              }}
+                              onClick={() => setConfirmAction({ kind: 'movement', id: m.id, description: m.description })}
                               className="p-2 text-slate-400 hover:text-rose-600 rounded-full hover:bg-rose-50 transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100 focus:opacity-100"
                               title="Eliminar movimiento"
                               aria-label="Eliminar movimiento"
@@ -605,12 +617,7 @@ export default function POSCashManagementModal(props: ModalProps) {
                                             <Printer className="w-4 h-4" />
                                           </button>
                                           <button
-                                            onClick={() => {
-                                              if (window.confirm(`¿Estás seguro de eliminar el ticket ${tx.id}? Esto devolverá los productos al inventario.`)) {
-                                                useStore.getState().deleteTransaction(tx.id);
-                                                addNotification(`Ticket ${tx.id} eliminado y stock restaurado.`, 'info');
-                                              }
-                                            }}
+                                            onClick={() => setConfirmAction({ kind: 'sale', id: tx.id })}
                                             className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer"
                                             title="Anular Venta"
                                             aria-label="Anular venta"
@@ -1033,6 +1040,59 @@ export default function POSCashManagementModal(props: ModalProps) {
               )}
             </div>
           </div>
+        </div>
+      )}
+      {confirmAction && (
+        <div
+          className="palmyra-overlay z-[var(--z-confirm)] flex items-center justify-center p-3 sm:p-4"
+          role="presentation"
+          onMouseDown={event => { if (event.target === event.currentTarget) setConfirmAction(null); }}
+        >
+          <section
+            role="alertdialog"
+            aria-modal="true"
+            aria-label="Confirmar eliminación"
+            className="palmyra-modal-panel palmyra-mobile-modal w-full max-w-sm p-4 sm:p-5 max-h-[92dvh] overflow-y-auto"
+          >
+            <div className="flex items-start gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-[color-mix(in_srgb,var(--danger)_14%,transparent)] text-[var(--danger)]">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-sm font-black uppercase tracking-tight text-primary">Eliminar</h3>
+                <p className="mt-1 text-xs font-semibold leading-relaxed text-muted">
+                  {confirmAction.kind === 'movement'
+                    ? `¿Estás seguro de que deseas eliminar este movimiento: "${confirmAction.description}"?`
+                    : `¿Estás seguro de eliminar el ticket ${confirmAction.id}? Esto devolverá los productos al inventario.`}
+                </p>
+              </div>
+            </div>
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmAction(null)}
+                className="h-11 flex-1 rounded-2xl border border-base bg-secondary text-xs font-black uppercase tracking-wider text-primary transition-colors hover:bg-subtle"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirmAction.kind === 'movement') {
+                    removeCashMovement(currentSession.id, confirmAction.id);
+                    addNotification("Movimiento de caja eliminado", 'info');
+                  } else {
+                    useStore.getState().deleteTransaction(confirmAction.id);
+                    addNotification(`Ticket ${confirmAction.id} eliminado y stock restaurado.`, 'info');
+                  }
+                  setConfirmAction(null);
+                }}
+                className="h-11 flex-[1.4] rounded-2xl bg-rose-600 text-xs font-black uppercase tracking-wider text-white transition-all hover:bg-rose-700 active:scale-95"
+              >
+                Eliminar
+              </button>
+            </div>
+          </section>
         </div>
       )}
     </>

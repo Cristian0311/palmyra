@@ -440,7 +440,7 @@ export default function Dashboard() {
               <div
                 role="listbox"
                 aria-label="Seleccionar almacén"
-                className="absolute right-0 top-full mt-1.5 z-40 w-[min(18rem,calc(100vw-1.5rem))] rounded-xl border border-base bg-secondary p-1.5 shadow-2xl"
+                className="palmyra-popover absolute right-0 top-full mt-1.5 z-[var(--z-dropdown)] w-[min(18rem,calc(100vw-1.5rem))] p-1.5"
               >
                 <button
                   type="button"
@@ -951,12 +951,16 @@ export default function Dashboard() {
 
       {/* Modal: Detalle Completo del Ticket de Venta */}
       {selectedTxForDetail && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+        <div
+          className="palmyra-overlay z-[var(--z-modal)] flex items-center justify-center p-4 animate-in fade-in"
+          role="presentation"
+          onMouseDown={event => { if (event.target === event.currentTarget) setSelectedTxForDetail(null); }}
+        >
           <div
             role="dialog"
             aria-modal="true"
             aria-label="Detalle de la venta"
-            className="bg-white dark:bg-slate-900 rounded-[2rem] max-w-lg w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 animate-in zoom-in-95 max-h-[90vh] overflow-y-auto"
+            className="palmyra-modal-panel palmyra-mobile-modal w-full max-w-lg p-6 space-y-4 animate-in zoom-in-95"
           >
             {/* Modal Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 gap-2">
@@ -1114,12 +1118,16 @@ export default function Dashboard() {
 
       {/* Modal: Todas las Ventas del Día */}
       {showAllSalesModal && (
-        <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-xs flex items-center justify-center p-4 z-50 animate-in fade-in">
+        <div
+          className="palmyra-overlay z-[var(--z-modal)] flex items-center justify-center p-4 animate-in fade-in"
+          role="presentation"
+          onMouseDown={event => { if (event.target === event.currentTarget) setShowAllSalesModal(false); }}
+        >
           <div
             role="dialog"
             aria-modal="true"
             aria-label="Ventas de hoy"
-            className="bg-white dark:bg-slate-900 rounded-[2rem] max-w-2xl w-full p-4 sm:p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 animate-in zoom-in-95 max-h-[90vh] flex flex-col"
+            className="palmyra-modal-panel palmyra-mobile-modal w-full max-w-2xl p-4 sm:p-6 space-y-4 animate-in zoom-in-95 flex flex-col"
           >
             <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800">
               <div className="min-w-0">

@@ -65,6 +65,23 @@ export async function pushProductToSupabase(product:Product, options?: { queueOn
     });
     if(result.error) throw result.error;
     if(result.data?.success===false) throw new Error(result.data?.message||'La sincronización del producto fue rechazada.');
+    // Garantía: el RPC sync_product_secure no la recibe; se sincroniza aparte.
+    // Si la migración aún no está aplicada, el aviso queda registrado y la
+    // garantía local se conserva (el pull no la pisa gracias a warranty_days).
+    try {
+      const warranty = Number(product.warrantyDays) || 0;
+      await supabase.rpc('sync_product_warranty_secure', {
+        p_company_id: companyId,
+        p_product_id: product.id,
+        p_warranty_days: warranty,
+      });
+    } catch (warrantyError: any) {
+      console.warn('[PALMYRA] warranty sync skipped', {
+        code: String(warrantyError?.code || ''),
+        message: String(warrantyError?.message || warrantyError || ''),
+        productId: product.id,
+      });
+    }
     return true;
   }catch(e:any){
     const code=String(e?.code||'').toUpperCase();

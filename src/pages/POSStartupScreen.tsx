@@ -198,7 +198,7 @@ export default function POSStartupScreen(props: StartupProps) {
                     <div className="min-w-0 flex-1 text-left">
                       <div className="flex items-center gap-1.5">
                         <h3 className="text-[13px] font-black text-slate-900 uppercase tracking-tight leading-none">Apertura de caja</h3>
-                        <span className="rounded-full bg-violet-50 border border-violet-100 px-1.5 py-0.5 text-[8px] font-black uppercase tracking-wider text-violet-700">Configurar</span>
+                        <span className="palmyra-pill border-[color-mix(in_srgb,var(--primary)_40%,transparent)] bg-[color-mix(in_srgb,var(--primary)_12%,var(--bg-secondary))] text-[var(--primary)]">Configurar</span>
                       </div>
                       <p className="mt-1 text-[9.5px] font-bold leading-tight text-slate-400">Operador · almacén · fondo inicial</p>
                     </div>
@@ -253,7 +253,7 @@ export default function POSStartupScreen(props: StartupProps) {
                       <span className="min-w-0 flex-1">
                         <span className="flex items-center gap-1.5">
                           <span className="text-[10px] font-black uppercase tracking-[0.1em] text-emerald-900">Turnos abiertos</span>
-                          <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[8px] font-black text-emerald-700">{isRefreshingOpenSessions ? "…" : openSessionsForResume.length}</span>
+                          <span className="palmyra-badge palmyra-badge-success tabular-nums">{isRefreshingOpenSessions ? "…" : openSessionsForResume.length}</span>
                         </span>
                         <span className="mt-0.5 block text-[9px] font-bold leading-tight text-emerald-700/75">
                           {openSessionsForResume.length > 0 ? "Ver cajas en curso y reanudar" : "Buscar cajas en curso"}
@@ -322,7 +322,7 @@ export default function POSStartupScreen(props: StartupProps) {
                             </div>
 
                             {employeePickerOpen && (
-                              <div className="absolute left-0 right-0 top-full mt-1 z-30 bg-white border border-slate-200 rounded-xl shadow-xl overflow-hidden">
+                              <div className="palmyra-popover absolute left-0 right-0 top-full z-[var(--z-dropdown)] mt-1">
                                 <div className="max-h-[30vh] overflow-y-auto custom-scrollbar p-1">
                                   {pickerUsers
                                     .map((u: any) => {

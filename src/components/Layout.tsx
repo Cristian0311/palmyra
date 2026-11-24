@@ -246,22 +246,22 @@ function OfflineStatusPill({
 }) {
   const label = state === "offline" ? "Offline" : state === "syncing" ? "Sincronizando" : "Online";
   const tone = state === "offline"
-    ? { shell: "border-amber-300/80 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300", dot: "bg-amber-500" }
+    ? { shell: "border-[color-mix(in_srgb,var(--warning)_40%,transparent)] bg-[color-mix(in_srgb,var(--warning)_12%,var(--bg-secondary))] text-[var(--warning)]", dot: "bg-[var(--warning)]" }
     : state === "syncing"
-      ? { shell: "border-violet-300/80 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300", dot: "bg-violet-500 animate-pulse" }
-      : { shell: "border-emerald-300/80 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300", dot: "bg-emerald-500" };
+      ? { shell: "border-[color-mix(in_srgb,var(--primary)_40%,transparent)] bg-[color-mix(in_srgb,var(--primary)_12%,var(--bg-secondary))] text-[var(--primary)]", dot: "bg-[var(--primary)] animate-pulse" }
+      : { shell: "border-[color-mix(in_srgb,var(--success)_40%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,var(--bg-secondary))] text-[var(--success)]", dot: "bg-[var(--success)]" };
   // Sin trabajo real no se muestra burbuja: solo el estado, sin números fantasma.
   const badge = conflicts > 0
-    ? { text: `!${formatOfflineCount(conflicts)}`, className: "bg-rose-600 text-white" }
+    ? { text: `!${formatOfflineCount(conflicts)}`, className: "palmyra-badge palmyra-badge-danger" }
     : pending > 0
-      ? { text: formatOfflineCount(pending), className: "bg-amber-500 text-white" }
+      ? { text: formatOfflineCount(pending), className: "palmyra-badge palmyra-badge-warning" }
       : null;
   return (
-    <span className={cn("inline-flex min-w-0 items-center gap-1.5 rounded-full border py-1 pl-1.5 pr-2 text-[9px] font-black uppercase tracking-wide", tone.shell, className)}>
+    <span className={cn("palmyra-pill min-w-0 border uppercase tracking-wide", tone.shell, className)}>
       <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", tone.dot)} aria-hidden="true" />
       <span className="min-w-0 truncate">{label}</span>
       {badge && (
-        <span className={cn("ml-auto inline-flex min-w-[1.15rem] shrink-0 items-center justify-center rounded-full px-1 py-0.5 text-[8px] font-black leading-none tabular-nums", badge.className)}>
+        <span className={cn("ml-auto shrink-0 tabular-nums", badge.className)}>
           {badge.text}
         </span>
       )}
@@ -296,6 +296,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [desktopUpdateDismissed, setDesktopUpdateDismissed] = useState("");
   const [desktopInstalling, setDesktopInstalling] = useState(false);
   const [showOnlineCatalogInfo, setShowOnlineCatalogInfo] = useState(false);
+  const [logoutConfirmOpen, setLogoutConfirmOpen] = useState(false);
+  const [logoutConfirmPendingCount, setLogoutConfirmPendingCount] = useState(0);
   const { currentUser, logout, notifications, removeNotification, storeConfig, syncWithSupabase, addNotification, cart, currentBranchId, getCurrentSession } = useStore(useShallow((state) => ({ currentUser: state.currentUser, logout: state.logout, notifications: state.notifications, removeNotification: state.removeNotification, storeConfig: state.storeConfig, syncWithSupabase: state.syncWithSupabase, addNotification: state.addNotification, cart: state.cart, currentBranchId: state.currentBranchId, getCurrentSession: state.getCurrentSession })));
   const location = useLocation();
   const navigate = useNavigate();
@@ -865,11 +867,22 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   const handleLogoutClick = () => {
     const pending = getOfflineQueueCount();
-    if (pending > 0 && !window.confirm(
-      `Hay ${pending} operación(es) offline sin sincronizar. Quedan guardadas en este dispositivo, pero solo se enviarán al volver a entrar con la misma cuenta CON internet: cerrar sesión bloquea el acceso offline hasta entonces. ¿Cerrar sesión?`
-    )) return;
+    if (pending > 0) {
+      setLogoutConfirmPendingCount(pending);
+      setLogoutConfirmOpen(true);
+      return;
+    }
     logout();
   };
+
+  useEffect(() => {
+    if (!logoutConfirmOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setLogoutConfirmOpen(false);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [logoutConfirmOpen]);
 
   const handleManualSync = async () => {
     if (!isOnline || isSyncingOffline) return;
@@ -1025,7 +1038,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <span className="sr-only" aria-live="polite">{offlineStatusSpeechText}</span>
 
       {showApkPromo && currentUser && (
-        <div className="fixed inset-x-3 bottom-3 sm:inset-auto sm:right-4 sm:bottom-4 z-[10001]">
+        <div className="fixed inset-x-3 bottom-3 sm:inset-auto sm:right-4 sm:bottom-4 z-[var(--z-toast)]">
           <div className="w-full sm:w-[min(23rem,calc(100vw-2rem))] rounded-2xl border border-emerald-200/80 bg-white/95 dark:bg-slate-900/95 dark:border-emerald-900/50 shadow-2xl backdrop-blur-md p-3">
             <div className="flex items-start gap-2.5">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300">
@@ -1073,7 +1086,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       )}
 
       {/* Sistema de Notificaciones Globales */}
-      <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2 pointer-events-none" aria-live="polite">
+      <div className="fixed top-4 right-4 z-[var(--z-toast)] flex flex-col gap-2 pointer-events-none" aria-live="polite">
         {notifications.map((n) => (
           <div 
             key={n.id} 
@@ -1250,17 +1263,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                               "group relative flex min-w-0 items-center rounded-lg transition-colors duration-150",
                               sidebarCollapsed ? "justify-center p-2 my-0.5" : "gap-2 px-2.5 py-1.5",
                               active
-                                ? "bg-[#6535C5] text-white shadow-sm"
-                                : "text-muted hover:bg-subtle hover:text-[#6535C5]"
+                                ? "bg-[var(--primary)] text-white shadow-sm"
+                                : "text-muted hover:bg-subtle hover:text-[var(--primary)]"
                             )}
                           >
                             <Icon className={cn(
                               "w-4 h-4 shrink-0 transition-colors",
-                              active ? "text-white" : "text-muted group-hover:text-[#6535C5]"
+                              active ? "text-white" : "text-muted group-hover:text-[var(--primary)]"
                             )} />
                             {sidebarCollapsed && locked && (
                               <span
-                                className="pointer-events-none absolute right-1 top-1 flex h-3 w-3 items-center justify-center rounded-full border border-white bg-[#6535C5] text-white shadow-sm dark:border-slate-900"
+                                className="pointer-events-none absolute right-1 top-1 flex h-3 w-3 items-center justify-center rounded-full border border-white bg-[var(--primary)] text-white shadow-sm dark:border-slate-900"
                                 title={`Requiere plan ${requiredPlanName}`}
                               >
                                 <Lock className="h-2 w-2" aria-hidden="true" />
@@ -1334,8 +1347,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               {hasQueueBacklog && (
                 <span
                   className={cn(
-                    "absolute -right-1 -top-1 inline-flex min-w-[15px] items-center justify-center rounded-full px-1 py-0.5 text-[8px] font-black leading-none tabular-nums text-white",
-                    safeConflictOfflineCount > 0 ? "bg-rose-600" : "bg-amber-500"
+                    "palmyra-badge absolute -right-1 -top-1 tabular-nums",
+                    safeConflictOfflineCount > 0 ? "palmyra-badge-danger" : "palmyra-badge-warning"
                   )}
                 >
                   {safeConflictOfflineCount > 0
@@ -1429,7 +1442,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 type="button"
                 onClick={() => navigate("/subscription")}
                 title="Ver mi plan"
-                className={cn("mt-1.5 w-full min-w-0 rounded-lg border px-2 py-1.5 text-left transition-colors hover:border-[#6535C5]/40", getPlanVisual(subscription?.planCode).border, getPlanVisual(subscription?.planCode).soft)}
+                className={cn("mt-1.5 w-full min-w-0 rounded-lg border px-2 py-1.5 text-left transition-colors hover:border-[var(--primary)]/40", getPlanVisual(subscription?.planCode).border, getPlanVisual(subscription?.planCode).soft)}
               >
                 <div className="flex items-center gap-1.5 min-w-0">
                   <div className={cn("w-5 h-5 rounded-md flex items-center justify-center shrink-0", getPlanVisual(subscription?.planCode).soft)}>
@@ -1457,13 +1470,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <LicenseReadOnlyBanner />
 
       {(saasContext?.company?.account_status === 'pending_payment' && !!saasContext?.subscription?.graceEndsAt && new Date(saasContext.subscription.graceEndsAt).getTime() <= countdownNow) && location.pathname !== '/subscription' && location.pathname !== '/help' && (
-        <div className="fixed inset-0 z-[290] flex items-center justify-center p-4 bg-slate-950/55 backdrop-blur-[3px]">
-          <div className="w-full max-w-md rounded-3xl border border-amber-200 bg-white shadow-2xl p-6 text-center">
+        <div className="palmyra-overlay z-[var(--z-tooltip)] flex items-center justify-center p-4">
+          <div className="palmyra-modal-panel w-full max-w-md p-6 text-center">
             <div className="mx-auto w-12 h-12 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center"><CreditCard className="w-6 h-6"/></div>
             <p className="mt-4 text-[10px] font-black uppercase tracking-[0.16em] text-amber-700">Periodo de servicio finalizado</p>
             <h3 className="mt-1 text-xl font-black text-slate-900">PALMYRA está en modo lectura</h3>
             <p className="mt-2 text-sm leading-5 text-slate-600">Tus datos, ventas e historial se conservan. Para volver a operar y sincronizar nuevas modificaciones, activa nuevamente tu plan.</p>
-            <button type="button" onClick={() => window.location.assign('/subscription')} className="mt-5 w-full h-11 rounded-xl bg-[#6535C5] hover:bg-[#4F249D] text-white text-xs font-black uppercase tracking-wider">Ver planes y activar</button>
+            <button type="button" onClick={() => window.location.assign('/subscription')} className="mt-5 w-full h-11 rounded-xl bg-[var(--primary)] hover:bg-[var(--primary-hover)] text-white text-xs font-black uppercase tracking-wider">Ver planes y activar</button>
           </div>
         </div>
       )}
@@ -1476,7 +1489,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         const inGrace = baseExpired && Number.isFinite(graceEnds) && graceEnds > countdownNow;
         if (!inGrace || location.pathname === '/subscription' || location.pathname === '/help') return null;
         return (
-          <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[275] w-[min(92vw,34rem)] rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3 shadow-xl">
+          <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[var(--z-tooltip)] w-[min(92vw,34rem)] rounded-2xl border border-amber-200 bg-amber-50 px-3.5 py-3 shadow-xl">
             <div className="flex items-start gap-2.5">
               <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div className="min-w-0">
@@ -1494,7 +1507,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           aviso es discreto y no bloquea la caja. */}
       {desktopUpdateProgressVisible && (
         <div
-          className="fixed bottom-4 right-4 z-[299] w-[min(92vw,20rem)] rounded-2xl border border-violet-200/80 bg-white p-3.5 shadow-[0_18px_50px_rgba(76,29,149,0.18)] dark:border-violet-900/60 dark:bg-slate-900"
+          className="fixed bottom-4 right-4 z-[var(--z-tooltip)] w-[min(92vw,20rem)] rounded-2xl border border-violet-200/80 bg-[var(--bg-secondary)] p-3.5 shadow-[0_18px_50px_rgba(76,29,149,0.18)] dark:border-violet-900/60"
           role="status"
           aria-live="polite"
         >
@@ -1561,9 +1574,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {/* La actualización de escritorio ya está descargada: el usuario decide
           cuándo reiniciar (autoInstallOnAppQuit la aplica al cerrar). */}
       {desktopUpdateReadyVisible && (
-        <div className="fixed inset-0 z-[301] flex items-center justify-center px-4 py-6 pointer-events-none bg-slate-950/20 dark:bg-slate-950/50 backdrop-blur-[3px]">
+        <div className="fixed inset-0 z-[var(--z-tooltip)] flex items-center justify-center px-4 py-6 pointer-events-none bg-[rgb(27_16_48/0.22)] dark:bg-[rgb(6_3_12/0.5)] backdrop-blur-[3px]">
           <div
-            className="pointer-events-auto w-full max-w-sm overflow-hidden rounded-[30px] border border-violet-200/70 bg-white shadow-[0_28px_90px_rgba(76,29,149,0.24)] dark:border-violet-900/60 dark:bg-slate-900 dark:shadow-[0_28px_90px_rgba(0,0,0,0.5)]"
+            className="pointer-events-auto w-full max-w-sm overflow-hidden rounded-[30px] border border-violet-200/70 bg-[var(--bg-secondary)] shadow-[0_28px_90px_rgba(76,29,149,0.24)] dark:border-violet-900/60 dark:shadow-[0_28px_90px_rgba(0,0,0,0.5)]"
             role="dialog"
             aria-modal="true"
             aria-labelledby="palmyra-desktop-update-title"
@@ -1625,9 +1638,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       {/* Main Content */}
       {manifestUpdateVisible && (
-        <div className="fixed inset-0 z-[301] flex items-center justify-center px-4 py-6 pointer-events-none bg-slate-950/20 dark:bg-slate-950/50 backdrop-blur-[3px]">
+        <div className="fixed inset-0 z-[var(--z-tooltip)] flex items-center justify-center px-4 py-6 pointer-events-none bg-[rgb(27_16_48/0.22)] dark:bg-[rgb(6_3_12/0.5)] backdrop-blur-[3px]">
           <div
-            className="pointer-events-auto w-full max-w-sm overflow-hidden rounded-[30px] border border-violet-200/70 bg-white shadow-[0_28px_90px_rgba(76,29,149,0.24)] dark:border-violet-900/60 dark:bg-slate-900 dark:shadow-[0_28px_90px_rgba(0,0,0,0.5)]"
+            className="pointer-events-auto w-full max-w-sm overflow-hidden rounded-[30px] border border-violet-200/70 bg-[var(--bg-secondary)] shadow-[0_28px_90px_rgba(76,29,149,0.24)] dark:border-violet-900/60 dark:shadow-[0_28px_90px_rgba(0,0,0,0.5)]"
             role="dialog"
             aria-modal="true"
             aria-labelledby="palmyra-ota-title"
@@ -1728,9 +1741,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       )}
 
       {updateAvailable && !IN_PALMYRA_APP && !IS_DESKTOP_SHELL && (
-        <div className="fixed inset-0 z-[300] flex items-center justify-center px-4 py-6 pointer-events-none bg-slate-950/20 dark:bg-slate-950/50 backdrop-blur-[3px]">
+        <div className="fixed inset-0 z-[var(--z-tooltip)] flex items-center justify-center px-4 py-6 pointer-events-none bg-[rgb(27_16_48/0.22)] dark:bg-[rgb(6_3_12/0.5)] backdrop-blur-[3px]">
           <div
-            className="pointer-events-auto w-full max-w-sm overflow-hidden rounded-[30px] border border-violet-200/70 bg-white shadow-[0_28px_90px_rgba(76,29,149,0.24)] dark:border-violet-900/60 dark:bg-slate-900 dark:shadow-[0_28px_90px_rgba(0,0,0,0.5)]"
+            className="pointer-events-auto w-full max-w-sm overflow-hidden rounded-[30px] border border-violet-200/70 bg-[var(--bg-secondary)] shadow-[0_28px_90px_rgba(76,29,149,0.24)] dark:border-violet-900/60 dark:shadow-[0_28px_90px_rgba(0,0,0,0.5)]"
             role="dialog"
             aria-modal="true"
             aria-labelledby="palmyra-update-title"
@@ -1851,8 +1864,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
         )}
         {showOnlineCatalogInfo && (
-        <div className="fixed inset-0 z-[310] flex items-center justify-center p-4 bg-slate-950/45 backdrop-blur-sm" onClick={() => setShowOnlineCatalogInfo(false)}>
-          <div className="w-full max-w-md rounded-3xl border border-violet-200 bg-white shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+        <div className="palmyra-overlay z-[var(--z-modal)] flex items-center justify-center p-4" onClick={() => setShowOnlineCatalogInfo(false)}>
+          <div className="palmyra-modal-panel w-full max-w-md p-6" onClick={e => e.stopPropagation()}>
             <div className="w-12 h-12 rounded-2xl bg-violet-100 text-violet-700 flex items-center justify-center"><Store className="w-6 h-6"/></div>
             <p className="mt-4 text-[10px] font-black uppercase tracking-[0.18em] text-violet-600">Catálogo Online · Próximamente</p>
             <h3 className="mt-1 text-xl font-black text-slate-900">Una nueva forma de vender en línea</h3>
@@ -1877,6 +1890,51 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           {children}
         </div>
         </main>
+
+        {logoutConfirmOpen && (
+          <div
+            className="palmyra-overlay z-[var(--z-confirm)] flex items-center justify-center p-4"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="palmyra-logout-confirm-title"
+            onClick={() => setLogoutConfirmOpen(false)}
+          >
+            <div
+              className="palmyra-modal-panel palmyra-mobile-modal w-full max-w-md p-5"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <div className="flex items-start gap-3">
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[color-mix(in_srgb,var(--warning)_12%,transparent)] text-[var(--warning)]">
+                  <LogOut className="h-5 w-5" aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <h3 id="palmyra-logout-confirm-title" className="text-base font-black leading-tight text-primary">
+                    Cerrar sesión con operaciones pendientes
+                  </h3>
+                  <p className="mt-1 text-xs font-medium leading-5 text-secondary">
+                    Hay {logoutConfirmPendingCount} operación(es) offline sin sincronizar. Quedan guardadas en este dispositivo, pero solo se enviarán al volver a entrar con la misma cuenta CON internet: cerrar sesión bloquea el acceso offline hasta entonces. ¿Cerrar sesión?
+                  </p>
+                </div>
+              </div>
+              <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setLogoutConfirmOpen(false)}
+                  className="h-11 rounded-xl border border-base bg-subtle px-4 text-xs font-black uppercase tracking-wider text-primary hover:opacity-90"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setLogoutConfirmOpen(false); logout(); }}
+                  className="h-11 rounded-xl bg-[var(--primary)] px-4 text-xs font-black uppercase tracking-wider text-white hover:bg-[var(--primary-hover)]"
+                >
+                  Cerrar sesión
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 }

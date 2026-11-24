@@ -204,7 +204,7 @@ export function ReportsSalesTab({
           </p>
         </div>
 
-        <div className="flex items-center gap-1.5 bg-subtle p-1 rounded-xl border border-base shrink-0">
+        <div className="flex flex-wrap items-center gap-1.5 bg-subtle p-1 rounded-xl border border-base">
           <button
             type="button"
             onClick={() => setShowHiddenReports(value => !value)}

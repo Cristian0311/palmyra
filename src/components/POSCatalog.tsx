@@ -248,8 +248,8 @@ export const POSCatalog = React.memo(function POSCatalog({
           {currentUserRole === 'admin' && (
             <div className="absolute top-1.5 left-1.5 z-20">
               <span className={cn(
-                "text-[9.5px] font-black px-1.5 py-0.5 rounded-md uppercase tracking-tight shadow-2xs border",
-                stock > 5 ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800" : stock > 0 ? "bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800" : "bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-400 border-rose-200 dark:border-rose-800"
+                "palmyra-pill border tracking-tight",
+                stock > 5 ? "border-[color-mix(in_srgb,var(--success)_40%,transparent)] bg-[color-mix(in_srgb,var(--success)_12%,var(--bg-secondary))] text-[var(--success)]" : stock > 0 ? "border-[color-mix(in_srgb,var(--warning)_40%,transparent)] bg-[color-mix(in_srgb,var(--warning)_12%,var(--bg-secondary))] text-[var(--warning)]" : "border-[color-mix(in_srgb,var(--danger)_40%,transparent)] bg-[color-mix(in_srgb,var(--danger)_12%,var(--bg-secondary))] text-[var(--danger)]"
               )}>
                 {stock} u.
               </span>

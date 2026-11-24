@@ -103,6 +103,14 @@ export default function Subscription() {
   const [planCode, setPlanCode] = useState<PaidPlanCode>('starter');
   const [paymentMethod, setPaymentMethod] = useState<AcquisitionPaymentMethod>('cup_cash');
   const [months, setMonths] = useState<BillingMonths>(1);
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
+  useEffect(() => {
+    if (!confirmCancel) return;
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') setConfirmCancel(false); };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [confirmCancel]);
   const planPreselected = useRef(false);
 
   async function refresh() {
@@ -186,7 +194,12 @@ export default function Subscription() {
 
   async function cancelRequest() {
     if (!data?.ctx.companyId || !request?.id) return;
-    if (!window.confirm('¿Cancelar la solicitud pendiente? Después podrás enviar otra cuando quieras.')) return;
+    setConfirmCancel(true);
+  }
+
+  async function confirmedCancelRequest() {
+    if (!data?.ctx.companyId || !request?.id) return;
+    setConfirmCancel(false);
     setCancelling(true); setError(''); setNotice('');
     try {
       await cancelMyPlanRequest(data.ctx.companyId);
@@ -364,5 +377,21 @@ export default function Subscription() {
         </section>
       </> : <p className={cn(panel, 'flex items-center gap-3')}><ShieldCheck className="h-5 w-5 shrink-0" aria-hidden="true" />Solo el propietario puede solicitar planes y consultar facturas.</p>}
     </>}
+    {confirmCancel && (
+      <div
+        className="palmyra-overlay z-[var(--z-confirm)] flex items-center justify-center p-4"
+        role="presentation"
+        onMouseDown={(event) => { if (event.target === event.currentTarget) setConfirmCancel(false); }}
+      >
+        <div role="alertdialog" aria-modal="true" className="palmyra-modal-panel palmyra-mobile-modal w-full space-y-3 p-4 sm:max-w-md">
+          <p className="text-sm font-bold text-primary">Cancelar solicitud pendiente</p>
+          <p className="text-xs text-muted">¿Cancelar la solicitud pendiente? Después podrás enviar otra cuando quieras.</p>
+          <div className="flex justify-end gap-2 pt-1">
+            <button type="button" onClick={() => setConfirmCancel(false)} className="rounded-lg border border-base px-3 py-1.5 text-xs font-bold text-secondary hover:bg-subtle">Mantener</button>
+            <button type="button" disabled={cancelling} onClick={() => void confirmedCancelRequest()} className="rounded-lg bg-[var(--danger)] px-3 py-1.5 text-xs font-bold text-white hover:opacity-90 disabled:opacity-50">{cancelling ? 'Cancelando…' : 'Cancelar solicitud'}</button>
+          </div>
+        </div>
+      </div>
+    )}
   </main>;
 }

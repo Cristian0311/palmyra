@@ -69,6 +69,14 @@ export interface LicenseSnapshot {
    * `offlineVerified`: aquí la activación todavía está pendiente.
    */
   pendingActivation: boolean;
+  /**
+   * El intento de activación/renovación de esta evaluación ya concluyó (bien
+   * con lease, bien sin él, bien sin poder intentarlo por falta de red).
+   * Mientras sea false con `pendingActivation`, el intento sigue en vuelo y la
+   * UI debe mostrar el estado neutro «verificando»: el aviso de «licencia sin
+   * verificar» solo es legítimo cuando la evaluación terminó de verdad.
+   */
+  activationSettled?: boolean;
 }
 
 export type LicenseFetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -109,8 +117,8 @@ export interface LicenseRuntimeOptions {
 }
 
 export interface LicenseRuntime {
-  start(input?: { companyId?: string }): Promise<LicenseSnapshot>;
-  refresh(input?: { companyId?: string }): Promise<LicenseSnapshot>;
+  start(input?: { companyId?: string; forceRenew?: boolean }): Promise<LicenseSnapshot>;
+  refresh(input?: { companyId?: string; forceRenew?: boolean }): Promise<LicenseSnapshot>;
   subscribe(listener: (snapshot: LicenseSnapshot) => void): () => void;
   getSnapshot(): LicenseSnapshot;
   dispose(): void;
@@ -135,7 +143,8 @@ const LOADING_SNAPSHOT: LicenseSnapshot = {
   keyConfigured: false,
   leasePresent: false,
   offlineVerified: false,
-  pendingActivation: false
+  pendingActivation: false,
+  activationSettled: false
 };
 
 /**
@@ -219,7 +228,8 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
       keyConfigured,
       leasePresent: false,
       offlineVerified: false,
-      pendingActivation: false
+      pendingActivation: false,
+      activationSettled: true
     });
   }
 
@@ -247,7 +257,8 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
       keyConfigured: true,
       leasePresent: true,
       offlineVerified: false,
-      pendingActivation: false
+      pendingActivation: false,
+      activationSettled: true
     };
     lastValid = next;
     lastValidRawReadOnly = true;
@@ -322,7 +333,7 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
     deviceSpki: ArrayBuffer;
     activeCompany: string;
     atMs: number;
-    /** Renovar aunque el lease no esté por vencer (identidad reparada). */
+    /** Renovar aunque el lease no esté por vencer (identidad reparada o botón Renovar). */
     force?: boolean;
   }): Promise<SignedLease | null> {
     // Sin conexión no se intenta activar: el arranque nunca espera a la red.
@@ -347,11 +358,12 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
     const expiresMs = args.lease ? Date.parse(args.lease.expiresAt) : Number.NaN;
     const issuedMs = args.lease ? Date.parse(args.lease.issuedAt) : Number.NaN;
     const needsRenewal =
+      args.force ||
       !args.lease ||
       (Number.isFinite(expiresMs) && expiresMs - args.atMs < RENEW_BEFORE_MS) ||
       (Number.isFinite(issuedMs) && args.atMs - issuedMs > LEASE_MAX_AGE_MS);
     if (!needsRenewal) return null;
-    if (args.atMs - lastRenewAttemptAt < RENEW_RETRY_MS) return null;
+    if (!args.force && args.atMs - lastRenewAttemptAt < RENEW_RETRY_MS) return null;
     lastRenewAttemptAt = args.atMs;
 
     try {
@@ -392,8 +404,16 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
    *   (invalid) y mostrar aviso; si ya hubo una evaluación válida, se conserva.
    * - Error de red (clave, renovación, almacenamiento) -> se conserva el último
    *   snapshot; un fallo de red nunca activa solo lectura.
+   * - Primera activación sin lease -> se publica como pendiente «en curso»
+   *   (activationSettled false). El aviso de «licencia sin verificar» solo puede
+   *   mostrarse cuando esta evaluación concluye sin lease: nunca durante la
+   *   carga ni mientras el intento de red sigue en vuelo.
    */
-  async function runRefresh(input?: { companyId?: string }): Promise<LicenseSnapshot> {
+  async function runRefresh(input?: {
+    companyId?: string;
+    /** Renovación manual desde la UI: fuerza el intento y salta la espera. */
+    forceRenew?: boolean;
+  }): Promise<LicenseSnapshot> {
     if (disposed) return snapshot;
     const atMs = now();
     if (input?.companyId && input.companyId !== companyId) {
@@ -435,7 +455,8 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
 
     // 2) Lease y marca de agua guardados: lectura local, sin red. La lectura
     //    distingue «no hay lease» (primera activación) de «no se pudo leer» y de
-    //    «está alterado»: solo la primera puede avisar «sin verificar».
+    //    «está alterado»: solo la primera puede avisar «sin verificar», y solo
+    //    después de que el intento de activación de esta evaluación concluya.
     let lease: SignedLease | null;
     let watermarkMs: number | null;
     let leaseStatus: "ok" | "missing" | "invalid" | "unreadable" = "missing";
@@ -591,7 +612,8 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
         keyConfigured: true,
         leasePresent: true,
         offlineVerified: args.offlineVerified,
-        pendingActivation: false
+        pendingActivation: false,
+        activationSettled: true
       };
       lastValid = next;
       lastValidRawReadOnly = evaluation.readOnly;
@@ -600,6 +622,10 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
     };
 
     // 4) Primera publicacion: solo con lo que hay en disco. Nunca espera a la red.
+    //    La activación pendiente se publica como «en curso» (activationSettled
+    //    false): la UI muestra el estado neutro «verificando» y el aviso de
+    //    «licencia sin verificar» queda reservado para cuando el paso 5 cierre
+    //    el intento sin lease.
     if (!lease) {
       if (leaseStatus === "invalid") {
         // El registro existe pero no es un lease utilizable (alterado o
@@ -615,7 +641,8 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
             keyConfigured: true,
             leasePresent: true,
             offlineVerified: false,
-            pendingActivation: false
+            pendingActivation: false,
+            activationSettled: true
           },
           false
         );
@@ -634,7 +661,8 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
             keyConfigured: true,
             leasePresent: false,
             offlineVerified: false,
-            pendingActivation: true
+            pendingActivation: true,
+            activationSettled: false
           },
           false
         );
@@ -668,7 +696,8 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
             keyConfigured: true,
             leasePresent: true,
             offlineVerified: false,
-            pendingActivation: false
+            pendingActivation: false,
+            activationSettled: true
           },
           false
         );
@@ -677,9 +706,20 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
       await evaluateAndPublish({ lease, watermarkMs, offlineVerified: true });
     }
 
+    // Cierra una activación que quedó en curso: a partir de aquí el intento ya
+    // no puede dar más de sí en esta evaluación y el aviso de «licencia sin
+    // verificar» es legítimo (o no, si mientras tanto llegó un lease).
+    const concludeActivationIfNeeded = (atMs: number): LicenseSnapshot => {
+      if (!snapshot.pendingActivation || snapshot.activationSettled) return snapshot;
+      return publish(
+        { ...snapshot, activationSettled: true, lastCheckedAt: atMs },
+        snapshot.readOnly
+      );
+    };
+
     // 5) Fase de red (mejor esfuerzo, despues de publicar): revocacion y
     //    renovacion. Cualquier fallo conserva el lease guardado y su evaluacion.
-    if (!isOnline()) return snapshot;
+    if (!isOnline()) return concludeActivationIfNeeded(atMs);
 
     if (lease && verification?.ok && (await leaseIsRevoked(lease))) {
       return publishRevoked(lease, atMs);
@@ -693,13 +733,13 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
       deviceSpki: identity.devicePublicKeySpki,
       activeCompany,
       atMs,
-      force: needsIdentityRepair
+      force: needsIdentityRepair || Boolean(input?.forceRenew)
     });
-    if (!renewed) return snapshot;
+    if (!renewed) return concludeActivationIfNeeded(atMs);
 
     // Un lease solo se adopta si su firma y su vinculo con el equipo verifican.
     const renewedVerification = await verifyWith(renewed, verifyKey);
-    if (!renewedVerification.ok) return snapshot;
+    if (!renewedVerification.ok) return concludeActivationIfNeeded(atMs);
     currentLeaseId = renewed.leaseId;
 
     // Reparacion de una marca de agua envenenada: si el reloj del equipo estuvo
@@ -750,7 +790,7 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
     }
   }
 
-  function refresh(input?: { companyId?: string }): Promise<LicenseSnapshot> {
+  function refresh(input?: { companyId?: string; forceRenew?: boolean }): Promise<LicenseSnapshot> {
     if (disposed) return Promise.resolve(snapshot);
     if (inFlight) {
       if (input?.companyId) companyId = input.companyId;

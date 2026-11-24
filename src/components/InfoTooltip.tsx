@@ -67,18 +67,19 @@ export function InfoTooltip({
     <div className={cn("relative inline-flex items-center", className)}>
       <div
         ref={triggerRef}
-        onMouseEnter={() => setIsVisible(true)}
-        onMouseLeave={() => setIsVisible(false)}
+        onPointerEnter={(event) => { if (event.pointerType === 'mouse') setIsVisible(true); }}
+        onPointerLeave={(event) => { if (event.pointerType === 'mouse') setIsVisible(false); }}
         onClick={(event) => {
           event.stopPropagation();
           setIsVisible(prev => !prev);
         }}
         onFocus={() => setIsVisible(true)}
         onBlur={() => setIsVisible(false)}
-        className="-m-1.5 flex h-9 w-9 cursor-help items-center justify-center rounded-full text-slate-400 transition-colors hover:text-indigo-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400"
+        className="-m-1.5 flex h-9 w-9 cursor-help items-center justify-center rounded-full text-muted transition-colors hover:text-[var(--primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)]"
         aria-label="Ver información"
         role="button"
         tabIndex={0}
+        aria-expanded={isVisible}
       >
         <HelpCircle className="w-4 h-4" />
       </div>
@@ -91,7 +92,7 @@ export function InfoTooltip({
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.1 }}
-            className="pointer-events-none fixed z-[100000] w-[min(17.5rem,calc(100vw-20px))] rounded-lg border border-white/10 bg-slate-800 px-2.5 py-2 text-left text-[11px] leading-[1.45] text-white shadow-2xl break-words whitespace-normal sm:w-[min(20rem,calc(100vw-24px))] sm:px-3 sm:py-2.5 sm:text-xs sm:leading-5"
+            className="palmyra-tooltip pointer-events-none fixed z-[var(--z-tooltip)] w-[min(17.5rem,calc(100vw-20px))] px-2.5 py-2 text-left break-words whitespace-normal sm:w-[min(20rem,calc(100vw-24px))] sm:px-3 sm:py-2.5"
             style={{
               top: coords?.top ?? -9999,
               left: coords?.left ?? -9999,

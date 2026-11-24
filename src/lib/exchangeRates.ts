@@ -52,8 +52,8 @@ export function parseExchangeRates(data: unknown): ExchangeRate[] {
     const value = row
       ? firstNumber(row.rate, row.value, row.valor, row.tasa, row.tasa_referencia, row.reference, row.median, row.mediana, row.trm, row.promedio, row.price, row.precio, row.last, row.rate_mid, row.compra_venta)
       : firstNumber(raw);
-    const buy = row ? firstNumber(row.buy, row.compra, row.bid, row.tasa_compra, row.median_buy, row.mediana_compra, row.compra_mediana, row.rate_buy) : undefined;
-    const sell = row ? firstNumber(row.sell, row.venta, row.ask, row.tasa_venta, row.median_sell, row.mediana_venta, row.venta_mediana, row.rate_sell) : undefined;
+    const buy = row ? firstNumber(row.buy, row.compra, row.bid, row.tasa_compra, row.median_buy, row.mediana_compra, row.compra_mediana, row.rate_buy, row.price_buy) : undefined;
+    const sell = row ? firstNumber(row.sell, row.venta, row.ask, row.tasa_venta, row.median_sell, row.mediana_venta, row.venta_mediana, row.rate_sell, row.price_sell) : undefined;
     if (value === undefined && buy === undefined && sell === undefined) continue;
     rates.set(code, { code, value, buy, sell });
   }

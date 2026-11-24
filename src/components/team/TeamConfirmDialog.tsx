@@ -34,7 +34,7 @@ export default function TeamConfirmDialog({
 
   return (
     <div
-      className="fixed inset-0 z-[220] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm"
+      className="palmyra-overlay z-[var(--z-confirm)] flex items-center justify-center p-4"
       role="alertdialog"
       aria-modal="true"
       aria-labelledby="team-confirm-title"
@@ -42,7 +42,7 @@ export default function TeamConfirmDialog({
     >
       <div
         onClick={event => event.stopPropagation()}
-        className="w-full max-w-md overflow-hidden rounded-3xl border border-base bg-secondary shadow-2xl"
+        className="palmyra-modal-panel palmyra-mobile-modal w-full max-w-md overflow-hidden"
       >
         <div className="flex items-start gap-3 border-b border-base p-5">
           <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[var(--danger)]/10 text-[var(--danger)]">

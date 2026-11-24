@@ -99,45 +99,50 @@ export function ReportsSessionDetailModal({
   );
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center overflow-hidden bg-slate-950/70 p-2 backdrop-blur-sm sm:p-4 animate-in fade-in duration-200">
-      <div className="flex max-h-[94dvh] w-full max-w-lg flex-col overflow-hidden rounded-3xl border border-base bg-secondary shadow-2xl sm:max-h-[90dvh]">
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-base bg-rose-50/40 px-4 py-3.5 dark:bg-rose-950/30">
-          <div className="min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="rounded border border-rose-200 bg-white px-2 py-0.5 text-[10px] font-black uppercase text-rose-700 dark:border-rose-900 dark:bg-slate-800 dark:text-rose-300">
-                {sessionTurnLabel}
-              </span>
-              <span className={cn(
-                "rounded border px-1.5 py-0.5 text-[8px] font-black uppercase tracking-widest",
-                session.status === 'open' ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300"
-                  : session.status === 'cancelled' ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300"
-                  : "border-base bg-subtle text-secondary",
-              )}>
-                {STATUS_LABEL[session.status] || session.status}
-              </span>
+    <div className="palmyra-overlay z-[var(--z-modal)] flex items-center justify-center overflow-hidden p-2 sm:p-4 animate-in fade-in duration-200">
+      <div className="palmyra-modal-panel flex max-h-[94dvh] w-full max-w-lg flex-col overflow-hidden sm:max-h-[90dvh]">
+        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-base bg-secondary px-3.5 py-2.5 sm:px-4 sm:py-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 text-white shadow-sm">
+              <Clock className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="palmyra-pill border border-rose-200 bg-white text-rose-700 dark:border-rose-900 dark:bg-slate-800 dark:text-rose-300 text-[10px]">
+                  {sessionTurnLabel}
+                </span>
+                <span className={cn(
+                  "palmyra-pill border text-[9px] font-black uppercase tracking-widest",
+                  session.status === 'open' ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/30 dark:text-emerald-300"
+                    : session.status === 'cancelled' ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900/60 dark:bg-red-950/30 dark:text-red-300"
+                    : "border-base bg-subtle text-secondary",
+                )}>
+                  {STATUS_LABEL[session.status] || session.status}
+                </span>
+              </div>
+              <p className="mt-0.5 truncate text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-muted">
+                {session.workerName || 'Vendedor'} · {session.openedAt ? havana(session.openedAt) : 'Sin apertura'}
+              </p>
+              <p className="mt-0.5 text-[9px] font-bold text-muted tabular-nums">
+                Cierre: {havana(session.closedAt || session.closingDate)}
+              </p>
             </div>
-            <p className="mt-1 truncate text-[10px] font-bold uppercase tracking-wider text-muted">
-              {session.workerName || 'Vendedor'} · {session.openedAt ? havana(session.openedAt) : 'Sin apertura'}
-            </p>
-            <p className="mt-0.5 text-[9px] font-bold text-muted">
-              Cierre: {havana(session.closedAt || session.closingDate)}
-            </p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-full p-1.5 text-muted hover:bg-subtle hover:text-primary" aria-label="Cerrar detalle del turno">
-            <X className="h-5 w-5" />
+          <button type="button" onClick={onClose} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-base bg-secondary text-muted hover:bg-subtle hover:text-primary" aria-label="Cerrar detalle del turno">
+            <X className="h-4 w-4" />
           </button>
         </header>
 
-        <div className="flex-1 space-y-4 overflow-y-auto px-4 py-3.5 text-primary custom-scrollbar">
+        <div className="flex-1 space-y-3 overflow-y-auto px-3.5 py-3 text-primary custom-scrollbar sm:px-4 sm:py-3.5">
           {showDiscrepancy && discrepancyInfo && (
             <div className="flex items-center justify-between gap-2 rounded-2xl border border-amber-200 bg-amber-50 p-2.5 dark:border-amber-900/60 dark:bg-amber-950/40">
               <div className="flex min-w-0 items-center gap-2">
                 <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
                 <div className="min-w-0">
-                  <span className="block text-[8px] font-black uppercase text-amber-800 dark:text-amber-300">
+                  <span className="block text-[9px] font-black uppercase text-amber-800 dark:text-amber-300">
                     {discrepancyInfo.isForcedClose ? 'Cierre forzado' : 'Turno con descuadre'}
                   </span>
-                  <span className="block truncate text-[9px] font-bold text-amber-950 dark:text-amber-200">
+                  <span className="block truncate text-[9px] font-bold text-amber-950 dark:text-amber-200 tabular-nums">
                     {discrepancyInfo.totalShortageBase > 0 ? `Faltante: -${formatMoney(discrepancyInfo.totalShortageBase)} ` : ''}
                     {discrepancyInfo.totalOverageBase > 0 ? `Sobrante: +${formatMoney(discrepancyInfo.totalOverageBase)}` : ''}
                   </span>
@@ -146,22 +151,22 @@ export function ReportsSessionDetailModal({
               <button
                 type="button"
                 onClick={() => onOpenDiscrepancy(session)}
-                className="shrink-0 rounded-lg bg-amber-600 px-2.5 py-1 text-[8px] font-black uppercase text-white hover:bg-amber-700"
+                className="shrink-0 rounded-lg bg-amber-600 px-2.5 py-1.5 text-[9px] font-black uppercase text-white hover:bg-amber-700"
               >
                 Ver auditoría
               </button>
             </div>
           )}
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
             {[
               { label: 'Ventas', value: formatMoney(summary.total) },
               { label: 'Tickets', value: String(summary.tickets) },
               { label: 'Unidades', value: String(summary.units) },
             ].map(metric => (
-              <div key={metric.label} className="rounded-xl border border-base bg-subtle p-2">
-                <p className="text-[8px] font-black uppercase tracking-wider text-muted">{metric.label}</p>
-                <p className="mt-0.5 truncate text-xs font-black text-primary">{metric.value}</p>
+              <div key={metric.label} className="min-w-0 rounded-xl border border-base bg-subtle p-2">
+                <p className="text-[9px] font-black uppercase tracking-wider text-muted">{metric.label}</p>
+                <p className="mt-0.5 truncate text-[11px] sm:text-xs font-black text-primary tabular-nums">{metric.value}</p>
               </div>
             ))}
           </div>
@@ -178,23 +183,23 @@ export function ReportsSessionDetailModal({
                 Este turno no tiene tickets completados.
               </p>
             ) : (
-              <div className="max-h-64 space-y-1.5 overflow-y-auto pr-0.5 custom-scrollbar">
+              <div className="max-h-56 space-y-1.5 overflow-y-auto pr-0.5 custom-scrollbar">
                 {sessionTickets.map(tx => (
                   <div key={tx.id} className="rounded-xl border border-base bg-subtle p-2">
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="truncate text-[9px] font-black uppercase tracking-tight text-primary" title={`Ticket ${ticketDisplay(tx.ticketNumber, tx.id)}`}>
+                        <p className="truncate text-[10px] sm:text-[11px] font-black uppercase tracking-tight text-primary" title={`Ticket ${ticketDisplay(tx.ticketNumber, tx.id)}`}>
                           Ticket {ticketDisplay(tx.ticketNumber, tx.id)}
                         </p>
-                        <p className="text-[8px] font-bold uppercase text-muted">{havanaTime(tx.date)} · {tx.items?.length || 0} productos</p>
+                        <p className="text-[9px] font-bold uppercase text-muted tabular-nums">{havanaTime(tx.date)} · {tx.items?.length || 0} productos</p>
                       </div>
-                      <span className="shrink-0 text-[10px] font-black text-primary">{formatMoney(tx.total)}</span>
+                      <span className="shrink-0 text-[10px] sm:text-[11px] font-black text-primary tabular-nums">{formatMoney(tx.total)}</span>
                     </div>
                     <div className="mt-1.5">
                       <button
                         type="button"
                         onClick={() => onOpenTransaction(tx)}
-                        className="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg border border-base bg-secondary px-2 text-[10px] font-black uppercase tracking-wide text-primary hover:bg-subtle sm:min-h-8 sm:text-[9px]"
+                        className="inline-flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-base bg-secondary px-2 text-[10px] font-black uppercase tracking-wide text-primary hover:bg-subtle"
                         title="Ver el comprobante completo de este ticket"
                       >
                         <Eye className="h-3.5 w-3.5" /> Ver comprobante
@@ -211,22 +216,24 @@ export function ReportsSessionDetailModal({
             {paymentMix.length === 0 ? (
               <p className="rounded-xl border border-dashed border-base px-2.5 py-2 text-[10px] font-bold text-muted">Sin cobros registrados.</p>
             ) : (
-              <div className="grid grid-cols-2 gap-2">
-                {paymentMix.map(row => (
-                  <div key={row.currencyCode} className="rounded-xl border border-base bg-subtle p-2">
-                    <div className="mb-1 border-b border-base/60 pb-1 text-[9px] font-black uppercase text-primary">{row.currencyCode}</div>
-                    {Math.abs(row.cash) > 0.01 && (
-                      <div className="flex justify-between text-[8px] font-bold text-muted">
-                        <span>Efectivo</span><span className="font-mono text-emerald-600 dark:text-emerald-400">{formatMoney(row.cash, row.currencyCode)}</span>
-                      </div>
-                    )}
-                    {Math.abs(row.transfer) > 0.01 && (
-                      <div className="flex justify-between text-[8px] font-bold text-muted">
-                        <span>Transferencia</span><span className="font-mono text-blue-600 dark:text-blue-400">{formatMoney(row.transfer, row.currencyCode)}</span>
-                      </div>
-                    )}
-                  </div>
-                ))}
+              <div className="overflow-x-auto pb-1">
+                <div className="grid grid-cols-1 gap-1.5 sm:min-w-[28rem] sm:grid-cols-2 sm:gap-2">
+                  {paymentMix.map(row => (
+                    <div key={row.currencyCode} className="min-w-0 rounded-xl border border-base bg-subtle p-2">
+                      <div className="mb-1 border-b border-base/60 pb-1 text-[9px] font-black uppercase text-primary">{row.currencyCode}</div>
+                      {Math.abs(row.cash) > 0.01 && (
+                        <div className="flex justify-between gap-2 text-[9px] font-bold text-muted">
+                          <span>Efectivo</span><span className="shrink-0 font-mono tabular-nums text-emerald-600 dark:text-emerald-400">{formatMoney(row.cash, row.currencyCode)}</span>
+                        </div>
+                      )}
+                      {Math.abs(row.transfer) > 0.01 && (
+                        <div className="flex justify-between gap-2 text-[9px] font-bold text-muted">
+                          <span>Transferencia</span><span className="shrink-0 font-mono tabular-nums text-blue-600 dark:text-blue-400">{formatMoney(row.transfer, row.currencyCode)}</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </section>
@@ -269,22 +276,22 @@ export function ReportsSessionDetailModal({
                 No hay productos vendidos en este turno.
               </p>
             ) : (
-              <div className="max-h-52 space-y-1 overflow-y-auto pr-0.5 custom-scrollbar">
+              <div className="max-h-48 space-y-1 overflow-y-auto pr-0.5 custom-scrollbar">
                 {summary.products.map(product => (
-                  <div key={product.key} className="flex items-center justify-between rounded-xl border border-base bg-subtle p-2">
+                  <div key={product.key} className="flex items-center justify-between gap-2 rounded-xl border border-base bg-subtle p-2">
                     <div className="flex min-w-0 items-center gap-2">
-                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-base bg-secondary text-[9px] font-black text-rose-600 dark:text-rose-400">
+                      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-base bg-secondary text-[9px] font-black text-rose-600 dark:text-rose-400 tabular-nums">
                         {product.quantity}
                       </span>
                       <div className="min-w-0">
-                        <p className="truncate text-[9px] font-black uppercase tracking-tight text-primary">{product.name}</p>
-                        <p className="truncate text-[8px] font-bold uppercase text-muted">
+                        <p className="truncate text-[9px] sm:text-[10px] font-black uppercase tracking-tight text-primary">{product.name}</p>
+                        <p className="truncate text-[8px] sm:text-[9px] font-bold uppercase text-muted">
                           {product.variant || 'Sin variante'}
                           {product.missingCostUnits > 0 ? ' · costo incompleto' : ''}
                         </p>
                       </div>
                     </div>
-                    <span className="ml-2 shrink-0 text-[10px] font-black text-primary">{formatMoney(product.revenue)}</span>
+                    <span className="ml-2 shrink-0 text-[10px] sm:text-[11px] font-black text-primary tabular-nums">{formatMoney(product.revenue)}</span>
                   </div>
                 ))}
               </div>
@@ -293,10 +300,10 @@ export function ReportsSessionDetailModal({
 
           {payrollItem && (
             <section className="space-y-1.5 rounded-2xl border border-emerald-200 bg-emerald-50/60 p-3 dark:border-emerald-900/40 dark:bg-emerald-950/30">
-              <div className="flex items-center justify-between text-[9px] font-black uppercase tracking-widest text-emerald-800 dark:text-emerald-300">
+              <div className="flex items-center justify-between gap-2 text-[9px] font-black uppercase tracking-widest text-emerald-800 dark:text-emerald-300">
                 <span>Liquidación salarial del turno</span>
                 <span className={cn(
-                  "rounded px-2 py-0.5 text-[8px] font-black",
+                  "palmyra-pill text-[9px] font-black uppercase",
                   payrollItem.status === 'paid'
                     ? "bg-emerald-200 text-emerald-900 dark:bg-emerald-900 dark:text-emerald-100"
                     : "bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-100",
@@ -304,45 +311,45 @@ export function ReportsSessionDetailModal({
                   {payrollItem.status === 'paid' ? 'Pagado' : 'Pendiente'}
                 </span>
               </div>
-              <div className="flex justify-between text-[10px] text-muted">
-                <span>Salario base</span><span className="font-bold text-primary">{formatMoney(payrollItem.baseSalary || 0)}</span>
+              <div className="flex justify-between gap-2 text-[10px] sm:text-[11px] text-muted">
+                <span>Salario base</span><span className="shrink-0 font-bold text-primary tabular-nums">{formatMoney(payrollItem.baseSalary || 0)}</span>
               </div>
-              <div className="flex justify-between text-[10px] text-emerald-700 dark:text-emerald-400">
-                <span>Comisiones</span><span className="font-bold">+{formatMoney(payrollItem.commissions || 0)}</span>
+              <div className="flex justify-between gap-2 text-[10px] sm:text-[11px] text-emerald-700 dark:text-emerald-400">
+                <span>Comisiones</span><span className="shrink-0 font-bold tabular-nums">+{formatMoney(payrollItem.commissions || 0)}</span>
               </div>
-              <div className="flex justify-between border-t border-emerald-200/60 pt-1 text-xs font-black text-primary dark:border-emerald-900/60">
+              <div className="flex justify-between gap-2 border-t border-emerald-200/60 pt-1 text-xs font-black text-primary dark:border-emerald-900/60">
                 <span>Total salario</span>
-                <span className="text-emerald-700 dark:text-emerald-400">{formatMoney(payrollItem.totalSalary || 0)}</span>
+                <span className="shrink-0 text-emerald-700 dark:text-emerald-400 tabular-nums">{formatMoney(payrollItem.totalSalary || 0)}</span>
               </div>
             </section>
           )}
 
-          <p className="flex items-center gap-1.5 text-[8px] font-bold uppercase tracking-wide text-muted">
-            <Clock className="h-3 w-3" /> Solo se suman tickets completados y no anulados de este turno.
+          <p className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wide text-muted">
+            <Clock className="h-3 w-3 shrink-0" /> Solo se suman tickets completados y no anulados de este turno.
           </p>
         </div>
 
-        <footer className="shrink-0 border-t border-base bg-subtle px-4 py-3">
+        <footer className="shrink-0 border-t border-base bg-subtle px-3.5 py-2.5 sm:px-4 sm:py-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <span className="block text-[8px] font-black uppercase tracking-widest text-muted">Total ventas turno</span>
+            <div className="min-w-0">
+              <span className="block text-[9px] font-black uppercase tracking-widest text-muted">Total ventas turno</span>
               <span className="text-base font-black tabular-nums text-rose-600 dark:text-rose-400">{formatMoney(summary.total)}</span>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
                 onClick={() => onEditDate(session)}
-                className="inline-flex min-h-11 items-center gap-1 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-amber-700 hover:bg-amber-100 sm:min-h-9 sm:text-[9px] dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-400"
+                className="inline-flex h-9 items-center gap-1 rounded-xl border border-amber-200 bg-amber-50 px-3 text-[10px] font-black uppercase tracking-wider text-amber-700 hover:bg-amber-100 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-400"
                 title="Editar fecha del turno"
               >
-                <Calendar className="h-4 w-4" /> Fecha
+                <Calendar className="h-4 w-4 shrink-0" /> Fecha
               </button>
               <button
                 type="button"
                 onClick={() => onPrint(session.id)}
-                className="inline-flex min-h-11 items-center gap-1.5 rounded-xl bg-rose-600 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-white hover:bg-rose-700 active:scale-95 sm:min-h-9 sm:text-[9px]"
+                className="inline-flex h-9 items-center gap-1.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 px-3 text-[10px] font-black uppercase tracking-wider text-white hover:shadow-md active:scale-95"
               >
-                <Printer className="h-4 w-4" /> Imprimir
+                <Printer className="h-4 w-4 shrink-0" /> Imprimir
               </button>
             </div>
           </div>
@@ -352,10 +359,10 @@ export function ReportsSessionDetailModal({
                 <button
                   type="button"
                   onClick={() => void onHideSession()}
-                  className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-2 text-[9px] font-black uppercase tracking-wider text-amber-700 hover:bg-amber-100 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
+                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-amber-200 bg-amber-50 px-2 text-[10px] font-black uppercase tracking-wider text-amber-700 hover:bg-amber-100 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300"
                   title="Oculta o restaura el turno completo en la lista de reportes. No borra ventas ni toca el inventario."
                 >
-                  {sessionHidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+                  {sessionHidden ? <Eye className="h-4 w-4 shrink-0" /> : <EyeOff className="h-4 w-4 shrink-0" />}
                   {sessionHidden ? 'Mostrar turno' : 'Ocultar turno'}
                 </button>
               )}
@@ -363,16 +370,16 @@ export function ReportsSessionDetailModal({
                 <button
                   type="button"
                   onClick={onVoidSession}
-                  className="inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-rose-300 bg-rose-50 px-2 text-[9px] font-black uppercase tracking-wider text-rose-700 hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300"
+                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-xl border border-rose-300 bg-rose-50 px-2 text-[10px] font-black uppercase tracking-wider text-rose-700 hover:bg-rose-100 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300"
                   title="Elimina el turno completo, devuelve el stock y guarda el motivo"
                 >
-                  <Trash2 className="h-4 w-4" /> Eliminar turno
+                  <Trash2 className="h-4 w-4 shrink-0" /> Eliminar turno
                 </button>
               )}
             </div>
           )}
           {showShiftActions && (onHideSession || onVoidSession) && (
-            <p className="mt-1.5 text-center text-[8px] font-bold uppercase tracking-wide text-muted">
+            <p className="mt-1.5 text-center text-[9px] font-bold uppercase tracking-wide text-muted">
               Estas acciones aplican al turno completo, no a un ticket suelto.
             </p>
           )}

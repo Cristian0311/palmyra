@@ -106,7 +106,7 @@ function UpdateCard(props: {
   onDismiss: () => void;
 }) {
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[260] flex justify-center px-3 pb-3 sm:px-4 sm:pb-4">
+    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[var(--z-tooltip)] flex justify-center px-3 pb-3 sm:px-4 sm:pb-4">
       <div
         role="status"
         aria-live="polite"
@@ -496,7 +496,7 @@ function DesktopUpdateBanner() {
         ? `Descargando actualización ${percent}%…`
         : status === "downloaded"
           ? "Actualización lista. Reinicia PALMYRA para aplicarla."
-          : status === "error"
+          : status === "error" || status === "blocked"
             ? state?.error || "La actualización se detuvo."
             : "Preparando la actualización…";
   return (
@@ -505,19 +505,19 @@ function DesktopUpdateBanner() {
       applying={applying || status === "available" || status === "downloading"}
       percent={percent}
       message={message}
-      error={status === "error" ? "" : error}
-      disabled={status !== "downloaded" && status !== "error"}
+      error={status === "error" || status === "blocked" ? "" : error}
+      disabled={status !== "downloaded" && status !== "error" && status !== "blocked"}
       primaryLabel={
         applying
           ? "Reiniciando…"
           : status === "downloaded"
             ? "Reiniciar y actualizar"
-            : status === "error"
+            : status === "error" || status === "blocked"
               ? "Reintentar"
               : `Preparando… ${percent}%`
       }
       onPrimary={() => {
-        if (status === "error") {
+        if (status === "error" || status === "blocked") {
           void retry();
           return;
         }

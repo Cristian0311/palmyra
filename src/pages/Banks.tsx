@@ -573,9 +573,9 @@ function CardActionsSheet({
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-[120] flex items-end justify-center sm:items-center sm:p-4">
+    <div className="palmyra-overlay z-[var(--z-drawer)] flex items-end justify-center sm:items-center sm:p-4">
       <div
-        className="absolute inset-0 bg-slate-950/60 backdrop-blur-sm"
+        className="absolute inset-0"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -585,7 +585,7 @@ function CardActionsSheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby="bank-actions-title"
-        className="relative max-h-[90dvh] w-full overflow-y-auto rounded-t-3xl border border-base bg-secondary p-4 shadow-2xl outline-none sm:max-w-sm sm:rounded-2xl"
+        className="palmyra-modal-panel relative max-h-[92dvh] w-full overflow-y-auto p-4 outline-none sm:max-w-sm rounded-t-3xl! rounded-b-none! sm:rounded-2xl!"
         style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
       >
         <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-subtle sm:hidden" aria-hidden="true" />
@@ -868,6 +868,19 @@ export default function Banks() {
   }, [transactions, cashSessions, bankTransactions]);
   const [cardToDelete, setCardToDelete] = useState<string | null>(null);
   const [movementToDelete, setMovementToDelete] = useState<BankTransaction | null>(null);
+
+  // Cierre con Escape de los diálogos flotantes de la página.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      if (cardToDelete) setCardToDelete(null);
+      else if (movementToDelete) setMovementToDelete(null);
+      else if (showAddModal) setShowAddModal(false);
+      else if (showTransferModal && !isTransferring) setShowTransferModal(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [cardToDelete, movementToDelete, showAddModal, showTransferModal, isTransferring]);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1282,8 +1295,12 @@ export default function Banks() {
     <OperationsSurface className="flex flex-col gap-4 -mx-3 -mt-3 px-3 pb-10 pt-3 sm:-mx-4 sm:-mt-4 sm:px-4 sm:pt-4 lg:-mx-6 lg:-mt-6 lg:px-6">
       {/* Delete Card Confirmation Modal */}
       {cardToDelete && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-2xl max-w-xs w-full text-center border border-base animate-in zoom-in-95 duration-200">
+        <div
+          className="palmyra-overlay z-[var(--z-confirm)] flex items-center justify-center p-3 sm:p-4"
+          role="presentation"
+          onMouseDown={event => { if (event.target === event.currentTarget) setCardToDelete(null); }}
+        >
+          <div className="palmyra-modal-panel p-5 max-w-xs w-full text-center animate-in zoom-in-95 duration-200 max-h-[92dvh] overflow-y-auto">
             <div className="w-12 h-12 bg-red-50 dark:bg-red-950/30 rounded-full flex items-center justify-center mx-auto mb-3">
               <Trash2 className="w-6 h-6 text-red-600 dark:text-red-400" aria-hidden="true" />
             </div>
@@ -1321,8 +1338,12 @@ export default function Banks() {
 
       {/* Delete Movement Confirmation Modal */}
       {movementToDelete && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl shadow-2xl max-w-xs w-full text-center border border-base animate-in zoom-in-95 duration-200">
+        <div
+          className="palmyra-overlay z-[var(--z-confirm)] flex items-center justify-center p-3 sm:p-4"
+          role="presentation"
+          onMouseDown={event => { if (event.target === event.currentTarget) setMovementToDelete(null); }}
+        >
+          <div className="palmyra-modal-panel p-5 max-w-xs w-full text-center animate-in zoom-in-95 duration-200 max-h-[92dvh] overflow-y-auto">
             <div className="w-12 h-12 bg-red-50 dark:bg-red-950/30 rounded-full flex items-center justify-center mx-auto mb-3">
               <Trash2 className="w-6 h-6 text-red-600 dark:text-red-400" aria-hidden="true" />
             </div>
@@ -1761,7 +1782,7 @@ export default function Banks() {
               })}
             </ul>
             <div className="hidden overflow-x-auto md:block">
-            <table className="w-full min-w-[760px] text-sm [&_td]:px-3 [&_td]:py-2.5 [&_th]:px-3 [&_th]:py-2.5">
+            <table className="w-full min-w-[760px] text-sm [&_td]:px-3 [&_td]:py-2 [&_th]:px-3 [&_th]:py-2">
               <thead className="border-b border-base bg-subtle">
                 <tr>
                   <th className="text-left font-black uppercase tracking-wider text-muted">Fecha</th>
@@ -1931,8 +1952,12 @@ export default function Banks() {
 
       {/* Modal Agregar / Editar Tarjeta */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-3">
-          <div className="bg-secondary rounded-2xl w-full max-w-lg max-h-[90dvh] overflow-y-auto shadow-2xl border border-base animate-in zoom-in-95 duration-200">
+        <div
+          className="palmyra-overlay z-[var(--z-modal)] flex items-center justify-center p-3 sm:p-4"
+          role="presentation"
+          onMouseDown={event => { if (event.target === event.currentTarget) setShowAddModal(false); }}
+        >
+          <div className="palmyra-modal-panel w-full max-w-lg max-h-[92dvh] overflow-y-auto animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-base bg-subtle px-4 py-3">
               <h2 className="text-base font-black uppercase tracking-tight text-primary">{editingCard ? 'Editar cuenta' : 'Nueva cuenta'}</h2>
               <button
@@ -2119,8 +2144,12 @@ export default function Banks() {
 
       {/* Modal Transferencia entre Tarjetas */}
       {showTransferModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-3">
-          <div className="bg-secondary rounded-2xl w-full max-w-lg max-h-[90dvh] overflow-y-auto shadow-2xl border border-base animate-in zoom-in-95 duration-200">
+        <div
+          className="palmyra-overlay z-[var(--z-modal)] flex items-center justify-center p-3 sm:p-4"
+          role="presentation"
+          onMouseDown={event => { if (event.target === event.currentTarget && !isTransferring) setShowTransferModal(false); }}
+        >
+          <div className="palmyra-modal-panel w-full max-w-lg max-h-[92dvh] overflow-y-auto animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-base bg-subtle px-4 py-3">
               <h2 className="text-base font-black uppercase tracking-tight text-primary">Transferencia</h2>
               <button

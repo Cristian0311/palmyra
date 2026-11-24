@@ -224,7 +224,7 @@ export function SettingsCurrencySection({ active, onToast }: Props) {
                 )}
               >
                 <div className="flex items-center gap-2.5 min-w-0">
-                  <span className="h-9 min-w-11 px-2 rounded-lg border border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/50 dark:bg-violet-950/30 dark:text-violet-300 text-[12px] font-black tracking-wide grid place-items-center shrink-0">
+                  <span className="palmyra-pill h-9 min-w-11 border-[color-mix(in_srgb,var(--primary)_40%,transparent)] bg-[color-mix(in_srgb,var(--primary)_12%,var(--bg-secondary))] text-[var(--primary)] grid place-items-center shrink-0">
                     {currency.code}
                   </span>
                   <span className="min-w-0">
@@ -258,7 +258,7 @@ export function SettingsCurrencySection({ active, onToast }: Props) {
                       placeholder="0"
                       className="w-full min-w-0 bg-transparent text-2xl font-black tabular-nums tracking-tight text-primary outline-none"
                     />
-                    <span className="shrink-0 rounded-md border border-base bg-secondary px-2 py-1 text-[11px] font-bold tracking-wide text-secondary">
+                    <span className="palmyra-pill shrink-0 border border-base bg-secondary text-secondary">
                       {baseCurrency.code}
                     </span>
                   </span>
@@ -291,7 +291,7 @@ export function SettingsCurrencySection({ active, onToast }: Props) {
         </div>
 
         <p className="text-sm font-medium leading-6 text-muted">
-          Puedes vaciar el campo y escribir la tasa completa. Se aceptan hasta 2 decimales y cada tarjeta se guarda por separado.
+          Puedes vaciar el campo y escribir la tasa completa. Se aceptan hasta 2 decimales y cada tarjeta se guarda por separado. Estas tasas también se muestran en la página Tasa de cambio cuando la fuente automática (elTOQUE) no está disponible, para que esa pantalla nunca quede vacía.
         </p>
       </section>
 

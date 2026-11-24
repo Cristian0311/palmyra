@@ -17,6 +17,7 @@ export type DesktopUpdateStatus =
   | "downloading"
   | "downloaded"
   | "not-available"
+  | "blocked"
   | "error"
   | "unsupported";
 
@@ -55,6 +56,7 @@ const STATUSES: readonly DesktopUpdateStatus[] = [
   "downloading",
   "downloaded",
   "not-available",
+  "blocked",
   "error",
   "unsupported",
 ];
@@ -111,6 +113,7 @@ export const DESKTOP_UPDATE_STATUS_LABELS: Record<DesktopUpdateStatus, string> =
   downloading: "Descargando actualización",
   downloaded: "Lista para instalar",
   "not-available": "Todo al día",
+  blocked: "Actualización bloqueada",
   error: "Actualización detenida",
   unsupported: "No disponible",
 };

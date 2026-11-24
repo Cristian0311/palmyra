@@ -56,26 +56,30 @@ export default function POSPrinterSetupModal({
       : 'Este dispositivo no expone impresión térmica directa; usa Imprimir del sistema.';
 
   return (
-  <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4">
+  <div
+    className="palmyra-overlay z-[var(--z-modal)] flex items-center justify-center p-3 sm:p-4"
+    role="presentation"
+    onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}
+  >
     <div
       role="dialog"
       aria-modal="true"
       aria-labelledby="printer-setup-title"
-      className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 border border-slate-100"
+      className="palmyra-modal-panel w-full max-w-sm overflow-hidden animate-in zoom-in-95 max-h-[92dvh] overflow-y-auto"
     >
-      <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+      <div className="p-5 border-b border-base flex items-center justify-between bg-subtle">
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-200">
             <Printer className="w-4 h-4" />
           </div>
           <div>
-            <h3 id="printer-setup-title" className="text-xs font-black text-slate-900 uppercase tracking-wider">Configuración de Impresora Térmica</h3>
-            <p className="text-[10px] font-bold text-slate-500">Bluetooth BLE o conexión por cable USB/Serie</p>
+            <h3 id="printer-setup-title" className="text-xs font-black text-primary uppercase tracking-wider">Configuración de Impresora Térmica</h3>
+            <p className="text-[10px] font-bold text-muted">Bluetooth BLE o conexión por cable USB/Serie</p>
           </div>
         </div>
         <button 
           onClick={() => onClose()}
-          className="w-7 h-7 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 flex items-center justify-center transition-all"
+          className="w-7 h-7 rounded-lg text-muted hover:text-primary hover:bg-subtle flex items-center justify-center transition-all"
           aria-label="Cerrar configuración de impresora"
         >
           <X className="w-4 h-4" />

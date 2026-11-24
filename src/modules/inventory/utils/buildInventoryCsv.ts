@@ -11,6 +11,7 @@ type InventoryCsvRow = {
   totalStock: number;
   unit?: string;
   status?: string;
+  warrantyDays?: number;
 };
 
 function escapeCsvCell(value: unknown): string {
@@ -19,7 +20,7 @@ function escapeCsvCell(value: unknown): string {
 }
 
 export function buildInventoryCsv(products: InventoryCsvRow[], categories: Category[]): string {
-  const headers = ["ID", "Nombre", "SKU", "EAN", "Departamento", "Costo", "Precio", "Stock Total", "Unidad", "Estado"];
+  const headers = ["ID", "Nombre", "SKU", "EAN", "Departamento", "Costo", "Precio", "Garantía (días)", "Stock Total", "Unidad", "Estado"];
   const categoryById = new Map(categories.map(category => [category.id, category.name]));
   const rows = products.map(product => [
     product.id,
@@ -29,6 +30,7 @@ export function buildInventoryCsv(products: InventoryCsvRow[], categories: Categ
     categoryById.get(product.categoryId) || "",
     product.costPrice,
     product.price,
+    Number.isFinite(Number(product.warrantyDays)) ? Math.max(0, Math.floor(Number(product.warrantyDays))) : 0,
     product.totalStock,
     product.unit || "uds",
     product.status || "active",

@@ -78,7 +78,7 @@ export function ReportsVoidDialog({ transaction, returns = [], bankTransactions 
 
   return createPortal((
     <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center bg-slate-950/70 p-2 sm:p-3"
+      className="palmyra-overlay z-[var(--z-confirm)] flex items-center justify-center p-2 sm:p-3"
       role="presentation"
       onMouseDown={event => { if (event.target === event.currentTarget && !busy) onCancel(); }}
     >
@@ -86,7 +86,7 @@ export function ReportsVoidDialog({ transaction, returns = [], bankTransactions 
         role="dialog"
         aria-modal="true"
         aria-labelledby="reports-void-title"
-        className="flex max-h-[calc(100dvh-1rem)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-base bg-secondary shadow-2xl"
+        className="palmyra-modal-panel palmyra-mobile-modal flex max-h-[92dvh] w-full max-w-md flex-col overflow-hidden"
       >
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-base bg-rose-50/60 px-4 py-3 dark:bg-rose-950/30">
           <div className="min-w-0">
