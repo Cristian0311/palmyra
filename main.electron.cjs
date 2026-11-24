@@ -90,12 +90,16 @@ const UPDATE_GUARD_REJECTIONS = new Set([
   'manifiesto-invalido',
   'manifiesto-sin-url',
   'manifiesto-demasiado-grande',
-  'descarga-fallida',
-  'sin-red',
   'clave-invalida',
-  'invalid',
-  'error'
+  'invalid'
 ]);
+// Fallos transitorios (red, limitación de GitHub): se reintentan y, si persisten,
+// la UI muestra un error reintentable, nunca "la firma no es válida".
+const UPDATE_GUARD_TRANSIENT = new Set(['descarga-fallida', 'sin-red', 'error']);
+// Pausa antes de reintentar el guardián tras un fallo transitorio.
+const UPDATE_GUARD_RETRY_MS = 3000;
+// Una comprobación colgada no puede tragarse las siguientes para siempre.
+const UPDATE_CHECK_STUCK_MS = 5 * 60 * 1000;
 
 // Instalador local (USB o copia manual). Se verifica la firma Authenticode y la
 // versión ANTES de ejecutar nada: sin firma válida, sin editor autorizado o sin
@@ -113,10 +117,21 @@ const OFFLINE_REJECTION_MESSAGES = {
 
 let autoUpdater = null;
 let updateCheckInFlight = null;
+let updateCheckStartedAt = 0;
 let updatePollTimer = null;
 let lastUpdateCheckAt = 0;
 // Solo se descarga la versión cuyo manifiesto firmado ya se verificó.
 let verifiedUpdateVersion = '';
+// Una descarga que no coincide con el manifiesto firmado se descarta y se
+// reintenta UNA sola vez por versión; el segundo desajuste no instala nunca.
+let updateIntegrityRetryUsed = false;
+// Verificación del guardián en curso: la descarga manual la espera en lugar de
+// bloquearse, y el resultado se conserva para verificar el instalador descargado.
+let guardVerificationInFlight = null;
+// Artefactos firmados de la última verificación: permiten comprobar el Setup
+// descargado contra el manifiesto de SU versión sin repetir la red segundos
+// después (un corte posterior no puede rechazar un archivo ya verificado).
+const verifiedManifestCache = { version: '', artifacts: [], at: 0 };
 
 const updateState = {
   status: 'idle',
@@ -189,9 +204,21 @@ function describeUpdateError(error, detail = '') {
   return 'No se pudo aplicar la actualización. Se reintentará automáticamente.';
 }
 
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function checkForUpdatesNow(reason) {
   if (!autoUpdater) return Promise.resolve(snapshotUpdateState());
-  if (updateCheckInFlight) return updateCheckInFlight;
+  if (updateCheckInFlight) {
+    const stuckMs = Date.now() - (updateCheckStartedAt || Date.now());
+    if (stuckMs < UPDATE_CHECK_STUCK_MS) {
+      logLine(`Buscando actualizaciones (${reason}): ya hay una comprobación en curso.`);
+      return updateCheckInFlight;
+    }
+    logLine(`Buscando actualizaciones (${reason}): la comprobación anterior lleva ${Math.round(stuckMs / 1000)} s sin responder; se reinicia.`);
+  }
+  updateCheckStartedAt = Date.now();
   lastUpdateCheckAt = Date.now();
   logLine(`Buscando actualizaciones (${reason}).`);
   updateCheckInFlight = autoUpdater
@@ -215,27 +242,39 @@ function checkForUpdatesNow(reason) {
 function downloadUpdateNow() {
   if (!autoUpdater) return Promise.resolve(snapshotUpdateState());
   if (updateState.status === 'downloaded') return Promise.resolve(snapshotUpdateState());
-  if (!updateState.version || verifiedUpdateVersion !== updateState.version) {
-    logLine('Descarga bloqueada: el manifiesto firmado todavía no se verificó.');
-    setUpdateState({ status: 'blocked', error: 'La descarga se bloqueó porque el manifiesto firmado aún no se verificó.' });
-    return Promise.resolve(snapshotUpdateState());
+  const runDownload = () => {
+    if (!updateState.version || verifiedUpdateVersion !== updateState.version) {
+      // Sin verificación vigente no se puede descargar: se reanuda la búsqueda
+      // completa (comprobación → manifiesto firmado → descarga). Así el botón
+      // «Reintentar» del renderer nunca queda en un estado sin salida.
+      logLine('Descarga bloqueada: el manifiesto firmado todavía no se verificó; se reanuda la búsqueda.');
+      setUpdateState({ status: 'error', error: 'La firma de la actualización aún no se verificó. Reintentando…' });
+      return checkForUpdatesNow('reintento');
+    }
+    setUpdateState({ status: 'downloading', error: '', message: 'Descargando la actualización…' });
+    return autoUpdater
+      .downloadUpdate()
+      .catch((error) => {
+        const detail = updaterErrorDetail(error);
+        logLine(`No se pudo descargar la actualización: ${error && error.message ? error.message : error} · ${detail}`);
+        setUpdateState({ status: 'error', percent: 0, error: describeUpdateError(error, detail) });
+        return null;
+      })
+      .then(() => snapshotUpdateState());
+  };
+  // Si el guardián está verificando ahora mismo, se espera su resultado: el
+  // usuario pidió descargar mientras la verificación ya estaba en marcha.
+  if (guardVerificationInFlight) {
+    return guardVerificationInFlight.then(runDownload, runDownload);
   }
-  setUpdateState({ status: 'downloading', error: '', message: 'Descargando la actualización…' });
-  return autoUpdater
-    .downloadUpdate()
-    .catch((error) => {
-      const detail = updaterErrorDetail(error);
-      logLine(`No se pudo descargar la actualización: ${error && error.message ? error.message : error} · ${detail}`);
-      setUpdateState({ status: 'error', percent: 0, error: describeUpdateError(error, detail) });
-      return null;
-    })
-    .then(() => snapshotUpdateState());
+  return runDownload();
 }
 
 // Reinicia e instala con el Setup ya descargado. isSilent=true aplica la
 // actualización NSIS sin mostrar páginas; isForceRunAfter=true vuelve a abrir
-// PALMYRA al terminar. Antes de reiniciar se verifica la firma del archivo
-// descargado: si no es válida, no se instala (igual que con un archivo USB).
+// PALMYRA al terminar. Antes de reiniciar se verifica el archivo descargado
+// contra el manifiesto firmado: si no coincide, no se instala y la descarga
+// se reintenta una sola vez.
 async function installDownloadedUpdate() {
   if (!autoUpdater || updateState.status !== 'downloaded') {
     return { ok: false, error: 'No hay una actualización descargada.' };
@@ -243,13 +282,21 @@ async function installDownloadedUpdate() {
   const verification = await ensureDownloadedInstallerChecked();
   if (verification.state === 'rejected') {
     try { autoUpdater.autoInstallOnAppQuit = false; } catch { /* sin efecto */ }
+    deletePendingInstallers();
+    resetDownloadedInstallerCheck();
+    if (await retryUpdateDownloadOnce()) {
+      return { ok: false, error: RETRY_INTEGRITY_MESSAGE };
+    }
     setUpdateState({ status: 'error', error: verification.error });
     return { ok: false, error: verification.error };
   }
-  if (verification.state === 'unknown') {
-    // No se localizó el archivo: se conserva el comportamiento anterior para no
-    // bloquear las actualizaciones, pero queda registrado.
-    logLine('Actualización: se instala sin verificación local del archivo descargado.');
+  if (verification.state !== 'verified') {
+    // Fail-closed: sin verificación local contra el manifiesto firmado no se
+    // instala nada, ni con el botón ni al cerrar la aplicación.
+    try { autoUpdater.autoInstallOnAppQuit = false; } catch { /* sin efecto */ }
+    const message = UNVERIFIED_INSTALLER_MESSAGE;
+    setUpdateState({ status: 'error', error: message });
+    return { ok: false, error: message };
   }
   setUpdateState({ message: 'Reiniciando PALMYRA para aplicar la actualización…' });
   setTimeout(() => {
@@ -321,6 +368,56 @@ function hashFileSha256(filePath) {
   });
 }
 
+// Mensajes de la verificación pre-instalación: mismos textos que Android y PWA.
+const RETRY_INTEGRITY_MESSAGE = 'La descarga no coincide con la versión firmada. Reintentando…';
+const UNVERIFIED_INSTALLER_MESSAGE =
+  'No se pudo verificar la actualización descargada contra el manifiesto firmado. No se instalará. Busca actualizaciones de nuevo.';
+
+/**
+ * Borra los Setup pendientes de electron-updater. Se usa cuando el archivo
+ * descargado no coincide con el manifiesto firmado: un instalador rechazado (o
+ * uno viejo que `locateDownloadedInstaller` pudiera elegir) nunca debe quedar
+ * listo para instalarse al cerrar la aplicación.
+ */
+function deletePendingInstallers() {
+  let deleted = 0;
+  for (const dir of updatePendingDirectories()) {
+    let entries = [];
+    try { entries = fs.readdirSync(dir); } catch { continue; }
+    for (const name of entries) {
+      if (!/\.exe$/i.test(name)) continue;
+      const full = path.join(dir, name);
+      try {
+        fs.unlinkSync(full);
+        deleted += 1;
+        logLine(`Actualización: instalador pendiente descartado: ${full}`);
+      } catch (error) {
+        logLine(`Actualización: no se pudo descartar ${full}: ${messageOf(error)}`);
+      }
+    }
+  }
+  return deleted;
+}
+
+/**
+ * Reintenta UNA sola vez la descarga cuando el archivo bajado no coincidió con
+ * el manifiesto firmado. Devuelve true solo si se lanzó el reintento; el
+ * llamador muestra el aviso correspondiente.
+ */
+async function retryUpdateDownloadOnce() {
+  if (updateIntegrityRetryUsed) return false;
+  updateIntegrityRetryUsed = true;
+  setUpdateState({
+    status: 'downloading',
+    percent: 0,
+    error: '',
+    message: RETRY_INTEGRITY_MESSAGE
+  });
+  logLine('Actualización: la descarga no coincidió con el manifiesto firmado; se reintenta una vez.');
+  await downloadUpdateNow();
+  return true;
+}
+
 /**
  * Sin certificado Authenticode todavía, el ancla de confianza es el manifiesto
  * firmado con ES256: el archivo elegido debe tener exactamente el SHA-256 y el
@@ -339,14 +436,30 @@ async function verifyInstallerWithManifest(filePath, size) {
   if (!runtime || typeof runtime.verifyUpdateManifestForBoot !== 'function') {
     return { ok: false, error: 'El verificador de manifiestos no está disponible. No se instalará.' };
   }
-  const result = await runtime.verifyUpdateManifestForBoot({
-    manifestUrl: UPDATE_MANIFEST_URL,
-    publicJwk: jwk,
-    currentVersion: app.getVersion(),
-    shellVersion: app.getVersion(),
-    deviceId: stableDeviceId(),
-    channel: 'stable'
-  });
+  // Si el manifiesto de la versión que se va a instalar ya se verificó antes de
+  // la descarga, se reutilizan sus artefactos firmados: la verificación del
+  // instalador no puede fallar por un corte de red posterior a la descarga, y
+  // el archivo se compara contra el manifiesto de SU versión (no contra uno
+  // más nuevo publicado mientras tanto).
+  let result = null;
+  if (verifiedManifestCache.version && verifiedManifestCache.version === updateState.version) {
+    result = {
+      ok: true,
+      reason: 'manifesto-verificado',
+      version: verifiedManifestCache.version,
+      artifacts: verifiedManifestCache.artifacts
+    };
+    logLine('Actualización: se reutiliza el manifiesto ya verificado para comprobar el instalador descargado.');
+  } else {
+    result = await runtime.verifyUpdateManifestForBoot({
+      manifestUrl: UPDATE_MANIFEST_URL,
+      publicJwk: jwk,
+      currentVersion: app.getVersion(),
+      shellVersion: app.getVersion(),
+      deviceId: stableDeviceId(),
+      channel: 'stable'
+    });
+  }
   if (!result || result.ok !== true || result.reason !== 'manifesto-verificado') {
     return { ok: false, error: 'El instalador no se pudo verificar contra el manifiesto firmado. No se instalará.' };
   }
@@ -355,6 +468,21 @@ async function verifyInstallerWithManifest(filePath, size) {
   if (!artifact) {
     return { ok: false, error: 'El manifiesto firmado no publica un instalador para Windows.' };
   }
+  // Verificación pre-instalación real: tamaño y sha256 del archivo contra el
+  // artefacto firmado, con mensaje por campo. Nunca lanza.
+  if (typeof runtime.verifyArtifactFileAgainstManifest === 'function') {
+    const check = runtime.verifyArtifactFileAgainstManifest(filePath, artifact);
+    if (!check.ok) {
+      logLine(`Actualización: instalador rechazado (${check.reason}) · ${check.message}`);
+      return { ok: false, error: check.message || 'El instalador no coincide con el manifiesto firmado. No se instalará.' };
+    }
+    logLine(
+      `Actualización: instalador verificado por manifiesto firmado (v${result.version || '?'}, ` +
+      `${check.actualBytes} bytes, sha256 ${check.actualSha256}).`
+    );
+    return { ok: true, productVersion: result.version || null };
+  }
+  // Runtime antiguo sin el verificador de archivos: camino manual equivalente.
   let actual = '';
   try {
     actual = await hashFileSha256(filePath);
@@ -363,10 +491,16 @@ async function verifyInstallerWithManifest(filePath, size) {
     return { ok: false, error: 'No se pudo leer el archivo seleccionado. No se instalará.' };
   }
   if (actual !== String(artifact.sha256 || '').toLowerCase()) {
-    return { ok: false, error: 'El instalador no coincide con el manifiesto firmado. No se instalará.' };
+    return {
+      ok: false,
+      error: `El instalador no coincide con el manifiesto firmado (sha256 esperado ${artifact.sha256}, recibido ${actual}). No se instalará.`
+    };
   }
   if (Number(artifact.bytes) !== size) {
-    return { ok: false, error: 'El tamaño del instalador no coincide con el manifiesto firmado. No se instalará.' };
+    return {
+      ok: false,
+      error: `El tamaño del instalador no coincide con el manifiesto firmado (esperado ${artifact.bytes}, recibido ${size}). No se instalará.`
+    };
   }
   logLine(`Actualización: instalador verificado por manifiesto firmado (v${result.version || '?'}).`);
   return { ok: true, productVersion: result.version || null };
@@ -477,7 +611,9 @@ function locateDownloadedInstaller(hint) {
       try { stat = fs.statSync(full); } catch { continue; }
       if (!stat.isFile() || stat.size <= 0) continue;
       const at = stat.mtimeMs || 0;
-      if (at >= newestAt) {
+      // Estricto > : ante un empate se conserva el primer candidato más nuevo
+      // (orden determinista; los rechazados se borran antes de reintentar).
+      if (at > newestAt) {
         newestAt = at;
         newest = full;
       }
@@ -651,9 +787,11 @@ function initAutoUpdater() {
     return;
   }
 
-  // La descarga solo se dispara tras validar el manifiesto firmado.
+  // La descarga solo se dispara tras validar el manifiesto firmado. Instalar
+  // al cerrar solo se habilita DESPUÉS de verificar el archivo descargado:
+  // fail-closed, nunca se aplica una descarga sin comprobación de integridad.
   autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.allowPrerelease = false;
   autoUpdater.allowDowngrade = false;
   autoUpdater.logger = {
@@ -666,6 +804,7 @@ function initAutoUpdater() {
   autoUpdater.on('checking-for-update', () => {
     resetDownloadedInstallerCheck();
     verifiedUpdateVersion = '';
+    updateIntegrityRetryUsed = false;
     setUpdateState({ status: 'checking', error: '' });
   });
   autoUpdater.on('update-available', (info) => {
@@ -714,29 +853,35 @@ function initAutoUpdater() {
       error: '',
       message: 'La actualización está lista. Reinicia PALMYRA para aplicarla.'
     });
-    // La firma del Setup descargado se comprueba en cuanto termina la descarga,
-    // antes de que el usuario pueda reiniciar para instalarlo.
+    // La integridad del Setup descargado se comprueba en cuanto termina la
+    // descarga, antes de que el usuario pueda reiniciar para instalarlo.
     resetDownloadedInstallerCheck();
     const hint = info && typeof info.downloadedFile === 'string' ? info.downloadedFile : '';
     const currentUpdater = autoUpdater;
     void ensureDownloadedInstallerChecked(hint).then((result) => {
       if (!currentUpdater) return;
       if (result.state === 'rejected') {
-        // Nunca instalar al cerrar un archivo que no superó la verificación.
+        // Nunca instalar al cerrar un archivo que no superó la verificación:
+        // se descarta y se reintenta la descarga una sola vez.
         try { currentUpdater.autoInstallOnAppQuit = false; } catch { /* sin efecto */ }
-        setUpdateState({ status: 'error', error: result.error });
+        deletePendingInstallers();
+        resetDownloadedInstallerCheck();
+        void retryUpdateDownloadOnce().then((retried) => {
+          if (!retried) {
+            setUpdateState({ status: 'error', error: result.error });
+          }
+        });
         return;
       }
       if (result.state === 'verified') {
-        // Firma comprobada: se restaura el comportamiento habitual al cerrar.
+        // Integridad comprobada: se restaura el comportamiento habitual al cerrar.
         try { currentUpdater.autoInstallOnAppQuit = true; } catch { /* sin efecto */ }
         return;
       }
-      if (result.state === 'unknown') {
-        setUpdateState({
-          message: 'La actualización está lista. No se pudo verificar la firma del archivo descargado; se aplicará como antes.'
-        });
-      }
+      // 'unknown' (o verificación fallida): fail-closed. Sin comprobación
+      // contra el manifiesto firmado no se instala, ni siquiera al cerrar.
+      try { currentUpdater.autoInstallOnAppQuit = false; } catch { /* sin efecto */ }
+      setUpdateState({ status: 'error', error: UNVERIFIED_INSTALLER_MESSAGE });
     });
   });
   autoUpdater.on('error', (error) => {
@@ -1702,7 +1847,7 @@ async function verifyAndDownloadUpdate(info) {
     return;
   }
 
-  const result = await runtime.verifyUpdateManifestForBoot({
+  const runGuard = () => runtime.verifyUpdateManifestForBoot({
     manifestUrl: UPDATE_MANIFEST_URL,
     publicJwk: jwk,
     currentVersion: app.getVersion(),
@@ -1710,6 +1855,26 @@ async function verifyAndDownloadUpdate(info) {
     deviceId: stableDeviceId(),
     channel: 'stable'
   });
+  const cacheGuardResult = (result) => {
+    if (result && result.ok === true && result.reason === 'manifesto-verificado') {
+      verifiedManifestCache.version = String(result.version || version);
+      verifiedManifestCache.artifacts = Array.isArray(result.artifacts) ? result.artifacts : [];
+      verifiedManifestCache.at = Date.now();
+    }
+    return result;
+  };
+
+  // La promesa queda visible para downloadUpdateNow (el botón «Descargar» puede
+  // llegar mientras se verifica) y nunca rechaza.
+  guardVerificationInFlight = runGuard()
+    .then(cacheGuardResult)
+    .catch((error) => {
+      logLine(`Actualización: el guardián falló de forma inesperada: ${messageOf(error)}`);
+      return { ok: false, reason: 'error' };
+    });
+
+  let result = await guardVerificationInFlight;
+  guardVerificationInFlight = null;
 
   if (result && result.ok === true && result.reason === 'manifesto-verificado') {
     verifiedUpdateVersion = version;
@@ -1719,12 +1884,37 @@ async function verifyAndDownloadUpdate(info) {
   }
 
   const reason = String((result && result.reason) || 'desconocido');
-  logLine(`Actualización bloqueada por el guardián: ${reason}.`);
-  if (UPDATE_GUARD_REJECTIONS.has(reason)) {
+  // Un fallo transitorio de red se reintenta una vez antes de rendirse.
+  if (UPDATE_GUARD_TRANSIENT.has(reason)) {
+    logLine(`Actualización: el guardián falló temporalmente (${reason}); se reintenta una vez.`);
+    await delay(UPDATE_GUARD_RETRY_MS);
+    result = cacheGuardResult(await runGuard().catch((error) => {
+      logLine(`Actualización: el reintento del guardián falló: ${messageOf(error)}`);
+      return { ok: false, reason: 'error' };
+    }));
+  }
+  if (result && result.ok === true && result.reason === 'manifesto-verificado') {
+    verifiedUpdateVersion = version;
+    logLine(`Actualización: manifiesto verificado${result.version ? ` para v${result.version}` : ''} (tras reintento).`);
+    await downloadUpdateNow();
+    return;
+  }
+
+  const finalReason = String((result && result.reason) || 'desconocido');
+  logLine(`Actualización bloqueada por el guardián: ${finalReason}.`);
+  if (UPDATE_GUARD_REJECTIONS.has(finalReason)) {
     setUpdateState({
       status: 'error',
       version,
       error: 'La actualización fue rechazada: el manifiesto no supera la verificación de firma.'
+    });
+    return;
+  }
+  if (UPDATE_GUARD_TRANSIENT.has(finalReason)) {
+    setUpdateState({
+      status: 'error',
+      version,
+      error: 'Sin conexión con el servidor de actualizaciones. Se reintentará automáticamente.'
     });
     return;
   }

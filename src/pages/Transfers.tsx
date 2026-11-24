@@ -1,5 +1,5 @@
 import { useShallow } from 'zustand/react/shallow';
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getAuthorizedWarehouseIds } from "../modules/warehouse/warehouseScope";
 import {
   ArrowLeftRight,
@@ -45,8 +45,8 @@ type TransferGroupRow = {
 const STATUS_LABEL: Record<string, string> = {
   pending: 'Pendiente',
   in_transit: 'En tránsito',
-  cancelled: 'Cancelada',
-  completed: 'Recibida',
+  cancelled: 'Cancelado',
+  completed: 'Recibido',
 };
 
 function StatusBadge({ status }: { status: InventoryTransfer['status'] }) {
@@ -93,6 +93,9 @@ export default function Transfers() {
     currentBranchId,
     addNotification,
     currentUser,
+    syncWithSupabase,
+    isSyncing,
+    syncResult,
   } = useStore(useShallow((state) => ({
     branches: state.branches,
     products: state.products,
@@ -104,6 +107,9 @@ export default function Transfers() {
     currentBranchId: state.currentBranchId,
     addNotification: state.addNotification,
     currentUser: state.currentUser,
+    syncWithSupabase: state.syncWithSupabase,
+    isSyncing: state.isSyncing,
+    syncResult: state.syncResult,
   })));
 
   const authorizedBranchIds = useMemo(
@@ -136,6 +142,10 @@ export default function Transfers() {
   const [isExecutingTransfer, setIsExecutingTransfer] = useState(false);
   const [resolvingTransitKey, setResolvingTransitKey] = useState<string | null>(null);
   const [expandedBatches, setExpandedBatches] = useState<string[]>([]);
+  // Confirmación en dos pasos para recibir/cancelar mercancía en tránsito.
+  const [transitConfirm, setTransitConfirm] = useState<{ key: string; action: 'receive' | 'cancel' } | null>(null);
+  // Guarda de reentrada: impide que un doble clic dispare dos recepciones.
+  const resolvingRef = useRef(false);
 
   const branchLabelById = useMemo(
     () => new Map(branches.map((branch) => [branch.id, branch.name])),
@@ -171,17 +181,42 @@ export default function Transfers() {
   const stockAt = (productId: string, branchId: string, variant?: string) =>
     stockByKey.get(`${productId}|${branchId}|${variant || ''}`) || 0;
 
+  /**
+   * Defensa de UI contra el merge de fuentes (syncActions / replaceRemoteRecords
+   * mezclan por `id || operationId`): una fila legada hidratada con id = id del
+   * traslado padre duplica las filas de nube que traen id = id de línea y
+   * operationId = id del padre. Aquí se descartan esos ecos (fila sin
+   * operationId cuyo id es el operationId de otras filas) y cualquier id
+   * repetido, para no mostrar el mismo traslado dos veces ni inflar KPIs.
+   */
+  const dedupedTransfers = useMemo(() => {
+    const operationIds = new Set<string>();
+    for (const transfer of transfers) {
+      if (transfer.operationId) operationIds.add(String(transfer.operationId));
+    }
+    const seen = new Set<string>();
+    const kept: InventoryTransfer[] = [];
+    for (const transfer of transfers) {
+      const id = String(transfer.id || '');
+      if (!transfer.operationId && id && operationIds.has(id)) continue;
+      if (id && seen.has(id)) continue;
+      if (id) seen.add(id);
+      kept.push(transfer);
+    }
+    return kept;
+  }, [transfers]);
+
   const branchScopedTransfers = useMemo(() => {
     const visible = isBranchRestricted
-      ? transfers.filter((transfer) =>
+      ? dedupedTransfers.filter((transfer) =>
           authorizedBranchIds.includes(transfer.fromBranchId) || authorizedBranchIds.includes(transfer.toBranchId)
         )
-      : transfers;
+      : dedupedTransfers;
     if (historyMode !== 'branch' || !branchFilter) return visible;
     return visible.filter((transfer) =>
       transfer.fromBranchId === branchFilter || transfer.toBranchId === branchFilter
     );
-  }, [transfers, historyMode, branchFilter, isBranchRestricted, authorizedBranchIds]);
+  }, [dedupedTransfers, historyMode, branchFilter, isBranchRestricted, authorizedBranchIds]);
 
   const inTransitGroups = useMemo(() => {
     const groups = new Map<string, InventoryTransfer[]>();
@@ -250,10 +285,13 @@ export default function Transfers() {
     const transitRows = branchScopedTransfers.filter((transfer) => transfer.status === 'in_transit');
     const transitBatches = new Set(transitRows.map((transfer) => transfer.batchId || transfer.operationId || transfer.id)).size;
     const transitUnits = transitRows.reduce((sum, transfer) => sum + (Number(transfer.quantity) || 0), 0);
+    const receivedRows = branchScopedTransfers.filter((transfer) => transfer.status === 'completed');
+    const receivedBatches = new Set(receivedRows.map((transfer) => transfer.batchId || transfer.operationId || transfer.id)).size;
+    const receivedUnits = receivedRows.reduce((sum, transfer) => sum + (Number(transfer.quantity) || 0), 0);
     if (historyMode === 'branch' && branchFilter) {
       const outgoing = branchScopedTransfers.filter((transfer) => transfer.fromBranchId === branchFilter).length;
       const incoming = branchScopedTransfers.filter((transfer) => transfer.toBranchId === branchFilter).length;
-      return { units, batches, transitBatches, transitUnits, outgoing, incoming, topBranch: null as { name: string; count: number } | null };
+      return { units, batches, transitBatches, transitUnits, receivedBatches, receivedUnits, outgoing, incoming, topBranch: null as { name: string; count: number } | null };
     }
     const counts = new Map<string, { id: string; count: number }>();
     for (const transfer of branchScopedTransfers) {
@@ -270,6 +308,8 @@ export default function Transfers() {
       batches,
       transitBatches,
       transitUnits,
+      receivedBatches,
+      receivedUnits,
       outgoing: 0,
       incoming: 0,
       topBranch: top ? { name: branchLabelById.get(top.id) || 'Sucursal', count: top.count } : null,
@@ -285,12 +325,16 @@ export default function Transfers() {
       ]
     : [
         { label: 'Operaciones', value: String(stats.batches), hint: `${branchScopedTransfers.length} líneas registradas`, icon: ArrowLeftRight, tone: 'violet' as const },
-        { label: 'Unidades movidas', value: String(stats.units), hint: 'Artículos trasladados', icon: Package, tone: 'blue' as const },
         { label: 'En tránsito', value: String(stats.transitBatches), hint: `${stats.transitUnits} uds por recibir`, icon: Truck, tone: 'amber' as const },
-        { label: 'Sucursal más activa', value: stats.topBranch?.name || '—', hint: stats.topBranch ? `${stats.topBranch.count} movimientos` : 'Sin datos aún', icon: Building2, tone: 'emerald' as const, valueClassName: 'line-clamp-2 text-base leading-snug break-words sm:text-lg' },
+        { label: 'Por recibir', value: `${stats.transitUnits} uds`, hint: `${stats.transitBatches} lotes en camino`, icon: Package, tone: 'blue' as const },
+        { label: 'Recibidos', value: String(stats.receivedBatches), hint: `${stats.receivedUnits} uds recibidas`, icon: CheckCircle, tone: 'emerald' as const },
       ];
 
   const resolveTransit = async (key: string, operationIds: string[], action: 'receive' | 'cancel') => {
+    // Evita doble envío por doble clic antes del primer render con disabled.
+    if (resolvingRef.current) return;
+    resolvingRef.current = true;
+    setTransitConfirm(null);
     setResolvingTransitKey(key);
     try {
       const result = action === 'receive'
@@ -313,7 +357,17 @@ export default function Transfers() {
     } catch (error: any) {
       addNotification(error?.message || 'No se pudo completar la operación.', 'error');
     } finally {
+      resolvingRef.current = false;
       setResolvingTransitKey(null);
+    }
+  };
+
+  const retrySync = async () => {
+    if (isSyncing) return;
+    try {
+      await syncWithSupabase();
+    } catch {
+      // El store ya registra el resultado del sync; aquí no hay nada que añadir.
     }
   };
 
@@ -478,6 +532,26 @@ export default function Transfers() {
             </div>
           </section>
 
+          {syncResult && Array.isArray(syncResult.errors) && syncResult.errors.length > 0 && branchScopedTransfers.length === 0 && (
+            <section role="alert" className="flex flex-col gap-2 rounded-2xl border border-rose-200 bg-rose-50/70 p-3 shadow-xs dark:border-rose-900/60 dark:bg-rose-950/30 sm:flex-row sm:items-center sm:justify-between sm:p-4">
+              <div className="flex min-w-0 items-start gap-2 sm:items-center">
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400 sm:mt-0" aria-hidden="true" />
+                <p className="text-[12px] font-bold text-rose-700 dark:text-rose-300">
+                  No se pudieron cargar las transferencias desde la nube. Revisa tu conexión y reintenta la sincronización.
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={isSyncing}
+                onClick={() => void retrySync()}
+                className="inline-flex min-h-10 shrink-0 items-center justify-center gap-1.5 rounded-xl bg-rose-600 px-4 text-[11px] font-black uppercase tracking-wide text-white shadow-sm transition-colors hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSyncing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
+                {isSyncing ? 'Sincronizando…' : 'Reintentar'}
+              </button>
+            </section>
+          )}
+
           <ReportsStatBubbles items={bubbleItems} />
 
           {inTransitGroups.length > 0 && (
@@ -499,6 +573,7 @@ export default function Transfers() {
               <ul className="divide-y divide-base">
                 {inTransitGroups.map((group) => {
                   const busy = resolvingTransitKey === group.key;
+                  const confirming = transitConfirm?.key === group.key ? transitConfirm.action : null;
                   return (
                     <li key={group.key} className="flex flex-col gap-2 px-3 py-3 lg:flex-row lg:items-center lg:justify-between">
                       <div className="min-w-0 flex-1">
@@ -518,23 +593,59 @@ export default function Transfers() {
                         </p>
                       </div>
                       <div className="flex items-center gap-1.5 lg:shrink-0">
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => void resolveTransit(group.key, group.operationIds, 'cancel')}
-                          className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-base bg-secondary px-3 text-[11px] font-black uppercase tracking-wide text-secondary transition-colors hover:bg-subtle disabled:opacity-50 lg:min-h-9 lg:flex-none"
-                        >
-                          <Undo2 className="h-3.5 w-3.5" aria-hidden="true" /> Cancelar
-                        </button>
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => void resolveTransit(group.key, group.operationIds, 'receive')}
-                          className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-[11px] font-black uppercase tracking-wide text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50 lg:min-h-9 lg:flex-none"
-                        >
-                          {busy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <PackageCheck className="h-3.5 w-3.5" aria-hidden="true" />}
-                          Recibir
-                        </button>
+                        {confirming ? (
+                          <>
+                            <span className="mr-auto min-w-0 text-[11px] font-bold text-muted lg:mr-2 lg:max-w-[240px]">
+                              {confirming === 'receive'
+                                ? `¿Recibir ${group.totalQty} uds en ${group.toBranchName}?`
+                                : `¿Cancelar y devolver ${group.totalQty} uds a ${group.fromBranchName}?`}
+                            </span>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => setTransitConfirm(null)}
+                              className="inline-flex min-h-11 flex-1 items-center justify-center rounded-lg border border-base bg-secondary px-3 text-[11px] font-black uppercase tracking-wide text-muted transition-colors hover:bg-subtle disabled:opacity-50 lg:min-h-9 lg:flex-none"
+                            >
+                              No
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void resolveTransit(group.key, group.operationIds, confirming)}
+                              className={cn(
+                                'inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg px-3 text-[11px] font-black uppercase tracking-wide text-white shadow-sm transition-colors disabled:opacity-50 lg:min-h-9 lg:flex-none',
+                                confirming === 'receive' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'
+                              )}
+                            >
+                              {busy
+                                ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                                : confirming === 'receive'
+                                  ? <PackageCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                                  : <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />}
+                              {confirming === 'receive' ? 'Sí, recibir' : 'Sí, cancelar'}
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => setTransitConfirm({ key: group.key, action: 'cancel' })}
+                              className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg border border-base bg-secondary px-3 text-[11px] font-black uppercase tracking-wide text-secondary transition-colors hover:bg-subtle disabled:opacity-50 lg:min-h-9 lg:flex-none"
+                            >
+                              <Undo2 className="h-3.5 w-3.5" aria-hidden="true" /> Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => setTransitConfirm({ key: group.key, action: 'receive' })}
+                              className="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-[11px] font-black uppercase tracking-wide text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50 lg:min-h-9 lg:flex-none"
+                            >
+                              {busy ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <PackageCheck className="h-3.5 w-3.5" aria-hidden="true" />}
+                              Recibir
+                            </button>
+                          </>
+                        )}
                       </div>
                     </li>
                   );
@@ -639,6 +750,15 @@ export default function Transfers() {
                               ? 'Cambia la sucursal o la búsqueda para ver otros movimientos.'
                               : 'Usa «Nuevo traslado» para mover stock entre tus almacenes.'}
                           </p>
+                          <button
+                            type="button"
+                            disabled={isSyncing}
+                            onClick={() => void retrySync()}
+                            className="mt-2 inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-base bg-secondary px-4 text-[11px] font-black uppercase tracking-wide text-secondary transition-colors hover:bg-subtle disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            {isSyncing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
+                            {isSyncing ? 'Sincronizando…' : 'Reintentar carga'}
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -716,6 +836,15 @@ export default function Transfers() {
                       ? 'Cambia la sucursal o la búsqueda para ver otros movimientos.'
                       : 'Usa «Nuevo traslado» para mover stock entre tus almacenes.'}
                   </p>
+                  <button
+                    type="button"
+                    disabled={isSyncing}
+                    onClick={() => void retrySync()}
+                    className="mt-3 inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-base bg-secondary px-4 text-[11px] font-black uppercase tracking-wide text-secondary transition-colors hover:bg-subtle disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSyncing ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />}
+                    {isSyncing ? 'Sincronizando…' : 'Reintentar carga'}
+                  </button>
                 </li>
               )}
             </ul>

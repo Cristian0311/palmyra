@@ -2,8 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   androidUpdateKindForArtifact,
+  buildUpdateManifestUrlList,
   createAppUpdateRuntime,
   createRuntimeStorage,
+  DEFAULT_UPDATE_MANIFEST_MIRRORS,
   DEFAULT_UPDATE_MANIFEST_URL,
   getUpdateDeviceId,
   getUpdateManifestUrl,
@@ -12,7 +14,8 @@ import {
   selectUpdateArtifact,
   UPDATE_CHECK_STORAGE_KEY,
   UPDATE_DEVICE_STORAGE_KEY,
-  UPDATE_DISMISSED_STORAGE_KEY
+  UPDATE_DISMISSED_STORAGE_KEY,
+  UPDATE_ENTRY_RETRY_MS
 } from "../../src/services/updates/runtime";
 import type { UpdateCheckResult, UpdateClient } from "../../src/services/updates/client";
 import { parseUpdateManifest, UPDATE_MANIFEST_VERSION } from "../../src/services/updates/manifest";
@@ -72,6 +75,48 @@ function installWindow(value: Record<string, unknown> | null): void {
     return;
   }
   target.window = value;
+}
+
+/** Sustituye `navigator.onLine`; devuelve la restauración. */
+function installNavigatorOnline(online: boolean): () => void {
+  const target = globalThis as unknown as { navigator?: unknown };
+  const original = target.navigator;
+  Object.defineProperty(target, "navigator", {
+    configurable: true,
+    value: { onLine: online }
+  });
+  return () => {
+    if (original === undefined) {
+      delete target.navigator;
+    } else {
+      Object.defineProperty(target, "navigator", { configurable: true, value: original });
+    }
+  };
+}
+
+/** Colección de listeners de window/document para simular el ciclo de vida. */
+function collectListeners(): {
+  map: Map<string, Array<() => void>>;
+  addEventListener(type: string, handler: () => void): void;
+  removeEventListener(type: string, handler: () => void): void;
+} {
+  const map = new Map<string, Array<() => void>>();
+  return {
+    map,
+    addEventListener(type: string, handler: () => void) {
+      const list = map.get(type) ?? [];
+      list.push(handler);
+      map.set(type, list);
+    },
+    removeEventListener(type: string, handler: () => void) {
+      const list = map.get(type) ?? [];
+      map.set(type, list.filter((item) => item !== handler));
+    }
+  };
+}
+
+function flushAsync(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 function baseManifest(overrides: Partial<UpdateManifestV1> = {}): UpdateManifestV1 {
@@ -154,6 +199,34 @@ test("getUpdateManifestUrl respeta el entorno y cae al release oficial", () => {
   // Sin import.meta.env (Node/pruebas) se usa el manifiesto del release.
   assert.equal(getUpdateManifestUrl(), DEFAULT_UPDATE_MANIFEST_URL);
   assert.match(DEFAULT_UPDATE_MANIFEST_URL, /^https:\/\/github\.com\//);
+});
+
+test("buildUpdateManifestUrlList: el entorno explícito sustituye toda la cadena", () => {
+  assert.deepEqual(
+    buildUpdateManifestUrlList("https://cdn.example.test/update-manifest.json", "https://app.example.com"),
+    ["https://cdn.example.test/update-manifest.json"]
+  );
+});
+
+test("buildUpdateManifestUrlList: proxy del propio origen + asset oficial + mirrors", () => {
+  const list = buildUpdateManifestUrlList(null, "https://app.palmyra.example.com");
+  assert.equal(list[0], "https://app.palmyra.example.com/api/updates/manifest");
+  assert.equal(list[1], DEFAULT_UPDATE_MANIFEST_URL);
+  assert.deepEqual(list.slice(2), DEFAULT_UPDATE_MANIFEST_MIRRORS);
+});
+
+test("buildUpdateManifestUrlList: loopback http sí usa el proxy; LAN http no", () => {
+  const loopback = buildUpdateManifestUrlList(null, "http://127.0.0.1:10000");
+  assert.equal(loopback[0], "http://127.0.0.1:10000/api/updates/manifest");
+
+  const lan = buildUpdateManifestUrlList(null, "http://192.168.1.5:10000");
+  assert.equal(lan[0], DEFAULT_UPDATE_MANIFEST_URL);
+});
+
+test("buildUpdateManifestUrlList: un origen ilegible no rompe la cadena", () => {
+  const list = buildUpdateManifestUrlList(null, "no-es-origen");
+  assert.equal(list[0], DEFAULT_UPDATE_MANIFEST_URL);
+  assert.equal(list.length, 1 + DEFAULT_UPDATE_MANIFEST_MIRRORS.length);
 });
 
 test("getUpdatePublicJwk solo acepta una JWK pública EC P-256", () => {
@@ -338,6 +411,37 @@ test("not-due conserva la fase y la marca de la última comprobación", async ()
   assert.equal(after.manual, false);
 });
 
+test("una comprobación forzada no la absorbe una de cadencia en vuelo", async () => {
+  // El botón «Buscar actualización» (force) debe llegar a la red aunque una
+  // comprobación automática esté en vuelo: esta puede resolver «not-due» sin
+  // consultar nada y el usuario se quedaría creyendo que ya está al día.
+  const calls: Array<boolean | undefined> = [];
+  let releaseNotDue!: () => void;
+  const client: UpdateClient = {
+    check(options?: { force?: boolean }) {
+      calls.push(options?.force);
+      if (options?.force) {
+        return Promise.resolve(result("up-to-date"));
+      }
+      return new Promise<UpdateCheckResult>((resolve) => {
+        releaseNotDue = () => resolve(result("not-due"));
+      });
+    }
+  };
+  const runtime = createAppUpdateRuntime({ client, now: () => NOW });
+
+  const cadence = runtime.check(false);
+  const manual = runtime.check(true);
+  releaseNotDue();
+  const [autoState, manualState] = await Promise.all([cadence, manual]);
+
+  assert.deepEqual(calls, [false, true], "la forzada sale a la red tras la de cadencia");
+  assert.equal(autoState.phase, "idle");
+  assert.equal(autoState.manual, false);
+  assert.equal(manualState.phase, "up-to-date");
+  assert.equal(manualState.manual, true);
+});
+
 test("un cliente que lanza se reporta como error sin propagar", async () => {
   const client: UpdateClient = {
     async check() {
@@ -505,29 +609,17 @@ test("Android acepta el bundle web (.zip) cuando el manifiesto no publica APK", 
   assert.equal(selectUpdateArtifact(notZip, "android"), null);
 });
 
-test("startAutoCheck comprueba al arrancar, al volver a primer plano y cada 24 h", async () => {
+test("startAutoCheck comprueba forzada al entrar, con cadencia al foco y cada 24 h", async () => {
   const calls: Array<boolean | undefined> = [];
   const client = fixingClient([result("up-to-date")], calls);
   const timers: Array<() => void> = [];
-  const windowListeners = new Map<string, Array<() => void>>();
-  const documentListeners = new Map<string, Array<() => void>>();
+  const windowSurface = collectListeners();
+  const documentSurface = collectListeners();
   let scheduledMs = 0;
   let cleared = 0;
 
-  const collect = (target: Map<string, Array<() => void>>) => ({
-    addEventListener(type: string, handler: () => void) {
-      const list = target.get(type) ?? [];
-      list.push(handler);
-      target.set(type, list);
-    },
-    removeEventListener(type: string, handler: () => void) {
-      const list = target.get(type) ?? [];
-      target.set(type, list.filter((item) => item !== handler));
-    }
-  });
-
   const fakeWindow = {
-    ...collect(windowListeners),
+    ...windowSurface,
     setInterval(handler: () => void, ms: number) {
       timers.push(handler);
       scheduledMs = ms;
@@ -537,7 +629,7 @@ test("startAutoCheck comprueba al arrancar, al volver a primer plano y cada 24 h
       cleared += 1;
     }
   };
-  const fakeDocument = { visibilityState: "visible", ...collect(documentListeners) };
+  const fakeDocument = { visibilityState: "visible", ...documentSurface };
 
   const globals = globalThis as unknown as { document?: unknown };
   installWindow(fakeWindow as unknown as Record<string, unknown>);
@@ -546,33 +638,44 @@ test("startAutoCheck comprueba al arrancar, al volver a primer plano y cada 24 h
     const runtime = createAppUpdateRuntime({ client, now: () => NOW });
     // La vigilancia se instala sola al crear el runtime en un entorno con DOM.
     assert.equal(scheduledMs, 86_400_000, "el reloj periódico es de 24 h");
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    assert.deepEqual(calls, [false], "comprueba al arrancar");
+    await flushAsync();
+    assert.deepEqual(calls, [true], "la entrada consulta la red de verdad (forzada)");
 
     // Volver a primer plano respeta la cadencia (y no duplica peticiones).
-    windowListeners.get("focus")?.forEach((handler) => handler());
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    windowSurface.map.get("focus")?.forEach((handler) => handler());
+    await flushAsync();
     assert.equal(calls.length, 2);
     assert.equal(calls[1], false);
 
     // La reanudación del shell Android (MainActivity.onResume) también comprueba.
-    windowListeners.get("palmyra:native-resume")?.forEach((handler) => handler());
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    windowSurface.map.get("palmyra:native-resume")?.forEach((handler) => handler());
+    await flushAsync();
     assert.equal(calls.length, 3);
     assert.equal(calls[2], false);
 
-    // El reloj periódico fuerza la consulta para no dejar pasar un release.
-    timers[0]();
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    // Recuperar internet fuerza la comprobación: es «entrar con conexión».
+    windowSurface.map.get("online")?.forEach((handler) => handler());
+    await flushAsync();
     assert.equal(calls.length, 4);
     assert.equal(calls[3], true);
+
+    // Un segundo «online» inmediato no multiplica peticiones (margen de 60 s).
+    windowSurface.map.get("online")?.forEach((handler) => handler());
+    await flushAsync();
+    assert.equal(calls.length, 4, "el margen corto absorbe el segundo online");
+
+    // El reloj periódico fuerza la consulta para no dejar pasar un release.
+    timers[0]();
+    await flushAsync();
+    assert.equal(calls.length, 5);
+    assert.equal(calls[4], true);
 
     // startAutoCheck es idempotente y stopAutoCheck limpia temporizador y listeners.
     const again = runtime.startAutoCheck();
     assert.equal(timers.length, 1);
     again();
     assert.equal(cleared, 1);
-    assert.equal(windowListeners.get("focus")?.length, 0);
+    assert.equal(windowSurface.map.get("focus")?.length, 0);
     runtime.stopAutoCheck();
     assert.equal(cleared, 1, "parar dos veces no hace nada");
   } finally {
@@ -595,6 +698,209 @@ test("sin document (Node) no se instala ninguna vigilancia automática", () => {
   } finally {
     installWindow(null);
   }
+});
+
+test("al entrar con internet un release nuevo se detecta y queda disponible", async () => {
+  // Flujo completo de entrada: el runtime arranca con la vigilancia (DOM
+  // presente), consulta el manifiesto firmado DE VERDAD (forzada, sin dejarse
+  // frenar por la cadencia persistida) y publica la fase «available» que
+  // dispara la burbuja/la tarjeta OTA.
+  installLocalStorage(fakeStorage());
+  const signedManifest = await signUpdateManifest(baseManifest(), signingKeys.privateKey, "clave-2026");
+  const { impl, calls } = countingFetch(async () => jsonResponse(signedManifest));
+  const windowSurface = collectListeners();
+  const documentSurface = collectListeners();
+  const fakeWindow = {
+    ...windowSurface,
+    setInterval() {
+      return 1;
+    },
+    clearInterval() {}
+  };
+  const fakeDocument = { visibilityState: "visible", ...documentSurface };
+
+  const globals = globalThis as unknown as { document?: unknown };
+  installWindow(fakeWindow as unknown as Record<string, unknown>);
+  globals.document = fakeDocument;
+  try {
+    const runtime = createAppUpdateRuntime({
+      manifestUrl: MANIFEST_URL,
+      publicJwk,
+      fetchImpl: impl,
+      now: () => NOW
+    });
+    // La verificación ES256 y el snapshot se resuelven en varios turnos del
+    // bucle: esperamos hasta que la comprobación de entrada termine.
+    for (let i = 0; i < 50 && runtime.state.phase === "checking"; i += 1) {
+      await flushAsync();
+    }
+    assert.equal(calls.length, 1, "la entrada consulta el manifiesto de verdad");
+    assert.equal(runtime.state.phase, "available");
+    assert.equal(runtime.state.result?.version, "1.4.0");
+    assert.equal(runtime.state.artifact?.platform, "web");
+    assert.equal(runtime.state.lastCheckAt, NOW);
+  } finally {
+    delete globals.document;
+    installWindow(null);
+    installLocalStorage(null);
+  }
+});
+
+test("la comprobación de entrada se salta en silencio sin conexión", async () => {
+  const calls: Array<boolean | undefined> = [];
+  const client = fixingClient([result("up-to-date")], calls);
+  const windowSurface = collectListeners();
+  const documentSurface = collectListeners();
+  const fakeWindow = {
+    ...windowSurface,
+    setInterval() {
+      return 1;
+    },
+    clearInterval() {}
+  };
+  const fakeDocument = { visibilityState: "visible", ...documentSurface };
+  const restore = installNavigatorOnline(false);
+
+  const globals = globalThis as unknown as { document?: unknown };
+  installWindow(fakeWindow as unknown as Record<string, unknown>);
+  globals.document = fakeDocument;
+  try {
+    const seen: string[] = [];
+    const runtime = createAppUpdateRuntime({ client, now: () => NOW });
+    runtime.subscribe((state) => seen.push(state.phase));
+
+    await flushAsync();
+    assert.equal(calls.length, 0, "sin conexión la entrada no toca la red");
+    assert.equal(runtime.state.phase, "idle");
+    assert.equal(runtime.state.error, undefined);
+    assert.equal(seen.length, 0, "ni «checking» ni «error»: salto silencioso sin avisos");
+  } finally {
+    delete globals.document;
+    installWindow(null);
+    restore();
+  }
+});
+
+test("sin sesión de Supabase (login offline-first) la entrada comprueba igual", async () => {
+  // El runtime de actualizaciones no depende de la sesión de Supabase: un
+  // arranque offline-first (usuario local verificado, sin sesión en la nube)
+  // debe comprobar el manifiesto al entrar con internet exactamente igual.
+  const calls: Array<boolean | undefined> = [];
+  const client = fixingClient([result("available", NOW, { version: "1.4.0" })], calls);
+  const windowSurface = collectListeners();
+  const documentSurface = collectListeners();
+  const fakeWindow = {
+    ...windowSurface,
+    setInterval() {
+      return 1;
+    },
+    clearInterval() {}
+  };
+  const fakeDocument = { visibilityState: "visible", ...documentSurface };
+
+  const globals = globalThis as unknown as { document?: unknown };
+  installWindow(fakeWindow as unknown as Record<string, unknown>);
+  globals.document = fakeDocument;
+  try {
+    const runtime = createAppUpdateRuntime({ client, now: () => NOW });
+    await flushAsync();
+    assert.deepEqual(calls, [true], "la entrada comprueba forzada aunque no haya sesión");
+    assert.equal(runtime.state.phase, "available");
+    assert.equal(runtime.state.result?.version, "1.4.0");
+  } finally {
+    delete globals.document;
+    installWindow(null);
+  }
+});
+
+test("la comprobación de entrada reintenta una sola vez si la red falla", async () => {
+  const calls: Array<boolean | undefined> = [];
+  const client: UpdateClient = {
+    check(options?: { force?: boolean }) {
+      calls.push(options?.force);
+      return Promise.resolve(result("error", NOW, { error: "sin red" }));
+    }
+  };
+  const windowSurface = collectListeners();
+  const documentSurface = collectListeners();
+  let retryHandler: (() => void) | null = null;
+  let retryDelayMs = 0;
+  const fakeWindow = {
+    ...windowSurface,
+    setInterval() {
+      return 1;
+    },
+    clearInterval() {},
+    setTimeout(handler: () => void, ms: number) {
+      retryHandler = handler;
+      retryDelayMs = ms;
+      return 1;
+    },
+    clearTimeout() {
+      retryHandler = null;
+    }
+  };
+  const fakeDocument = { visibilityState: "visible", ...documentSurface };
+
+  const globals = globalThis as unknown as { document?: unknown };
+  installWindow(fakeWindow as unknown as Record<string, unknown>);
+  globals.document = fakeDocument;
+  try {
+    const runtime = createAppUpdateRuntime({ client, now: () => NOW });
+    await flushAsync();
+    assert.deepEqual(calls, [true]);
+    assert.equal(runtime.state.phase, "error");
+    assert.equal(retryDelayMs, UPDATE_ENTRY_RETRY_MS, "el reintento es corto");
+    assert.ok(retryHandler, "se programa el reintento único");
+
+    retryHandler();
+    await flushAsync();
+    assert.deepEqual(calls, [true, true], "un solo reintento, sin encadenar más");
+  } finally {
+    delete globals.document;
+    installWindow(null);
+  }
+});
+
+test("la búsqueda manual llega a la red aunque el navegador esté sin conexión", async () => {
+  // El botón «Buscar actualización» de Ajustes nunca se salta: sin conexión
+  // debe intentar y reportar el motivo (a diferencia de la entrada automática).
+  const restore = installNavigatorOnline(false);
+  try {
+    const calls: Array<boolean | undefined> = [];
+    const client = fixingClient([result("error", NOW, { error: "Sin conexión a internet." })], calls);
+    const runtime = createAppUpdateRuntime({ client, now: () => NOW });
+    const next = await runtime.check(true);
+    assert.deepEqual(calls, [true], "la búsqueda manual nunca se salta");
+    assert.equal(next.phase, "error");
+    assert.equal(next.manual, true);
+    assert.match(String(next.error), /Sin conexión/i);
+  } finally {
+    restore();
+  }
+});
+
+test("una comprobación de cadencia comparte la forzada en vuelo", async () => {
+  const calls: Array<boolean | undefined> = [];
+  let release!: () => void;
+  const client: UpdateClient = {
+    check(options?: { force?: boolean }) {
+      calls.push(options?.force);
+      return new Promise<UpdateCheckResult>((resolve) => {
+        release = () => resolve(result("available", NOW, { version: "1.4.0" }));
+      });
+    }
+  };
+  const runtime = createAppUpdateRuntime({ client, now: () => NOW });
+
+  const forced = runtime.check(true);
+  const cadence = runtime.check(false);
+  release();
+  const [forcedState, cadenceState] = await Promise.all([forced, cadence]);
+
+  assert.deepEqual(calls, [true], "la de cadencia no duplica la petición");
+  assert.equal(forcedState.phase, "available");
+  assert.equal(cadenceState.phase, "available");
 });
 
 test("un descarte corrupto en el almacén no se interpreta como versión", () => {

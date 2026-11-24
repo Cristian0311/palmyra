@@ -116,6 +116,14 @@ export type UpdateCheckResult = {
 export interface UpdateClientOptions {
   /** URL del manifiesto JSON. Sin ella el cliente está desconfigurado. */
   manifestUrl?: string;
+  /**
+   * Orígenes alternativos del manifiesto (CORS-safe). El asset oficial de
+   * GitHub no envía `Access-Control-Allow-Origin`, así que los navegadores
+   * (PWA, WebView Android, renderer del POS) no pueden leerlo directo: se
+   * prueba cada mirror en orden hasta que uno responda. La firma ES256 se
+   * verifica SIEMPRE sobre el cuerpo recibido, venga del origen que venga.
+   */
+  manifestMirrors?: string[];
   /** Clave pública ES256 (JWK EC P-256) con la que se verifica la firma. */
   publicJwk?: JsonWebKey;
   /** Versión instalada del producto (x.y.z o x.y.z-beta.N). */
@@ -150,6 +158,32 @@ function messageOf(error: unknown): string {
   if (error instanceof Error && error.message.trim() !== "") return error.message;
   if (typeof error === "string" && error.trim() !== "") return error;
   return "La comprobación de actualización falló por un motivo desconocido.";
+}
+
+/** True solo si el navegador declara explícitamente que no hay conexión. */
+function isBrowserOffline(): boolean {
+  try {
+    return typeof navigator !== "undefined" && navigator.onLine === false;
+  } catch {
+    return false;
+  }
+}
+
+/** Fallo de red explicado en español y accionable, nunca texto de máquina. */
+export const UPDATE_OFFLINE_MESSAGE =
+  "Sin conexión a internet. Conecta el equipo y vuelve a pulsar «Buscar actualización».";
+
+/**
+ * Traduce un fallo de red a español accionable. Los mensajes que ya vienen en
+ * español (fetch inyectado en pruebas, capas internas) se conservan tal cual;
+ * el texto de máquina del navegador («Failed to fetch», etc.) se sustituye.
+ */
+function networkFailureMessage(error: unknown): string {
+  const text = messageOf(error);
+  if (/\b(sin red|sin conexión|conexi|internet|servidor|manifest|actualizaci|tardó|timeout|abort)\b/i.test(text)) {
+    return text;
+  }
+  return "No se pudo conectar con el servidor de actualizaciones. Comprueba la conexión a internet e inténtalo de nuevo.";
 }
 
 /** True solo si ya pasó la cadencia. Un reloj retrocedido vuelve a comprobar. */
@@ -251,7 +285,8 @@ async function fetchManifestText(
       ]);
     } catch (error) {
       if (timedOut) return fetchFailure("timeout", timeoutMessage(limit));
-      return fetchFailure("network", messageOf(error));
+      if (isBrowserOffline()) return fetchFailure("network", UPDATE_OFFLINE_MESSAGE);
+      return fetchFailure("network", networkFailureMessage(error));
     }
 
     if (!response || typeof response !== "object") {
@@ -284,7 +319,10 @@ async function fetchManifestText(
     contentType = contentType.toLowerCase();
     const looksJsonType = /json/.test(contentType);
     const maybeOctetStream = contentType === "" || contentType.includes("octet-stream");
-    if (!looksJsonType && !maybeOctetStream) {
+    // raw.githubusercontent sirve el .json como text/plain: se acepta igual,
+    // porque el cuerpo sigue pasando por la comprobación de JSON y la firma.
+    const plainText = contentType.includes("text/plain");
+    if (!looksJsonType && !maybeOctetStream && !plainText) {
       return fetchFailure(
         "not-json",
         `La respuesta del manifiesto no es JSON (HTTP ${status}, content-type: ${contentType}). Revisa que manifestUrl apunte al archivo JSON del release y no a una página web.`
@@ -296,7 +334,8 @@ async function fetchManifestText(
       raw = await Promise.race([response.text(), timeout]);
     } catch (error) {
       if (timedOut) return fetchFailure("timeout", timeoutMessage(limit));
-      return fetchFailure("network", messageOf(error));
+      if (isBrowserOffline()) return fetchFailure("network", UPDATE_OFFLINE_MESSAGE);
+      return fetchFailure("network", networkFailureMessage(error));
     }
     if (typeof raw !== "string") {
       return fetchFailure("not-json", "El manifiesto llegó con un cuerpo ilegible.");
@@ -341,6 +380,57 @@ async function persistResult(
   return result;
 }
 
+/**
+ * Lista ordenada de orígenes: la URL principal y sus mirrors, sin duplicados
+ * ni valores vacíos. Un mirror se prueba solo si los anteriores fallaron.
+ */
+function collectManifestUrls(options: UpdateClientOptions): string[] {
+  const seen = new Set<string>();
+  const urls: string[] = [];
+  const push = (raw: unknown) => {
+    if (typeof raw !== "string") return;
+    const value = raw.trim();
+    if (value === "" || seen.has(value)) return;
+    seen.add(value);
+    urls.push(value);
+  };
+  push(options.manifestUrl);
+  if (Array.isArray(options.manifestMirrors)) {
+    options.manifestMirrors.forEach(push);
+  }
+  return urls;
+}
+
+/**
+ * Descarga el manifiesto probando cada origen en orden. Un mirror con URL no
+ * segura se salta (nunca se usa HTTP abierto), y solo se declara fallo cuando
+ * NINGÚN origen respondió: el último error explica el motivo al usuario.
+ *
+ * El presupuesto de tiempo se reparte para que una cadena entera de orígenes
+ * colgados no supere con creces `timeoutMs` por comprobación.
+ */
+async function fetchFirstManifestText(
+  urls: string[],
+  timeoutMs: number,
+  doFetch: typeof fetch
+): Promise<FetchOutcome> {
+  // El presupuesto se reparte entre orígenes: una cadena entera colgada no debe
+  // superar `timeoutMs` por comprobación (con un mínimo razonable por intento).
+  const budget = Math.max(1, timeoutMs);
+  const perAttempt = Math.max(1_000, Math.floor(budget / Math.max(1, urls.length)));
+  let last: FetchOutcome = fetchFailure(
+    "network",
+    "No se pudo conectar con el servidor de actualizaciones. Comprueba la conexión a internet e inténtalo de nuevo."
+  );
+  for (const url of urls) {
+    if (!isSecureManifestUrl(url)) continue;
+    const outcome = await fetchManifestText(url, perAttempt, doFetch);
+    if (outcome.ok === true && typeof outcome.raw === "string") return outcome;
+    last = outcome;
+  }
+  return last;
+}
+
 export function createUpdateClient(options: UpdateClientOptions): UpdateClient {
   const intervalMs = options.intervalMs ?? DEFAULT_UPDATE_INTERVAL_MS;
   const timeoutMs = options.timeoutMs ?? DEFAULT_UPDATE_TIMEOUT_MS;
@@ -358,7 +448,8 @@ export function createUpdateClient(options: UpdateClientOptions): UpdateClient {
     if (manifestUrl === "") {
       return { status: "unconfigured", code: "unconfigured", checkedAt };
     }
-    if (!isSecureManifestUrl(manifestUrl)) {
+    const manifestUrls = collectManifestUrls(options);
+    if (!manifestUrls.some((url) => isSecureManifestUrl(url))) {
       // Nunca se descarga un manifiesto por HTTP abierto ni con esquema raro.
       return {
         status: "error",
@@ -376,7 +467,7 @@ export function createUpdateClient(options: UpdateClientOptions): UpdateClient {
       }
     }
 
-    const outcome = await fetchManifestText(manifestUrl, timeoutMs, doFetch);
+    const outcome = await fetchFirstManifestText(manifestUrls, timeoutMs, doFetch);
     if (outcome.ok !== true || typeof outcome.raw !== "string") {
       return { status: "error", code: outcome.code, checkedAt, error: outcome.error };
     }

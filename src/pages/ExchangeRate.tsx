@@ -22,12 +22,14 @@ import {
 } from '../lib/exchangeRates';
 import {
   RATE_HUB_FRESH_MS,
+  RATE_OFFLINE_NOTICE,
   RATE_REFRESH_FALLBACK_NOTICE,
   RATE_SOURCE_FRESH_MS,
   RATE_UNAVAILABLE_NOTICE,
   describeExchangeRateSource,
   formatRateAge,
   hubQuotesToPayload,
+  isDeviceOffline,
   resolveExchangeRates,
   type ExchangeRateSourceKind,
   type ExchangeRateSourceView
@@ -190,6 +192,7 @@ export default function ExchangeRate() {
     try {
       // El hub está apagado (LAN_HUB_ENABLED = false): siempre /api/exchange-rates.
       const resolved = await resolveExchangeRates();
+      const offline = isDeviceOffline();
       const source = describeExchangeRateSource(resolved);
       setRateSource(source);
       const body = hubQuotesToPayload(resolved.rates);
@@ -197,9 +200,11 @@ export default function ExchangeRate() {
         // Sin cotizaciones nuevas no se borra lo que el dueño ya estaba viendo.
         // El aviso trae el motivo real (credencial, límite, fuente caída) cuando
         // se pudo leer, y siempre indica cómo reintentar y ajustar a mano.
+        // Sin Internet el motivo de la ruta local no es la causa: se muestra
+        // el aviso offline en su lugar.
         setFromCache(true);
         setWarning('');
-        setError(resolved.error || RATE_UNAVAILABLE_NOTICE);
+        setError(offline ? RATE_OFFLINE_NOTICE : resolved.error || RATE_UNAVAILABLE_NOTICE);
         return;
       }
       const stale = resolved.stale || source.stale;
@@ -209,17 +214,18 @@ export default function ExchangeRate() {
       const next: ExchangePayload = { ...body, stale, ...(notice ? { notice } : {}) };
       setPayload(next);
       setFromCache(stale);
-      setWarning(stale || resolved.error ? RATE_REFRESH_FALLBACK_NOTICE : '');
+      setWarning(offline ? RATE_OFFLINE_NOTICE : stale || resolved.error ? RATE_REFRESH_FALLBACK_NOTICE : '');
       setError('');
       setHistory(current => appendRateSnapshot(current, next));
       try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); setStorageError(false); }
       catch { setStorageError(true); }
     } catch {
       // Cualquier fallo queda en copy neutral: sin hub, IP ni nombres de red.
+      const offline = isDeviceOffline();
       const hadRate = payloadRef.current !== null;
       setFromCache(true);
-      setWarning(RATE_REFRESH_FALLBACK_NOTICE);
-      setError(hadRate ? '' : RATE_UNAVAILABLE_NOTICE);
+      setWarning(offline ? RATE_OFFLINE_NOTICE : RATE_REFRESH_FALLBACK_NOTICE);
+      setError(hadRate ? '' : offline ? RATE_OFFLINE_NOTICE : RATE_UNAVAILABLE_NOTICE);
     } finally {
       inFlight.current = false;
       setNextRefreshAt(Date.now() + REFRESH_MS);
@@ -274,7 +280,7 @@ export default function ExchangeRate() {
   const visibleRates = useMemo(() => {
     const filtered = rates.filter(rate => isCryptoRate(rate.code) === (market === 'crypto'));
     return filtered.slice().sort((a, b) => {
-      const priority = ['USD', 'EUR', 'MLC', 'CLA', 'ZELLE'];
+      const priority = ['USD', 'EUR', 'MLC', 'CLA', 'ZELLE', 'CAD', 'MXN'];
       const ai = priority.indexOf(a.code);
       const bi = priority.indexOf(b.code);
       return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi) || a.code.localeCompare(b.code);

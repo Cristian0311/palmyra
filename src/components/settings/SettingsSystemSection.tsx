@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   CheckCircle2,
   Download,
   HardDrive,
+  LogIn,
   MonitorCog,
   RefreshCw,
   ShieldCheck,
@@ -24,6 +26,7 @@ import {
   inspectPwaStorageHealth,
   type PwaStorageHealth
 } from "../../services/pwaStorageHealth";
+import { loadSaaSContext, type SaaSContext } from "../../services/saas";
 
 /**
  * Sección «Sistema» de Configuración.
@@ -107,25 +110,37 @@ function daysUntil(iso: string | undefined, nowMs: number): number | null {
 
 type LicenseState = { label: string; tone: Tone };
 
-/** Estado de licencia en palabras: activa / por vencer / solo lectura. */
+/**
+ * Estado de licencia en palabras. La activación pendiente se distingue de la
+ * falta real de licencia: mientras el intento de red siga en vuelo el estado
+ * es neutro («Verificando…»), y solo cuando concluye sin lease se dice
+ * «Sin licencia». Nunca se miente con un «Activa» sobre una licencia ausente.
+ */
 function licenseStateOf(
   mode: LicensePublicMode,
   readOnly: boolean,
   paidThrough: string | undefined,
-  offlineUntil: string | undefined
+  offlineUntil: string | undefined,
+  pendingActivation: boolean,
+  activationSettled: boolean | undefined
 ): LicenseState {
-  if (readOnly || mode === "expired" || mode === "revoked") {
-    return { label: "Solo lectura", tone: "bad" };
-  }
+  if (mode === "revoked") return { label: "Licencia retirada", tone: "bad" };
+  if (mode === "expired") return { label: "Vencida", tone: "bad" };
+  if (readOnly) return { label: "Solo lectura", tone: "bad" };
   // Lease ilegible/alterado: NO bloquea; se repara solo con conexión.
   if (mode === "invalid") return { label: "Por revisar", tone: "warn" };
   if (mode === "loading") return { label: "Comprobando…", tone: "idle" };
+  if (pendingActivation) {
+    return activationSettled === true
+      ? { label: "Sin licencia", tone: "warn" }
+      : { label: "Verificando…", tone: "idle" };
+  }
   if (mode === "free" || mode === "unmanaged") return { label: "Activa", tone: "ok" };
+  if (mode === "grace") return { label: "Periodo de gracia", tone: "warn" };
   const now = Date.now();
   const offlineDays = daysUntil(offlineUntil, now);
   const paidDays = daysUntil(paidThrough, now);
   const soon =
-    mode === "grace" ||
     (offlineDays !== null && offlineDays <= 7) ||
     (paidDays !== null && paidDays <= 7);
   return soon ? { label: "Por vencer", tone: "warn" } : { label: "Activa", tone: "ok" };
@@ -141,9 +156,97 @@ function licenseModeLabel(mode: LicensePublicMode, pendingActivation: boolean): 
     case "expired": return "Pagado, vencido";
     case "revoked": return "Licencia retirada";
     case "invalid": return "Licencia no válida";
-    case "unmanaged": return "Gratis";
+    case "unmanaged": return "Sin plan asignado";
     default: return "Comprobando…";
   }
+}
+
+/** Nombre del plan según el código emitido en el lease (campo real planCode). */
+function planNameOf(
+  planCode: string | undefined,
+  mode: LicensePublicMode,
+  pendingActivation: boolean
+): string {
+  if (pendingActivation) return "Por asignar";
+  switch (planCode) {
+    case "free": return "Plan Gratis";
+    case "starter": return "Starter";
+    case "growth": return "Growth";
+    case "pro": return "Pro";
+    default: return licenseModeLabel(mode, pendingActivation);
+  }
+}
+
+/** Verdad sobre el pago: sin licencia emitida no hay plan pagado. */
+function paymentLabelOf(
+  mode: LicensePublicMode,
+  planCode: string | undefined,
+  pendingActivation: boolean
+): string {
+  if (pendingActivation || mode === "unmanaged") return "No pagado";
+  if (planCode === "free" || mode === "free") return "No pagado (plan gratis)";
+  if (mode === "active" || mode === "grace") return "Pagado";
+  if (mode === "expired" || mode === "revoked") return "Pagado, vencido";
+  return "—";
+}
+
+/** «Pagado hasta» solo aplica a planes pagados; el plan gratis no vence. */
+function paidThroughLabelOf(
+  mode: LicensePublicMode,
+  planCode: string | undefined,
+  pendingActivation: boolean,
+  paidThrough: string | undefined
+): string {
+  if (pendingActivation) return "—";
+  if (mode === "free" || planCode === "free") return "No aplica · no vence";
+  return formatDay(paidThrough);
+}
+
+/** Texto del estado, veraz y con la promesa anti-bloqueo. */
+function licenseDetailOf(
+  mode: LicensePublicMode,
+  readOnly: boolean,
+  pendingActivation: boolean,
+  activationSettled: boolean | undefined,
+  activationError: string | undefined,
+  clockWarning: boolean,
+  message: string | undefined
+): string {
+  if (mode === "revoked") {
+    return `${message ?? "Tu licencia fue revocada. Contacta al proveedor."} La app queda en solo lectura; tus datos no se borran.`;
+  }
+  if (mode === "expired") {
+    return "La suscripción venció: la app está en solo lectura. Renueva el plan para volver a operar; tus datos no se borran.";
+  }
+  if (readOnly) {
+    return "Ahora mismo solo puedes consultar y exportar. Renueva el plan para volver a operar con normalidad; tus datos no se borran.";
+  }
+  if (mode === "invalid") {
+    return "La licencia guardada no se pudo verificar. Se repara sola en cuanto haya conexión; mientras tanto sigues operando con normalidad.";
+  }
+  if (mode === "loading") {
+    return "Comprobando la licencia de este equipo…";
+  }
+  if (pendingActivation) {
+    if (activationSettled !== true) {
+      return "Este equipo todavía no tiene licencia emitida; la activación se está verificando. Mientras tanto sigues operando con normalidad.";
+    }
+    const error = activationError ?? "";
+    if (error.startsWith("no-session")) {
+      return "Este equipo no tiene una licencia emitida. Entra con tu usuario o enlace de acceso una vez para activar la licencia comprada; mientras tanto sigues operando con normalidad.";
+    }
+    return "Este equipo todavía no tiene licencia emitida; la activación se reintenta sola en cuanto haya conexión. Mientras tanto sigues operando con normalidad.";
+  }
+  if (mode === "free") {
+    return "Plan Gratis: no requiere pago y no tiene vencimiento. Funciona sin internet de forma indefinida.";
+  }
+  if (mode === "unmanaged") {
+    return "Este equipo aún no tiene un plan asignado. Puedes seguir operando; la licencia se comprueba sola en segundo plano.";
+  }
+  if (clockWarning) {
+    return "La fecha del equipo está atrasada. Ajusta el reloj para que la licencia se evalúe bien; tus datos no se borran.";
+  }
+  return "La licencia se comprueba sola en segundo plano; si vence, la app pasa a solo lectura y tus datos se conservan.";
 }
 
 type BuildInfo = { buildId: string; builtAt: string; version: string } | null;
@@ -168,6 +271,70 @@ async function fetchBuildInfo(): Promise<BuildInfo> {
 
 type UpdateProgress = { percent: number; message: string } | null;
 
+type CompanyPlan = NonNullable<SaaSContext["subscription"]>;
+
+/**
+ * Plan real de la empresa (nube) cuando el equipo aún no tiene lease emitido.
+ * El lease sigue siendo la fuente de la licencia del dispositivo; esto solo
+ * evita mentir con «Sin plan asignado» mientras el lease llega.
+ */
+function companyPlanStateOf(plan: CompanyPlan | null, nowMs: number): LicenseState {
+  if (!plan) return { label: "Activa", tone: "ok" };
+  const end = plan.trialEndsAt || plan.currentPeriodEnd;
+  const grace = plan.graceEndsAt;
+  const endMs = end ? new Date(end).getTime() : NaN;
+  const graceMs = grace ? new Date(grace).getTime() : NaN;
+  const now = Number.isFinite(nowMs) ? nowMs : Date.now();
+  if (Number.isFinite(endMs) && endMs <= now) {
+    if (Number.isFinite(graceMs) && graceMs > now) return { label: "Periodo de gracia", tone: "warn" };
+    return { label: "Vencida", tone: "bad" };
+  }
+  if (plan.status === "past_due") return { label: "Periodo de gracia", tone: "warn" };
+  return { label: "Activa", tone: "ok" };
+}
+
+function companyPlanNameOf(plan: CompanyPlan | null): string | null {
+  if (!plan) return null;
+  return plan.planName || (plan.planCode ? plan.planCode.toUpperCase() : null);
+}
+
+function companyPlanPaymentOf(plan: CompanyPlan | null): string | null {
+  if (!plan) return null;
+  switch (plan.status) {
+    case "active": return "Pagado";
+    case "trialing": return "En prueba";
+    case "past_due": return "Pago pendiente";
+    case "canceled":
+    case "cancelled": return "Cancelado";
+    default: return "Sin pago registrado";
+  }
+}
+
+function companyPlanPaidThroughOf(plan: CompanyPlan | null): string | null {
+  if (!plan) return null;
+  const end = plan.trialEndsAt || plan.currentPeriodEnd;
+  return end ? formatDay(end) : null;
+}
+
+function companyPlanDetailOf(plan: CompanyPlan | null): string | null {
+  if (!plan) return null;
+  const name = companyPlanNameOf(plan) || "tu plan";
+  const end = plan.trialEndsAt || plan.currentPeriodEnd;
+  const endLabel = end ? formatDay(end) : null;
+  const endMs = end ? new Date(end).getTime() : NaN;
+  if (plan.status === "past_due") {
+    return Number.isFinite(endMs) && endMs <= Date.now()
+      ? `El periodo del plan ${name} venció y hay un pago pendiente. Renueva para seguir operando; tus datos no se borran.`
+      : `El plan ${name} tiene un pago pendiente. Regulariza el pago para evitar el modo solo lectura.`;
+  }
+  if (Number.isFinite(endMs) && endMs <= Date.now()) {
+    return `El periodo del plan ${name} venció${endLabel ? ` el ${endLabel}` : ""}. Renueva para seguir operando; tus datos no se borran.`;
+  }
+  return endLabel
+    ? `Tu empresa tiene el plan ${name} activo hasta el ${endLabel}. El equipo sigue operando con normalidad.`
+    : `Tu empresa tiene el plan ${name} activo. El equipo sigue operando con normalidad.`;
+}
+
 export function SettingsSystemSection() {
   const lastSyncTime = useStore(state => state.lastSyncTime);
   const app = useAppUpdateRuntime();
@@ -181,7 +348,26 @@ export function SettingsSystemSection() {
   const [applying, setApplying] = useState(false);
   const [actionError, setActionError] = useState("");
   const [notice, setNotice] = useState("");
+  const [companyPlan, setCompanyPlan] = useState<SaaSContext["subscription"] | null>(null);
   const watchdogRef = useRef<number | null>(null);
+
+  // El lease del equipo puede no estar emitido todavía aunque la empresa tenga
+  // un plan pagado en la nube: se muestra el plan real mientras el lease llega.
+  useEffect(() => {
+    if (companyPlan) return;
+    if (license.mode !== "unmanaged" && Boolean(license.planCode)) return;
+    let alive = true;
+    void loadSaaSContext()
+      .then((ctx) => {
+        if (alive && ctx?.subscription) setCompanyPlan(ctx.subscription);
+      })
+      .catch(() => {
+        // Sin contexto SaaS se conserva la vista sin plan: no debe bloquear.
+      });
+    return () => {
+      alive = false;
+    };
+  }, [companyPlan, license.mode, license.planCode]);
 
   useEffect(() => {
     let alive = true;
@@ -253,12 +439,25 @@ export function SettingsSystemSection() {
       : PHASE_COPY[app.state.phase];
   const availableVersion = ANDROID_SHELL || !DESKTOP_SHELL ? androidVersion : desktopVersion;
   const busyChecking = app.state.phase === "checking" || desktopStatus === "checking";
+  const appUpdateError =
+    !DESKTOP_SHELL &&
+    (app.state.phase === "error" || app.state.phase === "blocked") &&
+    typeof app.state.error === "string" &&
+    app.state.error.trim() !== ""
+      ? app.state.error
+      : "";
+  const lastCheckLabel =
+    !DESKTOP_SHELL && app.state.lastCheckAt
+      ? formatMoment(new Date(app.state.lastCheckAt).toISOString())
+      : null;
 
   const checkNow = useCallback(() => {
     setActionError("");
     setNotice("");
     if (!ANDROID_SHELL && DESKTOP_SHELL) {
-      void desktop.checkNow();
+      void desktop.checkNow().catch(() => {
+        setActionError("No se pudo comprobar. Revisa tu conexión a internet y vuelve a intentarlo.");
+      });
       return;
     }
     void app.checkNow();
@@ -352,13 +551,57 @@ export function SettingsSystemSection() {
       });
   }, []);
 
-  const licenseState = licenseStateOf(
-    license.mode,
-    license.readOnly,
-    license.paidThrough,
-    license.offlineUntil
-  );
+  const hasLeasePlan = Boolean(license.planCode) && license.mode !== "unmanaged";
+  const licenseState = hasLeasePlan
+    ? licenseStateOf(
+        license.mode,
+        license.readOnly,
+        license.paidThrough,
+        license.offlineUntil,
+        license.pendingActivation,
+        license.activationSettled
+      )
+    : companyPlanStateOf(companyPlan, Date.now());
   const licenseTone = TONES[licenseState.tone];
+  const planLabel = hasLeasePlan
+    ? planNameOf(license.planCode, license.mode, license.pendingActivation)
+    : companyPlanNameOf(companyPlan) ?? planNameOf(license.planCode, license.mode, license.pendingActivation);
+  const paymentLabel = hasLeasePlan
+    ? paymentLabelOf(license.mode, license.planCode, license.pendingActivation)
+    : companyPlanPaymentOf(companyPlan) ?? paymentLabelOf(license.mode, license.planCode, license.pendingActivation);
+  const paidThroughLabel = hasLeasePlan
+    ? paidThroughLabelOf(license.mode, license.planCode, license.pendingActivation, license.paidThrough)
+    : companyPlanPaidThroughOf(companyPlan) ??
+      paidThroughLabelOf(license.mode, license.planCode, license.pendingActivation, license.paidThrough);
+  const licenseDetail = hasLeasePlan
+    ? licenseDetailOf(
+        license.mode,
+        license.readOnly,
+        license.pendingActivation,
+        license.activationSettled,
+        license.activationError,
+        license.clockWarning,
+        license.message
+      )
+    : companyPlanDetailOf(companyPlan) ??
+      licenseDetailOf(
+        license.mode,
+        license.readOnly,
+        license.pendingActivation,
+        license.activationSettled,
+        license.activationError,
+        license.clockWarning,
+        license.message
+      );
+  const modalityLabel = hasLeasePlan
+    ? licenseModeLabel(license.mode, license.pendingActivation)
+    : companyPlan
+      ? "Nube (plan de la empresa)"
+      : licenseModeLabel(license.mode, license.pendingActivation);
+  const needsSignIn =
+    license.pendingActivation === true &&
+    license.activationSettled === true &&
+    String(license.activationError ?? "").startsWith("no-session");
   const lastSyncLabel = formatMoment(lastSyncTime);
   const usagePercent =
     storage && storage.quotaBytes > 0
@@ -405,8 +648,13 @@ export function SettingsSystemSection() {
                 {status.label}
               </p>
               {availableVersion !== "" && (
-                <p className="mt-1 text-sm font-bold text-violet-700 dark:text-violet-300">
-                  Versión disponible: {PRODUCT_DISPLAY_VERSION}
+                <p className="mt-1 break-words text-sm font-bold text-violet-700 dark:text-violet-300">
+                  Versión disponible: {availableVersion}
+                </p>
+              )}
+              {lastCheckLabel && (
+                <p className="mt-1 text-xs font-medium text-muted">
+                  Última comprobación: {lastCheckLabel}
                 </p>
               )}
             </div>
@@ -414,6 +662,13 @@ export function SettingsSystemSection() {
               {SURFACE_LABEL}
             </span>
           </div>
+
+          {appUpdateError && (
+            <p role="status" className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 p-2.5 text-sm font-semibold text-rose-800 dark:border-rose-900/50 dark:bg-rose-950/30 dark:text-rose-200">
+              <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+              {appUpdateError}
+            </p>
+          )}
 
           {(progress || (DESKTOP_SHELL && (desktopStatus === "downloading" || desktopStatus === "available"))) && (
             <div className="space-y-1.5">
@@ -478,31 +733,42 @@ export function SettingsSystemSection() {
         <div className="rounded-xl border border-base bg-primary p-3 space-y-2.5 min-w-0">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-sm font-bold text-primary">Licencia</p>
-            <span className={cn("rounded-full px-2.5 py-1 text-xs font-bold", licenseTone)}>
+            <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-xs font-bold", licenseTone)}>
               {licenseState.label}
             </span>
           </div>
           <dl className="grid grid-cols-1 gap-2 sm:grid-cols-3">
             <div className="min-w-0">
-              <dt className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Modalidad</dt>
-              <dd className="mt-0.5 break-words text-sm font-semibold text-primary">{licenseModeLabel(license.mode, license.pendingActivation)}</dd>
+              <dt className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Plan</dt>
+              <dd className="mt-0.5 break-words text-sm font-semibold text-primary">{planLabel}</dd>
+            </div>
+            <div className="min-w-0">
+              <dt className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Pago</dt>
+              <dd className="mt-0.5 break-words text-sm font-semibold text-primary">{paymentLabel}</dd>
             </div>
             <div className="min-w-0">
               <dt className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Pagado hasta</dt>
-              <dd className="mt-0.5 break-words text-sm font-semibold text-primary">{formatDay(license.paidThrough)}</dd>
+              <dd className="mt-0.5 break-words text-sm font-semibold text-primary">{paidThroughLabel}</dd>
             </div>
             <div className="min-w-0">
               <dt className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Sin internet hasta</dt>
               <dd className="mt-0.5 break-words text-sm font-semibold text-primary">{formatDay(license.offlineUntil)}</dd>
             </div>
+            <div className="min-w-0">
+              <dt className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Modalidad</dt>
+              <dd className="mt-0.5 break-words text-sm font-semibold text-primary">{modalityLabel}</dd>
+            </div>
           </dl>
-          <p className="text-xs font-medium leading-5 text-muted">
-            {license.readOnly
-              ? "Ahora mismo solo puedes consultar y exportar. Renueva el plan para volver a operar con normalidad."
-              : license.pendingActivation
-                ? "Este equipo aún no tiene guardada la licencia del plan; la activación se reintenta sola en cuanto hay conexión."
-                : "La licencia se comprueba sola en segundo plano; si vence, la app pasa a solo lectura y tus datos se conservan."}
-          </p>
+          <p className="text-xs font-medium leading-5 text-muted">{licenseDetail}</p>
+          {needsSignIn && (
+            <Link
+              to="/auth"
+              className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-xl bg-violet-600 px-3 text-xs font-bold text-white transition-colors hover:bg-violet-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 sm:w-auto"
+            >
+              <LogIn size={14} aria-hidden="true" />
+              Iniciar sesión para activar la licencia
+            </Link>
+          )}
         </div>
 
         {/* Dispositivo y almacenamiento */}

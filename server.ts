@@ -13,6 +13,10 @@ dotenv.config();
 // __dirname no existe; el bundle de producción es CJS y sí lo define.
 const moduleDir = typeof __dirname === 'string' ? __dirname : process.cwd();
 
+// Manifiesto firmado del canal estable, igual que en src/services/updates/runtime.ts.
+const UPDATE_MANIFEST_GITHUB_URL =
+  'https://github.com/Cristian0311/palmyra/releases/latest/download/update-manifest.json';
+
 // --- Señal de actualización al arrancar -------------------------------------
 // Las apps instaladas escuchan public.system_update_signals (Realtime): un
 // INSERT les avisa de que hay un build nuevo sin que cada caja sondee. Esta
@@ -345,6 +349,39 @@ async function startServer() {
   // Health check
   app.get('/api/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  });
+
+  // Proxy del manifiesto de actualización. El asset de GitHub no envía
+  // cabeceras CORS, así que el renderer (PWA, WebView Android o la ventana del
+  // POS) no puede leerlo directamente desde su origen. Este proxy lo descarga
+  // en el servidor y lo entrega desde el mismo origen de la app; la firma ES256
+  // se verifica igual en el cliente, así que el proxy no añade confianza.
+  app.get('/api/updates/manifest', async (_req, res) => {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const upstream = await fetch(UPDATE_MANIFEST_GITHUB_URL, {
+        headers: { accept: 'application/json' },
+        signal: controller.signal,
+        cache: 'no-store',
+        redirect: 'follow'
+      });
+      clearTimeout(timer);
+      if (!upstream.ok) {
+        res.status(upstream.status === 404 ? 404 : 502).type('application/json').send('{"ok":false}');
+        return;
+      }
+      const text = await upstream.text();
+      if (text.length === 0 || text.length > 512 * 1024 || !/^\s*[{[]/.test(text)) {
+        res.status(502).type('application/json').send('{"ok":false}');
+        return;
+      }
+      res.setHeader('Cache-Control', 'no-store');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.status(200).type('application/json').send(text);
+    } catch {
+      res.status(502).type('application/json').send('{"ok":false}');
+    }
   });
 
   // Sonda barata para el keepalive (.github/workflows/keepalive.yml) y para que

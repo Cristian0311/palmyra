@@ -38,11 +38,11 @@ import {
   collectPendingCashSessionIds,
   collectPendingInventoryKeys,
   collectPendingTransactionIds,
-  collectPendingTransferIds,
   mergeBranchInventory,
   mergeBranchOperationalData
 } from '../utils/offlineProtection';
 import { readSyncLedger, recordSyncMoment } from '../../services/offline/syncLedger';
+import { dedupeTransferRows, filterLocalTransfers, mergeTransferLists } from '../../services/localDb/repositories';
 import {
   loadBootstrapData,
   pullSalesHistoryPage,
@@ -82,6 +82,11 @@ export type BootstrapActionOptions = {
   localSnapshot?: string | null;
   /** Inyección para pruebas: descarga completa de autocuración. */
   fullPull?: (companyId: string) => Promise<unknown>;
+  /** Inyección para pruebas: historial de traslados de la autocuración. */
+  transferHistoryPull?: (companyId: string) => Promise<{
+    success: boolean;
+    transfers: InventoryTransfer[];
+  }>;
 };
 
 function isOnlineNow(options?: BootstrapActionOptions): boolean {
@@ -165,7 +170,6 @@ export function mergeBootstrapSnapshot(d: any, state: AppState, report?: Bootstr
   const queue = getOfflineQueue();
   const pendingTransactions = collectPendingTransactionIds(queue);
   const pendingSessions = collectPendingCashSessionIds(queue);
-  const pendingTransfers = collectPendingTransferIds(queue);
   const pendingInventoryKeys = collectPendingInventoryKeys(queue, {
     transactions: state.transactions || [],
     returns: state.returns || [],
@@ -203,15 +207,15 @@ export function mergeBootstrapSnapshot(d: any, state: AppState, report?: Bootstr
 
   const mergedTransfers = (() => {
     if (!loaded('transfers')) return state.transfers || [];
-    const map = new Map<string, InventoryTransfer>();
-    const keyOf = (item: any) => String(item?.id || item?.operationId || '');
-    for (const transfer of state.transfers || []) map.set(keyOf(transfer), transfer);
-    for (const transfer of d.transfers || []) {
-      const key = keyOf(transfer);
-      if (pendingTransfers.has(key) && map.has(key)) continue;
-      map.set(key, transfer);
-    }
-    return Array.from(map.values());
+    // Las filas remotas llegan UNA POR LÍNEA (id = id de línea, operationId =
+    // uuid del traslado) mientras que las locales offline usan id = uuid.
+    // Comparar id||operationId mezcla ambos espacios y deja convivir un
+    // despacho local pendiente con su copia remota. La identidad de un
+    // traslado es operationId || id: la fila local se conserva SOLO si la
+    // nube no trae esa operación, y las remotas se desduplican por id para
+    // absorber solapes de paginación.
+    const remoteRows = dedupeTransferRows(d.transfers || []);
+    return mergeTransferLists(remoteRows, state.transfers || []);
   })();
 
   const pendingBranchIds = pendingIds(queue, ['branch']);
@@ -427,6 +431,54 @@ async function requestFullCloudPull(companyId: string, options?: BootstrapAction
   }
 }
 
+/**
+ * Autocuración de traslados. La sección de traslados del arranque legado
+ * aplica `status.not.in.(completed,cancelled)` sobre un enum que no tiene
+ * esos valores (posted|cancelled|in_transit|received) y falla SIEMPRE con
+ * 22P02, dejando el historial vacío aunque la nube tenga filas. Este camino
+ * usa el pull sano de cloudSync (sin filtros de enum, con los estados
+ * reales) y rellena el historial sin borrar trabajo local: las filas que la
+ * nube no conoce (pendientes offline o caché antigua) se conservan.
+ */
+async function healTransferHistory(
+  set: StoreSet,
+  get: StoreGet,
+  companyId: string,
+  catalog: any,
+  options?: BootstrapActionOptions
+): Promise<void> {
+  try {
+    const runPull =
+      options?.transferHistoryPull ||
+      (async (id: string) => {
+        const module = await import('../../services/cloudSync/transferHistory');
+        // Reutiliza los nombres que el arranque ya trajo: 3 consultas menos.
+        const productNames = new Map<string, string>();
+        for (const p of Array.isArray(catalog?.products) ? catalog.products : []) {
+          if (p?.id && typeof p.name === 'string') productNames.set(p.id, p.name);
+        }
+        const warehouseNames = new Map<string, string>();
+        for (const b of Array.isArray(catalog?.branches) ? catalog.branches : []) {
+          if (b?.id && typeof b.name === 'string') warehouseNames.set(b.id, b.name);
+        }
+        return module.pullTransferHistoryCorrected({
+          tenant: { companyId: id },
+          refs: { productNames, warehouseNames }
+        });
+      });
+    const result = await runPull(companyId);
+    if (!result || result.success !== true || !Array.isArray(result.transfers)) return;
+    set((state) => {
+      // Identidad operationId || id: un pendiente local cuya operación ya
+      // llegó de la nube (misma operación, distinto id de fila) no debe
+      // convivir con sus líneas remotas. Lo que la nube no conoce se conserva.
+      return { transfers: mergeTransferLists(result.transfers, state.transfers || []) };
+    });
+  } catch {
+    // Se conserva la copia local; la autocuración se reintenta en el próximo arranque.
+  }
+}
+
 function buildBootstrapResult(report: BootstrapReport, data: any): SyncResult {
   const labels = Object.values(report.sections || {}).map(entry => entry.label);
   const failed = report.errors || [];
@@ -512,6 +564,15 @@ async function runBootstrap(set: StoreSet, get: StoreGet, options?: BootstrapAct
         syncResult: buildBootstrapResult(report, data),
         ...(report.ok ? { lastSyncTime: new Date().toISOString() } : {}),
       }));
+
+      // 2b) Autocuración de traslados: la sección del arranque falla siempre
+      // por el filtro de enum inválido del camino legado; si este equipo no
+      // tiene historial (o la sección falló) se rellena por el camino sano.
+      const transfersSectionOk =
+        !report?.sections?.transfers || report.sections.transfers.ok !== false;
+      if (!transfersSectionOk || (before.transfers || []).length === 0) {
+        await healTransferHistory(set, get, companyId, data, options);
+      }
 
       const anySection = Object.values(report.sections).some(entry => entry.ok);
       if (report.ok) {
@@ -613,18 +674,47 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
     try {
       const res = await pullBranchOperationalDataFromSupabase(branchId, options);
       if (!res.success) return false;
+      // El mapeo legado convierte `posted` en 'completed' y rompe el flujo de
+      // recepción en dos fases. Se reemplaza por el historial con estados
+      // reales (reutilizando los nombres ya traídos); si falla, se conserva
+      // el resultado legado sin perder el resto del refresco.
+      let remoteTransfers: any[] = Array.isArray(res.transfers) ? res.transfers : [];
+      try {
+        const productNames = new Map<string, string>();
+        const warehouseNames = new Map<string, string>();
+        for (const t of remoteTransfers) {
+          if (t?.productId && t.productName) productNames.set(t.productId, t.productName);
+          if (t?.fromBranchId && t.fromBranchName) warehouseNames.set(t.fromBranchId, t.fromBranchName);
+          if (t?.toBranchId && t.toBranchName) warehouseNames.set(t.toBranchId, t.toBranchName);
+        }
+        const module = await import('../../services/cloudSync/transferHistory');
+        const corrected = await module.pullTransferHistoryCorrected({
+          branchId,
+          refs: { productNames, warehouseNames }
+        });
+        if (corrected.success) remoteTransfers = corrected.transfers;
+      } catch {
+        // Se sigue con las filas legadas: mejor historial con estados aproximados que ninguno.
+      }
+      // Entradas ya desduplicadas para mergeBranchOperationalData, que usa la
+      // clave id||operationId: un pendiente local (id = uuid) y sus líneas
+      // remotas (id = id de línea) compartirían operationId pero no clave, y
+      // convivirían duplicadas. Las remotas se desduplican por id (solape de
+      // páginas) y las locales cuya operación ya llegó se descartan.
+      const canonicalTransfers = dedupeTransferRows(remoteTransfers);
       set((state) => {
+        const keptLocalTransfers = filterLocalTransfers(state.transfers || [], canonicalTransfers);
         // Este refresco es deliberadamente parcial (ventas/sesiones/transferencias
         // recientes). Nunca debe borrar historial local antiguo solo porque no
         // entró en el límite de la consulta. Las operaciones que aún viven en la
         // cola durable conservan su versión local hasta que Supabase las confirme.
         const merged = mergeBranchOperationalData({
-          remote: res,
+          remote: { ...res, transfers: canonicalTransfers },
           local: {
             inventory: state.inventory || [],
             transactions: state.transactions || [],
             cashSessions: state.cashSessions || [],
-            transfers: state.transfers || [],
+            transfers: keptLocalTransfers,
             returns: (state as any).returns || [],
             supplierOrders: (state as any).supplierOrders || []
           },

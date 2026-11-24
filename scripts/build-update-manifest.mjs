@@ -264,10 +264,51 @@ export function resolveArtifact(entry) {
   if (!PLATFORM_EXTENSIONS[platform].test(name)) {
     fail(`La extensión de ${name} no corresponde a ${platform}.`);
   }
-  const bytes = statSync(filePath).size;
+  const stats = statSync(filePath);
+  const bytes = stats.size;
   if (bytes <= 0) fail(`El artefacto ${name} está vacío.`);
   const sha256 = createHash("sha256").update(readFileSync(filePath)).digest("hex");
-  return { platform, name, sha256, bytes, path: filePath };
+  return { platform, name, sha256, bytes, path: filePath, mtimeMs: stats.mtimeMs };
+}
+
+/**
+ * Re-verifica que ningún artefacto cambió desde que se calcularon sus hashes
+ * (tamaño, mtimeMs y sha256). Un Setup o APK regenerado después de firmar
+ * invalidaría el manifiesto firmado: se falla con un mensaje accionable en vez
+ * de publicar un manifiesto que no cubre los archivos finales.
+ */
+export function verifyArtifactsUnchanged(artifacts) {
+  for (const artifact of artifacts) {
+    let stats;
+    try {
+      stats = statSync(artifact.path);
+    } catch (error) {
+      fail(
+        `El artefacto ${artifact.name} desapareció después de calcular su hash ` +
+          `(${error instanceof Error ? error.message : error}). ` +
+          "Reconstruye el artefacto y firma el manifiesto de nuevo."
+      );
+    }
+    if (!stats.isFile()) {
+      fail(`El artefacto ${artifact.name} dejó de ser un archivo después de calcular su hash.`);
+    }
+    if (stats.size !== artifact.bytes || stats.mtimeMs !== artifact.mtimeMs) {
+      fail(
+        `El artefacto ${artifact.name} cambió DESPUÉS de calcular su hash ` +
+          `(bytes: ${artifact.bytes} → ${stats.size}, mtimeMs: ${artifact.mtimeMs} → ${stats.mtimeMs}). ` +
+          "El manifiesto firmado no cubriría el archivo final. " +
+          "Reconstruye el artefacto, vuelve a firmar el manifiesto y no publiques."
+      );
+    }
+    const actualSha256 = createHash("sha256").update(readFileSync(artifact.path)).digest("hex");
+    if (actualSha256 !== artifact.sha256) {
+      fail(
+        `El contenido de ${artifact.name} cambió después de calcular su hash ` +
+          `(sha256 esperado ${artifact.sha256}, actual ${actualSha256}). ` +
+          "Reconstruye el artefacto, vuelve a firmar el manifiesto y no publiques."
+      );
+    }
+  }
 }
 
 function normaliseBaseUrl(raw, version) {
@@ -533,6 +574,7 @@ export function inspect(options = {}, env = process.env) {
 
   const { key, source, warnings: keyWarnings } = loadSigningKey(options, env);
   warnings.push(...keyWarnings);
+  let publicKeyPem = "";
   if (!key) {
     if (requireSignature) {
       fail(
@@ -560,10 +602,14 @@ export function inspect(options = {}, env = process.env) {
     const valid = verify("sha256", input, { key: publicKey, dsaEncoding: "ieee-p1363" }, signature);
     if (!valid) fail("La firma generada no verifica con la clave pública derivada; no se publica.");
     manifest.signature = signature.toString("base64url");
+    publicKeyPem = publicKey.export({ type: "spki", format: "pem" }).toString();
   }
   if (requireSignature && !manifest.signature) {
     fail("Se exigió firma y el manifiesto quedó sin `signature`; no se publica.");
   }
+
+  // Los artefactos no pueden cambiar después de firmar: el hash quedaría huérfano.
+  verifyArtifactsUnchanged(artifacts);
 
   return {
     manifest,
@@ -571,14 +617,62 @@ export function inspect(options = {}, env = process.env) {
     warnings,
     out: path.resolve(options.out || "update-manifest.json"),
     signed: Boolean(manifest.signature),
-    keySource: source
+    keySource: source,
+    publicKeyPem
   };
 }
 
-/** Escribe el manifiesto construido. */
+/**
+ * Escribe el manifiesto construido y re-verifica lo que quedó en disco:
+ *   1. que ningún artefacto cambió desde que se firmó;
+ *   2. que el archivo escrito es JSON y su texto canónico es idéntico al firmado;
+ *   3. que la firma del archivo escrito verifica con la clave pública.
+ * Si algo no cuadra, falla: el pipeline no puede publicar un manifiesto roto.
+ */
 export function writeManifest(result) {
   mkdirSync(path.dirname(result.out), { recursive: true });
   writeFileSync(result.out, `${JSON.stringify(result.manifest, null, 2)}\n`, "utf8");
+
+  verifyArtifactsUnchanged(result.artifacts);
+
+  let onDisk;
+  try {
+    onDisk = JSON.parse(readFileSync(result.out, "utf8"));
+  } catch (error) {
+    fail(
+      `El manifiesto escrito no se pudo releer como JSON: ` +
+        `${error instanceof Error ? error.message : error}. No se publica.`
+    );
+  }
+  if (manifestSigningInput(onDisk) !== manifestSigningInput(result.manifest)) {
+    fail(
+      "El manifiesto escrito difiere del firmado (texto canónico distinto). " +
+        "No se publica: vuelve a generarlo."
+    );
+  }
+  if (result.signed) {
+    if (typeof onDisk.signature !== "string" || onDisk.signature !== result.manifest.signature) {
+      fail("La firma del manifiesto escrito no coincide con la generada. No se publica.");
+    }
+    let valid;
+    try {
+      const publicKey = createPublicKey(result.publicKeyPem);
+      valid = verify(
+        "sha256",
+        Buffer.from(manifestSigningInput(onDisk), "utf8"),
+        { key: publicKey, dsaEncoding: "ieee-p1363" },
+        Buffer.from(onDisk.signature, "base64url")
+      );
+    } catch (error) {
+      fail(
+        `No se pudo re-verificar la firma del manifiesto escrito: ` +
+          `${error instanceof Error ? error.message : error}. No se publica.`
+      );
+    }
+    if (!valid) {
+      fail("La firma del manifiesto escrito no verifica con la clave pública. No se publica.");
+    }
+  }
 }
 
 /** CLI sin side effects de proceso: devuelve el código de salida. */

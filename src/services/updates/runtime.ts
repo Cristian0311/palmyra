@@ -24,10 +24,13 @@
 
 import { getNativeAppInfo } from "../../lib/nativeApp";
 import { PRODUCT_VERSION } from "../../lib/productVersion";
+import { isBrowserOffline } from "../offlineNetwork";
 import {
   createUpdateClient,
   DEFAULT_UPDATE_INTERVAL_MS,
+  isSecureManifestUrl,
   MAX_MANIFEST_BYTES,
+  type UpdateCheckCode,
   type UpdateCheckResult,
   type UpdateCheckStorage,
   type UpdateClient
@@ -45,12 +48,40 @@ export const UPDATE_PUBLIC_JWK_ENV = "VITE_UPDATE_PUBLIC_JWK";
 export const DEFAULT_UPDATE_MANIFEST_URL =
   "https://github.com/Cristian0311/palmyra/releases/latest/download/update-manifest.json";
 
+/**
+ * Orígenes CORS-safe de respaldo. El asset oficial de GitHub no envía
+ * `Access-Control-Allow-Origin`, así que los navegadores (PWA, WebView Android,
+ * renderer del POS) no pueden leerlo directo: se prueba cada mirror en orden
+ * hasta que uno responda. La firma ES256 se verifica siempre sobre el cuerpo
+ * recibido, venga del origen que venga. Ambos requieren que el manifiesto esté
+ * subido al repositorio (se publica junto con cada release).
+ */
+export const DEFAULT_UPDATE_MANIFEST_MIRRORS = [
+  "https://raw.githubusercontent.com/Cristian0311/palmyra/main/update-manifest.json",
+  "https://cdn.jsdelivr.net/gh/Cristian0311/palmyra@main/update-manifest.json"
+];
+
 /** Identificador estable del equipo (una sola vez por instalación). */
 export const UPDATE_DEVICE_STORAGE_KEY = "palmyra-update-device";
 /** Última comprobación válida, para respetar la cadencia de 24 h tras recargar. */
 export const UPDATE_CHECK_STORAGE_KEY = "palmyra-update-check-v1";
 /** Versión descartada por el usuario (clave histórica del aviso OTA). */
 export const UPDATE_DISMISSED_STORAGE_KEY = "palmyra:ota-dismissed-version";
+
+/**
+ * Margen mínimo entre comprobaciones forzadas al recuperar la conexión:
+ * enlaces inestables disparan «online» varias veces y no deben multiplicar
+ * peticiones al manifiesto.
+ */
+export const UPDATE_ONLINE_FORCE_MIN_GAP_MS = 60_000;
+
+/**
+ * Único reintento corto de la comprobación de entrada cuando la red falló
+ * estando «en línea» (servidor dormido, corte puntual): el aviso no debe
+ * perderse por un solo fallo. No encadena reintentos: el reloj de 24 h, la
+ * vuelta de la conexión o la próxima entrada volverán a intentarlo.
+ */
+export const UPDATE_ENTRY_RETRY_MS = 30_000;
 
 /** Motivo mostrable cuando el build no define el canal firmado. */
 export const UPDATE_UNCONFIGURED_REASON =
@@ -88,6 +119,54 @@ export function getUpdateManifestUrl(envRaw?: string | null): string {
   const trimmed = typeof raw === "string" ? raw.trim() : "";
   if (trimmed === "" || trimmed.length > MAX_MANIFEST_URL_LENGTH) return DEFAULT_UPDATE_MANIFEST_URL;
   return trimmed;
+}
+
+/** Origen de la ventana actual, o null si no hay navegador legible. */
+function browserOrigin(): string | null {
+  try {
+    if (typeof window === "undefined") return null;
+    const origin = window.location.origin;
+    return typeof origin === "string" && origin.trim() !== "" ? origin.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Lista ordenada de orígenes del manifiesto para esta instalación:
+ *
+ * 1. Proxy del propio servidor (`/api/updates/manifest`) cuando la app corre
+ *    servida por el hub (POS de escritorio, PWA en Render o LAN): mismo
+ *    origen, sin CORS y sin depender de mirrors externos. Solo se antepone si
+ *    la URL resultante es segura (https o loopback).
+ * 2. El asset oficial del release de GitHub.
+ * 3. Los mirrors CORS-safe (raw.githubusercontent y jsDelivr), que cubren al
+ *    APK (WebView sobre un servidor local estático sin proxy).
+ *
+ * Una `VITE_UPDATE_MANIFEST_URL` explícita sustituye toda la cadena: es el
+ * canal configurado y no se le añaden mirrors de un repositorio distinto.
+ */
+export function buildUpdateManifestUrlList(
+  envRaw?: string | null,
+  origin?: string | null
+): string[] {
+  const raw = envRaw === undefined ? readEnvValue(UPDATE_MANIFEST_URL_ENV) : envRaw;
+  const trimmed = typeof raw === "string" ? raw.trim() : "";
+  if (trimmed !== "" && trimmed.length <= MAX_MANIFEST_URL_LENGTH) return [trimmed];
+
+  const urls: string[] = [];
+  const originValue = origin === undefined ? browserOrigin() : origin;
+  if (typeof originValue === "string" && originValue.trim() !== "") {
+    try {
+      const proxy = new URL("/api/updates/manifest", originValue).toString();
+      if (isSecureManifestUrl(proxy)) urls.push(proxy);
+    } catch {
+      // Origen inválido: se omite el proxy y se usan los orígenes públicos.
+    }
+  }
+  urls.push(DEFAULT_UPDATE_MANIFEST_URL);
+  urls.push(...DEFAULT_UPDATE_MANIFEST_MIRRORS);
+  return [...new Set(urls)];
 }
 
 function cleanPublicJwk(value: unknown): JsonWebKey | null {
@@ -332,13 +411,22 @@ export interface AppUpdateState {
 export interface AppUpdateRuntime {
   readonly client: UpdateClient | null;
   readonly state: AppUpdateState;
+  /**
+   * Comprueba actualizaciones. `force` (el botón «Buscar actualización»)
+   * siempre llega a la red y muestra el motivo si falla; sin `force` la
+   * comprobación respeta la cadencia del cliente y se salta en silencio
+   * cuando el navegador declara que no hay conexión.
+   */
   check(force?: boolean): Promise<AppUpdateState>;
   subscribe(listener: (state: AppUpdateState) => void): () => void;
   dismiss(version: string): void;
   isDismissed(version: string): boolean;
   /**
-   * Arranca la vigilancia automática (arranque, primer plano y cada
-   * `intervalMs`). Idempotente: devuelve la parada de la vigilancia activa.
+   * Arranca la vigilancia automática: una comprobación FORZADA de entrada
+   * (salto silencioso sin conexión y un único reintento si la red falla),
+   * cadencia al volver a primer plano, forzada al recuperar la red y una
+   * consulta forzada cada `intervalMs`. Idempotente: devuelve la parada de
+   * la vigilancia activa.
    */
   startAutoCheck(options?: { intervalMs?: number }): () => void;
   /** Detiene la vigilancia automática si estaba activa. */
@@ -428,11 +516,42 @@ function phaseFor(result: UpdateCheckResult | null): AppUpdatePhase | null {
   }
 }
 
+/**
+ * Texto en español para un bloqueo que llega sin mensaje propio del cliente.
+ * Los códigos de verificación (firma, clave) y de evaluación (canal, rollout,
+ * fechas) no traen `error` del cliente: sin este texto la UI solo podría
+ * mostrar una etiqueta genérica que no explica la causa real.
+ */
+function blockedCopy(code: UpdateCheckCode | undefined): string | null {
+  switch (code) {
+    case "invalid-signature":
+    case "missing-signature":
+    case "invalid-key":
+    case "unsupported-algorithm":
+      return "La actualización publicada no superó la verificación de firma y se descartó por seguridad.";
+    case "invalid-manifest":
+      return "El manifiesto publicado no es válido y se descartó por seguridad.";
+    case "channel":
+      return "La versión publicada es de otro canal y no aplica a esta instalación.";
+    case "rollout":
+      return "La nueva versión todavía no está desplegada para este equipo.";
+    case "shell-too-old":
+      return "La nueva versión requiere un shell más reciente que el de este equipo.";
+    case "not-before":
+      return "La nueva versión todavía no está activa.";
+    case "downgrade":
+      return "La versión publicada es anterior a la instalada.";
+    default:
+      return null;
+  }
+}
+
 function errorFor(result: UpdateCheckResult | null): string | undefined {
   if (!result) return undefined;
   if (result.status === "error" || result.status === "blocked") {
     const text = typeof result.error === "string" ? result.error.trim() : "";
-    return text !== "" ? text : undefined;
+    if (text !== "") return text;
+    return blockedCopy(result.code) ?? undefined;
   }
   return undefined;
 }
@@ -487,7 +606,10 @@ export function createAppUpdateRuntime(deps: AppUpdateRuntimeDeps = {}): AppUpda
     ...(configured.reason ? { error: configured.reason } : {})
   };
   let inFlight: Promise<AppUpdateState> | null = null;
+  let inFlightForced = false;
   let stopAuto: (() => void) | null = null;
+  let lastOnlineForceAt = 0;
+  let entryRetryTimer: number | null = null;
 
   function emit(next: AppUpdateState): void {
     state = next;
@@ -509,17 +631,41 @@ export function createAppUpdateRuntime(deps: AppUpdateRuntimeDeps = {}): AppUpda
     }
   }
 
-  async function run(force: boolean): Promise<AppUpdateState> {
+  /**
+   * Ejecuta una comprobación. `quiet` marca las comprobaciones AUTOMÁTICAS
+   * (entrada, foco, reloj, vuelta de la red): con `navigator.onLine === false`
+   * se saltan en silencio, sin fases «checking»/«error» ni avisos — la app
+   * offline no debe llenarse de errores de red. La búsqueda manual de Ajustes
+   * (`check(true)`) nunca es quiet: siempre intenta y muestra el motivo.
+   */
+  async function run(force: boolean, quiet = false): Promise<AppUpdateState> {
     if (!client) {
       if (state.manual !== force) emit({ ...state, manual: force });
       return state;
     }
-    if (inFlight) return inFlight;
+    if (quiet && isBrowserOffline()) return state;
+    if (inFlight) {
+      // Un forzado (botón «Buscar actualización») jamás puede quedar absorbido
+      // por una comprobación de cadencia en vuelo: esa podría resolver
+      // «not-due» sin tocar la red y el usuario se quedaría sin verificación
+      // real. Se espera a la comprobación en curso y se lanza la forzada.
+      if (force && !inFlightForced) {
+        try {
+          await inFlight;
+        } catch {
+          // El fallo ya se publicó con la comprobación en curso.
+        }
+        if (inFlight && !inFlightForced) return inFlight;
+        return run(true, quiet);
+      }
+      return inFlight;
+    }
 
     const previous = state;
     emit({ ...previous, phase: "checking", manual: force, error: undefined });
     slot.raw = null;
     slot.settled = Promise.resolve();
+    inFlightForced = force;
 
     inFlight = (async () => {
       let result: UpdateCheckResult | null = null;
@@ -575,17 +721,51 @@ export function createAppUpdateRuntime(deps: AppUpdateRuntimeDeps = {}): AppUpda
       return await inFlight;
     } finally {
       inFlight = null;
+      inFlightForced = false;
     }
   }
 
   /**
-   * Vigilancia automática: una comprobación al arrancar, otra cada vez que la
-   * app vuelve a primer plano (visibilitychange, focus, pageshow, online y el
-   * aviso `palmyra:native-resume` del shell Android) y una consulta forzada
-   * cada `intervalMs` (24 h por defecto). El aviso inmediato de un build nuevo
-   * lo da ahora el servidor por Realtime (`system_update_signals`): este reloj
-   * es la red de seguridad para equipos que no reciben la señal, así que no
-   * necesita sondear seguido. La firma del manifiesto se sigue verificando.
+   * Comprobación de ENTRADA: al arrancar la app (con internet) siempre se
+   * consulta el manifiesto de verdad, sin dejarse frenar por la cadencia
+   * persistida de 24 h — un release publicado desde la última comprobación
+   * debe verse en el acto, como pide el dueño («al entrar detecte si hay
+   * cambios»). La deduplicación razonable la da el propio runtime: si ya hay
+   * una comprobación en vuelo se comparte, y sin conexión conocida se salta
+   * en silencio (nada de avisos de error al arrancar offline).
+   *
+   * Si estando «en línea» la red falla, se programa UN único reintento corto;
+   * no encadena más intentos.
+   */
+  async function runEntryCheck(): Promise<AppUpdateState> {
+    if (!client) return state;
+    const next = await run(true, true);
+    if (
+      next.phase === "error" &&
+      entryRetryTimer === null &&
+      stopAuto !== null &&
+      typeof window !== "undefined" &&
+      typeof window.setTimeout === "function"
+    ) {
+      entryRetryTimer = window.setTimeout(() => {
+        entryRetryTimer = null;
+        void run(true, true);
+      }, UPDATE_ENTRY_RETRY_MS);
+    }
+    return next;
+  }
+
+  /**
+   * Vigilancia automática. La ENTRADA (primer arranque de la vigilancia)
+   * comprueba forzada y en silencio sin conexión; la vuelta a primer plano
+   * (visibilitychange, focus, pageshow y el aviso `palmyra:native-resume` del
+   * shell Android) respeta la cadencia, y la recuperación de la red («online»)
+   * vuelve a forzar con un margen corto para no multiplicar peticiones en
+   * enlaces inestables. El reloj periódico fuerza cada `intervalMs` (24 h por
+   * defecto). El aviso inmediato de un build nuevo lo da también el servidor
+   * por Realtime (`system_update_signals`); este reloj es la red de seguridad
+   * para equipos que no reciben la señal. La firma del manifiesto se sigue
+   * verificando.
    *
    * Sin `document` (Node, pruebas) no se instala nada: nunca quedan
    * temporizadores colgando.
@@ -614,7 +794,7 @@ export function createAppUpdateRuntime(deps: AppUpdateRuntimeDeps = {}): AppUpda
     // El reloj periódico force la consulta: si el usuario acaba de comprobar
     // al abrir una pantalla, la cadencia normal dejaría el aviso para más tarde.
     const timer = window.setInterval(() => {
-      void run(true);
+      void run(true, true);
     }, intervalMs);
 
     const onForeground = () => {
@@ -624,11 +804,20 @@ export function createAppUpdateRuntime(deps: AppUpdateRuntimeDeps = {}): AppUpda
         // Sin Page Visibility se comprueba igual: mejor de más que de menos.
       }
       // Respetar la cadencia: un cambio de pestaña no debe multiplicar descargas.
-      void run(false);
+      void run(false, true);
+    };
+
+    const onOnline = () => {
+      // Volver a internet es «entrar con conexión»: se comprueba forzada para
+      // no esperar al reloj de 24 h, con un margen corto anti-tormentas.
+      const stamp = safeNow();
+      if (stamp - lastOnlineForceAt < UPDATE_ONLINE_FORCE_MIN_GAP_MS) return;
+      lastOnlineForceAt = stamp;
+      void run(true, true);
     };
 
     window.addEventListener("focus", onForeground);
-    window.addEventListener("online", onForeground);
+    window.addEventListener("online", onOnline);
     window.addEventListener("pageshow", onForeground);
     // Evento propio del shell Android (MainActivity.onResume): en WebView el
     // ciclo de actividad no siempre publica visibilitychange.
@@ -641,8 +830,16 @@ export function createAppUpdateRuntime(deps: AppUpdateRuntimeDeps = {}): AppUpda
       } catch {
         // Nada que limpiar.
       }
+      if (entryRetryTimer !== null) {
+        try {
+          window.clearTimeout(entryRetryTimer);
+        } catch {
+          // El temporizador pudo dispararse justo antes de parar.
+        }
+        entryRetryTimer = null;
+      }
       window.removeEventListener("focus", onForeground);
-      window.removeEventListener("online", onForeground);
+      window.removeEventListener("online", onOnline);
       window.removeEventListener("pageshow", onForeground);
       window.removeEventListener("palmyra:native-resume", onForeground);
       document.removeEventListener("visibilitychange", onForeground);
@@ -650,8 +847,9 @@ export function createAppUpdateRuntime(deps: AppUpdateRuntimeDeps = {}): AppUpda
     };
     stopAuto = stop;
 
-    // Arranque: la primera comprobación (el cliente respeta la marca persistida).
-    void run(false);
+    // Entrada: comprobación forzada (con salto silencioso sin conexión y un
+    // único reintento si la red falla estando en línea).
+    void runEntryCheck();
     return stop;
   }
 
@@ -671,7 +869,8 @@ export function createAppUpdateRuntime(deps: AppUpdateRuntimeDeps = {}): AppUpda
       return state;
     },
     check(force = false) {
-      return run(force === true);
+      // Sin `force` la comprobación es automática: salto silencioso sin red.
+      return run(force === true, force !== true);
     },
     startAutoCheck,
     stopAutoCheck,
@@ -710,13 +909,13 @@ function resolveClient(
     return { client: null, reason: UPDATE_UNCONFIGURED_REASON };
   }
 
-  const manifestUrl =
+  const manifestUrls =
     deps.manifestUrl !== undefined
-      ? typeof deps.manifestUrl === "string"
-        ? deps.manifestUrl.trim()
-        : ""
-      : getUpdateManifestUrl();
-  if (manifestUrl === "") {
+      ? typeof deps.manifestUrl === "string" && deps.manifestUrl.trim() !== ""
+        ? [deps.manifestUrl.trim()]
+        : []
+      : buildUpdateManifestUrlList();
+  if (manifestUrls.length === 0) {
     return { client: null, reason: UPDATE_UNCONFIGURED_REASON };
   }
 
@@ -743,7 +942,8 @@ function resolveClient(
   }
 
   const client = createUpdateClient({
-    manifestUrl,
+    manifestUrl: manifestUrls[0],
+    manifestMirrors: manifestUrls.slice(1),
     publicJwk,
     currentVersion: PRODUCT_VERSION,
     shellVersion,

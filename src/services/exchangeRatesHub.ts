@@ -30,12 +30,35 @@ export const HUB_RATES_TIMEOUT_MS = 4_000;
 /** Una consulta de nube deja de considerarse fresca a los 30 minutos. */
 export const RATE_SOURCE_FRESH_MS = 30 * 60 * 1000;
 /**
+ * Ventana de la copia verificada de Supabase: se consultan las últimas horas
+ * del cron y se fusionan los grupos por código. Los códigos estables (p. ej.
+ * BNB) solo se graban cuando se mueven o en su muestra horaria, así que un
+ * código puede traer su última observación con horas de antigüedad; el
+ * conjunto completo solo se acepta si su captura más reciente cumple
+ * `RATE_SOURCE_FRESH_MS`. Un código ausente toda la ventana está inactivo.
+ */
+const VERIFIED_RATE_WINDOW_MS = 6 * 60 * 60 * 1000;
+/**
  * Una copia repartida por el hub se considera vigente hasta 60 minutos: su
  * cadencia es de 45 min (± jitter) y así la pantalla no parpadea entre ciclos.
  */
 export const RATE_HUB_FRESH_MS = RATE_MAX_MS;
 const RATE_CODE_PATTERN = /^[A-Z][A-Z0-9_-]{1,19}$/;
 const MAX_LOCAL_PORT = 65535;
+
+/**
+ * `navigator.onLine === false` es la señal temprana de que no hay Internet:
+ * evita consultas que no pueden responder y permite mostrar el aviso offline
+ * al instante. Sin navegador (pruebas/SSR) se asume red disponible; un falso
+ * positivo (Wi-Fi sin salida) se resuelve con los tiempos de espera normales.
+ */
+export function isDeviceOffline(): boolean {
+  try {
+    return typeof navigator !== "undefined" && navigator.onLine === false;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Avisos de pantalla cuando la consulta automática falla. Copy neutral: nunca
@@ -46,6 +69,9 @@ export const RATE_REFRESH_FALLBACK_NOTICE =
   "No se pudo actualizar la tasa automática. Se muestra la última tasa conocida; pulsa Reintentar o ajústala manualmente en Configuración → Monedas y tasas.";
 export const RATE_UNAVAILABLE_NOTICE =
   "No se pudo obtener la tasa de cambio automática. Pulsa Reintentar para volver a consultar elTOQUE o guarda tus tasas a mano en Configuración → Monedas y tasas.";
+/** Aviso de pantalla cuando el dispositivo está sin Internet. */
+export const RATE_OFFLINE_NOTICE =
+  "Sin conexión a Internet. Se muestra la última tasa conocida; se consultará elTOQUE automáticamente al reconectar.";
 
 export interface HubRatesOptions {
   /** `fetch` inyectable para pruebas del hub. */
@@ -61,6 +87,12 @@ export interface HubRatesOptions {
    * defecto manda `LAN_HUB_ENABLED`, que está en `false`: sin hub en producto.
    */
   hubEnabled?: boolean;
+  /**
+   * Copia verificada de la nube (historial que publica el cron de elTOQUE en
+   * Supabase) inyectable en pruebas. Es la vía CORS-abierta que usan escritorio
+   * y APK; por defecto se lee de Supabase y se descarta si está vencida.
+   */
+  verifiedQuotes?: () => Promise<HubRateQuote[]>;
 }
 
 /**
@@ -443,16 +475,110 @@ function isCloudSurface(): boolean {
 }
 
 /**
- * Una sola consulta de respaldo a la nube de producción. El tiempo de espera
- * es generoso porque una instancia gratuita de Render puede tardar decenas de
- * segundos en despertar; sin reintento para no duplicar esa espera. Lanza con
- * un mensaje neutro (sin credenciales ni nombres de red) cuando no hay
- * respuesta válida.
+ * El cron solo escribe los códigos cuyo valor cambió en cada corrida (más una
+ * muestra horaria del resto), así que cada punto del historial de Supabase es
+ * PARCIAL. Esta función fusiona los puntos (del más antiguo al más nuevo)
+ * tomando por código el valor más reciente y su captura: devuelve el set
+ * completo de monedas activas en lugar del subconjunto del último punto.
+ * También canonicaliza los códigos compactados por el cron (`ECU`→`EUR`,
+ * `USDTTRC20`→`USDT_TRC20`) para que coincidan con el payload vivo de elTOQUE.
+ */
+export function mergeVerifiedHistoryRows(rows: unknown[]): HubRateQuote[] {
+  const byCode = new Map<string, HubRateQuote>();
+  for (const raw of rows) {
+    const row = raw as { captured_at?: unknown; rates?: unknown } | null;
+    const captured = typeof row?.captured_at === "string" ? Date.parse(row.captured_at) : Number.NaN;
+    if (!Number.isFinite(captured) || !row?.rates) continue;
+    const quotes = canonicalizeRates(parseExchangeRates(row.rates)).flatMap(rate => {
+      const value = rate.value ?? rate.buy ?? rate.sell;
+      if (value === undefined || !Number.isFinite(value) || value <= 0) return [];
+      return [{ code: rate.code, rate: value, capturedAt: new Date(captured).toISOString(), source: "elTOQUE API", stale: false }];
+    });
+    for (const quote of quotes) byCode.set(quote.code, quote);
+  }
+  return [...byCode.values()];
+}
+
+/**
+ * Copia verificada que publica el cron de elTOQUE en Supabase (cada ~10 min).
+ * Es la vía principal del respaldo de nube para escritorio y APK: Supabase
+ * responde con `Access-Control-Allow-Origin: *` desde cualquier origen,
+ * mientras que la ruta de Render no publica CORS y un `fetch` desde
+ * `http://127.0.0.1:<puerto>` (escritorio) o `http://localhost` (APK) queda
+ * bloqueado por el navegador aunque haya Internet. La credencial de elTOQUE
+ * sigue viviendo solo en el servidor: aquí solo llegan tasas ya capturadas.
+ * Devuelve `[]` sin lanzar si falta el cliente, la red o la copia.
+ */
+async function fetchVerifiedSupabaseQuotes(): Promise<HubRateQuote[]> {
+  try {
+    // Carga perezosa: en Node/pruebas este módulo no está disponible y la vía
+    // se ignora para caer a la consulta directa (o al respaldo guardado).
+    const { getSupabase } = await import("../lib/supabase");
+    const client = getSupabase();
+    if (!client) return [];
+    const startedAt = Date.now();
+    // 40 grupos cubren la ventana de 6 h con la cadencia real del cron.
+    const { data, error } = await client.rpc("get_verified_exchange_rate_history", {
+      p_since: new Date(Date.now() - VERIFIED_RATE_WINDOW_MS).toISOString(),
+      p_limit: 40
+    });
+    if (error || !Array.isArray(data) || !data.length) {
+      recordRequest("rates/cloud", { ms: Date.now() - startedAt, ok: false });
+      return [];
+    }
+    // La función devuelve los puntos ordenados del más antiguo al más nuevo.
+    const quotes = mergeVerifiedHistoryRows(data);
+    recordRequest("rates/cloud", { ms: Date.now() - startedAt, ok: quotes.length > 0 });
+    return quotes;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Copia verificada fresca: la captura más reciente del conjunto debe tener
+ * ≤ 30 min (la misma frescura que la nube directa), mientras cada código puede
+ * conservar su última observación hasta el final de la ventana consultada.
+ * Devuelve `[]` cuando el dispositivo está sin Internet, no hay copia, está
+ * vencida o el proveedor inyectado falla; así la consulta directa a Render
+ * sigue siendo el siguiente respaldo.
+ */
+async function readVerifiedRateQuotes(options: HubRatesOptions): Promise<HubRateQuote[]> {
+  if (isDeviceOffline()) return [];
+  const provider = options.verifiedQuotes ?? fetchVerifiedSupabaseQuotes;
+  try {
+    const quotes = await provider();
+    if (!Array.isArray(quotes) || !quotes.length) return [];
+    const nowMs = (options.now ?? (() => Date.now()))();
+    const capturedTimes = quotes
+      .map(quote => Date.parse(quote && quote.capturedAt ? quote.capturedAt : ""))
+      .filter(Number.isFinite);
+    const newest = capturedTimes.reduce((latest, t) => Math.max(latest, t), 0);
+    if (newest <= 0 || nowMs - newest > RATE_SOURCE_FRESH_MS) return [];
+    return quotes.filter(quote => {
+      const captured = Date.parse(quote && quote.capturedAt ? quote.capturedAt : "");
+      return Number.isFinite(captured) && nowMs - captured <= VERIFIED_RATE_WINDOW_MS;
+    });
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Respaldo de nube: primero la copia verificada de Supabase (CORS abierto,
+ * funciona en escritorio y APK, ≤ 5 min de antigüedad con el cron sano) y, si
+ * falta o está vencida, una sola consulta directa a la nube de producción. El
+ * tiempo de espera de la consulta directa es generoso porque una instancia
+ * gratuita de Render puede tardar decenas de segundos en despertar; sin
+ * reintento para no duplicar esa espera. Lanza con un mensaje neutro (sin
+ * credenciales ni nombres de red) cuando no hay respuesta válida.
  */
 export const CLOUD_RATES_TIMEOUT_MS = 30_000;
 
 export async function fetchCloudRateQuotes(options: HubRatesOptions = {}): Promise<HubRateQuote[]> {
   if (isCloudSurface()) return [];
+  const verified = await readVerifiedRateQuotes(options);
+  if (verified.length) return verified;
   const doFetch = options.fetchImpl
     ?? ((input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init));
   const clock = options.now ?? (() => Date.now());
@@ -573,6 +699,17 @@ export async function resolveExchangeRates(
     } catch {
       // Hub caído o sin sesión: se sigue con el servidor propio.
     }
+  }
+
+  // Sin Internet y sin hub: nada que consultar en vivo. La última tasa
+  // guardada se devuelve al instante con un aviso claro y la pantalla la
+  // marca como «Sin conexión en vivo»; nunca se muestra la credencial del
+  // servidor local como si fuera la causa. El camino inyectado (pruebas)
+  // conserva su propio flujo.
+  if (!options.fallback && isDeviceOffline()) {
+    const stored = readStoredRateQuotes((options.now ?? (() => Date.now()))());
+    if (stored.length) return { source: "fallback", rates: stored, stale: true };
+    return { source: "fallback", rates: [], stale: true, error: RATE_OFFLINE_NOTICE };
   }
 
   const fallback = options.fallback ?? (() => defaultLocalFallback(options));

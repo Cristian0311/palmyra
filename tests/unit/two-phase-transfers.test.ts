@@ -31,7 +31,11 @@ test("receiving and cancelling a shipment are queued when the app is offline", (
 
 test("transfer history keeps the canonical in-transit status and batch grouping", () => {
   const pull = source("src/services/supabaseSync/pull.ts");
-  assert.match(pull, /t\.status === 'in_transit' \? 'in_transit'/);
+  // posted debe proyectarse a in_transit con la misma normalización del
+  // almacén local y del camino sano (cloudSync): el mapeo ternario legado
+  // convertía posted en 'completed' y rompía la recepción en dos fases.
+  assert.match(pull, /status: normalizeTransferStatus\(t\.status\)/);
+  assert.match(pull, /status\.not\.in\.\(cancelled\)/);
   assert.match(pull, /batchId:t\.batch_id\|\|undefined/);
 });
 

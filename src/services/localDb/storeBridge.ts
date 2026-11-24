@@ -49,7 +49,8 @@ import {
   productFromRow,
   rowToEntityFields,
   supplierFromRow,
-  transactionFromRow
+  transactionFromRow,
+  transferFromRow
 } from "./repositories";
 
 /** Colecciones de la store que este puente puede reescribir. */
@@ -61,7 +62,8 @@ export type BridgeCollection =
   | "transactions"
   | "cashSessions"
   | "branches"
-  | "returns";
+  | "returns"
+  | "transfers";
 
 const APPLY_ENV_KEY = "VITE_LOCAL_DB_APPLY_REMOTE";
 
@@ -74,7 +76,8 @@ const COLLECTION_TABLES: Record<BridgeCollection, LocalTable> = {
   transactions: "sales",
   cashSessions: "cash_sessions",
   branches: "warehouses",
-  returns: "returns"
+  returns: "returns",
+  transfers: "transfers"
 };
 
 const SNAPSHOT_COLLECTIONS: BridgeCollection[] = [
@@ -85,7 +88,8 @@ const SNAPSHOT_COLLECTIONS: BridgeCollection[] = [
   "transactions",
   "cashSessions",
   "branches",
-  "returns"
+  "returns",
+  "transfers"
 ];
 
 /** Mínimo de la store que necesita el puente (compatible con Zustand). */
@@ -98,6 +102,7 @@ export interface BridgeStoreState {
   cashSessions?: readonly unknown[];
   branches?: readonly unknown[];
   returns?: readonly unknown[];
+  transfers?: readonly unknown[];
   /** Solo lo toca la API por filas (configuración de tienda). */
   storeConfig?: unknown;
 }
@@ -225,7 +230,8 @@ const CONVERTERS: Partial<
     convert: cashSessionFromRow as (row: never) => unknown
   },
   warehouses: { collection: "branches", convert: branchFromRow as (row: never) => unknown },
-  returns: { collection: "returns", convert: returnFromRow as (row: never) => unknown }
+  returns: { collection: "returns", convert: returnFromRow as (row: never) => unknown },
+  transfers: { collection: "transfers", convert: transferFromRow as (row: never) => unknown }
 };
 
 const CONFIG_TABLES = new Set<LocalTable>(["company_settings", "companies"]);

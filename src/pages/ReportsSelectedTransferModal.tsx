@@ -1,13 +1,28 @@
 import { useEffect } from 'react';
-import { 
-  TrendingUp, DollarSign, Calendar, Calculator, Package, User, Users, Eye,
-  X, ArrowDownRight, ArrowUpRight, ArrowLeftRight, ArrowRight, History, Download, Printer, CheckCircle2, 
-  Clock, AlertCircle, AlertTriangle, FileSpreadsheet, ChevronDown, Check, Plus, Search,
-  BarChart3, Brain, ListChecks, ShieldAlert, Loader2, Trash2,
-  HelpCircle, Edit3, Save, FileText, CheckCircle, Minus
-} from "lucide-react";
+import { X, ArrowLeftRight, ArrowRight } from "lucide-react";
 
 type ModalProps = Record<string, any>;
+
+const STATUS_LABEL: Record<string, string> = {
+  pending: 'Pendiente',
+  posted: 'En tránsito',
+  in_transit: 'En tránsito',
+  received: 'Recibido',
+  completed: 'Recibido',
+  cancelled: 'Cancelado',
+};
+
+const STATUS_BADGE: Record<string, string> = {
+  Pendiente: 'bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300',
+  'En tránsito': 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300',
+  Recibido: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300',
+  Cancelado: 'bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300',
+};
+
+function normalizeStatus(raw: string | undefined | null): string {
+  const key = (raw || 'in_transit').toLowerCase();
+  return STATUS_LABEL[key] || 'En tránsito';
+}
 
 export default function ReportsSelectedTransferModal(props: ModalProps) {
   const { branches, selectedTransferModal, setSelectedTransferModal } = props;
@@ -87,6 +102,16 @@ export default function ReportsSelectedTransferModal(props: ModalProps) {
                   <p className="text-[10px] font-bold text-primary">
                     {new Date(selectedTransferModal.date).toLocaleString('es-CU')}
                   </p>
+                </div>
+                <div className="bg-subtle p-3 rounded-xl border border-base col-span-2 flex items-center justify-between gap-2">
+                  <span className="text-[8px] font-black text-muted uppercase tracking-wider">Estado</span>
+                  <span
+                    className={`palmyra-pill inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${
+                      STATUS_BADGE[normalizeStatus(selectedTransferModal.status)] || 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+                    }`}
+                  >
+                    {normalizeStatus(selectedTransferModal.status)}
+                  </span>
                 </div>
               </div>
 

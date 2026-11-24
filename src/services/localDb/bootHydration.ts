@@ -33,6 +33,7 @@ import type {
   CashRegisterSession,
   Customer,
   InventoryLevel,
+  InventoryTransfer,
   Product,
   ReturnItem,
   StoreConfig,
@@ -63,7 +64,8 @@ import {
   productFromRow,
   storeConfigFromRow,
   supplierFromRow,
-  transactionFromRowWithChildren
+  transactionFromRowWithChildren,
+  transferFromRow
 } from "./repositories";
 import {
   applyLocalSnapshotToStore,
@@ -92,6 +94,8 @@ export interface LocalDbSnapshot {
   branches: Branch[];
   /** Devoluciones: el mapeo es fila plana → ReturnItem (sin hijos propios). */
   returns: ReturnItem[];
+  /** Traslados: una fila por línea (variantes adjuntas desde transfer_items). */
+  transfers: InventoryTransfer[];
   storeConfig?: StoreConfig;
   /** Solo se rellena cuando la sucursal activa se puede deducir sin ambigüedad. */
   currentBranchId?: string;
@@ -150,6 +154,7 @@ export interface HydratableState {
   suppliers?: readonly unknown[];
   transactions?: readonly unknown[];
   cashSessions?: readonly unknown[];
+  transfers?: readonly unknown[];
   currentBranchId?: string;
 }
 
@@ -236,6 +241,7 @@ function isSnapshotEmpty(snapshot: LocalDbSnapshot): boolean {
     snapshot.cashSessions.length === 0 &&
     snapshot.branches.length === 0 &&
     snapshot.returns.length === 0 &&
+    snapshot.transfers.length === 0 &&
     !snapshot.storeConfig
   );
 }
@@ -285,7 +291,9 @@ export async function hydrateFromLocalDb(
       sessionRows,
       warehouseRows,
       settingsRows,
-      returnRows
+      returnRows,
+      transferRows,
+      transferItemRows
     ] = await Promise.all([
       rowsOf(driver, company, "products"),
       rowsOf(driver, company, "stock_balances"),
@@ -295,7 +303,9 @@ export async function hydrateFromLocalDb(
       rowsOf(driver, company, "cash_sessions"),
       rowsOf(driver, company, "warehouses"),
       rowsOf(driver, company, "company_settings"),
-      rowsOf(driver, company, "returns")
+      rowsOf(driver, company, "returns"),
+      rowsOf(driver, company, "transfers"),
+      rowsOf(driver, company, "transfer_items")
     ]);
 
     const transactions = await Promise.all(
@@ -304,6 +314,53 @@ export async function hydrateFromLocalDb(
     const cashSessions = await Promise.all(
       liveRows(sessionRows).map((row) => cashSessionFromRowWithChildren(driver, company, row))
     );
+
+    // Traslados: la fila padre es la línea del historial y transfer_items
+    // guarda el desglose por variante. Las filas que la nube escribió sin
+    // líneas (solo el padre) no pueden proyectar producto ni cantidad: se
+    // omiten en lugar de inventar filas engañosas; el historial completo
+    // llega por la autocuración del arranque cuando hay conexión.
+    const itemsByParent = new Map<string, LocalRow[]>();
+    for (const item of liveRows(transferItemRows)) {
+      const parentId = typeof item.transfer_id === "string" ? item.transfer_id : "";
+      if (!parentId) continue;
+      const list = itemsByParent.get(parentId) || [];
+      list.push(item);
+      itemsByParent.set(parentId, list);
+    }
+    const transfers = liveRows(transferRows)
+      .map((row) => {
+        const children = itemsByParent.get(row.id) || [];
+        // Un padre sin producto y sin hijos es una fila de la nube sin detalle.
+        if (!row.product_id && children.length === 0) return null;
+        const source =
+          row.product_id || children.length === 0
+            ? row
+            : {
+                ...row,
+                product_id: children[0].product_id,
+                product_name: children[0].product_name,
+                quantity: children[0].quantity,
+                variant_label: children[0].variant_label
+              };
+        const entity = transferFromRow(source);
+        const variants = children
+          .map((child) => ({
+            variantLabel:
+              typeof child.variant_label === "string"
+                ? child.variant_label
+                : typeof child.variantLabel === "string"
+                  ? child.variantLabel
+                  : "",
+            quantity: Number(child.quantity) || 0
+          }))
+          .filter((entry) => entry.quantity > 0);
+        if (variants.length > 0) entity.variants = variants;
+        return entity;
+      })
+      .filter((row): row is InventoryTransfer => row !== null)
+      .sort((a, b) => a.date.localeCompare(b.date));
+
     const companyRow = await driver.get<LocalRow>("companies", company);
     const hasConfigRow = settingsRows.length > 0 || Boolean(companyRow);
     const storeConfig = hasConfigRow
@@ -320,6 +377,7 @@ export async function hydrateFromLocalDb(
     rememberRows(sessionRows, "cash_sessions", sync, deleted);
     rememberRows(warehouseRows, "warehouses", sync, deleted);
     rememberRows(returnRows, "returns", sync, deleted);
+    rememberRows(transferRows, "transfers", sync, deleted);
 
     const branches = liveRows(warehouseRows).map(branchFromRow);
     const snapshot: LocalDbSnapshot = {
@@ -331,6 +389,7 @@ export async function hydrateFromLocalDb(
       cashSessions,
       branches,
       returns: liveRows(returnRows).map(returnFromRow),
+      transfers,
       ...(storeConfig ? { storeConfig } : {}),
       ...(Object.keys(sync).length > 0 ? { sync } : {}),
       ...(Object.keys(deleted).length > 0 ? { deleted } : {})
@@ -357,6 +416,7 @@ function countSnapshot(snapshot: LocalDbSnapshot): Record<string, number> {
     cashSessions: snapshot.cashSessions.length,
     branches: snapshot.branches.length,
     returns: snapshot.returns.length,
+    transfers: snapshot.transfers.length,
     storeConfig: snapshot.storeConfig ? 1 : 0
   };
 }
@@ -368,7 +428,8 @@ function storeHasData(state: HydratableState): boolean {
     (state.customers?.length ?? 0) > 0 ||
     (state.suppliers?.length ?? 0) > 0 ||
     (state.transactions?.length ?? 0) > 0 ||
-    (state.cashSessions?.length ?? 0) > 0
+    (state.cashSessions?.length ?? 0) > 0 ||
+    (state.transfers?.length ?? 0) > 0
   );
 }
 

@@ -47,3 +47,30 @@ test('history snapshots merge ECU into EUR and prefer an explicitly quoted EUR',
   // The raw ECU observation is preserved for the stored history.
   assert.equal(snapshots[0].rates.ECU, 450);
 });
+
+test('codes compacted by the monitor cron map back to the raw elTOQUE form', () => {
+  // elTOQUE publica USDT_TRC20; la historia verificada guarda USDTTRC20.
+  assert.equal(canonicalRateCode('USDTTRC20'), 'USDT_TRC20');
+  assert.equal(canonicalRateCode('USDTTRC'), 'USDT_TRC20');
+  assert.equal(canonicalRateCode('USDT_TRC20'), 'USDT_TRC20');
+  assert.equal(canonicalRateCode('USDT_ERC20'), 'USDT_ERC20');
+});
+
+test('canonicalizeRates merges USDTTRC20 into one USDT_TRC20 card with the live value winning', () => {
+  const merged = canonicalizeRates([
+    { code: 'USDTTRC20', value: 1165 },
+    { code: 'USDT_TRC20', value: 1170, buy: 1160, sell: 1180 }
+  ]);
+  assert.deepEqual(merged, [{ code: 'USDT_TRC20', value: 1170, buy: 1160, sell: 1180 }]);
+});
+
+test('history snapshots feed the USDT_TRC20 series from stored USDTTRC20 observations', () => {
+  const snapshots = [
+    { capturedAt: '2026-11-24T17:25:02Z', rates: { USDTTRC20: 1165 } },
+    { capturedAt: '2026-11-24T17:35:02Z', rates: { USDT_TRC20: 1168 } }
+  ];
+  assert.deepEqual(canonicalizeRateSnapshots(snapshots), [
+    { capturedAt: '2026-11-24T17:25:02Z', rates: { USDT_TRC20: 1165 } },
+    { capturedAt: '2026-11-24T17:35:02Z', rates: { USDT_TRC20: 1168 } }
+  ]);
+});

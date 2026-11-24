@@ -42,6 +42,8 @@ import java.io.OutputStream;
 import java.net.ConnectException;
 import java.net.HttpURLConnection;
 import java.net.SocketTimeoutException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.UnknownHostException;
 import java.security.MessageDigest;
@@ -797,6 +799,38 @@ public class MainActivity extends Activity {
         }
     }
 
+    /**
+     * Mismo criterio que la web (isSecureUpdateUrl en
+     * src/services/updates/android.ts): HTTPS sin credenciales embebidas y sin
+     * destinos loopback. Evita que un manifiesto alterado apunte al propio
+     * dispositivo o robe credenciales por la URL.
+     */
+    private static boolean isSecureUpdateUrl(String raw) {
+        if (raw == null || raw.isEmpty() || raw.length() > 2048) return false;
+        URI uri;
+        try {
+            uri = new URI(raw);
+        } catch (URISyntaxException error) {
+            return false;
+        }
+        if (!"https".equalsIgnoreCase(uri.getScheme())) return false;
+        if (uri.getRawUserInfo() != null) return false;
+        String host = uri.getHost();
+        if (host == null || host.isEmpty()) return false;
+        host = host.toLowerCase(Locale.ROOT);
+        if (host.equals("localhost") || host.endsWith(".localhost")) return false;
+        if (host.equals("::1") || host.equals("[::1]") || host.equals("0.0.0.0")) return false;
+        if (host.matches("(\\d{1,3}\\.){3}\\d{1,3}")) {
+            try {
+                int first = Integer.parseInt(host.split("\\.")[0]);
+                if (first == 0 || first == 127) return false;
+            } catch (NumberFormatException error) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     private void beginUpdate(final String version, final String url, final String sha256, final long bytes) {
         if (version == null || !version.matches("[0-9A-Za-z._-]{1,32}")) {
             emitError("Versión de actualización inválida.");
@@ -806,8 +840,12 @@ public class MainActivity extends Activity {
             emitError("El paquete de actualización no tiene una firma válida.");
             return;
         }
-        if (url == null || !url.startsWith("https://")) {
+        if (!isSecureUpdateUrl(url)) {
             emitError("La actualización debe descargarse por una conexión segura.");
+            return;
+        }
+        if (bytes <= 0 || bytes > MAX_BUNDLE_BYTES) {
+            emitError("El paquete de actualización tiene un tamaño no permitido.");
             return;
         }
         // La versión solo avanza: aplicar un paquete igual o anterior
@@ -833,12 +871,35 @@ public class MainActivity extends Activity {
             try {
                 // Un enlace lento puede cortar la primera lectura: se reintenta
                 // una vez desde cero, borrando siempre el archivo parcial.
-                downloadWithRetry(url, zipFile, bytes);
-                emitProgress("verifying", 82, zipFile.length(), zipFile.length());
-                String actual = sha256Of(zipFile);
-                if (!actual.equalsIgnoreCase(sha256)) {
-                    throw new IOException("El archivo descargado está dañado (firma distinta). Vuelve a intentarlo.");
+                // Verificación PRE-aplicación: tamaño y sha256 contra el
+                // manifiesto firmado. Si la descarga no coincide, se descarta y
+                // se reintenta UNA sola vez; el segundo desajuste no se aplica.
+                boolean verified = false;
+                for (int attempt = 1; attempt <= 2 && !verified; attempt++) {
+                    downloadWithRetry(url, zipFile, bytes);
+                    if (zipFile.length() != bytes) {
+                        emitProgress("downloading", 2, zipFile.length(), bytes);
+                        //noinspection ResultOfMethodCallIgnored
+                        zipFile.delete();
+                        if (attempt < 2) {
+                            continue; // La descarga no coincide con la versión firmada. Reintentando…
+                        }
+                        throw new IOException("La descarga no coincide con la versión firmada (tamaño esperado "
+                                + bytes + ", recibido " + zipFile.length() + "). No se aplicará.");
+                    }
+                    String actual = sha256Of(zipFile);
+                    if (!actual.equalsIgnoreCase(sha256)) {
+                        emitProgress("downloading", 2, zipFile.length(), bytes);
+                        //noinspection ResultOfMethodCallIgnored
+                        zipFile.delete();
+                        if (attempt < 2) {
+                            continue; // La descarga no coincide con la versión firmada. Reintentando…
+                        }
+                        throw new IOException("La descarga no coincide con la versión firmada y no se aplicará. Vuelve a buscar actualizaciones.");
+                    }
+                    verified = true;
                 }
+                emitProgress("verifying", 82, zipFile.length(), zipFile.length());
                 unpackBundle(zipFile, staging);
                 emitProgress("applying", 94, zipFile.length(), zipFile.length());
 
@@ -893,7 +954,7 @@ public class MainActivity extends Activity {
             emitError("El instalador no incluye una huella SHA-256 válida.");
             return;
         }
-        if (url == null || !url.startsWith("https://")) {
+        if (!isSecureUpdateUrl(url)) {
             emitError("La actualización debe descargarse por una conexión segura.");
             return;
         }
@@ -914,12 +975,35 @@ public class MainActivity extends Activity {
         new Thread(() -> {
             File download = new File(getCacheDir(), "palmyra-apk-update.bin");
             try {
-                downloadWithRetry(url, download, bytes);
-                emitProgress("verifying", 82, download.length(), download.length());
-                String actual = sha256Of(download);
-                if (!actual.equalsIgnoreCase(sha256)) {
-                    throw new IOException("El instalador descargado no coincide con la huella SHA-256 publicada. No se instalará.");
+                // Verificación PRE-instalación: tamaño y sha256 contra el
+                // manifiesto firmado. Un desajuste descarta el archivo y se
+                // reintenta UNA sola vez; el segundo desajuste no se instala.
+                boolean verified = false;
+                for (int attempt = 1; attempt <= 2 && !verified; attempt++) {
+                    downloadWithRetry(url, download, bytes);
+                    if (download.length() != bytes) {
+                        emitProgress("downloading", 2, download.length(), bytes);
+                        //noinspection ResultOfMethodCallIgnored
+                        download.delete();
+                        if (attempt < 2) {
+                            continue; // La descarga no coincide con la versión firmada. Reintentando…
+                        }
+                        throw new IOException("La descarga no coincide con la versión firmada (tamaño esperado "
+                                + bytes + ", recibido " + download.length() + "). No se instalará.");
+                    }
+                    String actual = sha256Of(download);
+                    if (!actual.equalsIgnoreCase(sha256)) {
+                        emitProgress("downloading", 2, download.length(), bytes);
+                        //noinspection ResultOfMethodCallIgnored
+                        download.delete();
+                        if (attempt < 2) {
+                            continue; // La descarga no coincide con la versión firmada. Reintentando…
+                        }
+                        throw new IOException("La descarga no coincide con la versión firmada y no se instalará. Vuelve a buscar actualizaciones.");
+                    }
+                    verified = true;
                 }
+                emitProgress("verifying", 82, download.length(), download.length());
                 verifyApkForInstall(download, version);
                 File dir = UpdateApkProvider.directory(this);
                 if (dir == null) {
@@ -1427,6 +1511,11 @@ public class MainActivity extends Activity {
             if (total > MAX_BUNDLE_BYTES) {
                 throw new IOException("El paquete de actualización es demasiado grande.");
             }
+            // El manifiesto firmado manda sobre el Content-Length del servidor:
+            // un CDN o un proxy puede mentir, la firma no.
+            if (expectedBytes > 0 && declared > 0 && declared != expectedBytes) {
+                throw new IOException("El servidor anuncia " + declared + " bytes y la versión firmada " + expectedBytes + ".");
+            }
             emitProgress("downloading", 4, 0, total);
 
             input = new BufferedInputStream(connection.getInputStream());
@@ -1456,8 +1545,11 @@ public class MainActivity extends Activity {
             }
             output.flush();
             emitProgress("downloading", 80, received, total);
-            if (declared > 0 && received != declared) {
-                throw new IOException("La descarga quedó incompleta (" + received + " de " + declared + " bytes). Reintenta con mejor conexión.");
+            // El manifiesto firmado manda: la descarga debe terminar con
+            // exactamente los bytes declarados en la firma.
+            long required = expectedBytes > 0 ? expectedBytes : declared;
+            if (required > 0 && received != required) {
+                throw new IOException("La descarga quedó incompleta (" + received + " de " + required + " bytes). Reintenta con mejor conexión.");
             }
             completed = true;
         } finally {

@@ -18,7 +18,8 @@
  *      directorio), sha512, tamaño, lista `files` y, si referencia un
  *      .blockmap, que ese archivo exista y tenga su tamaño.
  *   4. Si hay manifiesto: versión, canal, releasedAt, rollout, URLs https que
- *      cuelgan de v<versión>, y sha256/bytes reales de Setup y APK.
+ *      cuelgan de v<versión>, y sha256/bytes reales de Setup, APK y (si el
+ *      manifiesto lo declara) del bundle web .zip.
  *   5. Que el APK se haya compilado con la misma versión que el release y el
  *      manifiesto: se lee assets/web/version.json dentro del propio APK.
  *   6. Con --require-signature: que el manifiesto traiga firma ES256.
@@ -57,7 +58,7 @@ export const MANIFEST = "update-manifest.json";
 export const SETUP_BLOCKMAP = `${SETUP}.blockmap`;
 export const STABLE_NAMES = { windows: SETUP, android: APK };
 /** Extensión obligatoria por plataforma: un .zip no puede pasar por Setup. */
-export const PLATFORM_EXTENSIONS = { windows: /\.exe$/i, android: /\.apk$/i };
+export const PLATFORM_EXTENSIONS = { windows: /\.exe$/i, android: /\.apk$/i, web: /\.zip$/i };
 /** Nombre estable por plataforma: es lo que sirve /download/* y latest.yml. */
 export const REQUIRED_FILES = [SETUP, APK, LATEST];
 export const SEMVER_RE = /^\d+\.\d+\.\d+(-beta(?:\.\d+)?)?$/;
@@ -512,7 +513,14 @@ export function checkReleaseAssets(options = {}) {
         fail(`${LATEST} referencia ${url}, que no se publica en este release.`);
         continue;
       }
-      if (Number(entry.size) !== bytes) {
+      if (entry.size === undefined || entry.size === null || String(entry.size).trim() === "") {
+        fail(
+          `${LATEST} no declara size para ${url} (electron-builder con differentialPackage:false ` +
+            "lo omite) y el verificador pre-instalación no podrá rechazar tamaños erróneos. " +
+            "Parchea el valor real con: " +
+            `node scripts/verify-release-assets.mjs --dir ${dir} --patch-latest-size --sums <SHA256SUMS>`
+        );
+      } else if (Number(entry.size) !== bytes) {
         fail(`${LATEST} declara size=${entry.size} para ${url} y pesa ${bytes}.`);
       }
       if (typeof entry.sha512 === "string" && SHA512_BASE64_RE.test(entry.sha512)) {
@@ -567,14 +575,16 @@ export function checkReleaseAssets(options = {}) {
         const seen = new Set();
         for (const artifact of manifest.artifacts) {
           const platform = artifact?.platform;
-          if (!Object.prototype.hasOwnProperty.call(STABLE_NAMES, platform)) {
+          if (!PLATFORM_EXTENSIONS[platform]) {
             fail(`Plataforma inválida en el manifiesto: "${platform}".`);
             continue;
           }
           if (seen.has(platform)) fail(`El manifiesto repite la plataforma ${platform}.`);
           seen.add(platform);
 
-          const expectedName = STABLE_NAMES[platform];
+          // windows y android usan nombre estable; el artefacto web (.zip OTA)
+          // se publica con su nombre de bundle y se verifica contra ese archivo.
+          const expectedName = platform === "web" ? artifact.name : STABLE_NAMES[platform];
           if (isLanApkName(artifact.name)) {
             fail(
               `El manifiesto publica un APK de red local para ${platform}: "${artifact.name}". ` +
@@ -582,14 +592,14 @@ export function checkReleaseAssets(options = {}) {
             );
             continue;
           }
-          if (artifact.name !== expectedName) {
+          if (platform !== "web" && artifact.name !== expectedName) {
             fail(`Nombre no estable para ${platform}: "${artifact.name}" (se esperaba ${expectedName}).`);
             continue;
           }
           if (!PLATFORM_EXTENSIONS[platform].test(expectedName)) {
             fail(
               `El artefacto de ${platform} debe terminar en ` +
-                `${platform === "windows" ? ".exe" : ".apk"}: "${expectedName}".`
+                `${platform === "windows" ? ".exe" : platform === "android" ? ".apk" : ".zip"}: "${expectedName}".`
             );
             continue;
           }

@@ -100,7 +100,7 @@ const CHANNELS: readonly UpdateChannel[] = ["stable", "beta"];
 const PLATFORMS: readonly UpdatePlatform[] = ["windows", "android", "web"];
 
 /** Semver estricto: sin ceros a la izquierda y con beta opcional (-beta[.N]). */
-const SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-beta(?:\.(0|[1-9]\d*))?)?$/;
+const SEMVER_RE = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-beta(?:\.(0|[1-9]\d*))?)?$/;
 /** ISO 8601 con hora y zona explícita: nada de fechas ambiguas ni locales. */
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/;
 /** Nombre de archivo: sin rutas, sin separadores y sin caracteres de control. */
@@ -132,11 +132,13 @@ function parseVersion(value: string): ParsedVersion {
   const major = Number(match[1]);
   const minor = Number(match[2]);
   const patch = Number(match[3]);
-  const beta = match[4] ? Number(match[4]) : 0;
+  // El grupo 4 es el sufijo "-beta" completo y el 5 el número opcional:
+  // "1.3.8-beta" es una beta sin número (beta 0), nunca la estable 1.3.8.
+  const beta = match[5] ? Number(match[5]) : 0;
   if (![major, minor, patch, beta].every((part) => Number.isSafeInteger(part))) {
     throw new UpdateManifestError(`Versión semver fuera de rango: "${value}".`, "version-invalid");
   }
-  return { major, minor, patch, prerelease: Boolean(match[4]), beta };
+  return { major, minor, patch, prerelease: match[4] !== undefined, beta };
 }
 
 /**

@@ -12,6 +12,7 @@ import { loadSaaSContext } from '../saas';
 import { recordRequest } from '../requestBudget';
 import { loadReturnsWarrantiesQuotesTimePayroll } from './pull/loadOperationalExtras';
 import { mapBranch, mapProduct, mapUser, normalizeSaleItem } from './pull/mappers';
+import { normalizeTransferStatus } from '../localDb/repositories';
 
 // Ventana de arranque: el POS arranca con catálogo + operación reciente.
 // El historial antiguo se pagina bajo demanda (loadHistoryPage) y nunca se
@@ -1024,7 +1025,7 @@ type TransfersOptions = {
   };
 };
 
-async function loadTransfers(branchId?: string, options: TransfersOptions = {}) {
+export async function loadTransfers(branchId?: string, options: TransfersOptions = {}) {
   const tenant = (options.tenant || await getActiveTenant()) as TenantLike;
   const supabase = options.client || getSupabase()!;
   // Inventory-transfer reports use the full tenant history, not just the last
@@ -1034,8 +1035,10 @@ async function loadTransfers(branchId?: string, options: TransfersOptions = {}) 
   if (options.sinceIso) {
     const { data: page, error } = await supabase.from('transfers').select('*')
       .eq('company_id', tenant.companyId)
-      // No cerradas siempre; cerradas solo dentro de la ventana.
-      .or(`created_at.gte.${options.sinceIso},status.not.in.(completed,cancelled)`)
+      // No cancelados siempre; el resto solo dentro de la ventana. El enum real
+      // es posted|cancelled|in_transit|received: 'completed' no existe y hacía
+      // fallar la sección entera con 22P02 en cada arranque.
+      .or(`created_at.gte.${options.sinceIso},status.not.in.(cancelled)`)
       .order('created_at',{ascending:false})
       .limit(options.limit ?? BOOTSTRAP_TRANSFERS_LIMIT);
     if (error) throw error;
@@ -1053,22 +1056,33 @@ async function loadTransfers(branchId?: string, options: TransfersOptions = {}) 
       if(page.length<pageSize) break;
     }
   }
+  // Las páginas por offset pueden solaparse bajo escrituras concurrentes: la
+  // misma fila puede venir en dos páginas. Se desduplica por id antes de
+  // proyectar para que ninguna línea del historial aparezca dos veces.
+  const parentsById = new Map<string, any>();
+  for (const row of data) {
+    if (row?.id && !parentsById.has(String(row.id))) parentsById.set(String(row.id), row);
+  }
+  const dedupedData = Array.from(parentsById.values());
   const scoped = branchId
-    ? data.filter((t:any) => t.origin_warehouse_id === branchId || t.destination_warehouse_id === branchId)
-    : data;
+    ? dedupedData.filter((t:any) => t.origin_warehouse_id === branchId || t.destination_warehouse_id === branchId)
+    : dedupedData;
   const ids=scoped.map((t:any)=>t.id);
   if(!ids.length)return [] as InventoryTransfer[];
-  const itemRows: any[] = [];
+  const itemRowsById = new Map<string, any>();
   for (let i = 0; i < ids.length; i += 400) {
     const batch = ids.slice(i, i + 400);
     for (let from = 0; ; from += 500) {
       const {data:page,error}=await supabase.from('transfer_items').select('*').in('transfer_id',batch).order('id',{ascending:true}).range(from,from+499);
       if(error) throw error;
       if(!page?.length) break;
-      itemRows.push(...page);
+      for (const row of page) {
+        if (row?.id && !itemRowsById.has(String(row.id))) itemRowsById.set(String(row.id), row);
+      }
       if(page.length<500) break;
     }
   }
+  const itemRows = Array.from(itemRowsById.values());
   const [productsRes,warehousesRes,variantsRes]=await Promise.all([
     options.refs?.productNames
       ? Promise.resolve({data: [], error: null})
@@ -1101,9 +1115,10 @@ async function loadTransfers(branchId?: string, options: TransfersOptions = {}) 
         variantLabel:vMap.get(i.variant_id)||undefined,quantity:Number(i.quantity)||0,variants:[],
         date:t.created_at,userId:t.created_by||'',
         batchId:t.batch_id||undefined,
-        status: t.status === 'cancelled' ? 'cancelled'
-          : t.status === 'in_transit' ? 'in_transit'
-          : 'completed'
+        // Misma normalización que el camino sano (cloudSync) y el almacén
+        // local: posted → in_transit, received → completed. El mapeo legado
+        // convertía posted en 'completed' y rompía la recepción en dos fases.
+        status: normalizeTransferStatus(t.status)
       });
     }
   }

@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
+import path from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import updatePublicKey from "../../src/services/updates/update-public-key.json";
 import {
   compareVersions,
   isNewerVersion,
@@ -689,4 +692,201 @@ test("firmar valida la clave (P-256), el keyId y el propio manifiesto", async ()
   const signed = await signUpdateManifest(baseManifest({ notBefore: "2026-11-22T06:00:00.000Z" }), signingKeys.privateKey);
   assert.equal(signed.notBefore, "2026-11-22T06:00:00.000Z");
   assert.deepEqual(await verifyUpdateManifest(signed, { publicJwk }), { ok: true });
+});
+
+/**
+ * Bytes exactos del manifiesto publicado en producción (v1.3.8), descargado de
+ * https://github.com/Cristian0311/palmyra/releases/latest/download/update-manifest.json
+ * el día del release. Es el mismo JSON que debe detectar un cliente instalado
+ * en 1.3.7 o anterior: si este fixture deja de parsear, verificar o evaluar,
+ * la detección de actualizaciones está rota.
+ */
+const REAL_V138_MANIFEST_TEXT = `{
+  "v": 1,
+  "version": "1.3.8",
+  "channel": "stable",
+  "releasedAt": "2026-11-24T15:27:16.901Z",
+  "rollout": 100,
+  "artifacts": [
+    {
+      "platform": "windows",
+      "name": "PALMYRA-POS-Setup.exe",
+      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.8/PALMYRA-POS-Setup.exe",
+      "sha256": "4b238109b9c56456917fdceaeab7bf5c96ccbdf8ed5525d4d46fa5670a544cd3",
+      "bytes": 78511820
+    },
+    {
+      "platform": "android",
+      "name": "PALMYRA-Android.apk",
+      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.8/PALMYRA-Android.apk",
+      "sha256": "def4a9df303aa811c99ec24a4099f9c9c9c2b045fc964f0d73ca4fad695e195c",
+      "bytes": 2671591
+    }
+  ],
+  "keyId": "palmyra-stable-2026-11",
+  "signature": "_EPniHI-xANWawMoIQ5iQPGG4qLaE9HnUIp_zMy3dxJ5ixcqvPKNjJrA4t_0m92bsb0NVSYdILht1QXpYh-efQ"
+}
+`;
+
+/** El generador del release (scripts/build-update-manifest.mjs) firma con este canonicalJson. */
+const updateBuilder = (await import(
+  pathToFileURL(
+    path.resolve(fileURLToPath(new URL("../..", import.meta.url)), "scripts", "build-update-manifest.mjs")
+  ).href
+)) as unknown as { canonicalJson(value: unknown): string };
+
+test("el manifiesto REAL publicado v1.3.8 parsea con el contrato v1 sin pérdidas", () => {
+  const parsed = parseUpdateManifest(JSON.parse(REAL_V138_MANIFEST_TEXT));
+
+  assert.equal(parsed.v, 1);
+  assert.equal(parsed.version, "1.3.8");
+  assert.equal(parsed.channel, "stable");
+  assert.equal(parsed.releasedAt, "2026-11-24T15:27:16.901Z");
+  assert.equal(parsed.rollout, 100);
+  assert.equal(parsed.keyId, "palmyra-stable-2026-11");
+  assert.equal(parsed.signature, "_EPniHI-xANWawMoIQ5iQPGG4qLaE9HnUIp_zMy3dxJ5ixcqvPKNjJrA4t_0m92bsb0NVSYdILht1QXpYh-efQ");
+  assert.equal(parsed.artifacts.length, 2);
+  assert.deepEqual(
+    parsed.artifacts.map((artifact) => artifact.platform),
+    ["windows", "android"]
+  );
+  assert.equal(parsed.artifacts[0].name, "PALMYRA-POS-Setup.exe");
+  assert.equal(parsed.artifacts[0].bytes, 78511820);
+  assert.equal(
+    parsed.artifacts[0].sha256,
+    "4b238109b9c56456917fdceaeab7bf5c96ccbdf8ed5525d4d46fa5670a544cd3"
+  );
+
+  // El contrato monotónico acepta clientes instalados anteriores y rechaza retroceder.
+  assert.doesNotThrow(() => parseUpdateManifest(JSON.parse(REAL_V138_MANIFEST_TEXT), { currentVersion: "1.3.7" }));
+  assert.throws(
+    () => parseUpdateManifest(JSON.parse(REAL_V138_MANIFEST_TEXT), { currentVersion: "1.3.9" }),
+    (error: unknown) => error instanceof UpdateManifestError && error.code === "version-downgrade"
+  );
+});
+
+test("la firma del manifiesto REAL publicado verifica con la clave pública incrustada", async () => {
+  const real = JSON.parse(REAL_V138_MANIFEST_TEXT);
+
+  assert.deepEqual(checkUpdatePublicJwk(updatePublicKey), { ok: true });
+  assert.deepEqual(
+    await verifyUpdateManifest(real, { publicJwk: updatePublicKey, requireSignature: true }),
+    { ok: true }
+  );
+
+  // Cualquier alteración del JSON publicado debe romper la firma.
+  assert.deepEqual(
+    await verifyUpdateManifest(
+      { ...real, rollout: 50 },
+      { publicJwk: updatePublicKey, requireSignature: true }
+    ),
+    { ok: false, reason: "invalid-signature" }
+  );
+  assert.deepEqual(
+    await verifyUpdateManifest(
+      { ...real, artifacts: [{ ...real.artifacts[0], url: "https://example.com/evil.exe" }, real.artifacts[1]] },
+      { publicJwk: updatePublicKey, requireSignature: true }
+    ),
+    { ok: false, reason: "invalid-signature" }
+  );
+});
+
+test("el texto firmado por el verifier coincide byte a byte con el del generador del release", () => {
+  const raw = JSON.parse(REAL_V138_MANIFEST_TEXT) as Record<string, unknown>;
+  const parsed = parseUpdateManifest(raw);
+  const verifierInput = manifestSigningInput(parsed);
+
+  // El generador firma el JSON crudo sin signature; el verifier debe
+  // canonicalizar el manifiesto parseado exactamente igual.
+  const { signature: _ignored, ...unsignedRaw } = raw;
+  assert.equal(updateBuilder.canonicalJson(unsignedRaw), verifierInput);
+
+  // El orden de inserción de claves es irrelevante: canonicalJson ordena.
+  const shuffled: Record<string, unknown> = {};
+  for (const key of ["keyId", "version", "rollout", "v", "channel", "artifacts", "releasedAt"]) {
+    shuffled[key] = (parsed as unknown as Record<string, unknown>)[key];
+  }
+  assert.equal(updateBuilder.canonicalJson(shuffled), verifierInput);
+
+  // El payload firmado no incluye signature y sí incluye keyId.
+  const signedPayload = JSON.parse(verifierInput) as Record<string, unknown>;
+  assert.equal(signedPayload.signature, undefined);
+  assert.equal(signedPayload.keyId, "palmyra-stable-2026-11");
+});
+
+test("el manifiesto REAL publicado se evalúa: disponible en 1.3.7, al día en 1.3.8, retroceso en 1.3.9", () => {
+  const real = JSON.parse(REAL_V138_MANIFEST_TEXT);
+  const base = {
+    manifest: real,
+    shellVersion: "1.3.7",
+    deviceId: "device-1",
+    channel: "stable" as const
+  };
+
+  assert.deepEqual(evaluateUpdate({ ...base, currentVersion: "1.3.7" }), {
+    allowed: true,
+    reason: "newer"
+  });
+  assert.deepEqual(evaluateUpdate({ ...base, currentVersion: "1.3.6" }), {
+    allowed: true,
+    reason: "newer"
+  });
+  assert.deepEqual(evaluateUpdate({ ...base, currentVersion: "1.3.8" }), {
+    allowed: false,
+    reason: "up-to-date"
+  });
+  assert.deepEqual(evaluateUpdate({ ...base, currentVersion: "1.3.9" }), {
+    allowed: false,
+    reason: "downgrade"
+  });
+
+  // Rollout 100 llega a todos los equipos, sin depender del bucket.
+  for (const deviceId of ["a", "b", "c", "d", "e", "f", "g", "h"]) {
+    assert.deepEqual(
+      evaluateUpdate({ ...base, deviceId, currentVersion: "1.3.7" }),
+      { allowed: true, reason: "newer" },
+      `el equipo ${deviceId} debe recibir el rollout 100`
+    );
+  }
+});
+
+test("semver de borde: 1.3.8 vs 1.3.7, 1.3.10 vs 1.3.9, betas, iguales y formatos inválidos", () => {
+  assert.equal(compareVersions("1.3.8", "1.3.7"), 1);
+  assert.equal(compareVersions("1.3.7", "1.3.8"), -1);
+  assert.equal(compareVersions("1.3.8", "1.3.8"), 0);
+  assert.equal(compareVersions("1.3.10", "1.3.9"), 1);
+  assert.equal(compareVersions("1.3.9", "1.3.10"), -1);
+  assert.equal(compareVersions("1.4.0", "1.3.9"), 1);
+
+  // Pre-release: una beta es anterior a su estable; entre betas manda el número.
+  assert.equal(compareVersions("1.3.8", "1.3.8-beta"), 1);
+  assert.equal(compareVersions("1.3.8-beta", "1.3.8"), -1);
+  assert.equal(compareVersions("1.3.8-beta.1", "1.3.8-beta.2"), -1);
+  assert.equal(compareVersions("1.3.8-beta.10", "1.3.8-beta.9"), 1);
+  assert.equal(compareVersions("1.3.8-beta.1", "1.3.8-beta.1"), 0);
+  // Una beta de una versión mayor sigue siendo más nueva que la anterior estable.
+  assert.equal(compareVersions("1.3.8-beta", "1.3.7"), 1);
+
+  // Formatos fuera del contrato nunca se comparan mal: lanzan o invalidan.
+  assert.throws(() => compareVersions("1.3.8.0", "1.3.8"), UpdateManifestError);
+  assert.throws(() => compareVersions("1.3", "1.3.8"), UpdateManifestError);
+  assert.throws(() => compareVersions("v1.3.8", "1.3.7"), UpdateManifestError);
+  assert.throws(() => compareVersions("1.03.8", "1.3.7"), UpdateManifestError);
+
+  // En la evaluación, una versión instalada malformada es "invalid" y nunca
+  // un "up-to-date" silencioso que esconda una actualización real.
+  const real = JSON.parse(REAL_V138_MANIFEST_TEXT);
+  for (const currentVersion of ["1.3.8.0", "1.3", "v1.3.7", "1.03.7"]) {
+    assert.deepEqual(
+      evaluateUpdate({
+        manifest: real,
+        currentVersion,
+        shellVersion: "1.3.7",
+        deviceId: "device-1",
+        channel: "stable"
+      }),
+      { allowed: false, reason: "invalid" },
+      `currentVersion "${currentVersion}" debe invalidar la evaluación`
+    );
+  }
 });

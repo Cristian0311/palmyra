@@ -386,6 +386,7 @@ test("modo local hidrata una store vacía", async () => {
     cashSessions: 1,
     branches: 1,
     returns: 0,
+    transfers: 0,
     storeConfig: 1
   });
 });

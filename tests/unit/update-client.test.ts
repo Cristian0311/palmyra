@@ -261,6 +261,107 @@ test("un HTTP de error se reporta con el código y una pista", async () => {
   assert.match(result.error ?? "", /HTTP 404/);
 });
 
+const MIRROR_A = "https://raw.example.test/palmyra/manifest.json";
+const MIRROR_B = "https://cdn.example.test/palmyra/manifest.json";
+
+test("si el asset principal falla por CORS se usa el mirror CORS-safe", async () => {
+  const manifest = await signed();
+  const { impl, calls } = fakeFetch(async (url) => {
+    if (url === MANIFEST_URL) throw new TypeError("Failed to fetch");
+    return jsonResponse(manifest);
+  });
+  const client = makeClient({ fetchImpl: impl, manifestMirrors: [MIRROR_A] });
+
+  const result = await client.check({ force: true });
+
+  assert.equal(result.status, "available");
+  assert.equal(result.version, "1.4.0");
+  assert.deepEqual(calls, [MANIFEST_URL, MIRROR_A]);
+});
+
+test("un mirror con HTTP 404 no detiene la cadena: se prueba el siguiente", async () => {
+  const manifest = await signed();
+  const { impl, calls } = fakeFetch(async (url) => {
+    if (url === MANIFEST_URL) throw new TypeError("Failed to fetch");
+    if (url === MIRROR_A) return new Response("Not Found", { status: 404 });
+    return jsonResponse(manifest);
+  });
+  const client = makeClient({ fetchImpl: impl, manifestMirrors: [MIRROR_A, MIRROR_B] });
+
+  const result = await client.check({ force: true });
+
+  assert.equal(result.status, "available");
+  assert.deepEqual(calls, [MANIFEST_URL, MIRROR_A, MIRROR_B]);
+});
+
+test("si todos los orígenes fallan se conserva el último error accionable", async () => {
+  const { impl, calls } = fakeFetch(async (url) => {
+    if (url === MIRROR_B) throw new TypeError("Failed to fetch");
+    return new Response("Not Found", { status: 404 });
+  });
+  const client = makeClient({ fetchImpl: impl, manifestMirrors: [MIRROR_A, MIRROR_B] });
+
+  const result = await client.check({ force: true });
+
+  assert.equal(result.status, "error");
+  assert.equal(result.code, "network");
+  assert.match(result.error ?? "", /conectar/i);
+  assert.equal(calls.length, 3);
+});
+
+test("un mirror sirviendo text/plain con cuerpo JSON se acepta", async () => {
+  const manifest = await signed();
+  const { impl } = fakeFetch(async (url) => {
+    if (url === MANIFEST_URL) throw new TypeError("Failed to fetch");
+    return new Response(JSON.stringify(manifest), {
+      status: 200,
+      headers: { "content-type": "text/plain; charset=utf-8" }
+    });
+  });
+  const client = makeClient({ fetchImpl: impl, manifestMirrors: [MIRROR_A] });
+
+  const result = await client.check({ force: true });
+
+  assert.equal(result.status, "available");
+  assert.equal(result.version, "1.4.0");
+});
+
+test("un mirror con URL insegura se salta y se usa el siguiente seguro", async () => {
+  const manifest = await signed();
+  const { impl, calls } = fakeFetch(async (url) => {
+    if (url === MIRROR_B) return jsonResponse(manifest);
+    throw new TypeError("Failed to fetch");
+  });
+  const client = makeClient({
+    fetchImpl: impl,
+    manifestMirrors: ["http://cdn.example.test/manifest.json", MIRROR_B]
+  });
+
+  const result = await client.check({ force: true });
+
+  assert.equal(result.status, "available");
+  assert.ok(!calls.some((url) => url.startsWith("http://cdn.example.test")));
+  assert.ok(calls.includes(MIRROR_B));
+});
+
+test("los mirrors duplicados se descargan una sola vez", async () => {
+  const manifest = await signed();
+  const { impl, calls } = fakeFetch(async (url) => {
+    if (url === MANIFEST_URL) throw new TypeError("Failed to fetch");
+    return jsonResponse(manifest);
+  });
+  const client = makeClient({
+    fetchImpl: impl,
+    manifestMirrors: [MIRROR_A, MIRROR_A, MANIFEST_URL]
+  });
+
+  const result = await client.check({ force: true });
+
+  assert.equal(result.status, "available");
+  assert.equal(calls.filter((url) => url === MIRROR_A).length, 1);
+  assert.deepEqual(calls, [MANIFEST_URL, MIRROR_A]);
+});
+
 test("una respuesta incompleta del fetch no lanza y se trata como red", async () => {
   const impl = (async () => ({ ok: true, status: 200 })) as unknown as typeof fetch;
   const client = makeClient({ fetchImpl: impl });
@@ -362,6 +463,59 @@ test("la misma versión se informa como up-to-date", async () => {
   assert.equal(result.status, "up-to-date");
   assert.equal(result.code, "up-to-date");
   assert.equal(result.version, "1.4.0");
+});
+
+test("una beta instalada detecta la estable publicada (1.3.8 sobre 1.3.8-beta.1)", async () => {
+  // La estable siempre es posterior a su pre-release: un equipo en beta no
+  // debe quedarse sin el aviso cuando se publica la versión definitiva.
+  const { impl } = fakeFetch(async () => jsonResponse(await signed({ version: "1.3.8" })));
+  const client = makeClient({ fetchImpl: impl, currentVersion: "1.3.8-beta.1" });
+
+  const result = await client.check({ force: true });
+
+  assert.equal(result.status, "available");
+  assert.equal(result.version, "1.3.8");
+});
+
+test("una beta publicada anterior a la estable instalada se bloquea como downgrade", async () => {
+  const { impl } = fakeFetch(async () => jsonResponse(await signed({ version: "1.4.0-beta.1" })));
+  const client = makeClient({ fetchImpl: impl, currentVersion: "1.4.0" });
+
+  const result = await client.check({ force: true });
+
+  assert.equal(result.status, "blocked");
+  assert.equal(result.code, "downgrade");
+  assert.equal(result.reason, "downgrade");
+});
+
+test("una beta publicada más nueva que la beta instalada se ofrece", async () => {
+  const { impl } = fakeFetch(async () => jsonResponse(await signed({ version: "1.4.0-beta.2" })));
+  const client = makeClient({ fetchImpl: impl, currentVersion: "1.4.0-beta.1" });
+
+  const result = await client.check({ force: true });
+
+  assert.equal(result.status, "available");
+  assert.equal(result.version, "1.4.0-beta.2");
+});
+
+test("la misma versión con canal estable aplica aunque el equipo no aporte canal", async () => {
+  // El canal por defecto del cliente es «stable»: un manifiesto stable nunca
+  // debe bloquearse por canal aunque el llamador no lo indique explícito.
+  const { impl } = fakeFetch(async () => jsonResponse(await signed()));
+  const client = createUpdateClient({
+    manifestUrl: MANIFEST_URL,
+    publicJwk,
+    currentVersion: "1.3.5",
+    deviceId: "device-1",
+    storage: createMemoryUpdateStorage(),
+    now: () => NOW,
+    fetchImpl: impl
+  });
+
+  const result = await client.check({ force: true });
+
+  assert.equal(result.status, "available");
+  assert.equal(result.code, "available");
 });
 
 test("una versión anterior se bloquea como downgrade", async () => {
@@ -496,6 +650,42 @@ test("nunca lanza aunque la red, el almacén o el reloj fallen", async () => {
   assert.equal(clockResult.status, "error");
   assert.equal(clockResult.code, "unexpected");
   assert.equal(clockResult.checkedAt, 0);
+});
+
+test("sin conexión conocida (navigator.onLine false) el error dice qué hacer", async () => {
+  const { impl } = fakeFetch(async () => {
+    throw new TypeError("Failed to fetch");
+  });
+  const target = globalThis as unknown as { navigator?: unknown };
+  const original = target.navigator;
+  Object.defineProperty(target, "navigator", {
+    configurable: true,
+    value: { onLine: false }
+  });
+  try {
+    const client = makeClient({ fetchImpl: impl });
+    const result = await client.check({ force: true });
+    assert.equal(result.status, "error");
+    assert.equal(result.code, "network");
+    assert.match(result.error ?? "", /Sin conexión/i);
+  } finally {
+    if (original === undefined) {
+      delete target.navigator;
+    } else {
+      Object.defineProperty(target, "navigator", { configurable: true, value: original });
+    }
+  }
+});
+
+test("un error de máquina del navegador se traduce a un mensaje accionable", async () => {
+  const { impl } = fakeFetch(async () => {
+    throw new TypeError("Failed to fetch");
+  });
+  const client = makeClient({ fetchImpl: impl });
+  const result = await client.check({ force: true });
+  assert.equal(result.status, "error");
+  assert.equal(result.code, "network");
+  assert.match(result.error ?? "", /No se pudo conectar con el servidor de actualizaciones/i);
 });
 
 test("el intervalo por defecto es de 24 h", () => {

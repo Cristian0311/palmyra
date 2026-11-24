@@ -14,7 +14,7 @@ import {
 import { hubQuotesToPayload } from './lanHub/rates';
 import { RATE_SNAPSHOT_MAX_AGE_MS, RATE_TARGET_MS } from './lanHub/rateScheduler';
 import type { HubRateQuote } from './lanHub/protocol';
-import { formatRateAge, readOwnServerRateRouteAllowed } from './exchangeRatesHub';
+import { formatRateAge, isDeviceOffline, readOwnServerRateRouteAllowed } from './exchangeRatesHub';
 import { recordRequest } from './requestBudget';
 
 export const AUTO_RATE_STATE_KEY = 'palmyra:auto-rate-state.v1';
@@ -74,6 +74,11 @@ export type AutoRateSyncOptions = {
    * por su cuenta.
    */
   allowOwnServerRoute?: boolean;
+  /**
+   * Copia verificada de la nube inyectable en pruebas (mismo contrato que en
+   * el hub de tasas); por defecto la lee el respaldo de nube real.
+   */
+  verifiedQuotes?: () => Promise<HubRateQuote[]>;
 };
 
 export function readAutoRateRun(): AutoRateRun | null {
@@ -151,15 +156,19 @@ async function fetchHubPayload(options: AutoRateSyncOptions): Promise<ExchangePa
 
 /**
  * Respaldo de nube para superficies autónomas sin credencial local (Windows y
- * APK): una sola consulta al endpoint de producción, que sí tiene la credencial
- * de elTOQUE. Devuelve `null` sin lanzar; si falla, el error de la ruta local
+ * APK): primero la copia verificada de Supabase (CORS abierto) y, si falta,
+ * una sola consulta al endpoint de producción, que sí tiene la credencial de
+ * elTOQUE. Devuelve `null` sin lanzar; si falla, el error de la ruta local
  * se conserva para el aviso.
  */
 async function fetchCloudPayload(options: AutoRateSyncOptions): Promise<ExchangePayload | null> {
   const clock = options.clock ?? (() => Date.now());
   try {
     const hub = await import("./exchangeRatesHub");
-    const quotes = await hub.fetchCloudRateQuotes({ now: clock });
+    const quotes = await hub.fetchCloudRateQuotes({
+      now: clock,
+      ...(options.verifiedQuotes ? { verifiedQuotes: options.verifiedQuotes } : {})
+    });
     if (!quotes || !quotes.length) return null;
     return hubQuotesToPayload(quotes, clock());
   } catch {
@@ -223,7 +232,14 @@ export async function syncAutoRates(
       });
     }
   }
-  if (!payload) return saveRun(baseRun(error));
+  if (!payload) {
+    // Sin Internet el motivo de la ruta local (credencial ausente en el
+    // servidor del equipo) no es la causa real: el aviso dice la verdad sin
+    // asustar con configuración que el usuario no puede tocar.
+    return saveRun(baseRun(isDeviceOffline()
+      ? 'Sin conexión a Internet; se conserva la última tasa válida y se reintentará al reconectar.'
+      : error));
+  }
 
   try { localStorage.setItem(EXCHANGE_RATE_CACHE_KEY, JSON.stringify(payload)); } catch { /* sin almacenamiento */ }
 

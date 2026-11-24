@@ -86,9 +86,12 @@ export function appendRateSnapshot(history: RateSnapshot[], payload: ExchangePay
 /**
  * elTOQUE publishes the euro under the code `ECU` while the rest of PALMYRA
  * (currencies, auto-rate policy and the verified server history) speaks `EUR`.
+ * The monitor cron also compacts `USDT_TRC20`/`USDT_TRC` to `USDTTRC20`/
+ * `USDTTRC` when storing the verified history; both map back to the raw
+ * elTOQUE form so the live payload and the stored copy render one card.
  * The raw payload is kept untouched; only presentation keys are canonicalized.
  */
-const RATE_CODE_ALIASES: Record<string, string> = { ECU: 'EUR' };
+const RATE_CODE_ALIASES: Record<string, string> = { ECU: 'EUR', USDTTRC20: 'USDT_TRC20', USDTTRC: 'USDT_TRC20' };
 
 export function canonicalRateCode(code: string): string {
   const normalized = String(code ?? '').trim().toUpperCase();
@@ -148,7 +151,8 @@ export const RATE_NAMES: Record<string, string> = {
   USD: 'Dólar estadounidense', EUR: 'Euro', ECU: 'Euro (código ECU de la fuente)', MLC: 'Moneda libremente convertible',
   CAD: 'Dólar canadiense', MXN: 'Peso mexicano', GBP: 'Libra esterlina', CHF: 'Franco suizo', RUB: 'Rublo ruso', CUP: 'Peso cubano',
   CNY: 'Yuan chino', JPY: 'Yen japonés', BRL: 'Real brasileño', COP: 'Peso colombiano', DOP: 'Peso dominicano', AUD: 'Dólar australiano',
-  NZD: 'Dólar neozelandés', ZELLE: 'Zelle · pagos en USD', CLA: 'Clásica', BTC: 'Bitcoin', ETH: 'Ethereum', BNB: 'BNB', TRX: 'TRON',
-  USDT: 'Tether', USDTTRC20: 'Tether · TRC-20', USDTTRC: 'Tether · TRC-20', USDC: 'USD Coin', LTC: 'Litecoin', DOGE: 'Dogecoin',
+  NZD: 'Dólar neozelandés', ZELLE: 'Zelle · pagos en USD', CLA: 'Tarjeta Clásica (USD)', BTC: 'Bitcoin', ETH: 'Ethereum', BNB: 'BNB', TRX: 'TRON',
+  USDT: 'Tether', USDT_TRC20: 'Tether · TRC-20', USDT_ERC20: 'Tether · ERC-20', USDTTRC20: 'Tether · TRC-20', USDTTRC: 'Tether · TRC-20',
+  USDC: 'USD Coin', LTC: 'Litecoin', DOGE: 'Dogecoin',
   SOL: 'Solana', XRP: 'XRP', TON: 'Toncoin'
 };

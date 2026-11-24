@@ -15,7 +15,7 @@ import { buildInventoryCsv } from '../modules/inventory/utils/buildInventoryCsv'
 import { resizeProductImage } from '../modules/inventory/utils/resizeProductImage';
 import { useShallow } from 'zustand/react/shallow';
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowLeftRight, PackagePlus, AlertCircle, Search, ShieldCheck, X, DollarSign, Trash2, Edit, History, Package, PackageCheck, TrendingUp, Filter, Download, Plus, ArrowRightLeft, LayoutGrid, List, Settings2, Tag, Building2, Save, RefreshCw, Minus, ChevronDown, ChevronUp, ChevronRight, Check } from "lucide-react";
+import { ArrowLeftRight, PackagePlus, AlertCircle, Search, ShieldCheck, X, DollarSign, Trash2, Edit, History, Package, PackageCheck, TrendingUp, Filter, Download, Plus, ArrowRightLeft, List, Settings2, Tag, Building2, Save, RefreshCw, Minus, ChevronDown, ChevronUp, ChevronRight, Check } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { cn, generateId } from "../lib/utils";
 import { Product, Category } from "../types";
@@ -172,11 +172,6 @@ export default function Inventory() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [managingStockProduct, setManagingStockProduct] = useState<Product | null>(null);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-  // En móvil/tablet la lista ancha no cabe: se abre en tarjetas para no
-  // obligar a un desplazamiento horizontal. En escritorio sigue la tabla.
-  const [viewMode, setViewMode] = useState<'table' | 'grid'>(() =>
-    typeof window !== 'undefined' && window.matchMedia?.('(max-width: 1023px)').matches ? 'grid' : 'table'
-  );
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [stockFilter, setStockFilter] = useState<'all' | 'in_stock' | 'low' | 'out'>('all');
   const [selectedItems, setSelectedItems] = useState<string[]>([]);
@@ -882,10 +877,10 @@ export default function Inventory() {
           </h2>
           <p className="text-[9px] sm:text-[10px] font-black text-muted uppercase tracking-widest">Stock Control</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:flex-nowrap py-1">
+        <div className="flex flex-nowrap items-center gap-1.5 w-full sm:w-auto sm:flex-nowrap py-1 overflow-x-auto custom-scrollbar">
           <button 
             onClick={() => setActiveTab('products')}
-            className="shrink-0 min-h-11 sm:min-h-0 bg-emerald-600 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-emerald-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
+            className="shrink-0 min-h-10 sm:min-h-0 bg-emerald-600 text-white px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-emerald-700 transition-all active:scale-95 whitespace-nowrap"
           >
             <PackageCheck className="w-3.5 h-3.5" /> Stock
           </button>
@@ -902,27 +897,27 @@ export default function Inventory() {
               setActiveFormTab('general');
               setShowAddModal(true);
             }}
-            className="shrink-0 min-h-11 sm:min-h-0 bg-indigo-600 text-white px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-indigo-700 transition-all shadow-xl shadow-indigo-100 active:scale-95 whitespace-nowrap"
+            className="shrink-0 min-h-10 sm:min-h-0 bg-indigo-600 text-white px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-indigo-700 transition-all active:scale-95 whitespace-nowrap"
           >
             <Plus className="w-3.5 h-3.5 shrink-0" />
             Agregar producto
           </button>
           <button 
             onClick={() => canExcel ? exportToExcel() : setActiveTab('excel')}
-            className="shrink-0 min-h-11 sm:min-h-0 flex items-center gap-1.5 px-2.5 py-1.5 bg-secondary border border-base text-muted rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-subtle transition-all shadow-sm active:scale-95 whitespace-nowrap"
+            className="shrink-0 min-h-10 sm:min-h-0 flex items-center gap-1.5 px-2.5 py-1 bg-secondary border border-base text-muted rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-subtle transition-all active:scale-95 whitespace-nowrap"
           >
             <Download className="w-3 h-3" />
             <span>{canExcel ? 'Excel' : 'Excel · Ciudadela'}</span>
           </button>
           <button 
             onClick={() => setActiveTab('labels')}
-            className="shrink-0 min-h-11 sm:min-h-0 bg-slate-900 dark:bg-slate-800 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-slate-800 dark:hover:bg-slate-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
+            className="shrink-0 min-h-10 sm:min-h-0 bg-slate-900 dark:bg-slate-800 text-white px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-slate-800 dark:hover:bg-slate-700 transition-all active:scale-95 whitespace-nowrap"
           >
             {canLabels ? 'Etiquetas' : 'Etiquetas · Ciudadela'}
           </button>
           <button 
             onClick={() => setActiveTab('abc')}
-            className="shrink-0 min-h-11 sm:min-h-0 bg-blue-600 text-white px-2.5 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-blue-700 transition-all shadow-md active:scale-95 whitespace-nowrap"
+            className="shrink-0 min-h-10 sm:min-h-0 bg-blue-600 text-white px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 hover:bg-blue-700 transition-all active:scale-95 whitespace-nowrap"
           >
             {canABC ? 'Análisis ABC' : 'ABC · Ciudadela'}
           </button>
@@ -1060,35 +1055,6 @@ export default function Inventory() {
               <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-muted pointer-events-none" />
             </div>
 
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 self-end md:self-auto justify-end border-t md:border-t-0 pt-1.5 md:pt-0">
-          <div className="bg-subtle p-0.5 rounded-lg flex gap-0.5 border border-base">
-            <button 
-              onClick={() => setViewMode('table')}
-              title="Vista Lista"
-              aria-label="Vista lista"
-              aria-pressed={viewMode === 'table'}
-              className={cn(
-                "min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 p-1.5 rounded-md transition-all",
-                viewMode === 'table' ? "bg-primary text-indigo-600 shadow-xs ring-1 ring-black/5" : "text-muted hover:text-primary"
-              )}
-            >
-              <List className="w-3.5 h-3.5" />
-            </button>
-            <button 
-              onClick={() => setViewMode('grid')}
-              title="Vista Cuadrícula Compacta"
-              aria-label="Vista cuadrícula"
-              aria-pressed={viewMode === 'grid'}
-              className={cn(
-                "min-h-11 min-w-11 sm:min-h-0 sm:min-w-0 p-1.5 rounded-md transition-all",
-                viewMode === 'grid' ? "bg-primary text-indigo-600 shadow-xs ring-1 ring-black/5" : "text-muted hover:text-primary"
-              )}
-            >
-              <LayoutGrid className="w-3.5 h-3.5" />
-            </button>
           </div>
         </div>
       </div>
@@ -1310,7 +1276,6 @@ export default function Inventory() {
         </div>
       )}
       {activeTab === 'products' && (
-        viewMode === 'table' ? (
           <div className="bg-secondary rounded-[2rem] shadow-sm border border-base overflow-hidden flex-1 flex flex-col min-h-[500px] w-full">
           <div className="overflow-x-auto overflow-y-auto flex-1 h-full custom-scrollbar w-full">
             <table aria-label="Productos del inventario" className="w-full text-left border-collapse table-fixed min-w-[1040px]">
@@ -1555,114 +1520,6 @@ export default function Inventory() {
               </div>
             )}
           </div>
-        ) : (
-          <div className="flex-1 min-h-0 flex flex-col bg-secondary rounded-[2rem] border border-base shadow-sm overflow-hidden p-4">
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-8 gap-3 overflow-y-auto pr-2 flex-1 custom-scrollbar">
-              {inventoryView.map((item) => (
-                <div 
-                  key={item.id} 
-                  onClick={() => {
-                    const { totalStock, isLowStock, levels, unitNetProfit, unitMarginPct, ...productOnly } = item as any;
-                    setEditingProduct(productOnly);
-                    setFormData(productOnly);
-                    setShowAddModal(true);
-                  }}
-                  className="bg-primary p-2.5 rounded-2xl border border-base shadow-xs hover:shadow-md hover:border-indigo-300 transition-all cursor-pointer group flex flex-col gap-1.5 h-fit relative"
-                >
-                  <div className="flex justify-between items-start gap-1">
-                    <h3 className="text-[10px] font-black text-primary uppercase tracking-tight line-clamp-2 leading-tight flex-1 break-words" title={item.name}>{item.name}</h3>
-                    <div className={cn(
-                      "w-1.5 h-1.5 rounded-full shrink-0 mt-0.5",
-                      item.totalStock === 0 ? "bg-[var(--danger)] shadow-[0_0_5px_color-mix(in_srgb,var(--danger)_50%,transparent)]" :
-                      item.isLowStock ? "bg-[var(--warning)]" : "bg-[var(--success)]"
-                    )} />
-                  </div>
-                  
-                  <div className="flex items-center justify-between gap-1 mt-auto">
-                    <p className="text-[9px] font-black text-[var(--primary)] truncate tabular-nums min-w-0" title={formatMoney(item.price)}>{formatMoney(item.price)}</p>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <p className={cn(
-                        "palmyra-pill tabular-nums",
-                        item.isLowStock ? "bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)]" : "bg-[color-mix(in_srgb,var(--success)_10%,transparent)] text-[var(--success)]"
-                      )}>{item.totalStock}</p>
-                      <p className="palmyra-pill border border-base bg-subtle text-[var(--text-muted)] tabular-nums" title="Garantía del producto">
-                        <ShieldCheck className={cn("w-2.5 h-2.5", Number(item.warrantyDays) > 0 ? "text-emerald-500" : "text-slate-300 dark:text-slate-600")} />
-                        {Number(item.warrantyDays) > 0 ? `${Number(item.warrantyDays)}d` : '—'}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-1 border-t border-base pt-1">
-                    <div className="flex items-baseline justify-between gap-2 text-[9px] font-bold">
-                      <span className="text-muted uppercase tracking-wide shrink-0">Costo</span>
-                      <span className="text-secondary font-black text-right break-words tabular-nums">{formatMoney(item.costPrice, baseCurrency, false)}</span>
-                    </div>
-                    <EquivalentLines
-                      className="text-[8px] font-bold text-muted"
-                      parts={formatCurrencyEquivalentParts(equivalentsFor(item.costPrice))}
-                      title="Costo por unidad en USD/EUR con las tasas activas"
-                    />
-                    <div className="flex items-baseline justify-between gap-2 text-[9px] font-bold">
-                      <span className="text-muted uppercase tracking-wide shrink-0">Ganancia</span>
-                      <span
-                        className={cn("font-black text-right break-words tabular-nums", profitToneClass(item.unitNetProfit))}
-                        title="Ganancia neta por unidad: venta − costo − salario"
-                      >{formatSignedMoney(item.unitNetProfit, baseCurrency, false)}</span>
-                    </div>
-                    <EquivalentLines
-                      className="text-[8px] font-bold text-muted"
-                      parts={formatCurrencyEquivalentParts(equivalentsFor(item.unitNetProfit), { signed: true })}
-                      title="Ganancia neta por unidad en USD/EUR con las tasas activas"
-                    />
-                    <div className="flex items-center justify-between gap-2 text-[9px] font-bold">
-                      <span className="text-muted uppercase tracking-wide">% margen</span>
-                      <span
-                        className={cn("font-black tabular-nums", profitToneClass(item.unitMarginPct))}
-                        title="Margen sobre el precio de venta"
-                      >{formatMarginPct(item.unitMarginPct)}</span>
-                    </div>
-                  </div>
-
-                  <button 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const { totalStock, isLowStock, levels, unitNetProfit, unitMarginPct, ...productOnly } = item as any;
-                      openStockManager(productOnly);
-                    }}
-                    aria-label={`Gestionar stock de ${item.name}`}
-                    title="Gestionar stock"
-                    className="absolute -top-1.5 -right-1.5 flex h-9 w-9 items-center justify-center bg-[var(--bg-secondary)] border border-base rounded-xl text-[var(--text-muted)] hover:text-[var(--primary)] opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity shadow-sm"
-                  >
-                    <PackagePlus className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-              
-              {inventoryView.length === 0 && (
-                <div className="col-span-full flex flex-col items-center gap-2 py-14 text-center">
-                  <Package className="w-10 h-10 text-slate-300 dark:text-slate-600" aria-hidden="true" />
-                  <p className="text-xs font-black text-primary uppercase tracking-wide">Sin productos en esta vista</p>
-                  <p className="max-w-sm text-[11px] font-bold text-muted">
-                    {hasActiveFilters
-                      ? 'Ningún producto coincide con la búsqueda o los filtros activos.'
-                      : 'Todavía no hay productos. Usa «Agregar producto» para crear el primero.'}
-                  </p>
-                </div>
-              )}
-
-              {inventoryData.full.length > displayLimit && (
-                <div className="col-span-full py-4 flex justify-center">
-                  <button 
-                    onClick={() => setDisplayLimit(prev => prev + 200)}
-                    className="px-8 py-2.5 bg-indigo-600 text-white rounded-xl text-[9px] font-black uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-md active:scale-95"
-                  >
-                    Ver más ({inventoryData.full.length - displayLimit} restantes)
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        )
       )}
 
       {showAddModal && (

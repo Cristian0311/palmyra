@@ -9,17 +9,25 @@
  *   3. El sha256 y los bytes de cada artefacto coinciden con el manifiesto y la
  *      URL apunta a la etiqueta v<versión>.
  *   4. latest.yml declara la misma versión y el sha512/tamaño reales del Setup.
- *   5. SHA256SUMS cubre los cuatro archivos publicados con los mismos hashes.
- *   6. Con --require-signature, el manifiesto trae firma ES256.
+ *   5. SHA256SUMS cubre los archivos publicados con los mismos hashes.
+ *   6. Con --require-signature, el manifiesto trae firma ES256; con
+ *      --public-key <pem>, además se verifica criptográficamente.
+ *   7. Con --web-zip <archivo>, el ZIP OTA se verifica contra el artefacto web
+ *      del manifiesto firmado (falla si el manifiesto no lo declara).
+ *   8. Con --patch-latest-size, se parchea el `size` que electron-builder omite
+ *      (differentialPackage:false) con el byte real del archivo y se regenera
+ *      SHA256SUMS con los hashes FINALES: es el paso post `desktop:dist`.
  *
  * Uso:
  *   node scripts/verify-release-assets.mjs \
  *     --dir artifacts --manifest update-manifest.json --sums SHA256SUMS \
- *     --version 1.3.5 --channel stable --require-signature
+ *     --version 1.3.5 --channel stable --require-signature \
+ *     [--public-key update-public.pem] [--web-zip palmyra-web-1.3.5.zip] \
+ *     [--patch-latest-size]
  */
 
-import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { createHash, createPublicKey, verify } from "node:crypto";
+import { existsSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -49,10 +57,15 @@ function printHelp() {
 Opciones:
   --dir <carpeta>        Carpeta con el Setup, latest.yml y el APK (por defecto artifacts).
   --manifest <archivo>   Manifiesto firmado (por defecto update-manifest.json).
-  --sums <archivo>       SHA256SUMS a comprobar (si se omite, no se valida).
+  --sums <archivo>       SHA256SUMS a comprobar (con --patch-latest-size, a regenerar).
   --version <x.y.z>      Versión esperada del tag (por defecto, la de package.json).
   --channel <stable|beta> Canal esperado (por defecto, derivado de la versión).
   --require-signature    Exige que el manifiesto traiga firma ES256.
+  --public-key <archivo> Clave pública PEM (SPKI) para verificar la firma ES256.
+  --web-zip <archivo>    ZIP OTA a verificar contra el artefacto web del manifiesto.
+  --patch-latest-size    Parchea el size real en latest.yml y regenera SHA256SUMS
+                         (paso posterior a electron-builder, que omite el size con
+                         differentialPackage:false). Exige --sums.
   --help                 Esta ayuda.`);
 }
 
@@ -86,8 +99,17 @@ function parseArgs(argv) {
       case "--channel":
         options.channel = readValue();
         break;
+      case "--public-key":
+        options.publicKey = readValue();
+        break;
+      case "--web-zip":
+        options.webZip = readValue();
+        break;
       case "--require-signature":
         options.requireSignature = true;
+        break;
+      case "--patch-latest-size":
+        options.patchLatestSize = true;
         break;
       case "--help":
         printHelp();
@@ -183,6 +205,135 @@ function parseSums(filePath) {
   return sums;
 }
 
+/** Espejo de src/services/updates/verify.ts (mismo texto firmado). */
+function canonicalJson(value) {
+  if (value === null) return "null";
+  const type = typeof value;
+  if (type === "string") return JSON.stringify(value);
+  if (type === "number") {
+    if (!Number.isFinite(value)) throw new TypeError("Número no finito en JSON canónico");
+    return JSON.stringify(value);
+  }
+  if (type === "boolean") return value ? "true" : "false";
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => (item === undefined ? "null" : canonicalJson(item))).join(",")}]`;
+  }
+  if (type === "object") {
+    const keys = Object.keys(value)
+      .filter((key) => value[key] !== undefined)
+      .sort();
+    return `{${keys.map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(",")}}`;
+  }
+  throw new TypeError(`Tipo no serializable en JSON canónico: ${type}`);
+}
+
+/** Texto firmado del manifiesto: canónico, con keyId y sin signature. */
+function manifestSigningInput(manifest) {
+  const { signature: _ignored, ...signable } = manifest;
+  return canonicalJson(signable);
+}
+
+/** Verifica la firma ES256 del manifiesto con una clave pública PEM (SPKI). */
+function verifyManifestSignature(manifest, publicKeyPem) {
+  if (typeof manifest?.signature !== "string" || manifest.signature.trim() === "") {
+    fail("El manifiesto no trae firma ES256; --public-key exige un manifiesto firmado.");
+  }
+  let publicKey;
+  try {
+    publicKey = createPublicKey(publicKeyPem);
+  } catch (error) {
+    fail(
+      `La clave pública no es válida: ${error instanceof Error ? error.message : error}.`
+    );
+  }
+  if (publicKey.asymmetricKeyType !== "ec") {
+    fail("La clave pública no es EC P-256.");
+  }
+  try {
+    const input = Buffer.from(manifestSigningInput(manifest), "utf8");
+    const signature = Buffer.from(manifest.signature, "base64url");
+    const valid = verify(
+      "sha256",
+      input,
+      { key: publicKey, dsaEncoding: "ieee-p1363" },
+      signature
+    );
+    if (!valid) {
+      fail(
+        "La firma del manifiesto no verifica con la clave pública indicada. " +
+          "Revisa que la clave de firma corresponda a esta clave pública."
+      );
+    }
+    ok("firma ES256 verificada con la clave pública");
+  } catch (error) {
+    fail(
+      `No se pudo verificar la firma ES256: ${error instanceof Error ? error.message : error}.`
+    );
+  }
+}
+
+/**
+ * Parchea en latest.yml el `size` de cada entrada de `files` con el byte real
+ * del archivo en disco. electron-builder con differentialPackage:false omite el
+ * campo size; sin él, el verificador pre-instalación no puede rechazar
+ * descargas con tamaño erróneo. Devuelve el número de entradas parcheadas.
+ */
+function patchLatestYmlSizes(latestPath, parsed, artifactDir) {
+  const original = readFileSync(latestPath, "utf8");
+  const newline = original.includes("\r\n") ? "\r\n" : "\n";
+  const lines = original.split(/\r?\n/);
+  const entries = new Map((parsed.files ?? []).map((entry) => [entry.url, entry]));
+  const out = [];
+  let patched = 0;
+  let index = 0;
+  while (index < lines.length) {
+    const line = lines[index];
+    const item = /^(\s*)-\s+url:\s*(.*)$/.exec(line);
+    if (item && entries.has(unquote(item[2].trim()))) {
+      const indent = item[1];
+      const childIndent = `${indent}  `;
+      const url = unquote(item[2].trim());
+      const filePath = path.join(artifactDir, url);
+      const bytes = existsSync(filePath) && statSync(filePath).isFile()
+        ? statSync(filePath).size
+        : null;
+      out.push(line);
+      index += 1;
+      let sawSize = false;
+      while (index < lines.length) {
+        const next = lines[index];
+        const nextItem = /^\s*-\s+url:/.test(next);
+        const unindented = next.trim() !== "" && !/^\s/.test(next);
+        if (nextItem || unindented) break;
+        if (/^\s*size:\s*/.test(next)) {
+          sawSize = true;
+          const declared = unquote(next.replace(/^\s*size:\s*/, "").trim());
+          if (bytes !== null && declared !== String(bytes)) {
+            out.push(`${childIndent}size: ${bytes}`);
+            patched += 1;
+          } else {
+            out.push(next);
+          }
+        } else {
+          out.push(next);
+        }
+        index += 1;
+      }
+      if (!sawSize && bytes !== null) {
+        out.push(`${childIndent}size: ${bytes}`);
+        patched += 1;
+      }
+      continue;
+    }
+    out.push(line);
+    index += 1;
+  }
+  if (patched > 0) {
+    writeFileSync(latestPath, out.join(newline), "utf8");
+  }
+  return patched;
+}
+
 const options = parseArgs(process.argv.slice(2));
 
 // La versión técnica es siempre la de package.json; el tag solo la confirma.
@@ -253,9 +404,48 @@ if (options.requireSignature) {
   }
 }
 
+// 1b. Verificación criptográfica real de la firma con --public-key.
+if (options.publicKey) {
+  let publicKeyPem;
+  try {
+    publicKeyPem = readFileSync(path.resolve(options.publicKey), "utf8");
+  } catch (error) {
+    fail(
+      `No se pudo leer la clave pública ${options.publicKey}: ` +
+        `${error instanceof Error ? error.message : error}.`
+    );
+  }
+  verifyManifestSignature(manifest, publicKeyPem);
+}
+
 // 2. Artefactos obligatorios presentes, no vacíos y sin sobrantes.
 for (const name of REQUIRED_IN_DIR) {
   requireFile(path.join(artifactDir, name), name);
+}
+const webArtifact = Array.isArray(manifest.artifacts)
+  ? manifest.artifacts.find((item) => item?.platform === "web")
+  : undefined;
+const webZipPath = options.webZip ? path.resolve(options.webZip) : null;
+if (webArtifact && !webZipPath) {
+  fail(
+    "El manifiesto declara un artefacto web y falta --web-zip <archivo> para " +
+      "verificar que el ZIP OTA está cubierto por la firma."
+  );
+}
+if (webZipPath && !webArtifact) {
+  fail(
+    "--web-zip apunta a un ZIP que el manifiesto firmado NO declara como " +
+      "artefacto web; no se publica un bundle sin cobertura de firma."
+  );
+}
+if (webArtifact && webZipPath && path.basename(webZipPath) !== webArtifact.name) {
+  fail(
+    `--web-zip es ${path.basename(webZipPath)} y el manifiesto declara ` +
+      `${webArtifact.name}; el nombre del bundle debe coincidir con la URL firmada.`
+  );
+}
+if (webArtifact && webZipPath) {
+  requireFile(webZipPath, webArtifact.name);
 }
 const extras = [];
 const sumsPath = options.sums ? path.resolve(options.sums) : null;
@@ -264,6 +454,8 @@ for (const entry of readdirSync(artifactDir)) {
   // El manifiesto y SHA256SUMS pueden vivir dentro de la carpeta si se generan ahí.
   if (path.resolve(artifactDir, entry) === manifestPath) continue;
   if (sumsPath !== null && path.resolve(artifactDir, entry) === sumsPath) continue;
+  // El ZIP OTA es un asset publicable más; se verifica aparte contra la firma.
+  if (webZipPath !== null && path.resolve(artifactDir, entry) === webZipPath) continue;
   // Un .blockmap publicado por error dejaría a electron-updater buscando un
   // asset que el release no tiene (la actualización diferencial fallaría).
   extras.push(entry);
@@ -279,7 +471,7 @@ if (!Array.isArray(manifest.artifacts) || manifest.artifacts.length === 0) {
 const seenPlatforms = new Set();
 for (const artifact of manifest.artifacts) {
   const platform = artifact.platform;
-  if (!Object.prototype.hasOwnProperty.call(STABLE_NAMES, platform)) {
+  if (platform !== "web" && !Object.prototype.hasOwnProperty.call(STABLE_NAMES, platform)) {
     fail(`Plataforma inválida en el manifiesto: "${platform}".`);
   }
   if (seenPlatforms.has(platform)) {
@@ -287,9 +479,14 @@ for (const artifact of manifest.artifacts) {
   }
   seenPlatforms.add(platform);
 
-  const expectedName = STABLE_NAMES[platform];
-  if (artifact.name !== expectedName) {
+  // windows y android usan nombre estable; el bundle web se publica con su
+  // nombre y se verifica contra --web-zip.
+  const expectedName = platform === "web" ? artifact.name : STABLE_NAMES[platform];
+  if (platform !== "web" && artifact.name !== expectedName) {
     fail(`Nombre no estable para ${platform}: "${artifact.name}" (se esperaba ${expectedName}).`);
+  }
+  if (platform === "web" && !/\.zip$/i.test(String(artifact.name))) {
+    fail(`El artefacto web debe ser un .zip: "${artifact.name}".`);
   }
 
   let parsedUrl;
@@ -317,7 +514,7 @@ for (const artifact of manifest.artifacts) {
   if (typeof artifact.sha256 !== "string" || !SHA256_RE.test(artifact.sha256)) {
     fail(`sha256 inválido en el manifiesto para ${platform}.`);
   }
-  const filePath = path.join(artifactDir, expectedName);
+  const filePath = platform === "web" ? webZipPath : path.join(artifactDir, expectedName);
   const stats = statSync(filePath);
   if (artifact.bytes !== stats.size) {
     fail(
@@ -341,7 +538,20 @@ for (const platform of Object.keys(STABLE_NAMES)) {
 
 // 4. latest.yml describe exactamente el Setup que se publica.
 const latestPath = path.join(artifactDir, LATEST);
-const latest = parseLatestYml(readFileSync(latestPath, "utf8"));
+if (options.patchLatestSize && !sumsPath) {
+  fail("--patch-latest-size exige --sums <SHA256SUMS> para regenerar los hashes finales.");
+}
+let latestText = readFileSync(latestPath, "utf8");
+if (options.patchLatestSize) {
+  const patched = patchLatestYmlSizes(latestPath, parseLatestYml(latestText), artifactDir);
+  latestText = readFileSync(latestPath, "utf8");
+  if (patched > 0) {
+    ok(`latest.yml parcheado: size del Setup ajustado al byte real (${patched} entrada(s)).`);
+  } else {
+    ok("latest.yml ya declaraba el size real del Setup.");
+  }
+}
+const latest = parseLatestYml(latestText);
 if (latest.version !== pkgVersion) {
   fail(`${LATEST} declara v${latest.version} y package.json v${pkgVersion}.`);
 }
@@ -379,8 +589,32 @@ for (const entry of latest.files) {
   }
 }
 
-// 5. SHA256SUMS cubre los cuatro archivos publicados con los hashes reales.
+// 5. SHA256SUMS cubre los archivos publicados con los hashes reales.
 if (sumsPath !== null) {
+  // Con --patch-latest-size, latest.yml cambió: los hashes viejos quedaron
+  // obsoletos y se regeneran con los valores FINALES de los archivos.
+  if (options.patchLatestSize) {
+    const sumsEntries = [];
+    for (const name of REQUIRED_IN_DIR) {
+      sumsEntries.push({
+        name,
+        digest: hashFile(path.join(artifactDir, name), "sha256").toString("hex")
+      });
+    }
+    sumsEntries.push({ name: MANIFEST_NAME, digest: hashFile(manifestPath, "sha256").toString("hex") });
+    if (webArtifact && webZipPath) {
+      sumsEntries.push({
+        name: webArtifact.name,
+        digest: hashFile(webZipPath, "sha256").toString("hex")
+      });
+    }
+    writeFileSync(
+      sumsPath,
+      `${sumsEntries.map((entry) => `${entry.digest}  ${entry.name}`).join("\n")}\n`,
+      "utf8"
+    );
+    ok(`SHA256SUMS regenerados con los hashes finales (${sumsEntries.length} archivos).`);
+  }
   requireFile(sumsPath, path.basename(sumsPath));
   const sums = parseSums(sumsPath);
   const expected = new Map();
@@ -388,6 +622,9 @@ if (sumsPath !== null) {
     expected.set(name, hashFile(path.join(artifactDir, name), "sha256").toString("hex"));
   }
   expected.set(MANIFEST_NAME, hashFile(manifestPath, "sha256").toString("hex"));
+  if (webArtifact && webZipPath) {
+    expected.set(webArtifact.name, hashFile(webZipPath, "sha256").toString("hex"));
+  }
   for (const [name, digest] of expected) {
     if (!sums.has(name)) fail(`SHA256SUMS no incluye ${name}.`);
     if (sums.get(name) !== digest) {
@@ -402,5 +639,6 @@ if (sumsPath !== null) {
 
 ok(
   `Release v${version} (${channel}) verificado: ${SETUP}, ${LATEST}, ${APK}, ` +
-    `${MANIFEST_NAME}${manifest.signature ? " firmado" : " SIN firma"}.`
+    `${MANIFEST_NAME}${manifest.signature ? " firmado" : " SIN firma"}` +
+    `${webArtifact && webZipPath ? ` + ZIP OTA ${webArtifact.name}` : ""}.`
 );

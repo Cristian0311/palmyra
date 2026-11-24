@@ -14,6 +14,7 @@ import type {
   CashRegisterSession,
   Customer,
   InventoryLevel,
+  InventoryTransfer,
   Payment,
   Product,
   StoreConfig,
@@ -276,6 +277,149 @@ export function cashMovementFromRow(row: LocalRow): CashMovement {
     date: asString(fields.date),
     sessionId: optionalString(fields.sessionId) ?? optionalString(row.session_id)
   } as CashMovement;
+}
+
+/**
+ * Estado canónico de un traslado. El enum real de la nube es
+ * `posted|cancelled|in_transit|received`; el mapeo legado convierte `posted`
+ * en 'completed' y destruye la distinción con `received`. Esta normalización
+ * es la única fuente de verdad para ambos caminos (nube y almacén local).
+ */
+export function normalizeTransferStatus(status: unknown): InventoryTransfer["status"] {
+  switch (status) {
+    case "posted":
+    case "in_transit":
+      return "in_transit";
+    case "received":
+    case "completed":
+      return "completed";
+    case "cancelled":
+      return "cancelled";
+    case "pending":
+      return "pending";
+    default:
+      // Sin estado (o uno desconocido): no está cancelado ni recibido, así
+      // que sigue en curso y debe quedar accionable en la vista de tránsito.
+      return "in_transit";
+  }
+}
+
+/**
+ * Fila plana → InventoryTransfer. Acepta tanto las columnas del almacén
+ * legado (from_branch_id/to_branch_id/product_id/...) como las columnas
+ * reales de la nube (origin_warehouse_id/destination_warehouse_id).
+ */
+export function transferFromRow(row: LocalRow): InventoryTransfer {
+  const fields = rowToEntityFields(row);
+  const fromBranchId =
+    asString(fields.fromBranchId) ||
+    asString(fields.fromWarehouseId) ||
+    asString(fields.originWarehouseId);
+  const toBranchId =
+    asString(fields.toBranchId) ||
+    asString(fields.toWarehouseId) ||
+    asString(fields.destinationWarehouseId);
+  const rawVariants = asArray<{ variantLabel?: unknown; label?: unknown; quantity?: unknown }>(
+    fields.variants
+  );
+  const variants = rawVariants
+    .map((entry) => ({
+      variantLabel: asString(entry?.variantLabel) || asString(entry?.label),
+      quantity: asNumber(entry?.quantity)
+    }))
+    .filter((entry) => entry.quantity > 0);
+  return {
+    ...fields,
+    id: row.id,
+    productId: asString(fields.productId),
+    productName: asString(fields.productName) || "Producto",
+    fromWarehouseId: optionalString(fields.fromWarehouseId) ?? optionalString(fields.originWarehouseId),
+    toWarehouseId: optionalString(fields.toWarehouseId) ?? optionalString(fields.destinationWarehouseId),
+    fromBranchId,
+    fromBranchName: asString(fields.fromBranchName) || "Origen",
+    toBranchId,
+    toBranchName: asString(fields.toBranchName) || "Destino",
+    variantLabel: optionalString(fields.variantLabel),
+    quantity: asNumber(fields.quantity),
+    variants: variants.length > 0 ? variants : undefined,
+    date: asString(fields.date) || asString(fields.createdAt),
+    userId: asString(fields.userId) || asString(fields.createdBy),
+    transactionId: optionalString(fields.transactionId),
+    batchId: optionalString(fields.batchId),
+    status: normalizeTransferStatus(fields.status),
+    operationId: optionalString(fields.operationId)
+  } as unknown as InventoryTransfer;
+}
+
+/**
+ * Identidad estable de un traslado: la operación (uuid del documento) si
+ * existe; si no, el id de la fila. Las filas remotas del historial se
+ * materializan UNA POR LÍNEA (id = línea, operationId = operación), mientras
+ * que las filas locales creadas offline usan id = operationId. Comparar solo
+ * `id || operationId` mezcla ambos espacios y deja convivir la copia local
+ * pendiente con su copia remota: por eso toda comparación de duplicados usa
+ * esta identidad.
+ */
+export function transferIdentity(
+  item: Pick<InventoryTransfer, 'id' | 'operationId'> | null | undefined
+): string {
+  if (!item) return '';
+  const operationId = String((item as any)?.operationId ?? '').trim();
+  if (operationId) return operationId;
+  return String((item as any)?.id ?? '').trim();
+}
+
+/**
+ * Desduplica filas de traslados por su clave de FILA: id (id de línea en las
+ * filas remotas, uuid del documento en las locales) con la identidad como
+ * respaldo. Dos líneas de un mismo traslado tienen ids distintos y se
+ * conservan ambas; un solape de paginación que repite la misma línea se
+ * descarta.
+ */
+export function dedupeTransferRows(items: readonly InventoryTransfer[]): InventoryTransfer[] {
+  const seen = new Set<string>();
+  const rows: InventoryTransfer[] = [];
+  for (const item of items || []) {
+    if (!item) continue;
+    const id = String((item as any)?.id ?? '').trim();
+    const key = id || transferIdentity(item);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    rows.push(item);
+  }
+  return rows;
+}
+
+/**
+ * Filtra las filas locales que la nube ya trae: se descarta cualquier fila
+ * local cuya identidad (operationId || id) aparezca en las remotas. Las
+ * locales que la nube no conoce (pendientes de envío, caché antigua) se
+ * conservan.
+ */
+export function filterLocalTransfers(
+  local: readonly InventoryTransfer[],
+  remote: readonly InventoryTransfer[]
+): InventoryTransfer[] {
+  const remoteIdentities = new Set(
+    dedupeTransferRows(remote).map(transferIdentity).filter(Boolean)
+  );
+  return (local || []).filter((item) => {
+    const identity = transferIdentity(item);
+    return !identity || !remoteIdentities.has(identity);
+  });
+}
+
+/**
+ * Mezcla canónica: filas remotas desduplicadas primero, y después las filas
+ * locales que la nube no conoce. Garantiza que ninguna operación aparezca dos
+ * veces (la copia local pendiente nunca convive con su copia remota).
+ */
+export function mergeTransferLists(
+  remote: readonly InventoryTransfer[],
+  local: readonly InventoryTransfer[]
+): InventoryTransfer[] {
+  const remoteRows = dedupeTransferRows(remote);
+  return [...remoteRows, ...filterLocalTransfers(local || [], remoteRows)];
 }
 
 export function storeConfigFromRow(

@@ -29,6 +29,7 @@ import {
 } from '../supabaseSync';
 import { addSyncLog } from '../../utils/syncLogger';
 import { getActiveTenant } from '../tenant';
+import { filterLocalTransfers } from '../localDb/repositories';
 import { reconcileBankCanonical } from './reconcileBank';
 import { replaceWarehouseInventory, replaceWarehousesInventory } from './reconcileInventory';
 import { reconcileSupplierReceiveCanonical } from './reconcileSupplierReceive';
@@ -817,11 +818,8 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
         throw new Error('Recepción confirmada, pero no se pudo actualizar el historial de transferencias.');
       }
       useStore.setState(state => {
-        const confirmedIds = new Set(ids);
-        const pendingLocal = (state.transfers || []).filter((t: any) =>
-          t.status === 'pending' && !confirmedIds.has(String(t.operationId || t.id))
-        );
-        return { transfers: [...pendingLocal, ...history.transfers] };
+        const localTransfers = filterLocalTransfers(state.transfers || [], history.transfers);
+        return { transfers: [...localTransfers, ...history.transfers] };
       });
       return true;
     }
@@ -849,11 +847,8 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
         throw new Error('Cancelación confirmada, pero no se pudo actualizar el historial de transferencias.');
       }
       useStore.setState(state => {
-        const confirmedIds = new Set(ids);
-        const pendingLocal = (state.transfers || []).filter((t: any) =>
-          t.status === 'pending' && !confirmedIds.has(String(t.operationId || t.id))
-        );
-        return { transfers: [...pendingLocal, ...history.transfers] };
+        const localTransfers = filterLocalTransfers(state.transfers || [], history.transfers);
+        return { transfers: [...localTransfers, ...history.transfers] };
       });
       return true;
     }

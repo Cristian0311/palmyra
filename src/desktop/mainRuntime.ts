@@ -7,6 +7,7 @@
  */
 import path from "node:path";
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import type { LocalDbDriver } from "../services/localDb/contract";
 import type { SqliteAdapter } from "../services/localDb/sqlite/adapter";
 import { createSqliteDriver } from "../services/localDb/sqlite/driver";
@@ -55,6 +56,8 @@ import type { DesktopHubStatus } from "../lib/desktopRuntime";
 const DEFAULT_HUB_PORT = 48900;
 const MANIFEST_MAX_BYTES = 512 * 1024;
 const MANIFEST_TIMEOUT_MS = 15000;
+/** Pausa antes del reintento cuando la descarga del manifiesto falla una vez. */
+const MANIFEST_RETRY_DELAY_MS = 1500;
 /** Respaldo cifrado del hub: uno al día y rotación 7 diarios + 4 semanales. */
 const HUB_BACKUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
 /** Única fuente de tasas del hub; el renderer de los clientes nunca la llama. */
@@ -573,6 +576,10 @@ function publicJwkLooksValid(publicJwk: JsonWebKey): boolean {
   return Boolean(publicJwk) && typeof publicJwk === "object" && publicJwk.kty === "EC";
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Descarga y verifica el manifiesto antes de permitir la descarga del Setup.
  * Nunca lanza: cualquier fallo se traduce en `{ok:false}` con un motivo corto.
@@ -596,19 +603,38 @@ export async function verifyUpdateManifestForBoot(
       Number.isFinite(input.timeoutMs) && Number(input.timeoutMs) > 0
         ? Number(input.timeoutMs)
         : MANIFEST_TIMEOUT_MS;
-    const controller = typeof AbortController === "function" ? new AbortController() : null;
-    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
 
-    let response: Response;
-    try {
-      response = await fetcher(input.manifestUrl, {
-        headers: { accept: "application/json" },
-        ...(controller ? { signal: controller.signal } : {})
-      });
-    } finally {
-      if (timer) clearTimeout(timer);
+    // Un fallo transitorio (corte de red, limitación temporal de GitHub) no debe
+    // tumbar la actualización: se reintenta la descarga una sola vez antes de
+    // rendirse. Cada intento tiene su propio límite de tiempo. Se conserva el
+    // contrato: excepción de red → "error"; respuesta HTTP no válida →
+    // "descarga-fallida".
+    let response: Response | null = null;
+    let lastFailure: "throw" | "http" | null = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const controller = typeof AbortController === "function" ? new AbortController() : null;
+      const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+      try {
+        response = await fetcher(input.manifestUrl, {
+          headers: { accept: "application/json" },
+          ...(controller ? { signal: controller.signal } : {})
+        });
+      } catch {
+        response = null;
+        lastFailure = "throw";
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+      if (response && response.ok) {
+        lastFailure = null;
+        break;
+      }
+      if (response) lastFailure = "http";
+      if (attempt === 0) await sleep(MANIFEST_RETRY_DELAY_MS);
     }
-    if (!response || !response.ok) return { ok: false, reason: "descarga-fallida" };
+    if (!response || !response.ok) {
+      return { ok: false, reason: lastFailure === "throw" ? "error" : "descarga-fallida" };
+    }
 
     const raw = await response.text();
     if (typeof raw !== "string" || raw.length > MANIFEST_MAX_BYTES) {
@@ -654,4 +680,108 @@ export async function verifyUpdateManifestForBoot(
   } catch {
     return { ok: false, reason: "error" };
   }
+}
+
+// ─── Verificación pre-instalación del instalador descargado ─────────────────
+
+export interface ArtifactFileCheck {
+  ok: boolean;
+  reason: "ok" | "not-found" | "size-mismatch" | "hash-mismatch" | "io-error";
+  /** Mensaje en español listo para mostrar; vacío si ok. */
+  message: string;
+  expectedBytes: number;
+  actualBytes: number | null;
+  expectedSha256: string;
+  actualSha256: string | null;
+}
+
+/**
+ * Comprueba un archivo ya descargado contra el artefacto del manifiesto
+ * FIRMADO, antes de ejecutarlo: primero el tamaño (barato) y luego el sha256.
+ * Nunca lanza: un fallo de lectura es io-error y la instalación no procede.
+ * Es la misma regla que Android y PWA: descarga que no cuadra, no se aplica.
+ */
+export function verifyArtifactFileAgainstManifest(
+  filePath: string,
+  artifact: UpdateArtifact
+): ArtifactFileCheck {
+  const expectedBytes = Number(artifact?.bytes);
+  const expectedSha256 = String(artifact?.sha256 ?? "").toLowerCase();
+  const reject = (
+    reason: ArtifactFileCheck["reason"],
+    message: string,
+    actualBytes: number | null,
+    actualSha256: string | null
+  ): ArtifactFileCheck => ({
+    ok: false,
+    reason,
+    message,
+    expectedBytes,
+    actualBytes,
+    expectedSha256,
+    actualSha256
+  });
+
+  let stats: fs.Stats;
+  try {
+    stats = fs.statSync(filePath);
+  } catch {
+    return reject(
+      "not-found",
+      `No existe el instalador descargado en ${filePath}. No se instalará.`,
+      null,
+      null
+    );
+  }
+  if (!stats.isFile() || stats.size <= 0) {
+    return reject(
+      "not-found",
+      `El instalador descargado está vacío o no es un archivo: ${filePath}. No se instalará.`,
+      null,
+      null
+    );
+  }
+
+  const actualBytes = stats.size;
+  if (Number.isSafeInteger(expectedBytes) && expectedBytes > 0 && actualBytes !== expectedBytes) {
+    return reject(
+      "size-mismatch",
+      `El tamaño del instalador no coincide con el manifiesto firmado ` +
+        `(esperado ${expectedBytes} bytes, recibido ${actualBytes}). No se instalará.`,
+      actualBytes,
+      null
+    );
+  }
+
+  let actualSha256: string;
+  try {
+    actualSha256 = createHash("sha256").update(fs.readFileSync(filePath)).digest("hex");
+  } catch (error) {
+    return reject(
+      "io-error",
+      `No se pudo leer el instalador descargado para verificarlo ` +
+        `(${error instanceof Error ? error.message : String(error)}). No se instalará.`,
+      actualBytes,
+      null
+    );
+  }
+
+  if (actualSha256 !== expectedSha256) {
+    return reject(
+      "hash-mismatch",
+      `El instalador no coincide con el manifiesto firmado ` +
+        `(sha256 esperado ${expectedSha256}, recibido ${actualSha256}). No se instalará.`,
+      actualBytes,
+      actualSha256
+    );
+  }
+  return {
+    ok: true,
+    reason: "ok",
+    message: "",
+    expectedBytes,
+    actualBytes,
+    expectedSha256,
+    actualSha256
+  };
 }

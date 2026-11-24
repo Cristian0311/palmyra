@@ -10,8 +10,9 @@ import {
   callTransferInventoryBulkRPC,
   callReceiveTransferRPC,
   callCancelTransferRPC,
-  pullTransferHistoryFromSupabase,
 } from '../../services/supabaseSync';
+import { pullTransferHistoryCorrected } from '../../services/cloudSync/transferHistory';
+import { mergeTransferLists } from '../../services/localDb/repositories';
 import { enqueueOfflineItem, getOfflineQueue, removeFromOfflineQueue } from '../../services/offlineQueue';
 import { removeFromOfflineQueueByAction } from '../../services/offlineQueue/outboxUtils';
 import { generateId } from '../../lib/utils';
@@ -73,22 +74,58 @@ function addTransferStock(
   return next;
 }
 
-/** Replaces the transfer history with the canonical rows, keeping local pending ones. */
-async function syncTransferHistory(set: StoreSet): Promise<void> {
+export type TransferResolutionMode = 'receive' | 'cancel';
+
+/**
+ * Asentamiento local IDEMPOTENTE de una recepción o cancelación: solo toca
+ * filas con estado 'in_transit' y las marca una vez. Una segunda aplicación
+ * (reintento, doble clic, cola duplicada) no genera un segundo movimiento de
+ * stock ni repite la acreditación/devolución.
+ */
+export function settleTransferResolutions(
+  transfers: InventoryTransfer[],
+  inventory: InventoryLevel[],
+  ids: string[],
+  mode: TransferResolutionMode
+): { transfers: InventoryTransfer[]; inventory: InventoryLevel[]; changed: boolean } {
+  const idSet = new Set((ids || []).map(id => String(id || '')).filter(Boolean));
+  const side = mode === 'receive' ? 'toBranchId' : 'fromBranchId';
+  const targetStatus: InventoryTransfer['status'] = mode === 'receive' ? 'completed' : 'cancelled';
+  const rows = (transfers || []).filter(t =>
+    idSet.has(String(t.operationId || t.id)) && t.status === 'in_transit'
+  );
+  const changed = rows.length > 0;
+  const nextTransfers = (transfers || []).map(t =>
+    idSet.has(String(t.operationId || t.id)) && t.status === 'in_transit'
+      ? { ...t, status: targetStatus }
+      : t
+  );
+  const nextInventory = changed ? addTransferStock(inventory || [], rows, side) : inventory || [];
+  return { transfers: nextTransfers, inventory: nextInventory, changed };
+}
+
+/** Doble clic / doble invocación: una resolución por lote de ids en vuelo. */
+const transferResolutionInFlight = new Set<string>();
+
+/**
+ * Reemplaza el historial por las filas canónicas de la nube sin duplicar:
+ * una fila local se conserva SOLO si su identidad (operationId || id) no
+ * aparece en el remoto, y las remotas llegan desduplicadas por id. Un
+ * despacho local pendiente cuya operación ya confirmó el servidor deja de
+ * convivir con su copia remota; llamarla dos veces es idempotente.
+ */
+export async function syncTransferHistory(
+  set: StoreSet,
+  pull: () => Promise<{ success: boolean; transfers: InventoryTransfer[] }> = () =>
+    pullTransferHistoryCorrected()
+): Promise<void> {
   try {
-    const result = await pullTransferHistoryFromSupabase();
-    if (!result.success) return;
-    set(state => {
-      const pendingLocal = (state.transfers || []).filter(t => t.status === 'pending');
-      return {
-        transfers: [
-          ...pendingLocal,
-          ...result.transfers.filter(remote =>
-            !pendingLocal.some(pending => String(pending.operationId || pending.id) === String(remote.operationId || remote.id))
-          )
-        ]
-      };
-    });
+    // Camino sano (cloudSync): pagina sin filtros de enum y proyecta los
+    // estados reales (posted → in_transit, received → completed). El mapeo
+    // legado destruía la distinción despachado/recibido.
+    const result = await pull();
+    if (!result || result.success !== true || !Array.isArray(result.transfers)) return;
+    set(state => ({ transfers: mergeTransferLists(result.transfers, state.transfers || []) }));
   } catch {
     // La reconciliación se reintentará en el siguiente ciclo de sincronización.
   }
@@ -286,7 +323,11 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
       fromBranchId, fromBranchName: fromBranch?.name || 'Sucursal Origen',
       toBranchId, toBranchName: toBranch?.name || 'Sucursal Destino',
       quantity: totalQuantity, variants: activeVariants, date: new Date().toISOString(),
-      userId, status: serverConfirmed && canonicalRefreshed ? 'completed' : 'pending',
+      // El despacho en dos fases deja el traslado posted/in_transit en el
+      // servidor: marcarlo 'completed' aquí lo escondía de la vista de
+      // tránsito y el siguiente pull lo reintroducía como in_transit,
+      // duplicando la fila. Tras confirmar el despacho queda in_transit.
+      userId, status: serverConfirmed ? 'in_transit' as const : 'pending' as const,
       variantLabel: activeVariants.length === 1 ? (activeVariants[0].variantLabel || 'Producto Base') : activeVariants.map(v => v.variantLabel || 'Base').join(', '),
       transactionId, batchId
     };
@@ -625,16 +666,16 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
       ids.includes(String(t.operationId || t.id)) && t.status === 'in_transit'
     );
     if (!rows.length) return { success: true, pending: false };
+    const flightKey = 'receive:' + ids.join(',');
+    if (transferResolutionInFlight.has(flightKey)) return { success: true, pending: false };
+    transferResolutionInFlight.add(flightKey);
+    try {
     const destinationIds = Array.from(new Set(rows.map(row => row.toBranchId).filter(Boolean)));
 
-    const settleLocal = () => set(state => ({
-      inventory: addTransferStock(state.inventory, rows, 'toBranchId'),
-      transfers: (state.transfers || []).map(t =>
-        ids.includes(String(t.operationId || t.id)) && t.status === 'in_transit'
-          ? { ...t, status: 'completed' as const }
-          : t
-      )
-    }));
+    const settleLocal = () => {
+      const resolution = settleTransferResolutions(get().transfers || [], get().inventory || [], ids, 'receive');
+      set({ inventory: resolution.inventory, transfers: resolution.transfers });
+    };
 
     const queuePayload = {
       operationIds: ids,
@@ -671,6 +712,9 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
       return { success: false, pending: true, error: lastError || 'La recepción quedó pendiente de confirmación con la nube.' };
     }
     return { success: true, pending: false };
+    } finally {
+      transferResolutionInFlight.delete(flightKey);
+    }
   },
 
   cancelTransfer: async (operationIds) => {
@@ -680,16 +724,16 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
       ids.includes(String(t.operationId || t.id)) && t.status === 'in_transit'
     );
     if (!rows.length) return { success: true, pending: false };
+    const flightKey = 'cancel:' + ids.join(',');
+    if (transferResolutionInFlight.has(flightKey)) return { success: true, pending: false };
+    transferResolutionInFlight.add(flightKey);
+    try {
     const originIds = Array.from(new Set(rows.map(row => row.fromBranchId).filter(Boolean)));
 
-    const settleLocal = () => set(state => ({
-      inventory: addTransferStock(state.inventory, rows, 'fromBranchId'),
-      transfers: (state.transfers || []).map(t =>
-        ids.includes(String(t.operationId || t.id)) && t.status === 'in_transit'
-          ? { ...t, status: 'cancelled' as const }
-          : t
-      )
-    }));
+    const settleLocal = () => {
+      const resolution = settleTransferResolutions(get().transfers || [], get().inventory || [], ids, 'cancel');
+      set({ inventory: resolution.inventory, transfers: resolution.transfers });
+    };
 
     const queuePayload = {
       operationIds: ids,
@@ -726,6 +770,9 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
       return { success: false, pending: true, error: lastError || 'La cancelación quedó pendiente de confirmación con la nube.' };
     }
     return { success: true, pending: false };
+    } finally {
+      transferResolutionInFlight.delete(flightKey);
+    }
   },
   };
 }
