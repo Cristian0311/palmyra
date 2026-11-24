@@ -150,6 +150,24 @@ async function fetchHubPayload(options: AutoRateSyncOptions): Promise<ExchangePa
 }
 
 /**
+ * Respaldo de nube para superficies autónomas sin credencial local (Windows y
+ * APK): una sola consulta al endpoint de producción, que sí tiene la credencial
+ * de elTOQUE. Devuelve `null` sin lanzar; si falla, el error de la ruta local
+ * se conserva para el aviso.
+ */
+async function fetchCloudPayload(options: AutoRateSyncOptions): Promise<ExchangePayload | null> {
+  const clock = options.clock ?? (() => Date.now());
+  try {
+    const hub = await import("./exchangeRatesHub");
+    const quotes = await hub.fetchCloudRateQuotes({ now: clock });
+    if (!quotes || !quotes.length) return null;
+    return hubQuotesToPayload(quotes, clock());
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Aplica la cotización del hub LAN (o de elTOQUE si no hay hub) solo cuando la
  * diferencia alcanza el umbral configurado. Nunca escribe tasas con datos
  * viejos, cacheados o inválidos.
@@ -188,6 +206,12 @@ export async function syncAutoRates(
     const allowed = options.allowOwnServerRoute ?? await readOwnServerRateRouteAllowed();
     if (allowed) {
       ({ payload, error } = await fetchLatestPayload());
+      // Sin tasas por la ruta propia, una consulta de respaldo a la nube de
+      // producción (desktop/APK sin credencial local). Si tampoco responde,
+      // se conserva el error de la ruta local para el aviso.
+      if (!payload) {
+        payload = (await fetchCloudPayload(options)) ?? undefined;
+      }
     } else {
       const last = readCachedPayload();
       if (!last) {

@@ -18,7 +18,7 @@ import {
 import { isDesktopRuntime } from "../lib/desktopRuntime";
 import { createHubClient, type HubClientOptions } from "./lanHub/client";
 import { HUB_ROUTES, LAN_HUB_ENABLED, type HubRateQuote, type HubRatesResponse } from "./lanHub/protocol";
-import { createHubRatesProvider, hubQuotesToPayload, localExchangeRatesUrl } from "./lanHub/rates";
+import { createHubRatesProvider, hubQuotesToPayload, localExchangeRatesUrl, normalizeLocalRatesPayload, windowOriginHint } from "./lanHub/rates";
 import { RATE_MAX_MS } from "./lanHub/rateScheduler";
 import { getHubSession, type HubSession } from "./lanHub/session";
 import { recordRequest } from "./requestBudget";
@@ -409,6 +409,87 @@ export function readStoredRateQuotes(nowMs = Date.now()): HubRateQuote[] {
 }
 
 /* ------------------------------------------------------------------ */
+/* Respaldo de nube: la fuente de producción                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Endpoint de tasas de la nube de producción. La credencial de elTOQUE vive
+ * solo en ese servidor; las instalaciones autónomas (Windows, APK) lo consultan
+ * como respaldo cuando su servidor local no puede responder. Nunca se
+ * construye una URL de elTOQUE: el renderer solo habla con la nube de PALMYRA.
+ */
+export const DEFAULT_CLOUD_RATES_URL = "https://palmyracrm.onrender.com/api/exchange-rates";
+
+export function cloudExchangeRatesUrl(): string {
+  try {
+    const env = (import.meta as ImportMeta & { env?: Record<string, unknown> }).env;
+    const raw = env?.VITE_APP_ORIGIN;
+    const origin = typeof raw === "string" && raw.trim() ? raw.trim().replace(/\/+$/, "") : "https://palmyracrm.onrender.com";
+    return `${origin}/api/exchange-rates`;
+  } catch {
+    return DEFAULT_CLOUD_RATES_URL;
+  }
+}
+
+/** true cuando esta superficie ya ES la nube: su propia ruta acaba de fallar. */
+function isCloudSurface(): boolean {
+  try {
+    const win = windowOriginHint();
+    if (!win) return false;
+    return new URL(cloudExchangeRatesUrl()).origin === win;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Una sola consulta de respaldo a la nube de producción. El tiempo de espera
+ * es generoso porque una instancia gratuita de Render puede tardar decenas de
+ * segundos en despertar; sin reintento para no duplicar esa espera. Lanza con
+ * un mensaje neutro (sin credenciales ni nombres de red) cuando no hay
+ * respuesta válida.
+ */
+export const CLOUD_RATES_TIMEOUT_MS = 30_000;
+
+export async function fetchCloudRateQuotes(options: HubRatesOptions = {}): Promise<HubRateQuote[]> {
+  if (isCloudSurface()) return [];
+  const doFetch = options.fetchImpl
+    ?? ((input: RequestInfo | URL, init?: RequestInit) => globalThis.fetch(input, init));
+  const clock = options.now ?? (() => Date.now());
+  const endpoint = cloudExchangeRatesUrl();
+  const signal = typeof AbortSignal !== "undefined" && typeof AbortSignal.timeout === "function"
+    ? AbortSignal.timeout(CLOUD_RATES_TIMEOUT_MS)
+    : undefined;
+  const startedAt = Date.now();
+  let response: Response;
+  try {
+    response = await doFetch(endpoint, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+      ...(signal ? { signal } : {})
+    });
+  } catch {
+    recordRequest("rates/cloud", { ms: Date.now() - startedAt, ok: false });
+    throw new Error("No se pudo consultar la tasa automática en la nube; se conserva la última tasa conocida.");
+  }
+  if (!response.ok) {
+    recordRequest("rates/cloud", { ms: Date.now() - startedAt, ok: false });
+    throw new Error(
+      response.status === 429
+        ? "Se alcanzó el límite de consultas de tasa; se reintentará más tarde."
+        : "La consulta de tasa no está disponible en este momento; se conserva la última tasa conocida."
+    );
+  }
+  const body: unknown = await response.json().catch(() => null);
+  const rates = normalizeLocalRatesPayload(body, clock());
+  recordRequest("rates/cloud", { ms: Date.now() - startedAt, ok: rates.length > 0 });
+  if (!rates.length) {
+    throw new Error("La consulta de tasa respondió sin cotizaciones válidas; se conserva la última tasa conocida.");
+  }
+  return rates;
+}
+
+/* ------------------------------------------------------------------ */
 /* Diagnóstico accionable del fallo                                    */
 /* ------------------------------------------------------------------ */
 
@@ -500,15 +581,30 @@ export async function resolveExchangeRates(
     const rates = await fallback();
     quotes = Array.isArray(rates) && rates.length ? rates : null;
   } catch {
-    // Sin respuesta del servidor propio: se intenta la última tasa guardada.
+    // Sin respuesta del servidor propio: se intenta el respaldo de nube abajo.
+  }
+
+  // Sin cotizaciones por la ruta propia, una sola consulta de respaldo a la
+  // nube de producción (que sí tiene la credencial de elTOQUE). Con un
+  // `fallback` inyectado (pruebas/camino alternativo) no se toca la red.
+  let cloudFailure: string | undefined;
+  if (!quotes && !options.fallback) {
+    try {
+      const cloudRates = await fetchCloudRateQuotes(options);
+      if (cloudRates.length) quotes = cloudRates;
+    } catch (error) {
+      cloudFailure = sanitizeRateFailureDetail(error instanceof Error ? error.message : error);
+    }
   }
 
   // Sin cotizaciones nuevas, una única lectura del motivo real para un aviso
-  // accionable. Con un `fallback` inyectado (pruebas/camino alternativo) no se
-  // duplica ninguna petición.
+  // accionable. El fallo de la nube manda: si no hay Internet es la causa real,
+  // mientras que una credencial ausente en el servidor local no es accionable
+  // desde la app. Con un `fallback` inyectado no se duplica ninguna petición.
   let failureDetail: string | undefined;
   if (!quotes && !options.fallback) {
-    failureDetail = await probeLocalRateFailure(options);
+    const localDetail = await probeLocalRateFailure(options);
+    failureDetail = cloudFailure || localDetail;
   }
   if (quotes) {
     return { source: "fallback", rates: quotes, stale: quotes.some(rate => rate.stale) };

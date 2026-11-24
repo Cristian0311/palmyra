@@ -230,3 +230,89 @@ test("si el hub falla se usa el respaldo aunque haya sesión", async () => {
   assert.equal(resolved.stale, true);
   assert.equal(resolved.rates[0].rate, 470);
 });
+
+/* ------------------------------------------------------------------ */
+/* Respaldo de nube: Windows/APK sin credencial local                  */
+/* ------------------------------------------------------------------ */
+
+test("sin tasa local, la resolución cae a la nube de producción y la devuelve en vivo", async () => {
+  const impl = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.includes("127.0.0.1")) {
+      return new Response(JSON.stringify({ error: "Falta configurar la credencial de elTOQUE en el servidor." }), {
+        status: 503,
+        headers: { "content-type": "application/json" }
+      });
+    }
+    return new Response(JSON.stringify(localPayload({ USD: 460, EUR: 505 })), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  }) as typeof fetch;
+
+  const resolved = await resolveExchangeRates({ session: null, fetchImpl: impl, now: () => Date.parse(NOW_ISO) });
+
+  assert.equal(resolved.source, "fallback");
+  assert.equal(resolved.stale, false);
+  assert.deepEqual(resolved.rates.map(item => [item.code, item.rate]), [["USD", 460], ["EUR", 505]]);
+  assert.equal(resolved.error, undefined);
+});
+
+test("si la nube tampoco responde, el aviso trae el motivo de la nube sin tecnicismos", async () => {
+  const offline = (async () => { throw new TypeError("sin red"); }) as typeof fetch;
+
+  const resolved = await resolveExchangeRates({ session: null, fetchImpl: offline, now: () => Date.parse(NOW_ISO) });
+
+  assert.equal(resolved.source, "fallback");
+  assert.deepEqual(resolved.rates, []);
+  assert.equal(resolved.stale, true);
+  assert.match(String(resolved.error), /nube/i);
+  assert.doesNotMatch(String(resolved.error), /TypeError|fetch|servidor local|LAN/i);
+});
+
+test("con un respaldo inyectado no se consulta la nube", async () => {
+  let calls = 0;
+  const exploding = (async () => { calls += 1; throw new Error("la nube no debe consultarse"); }) as typeof fetch;
+
+  const resolved = await resolveExchangeRates({
+    session: null,
+    fetchImpl: exploding,
+    fallback: async () => []
+  });
+
+  assert.equal(calls, 0);
+  assert.deepEqual(resolved.rates, []);
+  assert.equal(resolved.stale, true);
+});
+
+test("la sincronización automática aplica la tasa de la nube cuando la ruta local falla", async () => {
+  const { store, updates } = makeStore();
+  const impl = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.startsWith("/") || url.includes("127.0.0.1")) {
+      throw new TypeError("sin servidor local");
+    }
+    return new Response(JSON.stringify(localPayload({ USD: 415 })), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    });
+  }) as typeof fetch;
+
+  const run = await withFetch(impl, () => syncAutoRates(store, { force: true }));
+
+  assert.deepEqual(run.applied.map(item => item.code), ["USD"]);
+  assert.deepEqual(updates, [{ code: "USD", rate: 415 }]);
+  assert.equal(run.error, undefined);
+});
+
+test("si la ruta local y la nube fallan, la sincronización conserva el error sin aplicar tasas", async () => {
+  const { store, updates } = makeStore();
+  const offlineFetch = (async () => { throw new TypeError("sin red"); }) as typeof fetch;
+
+  const run = await withFetch(offlineFetch, () => syncAutoRates(store, { force: true }));
+
+  assert.deepEqual(run.applied, []);
+  assert.deepEqual(updates, []);
+  assert.ok(run.error && run.error.length > 0);
+  assert.doesNotMatch(String(run.error), /fetch|TypeError|nube/i);
+});
