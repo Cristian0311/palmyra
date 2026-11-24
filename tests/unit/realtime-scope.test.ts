@@ -89,7 +89,11 @@ test("realtimeSync no longer subscribes to business tables nor polls every 120 s
 
 test("boot calls the minimal cloud bootstrap once per tenant", () => {
   const code = source();
-  assert.match(code, /import\('\.\.\/store\/actions\/syncActions'\)/, "bootstrap must be a dynamic import");
+  // `bootstrapCloudData` vive en el store (lo crea `createSyncActions`), no en
+  // el namespace del módulo: el import dinámico debe ser el del store.
+  assert.match(code, /import\('\.\.\/store\/useStore'\)/, "bootstrap must use the store action");
+  assert.match(code, /useStore\.getState\(\)[\s\S]{0,200}bootstrapCloudData/, "bootstrap must come from the store state");
+  assert.doesNotMatch(code, /\(module as Record<string, unknown>\)\.bootstrapCloudData/);
   assert.match(code, /bootstrapCloudData/);
   assert.match(code, /bootstrappedTenantKey/);
   assert.match(code, /export async function refreshRealtimeNow/);

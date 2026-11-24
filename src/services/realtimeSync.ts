@@ -80,8 +80,13 @@ async function runCloudBootstrap(): Promise<boolean> {
 
   bootstrapInFlight = (async () => {
     try {
-      const module = await import('../store/actions/syncActions');
-      const bootstrap = (module as Record<string, unknown>).bootstrapCloudData;
+      const { useStore } = await import('../store/useStore');
+      // `bootstrapCloudData` es una acción del store, no un export del módulo
+      // `syncActions`; buscarla en el namespace nunca la encontraba y dejaba el
+      // arranque sin datos (inventario, almacenes, catálogo) en equipos nuevos.
+      const bootstrap = (useStore.getState() as unknown as {
+        bootstrapCloudData?: (options?: { force?: boolean }) => Promise<boolean>;
+      }).bootstrapCloudData;
       if (typeof bootstrap !== 'function') {
         // F6-B aún no aterrizó: no hay pull completo de respaldo.
         console.info(
@@ -90,7 +95,7 @@ async function runCloudBootstrap(): Promise<boolean> {
         );
         return false;
       }
-      const result = await (bootstrap as () => Promise<unknown>)();
+      const result = await bootstrap();
       if (result === false) return false;
       bootstrappedTenantKey = key;
       emitRemoteDataChanged('bootstrap');
