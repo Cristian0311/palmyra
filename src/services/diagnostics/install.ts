@@ -18,6 +18,7 @@
 import { getNativeAppInfo, type NativeAppInfo } from "../../lib/nativeApp";
 import { PRODUCT_VERSION } from "../../lib/productVersion";
 import { formatStorageBytes } from "../pwaStorageHealth";
+import { downloadGeneratedFile } from "../../utils/downloadFile";
 
 /** Clave del último error de instalación (solo el nombre; jamás su valor). */
 export const INSTALL_ERROR_KEY = "palmyra-install-last-error";
@@ -979,9 +980,9 @@ export function installReportFileName(generatedAt: string): string {
 /**
  * Guarda el informe en el equipo (navegador, APK y escritorio Electron).
  *
- * Es el mismo camino en las tres superficies: Blob + enlace con `download`.
- * Electron lo entrega al gestor de descargas de Chromium, así que el archivo
- * queda en la carpeta de Descargas del usuario. Devuelve `ok: false` cuando el
+ * En el APK el contenido viaja por el puente nativo hacia Descargas públicas;
+ * en navegador, PWA y escritorio se usa Blob + enlace con `download` y
+ * Chromium lo entrega al gestor de descargas. Devuelve `ok: false` cuando el
  * entorno no permite crear la descarga; la interfaz ofrece entonces el texto.
  */
 export function downloadInstallDiagnostics(
@@ -989,28 +990,12 @@ export function downloadInstallDiagnostics(
 ): { ok: boolean; fileName: string } {
   const fileName = installReportFileName(report.generatedAt);
   try {
-    if (
-      typeof document === "undefined" ||
-      typeof URL === "undefined" ||
-      typeof URL.createObjectURL !== "function" ||
-      typeof Blob === "undefined"
-    ) {
-      return { ok: false, fileName };
-    }
-    const blob = new Blob([formatInstallDiagnostics(report)], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = fileName;
-    anchor.rel = "noopener";
-    anchor.style.display = "none";
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    // Margen amplio: en Electron la descarga la procesa Chromium fuera del hilo
-    // de la interfaz y revocar demasiado pronto deja el archivo a medias.
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
-    return { ok: true, fileName };
+    const saved = downloadGeneratedFile(
+      new TextEncoder().encode(formatInstallDiagnostics(report)),
+      fileName,
+      "text/plain;charset=utf-8"
+    );
+    return { ok: saved, fileName };
   } catch {
     return { ok: false, fileName };
   }

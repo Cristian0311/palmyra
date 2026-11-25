@@ -17,6 +17,7 @@ const ExcelJS: typeof ExcelJSImport = ((ExcelJSImport as unknown as { default?: 
 
 import { renderChartSvg, type ChartSpec } from './chartRenderer';
 import { renderChartPng, type RenderedChart } from './chartPng';
+import { downloadGeneratedFile, XLSX_MIME } from '../downloadFile';
 import { FONT_FAMILY, NUM_FMT, PALETTE, SHEET_LAYOUT, reportStamp, safeText, toFiniteNumber } from './theme';
 import type { KpiDefinition } from './analytics';
 import type { ExportCell } from './analytics';
@@ -572,20 +573,9 @@ export async function writeWorkbookBuffer(workbook: Workbook): Promise<Uint8Arra
 }
 
 export function downloadWorkbookBuffer(buffer: Uint8Array, fileName: string): void {
-  if (typeof document === 'undefined') return;
-  const blob = new Blob([buffer as unknown as BlobPart], {
-    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = fileName;
-  link.style.visibility = 'hidden';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  // Revocar de inmediato cancela la descarga en algunos navegadores.
-  window.setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  // En el APK el contenido viaja por el puente nativo (el DownloadListener no
+  // puede leer blob:); en navegador, PWA y escritorio queda el enlace blob:.
+  downloadGeneratedFile(buffer, fileName, XLSX_MIME);
 }
 
 /** Utilidad para pruebas/servidor: no depende de document. */

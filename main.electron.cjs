@@ -2106,6 +2106,44 @@ function serialPortName(port) {
   return typeof label === 'string' && label.trim() ? label.trim().slice(0, 80) : 'puerto sin nombre';
 }
 
+let downloadHandlerInstalled = false;
+
+function safeDownloadName(raw) {
+  const cleaned = String(raw || 'descarga')
+    .replace(/[\\/:*?"<>|]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 120);
+  return cleaned || 'descarga';
+}
+
+/**
+ * Descargas del renderer (Excel, CSV, diagnósticos): sin este manejador
+ * Chromium descarta las URLs blob: en algunas versiones y el botón «Descargar
+ * Excel» parece no hacer nada. El archivo queda en Descargas con el nombre
+ * sugerido y el resultado se registra en el log.
+ */
+function installDownloadHandler() {
+  if (downloadHandlerInstalled) return;
+  downloadHandlerInstalled = true;
+  try {
+    const downloadsDir = app.getPath('downloads');
+    session.defaultSession.on('will-download', (event, item) => {
+      const name = safeDownloadName(item.getFilename());
+      try {
+        item.setSavePath(path.join(downloadsDir, name));
+      } catch (error) {
+        logLine(`No se pudo fijar la ruta de descarga: ${messageOf(error)}`);
+      }
+      item.once('done', (_downloadEvent, state) => {
+        logLine(`Descarga ${state === 'completed' ? 'completada' : state}: ${name}`);
+      });
+    });
+  } catch (error) {
+    logLine(`No se pudo instalar el manejador de descargas: ${messageOf(error)}`);
+  }
+}
+
 /**
  * Sin este manejador Electron cancela navigator.serial.requestPort() siempre.
  * Se elige el primer puerto expuesto por el sistema (orden determinista) y se
@@ -2455,6 +2493,7 @@ if (!hasSingleInstanceLock) {
 
     registerUpdateIpc();
     registerDesktopIpc();
+    installDownloadHandler();
     createWindow();
     initAutoUpdater();
   });

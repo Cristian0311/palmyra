@@ -99,7 +99,7 @@ public final class AndroidBackup {
                 if (!expected.equalsIgnoreCase(sha256Hex(data))) return errorEnvelope("checksum_mismatch");
             }
 
-            writeDownload(name, data);
+            writeDownload(name, data, MIME);
             JSONObject payload = new JSONObject();
             payload.put("ok", true);
             payload.put("location", Environment.DIRECTORY_DOWNLOADS + "/" + name);
@@ -112,11 +112,50 @@ public final class AndroidBackup {
         }
     }
 
-    private void writeDownload(String name, byte[] data) throws IOException {
+    /**
+     * Guarda un archivo exportado por la web (Excel, CSV, TXT) en Descargas
+     * públicas. Es el camino de las descargas de reportes: el DownloadListener
+     * nativo no puede leer URLs blob:, así que el contenido llega en Base64.
+     */
+    public String saveExport(String fileName, String dataBase64, String mimeType) {
+        try {
+            String name = sanitizeName(fileName);
+            if (name == null) return errorEnvelope("invalid_name");
+            if (dataBase64 == null || dataBase64.isEmpty()) return errorEnvelope("invalid_argument");
+            byte[] data;
+            try {
+                data = Base64.decode(dataBase64, Base64.DEFAULT);
+            } catch (IllegalArgumentException invalid) {
+                return errorEnvelope("invalid_base64");
+            }
+            if (data.length == 0) return errorEnvelope("empty_data");
+            if (data.length > MAX_BACKUP_BYTES) return errorEnvelope("too_large");
+
+            writeDownload(name, data, sanitizeMime(mimeType));
+            JSONObject payload = new JSONObject();
+            payload.put("ok", true);
+            payload.put("location", Environment.DIRECTORY_DOWNLOADS + "/" + name);
+            payload.put("bytes", data.length);
+            return payload.toString();
+        } catch (Exception error) {
+            return errorEnvelope("permission_denied".equals(error.getMessage())
+                    ? "permission_denied"
+                    : "write_failed");
+        }
+    }
+
+    /** MIME conocido para MediaStore; cualquier otro valor cae a octet-stream. */
+    private static String sanitizeMime(String raw) {
+        if (raw == null) return MIME;
+        String base = raw.split(";", 2)[0].trim().toLowerCase(Locale.ROOT);
+        return base.matches("[a-z0-9][a-z0-9.+-]*/[a-z0-9][a-z0-9.+-]*") ? base : MIME;
+    }
+
+    private void writeDownload(String name, byte[] data, String mime) throws IOException {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             ContentValues values = new ContentValues();
             values.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
-            values.put(MediaStore.MediaColumns.MIME_TYPE, MIME);
+            values.put(MediaStore.MediaColumns.MIME_TYPE, mime);
             values.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS);
             values.put(MediaStore.MediaColumns.IS_PENDING, 1);
             Uri target = activity.getContentResolver()

@@ -18,6 +18,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { ArrowLeftRight, PackagePlus, AlertCircle, Search, ShieldCheck, X, DollarSign, Trash2, Edit, History, Package, PackageCheck, TrendingUp, Filter, Download, Plus, ArrowRightLeft, List, Settings2, Tag, Building2, Save, RefreshCw, Minus, ChevronDown, ChevronUp, ChevronRight, Check } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { cn, generateId } from "../lib/utils";
+import { downloadGeneratedFile } from '../utils/downloadFile';
 import { Product, Category } from "../types";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { PrintLabels } from "../components/PrintLabels";
@@ -673,16 +674,17 @@ export default function Inventory() {
   const exportToCSV = () => {
     // Se exporta el inventario filtrado completo, no solo la página visible.
     const csvContent = buildInventoryCsv(inventoryData.full, categories);
-    const blob = new Blob(["\uFEFF" + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute("download", `PALMYRA_Inventario_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    const fileName = `PALMYRA_Inventario_${new Date().toISOString().split('T')[0]}.csv`;
+    try {
+      downloadGeneratedFile(
+        new TextEncoder().encode("\uFEFF" + csvContent),
+        fileName,
+        'text/csv;charset=utf-8'
+      );
+    } catch (error) {
+      console.error('[Inventory] No se pudo descargar el CSV:', error);
+      addNotification('No se pudo descargar el CSV de inventario. Intenta nuevamente.', 'error');
+    }
   };
 
   const exportToExcel = async () => {

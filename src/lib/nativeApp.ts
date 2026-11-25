@@ -29,6 +29,11 @@ export type PalmyraNativeBridge = {
   importApk?(): void;
   /** Instala un paquete web .zip elegido con el selector del sistema (USB/SD). */
   importBundle?(): void;
+  /**
+   * Guarda un archivo exportado por la web (Excel/CSV/TXT) en Descargas
+   * públicas. Responde un envelope JSON con `ok:false` si falla.
+   */
+  saveFile?(fileName: string, dataBase64: string, mimeType: string): string | Promise<string>;
 };
 
 /**

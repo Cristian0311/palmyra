@@ -651,6 +651,20 @@ public class MainActivity extends Activity {
         public void importBundle() {
             importBundleFromFile();
         }
+
+        /**
+         * Descarga de archivos generados en la web (Excel, CSV, TXT): el
+         * DownloadListener no puede leer URLs blob:, así que el contenido
+         * llega como Base64 y el shell lo escribe en Descargas públicas.
+         */
+        @JavascriptInterface
+        public String saveFile(String fileName, String dataBase64, String mimeType) {
+            try {
+                return backup.saveExport(fileName, dataBase64, mimeType);
+            } catch (Throwable error) {
+                return "{\"ok\":false,\"error\":\"save_failed\"}";
+            }
+        }
     }
 
     /**

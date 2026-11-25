@@ -19,6 +19,7 @@ export interface SyncLogEntry {
 }
 
 import { getPalmyraScopedStorageKey } from '../services/localScope';
+import { downloadGeneratedFile } from './downloadFile';
 
 const STORAGE_KEY_PREFIX = 'palmyra_sync_logs_v2';
 const MAX_LOGS = 200;
@@ -79,13 +80,15 @@ export function clearSyncLogs(): void {
 
 export function exportSyncLogsJSON(): void {
   const logs = getSyncLogs();
-  const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(logs, null, 2));
-  const downloadAnchor = document.createElement('a');
-  downloadAnchor.setAttribute("href", dataStr);
-  downloadAnchor.setAttribute("download", `sync_logs_audit_${new Date().toISOString().split('T')[0]}.json`);
-  document.body.appendChild(downloadAnchor);
-  downloadAnchor.click();
-  downloadAnchor.remove();
+  try {
+    downloadGeneratedFile(
+      new TextEncoder().encode(JSON.stringify(logs, null, 2)),
+      `sync_logs_audit_${new Date().toISOString().split('T')[0]}.json`,
+      'application/json'
+    );
+  } catch (e) {
+    console.error('[syncLogger] Error al descargar el log JSON:', e);
+  }
 }
 
 export function exportSyncLogsTXT(): void {
@@ -97,13 +100,13 @@ export function exportSyncLogsTXT(): void {
 
   const header = `=====================================================\nINFORME DE AUDITORÍA Y LOGS DE SINCRONIZACIÓN POS\nFecha de Exportación: ${new Date().toLocaleString('es-CU')}\nTotal de Registros: ${logs.length}\n=====================================================\n\n`;
   
-  const blob = new Blob([header + lines.join('\n')], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `sync_logs_report_${new Date().toISOString().split('T')[0]}.txt`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  try {
+    downloadGeneratedFile(
+      new TextEncoder().encode(header + lines.join('\n')),
+      `sync_logs_report_${new Date().toISOString().split('T')[0]}.txt`,
+      'text/plain;charset=utf-8'
+    );
+  } catch (e) {
+    console.error('[syncLogger] Error al descargar el log TXT:', e);
+  }
 }
