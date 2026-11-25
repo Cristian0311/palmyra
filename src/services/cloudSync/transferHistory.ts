@@ -19,7 +19,11 @@
 import type { InventoryTransfer, InventoryLevel } from "../../types";
 import { getSupabase } from "../../lib/supabase";
 import { getActiveTenant } from "../tenant";
-import { normalizeTransferStatus } from "../localDb/repositories";
+import {
+  normalizeTransferOperationId,
+  normalizeTransferStatus,
+  transferIdentityKey
+} from "../localDb/repositories";
 
 // ---------------------------------------------------------------------------
 // Asentamiento local de resoluciones (puro) y overrides de estado persistentes
@@ -76,13 +80,13 @@ export function settleTransferRows(
   targetStatus: TransferStatus,
   options: { creditStock?: boolean; creditSide?: "fromBranchId" | "toBranchId" } = {}
 ): { transfers: InventoryTransfer[]; inventory: InventoryLevel[]; changed: boolean } {
-  const idSet = new Set((ids || []).map(id => String(id || "")).filter(Boolean));
+  const idSet = new Set((ids || []).map(id => normalizeTransferOperationId(id)).filter(Boolean));
   const rows = (transfers || []).filter(t =>
-    idSet.has(String(t.operationId || t.id)) && t.status === "in_transit"
+    idSet.has(transferIdentityKey(t)) && t.status === "in_transit"
   );
   const changed = rows.length > 0;
   const nextTransfers = (transfers || []).map(t =>
-    idSet.has(String(t.operationId || t.id)) && t.status === "in_transit"
+    idSet.has(transferIdentityKey(t)) && t.status === "in_transit"
       ? { ...t, status: targetStatus }
       : t
   );
@@ -138,7 +142,7 @@ function loadStatusOverrides(): void {
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return;
     for (const entry of parsed) {
-      const id = String((entry as any)?.id || "");
+      const id = normalizeTransferOperationId((entry as any)?.id);
       const status = (entry as any)?.status;
       if (id && (status === "completed" || status === "cancelled")) {
         statusOverrides.set(id, status as TransferStatus);
@@ -167,7 +171,7 @@ export function registerTransferStatusOverrides(
 ): void {
   let changed = false;
   for (const rawId of ids || []) {
-    const id = String(rawId || "");
+    const id = normalizeTransferOperationId(rawId);
     if (!id) continue;
     if (statusOverrides.get(id) !== status) {
       statusOverrides.set(id, status);
@@ -179,6 +183,26 @@ export function registerTransferStatusOverrides(
 
 export function getTransferStatusOverrides(): Map<string, TransferStatus> {
   return new Map(statusOverrides);
+}
+
+/**
+ * Aplica los overrides a filas 'in_transit' cuyas identidades (normalizadas)
+ * están registradas. Único punto de aplicación: la reconciliación del
+ * historial (syncTransferHistory), la autocuración del arranque y el refresco
+ * por sucursal pasan sus filas por aquí para que una resolución confirmada por
+ * la nube no reaparezca como accionable.
+ */
+export function applyTransferStatusOverrides(
+  transfers: readonly InventoryTransfer[]
+): InventoryTransfer[] {
+  if (!statusOverrides.size || !Array.isArray(transfers)) {
+    return transfers ? [...transfers] : [];
+  }
+  return transfers.map(t => {
+    if (t.status !== "in_transit") return t;
+    const forced = statusOverrides.get(transferIdentityKey(t));
+    return forced ? { ...t, status: forced } : t;
+  });
 }
 
 export interface TransferHistoryOptions {

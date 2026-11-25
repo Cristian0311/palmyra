@@ -369,6 +369,31 @@ export function transferIdentity(
   return String((item as any)?.id ?? '').trim();
 }
 
+const LEGACY_OPERATION_PREFIX = /^[a-z][a-z0-9_-]*:([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/i;
+
+/**
+ * Identidad de operación comparable: recorta, baja a minúsculas y quita el
+ * prefijo legado (`invrec:<uuid>`, ...). La nube guarda el uuid pelado y el
+ * RPC normaliza el prefijo antes de buscar; sin esta normalización una fila
+ * local con prefijo nunca casa con su copia remota en las mezclas y reaparece
+ * para confirmar/cancelar aunque la nube ya la tenga resuelta.
+ */
+export function normalizeTransferOperationId(value: unknown): string {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  const lower = raw.toLowerCase();
+  const legacy = LEGACY_OPERATION_PREFIX.exec(lower);
+  if (legacy) return legacy[1];
+  return lower;
+}
+
+/** Clave de comparación de un traslado: identidad cruda normalizada. */
+export function transferIdentityKey(
+  item: Pick<InventoryTransfer, 'id' | 'operationId'> | null | undefined
+): string {
+  return normalizeTransferOperationId(transferIdentity(item));
+}
+
 /**
  * Desduplica filas de traslados por su clave de FILA: id (id de línea en las
  * filas remotas, uuid del documento en las locales) con la identidad como
@@ -392,19 +417,21 @@ export function dedupeTransferRows(items: readonly InventoryTransfer[]): Invento
 
 /**
  * Filtra las filas locales que la nube ya trae: se descarta cualquier fila
- * local cuya identidad (operationId || id) aparezca en las remotas. Las
- * locales que la nube no conoce (pendientes de envío, caché antigua) se
- * conservan.
+ * local cuya identidad (operationId || id), NORMALIZADA, aparezca en las
+ * remotas. Las locales que la nube no conoce (pendientes de envío, caché
+ * antigua) se conservan. La normalización absorbe prefijos legados
+ * (`invrec:<uuid>`) y diferencias de mayúsculas: la nube ya resolvió esa
+ * operación y su estado terminal manda.
  */
 export function filterLocalTransfers(
   local: readonly InventoryTransfer[],
   remote: readonly InventoryTransfer[]
 ): InventoryTransfer[] {
   const remoteIdentities = new Set(
-    dedupeTransferRows(remote).map(transferIdentity).filter(Boolean)
+    dedupeTransferRows(remote).map(transferIdentityKey).filter(Boolean)
   );
   return (local || []).filter((item) => {
-    const identity = transferIdentity(item);
+    const identity = transferIdentityKey(item);
     return !identity || !remoteIdentities.has(identity);
   });
 }

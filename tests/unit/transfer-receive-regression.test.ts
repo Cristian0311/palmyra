@@ -345,7 +345,7 @@ test("cancelar online con pull fallando: fila cancelada y stock devuelto al orig
   assert.equal(mocks.enqueued.length, 0);
 });
 
-test("cancelar un posted de una sola fase: error claro no reintentable y sin encolado", async () => {
+test("cancelar un posted de una sola fase: la nube ya lo resolvió, se cierra como recibido sin encolar", async () => {
   const mocks = resetMocks();
   mocks.callCancelTransferRPC = async () => ({
     success: false,
@@ -358,12 +358,14 @@ test("cancelar un posted de una sola fase: error claro no reintentable y sin enc
   );
 
   const result = await harness.actions.cancelTransfer(["op-posted-cancel-1"]);
-  assert.equal(result.success, false);
+  assert.equal(result.success, true, "la nube ya lo resolvió: no es un error del usuario");
   assert.equal(result.pending, false, "no reintentable: no queda pendiente");
-  assert.ok(/sola fase/.test(result.error), "explica que la nube no admite la cancelación");
-  assert.equal(rowByIdentity(harness.getState(), "op-posted-cancel-1").status, "in_transit", "no se miente el estado");
-  assert.equal(harness.getState().inventory[0].quantity, 3, "stock intacto");
+  assert.ok(result.warning && /ya tenía el traslado resuelto/.test(result.warning), "explica que la nube no admite la cancelación");
+  assert.equal(rowByIdentity(harness.getState(), "op-posted-cancel-1").status, "completed", "se cierra como recibido para no quedar accionable");
+  assert.equal(harness.getState().inventory[0].quantity, 3, "stock intacto: la nube ya aplicó sus movimientos");
   assert.equal(mocks.enqueued.length, 0, "sin encolado infinito");
+  const overrides = (transferHistoryModule as any).getTransferStatusOverrides();
+  assert.equal(overrides.get("op-posted-cancel-1"), "completed", "override registrado para que no reaparezca en tránsito");
 });
 
 // ---------------------------------------------------------------------------
@@ -444,9 +446,10 @@ test("settleTransferRows: con creditStock:false cambia el estado sin tocar el st
 // Cableado: la cola offline también tolera los errores terminales
 // ---------------------------------------------------------------------------
 
-test("processQueueItem: la cola clasifica errores terminales y registra overrides para posted", () => {
+test("processQueueItem: la cola clasifica errores terminales y registra overrides", () => {
   const sourceText = readFileSync(join(process.cwd(), "src/services/offline/processQueueItem.ts"), "utf8");
   assert.ok(sourceText.includes("classifyTransferResolutionError("), "la cola clasifica en lugar de reintentar a ciegas");
-  assert.ok(sourceText.includes("registerTransferStatusOverrides(postedIds, 'completed')"), "la cola registra el override de posted recibidos");
+  assert.ok(sourceText.includes("registerTransferStatusOverrides("), "la cola registra overrides de resoluciones terminales");
+  assert.ok(sourceText.includes("applyTransferStatusOverrides("), "la cola aplica overrides al merge final del historial");
   assert.ok(sourceText.includes("retryableIds.length"), "solo los transitorios reintentan");
 });

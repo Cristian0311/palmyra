@@ -33,7 +33,8 @@ import { filterLocalTransfers } from '../localDb/repositories';
 import {
   settleTransferRows,
   classifyTransferResolutionError,
-  registerTransferStatusOverrides
+  registerTransferStatusOverrides,
+  applyTransferStatusOverrides
 } from '../cloudSync/transferHistory';
 import { reconcileBankCanonical } from './reconcileBank';
 import { replaceWarehouseInventory, replaceWarehousesInventory } from './reconcileInventory';
@@ -760,7 +761,7 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
           String(t.operationId || t.id) !== operationId && t.status === 'pending' &&
           !remote.some((r: any) => String(r.operationId || r.id) === String(t.operationId || t.id))
         );
-        return { transfers: [...pendingOther, ...remote] };
+        return { transfers: applyTransferStatusOverrides([...pendingOther, ...remote]) };
       });
       return true;
     }
@@ -808,7 +809,6 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
       // (la nube ya resolvió el traslado) NO se reintentan: la reconciliación
       // canónica de abajo trae el estado y el stock reales. Solo un fallo
       // transitorio conserva el ítem en cola (throw → reintento).
-      const postedIds: string[] = [];
       const cancelledIds: string[] = [];
       const settledIds: string[] = [];
       const retryableIds: string[] = [];
@@ -816,25 +816,29 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
         const res = await callReceiveTransferRPC(id);
         if (res.success) {
           settledIds.push(id);
-          if (res.data?.already_existed && String(res.data?.status) === 'posted') postedIds.push(id);
         } else {
           const kind = classifyTransferResolutionError(res.error || '', res.errorCode);
           if (kind === 'cancelled') {
             settledIds.push(id);
             cancelledIds.push(id);
-          } else if (kind === 'not_found') {
+          } else if (kind === 'not_found' || kind === 'not_in_transit') {
+            // La nube no conoce la operación (o ya salió de tránsito): se
+            // resuelve localmente para que no quede accionable para siempre.
             settledIds.push(id);
           } else if (kind === 'retriable') {
             retryableIds.push(id);
           }
-          // 'not_in_transit': estado inesperado; la reconciliación del
-          // historial mostrará el estado real sin reintentos infinitos.
         }
       }
       if (retryableIds.length) {
         throw new Error('Recepción pendiente: la nube no confirmó ' + retryableIds.length + ' operación(es). Se reintentará.');
       }
-      if (postedIds.length) registerTransferStatusOverrides(postedIds, 'completed');
+      // Cada resolución terminal queda registrada: si la fila (o su sombra
+      // legacy) reaparece en tránsito, los merges la fuerzan al estado real.
+      if (settledIds.length) {
+        registerTransferStatusOverrides(settledIds.filter(id => !cancelledIds.includes(id)), 'completed');
+      }
+      if (cancelledIds.length) registerTransferStatusOverrides(cancelledIds, 'cancelled');
       if (settledIds.length) {
         useStore.setState(state => {
           // Sin crédito local: la nube ya movió el stock (o el traslado no
@@ -872,7 +876,7 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
       }
       useStore.setState(state => {
         const localTransfers = filterLocalTransfers(state.transfers || [], history.transfers);
-        return { transfers: [...localTransfers, ...history.transfers] };
+        return { transfers: applyTransferStatusOverrides([...localTransfers, ...history.transfers]) };
       });
       return true;
     }
@@ -882,6 +886,7 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
         : [];
       if (!ids.length) throw new PermanentSyncError('Cancelación de traslado sin operaciones.');
       const settledIds: string[] = [];
+      const resolvedIds: string[] = [];
       const retryableIds: string[] = [];
       for (const id of ids) {
         const res = await callCancelTransferRPC(id);
@@ -891,26 +896,40 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
           const kind = classifyTransferResolutionError(res.error || '', res.errorCode);
           if (kind === 'not_found') {
             settledIds.push(id);
+          } else if (kind === 'not_in_transit') {
+            // La nube ya resolvió el traslado (p. ej. posted de una sola
+            // fase): no admite cancelación; se cierra como recibido sin
+            // mover stock local.
+            settledIds.push(id);
+            resolvedIds.push(id);
           } else if (kind === 'retriable') {
             retryableIds.push(id);
           }
-          // 'not_in_transit' (posted de una sola fase): la nube no admite la
-          // cancelación; el historial canónico reconcilia el estado visible.
         }
       }
       if (retryableIds.length) {
         throw new Error('Cancelación pendiente: la nube no confirmó ' + retryableIds.length + ' operación(es). Se reintentará.');
       }
+      const cancelledIds = settledIds.filter(id => !resolvedIds.includes(id));
+      if (cancelledIds.length) registerTransferStatusOverrides(cancelledIds, 'cancelled');
+      if (resolvedIds.length) registerTransferStatusOverrides(resolvedIds, 'completed');
       if (settledIds.length) {
         useStore.setState(state => {
-          const settled = settleTransferRows(
+          const cancelled = settleTransferRows(
             state.transfers || [],
             state.inventory || [],
-            settledIds,
+            cancelledIds,
             'cancelled',
             { creditStock: false, creditSide: 'fromBranchId' }
           );
-          return { transfers: settled.transfers, inventory: settled.inventory };
+          const resolved = settleTransferRows(
+            cancelled.transfers,
+            cancelled.inventory,
+            resolvedIds,
+            'completed',
+            { creditStock: false, creditSide: 'fromBranchId' }
+          );
+          return { transfers: resolved.transfers, inventory: resolved.inventory };
         });
       }
       const branchIds: string[] = Array.from(new Set<string>(
@@ -929,7 +948,7 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
       }
       useStore.setState(state => {
         const localTransfers = filterLocalTransfers(state.transfers || [], history.transfers);
-        return { transfers: [...localTransfers, ...history.transfers] };
+        return { transfers: applyTransferStatusOverrides([...localTransfers, ...history.transfers]) };
       });
       return true;
     }

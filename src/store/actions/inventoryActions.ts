@@ -16,9 +16,9 @@ import {
   settleTransferRows,
   classifyTransferResolutionError,
   registerTransferStatusOverrides,
-  getTransferStatusOverrides
+  applyTransferStatusOverrides
 } from '../../services/cloudSync/transferHistory';
-import { mergeTransferLists } from '../../services/localDb/repositories';
+import { mergeTransferLists, transferIdentityKey } from '../../services/localDb/repositories';
 import { enqueueOfflineItem, getOfflineQueue, removeFromOfflineQueue } from '../../services/offlineQueue';
 import { removeFromOfflineQueueByAction } from '../../services/offlineQueue/outboxUtils';
 import { generateId } from '../../lib/utils';
@@ -95,18 +95,14 @@ export async function syncTransferHistory(
     if (!result || result.success !== true || !Array.isArray(result.transfers)) return;
     // Los traslados legacy 'posted' ya aplicados en la nube se asentaron
     // localmente como recibidos: el override evita que este pull los devuelva
-    // a 'in_transit' (el servidor aún los reporta como posted).
-    const overrides = getTransferStatusOverrides();
-    set(state => {
-      const merged = mergeTransferLists(result.transfers, state.transfers || []);
-      if (!overrides.size) return { transfers: merged };
-      return {
-        transfers: merged.map(t => {
-          const forced = overrides.get(String(t.operationId || t.id));
-          return forced && t.status === 'in_transit' ? { ...t, status: forced } : t;
-        })
-      };
-    });
+    // a 'in_transit' (el servidor aún los reporta como posted). Cualquier otra
+    // resolución confirmada por la nube (recibido/cancelado ya existente)
+    // también queda cubierta por el mismo mapa de overrides.
+    set(state => ({
+      transfers: applyTransferStatusOverrides(
+        mergeTransferLists(result.transfers, state.transfers || [])
+      )
+    }));
   } catch {
     // La reconciliación se reintentará en el siguiente ciclo de sincronización.
   }
@@ -635,8 +631,11 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
   receiveTransfer: async (operationIds) => {
     const ids: string[] = Array.from(new Set<string>((operationIds || []).map((id): string => String(id || '')).filter(Boolean)));
     if (!ids.length) return { success: true, pending: false };
+    // Coincidencia por identidad normalizada: la UI pasa la identidad cruda de
+    // la fila, pero filas legadas pueden traer prefijos que el RPC sí entiende.
+    const idKeys = new Set(ids.map(id => transferIdentityKey({ id, operationId: id })).filter(Boolean));
     const rows = (get().transfers || []).filter(t =>
-      ids.includes(String(t.operationId || t.id)) && t.status === 'in_transit'
+      idKeys.has(transferIdentityKey(t)) && t.status === 'in_transit'
     );
     if (!rows.length) return { success: true, pending: false };
     const flightKey = 'receive:' + ids.join(',');
@@ -712,10 +711,19 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
     if (alreadyIds.length) settleLocal('completed', false, alreadyIds);
     if (postedIds.length) {
       settleLocal('completed', false, postedIds);
-      registerTransferStatusOverrides(postedIds, 'completed');
     }
     if (cancelledIds.length) settleLocal('cancelled', false, cancelledIds);
     if (missingIds.length) settleLocal('completed', false, missingIds);
+
+    // Toda resolución terminal queda registrada como override persistente: si
+    // la identidad no casa con las filas remotas del historial (prefijo legado,
+    // traslado sin líneas, ...), el próximo pull no devolverá la fila a
+    // 'en tránsito'. posted ya se cubre; ya-recibido, cancelado y no-existente
+    // también son estados finales conocidos por la nube.
+    if (postedIds.length) registerTransferStatusOverrides(postedIds, 'completed');
+    if (alreadyIds.length) registerTransferStatusOverrides(alreadyIds, 'completed');
+    if (cancelledIds.length) registerTransferStatusOverrides(cancelledIds, 'cancelled');
+    if (missingIds.length) registerTransferStatusOverrides(missingIds, 'completed');
 
     if (retryableIds.length) {
       await enqueueOfflineItem('transfer_receive', { ...queuePayload, operationIds: retryableIds }, 'transfer-receive:' + retryableIds.join(','));
@@ -748,8 +756,9 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
   cancelTransfer: async (operationIds) => {
     const ids: string[] = Array.from(new Set<string>((operationIds || []).map((id): string => String(id || '')).filter(Boolean)));
     if (!ids.length) return { success: true, pending: false };
+    const idKeys = new Set(ids.map(id => transferIdentityKey({ id, operationId: id })).filter(Boolean));
     const rows = (get().transfers || []).filter(t =>
-      ids.includes(String(t.operationId || t.id)) && t.status === 'in_transit'
+      idKeys.has(transferIdentityKey(t)) && t.status === 'in_transit'
     );
     if (!rows.length) return { success: true, pending: false };
     const flightKey = 'cancel:' + ids.join(',');
@@ -792,6 +801,7 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
     const freshIds: string[] = [];      // cancelado ahora por la nube: devolver stock al origen local
     const alreadyIds: string[] = [];    // ya cancelado en la nube: sin crédito local
     const missingIds: string[] = [];    // no existe en la nube: asentar cancelado local
+    const resolvedIds: string[] = [];   // not_in_transit: la nube ya lo resolvió (recibido o de una sola fase)
     const retryableIds: string[] = [];
     const errors: string[] = [];
 
@@ -808,14 +818,10 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
           retryableIds.push(id);
           errors.push(res.error || 'La nube no confirmó la cancelación.');
         } else {
-          // 'not_in_transit' aquí significa un traslado legacy de una sola
-          // fase (posted) ya aplicado: la nube NO admite su cancelación y
-          // reintentar nunca prosperará. Se informa un error claro sin encolar.
-          errors.push(
-            kind === 'not_in_transit'
-              ? 'Este traslado se aplicó en una sola fase y la nube no admite su cancelación. Contacta soporte para revertirlo.'
-              : (res.error || 'La nube rechazó la cancelación con un estado inesperado.')
-          );
+          // 'not_in_transit': la nube ya resolvió el traslado (recibido, o
+          // legacy de una sola fase ya aplicado). No hay nada que cancelar: se
+          // asienta como recibido y desaparece de la lista de acciones.
+          resolvedIds.push(id);
         }
       }
     }
@@ -823,6 +829,11 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
     if (freshIds.length) settleLocal('cancelled', true, freshIds);
     if (alreadyIds.length) settleLocal('cancelled', false, alreadyIds);
     if (missingIds.length) settleLocal('cancelled', false, missingIds);
+    if (resolvedIds.length) settleLocal('completed', false, resolvedIds);
+
+    if (alreadyIds.length) registerTransferStatusOverrides(alreadyIds, 'cancelled');
+    if (missingIds.length) registerTransferStatusOverrides(missingIds, 'cancelled');
+    if (resolvedIds.length) registerTransferStatusOverrides(resolvedIds, 'completed');
 
     if (retryableIds.length) {
       await enqueueOfflineItem('transfer_cancel', { ...queuePayload, operationIds: retryableIds }, 'transfer-cancel:' + retryableIds.join(','));
@@ -839,11 +850,12 @@ export function createInventoryActions(set: StoreSet, get: StoreGet): any {
     const warnings: string[] = [];
     if (alreadyIds.length) warnings.push('La nube ya tenía registrada la cancelación; no se volvió a mover stock.');
     if (missingIds.length) warnings.push('El traslado no existe en la nube; se marcó como cancelado localmente y se reconciliará.');
+    if (resolvedIds.length) warnings.push('La nube ya tenía el traslado resuelto; se marcó como recibido sin mover stock.');
     return {
       success: true,
       pending: false,
       warning: warnings.join(' ') || undefined,
-      alreadyApplied: freshIds.length === 0 && (alreadyIds.length > 0 || missingIds.length > 0)
+      alreadyApplied: freshIds.length === 0 && (alreadyIds.length > 0 || missingIds.length > 0 || resolvedIds.length > 0)
     };
     } finally {
       transferResolutionInFlight.delete(flightKey);

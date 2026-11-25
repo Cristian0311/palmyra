@@ -42,7 +42,8 @@ import {
   mergeBranchOperationalData
 } from '../utils/offlineProtection';
 import { readSyncLedger, recordSyncMoment } from '../../services/offline/syncLedger';
-import { dedupeTransferRows, filterLocalTransfers, mergeTransferLists } from '../../services/localDb/repositories';
+import { dedupeTransferRows, filterLocalTransfers, mergeTransferLists, transferIdentityKey } from '../../services/localDb/repositories';
+import { applyTransferStatusOverrides } from '../../services/cloudSync/transferHistory';
 import {
   loadBootstrapData,
   pullSalesHistoryPage,
@@ -215,7 +216,7 @@ export function mergeBootstrapSnapshot(d: any, state: AppState, report?: Bootstr
     // nube no trae esa operación, y las remotas se desduplican por id para
     // absorber solapes de paginación.
     const remoteRows = dedupeTransferRows(d.transfers || []);
-    return mergeTransferLists(remoteRows, state.transfers || []);
+    return applyTransferStatusOverrides(mergeTransferLists(remoteRows, state.transfers || []));
   })();
 
   const pendingBranchIds = pendingIds(queue, ['branch']);
@@ -472,11 +473,41 @@ async function healTransferHistory(
       // Identidad operationId || id: un pendiente local cuya operación ya
       // llegó de la nube (misma operación, distinto id de fila) no debe
       // convivir con sus líneas remotas. Lo que la nube no conoce se conserva.
-      return { transfers: mergeTransferLists(result.transfers, state.transfers || []) };
+      // Los overrides de resoluciones ya confirmadas por la nube se aplican al
+      // final: una fila legacy 'posted' (o resuelta sin líneas remotas) no
+      // reaparece en tránsito.
+      return {
+        transfers: applyTransferStatusOverrides(
+          mergeTransferLists(result.transfers, state.transfers || [])
+        )
+      };
     });
   } catch {
     // Se conserva la copia local; la autocuración se reintenta en el próximo arranque.
   }
+}
+
+/**
+ * ¿Quedan filas locales 'en tránsito' cuya identidad no trajo el arranque?
+ * El bootstrap legado acota su ventana (y omite cancelados antiguos): si la
+ * nube ya resolvió un traslado que este equipo sigue viendo accionable, se
+ * fuerza la autocuración con el pull completo para traer el estado real.
+ */
+export function hasUnresolvedTransitRows(
+  local: readonly InventoryTransfer[],
+  bootstrapTransfers: readonly InventoryTransfer[] | null | undefined
+): boolean {
+  const localTransit = (local || []).filter(t => t && t.status === 'in_transit');
+  if (!localTransit.length) return false;
+  const remoteIdentities = new Set(
+    dedupeTransferRows(bootstrapTransfers || [])
+      .map(t => transferIdentityKey(t))
+      .filter(Boolean)
+  );
+  return localTransit.some(t => {
+    const key = transferIdentityKey(t);
+    return !key || !remoteIdentities.has(key);
+  });
 }
 
 function buildBootstrapResult(report: BootstrapReport, data: any): SyncResult {
@@ -570,7 +601,8 @@ async function runBootstrap(set: StoreSet, get: StoreGet, options?: BootstrapAct
       // tiene historial (o la sección falló) se rellena por el camino sano.
       const transfersSectionOk =
         !report?.sections?.transfers || report.sections.transfers.ok !== false;
-      if (!transfersSectionOk || (before.transfers || []).length === 0) {
+      const staleTransit = hasUnresolvedTransitRows(before.transfers || [], data.transfers);
+      if (!transfersSectionOk || (before.transfers || []).length === 0 || staleTransit) {
         await healTransferHistory(set, get, companyId, data, options);
       }
 
@@ -724,7 +756,7 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
         return {
           transactions: merged.transactions,
           cashSessions: merged.cashSessions,
-          transfers: merged.transfers,
+          transfers: applyTransferStatusOverrides(merged.transfers),
           inventory: merged.inventory
         };
       });
