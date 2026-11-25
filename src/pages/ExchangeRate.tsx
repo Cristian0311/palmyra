@@ -1,6 +1,5 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Activity, AlertCircle, ArrowDownRight, ArrowUpRight, BarChart3, CircleDollarSign, Clock3, Minus, RefreshCw, ShieldCheck, TrendingDown, TrendingUp } from 'lucide-react';
+import { Activity, AlertCircle, ArrowDownRight, ArrowUpRight, BarChart3, Clock3, Minus, RefreshCw, TrendingDown, TrendingUp } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import OperationsSurface from '../components/OperationsSurface';
 import { useStore } from '../store/useStore';
@@ -225,7 +224,6 @@ function RefreshCountdown({ target, onRefresh, loading }: { target: number | nul
 }
 
 export default function ExchangeRate() {
-  const navigate = useNavigate();
   const currencies = useStore(state => state.currencies);
   const [payload, setPayload] = useState<ExchangePayload | null>(cachedPayload);
   const [history, setHistory] = useState<RateSnapshot[]>(localHistory);
@@ -347,17 +345,6 @@ export default function ExchangeRate() {
   }, [rates, market]);
   const selected = visibleRates.find(rate => rate.code === selectedCode) ?? visibleRates[0];
 
-  /** Divisas destacadas del panel elTOQUE: USD, EUR y MLC (o las que existan). */
-  const featuredRates = useMemo(() => {
-    const fiat = rates.filter(rate => !isCryptoRate(rate.code));
-    const byCode = new Map(fiat.map(rate => [canonicalRateCode(rate.code), rate]));
-    const ordered = ['USD', 'EUR', 'MLC']
-      .map(code => byCode.get(code))
-      .filter((rate): rate is ExchangeRate => Boolean(rate));
-    for (const rate of fiat) if (!ordered.includes(rate)) ordered.push(rate);
-    return ordered.slice(0, 3);
-  }, [rates]);
-
   const snapshots = useMemo(() => {
     const entries = new Map(history.map(item => [item.capturedAt, item]));
     remoteHistory.forEach(item => entries.set(item.capturedAt, item));
@@ -446,12 +433,6 @@ export default function ExchangeRate() {
   const stale = fromCache || Boolean(payload?.stale) || Boolean(payload && Date.now() - Date.parse(payload.capturedAt) >= cacheFreshMs);
   /** Antigüedad de la captura mostrada: la guardada o la que resolvió la fuente. */
   const rateAge = payload ? Date.now() - Date.parse(payload.capturedAt) : rateSource.ageMs;
-  const globalDelta = useMemo(() => {
-    const usd = visibleRates.find(rate => rate.code === 'USD');
-    return usd ? deltaFor(usd) : null;
-  }, [visibleRates, deltaFor]);
-
-  const periodLabel = period === '24h' ? '24 h' : period === '7d' ? '7 días' : period === '30d' ? '30 días' : 'todo el historial';
 
   return (
     <OperationsSurface className="w-full min-w-0">
@@ -461,49 +442,22 @@ export default function ExchangeRate() {
             <p className="kicker font-bold uppercase tracking-[0.2em] text-violet-600 dark:text-violet-300">Cuba · Mercado informal · elTOQUE</p>
             <h1 className="mt-1 text-2xl font-bold text-primary sm:text-3xl">Tasas de cambio</h1>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-secondary">Cotizaciones reales publicadas por elTOQUE, en CUP por unidad. No modifican los precios ni la tasa de venta de tu negocio.</p>
-          </div>
-          <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-60">
-            <RefreshCw className={'h-4 w-4 ' + (loading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />{loading ? 'Consultando…' : 'Actualizar'}
-          </button>
-        </header>
-
-        {payload && featuredRates.length > 0 && (
-          <section aria-label="Tasas elTOQUE destacadas" className="overflow-hidden rounded-2xl border border-violet-300/60 bg-gradient-to-br from-violet-700 via-violet-800 to-violet-950 p-4 shadow-md sm:p-5 dark:border-violet-900/60">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="flex h-8 items-center rounded-lg bg-white/15 px-2.5 text-[12px] font-black uppercase tracking-[0.18em] text-white ring-1 ring-white/20">elTOQUE</span>
-                <span className="truncate text-[11px] font-bold uppercase tracking-wider text-violet-100">Mercado informal · CUP por unidad</span>
-              </div>
-              {!stale ? (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-300 ring-1 ring-white/15">
-                  <span className="relative flex h-1.5 w-1.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-70 motion-reduce:animate-none" /><span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" /></span>
-                  En vivo
-                </span>
-              ) : (
-                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-200 ring-1 ring-white/15">Última válida · {formatRateAge(rateAge)}</span>
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] font-semibold text-muted">
+              {payload && !stale && <LiveDot />}
+              {payload && stale && (
+                <span className="palmyra-pill border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">Última válida · {formatRateAge(rateAge)}</span>
               )}
+              {payload && !stale && <SourceBadge source={rateSource} />}
+              <span className="truncate">{payload ? `Consultado el ${dateLabel(payload.capturedAt)} · ${rateSource.detail}` : loading ? 'Consultando la fuente…' : rateSource.detail}</span>
             </div>
-            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              {featuredRates.map(rate => {
-                const delta = deltaFor(rate);
-                return (
-                  <button key={rate.code} type="button" onClick={() => { setMarket('divisas'); handleSelect(rate.code); }} className="group rounded-xl bg-white/10 p-3 text-left ring-1 ring-white/15 transition-colors hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/70">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-black tracking-wide text-white">{rate.code}</p>
-                      {delta ? (
-                        <span className={'text-[11px] font-black tabular-nums ' + (delta.absolute > 0 ? 'text-emerald-300' : delta.absolute < 0 ? 'text-rose-300' : 'text-violet-200')}>{pct(delta.percent)}</span>
-                      ) : (
-                        <span className="text-[10px] font-semibold text-violet-200">Sin comparación</span>
-                      )}
-                    </div>
-                    <p className="mt-2 text-3xl font-black tabular-nums leading-none text-white">{money(rateNumber(rate))} <span className="text-xs font-semibold text-violet-200">CUP</span></p>
-                    <p className="mt-1.5 truncate text-[11px] font-semibold text-violet-200">{rateTitle(rate)}</p>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        )}
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-2">
+            <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-60">
+              <RefreshCw className={'h-4 w-4 ' + (loading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />{loading ? 'Consultando…' : 'Actualizar'}
+            </button>
+            <RefreshCountdown target={nextRefreshAt} onRefresh={() => void load()} loading={loading} />
+          </div>
+        </header>
 
         {error && (
           <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200 sm:flex-row sm:items-start">
@@ -517,56 +471,19 @@ export default function ExchangeRate() {
           </div>
         )}
 
-        <section className="rounded-2xl border border-base bg-secondary p-4 shadow-xs" aria-live="polite">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex min-w-0 items-center gap-3">
-              <span className={'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ' + (payload && !stale ? 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/40 dark:text-emerald-300' : 'border-base bg-subtle text-muted')}>
-                <ShieldCheck className="h-5 w-5" aria-hidden="true" />
-              </span>
-              <div className="min-w-0">
-                <p className="flex flex-wrap items-center gap-2 text-sm font-bold text-primary">
-                  {payload ? (stale ? 'Última consulta guardada' : 'Conexión activa con elTOQUE') : loading ? 'Consultando la fuente…' : 'Sin cotizaciones disponibles'}
-                  {payload && !stale && <LiveDot />}
-                  {payload && stale && <span className="palmyra-pill border border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/40 dark:text-amber-300">Sin conexión en vivo{rateAge > 0 ? ` · ${formatRateAge(rateAge)}` : ''}</span>}
-                  <SourceBadge source={rateSource} />
-                </p>
-                <p className="mt-0.5 text-[11px] font-semibold text-muted">{payload ? `Consultado el ${dateLabel(payload.capturedAt)} · ${formatRateAge(rateAge)} · ${rateSource.detail}` : rateSource.detail}</p>
-              </div>
-            </div>
-            <div className="flex flex-wrap items-center gap-3">
-              {globalDelta && (
-                <span className="hidden items-center gap-1 text-[11px] font-bold text-muted md:inline-flex">USD {periodLabel}: <TrendPill delta={globalDelta} compact /></span>
-              )}
-              <RefreshCountdown target={nextRefreshAt} onRefresh={() => void load()} loading={loading} />
-            </div>
-          </div>
-        </section>
-
         {storageError && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">El dispositivo no pudo guardar la consulta. No estará disponible al cerrar la aplicación.</p>}
-
-        {rates.length > 0 && manualRates.length > 0 && (
-          <section aria-label="Tasas manuales de tu negocio" className="flex flex-wrap items-center gap-2 rounded-2xl border border-base bg-secondary p-3">
-            <span className="palmyra-pill border border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300">Tasas de tu negocio · venta</span>
-            {manualRates.map(rate => (
-              <span key={rate.code} className="palmyra-pill border border-base bg-subtle text-primary">
-                {rate.code} <b className="tabular-nums">{money(rate.value)}</b> {baseCode}
-              </span>
-            ))}
-            <button type="button" onClick={() => navigate('/settings?section=currency')} className="palmyra-pill border border-base bg-subtle font-bold text-primary hover:border-violet-300">Ajustar</button>
-          </section>
-        )}
 
         {rates.length > 0 ? (
           <>
             {rates.some(rate => isCryptoRate(rate.code)) && (
-              <nav aria-label="Tipo de cotización" className="flex gap-2">
+              <nav aria-label="Tipo de cotización" className="inline-flex w-fit rounded-2xl border border-base bg-secondary p-1 shadow-xs">
                 {(['divisas', 'crypto'] as const).map(tab => (
-                  <button key={tab} type="button" onClick={() => setMarket(tab)} aria-pressed={market === tab} className={'min-h-11 rounded-xl px-4 text-sm font-semibold transition-colors ' + (market === tab ? 'bg-violet-600 text-white' : 'border border-base bg-secondary text-primary hover:border-violet-300')}>{tab === 'divisas' ? 'Divisas' : 'Criptoactivos'}</button>
+                  <button key={tab} type="button" onClick={() => setMarket(tab)} aria-pressed={market === tab} className={'min-h-10 rounded-xl px-4 text-sm font-semibold transition-colors ' + (market === tab ? 'bg-violet-600 text-white shadow-sm' : 'text-primary hover:bg-subtle')}>{tab === 'divisas' ? 'Divisas' : 'Criptoactivos'}</button>
                 ))}
               </nav>
             )}
 
-            <section aria-label="Cotizaciones disponibles" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <section aria-label="Cotizaciones disponibles" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
               {visibleRates.map(rate => (
                 <RateCard
                   key={rate.code}
@@ -586,7 +503,7 @@ export default function ExchangeRate() {
               <section className="rounded-2xl border border-base bg-secondary p-4 shadow-xs sm:p-6">
                 <header className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <h2 className="text-lg font-bold text-primary">Evolución de {selected.code} / CUP</h2>
+                    <h2 className="text-lg font-bold text-primary">Evolución de <span className="text-violet-600 dark:text-violet-300">{selected.code}</span> / CUP</h2>
                     <p className="mt-1 text-sm text-muted">{remoteHistory.length ? 'Historial de la fuente y consultas de este dispositivo.' : 'Consultas guardadas en este dispositivo.'}</p>
                   </div>
                   <div className="flex flex-wrap gap-1" aria-label="Período del historial">
@@ -703,19 +620,16 @@ export default function ExchangeRate() {
           <section className="rounded-2xl border border-dashed border-base bg-secondary px-5 py-12 text-center">
             <Activity className="mx-auto h-10 w-10 text-muted" aria-hidden="true" />
             <h2 className="mt-4 text-lg font-semibold text-primary">{loading ? 'Esperando cotizaciones' : 'Sin tasas todavía'}</h2>
-            <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">La fuente elTOQUE no respondió y este dispositivo aún no tiene tasas guardadas. Pulsa Reintentar para volver a consultarla, o guarda tus tasas de venta a mano y se mostrarán aquí al instante.</p>
+            <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-muted">La fuente elTOQUE no respondió y este dispositivo aún no tiene tasas guardadas. Pulsa Reintentar para volver a consultarla.</p>
             <div className="mt-5 flex flex-wrap items-center justify-center gap-3">
               <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-600 px-4 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-60">
                 <RefreshCw className={'h-4 w-4 ' + (loading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />{loading ? 'Consultando…' : 'Reintentar'}
-              </button>
-              <button type="button" onClick={() => navigate('/settings?section=currency')} className="inline-flex min-h-11 items-center gap-2 rounded-xl border border-base bg-secondary px-4 text-sm font-semibold text-primary hover:border-violet-300">
-                <CircleDollarSign className="h-4 w-4" aria-hidden="true" />Guardar tasas manuales
               </button>
             </div>
           </section>
         )}
 
-        <p className="text-xs leading-5 text-muted">Fuente: elTOQUE · Referencias del mercado informal, no tasas oficiales ni garantía de una operación. Compra y venta solo aparecen si la API las publica. La fecha indicada corresponde a la consulta, no necesariamente al momento de publicación del proveedor. La tasa se consulta automáticamente cada 20 minutos. Sin conexión se conserva la última tasa válida y se indica su antigüedad. Si no hay ninguna guardada, se muestran tus tasas manuales de Configuración → Monedas y tasas; si tampoco las has guardado, esta pantalla te indica cómo hacerlo.</p>
+        <p className="text-xs leading-5 text-muted">Fuente: elTOQUE · Referencias del mercado informal, no tasas oficiales ni garantía de una operación. Compra y venta solo aparecen si la API las publica. La fecha indicada corresponde a la consulta, no necesariamente al momento de publicación del proveedor. La tasa se consulta automáticamente cada 20 minutos. Sin conexión se conserva la última tasa válida y se indica su antigüedad. Si no hay ninguna guardada, se muestran las tasas de venta de Configuración → Monedas y tasas.</p>
       </main>
     </OperationsSurface>
   );
