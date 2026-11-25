@@ -49,6 +49,9 @@ const STATUS_LABEL: Record<string, string> = {
   completed: 'Recibido',
 };
 
+// Clave centinela para la acción masiva: ninguna fila real usa este valor.
+const BULK_RESOLVE_KEY = '__bulk__';
+
 function StatusBadge({ status }: { status: InventoryTransfer['status'] }) {
   const tone =
     status === 'pending'
@@ -144,6 +147,8 @@ export default function Transfers() {
   const [expandedBatches, setExpandedBatches] = useState<string[]>([]);
   // Confirmación en dos pasos para recibir/cancelar mercancía en tránsito.
   const [transitConfirm, setTransitConfirm] = useState<{ key: string; action: 'receive' | 'cancel' } | null>(null);
+  // Confirmación en dos pasos para la acción masiva sobre todo el tránsito.
+  const [bulkTransitConfirm, setBulkTransitConfirm] = useState<'receive' | 'cancel' | null>(null);
   // Guarda de reentrada: impide que un doble clic dispare dos recepciones.
   const resolvingRef = useRef(false);
 
@@ -240,6 +245,11 @@ export default function Transfers() {
       .sort((a, b) => b.dateMs - a.dateMs);
   }, [branchScopedTransfers]);
 
+  const allTransitOperationIds = useMemo(
+    () => Array.from(new Set(inTransitGroups.flatMap((group) => group.operationIds))),
+    [inTransitGroups]
+  );
+
   const historyGroups = useMemo<TransferGroupRow[]>(() => {
     const term = historySearch.trim().toLowerCase();
     const scoped = term
@@ -335,6 +345,7 @@ export default function Transfers() {
     if (resolvingRef.current) return;
     resolvingRef.current = true;
     setTransitConfirm(null);
+    setBulkTransitConfirm(null);
     setResolvingTransitKey(key);
     try {
       const result = action === 'receive'
@@ -350,6 +361,44 @@ export default function Transfers() {
               : (action === 'receive'
                   ? 'Mercancía recibida y sumada al almacén de destino.'
                   : 'Traslado cancelado y mercancía devuelta al origen.')),
+          result.warning ? 'warning' : (result.pending ? 'info' : 'success')
+        );
+      } else {
+        addNotification(result.error || 'No se pudo completar la operación.', 'error');
+      }
+    } catch (error: any) {
+      addNotification(error?.message || 'No se pudo completar la operación.', 'error');
+    } finally {
+      resolvingRef.current = false;
+      setResolvingTransitKey(null);
+    }
+  };
+
+  const resolveAllTransit = async (action: 'receive' | 'cancel') => {
+    if (resolvingRef.current) return;
+    if (!allTransitOperationIds.length) {
+      addNotification('No hay traslados en tránsito.', 'info');
+      return;
+    }
+    resolvingRef.current = true;
+    setTransitConfirm(null);
+    setBulkTransitConfirm(null);
+    setResolvingTransitKey(BULK_RESOLVE_KEY);
+    try {
+      const count = allTransitOperationIds.length;
+      const result = action === 'receive'
+        ? await receiveTransfer(allTransitOperationIds)
+        : await cancelTransfer(allTransitOperationIds);
+      if (result.success) {
+        addNotification(
+          result.warning ||
+            (result.pending
+              ? (action === 'receive'
+                  ? `${count} recepciones guardadas. Se confirmarán con la nube al recuperar conexión.`
+                  : `${count} cancelaciones guardadas. Se confirmarán con la nube al recuperar conexión.`)
+              : (action === 'receive'
+                  ? 'Toda la mercancía en tránsito fue recibida y sumada a los almacenes de destino.'
+                  : 'Todos los traslados en tránsito fueron cancelados y la mercancía devuelta al origen.')),
           result.warning ? 'warning' : (result.pending ? 'info' : 'success')
         );
       } else {
@@ -557,7 +606,7 @@ export default function Transfers() {
 
           {inTransitGroups.length > 0 && (
             <section className="overflow-hidden rounded-2xl border border-amber-200 bg-secondary shadow-xs dark:border-amber-900/60">
-              <div className="flex items-center justify-between gap-3 border-b border-amber-200 bg-amber-50/70 px-3 py-2.5 dark:border-amber-900/60 dark:bg-amber-950/30">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-amber-200 bg-amber-50/70 px-3 py-2.5 dark:border-amber-900/60 dark:bg-amber-950/30">
                 <div className="flex min-w-0 items-center gap-2">
                   <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-secondary text-amber-600 dark:border-amber-900/60 dark:text-amber-300">
                     <Truck className="h-4 w-4" aria-hidden="true" />
@@ -567,13 +616,66 @@ export default function Transfers() {
                     <p className="truncate text-[11px] font-semibold text-amber-700/90 dark:text-amber-300/80">Confirma la recepción en destino o devuélvela al origen.</p>
                   </div>
                 </div>
-                <span className="shrink-0 rounded-lg border border-amber-200 bg-secondary px-2 py-1 text-[11px] font-black text-amber-800 dark:border-amber-900/60 dark:text-amber-300">
-                  {inTransitGroups.length} pendiente{inTransitGroups.length === 1 ? '' : 's'}
-                </span>
+                {bulkTransitConfirm ? (
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                    <span className="min-w-0 max-w-[320px] text-[11px] font-bold text-amber-900 dark:text-amber-200">
+                      {bulkTransitConfirm === 'receive'
+                        ? `¿Recibir las ${inTransitGroups.length} operaciones en tránsito?`
+                        : `¿Cancelar las ${inTransitGroups.length} operaciones en tránsito y devolver la mercancía al origen?`}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={resolvingTransitKey !== null}
+                      onClick={() => setBulkTransitConfirm(null)}
+                      className="inline-flex min-h-9 items-center justify-center rounded-lg border border-base bg-secondary px-3 text-[11px] font-black uppercase tracking-wide text-muted transition-colors hover:bg-subtle disabled:opacity-50"
+                    >
+                      No
+                    </button>
+                    <button
+                      type="button"
+                      disabled={resolvingTransitKey !== null}
+                      onClick={() => void resolveAllTransit(bulkTransitConfirm)}
+                      className={cn(
+                        'inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg px-3 text-[11px] font-black uppercase tracking-wide text-white shadow-sm transition-colors disabled:opacity-50',
+                        bulkTransitConfirm === 'receive' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-rose-600 hover:bg-rose-700'
+                      )}
+                    >
+                      {resolvingTransitKey === BULK_RESOLVE_KEY
+                        ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                        : bulkTransitConfirm === 'receive'
+                          ? <PackageCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                          : <Undo2 className="h-3.5 w-3.5" aria-hidden="true" />}
+                      {bulkTransitConfirm === 'receive' ? 'Sí, recibir todas' : 'Sí, cancelar todas'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                    <span className="rounded-lg border border-amber-200 bg-secondary px-2 py-1 text-[11px] font-black text-amber-800 dark:border-amber-900/60 dark:text-amber-300">
+                      {inTransitGroups.length} pendiente{inTransitGroups.length === 1 ? '' : 's'}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={resolvingTransitKey !== null}
+                      onClick={() => setBulkTransitConfirm('cancel')}
+                      className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg border border-base bg-secondary px-3 text-[11px] font-black uppercase tracking-wide text-secondary transition-colors hover:bg-subtle disabled:opacity-50"
+                    >
+                      <Undo2 className="h-3.5 w-3.5" aria-hidden="true" /> Cancelar todas
+                    </button>
+                    <button
+                      type="button"
+                      disabled={resolvingTransitKey !== null}
+                      onClick={() => setBulkTransitConfirm('receive')}
+                      className="inline-flex min-h-9 items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-[11px] font-black uppercase tracking-wide text-white shadow-sm transition-colors hover:bg-emerald-700 disabled:opacity-50"
+                    >
+                      {resolvingTransitKey === BULK_RESOLVE_KEY ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <PackageCheck className="h-3.5 w-3.5" aria-hidden="true" />}
+                      Recibir todas
+                    </button>
+                  </div>
+                )}
               </div>
               <ul className="divide-y divide-base">
                 {inTransitGroups.map((group) => {
-                  const busy = resolvingTransitKey === group.key;
+                  const busy = resolvingTransitKey === group.key || resolvingTransitKey === BULK_RESOLVE_KEY;
                   const confirming = transitConfirm?.key === group.key ? transitConfirm.action : null;
                   return (
                     <li key={group.key} className="flex flex-col gap-2 px-3 py-3 lg:flex-row lg:items-center lg:justify-between">
