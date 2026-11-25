@@ -233,7 +233,6 @@ export default function ExchangeRate() {
   const [loading, setLoading] = useState(false);
   const [fromCache, setFromCache] = useState(true);
   const [error, setError] = useState('');
-  const [warning, setWarning] = useState('');
   const [storageError, setStorageError] = useState(false);
   const [period, setPeriod] = useState<Period>('7d');
   const [market, setMarket] = useState<'divisas' | 'crypto'>('divisas');
@@ -266,7 +265,6 @@ export default function ExchangeRate() {
         // Sin Internet el motivo de la ruta local no es la causa: se muestra
         // el aviso offline en su lugar.
         setFromCache(true);
-        setWarning('');
         setError(offline ? RATE_OFFLINE_NOTICE : resolved.error || RATE_UNAVAILABLE_NOTICE);
         return;
       }
@@ -277,7 +275,6 @@ export default function ExchangeRate() {
       const next: ExchangePayload = { ...body, stale, ...(notice ? { notice } : {}) };
       setPayload(next);
       setFromCache(stale);
-      setWarning(offline ? RATE_OFFLINE_NOTICE : stale || resolved.error ? RATE_REFRESH_FALLBACK_NOTICE : '');
       setError('');
       setHistory(current => appendRateSnapshot(current, next));
       try { localStorage.setItem(CACHE_KEY, JSON.stringify(next)); setStorageError(false); }
@@ -287,7 +284,6 @@ export default function ExchangeRate() {
       const offline = isDeviceOffline();
       const hadRate = payloadRef.current !== null;
       setFromCache(true);
-      setWarning(offline ? RATE_OFFLINE_NOTICE : RATE_REFRESH_FALLBACK_NOTICE);
       setError(hadRate ? '' : offline ? RATE_OFFLINE_NOTICE : RATE_UNAVAILABLE_NOTICE);
     } finally {
       inFlight.current = false;
@@ -350,6 +346,17 @@ export default function ExchangeRate() {
     });
   }, [rates, market]);
   const selected = visibleRates.find(rate => rate.code === selectedCode) ?? visibleRates[0];
+
+  /** Divisas destacadas del panel elTOQUE: USD, EUR y MLC (o las que existan). */
+  const featuredRates = useMemo(() => {
+    const fiat = rates.filter(rate => !isCryptoRate(rate.code));
+    const byCode = new Map(fiat.map(rate => [canonicalRateCode(rate.code), rate]));
+    const ordered = ['USD', 'EUR', 'MLC']
+      .map(code => byCode.get(code))
+      .filter((rate): rate is ExchangeRate => Boolean(rate));
+    for (const rate of fiat) if (!ordered.includes(rate)) ordered.push(rate);
+    return ordered.slice(0, 3);
+  }, [rates]);
 
   const snapshots = useMemo(() => {
     const entries = new Map(history.map(item => [item.capturedAt, item]));
@@ -460,11 +467,49 @@ export default function ExchangeRate() {
           </button>
         </header>
 
-        {(error || warning) && (
+        {payload && featuredRates.length > 0 && (
+          <section aria-label="Tasas elTOQUE destacadas" className="overflow-hidden rounded-2xl border border-violet-300/60 bg-gradient-to-br from-violet-700 via-violet-800 to-violet-950 p-4 shadow-md sm:p-5 dark:border-violet-900/60">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="flex h-8 items-center rounded-lg bg-white/15 px-2.5 text-[12px] font-black uppercase tracking-[0.18em] text-white ring-1 ring-white/20">elTOQUE</span>
+                <span className="truncate text-[11px] font-bold uppercase tracking-wider text-violet-100">Mercado informal · CUP por unidad</span>
+              </div>
+              {!stale ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-emerald-300 ring-1 ring-white/15">
+                  <span className="relative flex h-1.5 w-1.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-70 motion-reduce:animate-none" /><span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" /></span>
+                  En vivo
+                </span>
+              ) : (
+                <span className="rounded-full bg-white/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-200 ring-1 ring-white/15">Última válida · {formatRateAge(rateAge)}</span>
+              )}
+            </div>
+            <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {featuredRates.map(rate => {
+                const delta = deltaFor(rate);
+                return (
+                  <button key={rate.code} type="button" onClick={() => { setMarket('divisas'); handleSelect(rate.code); }} className="group rounded-xl bg-white/10 p-3 text-left ring-1 ring-white/15 transition-colors hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/70">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm font-black tracking-wide text-white">{rate.code}</p>
+                      {delta ? (
+                        <span className={'text-[11px] font-black tabular-nums ' + (delta.absolute > 0 ? 'text-emerald-300' : delta.absolute < 0 ? 'text-rose-300' : 'text-violet-200')}>{pct(delta.percent)}</span>
+                      ) : (
+                        <span className="text-[10px] font-semibold text-violet-200">Sin comparación</span>
+                      )}
+                    </div>
+                    <p className="mt-2 text-3xl font-black tabular-nums leading-none text-white">{money(rateNumber(rate))} <span className="text-xs font-semibold text-violet-200">CUP</span></p>
+                    <p className="mt-1.5 truncate text-[11px] font-semibold text-violet-200">{rateTitle(rate)}</p>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {error && (
           <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200 sm:flex-row sm:items-start">
             <div className="flex min-w-0 flex-1 items-start gap-3">
               <AlertCircle className="mt-1 h-4 w-4 shrink-0" aria-hidden="true" />
-              <p className="min-w-0 font-semibold">{error || warning}</p>
+              <p className="min-w-0 font-semibold">{error}</p>
             </div>
             <button type="button" onClick={() => void load()} disabled={loading} className="inline-flex min-h-10 shrink-0 items-center gap-2 self-start rounded-xl border border-amber-400 bg-white px-3 text-xs font-bold text-amber-900 hover:bg-amber-100 disabled:opacity-60 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-100 sm:self-auto">
               <RefreshCw className={'h-3.5 w-3.5 ' + (loading ? 'animate-spin motion-reduce:animate-none' : '')} aria-hidden="true" />Reintentar

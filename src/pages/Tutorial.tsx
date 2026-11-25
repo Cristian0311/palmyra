@@ -1488,8 +1488,8 @@ const lessons: Lesson[] = [
       },
       {
         title: "Reconoce el respaldo automático",
-        detail: "Si la consulta automática falla, la pantalla no queda vacía: muestra la última tasa conocida con un aviso y el botón Reintentar, y sugiere ajustar las tasas a mano en Configuración → Monedas y tasas. PALMYRA nunca sustituye la tasa por un número inventado.",
-        where: "Tasa de cambio → Aviso de la fuente",
+        detail: "Si la consulta en vivo no llega, la pantalla no queda vacía: marca la copia como «Última válida» con su antigüedad y el botón Reintentar, y sugiere ajustar las tasas a mano en Configuración → Monedas y tasas. PALMYRA nunca sustituye la tasa por un número inventado.",
+        where: "Tasa de cambio → Estado de la fuente",
         zone: 5,
       },
     ],
