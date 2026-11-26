@@ -236,6 +236,10 @@
 
 /* Inventory mobile workspace */
 .inventory-bulk-panel{min-height:0}
+/* Tabla de productos: los nombres largos envuelven en varias líneas y, con
+   vertical-align:middle, el SKU y los precios caían centrados por debajo de la
+   primera línea del nombre. Todo el cuerpo se alinea desde arriba. */
+.inventory-products-table tbody>tr>td{vertical-align:top}
 .inventory-bulk-scroll{
   min-height:0;
   overscroll-behavior:contain;

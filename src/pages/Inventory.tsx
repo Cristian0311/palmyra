@@ -1465,7 +1465,7 @@ export default function Inventory() {
                 </div>
               )}
             </div>
-            <table aria-label="Productos del inventario" className={viewMode === 'table' ? "w-full text-left border-collapse table-fixed min-w-[1040px]" : "hidden"}>
+            <table aria-label="Productos del inventario" className={viewMode === 'table' ? "inventory-products-table w-full text-left border-collapse table-fixed min-w-[1040px]" : "hidden"}>
               <thead>
                 <tr className="bg-secondary border-b border-base sticky top-0 z-30 shadow-sm translate-y-[-1px]">
                   <th scope="col" className="w-14 px-4 py-3 bg-secondary">
@@ -1480,13 +1480,13 @@ export default function Inventory() {
                       }}
                     />
                   </th>
-                  <th scope="col" className="w-1/4 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Producto / Cat</th>
-                  <th scope="col" className="w-36 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">SKU / CB</th>
+                  <th scope="col" className="w-[300px] px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Producto / Cat</th>
+                  <th scope="col" className="w-32 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">SKU / CB</th>
                   <th scope="col" className="w-32 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Precio (CUP)</th>
                   <th scope="col" className="w-32 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Costo (CUP)</th>
-                  <th scope="col" className="w-36 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary" title="Ganancia neta por unidad: venta − costo − salario">Ganancia neta</th>
+                  <th scope="col" className="w-32 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary" title="Ganancia neta por unidad: venta − costo − salario">Ganancia neta</th>
                   <th scope="col" className="hidden xl:table-cell w-24 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">% margen</th>
-                  <th scope="col" className="w-36 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Stock actual</th>
+                  <th scope="col" className="w-32 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Stock actual</th>
                   <th scope="col" className="w-28 px-3 py-3 text-[9px] font-black text-muted uppercase tracking-widest bg-secondary">Garantía</th>
                   <th scope="col" className="w-28 px-4 py-3 text-[9px] font-black text-muted uppercase tracking-widest text-right bg-secondary">Acciones</th>
                 </tr>
@@ -1533,8 +1533,8 @@ export default function Inventory() {
                           )}
                         </div>
                         <div className="flex flex-col min-w-0">
-                          <div className="text-xs font-black text-primary uppercase tracking-tighter flex items-center gap-1.5" title={item.name}>
-                            <span className="whitespace-normal break-words">{item.name}</span>
+                          <div className="text-xs font-black text-primary uppercase tracking-tighter flex items-start gap-1.5" title={item.name}>
+                            <span className="min-w-0 whitespace-normal break-words">{item.name}</span>
                             {((item.availableSizes || []).length > 0 || (item.availableColors || []).length > 0) && (
                               <span title="Este producto tiene variantes" className="palmyra-pill border-[color-mix(in_srgb,var(--primary)_40%,transparent)] bg-[color-mix(in_srgb,var(--primary)_12%,var(--bg-secondary))] text-[var(--primary)] shrink-0">Variantes</span>
                             )}
