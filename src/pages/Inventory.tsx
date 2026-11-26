@@ -15,7 +15,7 @@ import { buildInventoryCsv } from '../modules/inventory/utils/buildInventoryCsv'
 import { resizeProductImage } from '../modules/inventory/utils/resizeProductImage';
 import { useShallow } from 'zustand/react/shallow';
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowLeftRight, PackagePlus, AlertCircle, Search, ShieldCheck, X, DollarSign, Trash2, Edit, History, Package, PackageCheck, TrendingUp, Filter, Download, Plus, ArrowRightLeft, List, Settings2, Tag, Building2, Save, RefreshCw, Minus, ChevronDown, ChevronUp, ChevronRight, Check } from "lucide-react";
+import { ArrowLeftRight, PackagePlus, AlertCircle, Search, ShieldCheck, X, DollarSign, Trash2, Edit, History, Package, PackageCheck, TrendingUp, Filter, Download, Plus, ArrowRightLeft, List, Settings2, Tag, Building2, Save, RefreshCw, Minus, ChevronDown, ChevronUp, ChevronRight, Check, Table, LayoutGrid } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { cn, generateId } from "../lib/utils";
 import { downloadGeneratedFile } from '../utils/downloadFile';
@@ -97,6 +97,24 @@ export default function Inventory() {
     const assignedUser = (users || []).find(u => getWarehouseId(u) === b.id);
     return assignedUser ? `${b.name} (${assignedUser.name})` : b.name;
   };
+
+  // Vista del listado de productos: tabla de escritorio o tarjetas. El usuario
+  // puede alternar en cualquier tamaño de pantalla; sin preferencia guardada,
+  // los teléfonos arrancan en tarjetas (la tabla fija recortaba el nombre).
+  const VIEW_MODE_STORAGE_KEY = 'palmyra-inventory-view-mode-v1';
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>(() => {
+    try {
+      const saved = window.localStorage.getItem(VIEW_MODE_STORAGE_KEY);
+      if (saved === 'table' || saved === 'cards') return saved;
+    } catch { /* La preferencia es opcional; se usa el modo por defecto. */ }
+    try {
+      if (window.matchMedia && window.matchMedia('(max-width: 767px)').matches) return 'cards';
+    } catch { /* Sin matchMedia se usa la tabla. */ }
+    return 'table';
+  });
+  useEffect(() => {
+    try { window.localStorage.setItem(VIEW_MODE_STORAGE_KEY, viewMode); } catch { /* Preferencia local no guardada. */ }
+  }, [viewMode]);
 
   // Preferred card order is local to this set of warehouses and works offline.
   const warehouseOrderStorageKey = useMemo(
@@ -1279,8 +1297,175 @@ export default function Inventory() {
       )}
       {activeTab === 'products' && (
           <div className="bg-secondary rounded-[2rem] shadow-sm border border-base overflow-hidden flex-1 flex flex-col min-h-[500px] w-full">
+          <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-base bg-primary shrink-0">
+            <span className="text-[9px] font-black text-muted uppercase tracking-widest">{inventoryView.length} producto{inventoryView.length === 1 ? '' : 's'}</span>
+            <div className="flex items-center gap-1 rounded-xl bg-secondary p-0.5 border border-base" role="group" aria-label="Cambiar vista del inventario">
+              <button
+                type="button"
+                onClick={() => setViewMode('table')}
+                aria-pressed={viewMode === 'table'}
+                title="Ver como tabla de escritorio"
+                className={cn(
+                  "h-8 w-8 flex items-center justify-center rounded-lg transition-all cursor-pointer",
+                  viewMode === 'table' ? "bg-indigo-600 text-white shadow-xs" : "text-muted hover:text-primary hover:bg-subtle"
+                )}
+              >
+                <Table className="w-4 h-4" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('cards')}
+                aria-pressed={viewMode === 'cards'}
+                title="Ver como tarjetas"
+                className={cn(
+                  "h-8 w-8 flex items-center justify-center rounded-lg transition-all cursor-pointer",
+                  viewMode === 'cards' ? "bg-indigo-600 text-white shadow-xs" : "text-muted hover:text-primary hover:bg-subtle"
+                )}
+              >
+                <LayoutGrid className="w-4 h-4" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
           <div className="overflow-x-auto overflow-y-auto flex-1 h-full custom-scrollbar w-full">
-            <table aria-label="Productos del inventario" className="w-full text-left border-collapse table-fixed min-w-[1040px]">
+            {/* Mobile-first cards: the desktop table's 1040px minimum width hid the product name and details off-screen on phones. */}
+            <div className={viewMode === 'cards' ? "grid grid-cols-1 gap-3 p-3" : "hidden"}>
+              {inventoryView.map(item => {
+                const { totalStock, isLowStock, levels, unitNetProfit, unitMarginPct, ...productOnly } = item as any;
+                return (
+                  <article key={item.id} className={cn(
+                    "rounded-2xl border bg-primary p-3 shadow-sm min-w-0",
+                    selectedItems.includes(item.id) && "border-indigo-400 bg-indigo-50/30 dark:bg-indigo-900/10",
+                    !selectedItems.includes(item.id) && "border-base"
+                  )}>
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        aria-label={`Seleccionar ${item.name}`}
+                        checked={selectedItems.includes(item.id)}
+                        onChange={() => {
+                          setSelectedItems(prev => prev.includes(item.id) ? prev.filter(id => id !== item.id) : [...prev, item.id]);
+                        }}
+                        className="mt-1 shrink-0 rounded border-base text-indigo-600 focus:ring-indigo-500 bg-primary"
+                      />
+                      <div className="w-10 h-10 shrink-0 rounded-xl bg-subtle flex items-center justify-center overflow-hidden border border-base relative shadow-sm">
+                        {item.image ? (
+                          <img
+                            src={item.image}
+                            alt={item.name}
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              e.currentTarget.onerror = null;
+                              e.currentTarget.src = '';
+                              e.currentTarget.style.display = 'none';
+                            }}
+                            loading="lazy" decoding="async" />
+                        ) : (
+                          <div className={cn("w-full h-full opacity-20", item.color)} />
+                        )}
+                        {!item.image && (
+                          <span className="absolute text-[11px] font-black text-muted uppercase">
+                            {item.name.substring(0, 2)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start gap-1.5">
+                          <span className="min-w-0 flex-1 text-sm font-black text-primary uppercase tracking-tight leading-snug break-words">{item.name}</span>
+                          {item.isLowStock && (
+                            <AlertCircle className="w-3.5 h-3.5 text-[var(--danger)] shrink-0 mt-0.5" aria-label="Bajo stock" />
+                          )}
+                        </div>
+                        <p className="mt-0.5 text-[10px] font-bold text-muted break-words">
+                          {categoryById.get(item.categoryId)?.name || 'General'}{item.sku ? ` · ${item.sku}` : ''}
+                        </p>
+                        {((item.availableSizes || []).length > 0 || (item.availableColors || []).length > 0) && (
+                          <span className="mt-1.5 inline-flex palmyra-pill border-[color-mix(in_srgb,var(--primary)_40%,transparent)] bg-[color-mix(in_srgb,var(--primary)_12%,var(--bg-secondary))] text-[var(--primary)] shrink-0">Variantes</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      <div className="rounded-xl bg-secondary px-2.5 py-2 min-w-0">
+                        <span className="block text-[8px] font-black text-muted uppercase">Venta</span>
+                        <span className="block truncate text-[11px] font-black text-primary">{formatMoney(item.price)}</span>
+                      </div>
+                      <div className="rounded-xl bg-secondary px-2.5 py-2 min-w-0">
+                        <span className="block text-[8px] font-black text-muted uppercase">Costo</span>
+                        <span className="block truncate text-[11px] font-black text-secondary">{formatMoney(item.costPrice)}</span>
+                      </div>
+                      <div className="rounded-xl bg-secondary px-2.5 py-2 min-w-0">
+                        <span className="block text-[8px] font-black text-muted uppercase">Ganancia</span>
+                        <span className={cn("block truncate text-[11px] font-black", profitToneClass(item.unitNetProfit))}>{formatSignedMoney(item.unitNetProfit)}</span>
+                      </div>
+                    </div>
+                    {item.variantLevels.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {item.variantLevels.slice(0, 3).map((lvl: any, idx: number) => (
+                          <span key={idx} className="palmyra-pill border border-base bg-subtle text-[var(--text-muted)]">
+                            {lvl.variantLabel}: {lvl.quantity}
+                          </span>
+                        ))}
+                        {item.variantLevels.length > 3 && (
+                          <span className="text-[7px] font-black text-slate-300 uppercase">+{item.variantLevels.length - 3}</span>
+                        )}
+                      </div>
+                    )}
+                    <div className="mt-3 flex items-center justify-between gap-2">
+                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                        <span className={cn(
+                          "palmyra-pill w-fit whitespace-nowrap",
+                          item.totalStock === 0 ? "bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)]" :
+                          item.isLowStock ? "bg-[color-mix(in_srgb,var(--warning)_10%,transparent)] text-[var(--warning)]" :
+                          "bg-[color-mix(in_srgb,var(--success)_10%,transparent)] text-[var(--success)]"
+                        )}>
+                          {item.totalStock} {item.unit || 'uds'}
+                        </span>
+                        <span className="flex items-center gap-1 text-[9px] font-bold text-secondary whitespace-nowrap">
+                          <ShieldCheck className={cn("w-3 h-3 shrink-0", Number(item.warrantyDays) > 0 ? "text-emerald-500" : "text-slate-300 dark:text-slate-600")} />
+                          {Number(item.warrantyDays) > 0 ? `${Number(item.warrantyDays)} días` : 'Sin garantía'}
+                        </span>
+                      </div>
+                      <div className="flex shrink-0 gap-1.5">
+                        <button
+                          onClick={() => openStockManager(productOnly)}
+                          className="text-muted hover:text-emerald-600 transition-colors p-2 rounded-xl hover:bg-emerald-50 dark:hover:bg-emerald-950/50 border border-base shadow-sm"
+                          title="Gestionar Stock"
+                          aria-label={`Gestionar stock de ${item.name}`}
+                        >
+                          <PackagePlus className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingProduct(productOnly);
+                            setFormData(productOnly);
+                            setShowAddModal(true);
+                          }}
+                          className="text-muted hover:text-indigo-600 transition-colors p-2 rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-950/50 border border-base shadow-sm"
+                          aria-label={`Editar ${item.name}`}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setPendingDelete({ kind: 'product', id: item.id, name: item.name })}
+                          className="text-muted hover:text-rose-600 transition-colors p-2 rounded-xl hover:bg-rose-50 dark:hover:bg-rose-950/50 border border-base shadow-sm"
+                          aria-label={`Eliminar ${item.name}`}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+              {inventoryView.length === 0 && (
+                <div className="py-12 text-center text-sm font-bold text-muted">
+                  {hasActiveFilters
+                    ? 'Ningún producto coincide con la búsqueda o los filtros activos.'
+                    : 'Sin productos en esta vista'}
+                </div>
+              )}
+            </div>
+            <table aria-label="Productos del inventario" className={viewMode === 'table' ? "w-full text-left border-collapse table-fixed min-w-[1040px]" : "hidden"}>
               <thead>
                 <tr className="bg-secondary border-b border-base sticky top-0 z-30 shadow-sm translate-y-[-1px]">
                   <th scope="col" className="w-14 px-4 py-3 bg-secondary">
@@ -1348,8 +1533,8 @@ export default function Inventory() {
                           )}
                         </div>
                         <div className="flex flex-col min-w-0">
-                          <div className="text-xs font-black text-primary uppercase tracking-tighter truncate flex items-center gap-1.5" title={item.name}>
-                            {item.name}
+                          <div className="text-xs font-black text-primary uppercase tracking-tighter flex items-center gap-1.5" title={item.name}>
+                            <span className="whitespace-normal break-words">{item.name}</span>
                             {((item.availableSizes || []).length > 0 || (item.availableColors || []).length > 0) && (
                               <span title="Este producto tiene variantes" className="palmyra-pill border-[color-mix(in_srgb,var(--primary)_40%,transparent)] bg-[color-mix(in_srgb,var(--primary)_12%,var(--bg-secondary))] text-[var(--primary)] shrink-0">Variantes</span>
                             )}
