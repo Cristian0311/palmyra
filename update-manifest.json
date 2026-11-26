@@ -1,25 +1,26 @@
 {
   "v": 1,
-  "version": "1.3.15",
+  "version": "1.3.16",
   "channel": "stable",
-  "releasedAt": "2026-11-25T07:40:33.455Z",
+  "releasedAt": "2026-11-26T09:38:18.026Z",
+  "notes": "Exportaciones Excel/CSV y diagnósticos que ahora sí se descargan en Android y escritorio. Inventario con tarjetas móviles de nombre completo y alternador tabla/tarjetas persistente. El registro ya no espera correo de confirmación.",
   "rollout": 100,
   "artifacts": [
     {
       "platform": "windows",
       "name": "PALMYRA-POS-Setup.exe",
-      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.15/PALMYRA-POS-Setup.exe",
-      "sha256": "6117743d8b99500a6a8053d5e1424c6c7395997254faa3b8206ca455b4b7c0bc",
-      "bytes": 114538943
+      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.16/PALMYRA-POS-Setup.exe",
+      "sha256": "33e07ecccf022a9f372c70638220b772ad2ea4a05a20d0de124a1f67e053d624",
+      "bytes": 114542217
     },
     {
       "platform": "android",
       "name": "PALMYRA-Android.apk",
-      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.15/PALMYRA-Android.apk",
-      "sha256": "dec78e58a52050b33f5c4635b53932dc9b8e5321691557d781a6321528317b70",
+      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.16/PALMYRA-Android.apk",
+      "sha256": "430f9256ff072c0c0f5f2a26641bfce04e689f4497e09a8816a443339a80a096",
       "bytes": 2032561
     }
   ],
   "keyId": "palmyra-stable-2026-11",
-  "signature": "fOJyg4-OURKInGUctbfLGZ0sexr1qOLNt49rgO88zBFq_nOTubYj7kgL_JmqFVgjDU2_2HiNBa9bna4xRdLmAQ"
+  "signature": "Iraa9ywV3zc9QBuYQ9a4RUqdQ6ED5reIpDMohOM2nr7Jb6yxqBxEfOCgq8iVT0T0zZexq6wNsKkjTXdB_KZp0w"
 }
