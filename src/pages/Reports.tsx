@@ -782,13 +782,16 @@ export default function Reports() {
                 disabled={isExporting}
                 className="btn-compact !bg-transparent !shadow-none hover:!bg-emerald-700 active:scale-95 text-white disabled:opacity-70 disabled:cursor-wait"
                 title={canExcelExport
-                  ? 'Exportar todo el reporte completo a Excel (.xlsx) con tablas estructuradas'
+                  ? exportSuccess
+                    ? 'El archivo ya está en tu carpeta Descargas. Presiona para descargar otro.'
+                    : 'Exportar todo el reporte completo a Excel (.xlsx) con tablas estructuradas'
                   : 'Las descargas en Excel están disponibles desde Ciudadela'}
               >
                 {exportSuccess ? <Check className="w-3.5 h-3.5" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
                 {/* Solo se deshabilita mientras se genera el libro: un plan sin
-                    resolver nunca pinta el botón como bloqueado. */}
-                <span>{exportSuccess ? '¡Listo!' : isExporting ? 'Generando…' : 'Excel'}</span>
+                    resolver nunca pinta el botón como bloqueado. El «Descargado ✓»
+                    dura 4 s y el botón sigue reclicable. */}
+                <span>{exportSuccess ? 'Descargado ✓' : isExporting ? 'Generando…' : 'Excel'}</span>
               </button>
               <button
                 type="button"

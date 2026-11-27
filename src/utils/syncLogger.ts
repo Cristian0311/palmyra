@@ -80,14 +80,13 @@ export function clearSyncLogs(): void {
 
 export function exportSyncLogsJSON(): void {
   const logs = getSyncLogs();
-  try {
-    downloadGeneratedFile(
-      new TextEncoder().encode(JSON.stringify(logs, null, 2)),
-      `sync_logs_audit_${new Date().toISOString().split('T')[0]}.json`,
-      'application/json'
-    );
-  } catch (e) {
-    console.error('[syncLogger] Error al descargar el log JSON:', e);
+  const outcome = downloadGeneratedFile(
+    new TextEncoder().encode(JSON.stringify(logs, null, 2)),
+    `sync_logs_audit_${new Date().toISOString().split('T')[0]}.json`,
+    'application/json'
+  );
+  if (outcome.status !== 'saved') {
+    console.error('[syncLogger] El log JSON no se descargó:', outcome);
   }
 }
 
@@ -100,13 +99,12 @@ export function exportSyncLogsTXT(): void {
 
   const header = `=====================================================\nINFORME DE AUDITORÍA Y LOGS DE SINCRONIZACIÓN POS\nFecha de Exportación: ${new Date().toLocaleString('es-CU')}\nTotal de Registros: ${logs.length}\n=====================================================\n\n`;
   
-  try {
-    downloadGeneratedFile(
-      new TextEncoder().encode(header + lines.join('\n')),
-      `sync_logs_report_${new Date().toISOString().split('T')[0]}.txt`,
-      'text/plain;charset=utf-8'
-    );
-  } catch (e) {
-    console.error('[syncLogger] Error al descargar el log TXT:', e);
+  const outcome = downloadGeneratedFile(
+    new TextEncoder().encode(header + lines.join('\n')),
+    `sync_logs_report_${new Date().toISOString().split('T')[0]}.txt`,
+    'text/plain;charset=utf-8'
+  );
+  if (outcome.status !== 'saved') {
+    console.error('[syncLogger] El log TXT no se descargó:', outcome);
   }
 }

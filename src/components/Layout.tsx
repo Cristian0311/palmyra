@@ -37,6 +37,7 @@ import { PalmyraWordmark } from "./PalmyraWordmark";
 import { SocialLinks } from "./SocialLinks";
 import { LicenseReadOnlyBanner } from "./LicenseReadOnlyBanner";
 import { getOfflineConflictCount, getOfflineQueueCount, getOfflineQueue, refreshOfflineQueueCounts } from "../services/offlineQueue";
+import { describeQueueItemFailure, describeOfflineQueueType, describeSyncFailure } from "../services/offline/syncContract";
 import { runWithLoading } from "../lib/busy";
 import { PRODUCT_VERSION_LABEL, PRODUCT_VERSION_SHORT } from "../lib/productVersion";
 import { ANDROID_APK_DOWNLOAD, APK_PROMO_DISMISSED_KEY, isAndroidDevice, isPalmyraApp } from "../lib/install";
@@ -743,25 +744,24 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       setConflictOfflineCount(finalQueue.filter((item: any) => item?.status === 'conflict').length);
       if (finalPendingCount > 0 || cloudResult?.success === false) {
         // Nunca ocultar la causa: cada operación pendiente debe quedar trazable
-        // por tipo, actionId, estado, reintento y último error conocido.
+        // por tipo, referencia, estado, reintentos y causa legible. La causa se
+        // lee del contrato persistido (`failureReason`/`failureCode`/`failureAt`)
+        // y, si una versión anterior dejó el elemento sin ella, se nombra igual
+        // el tipo de operación, los reintentos y el último error conocido —
+        // nunca un callejón sin salida. Ver offline/syncContract.ts.
         const queueDetails = finalQueue
           .slice(0, 30)
-          .map((item: any) => {
-            const status = item?.status ? ` [${item.status}]` : '';
-            const retry = Number(item?.retryCount) > 0 ? ` · intento ${item.retryCount}` : '';
-            const error = item?.lastError || (
-              item?.status === 'conflict'
-                ? 'Operación en conflicto: requiere revisión.'
-                : 'Esta operación sigue pendiente, pero no tiene una causa registrada. Reintenta la sincronización y revisa el Monitor de Logs.'
-            );
-            return `${item?.type || 'operación'} · ${item?.actionId || item?.id || 'sin-id'}${status}${retry}: ${error}`;
-          });
+          .map((item: any) => describeQueueItemFailure(item));
+        const permanentConflicts = finalQueue.filter((item: any) => item?.status === 'conflict');
         const detailLines = [
           `Resultado de esta sincronización: ${res.processed} procesadas, ${res.failed} fallidas, ${res.remaining} restantes.`,
-          ...(res.errors || []).map(e => `${e.type} · ${e.actionId}: ${e.message}`),
+          ...(res.errors || []).map(e => `${describeOfflineQueueType(e.type)} · ${e.actionId}: ${describeSyncFailure(e.message, e.type)}`),
           ...(cloudResult?.errors || []).map((e: string) => `Nube: ${e}`),
           cloudResult?.success === false && cloudResult?.message ? `Sincronización nube: ${cloudResult.message}` : '',
-          ...queueDetails
+          ...queueDetails,
+          permanentConflicts.length > 0
+            ? `${permanentConflicts.length} operación(es) rechazadas de forma definitiva: no se volverán a reintentar. Repítelas en el almacén correcto o elimínalas desde Configuración > Monitor de Logs.`
+            : ''
         ].filter(Boolean);
         addNotification(
           `Sincronización incompleta: quedan ${finalPendingCount} operaciones pendientes.`,

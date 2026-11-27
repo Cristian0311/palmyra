@@ -14,11 +14,18 @@ import { getLowStockThreshold, isLowStockProduct, sumAvailableStock } from "../m
 import { buildInventoryCsv } from '../modules/inventory/utils/buildInventoryCsv';
 import { resizeProductImage } from '../modules/inventory/utils/resizeProductImage';
 import { useShallow } from 'zustand/react/shallow';
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeftRight, PackagePlus, AlertCircle, Search, ShieldCheck, X, DollarSign, Trash2, Edit, History, Package, PackageCheck, TrendingUp, Filter, Download, Plus, ArrowRightLeft, List, Settings2, Tag, Building2, Save, RefreshCw, Minus, ChevronDown, ChevronUp, ChevronRight, Check, Table, LayoutGrid } from "lucide-react";
 import { useStore } from "../store/useStore";
 import { cn, generateId } from "../lib/utils";
 import { downloadGeneratedFile } from '../utils/downloadFile';
+import { buildFileName } from '../utils/excel/theme';
+import {
+  buildExportSuccessNotification,
+  describeExportErrorDetails,
+  describeExportOutcome,
+  isExportDownloadError,
+} from '../utils/exportOutcome';
 import { Product, Category } from "../types";
 import { InfoTooltip } from "../components/InfoTooltip";
 import { PrintLabels } from "../components/PrintLabels";
@@ -45,6 +52,9 @@ function EquivalentLines({ parts, className, title }: { parts: string[]; classNa
     </div>
   );
 }
+
+// Cuánto permanece el botón de Excel pintado como «descargado» (igual que Reportes).
+const EXCEL_NOTICE_MS = 4000;
 
 export default function Inventory() {
   const { 
@@ -207,6 +217,10 @@ export default function Inventory() {
   const { planCode, source: planSource } = usePlanCode();
   // Solo mientras hay un libro generándose; se limpia siempre en `finally`.
   const [isExportingExcel, setIsExportingExcel] = useState(false);
+  // Estado visible del botón tras una descarga real (4 s, reclicable), igual que
+  // el de Reportes: sin esto el Excel de inventario terminaba sin avisar nada.
+  const [excelDownloaded, setExcelDownloaded] = useState(false);
+  const excelNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showBatchPriceModal, setShowBatchPriceModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [categoryViewport, setCategoryViewport] = useState({ height: 0, top: 0 });
@@ -689,20 +703,38 @@ export default function Inventory() {
     });
   };
 
+  // El aviso dura 4 s y deja el botón reclicable: coincide con Reportes.
+  const markExcelDownloaded = () => {
+    setExcelDownloaded(true);
+    if (excelNoticeTimerRef.current) clearTimeout(excelNoticeTimerRef.current);
+    excelNoticeTimerRef.current = setTimeout(() => setExcelDownloaded(false), EXCEL_NOTICE_MS);
+  };
+
+  // Mismo nombre que generará `exportInventoryToExcel` (etiqueta + fecha local),
+  // para que la burbuja cite el archivo que quedó en Descargas.
+  const buildInventoryExportFileName = () => buildFileName('Inventario', 'xlsx');
+
+  useEffect(
+    () => () => {
+      if (excelNoticeTimerRef.current) clearTimeout(excelNoticeTimerRef.current);
+    },
+    []
+  );
+
   const exportToCSV = () => {
     // Se exporta el inventario filtrado completo, no solo la página visible.
     const csvContent = buildInventoryCsv(inventoryData.full, categories);
-    const fileName = `PALMYRA_Inventario_${new Date().toISOString().split('T')[0]}.csv`;
-    try {
-      downloadGeneratedFile(
-        new TextEncoder().encode("\uFEFF" + csvContent),
-        fileName,
-        'text/csv;charset=utf-8'
-      );
-    } catch (error) {
-      console.error('[Inventory] No se pudo descargar el CSV:', error);
-      addNotification('No se pudo descargar el CSV de inventario. Intenta nuevamente.', 'error');
-    }
+    // Mismo nombre que ofrece el Excel (buildFileName) para que el aviso cite la
+    // fecha local del dispositivo y coincida con el archivo real.
+    const fileName = buildFileName('Inventario', 'csv');
+    const outcome = downloadGeneratedFile(
+      new TextEncoder().encode("\uFEFF" + csvContent),
+      fileName,
+      'text/csv;charset=utf-8'
+    );
+    // El aviso solo sale cuando el helper confirmó que el archivo quedó guardado.
+    const notice = describeExportOutcome(outcome, fileName);
+    addNotification(notice.message, notice.tone, notice.details);
   };
 
   const exportToExcel = async () => {
@@ -728,21 +760,30 @@ export default function Inventory() {
       };
     });
     setIsExportingExcel(true);
+    // Nombre real del libro: buildFileName se calcula con la misma fecha que usa
+    // la exportación, así el aviso menciona el archivo que quedó en Descargas.
+    const fileName = buildInventoryExportFileName();
     try {
       const { exportInventoryToExcel } = await import('../utils/excelExport');
       await exportInventoryToExcel(rows, {
         businessName: receiptConfig?.businessName || 'PALMYRA',
         currencyCode: baseCurrency.code,
       });
+      // `exportInventoryToExcel` lanza si el puente nativo rechazó escribir o si
+      // el entorno no pudo iniciar la descarga: llegar aquí significa guardado.
+      const notice = buildExportSuccessNotification(fileName);
+      addNotification(notice.message, notice.tone, notice.details);
+      markExcelDownloaded();
     } catch (error) {
       console.error('[Inventory] No se pudo exportar el inventario a Excel:', error);
       // Un fallo del módulo ExcelJS o del puente de descarga no puede quedar
       // como un botón que no responde: se muestra el motivo real.
-      const detail = error instanceof Error && error.message ? error.message : '';
       addNotification(
-        'No se pudo generar el Excel de inventario.',
+        isExportDownloadError(error)
+          ? 'No se pudo descargar el Excel de inventario.'
+          : 'No se pudo generar el Excel de inventario.',
         'error',
-        detail || 'Revisa el espacio disponible en el dispositivo e inténtalo de nuevo.'
+        describeExportErrorDetails(error, fileName)
       );
     } finally {
       // Sin este reset el botón quedaba deshabilitado para siempre tras un solo
@@ -944,16 +985,32 @@ export default function Inventory() {
             onClick={() => canExcel ? exportToExcel() : setActiveTab('excel')}
             disabled={isExportingExcel}
             title={canExcel
-              ? 'Descargar el inventario en Excel (.xlsx)'
+              ? excelDownloaded
+                ? 'El archivo ya está en tu carpeta Descargas. Presiona para descargar otro.'
+                : 'Descargar el inventario en Excel (.xlsx)'
               : 'El Excel de inventario está disponible desde Ciudadela'}
-            className="shrink-0 min-h-10 sm:min-h-0 flex items-center gap-1.5 px-2.5 py-1 bg-secondary border border-base text-muted rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-subtle transition-all active:scale-95 whitespace-nowrap disabled:opacity-60 disabled:cursor-wait"
+            className={cn(
+              "shrink-0 min-h-10 sm:min-h-0 flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all active:scale-95 whitespace-nowrap disabled:opacity-60 disabled:cursor-wait",
+              excelDownloaded
+                ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                : "bg-secondary border border-base text-muted hover:bg-subtle"
+            )}
           >
             {isExportingExcel
               ? <RefreshCw className="w-3 h-3 animate-spin" />
-              : <Download className="w-3 h-3" />}
+              : excelDownloaded
+                ? <Check className="w-3 h-3" />
+                : <Download className="w-3 h-3" />}
             {/* Solo se deshabilita mientras se genera el libro: un plan sin
-                resolver nunca pinta el botón como muerto. */}
-            <span>{isExportingExcel ? 'Generando…' : canExcel ? 'Excel' : 'Excel · Ciudadela'}</span>
+                resolver nunca pinta el botón como muerto. «Descargado ✓» dura 4 s
+                y el botón sigue reclicable. */}
+            <span>
+              {isExportingExcel
+                ? 'Generando…'
+                : excelDownloaded
+                  ? 'Descargado ✓'
+                  : canExcel ? 'Excel' : 'Excel · Ciudadela'}
+            </span>
           </button>
           <button 
             onClick={() => setActiveTab('labels')}

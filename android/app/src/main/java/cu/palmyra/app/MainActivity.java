@@ -93,6 +93,8 @@ public class MainActivity extends Activity {
     private NativeDb nativeDb;
     /** Respaldo cifrado a Descargas y restauración desde archivo. */
     private AndroidBackup backup;
+    /** Impresión térmica nativa (SPP/USB) para el POS del APK. */
+    private PalmyraPrinterBridge printerBridge;
     private volatile String activeVersion = "";
     private final AtomicBoolean updateRunning = new AtomicBoolean(false);
     /** Evita dos instalaciones de APK (descarga o importación USB) a la vez. */
@@ -173,6 +175,11 @@ public class MainActivity extends Activity {
         // envelopes JSON y el archivo importado se lee por trozos.
         backup = new AndroidBackup(this, web);
         web.addJavascriptInterface(new BackupBridge(), "PALMYRA_BACKUP");
+        // Impresora térmica del POS: la WebView no expone Web Bluetooth ni Web
+        // Serial, así que el ticket sale por SPP/RFCOMM o UsbManager desde aquí.
+        // Cada método devuelve un envelope JSON y nunca lanza hacia la web.
+        printerBridge = new PalmyraPrinterBridge(this);
+        web.addJavascriptInterface(printerBridge, "PALMYRA_PRINTER");
 
         web.setWebViewClient(new WebViewClient() {
             @Override
@@ -217,27 +224,50 @@ public class MainActivity extends Activity {
             // El escáner del POS pide la cámara con getUserMedia. Solo se
             // concede a la app servida por el servidor local: ningún sitio
             // externo puede quedarse con la cámara del dispositivo.
+            //
+            // Los recursos que no son de origen local se deniegan; los locales
+            // se conceden solo si el permiso del sistema ya está otorgado, así
+            // el audio del lector o un micrófono futuro no quedan negados en
+            // silencio (antes solo sobrevivía la cámara).
             @Override
             public void onPermissionRequest(final PermissionRequest request) {
                 runOnUiThread(() -> {
+                    Uri origin = request.getOrigin();
+                    String host = origin == null ? "" : origin.getHost();
+                    boolean localOrigin = "127.0.0.1".equals(host) || "localhost".equals(host);
+                    if (!localOrigin) {
+                        request.deny();
+                        return;
+                    }
+                    java.util.List<String> granted = new java.util.ArrayList<>();
                     boolean wantsCamera = false;
                     for (String resource : request.getResources()) {
                         if (PermissionRequest.RESOURCE_VIDEO_CAPTURE.equals(resource)) {
                             wantsCamera = true;
+                            continue;
+                        }
+                        if (PermissionRequest.RESOURCE_AUDIO_CAPTURE.equals(resource)
+                                && checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                                        == PackageManager.PERMISSION_GRANTED) {
+                            granted.add(resource);
                         }
                     }
-                    Uri origin = request.getOrigin();
-                    String host = origin == null ? "" : origin.getHost();
-                    if (!wantsCamera || !("127.0.0.1".equals(host) || "localhost".equals(host))) {
+                    if (wantsCamera) {
+                        if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                            granted.add(PermissionRequest.RESOURCE_VIDEO_CAPTURE);
+                        } else {
+                            // Queda pendiente hasta el resultado del diálogo: si se
+                            // niega, solo se pierde la cámara, no el resto.
+                            pendingCameraRequest = request;
+                            requestPermissions(new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA_PERMISSION);
+                            return;
+                        }
+                    }
+                    if (granted.isEmpty()) {
                         request.deny();
                         return;
                     }
-                    if (checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
-                        request.grant(new String[]{PermissionRequest.RESOURCE_VIDEO_CAPTURE});
-                        return;
-                    }
-                    pendingCameraRequest = request;
-                    requestPermissions(new String[]{Manifest.permission.CAMERA}, REQUEST_CAMERA_PERMISSION);
+                    request.grant(granted.toArray(new String[0]));
                 });
             }
 
@@ -479,13 +509,73 @@ public class MainActivity extends Activity {
             }
             return;
         }
+        if (requestCode == PalmyraPermissions.REQUEST_CODE) {
+            // El diálogo terminó: hay que avisar a la web, que quedó esperando en
+            // requestHardwarePermissions() con state:"pending". Sin este empuje el
+            // POS nunca sabe si el usuario concedió Bluetooth/avisos.
+            int granted = 0;
+            for (int result : grantResults) {
+                if (result == PackageManager.PERMISSION_GRANTED) granted++;
+            }
+            boolean allGranted = grantResults.length > 0 && granted == grantResults.length;
+            dispatchHardwarePermissions(PalmyraPermissions.doneEnvelope(
+                    allGranted, granted, Math.max(0, grantResults.length - granted)));
+            if (granted == 0 && permissions.length > 0) {
+                Toast.makeText(this,
+                        "Android no dio permisos de impresión. Puedes activarlos en Ajustes de la app.",
+                        Toast.LENGTH_LONG).show();
+            }
+            return;
+        }
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+    }
+
+    /**
+     * Lleva el resultado de permisos a la web a través del callback que instaló
+     * `requestNativeHardwarePermissions()`. El envelope lo genera este shell (solo
+     * booleanos y números), pero se escapa igual: un JSON dentro de JS sin escapar
+     * es una puerta a código.
+     */
+    private void dispatchHardwarePermissions(String envelope) {
+        final WebView target = web;
+        if (target == null || envelope == null) return;
+        final StringBuilder script = new StringBuilder(
+                "if (window.__palmyraHardwarePermissions) window.__palmyraHardwarePermissions(\"");
+        for (int i = 0; i < envelope.length(); i++) {
+            char c = envelope.charAt(i);
+            if (c == '\\' || c == '"') {
+                script.append('\\').append(c);
+            } else if (c == '<' || c == '>' || c == '&') {
+                script.append(String.format("\\u%04x", (int) c));
+            } else if (c == '\n') {
+                script.append("\\n");
+            } else {
+                script.append(c);
+            }
+        }
+        script.append("\");");
+        try {
+            target.post(() -> {
+                try {
+                    target.evaluateJavascript(script.toString(), null);
+                } catch (Exception ignored) {
+                    // La web ya se fue: el POS volverá a consultar available().
+                }
+            });
+        } catch (Exception ignored) {
+            // Actividad terminando.
+        }
     }
 
     @Override
     protected void onDestroy() {
         if (server != null) {
             server.stop();
+        }
+        if (printerBridge != null) {
+            // El socket RFCOMM debe cerrarse con la actividad: dejarlo abierto
+            // bloquea el puerto SPP para el próximo arranque.
+            printerBridge.release();
         }
         if (web != null) {
             web.destroy();
@@ -653,6 +743,21 @@ public class MainActivity extends Activity {
         }
 
         /**
+         * Permisos de hardware del POS (Bluetooth/USB y notificaciones). Se pide
+         * lo que corresponda a la versión de Android; el resultado viaja a la web
+         * como envelope JSON y, si el sistema abre el diálogo, queda pendiente
+         * hasta onRequestPermissionsResult.
+         */
+        @JavascriptInterface
+        public String requestHardwarePermissions() {
+            try {
+                return PalmyraPermissions.requestRuntime(MainActivity.this);
+            } catch (Throwable error) {
+                return backupErrorEnvelope("bridge_error");
+            }
+        }
+
+        /**
          * Descarga de archivos generados en la web (Excel, CSV, TXT): el
          * DownloadListener no puede leer URLs blob:, así que el contenido
          * llega como Base64 y el shell lo escribe en Descargas públicas.
@@ -663,6 +768,21 @@ public class MainActivity extends Activity {
                 return backup.saveExport(fileName, dataBase64, mimeType);
             } catch (Throwable error) {
                 return "{\"ok\":false,\"error\":\"save_failed\"}";
+            }
+        }
+
+        /**
+         * Aviso del sistema (bandeja de Android). La WebView no tiene API de
+         * notificaciones, así que la web pide aquí lo que quiere mostrar: el
+         * shell usa NotificationManager con el permiso ya concedido en el
+         * arranque. `tag` agrupa: el mismo aviso se reemplaza y no se apila.
+         */
+        @JavascriptInterface
+        public String showNotification(String title, String body, String tag) {
+            try {
+                return PalmyraNotifications.show(MainActivity.this, title, body, tag);
+            } catch (Throwable error) {
+                return "{\"ok\":false,\"code\":\"bridge_error\"}";
             }
         }
     }

@@ -40,6 +40,7 @@ import { reconcileBankCanonical } from './reconcileBank';
 import { replaceWarehouseInventory, replaceWarehousesInventory } from './reconcileInventory';
 import { reconcileSupplierReceiveCanonical } from './reconcileSupplierReceive';
 import { rememberOfflinePosCredential } from "../offlinePosAuth";
+import { describeSyncFailure, isPermanentSyncRejection } from './syncContract';
 /**
  * SQLSTATE que, por sí mismos, hacen imposible que el replay prospere:
  * violaciones de clave/foránea/check, permisos revocados, tipos inválidos,
@@ -102,6 +103,48 @@ class PermanentSyncError extends Error {
 }
 
 /**
+ * Rechazo definitivo del servidor con causa ya traducida. Se lanza cuando el RPC
+ * devuelve un código permanente conocido (`invalid_warehouse`, `invalid_product`,
+ * `location_access_denied`, ...): reintentar el mismo payload no puede prosperar
+ * porque la fila objetivo (el almacén) se dio de baja o el acceso fue revocado.
+ *
+ * El motor de sincronización convierte este error en `status: 'conflict'`: sale
+ * de "restantes", queda como fallo definitivo visible y bloquea solo las
+ * operaciones que dependan de ella. La operación NO se borra de la cola, así que
+ * no perdemos trabajo sin rastro; el operador decide si repite o descarta.
+ *
+ * `refreshCloudState` se usa cuando el rechazo pudo dejar una parte aplicada (el
+ * lote quedó a medias): se recarga el inventario de la nube antes de notificar.
+ * No se inventa ninguna reparación de datos local.
+ */
+async function terminalInventoryRejection(
+  res: { error?: string; errorCode?: string; conflict?: boolean },
+  item: OfflineQueueItem,
+  fallbackMessage: string,
+  options: { refreshCloudState?: boolean } = {}
+): Promise<never> {
+  const code = String(res.errorCode || '').trim();
+  const message = describeSyncFailure(code || res.error || fallbackMessage, item.type);
+  try {
+    if (options.refreshCloudState) await useStore.getState().refreshBranchInventory?.();
+    useStore.getState().addNotification('Operación de inventario rechazada', 'error', message);
+  } catch {
+    // Notificar nunca puede tapar el rechazo: el error se lanza igual.
+  }
+  throw new PermanentSyncError(message);
+}
+
+/**
+ * `applyInventoryAdjustmentToSupabase`/`reconcileInventoryToSupabase` declaran su
+ * rama de éxito sin `errorCode`, pero en runtime el envoltorio puede traerlo. Se
+ * lee por cast explícito para no depender de esa firma ni tocar supabaseSync/*.
+ */
+type InventoryRejection = { success?: boolean; conflict?: boolean; error?: string; errorCode?: string };
+function asInventoryRejection(value: unknown): InventoryRejection | null {
+  return value && typeof value === 'object' ? value as InventoryRejection : null;
+}
+
+/**
  * Normaliza los errores del alta/edición de trabajadores. El RPC
  * `create_employee_pos_secure` lanza `warehouse_out_of_scope` (P0001) cuando
  * los almacenes elegidos quedan fuera del alcance del usuario. No es un
@@ -134,6 +177,12 @@ const OFFLINE_RETRY_VISIBILITY_THRESHOLD = 5;
  * motor de sincronización) explique, a partir del tope de reintentos, que la
  * operación sigue guardada y requiere revisión. Nunca cambia la clasificación
  * ni elimina el ítem: un fallo de red/5xx sigue siendo reintentable.
+ *
+ * El mensaje base se traduce SIEMPRE con `describeSyncFailure`, de modo que el
+ * código crudo del servidor (`invalid_warehouse`) nunca llegue al operador ni
+ * siquiera en el rastro de reintentos. Para un rechazo ya marcado como
+ * permanente, el mensaje generado por el replay está traducido: solo se añade
+ * cuántos intentos lleva y que requiere revisión manual.
  */
 function withRetryTrace(error: unknown, item: OfflineQueueItem): unknown {
   const attempts = Number(item?.retryCount || 0) + 1;
@@ -141,12 +190,17 @@ function withRetryTrace(error: unknown, item: OfflineQueueItem): unknown {
   const source = error as
     | { message?: unknown; permanent?: boolean; code?: unknown; status?: unknown; statusCode?: unknown; details?: unknown; hint?: unknown }
     | null;
-  const baseMessage = String(source?.message ?? error ?? 'Error desconocido');
-  if (baseMessage.includes('la operación se conserva en la cola')) return error;
+  const rawMessage = String(source?.message ?? error ?? 'Error desconocido');
+  if (rawMessage.includes('la operación se conserva en la cola')) return error;
+  const isPermanent = source?.permanent === true;
+  const baseMessage = isPermanent
+    ? rawMessage
+    : describeSyncFailure(source?.code ?? rawMessage, item?.type);
+  const tail = isPermanent
+    ? `Intento ${attempts}: el servidor rechazó esta operación de forma definitiva y no se volverá a reintentar. Repítela o elimínala desde Configuración > Monitor de Logs.`
+    : `${baseMessage} · Intento ${attempts}: la operación se conserva en la cola (estado de error visible) hasta que se corrija la causa o se descarte manualmente.`;
   const annotated = Object.assign(
-    new Error(
-      `${baseMessage} · Intento ${attempts}: la operación se conserva en la cola (estado de error visible) hasta que se corrija la causa o se descarte manualmente.`
-    ),
+    new Error(isPermanent ? `${baseMessage} · ${tail}` : tail),
     {
       permanent: source?.permanent === true,
       ...(source?.code !== undefined ? { code: source.code } : {}),
@@ -691,8 +745,19 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
       return true;
     }
     case 'inventory': {
-      const ok = await pushInventoryToSupabase(data as any);
-      if (!ok) throw new Error('No se pudo sincronizar el stock pendiente.');
+      // `pushInventoryToSupabase` devuelve `false` (transitorio) o un objeto de
+      // fallo con `errorCode` cuando el RPC rechazó la operación.
+      const res = await pushInventoryToSupabase(data as any);
+      const failure = asInventoryRejection(res);
+      if (failure && typeof failure === 'object' && failure.success === false) {
+        // Un rechazo permanente (almacén/producto dados de baja) no puede
+        // prosperar reintentando: sale de "restantes" como fallo definitivo.
+        if (isPermanentSyncRejection({ code: failure.errorCode, message: failure.error, type: item.type })) {
+          return terminalInventoryRejection(failure, item, 'No se pudo sincronizar el stock pendiente.');
+        }
+        throw new Error(describeSyncFailure(failure.error || 'No se pudo sincronizar el stock pendiente.', item.type));
+      }
+      if (res === false) throw new Error('No se pudo sincronizar el stock pendiente.');
       return true;
     }
     case 'inventory_adjustment': {
@@ -700,9 +765,15 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
       if (!res.success) {
         if (res.conflict) {
           await useStore.getState().refreshBranchInventory();
-          throw new PermanentSyncError(res.error || 'Conflicto de ajuste de inventario.');
+          throw new PermanentSyncError(describeSyncFailure(res.error || '', item.type));
         }
-        throw new Error(res.error || 'No se pudo sincronizar el ajuste de inventario.');
+        // `invalid_warehouse`/`invalid_product`... son definitivos: el almacén se
+        // dio de baja y ningún reintento lo va a resolver.
+        const rejection = asInventoryRejection(res) || {};
+        if (isPermanentSyncRejection({ code: rejection.errorCode, message: rejection.error, type: item.type })) {
+          return terminalInventoryRejection(rejection, item, 'No se pudo sincronizar el ajuste de inventario.');
+        }
+        throw new Error(describeSyncFailure(res.error || 'No se pudo sincronizar el ajuste de inventario.', item.type));
       }
       if (Number.isFinite(Number(res.data?.quantity))) {
         useStore.setState(state => ({
@@ -722,9 +793,17 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
       if (!res.success) {
         if (res.conflict) {
           await useStore.getState().refreshBranchInventory();
-          throw new PermanentSyncError(res.error || 'Conflicto de reconciliación de inventario.');
+          throw new PermanentSyncError(describeSyncFailure(res.error || '', item.type));
         }
-        throw new Error(res.error || 'No se pudo sincronizar la reconciliación de inventario.');
+        // El alta de la operación en `mutations.reconcileInventoryToSupabase` ya
+        // reencoló el payload al fallar; si además el RPC devolvió un rechazo
+        // permanente, dejar el ítem "failed" lo condenaba a reintentar para
+        // siempre ("2 restantes"). Se convierte en conflicto definitivo.
+        const rejection = asInventoryRejection(res) || {};
+        if (isPermanentSyncRejection({ code: rejection.errorCode, message: rejection.error, type: item.type })) {
+          return terminalInventoryRejection(rejection, item, 'No se pudo sincronizar la reconciliación de inventario.');
+        }
+        throw new Error(describeSyncFailure(res.error || 'No se pudo sincronizar la reconciliación de inventario.', item.type));
       }
       if (Number.isFinite(Number(res.data?.quantity))) {
         useStore.setState(state => ({

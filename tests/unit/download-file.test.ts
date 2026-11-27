@@ -41,8 +41,10 @@ test("bytesToBase64 coincide con el codificador probado del respaldo", () => {
 test("sin puente el helper degrada al enlace blob: y nunca lanza", () => {
   clearWindow();
   assert.equal(saveExportViaNativeBridge(new Uint8Array([1]), "a.xlsx", "application/x"), null);
-  // Sin document (Node) el enlace blob: no puede iniciarse.
-  assert.equal(downloadGeneratedFile(new Uint8Array([1]), "a.xlsx", "application/x"), false);
+  // Sin document (Node) el enlace blob: no puede iniciarse: resultado 'unavailable'.
+  const outcome = downloadGeneratedFile(new Uint8Array([1]), "a.xlsx", "application/x");
+  assert.equal(outcome.status, "unavailable");
+  assert.equal(outcome.fileName, "a.xlsx");
 });
 
 test("el puente nativo guarda el Base64 con nombre y MIME correctos", () => {
@@ -63,8 +65,11 @@ test("el puente nativo guarda el Base64 con nombre y MIME correctos", () => {
     captured?.mime,
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
   );
-  // downloadGeneratedFile usa el puente antes que el enlace blob:.
-  assert.equal(downloadGeneratedFile(bytes, "a.xlsx", "application/x"), true);
+  // downloadGeneratedFile usa el puente antes que el enlace blob: y confirma guardado.
+  const saved = downloadGeneratedFile(bytes, "a.xlsx", "application/x");
+  assert.equal(saved.status, "saved");
+  assert.equal(saved.via, "native");
+  assert.equal(saved.fileName, "a.xlsx");
 });
 
 test("un envelope con ok:false se traduce a failed", () => {
@@ -72,12 +77,13 @@ test("un envelope con ok:false se traduce a failed", () => {
   assert.equal(saveExportViaNativeBridge(new Uint8Array([1]), "a.xlsx", "x"), "failed");
 });
 
-test("un puente roto devuelve failed y downloadGeneratedFile lanza", () => {
+test("un puente roto devuelve failed y downloadGeneratedFile lo reporta sin lanzar", () => {
   installBridge(() => {
     throw new Error("boom");
   });
   assert.equal(saveExportViaNativeBridge(new Uint8Array([1]), "a.xlsx", "x"), "failed");
-  assert.throws(() => downloadGeneratedFile(new Uint8Array([1]), "a.xlsx", "x"));
+  const outcome = downloadGeneratedFile(new Uint8Array([1]), "a.xlsx", "x");
+  assert.equal(outcome.status, "failed");
 });
 
 test("una respuesta thenable (puente no síncrono) se rechaza", () => {

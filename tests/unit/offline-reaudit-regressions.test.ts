@@ -51,6 +51,9 @@ test("push activation renews a stale browser endpoint disabled on the server", (
   assert.match(notifications, /serverSubscription\?\.enabled !== true[\s\S]*?await subscription\.unsubscribe\(\)/);
   assert.match(notifications, /await subscription\.unsubscribe\(\)[\s\S]*?subscription = null/);
   assert.match(notifications, /if \(!subscription\)[\s\S]*?registration\.pushManager\.subscribe/);
-  assert.match(notifications, /catch \(unsubscribeError\)[\s\S]*?throw new Error\("No se pudo renovar la suscripción push antigua/);
-  assert.match(notifications, /if \(serverCheckError\)[\s\S]*?throw new Error\("No se pudo comprobar el estado de la suscripción push/);
+  // Ninguna de las dos ramas puede continuar en silencio: aborta la activación y
+  // reporta la causa real (PUSH_FAILURE_TEXT), no un genérico "revisa permisos".
+  assert.match(notifications, /catch \(unsubscribeError\)[\s\S]{0,300}?return void failWith\([\s\S]{0,200}?expired subscription/);
+  assert.match(notifications, /if \(serverCheckError\)[\s\S]{0,300}?return void failWith\(/);
+  assert.match(notifications, /const failWith = \(info: PushFailureInfo\)[\s\S]{0,120}?setError\(pushFailureMessage\(info\)\)/);
 });

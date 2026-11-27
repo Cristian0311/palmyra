@@ -182,7 +182,7 @@ test('(a) una sección caída no vacía el resto ni borra la caché local', asyn
     branches: [{ id: 'wh-local', name: 'Local', isActive: true }],
     inventory: [
       { id: 'inv-local', productId: 'prod-local', branchId: 'wh-local', quantity: 2, minQuantity: 0 },
-      // Referencia a una bodega archivada: debe sobrevivir al bootstrap.
+      // Fila huérfana de una bodega dada de baja: el arranque no la reescribe.
       { id: 'inv-arch', productId: 'prod-local', branchId: 'wh-3', quantity: 1, minQuantity: 0 },
     ],
     bankCards: [cachedBank],
@@ -197,9 +197,10 @@ test('(a) una sección caída no vacía el resto ni borra la caché local', asyn
   assert.deepEqual(state.products.map((p: any) => p.id), ['prod-local']);
   // Bancos: ídem.
   assert.deepEqual(state.bankCards.map((b: any) => b.id), ['bank-local']);
-  // Almacenes: llegaron y se actualizaron (incluido el archivado referenciado).
-  assert.deepEqual(state.branches.map((b: any) => b.id).sort(), ['wh-1', 'wh-2', 'wh-3']);
-  assert.equal(state.branches.find((b: any) => b.id === 'wh-3').isActive, false);
+  // Almacenes: llegaron los operativos. El dado de baja NO puede hidratar la
+  // store (era la resurrección tras eliminarlo); su nombre sigue resolviendo
+  // porque el catálogo crudo se conserva para el histórico.
+  assert.deepEqual(state.branches.map((b: any) => b.id).sort(), ['wh-1', 'wh-2']);
   // Categorías y clientes llegaron.
   assert.ok(state.categories.some((c: any) => c.id === 'cat-1'));
   assert.deepEqual(state.customers.map((c: any) => c.id), ['cus-1']);
@@ -225,7 +226,7 @@ test('(a2) el detalle del informe marca solo la sección caída', async () => {
   assert.equal(report.sections.categories.hidden, 1);
   assert.deepEqual(report.errors.map((entry: any) => entry.section), ['customers']);
   assert.equal(data.customers.length, 0);
-  assert.equal(data.branches.length, 3, 'los almacenes archivados viajan para no romper referencias');
+  assert.equal(data.branches.length, 2, 'el almacén dado de baja no hidrata la store');
   assert.equal((data as any).report, undefined);
 });
 

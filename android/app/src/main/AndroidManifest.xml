@@ -16,6 +16,33 @@
         android:maxSdkVersion="28" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
+    <!-- Impresora térmica del Punto de Venta (PalmyraPrinterBridge).
+         El puente habla RFCOMM/SPP con la impresora Bluetooth y, si va por
+         cable, usa UsbManager. En Android 12 (API 31+) los permisos de
+         Bluetooth se dividieron: los antiguos siguen siendo obligatorios hasta
+         API 30 y nunca se piden en tiempo de ejecución arriba de esa versión. -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_ADMIN"
+        android:maxSdkVersion="30" />
+    <!-- Hasta API 30 el escaneo Bluetooth exigía ubicación; con neverForLocation
+         en API 31+ ya no se necesita y por eso caduca en 30. -->
+    <uses-permission
+        android:name="android.permission.ACCESS_FINE_LOCATION"
+        android:maxSdkVersion="30" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
+    <!-- Notificaciones locales del centro de avisos (Android 13+). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- USB/OTG opcional: sin adaptador la app sigue imprimiendo por Bluetooth. -->
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="false" />
+
     <!-- allowBackup=false: la base SQLite con los datos del negocio y la clave
          de licencia no viajan en respaldos de ADB/nube. El tráfico externo es
          solo HTTPS (network_security_config); el servidor local de la WebView

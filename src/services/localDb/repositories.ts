@@ -109,6 +109,22 @@ export interface StoreConfigRepository {
   save(config: StoreConfig): Promise<StoreConfig>;
 }
 
+/**
+ * Repositorio de almacenes.
+ *
+ * Existe porque la baja de un almacén debe llegar al almacén local: si solo se
+ * quita de la memoria, `hydrateFromLocalDb` (arranque offline) o el puente del
+ * hub (`applyLocalSnapshotToStore`) lo rehidratan y el usuario vuelve a verlo
+ * después del aviso de «eliminado».
+ */
+export interface WarehouseRepository {
+  list(): Promise<Branch[]>;
+  get(id: string): Promise<Branch | null>;
+  save(branch: Branch): Promise<Branch>;
+  saveMany(branches: Branch[]): Promise<Branch[]>;
+  remove(id: string): Promise<void>;
+}
+
 export interface LocalRepositories {
   products: ProductRepository;
   inventory: InventoryRepository;
@@ -116,6 +132,7 @@ export interface LocalRepositories {
   suppliers: SupplierRepository;
   sales: SaleRepository;
   cashSessions: CashSessionRepository;
+  warehouses: WarehouseRepository;
   storeConfig: StoreConfigRepository;
 }
 
@@ -950,6 +967,40 @@ export function createRepositories(
     }
   };
 
+  async function saveWarehouseList(items: Branch[]): Promise<Branch[]> {
+    if (items.length === 0) return [];
+    const ctx = writeContext();
+    const saved: LocalRow[] = [];
+    await driver.transaction(async (tx) => {
+      for (const branch of items) {
+        const rows = legacyBatches("branches", branch, ctx).warehouses ?? [];
+        saved.push(...(await bumpAndPut(tx, "warehouses", rows, ctx)));
+      }
+    });
+    return saved.map(branchFromRow);
+  }
+
+  const warehouses: WarehouseRepository = {
+    async list() {
+      const rows = await listRows("warehouses");
+      return rows.map(branchFromRow);
+    },
+    async get(id) {
+      const row = await getRow("warehouses", id);
+      return row ? branchFromRow(row) : null;
+    },
+    async save(branch) {
+      const saved = await saveWarehouseList([branch]);
+      return saved[0];
+    },
+    async saveMany(items) {
+      return saveWarehouseList(items);
+    },
+    async remove(id) {
+      await removeRow("warehouses", id);
+    }
+  };
+
   const storeConfig: StoreConfigRepository = {
     async get() {
       const rows = await listRows("company_settings");
@@ -971,7 +1022,7 @@ export function createRepositories(
     }
   };
 
-  return { products, inventory, customers, suppliers, sales, cashSessions, storeConfig };
+  return { products, inventory, customers, suppliers, sales, cashSessions, warehouses, storeConfig };
 }
 
 // ---------------------------------------------------------------------------

@@ -989,14 +989,12 @@ export function downloadInstallDiagnostics(
   report: InstallDiagnosticsReport
 ): { ok: boolean; fileName: string } {
   const fileName = installReportFileName(report.generatedAt);
-  try {
-    const saved = downloadGeneratedFile(
-      new TextEncoder().encode(formatInstallDiagnostics(report)),
-      fileName,
-      "text/plain;charset=utf-8"
-    );
-    return { ok: saved, fileName };
-  } catch {
-    return { ok: false, fileName };
-  }
+  // El helper ya no lanza: devuelve el resultado discriminado y aquí se traduce
+  // al `{ ok }` que consume la interfaz del diagnóstico.
+  const outcome = downloadGeneratedFile(
+    new TextEncoder().encode(formatInstallDiagnostics(report)),
+    fileName,
+    "text/plain;charset=utf-8"
+  );
+  return { ok: outcome.status === "saved", fileName };
 }

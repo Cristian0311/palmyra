@@ -2,7 +2,7 @@ import PlanFeatureGate from '../components/PlanFeatureGate';
 import OperationsSurface from '../components/OperationsSurface';
 import OperationsDialog from '../components/OperationsDialog';
 import { useShallow } from 'zustand/react/shallow';
-import { useEffect, useMemo, useRef, useState, type ElementType, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ElementType, type FormEvent } from 'react';
 import {
   ArrowRight, ArrowUpDown, Ban, Building2, CheckCircle2, Clock, CreditCard, FileText, Mail, MapPin,
   Package, PackageSearch, Pencil, Phone, Plus, Search, ShoppingCart, Trash2, Truck, Users,
@@ -238,6 +238,9 @@ function SuppliersContent() {
   const [planAllowsPurchases, setPlanAllowsPurchases] = useState(false);
   const [busy, setBusy] = useState(false);
   const saveLock = useRef(false);
+  // Estable durante toda la sesión del diálogo: si fuera inline, OperationsDialog
+  // recibiría una función nueva en cada render.
+  const closeSupplierModal = useCallback(() => setSupplierModal(false), []);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [, setQueueVersion] = useState(0);
@@ -719,7 +722,7 @@ function SuppliersContent() {
     )}
 
     {supplierModal && (
-      <OperationsDialog title={editingSupplier ? 'Editar proveedor' : 'Nuevo proveedor'} onClose={() => setSupplierModal(false)}>
+      <OperationsDialog title={editingSupplier ? 'Editar proveedor' : 'Nuevo proveedor'} onClose={closeSupplierModal}>
         {feedback}
         <form onSubmit={saveSupplier} className="mt-4 space-y-4">
           <div className="grid gap-3 sm:grid-cols-2">

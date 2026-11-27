@@ -30,8 +30,16 @@
  *      overlay res-lan (hub HTTP de la red privada) existe pero está aislado al
  *      sabor `lan`, cuyo nombre de salida lleva el sufijo -LAN y no se publica.
  *   5. Puentes nativos: MainActivity registra PALMYRA_NATIVE, PALMYRA_DB,
- *      PALMYRA_KEYSTORE y PALMYRA_BACKUP; NativeDb expone integrity() y
- *      checkpoint().
+ *      PALMYRA_KEYSTORE, PALMYRA_BACKUP y PALMYRA_PRINTER; NativeDb expone
+ *      integrity() y checkpoint(). El puente de impresión térmica debe exponer
+ *      los seis métodos que consume `src/lib/escpos.ts` (available,
+ *      requestPermissions, permissionStatus, listDevices, printRawBase64,
+ *      close) y el shell debe poder pedir permisos: PalmyraPermissions lanza el
+ *      diálogo en el hilo de UI y MainActivity devuelve el resultado a la web
+ *      por `window.__palmyraHardwarePermissions`. Los avisos del sistema salen
+ *      por `PALMYRA_NATIVE.showNotification` (PalmyraNotifications): la WebView
+ *      no tiene API Web de notificaciones, así que sin ese puente el permiso de
+ *      POST_NOTIFICATIONS no tendría ningún uso.
  *
  * Salida: una línea OK/FALLO por comprobación y un resumen; exit code 1 si algo
  * falla. Un valor que no se puede determinar se reporta como «no verificable»
@@ -57,14 +65,17 @@ export const DEFAULT_PATHS = {
   networkLan: "android/app/src/main/res-lan/xml/network_security_config.xml",
   mainActivity: "android/app/src/main/java/cu/palmyra/app/MainActivity.java",
   nativeDb: "android/app/src/main/java/cu/palmyra/app/NativeDb.java",
-  updateProvider: "android/app/src/main/java/cu/palmyra/app/UpdateApkProvider.java"
+  updateProvider: "android/app/src/main/java/cu/palmyra/app/UpdateApkProvider.java",
+  printerBridge: "android/app/src/main/java/cu/palmyra/app/PalmyraPrinterBridge.java",
+  permissions: "android/app/src/main/java/cu/palmyra/app/PalmyraPermissions.java",
+  alerts: "android/app/src/main/java/cu/palmyra/app/PalmyraNotifications.java"
 };
 
 /** Hosts locales admitidos en claro en el APK publicado. */
 const LOCAL_HOSTS = new Set(["127.0.0.1", "localhost", "::1"]);
 
 /** Bridges que el shell Android debe registrar en la WebView. */
-const BRIDGES = ["PALMYRA_NATIVE", "PALMYRA_DB", "PALMYRA_KEYSTORE", "PALMYRA_BACKUP"];
+const BRIDGES = ["PALMYRA_NATIVE", "PALMYRA_DB", "PALMYRA_KEYSTORE", "PALMYRA_BACKUP", "PALMYRA_PRINTER"];
 
 /**
  * Permisos de protección peligrosa (o restringida en Play): si aparecen, deben
@@ -119,7 +130,12 @@ const DANGEROUS_PERMISSIONS = new Set([
  */
 const ALLOWED_DANGEROUS = {
   CAMERA: "escáner QR del POS (getUserMedia); opcional, la app funciona sin cámara",
-  POST_NOTIFICATIONS: "avisos locales de la app en Android 13+"
+  POST_NOTIFICATIONS: "avisos locales de la app en Android 13+",
+  // Impresión térmica (PalmyraPrinterBridge): caducan con el maxSdkVersion del
+  // manifiesto; en API 31+ Bluetooth se gobierna por BLUETOOTH_CONNECT/SCAN.
+  ACCESS_FINE_LOCATION: "requisito del escaneo Bluetooth en Android <=11; neverForLocation, nunca se geolocaliza",
+  BLUETOOTH_CONNECT: "conectar con la impresora térmica vinculada del POS (Android 12+)",
+  BLUETOOTH_SCAN: "buscar la impresora térmica cercana (Android 12+, neverForLocation)"
 };
 
 /**
@@ -132,6 +148,10 @@ const ALLOWED_NORMAL = {
   REQUEST_INSTALL_PACKAGES: "instalación del APK de actualización ya verificado",
   DOWNLOAD_WITHOUT_NOTIFICATION: "descarga silenciosa del APK de actualización",
   VIBRATE: "aviso de lectura del escáner",
+  // Los dos permisos clásicos de Bluetooth cadujan en API 30 (maxSdkVersion del
+  // manifiesto); desde Android 12 manda BLUETOOTH_CONNECT/SCAN.
+  BLUETOOTH: "hablar RFCOMM/SPP con la impresora térmica del POS (Android <=11)",
+  BLUETOOTH_ADMIN: "descubrir y enlazar la impresora térmica (Android <=11)",
   WAKE_LOCK: "mantener viva una importación larga"
 };
 
@@ -303,6 +323,9 @@ export function inspect(options = {}) {
   const networkLanFile = read("networkLan");
   const activityFile = read("mainActivity");
   const nativeDbFile = read("nativeDb");
+  const printerBridgeFile = read("printerBridge");
+  const permissionsFile = read("permissions");
+  const alertsFile = read("alerts");
 
   let version = null;
   let expectedVersionCode = null;
@@ -336,6 +359,9 @@ export function inspect(options = {}) {
   if (gradleCode) checkSigning(report, root, gradleCode);
   if (activityFile) checkBridges(report, activityFile.text);
   if (nativeDbFile) checkNativeDb(report, nativeDbFile.text);
+  if (printerBridgeFile) checkPrinterBridge(report, printerBridgeFile.text);
+  if (permissionsFile && activityFile) checkPermissionHandoff(report, permissionsFile.text, activityFile.text);
+  checkNativeAlerts(report, alertsFile ? alertsFile.text : "", activityFile ? activityFile.text : "");
 
   return {
     ok: report.ok,
@@ -760,6 +786,117 @@ function checkNativeDb(report, text) {
     } else {
       report.fail("puentes", `NativeDb.${method.name}`, `no verificable: NativeDb no expone ${method.name}() público`);
     }
+  }
+}
+
+/**
+ * Puente de impresión térmica. `src/lib/escpos.ts` llama a estos seis métodos por
+ * su nombre: si uno desaparece, el POS deja de imprimir sin que nada falle al
+ * compilar (el puente es reflection-free desde la web).
+ */
+function checkPrinterBridge(report, text) {
+  const methods = ["available", "requestPermissions", "permissionStatus", "listDevices", "printRawBase64", "close"];
+  for (const name of methods) {
+    const exposed = new RegExp(`@JavascriptInterface\\s+public\\s+String\\s+${name}\\s*\\(`).test(text);
+    if (exposed) {
+      report.pass("puentes", `PALMYRA_PRINTER.${name}`, "expuesto con @JavascriptInterface");
+    } else {
+      report.fail("puentes", `PALMYRA_PRINTER.${name}`, `no verificable: PalmyraPrinterBridge no expone ${name}() anotado; escpos.ts lo necesita`);
+    }
+  }
+
+  // El permiso USB del sistema es lo que convierte "usb_denied" en una impresora
+  // utilizable: sin PendingIntent, UsbManager.hasPermission() nunca pasa a true.
+  if (/requestUsbPermission\s*\(/.test(text) && /ACTION_USB_PERMISSION/.test(text) && /usb_permission_pending/.test(text)) {
+    report.pass("puentes", "PALMYRA_PRINTER.USB", "pide el permiso USB del sistema y avisa de que queda pendiente");
+  } else {
+    report.fail("puentes", "PALMYRA_PRINTER.USB", "no verificable: el puente no pide el permiso USB (UsbManager.requestPermission) o no devuelve usb_permission_pending");
+  }
+}
+
+/**
+ * Ida y vuelta de permisos: el diálogo de Android solo se puede abrir desde el
+ * hilo de UI y el resultado vuelve a la web por un push, porque el hilo del
+ * puente bloquearía el `requestPermissions` si esperara el resultado.
+ */
+function checkPermissionHandoff(report, permissionsText, activityText) {
+  if (/public\s+static\s+final\s+int\s+REQUEST_CODE/.test(permissionsText)) {
+    report.pass("permisos", "REQUEST_CODE", "PalmyraPermissions define el código de la solicitud");
+  } else {
+    report.fail("permisos", "REQUEST_CODE", "no verificable: PalmyraPermissions no declara REQUEST_CODE público");
+  }
+
+  if (/runOnUiThread\s*\([\s\S]{0,200}?requestPermissions\s*\(/.test(permissionsText)) {
+    report.pass("permisos", "Hilo de UI", "el diálogo se abre con runOnUiThread (el puente corre en el hilo JavaBridge)");
+  } else {
+    report.fail("permisos", "Hilo de UI", "no verificable: requestPermissions no se publica en el hilo de UI; Android lanzaría CalledFromWrongThreadException");
+  }
+
+  if (/notificationsGranted/.test(permissionsText) && /bluetoothGranted/.test(permissionsText)) {
+    report.pass("permisos", "Estado consultable", "notificaciones y Bluetooth exponen su estado real al shell web");
+  } else {
+    report.fail("permisos", "Estado consultable", "no verificable: faltan notificationsGranted()/bluetoothGranted(); el aviso de permisos no puede saber si ya fueron concedidos");
+  }
+
+  if (/window\.__palmyraHardwarePermissions/.test(activityText) && /dispatchHardwarePermissions/.test(activityText)) {
+    report.pass("permisos", "Devolver el resultado", "onRequestPermissionsResult empuja el resultado a window.__palmyraHardwarePermissions");
+  } else {
+    report.fail("permisos", "Devolver el resultado", "no verificable: MainActivity no devuelve el resultado del diálogo a la web (queda pendiente para siempre)");
+  }
+
+  if (/requestCode\s*==\s*PalmyraPermissions\.REQUEST_CODE/.test(activityText)) {
+    report.pass("permisos", "Código gestionado", "MainActivity reconoce el REQUEST_CODE del shell");
+  } else {
+    report.fail("permisos", "Código gestionado", "no verificable: onRequestPermissionsResult no comprueba PalmyraPermissions.REQUEST_CODE");
+  }
+}
+
+/**
+ * Avisos del sistema (bandeja de Android). La WebView no implementa la API Web de
+ * notificaciones —`Notification.permission` queda en "denied" para siempre—, así
+ * que `src/lib/osAlert.ts` solo puede publicar a través de este puente. Si falta,
+ * el permiso que se pide al entrar no sirve para nada.
+ */
+function checkNativeAlerts(report, notificationsText, activityText) {
+  if (!notificationsText) {
+    report.fail("puentes", "PALMYRA_NATIVE.showNotification", "no verificable: falta PalmyraNotifications.java; el APK no puede publicar avisos del sistema");
+    return;
+  }
+
+  if (/@JavascriptInterface\s+public\s+String\s+showNotification\s*\(/.test(activityText)) {
+    report.pass("puentes", "PALMYRA_NATIVE.showNotification", "expuesto con @JavascriptInterface para osAlert.ts");
+  } else {
+    report.fail("puentes", "PALMYRA_NATIVE.showNotification", "no verificable: MainActivity no expone showNotification(); los avisos locales se quedan en la campana");
+  }
+
+  if (/PalmyraNotifications\.show\s*\(/.test(activityText)) {
+    report.pass("puentes", "Delegación del aviso", "el puente delega en PalmyraNotifications en vez de improvisar");
+  } else {
+    report.fail("puentes", "Delegación del aviso", "no verificable: el puente no llama a PalmyraNotifications.show()");
+  }
+
+  if (/CHANNEL_ID\s*=\s*"palmyra-avisos"/.test(notificationsText) && /createNotificationChannel/.test(notificationsText)) {
+    report.pass("puentes", "Canal de avisos", "PalmyraNotifications crea el canal palmyra-avisos (Android 8+ descarta avisos sin canal)");
+  } else {
+    report.fail("puentes", "Canal de avisos", "no verificable: sin NotificationChannel los avisos nunca aparecen en Android 8+");
+  }
+
+  if (/ensureChannel\s*\(/.test(notificationsText) && /new\s+Notification\.Builder\s*\(\s*activity\s*,\s*CHANNEL_ID\s*\)/.test(notificationsText)) {
+    report.pass("puentes", "Canal antes del aviso", "el canal se garantiza antes de construir la notificación");
+  } else {
+    report.fail("puentes", "Canal antes del aviso", "no verificable: se construye el aviso sin asegurar el canal primero (el sistema lo descarta en silencio)");
+  }
+
+  if (/notificationsGranted/.test(notificationsText)) {
+    report.pass("puentes", "Respeto del permiso", "el aviso consulta POST_NOTIFICATIONS y devuelve permission_denied en vez de abrir el diálogo");
+  } else {
+    report.fail("puentes", "Respeto del permiso", "no verificable: el aviso ignora el permiso de notificaciones concedido al entrar");
+  }
+
+  if (/FLAG_IMMUTABLE/.test(notificationsText) && /PendingIntent\.getActivity/.test(notificationsText)) {
+    report.pass("puentes", "Apertura al tocar", "el PendingIntent es inmutable y abre la app (Android 12+ exige FLAG_IMMUTABLE)");
+  } else {
+    report.fail("puentes", "Apertura al tocar", "no verificable: el PendingIntent del aviso no es inmutable; Android 12+ rechazaría el aviso");
   }
 }
 

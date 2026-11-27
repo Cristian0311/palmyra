@@ -54,6 +54,9 @@ const FIXTURE_FILES = [
   "android/app/src/main/res-lan/xml/network_security_config.xml",
   "android/app/src/main/java/cu/palmyra/app/MainActivity.java",
   "android/app/src/main/java/cu/palmyra/app/NativeDb.java",
+  "android/app/src/main/java/cu/palmyra/app/PalmyraPrinterBridge.java",
+  "android/app/src/main/java/cu/palmyra/app/PalmyraPermissions.java",
+  "android/app/src/main/java/cu/palmyra/app/PalmyraNotifications.java",
   "android/app/src/main/java/cu/palmyra/app/UpdateApkProvider.java"
 ];
 
@@ -207,6 +210,81 @@ test("detecta un bridge nativo ausente", (t) => {
   const result = validator.inspect({ root });
   assert.equal(result.ok, false);
   assert.match(failureText(result), /PALMYRA_DB/);
+});
+
+test("detecta el puente de impresión sin el registro en la WebView", (t) => {
+  const root = makeFixture([
+    {
+      file: "android/app/src/main/java/cu/palmyra/app/MainActivity.java",
+      find: 'web.addJavascriptInterface(printerBridge, "PALMYRA_PRINTER");',
+      replace: ""
+    }
+  ]);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const result = validator.inspect({ root });
+  assert.equal(result.ok, false);
+  assert.match(failureText(result), /PALMYRA_PRINTER/);
+});
+
+test("detecta un método del puente de impresión renombrado", (t) => {
+  const root = makeFixture([
+    {
+      file: "android/app/src/main/java/cu/palmyra/app/PalmyraPrinterBridge.java",
+      find: "public String permissionStatus() {",
+      replace: "public String printerStatus() {"
+    }
+  ]);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const result = validator.inspect({ root });
+  assert.equal(result.ok, false);
+  assert.match(failureText(result), /PALMYRA_PRINTER\.permissionStatus/);
+});
+
+test("detecta que el resultado de permisos ya no vuelve a la web", (t) => {
+  const root = makeFixture([
+    {
+      file: "android/app/src/main/java/cu/palmyra/app/MainActivity.java",
+      find: String.raw`"if (window.__palmyraHardwarePermissions) window.__palmyraHardwarePermissions(\""`,
+      replace: String.raw`"if (window.legacyPush) window.legacyPush(\""`
+    }
+  ]);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const result = validator.inspect({ root });
+  assert.equal(result.ok, false);
+  assert.match(failureText(result), /Devolver el resultado/);
+});
+
+test("detecta que el APK pierde el canal de avisos del sistema", (t) => {
+  const root = makeFixture([
+    {
+      file: "android/app/src/main/java/cu/palmyra/app/MainActivity.java",
+      find: "public String showNotification(String title, String body, String tag) {",
+      replace: "public String pushBanner(String title, String body, String tag) {"
+    }
+  ]);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const result = validator.inspect({ root });
+  assert.equal(result.ok, false);
+  assert.match(failureText(result), /PALMYRA_NATIVE\.showNotification/);
+});
+
+test("detecta un aviso nativo sin NotificationChannel", (t) => {
+  const root = makeFixture([
+    {
+      file: "android/app/src/main/java/cu/palmyra/app/PalmyraNotifications.java",
+      find: "manager.createNotificationChannel(channel);",
+      replace: "// canal eliminado"
+    }
+  ]);
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+
+  const result = validator.inspect({ root });
+  assert.equal(result.ok, false);
+  assert.match(failureText(result), /Canal de avisos/);
 });
 
 test("detecta un componente sin android:exported explícito", (t) => {

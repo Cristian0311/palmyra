@@ -241,7 +241,26 @@ export async function pushBranchToSupabase(branch:Branch){
     return false;
   }
 }
-export async function deleteBranchFromSupabase(id:string):Promise<boolean>{try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {error}=await supabase.from('warehouses').update({active:false}).eq('id',id).eq('company_id',companyId);if(error)throw error;return true;}catch{return false;}}
+/**
+ * Baja lógica de un almacén: `warehouses.active = false` significa «dado de
+ * baja / oculto», nunca «inactivo». La fila NO se borra porque ventas, turnos
+ * y traslados históricos referencian su id; el pull de la lista operativa la
+ * filtra (`pull.ts` → `selectOperationalWarehouseRows`) y las consultas de
+ * nombres históricos la conservan.
+ *
+ * Se comprueba `data` para no informar éxito a una UPDATE que RLS devolvió
+ * vacía (almacén de otra empresa o inexistente): ese `true` silencioso era la
+ * raíz del aviso «eliminado» sin eliminado real.
+ */
+export async function deleteBranchFromSupabase(id:string):Promise<boolean>{
+  try{
+    const supabase=await onlineClient();const {companyId}=await getActiveTenant();
+    const {data,error}=await supabase.from('warehouses').update({active:false}).eq('id',id).eq('company_id',companyId).select('id');
+    if(error)throw error;
+    if(!Array.isArray(data)||data.length===0)return false;
+    return true;
+  }catch{return false;}
+}
 
 export async function pushCategoryToSupabase(category:Category){
   try{const supabase=await onlineClient();const {companyId}=await getActiveTenant();const {error}=await supabase.from('categories').upsert({id:category.id,company_id:companyId,name:category.name,parent_id:null,active:true},{onConflict:'id'});if(error)throw error;return true;}catch(e:any){await queue('category',category,category.id);return false;}

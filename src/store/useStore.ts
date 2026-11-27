@@ -18,6 +18,7 @@ import { loadSaaSContext, signInSaaSAccount, signOutSaaSAccount } from '../servi
 import { getCachedSaaSContext } from '../services/offlineAuthContext';
 import { getOfflineQueue, enqueueOfflineItem, removeFromOfflineQueue, waitForOfflineQueueReady } from '../services/offlineQueue';
 import { normalizeSemanticText, areSemanticallyEqual } from '../utils/textUtils';
+import { evaluateWarehouseDeletion } from '../lib/teamWarehouses';
 import { localStateStorage, clearLocalStateStorage, flushLocalStateStorage } from '../services/localStateStorage';
 import { getPalmyraScopedStorageKey } from '../services/localScope';
 import { isCloudBusinessSyncAllowed } from '../services/localPlanMode';
@@ -202,36 +203,120 @@ export const useStore = create<AppState>()(
       if (updated) pushBranchToSupabase(updated);
     }
   },
-  deleteBranch: (id) => {
-    // Validar integridad referencial antes de permitir eliminación
-    // Mantener la misma regla que aplica la operación remota: cualquier
-    // registro histórico relacionado impide una eliminación física.
-    const hasInventory = (get().inventory || []).some(l => l.branchId === id);
-    const hasTx = (get().transactions || []).some(t => t.branchId === id);
-    const hasSessions = (get().cashSessions || []).some(s => s.branchId === id);
-    if (hasInventory || hasTx || hasSessions) {
-      console.warn(`[Palmyra] Bloqueada eliminación de sucursal ${id} porque tiene relaciones activas (inventario, ventas o turnos).`);
-      return;
+  /**
+   * Baja de un almacén. Devuelve SIEMPRE un resultado explícito: el aviso de
+   * «eliminado» de la UI solo es válido si `ok === true`.
+   *
+   * Regla determinista (ver `evaluateWarehouseDeletion`): se bloquea si tiene
+   * unidades en stock, ventas o turnos. Nunca se borra ni se reasigna inventario.
+   * Si procede, se quita de la memoria, del JSON persistido y del almacén local
+   * (tombstone `deleted_at` en `warehouses`) para que ni el arranque offline ni
+   * el puente del hub lo rehidraten, y se encola/confirma la baja remota.
+   */
+  deleteBranch: async (id) => {
+    const rawId = String(id || '').trim();
+    if (!rawId) return { ok: false, reason: 'unknown' as const, detail: 'No se indicó el almacén a eliminar.' };
+
+    const decision = evaluateWarehouseDeletion({
+      warehouseId: rawId,
+      inventory: get().inventory,
+      transactions: get().transactions,
+      cashSessions: get().cashSessions,
+    });
+    if (!decision.ok) {
+      console.warn(`[Palmyra] Bloqueada la baja del almacén ${rawId}: ${decision.detail}`);
+      return decision;
     }
 
+    let removed = false;
     set((state) => {
-      const newBranches = state.branches.filter(b => b.id !== id);
+      const newBranches = state.branches.filter(b => b.id !== rawId);
+      if (newBranches.length === state.branches.length) return state;
+      removed = true;
       return {
         branches: newBranches,
-        currentBranchId: state.currentBranchId === id ? (newBranches[0]?.id || '') : state.currentBranchId
+        // El inventario de un almacén sin unidades ya está filtrado arriba: no
+        // hay filas que huérfanar, así que también se limpian sus niveles en cero.
+        inventory: state.inventory.filter(l => l.branchId !== rawId && l.warehouseId !== rawId),
+        currentBranchId: state.currentBranchId === rawId ? (newBranches[0]?.id || '') : state.currentBranchId
       };
     });
-
-    const actionId = 'branch-delete:' + id;
-    const queueDeletion = () => enqueueOfflineItem('branch_delete', { id }, actionId)
-      .catch((error) => console.warn('[PALMYRA] No se pudo guardar la eliminación de almacén en la cola:', error));
-    if (typeof navigator !== 'undefined' && navigator.onLine) {
-      deleteBranchFromSupabase(id).then((ok) => {
-        if (!ok) queueDeletion();
-      }).catch(() => queueDeletion());
-    } else {
-      queueDeletion();
+    if (!removed) {
+      return { ok: false, reason: 'unknown' as const, detail: 'El almacén ya no existe en este dispositivo.', counts: decision.counts };
     }
+
+    const actionId = 'branch-delete:' + rawId;
+    // Cola offline ANTES de tocar la red: si el replay falla, la marca sigue ahí
+    // y ningún pull puede devolver el almacén mientras esté pendiente.
+    const queueDeletion = async () => {
+      try {
+        await waitForOfflineQueueReady();
+        await enqueueOfflineItem('branch_delete', { id: rawId }, actionId);
+        return true;
+      } catch (error) {
+        console.warn('[PALMYRA] No se pudo guardar la eliminación de almacén en la cola:', error);
+        return false;
+      }
+    };
+    const purgeLocalRow = async () => {
+      try {
+        const { removeWarehouseFromLocalDb } = await import('../services/localDb/warehouseDelete');
+        return await removeWarehouseFromLocalDb(rawId);
+      } catch (error) {
+        console.warn('[PALMYRA] No se pudo borrar el almacén del almacén local:', error);
+        return false;
+      }
+    };
+
+    const online = typeof navigator !== 'undefined' ? navigator.onLine !== false : true;
+    if (!online) {
+      const queued = await queueDeletion();
+      await purgeLocalRow();
+      return {
+        ok: true,
+        synced: false,
+        pendingSync: queued,
+        detail: queued
+          ? 'Almacén eliminado. Se sincronizará al recuperar la conexión.'
+          : 'Almacén eliminado en este dispositivo. No se pudo registrar la sincronización pendiente.',
+        counts: decision.counts,
+      };
+    }
+
+    let remoteOk = false;
+    try {
+      remoteOk = await deleteBranchFromSupabase(rawId);
+    } catch {
+      remoteOk = false;
+    }
+    let queued = false;
+    if (remoteOk) {
+      try {
+        // Firma real: `(type, actionId)` y devuelve `void`. Antes se llamaba con
+        // un solo argumento y con `.catch()`, lo que no compilaba y dejaba la
+        // cola sin limpiar.
+        removeFromOfflineQueueByAction('branch_delete', actionId);
+        queued = false;
+      } catch (error) {
+        console.warn('[PALMYRA] No se pudo retirar la baja de almacén de la cola:', error);
+      }
+    } else {
+      queued = await queueDeletion();
+    }
+    await purgeLocalRow();
+
+    if (remoteOk) {
+      return { ok: true, synced: true, pendingSync: false, detail: 'Almacén eliminado.', counts: decision.counts };
+    }
+    return {
+      ok: true,
+      synced: false,
+      pendingSync: Boolean(queued),
+      detail: queued
+        ? 'Almacén eliminado. Quedó pendiente de sincronizar con la nube.'
+        : 'Almacén eliminado en este dispositivo, pero no se pudo dejar registrada la baja en la nube.',
+      counts: decision.counts,
+    };
   },
   
   categories: INITIAL_CATEGORIES,

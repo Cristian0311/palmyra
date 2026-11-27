@@ -27,6 +27,7 @@ import { storePlanCode } from "./hooks/usePlanCode";
 import InstallRequired from "./components/InstallRequired";
 import { LicenseBanner } from "./components/system/LicenseBanner";
 import AndroidBackupRuntime from "./components/system/AndroidBackupRuntime";
+import NotificationsPermissionPrompt from "./components/NotificationsPermissionPrompt";
 import { refreshStoreFromLocalDb } from "./services/localDb/bootHydration";
 
 // Recuperación de chunks perezosos: una PWA con caché vieja puede pedir un
@@ -771,6 +772,9 @@ export default function App() {
               {/* Aviso discreto de licencia (gracia, vencimiento próximo, reloj).
                   El de solo lectura vive en Layout; aquí no se duplica. */}
               <LicenseBanner />
+              {/* Permiso de notificaciones al entrar: tarjeta descartable que nunca
+                  bloquea la app y no se repite si ya fue denegado o descartado. */}
+              <NotificationsPermissionPrompt />
               </WebOperatingGate>
             ) : (
               <Navigate to={accessState === "signed_out" || !currentUser ? "/landing" : accessState === "needs_onboarding" || pendingOnboarding ? "/onboarding" : accessState === "blocked" ? "/account-status" : "/landing"} replace />

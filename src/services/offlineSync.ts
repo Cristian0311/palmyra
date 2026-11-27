@@ -41,7 +41,10 @@ import { reconcileBankCanonical } from './offline/reconcileBank';
 import { replaceWarehouseInventory, replaceWarehousesInventory } from './offline/reconcileInventory';
 import { processQueueItem } from './offline/processQueueItem';
 import { reconcileSupplierReceiveCanonical } from './offline/reconcileSupplierReceive';
-import { compareOfflineQueueItems, summarizeOfflineQueue, describeOfflineQueueType } from './offline/syncContract';
+import {
+  compareOfflineQueueItems, summarizeOfflineQueue, describeOfflineQueueType,
+  withPersistedSyncFailure, describeQueueItemFailure
+} from './offline/syncContract';
 import {
   INTERRUPTED_RETRY_MAX_MS,
   hydrateOfflineQueueForBoot,
@@ -493,12 +496,11 @@ async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
     const blockedByPermanentDependency = itemDependencies.find(d => permanentDependencyIds.has(d.id) || blockedExistingIds.has(d.id));
     if (blockedByPermanentDependency) {
       const blockedMessage = `Bloqueada porque su dependencia ${describeQueueItem(blockedByPermanentDependency)} fue rechazada definitivamente. No se ejecutará con un estado incompleto.`;
-      const conflictItem = {
-        ...item,
-        status: 'conflict' as const,
-        lastError: blockedMessage,
-        retryCount: Number(item.retryCount || 0)
-      };
+      const conflictItem = withPersistedSyncFailure(
+        { ...item, status: 'conflict' as const, lastError: blockedMessage },
+        new Error(blockedMessage),
+        { permanent: true }
+      );
       remainingFromRun.push(conflictItem);
       failed++;
       errors.push({ type: item.type, actionId: item.actionId, message: blockedMessage, retryCount: conflictItem.retryCount });
@@ -549,17 +551,23 @@ async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
       // segundo y formaban una tormenta contra Supabase.
       const retryDelayMs = Math.round(baseDelay * (0.8 + Math.random() * 0.4));
       item.nextRetryAt = Date.now() + retryDelayMs;
-      const code = err?.code ? ` [${err.code}]` : '';
-      const status = err?.status || err?.statusCode ? ` HTTP ${err?.status || err?.statusCode}` : '';
-      const detail = err?.details ? ` — ${typeof err.details === 'string' ? err.details : JSON.stringify(err.details)}` : '';
-      const hint = err?.hint ? ` — ${typeof err.hint === 'string' ? err.hint : JSON.stringify(err.hint)}` : '';
+      // Contrato de causa persistida (ver offline/syncContract.ts):
+      //   failureReason: string  — causa legible en español, siempre no vacía
+      //   failureCode:   string  — código canónico ('invalid_warehouse', …) o ''
+      //   failureAt:     string  — ISO del intento fallido
+      //   failureKind:   'permanent' | 'transient'
+      //   lastError:     string  — detalle técnico con código y n.º de intento
+      // Se anota ANTES de pisar `status`. El anotador es puro (no lanza), así que
+      // un fallo al construir la causa jamás puede tapar el error original.
+      const annotated = withPersistedSyncFailure(item, err, { permanent: err?.permanent === true });
+      item.failureReason = annotated.failureReason;
+      item.failureCode = annotated.failureCode;
+      item.failureAt = annotated.failureAt;
+      item.failureKind = annotated.failureKind;
       const rawMessage = typeof err === 'string'
         ? err
         : (typeof err?.message === 'string' ? err.message : '');
-      const fallbackObject = rawMessage ? '' : (() => {
-        try { return JSON.stringify(err); } catch { return String(err); }
-      })();
-      item.lastError = `${rawMessage || fallbackObject || 'Error desconocido'}${code}${status}${detail}${hint}`;
+      item.lastError = String(annotated.lastError || rawMessage || 'Error desconocido');
       const permanent = err?.permanent === true;
       // Ninguna operación durable válida se abandona por cantidad de reintentos.
       // Una tablet puede permanecer offline muchas horas o días; el elemento

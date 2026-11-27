@@ -12,8 +12,9 @@ import { SettingsCurrencySection } from "../components/settings/SettingsCurrency
 import { SettingsSectionHeader } from "../components/settings/SettingsSectionHeader";
 import { SettingsSectionNav } from "../components/settings/SettingsSectionNav";
 import { SettingsSystemSection } from "../components/settings/SettingsSystemSection";
-import { Branch, Category } from "../types";
+import { Branch, Category, StoreConfig } from "../types";
 import { cn } from "../lib/utils";
+import { resolveConfigSync } from "../lib/formSync";
 import { connectBluetoothPrinter, connectPrinter, getConnectedDeviceName, printESCPOS, isInsideIframe, isThermalPrinterAutoConnectEnabled, setThermalPrinterAutoConnect } from "../lib/escpos";
 import { getSupabase } from "../lib/supabase";
 import { loadSaaSContext } from "../services/saas";
@@ -109,6 +110,10 @@ function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
   })));
 
   const [config, setConfig] = useState(storeConfig);
+  // Snapshot del store que el formulario refleja. Mientras `dirtyBaseline` exista,
+  // el usuario tiene cambios sin guardar y una referencia nueva del store (pull,
+  // realtime) no debe pisar su edición.
+  const configSyncRef = useRef<{ synced: StoreConfig; dirtyBaseline: StoreConfig | null } | null>(null);
   const [ticketConfig, setTicketConfig] = useState(receiptConfig);
   useEffect(() => {
     setTicketConfig(receiptConfig);
@@ -210,6 +215,9 @@ function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
   }, [activeTab]);
 
   useEffect(() => {
+    const decision = resolveConfigSync(configSyncRef.current, config, storeConfig);
+    if (!decision.adopt) return;
+    configSyncRef.current = decision.snapshot;
     setConfig(storeConfig);
   }, [storeConfig]);
 
@@ -244,11 +252,14 @@ function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
     showToast("Categoría guardada correctamente.");
   };
 
-  const confirmDeleteBranch = () => {
+  const confirmDeleteBranch = async () => {
     if (!branchToDelete) return;
-    deleteBranch(branchToDelete.id);
+    const target = branchToDelete;
     setBranchToDelete(null);
-    showToast("Almacén eliminado correctamente.");
+    // `deleteBranch` puede rechazar la baja (stock, ventas o turnos asociados):
+    // el aviso tiene que salir del resultado, no del clic.
+    const outcome = await deleteBranch(target.id);
+    showToast(outcome.detail, outcome.ok ? 'success' : 'error');
   };
 
   const confirmDeleteCategory = () => {
@@ -266,6 +277,7 @@ function SettingsAdminContent({ activeTab }: { activeTab: SettingsSection }) {
     }
 
     updateStoreConfig({ ...config, storeName: companyName });
+    configSyncRef.current = { synced: useStore.getState().storeConfig, dirtyBaseline: null };
 
     // El nombre SaaS canónico vive en companies.name. Solo lo sincronizamos
     // desde la pestaña Empresa, evitando que otros ajustes sobrescriban identidad.

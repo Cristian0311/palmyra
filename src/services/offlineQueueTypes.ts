@@ -41,4 +41,15 @@ export interface OfflineQueueItem {
    * Solo aporta diagnóstico y respeta el backoff de `nextRetryAt`.
    */
   interruptedAt?: string;
+  /**
+   * Causa legible del último intento fallido, en español y sin códigos crudos.
+   * Contrato (ver src/services/offline/syncContract.ts): cadena no vacía.
+   */
+  failureReason?: string;
+  /** Código canónico del rechazo del servidor ('invalid_warehouse', …) o ''. */
+  failureCode?: string;
+  /** Marca temporal ISO del último intento fallido. */
+  failureAt?: string;
+  /** 'permanent' = conflicto definitivo visible; 'transient' = se reintenta. */
+  failureKind?: 'permanent' | 'transient';
 }

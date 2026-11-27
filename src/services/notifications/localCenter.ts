@@ -13,6 +13,7 @@
  */
 
 import { isLowStockQuantity } from "../../modules/inventory/utils/lowStock";
+import { publishOsAlert } from "../../lib/osAlert";
 import {
   UPDATE_AVAILABLE_STORAGE_KEY,
   UPDATE_VERSION_STORAGE_KEY,
@@ -85,6 +86,10 @@ export function pushLocalNotice(input: LocalCenterNoticeInput): LocalCenterNotic
     read_at: null,
   };
   safeWrite(FEED_KEY, [notice, ...listLocalNotices()].slice(0, FEED_MAX));
+  // El aviso también sale al sistema (bandeja de Android / centro de actividades
+  // de Windows). La tag es el tipo, así un caso nuevo reemplaza al anterior en vez
+  // de acumularse. Si falta permiso, el aviso sigue viviendo solo en la campana.
+  void publishOsAlert({ title: notice.title, body: notice.body, tag: input.kind, url: "/notifications" }).catch(() => {});
   return notice;
 }
 

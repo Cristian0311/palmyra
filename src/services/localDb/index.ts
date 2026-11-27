@@ -92,6 +92,7 @@ export {
   type SupplierRepository,
   type SaleRepository,
   type CashSessionRepository,
+  type WarehouseRepository,
   type StoreConfigRepository,
   type HotReadOptions,
   type StockBalanceReadOptions

@@ -14,6 +14,9 @@ import {
 } from "../services/notifications/localCenter";
 import { useStore } from "../store/useStore";
 import { cn } from "../lib/utils";
+import { describePushFailure, getNativeAppInfo, pushFailureMessage, type PushFailureInfo } from "../lib/nativeApp";
+import { isDesktopRuntime } from "../lib/desktopRuntime";
+import { publishOsAlert } from "../lib/osAlert";
 
 type Notice = {
   id: string;
@@ -132,6 +135,14 @@ function decodeVapidKey(value: string) {
   const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
   const raw = atob(padded);
   return Uint8Array.from(raw, (char) => char.charCodeAt(0));
+}
+
+/** Texto de un Error o de un objeto de error de Supabase, para el clasificador. */
+function errorMessageOf(error: unknown): string {
+  if (!error) return "";
+  if (typeof error === "string") return error;
+  const anyError = error as any;
+  return String(anyError.message || anyError.error_description || anyError.error || anyError.hint || anyError.name || "");
 }
 
 function kindLabel(kind: string) {
@@ -377,6 +388,10 @@ export default function Notifications() {
   useEffect(() => {
     const supabase = getSupabase();
     if (!supabase || !companyId || !userId) return;
+    // El APK y el programa de PC no tienen servicio de push: si no se avisa aquí,
+    // un aviso de la nube nunca sale de la pantalla mientras la app está abierta.
+    // En la PWA no se publica para no duplicar el aviso que ya manda el worker.
+    const mustBridgePush = Boolean(getNativeAppInfo()) || isDesktopRuntime();
     const channel = supabase
       .channel(`palmyra-notifications-${companyId}-${userId}`)
       .on(
@@ -386,6 +401,9 @@ export default function Notifications() {
           const row = payload.new as Notice;
           if (row.user_id && row.user_id !== userId) return;
           setNotices((items) => [row, ...items.filter((item) => item.id !== row.id)].slice(0, 50));
+          if (mustBridgePush && !row.read_at) {
+            void publishOsAlert({ title: row.title, body: row.body, tag: `cloud-${row.kind || row.id}`, url: "/notifications" }).catch(() => {});
+          }
         },
       )
       .subscribe();
@@ -470,21 +488,62 @@ export default function Notifications() {
   const enablePush = async () => {
     setError("");
     setPushBusy(true);
+    // Cada fallo se traduce a una causa con renglón accionable en español; el
+    // detalle técnico va en el cuerpo del aviso. Ver describePushFailure.
+    const pushFacts = () => ({
+      hasServiceWorker: "serviceWorker" in navigator,
+      hasPushManager: "PushManager" in window,
+      hasNotificationApi: "Notification" in window,
+      secureContext: Boolean(window.isSecureContext),
+      insideIframe: window.self !== window.top,
+      vapidKey: vapidPublicKey,
+      permission: typeof Notification !== "undefined" ? Notification.permission : ("unsupported" as const),
+      online: navigator.onLine !== false,
+      // El APK y el programa de PC no tienen navegador que configurar: sin estos
+      // datos la causa derivaría en unos pasos imposibles de seguir.
+      androidApp: Boolean(getNativeAppInfo()),
+      desktopApp: isDesktopRuntime(),
+    });
+    const failWith = (info: PushFailureInfo) => {
+      setError(pushFailureMessage(info));
+      setPushBusy(false);
+      return false;
+    };
     try {
-      if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
-        throw new Error("Este navegador no admite notificaciones push. Prueba desde Chrome e instala PALMYRA como aplicación.");
+      const facts = pushFacts();
+      if (!facts.hasServiceWorker || !facts.hasPushManager || !facts.hasNotificationApi) {
+        return void failWith(describePushFailure({ ...facts, message: "not supported" }));
+      }
+      if (!window.isSecureContext) {
+        return void failWith(describePushFailure({ ...facts, message: "insecure context" }));
       }
       if (!vapidPublicKey) {
-        throw new Error("Las notificaciones push todavía no están disponibles en esta instalación. Revisa el historial dentro de PALMYRA mientras tanto.");
+        return void failWith(describePushFailure({ ...facts, message: "missing applicationServerKey" }));
       }
       if (Notification.permission === "denied") {
-        throw new Error("El navegador bloqueó las notificaciones. Actívalas en los permisos del sitio y vuelve aquí.");
+        return void failWith(describePushFailure({ ...facts, message: "NotAllowedError" }));
       }
       const permission = Notification.permission === "granted" ? "granted" : await Notification.requestPermission();
-      if (permission !== "granted") throw new Error("No se concedió permiso para mostrar notificaciones.");
-      const registration = await navigator.serviceWorker.ready;
+      if (permission !== "granted") {
+        return void failWith(describePushFailure({
+          ...facts,
+          permission,
+          message: permission === "denied" ? "NotAllowedError" : "permission prompt dismissed",
+        }));
+      }
+      let registration: ServiceWorkerRegistration;
+      try {
+        registration = await navigator.serviceWorker.ready;
+      } catch (swError) {
+        return void failWith(describePushFailure({ ...pushFacts(), message: errorMessageOf(swError) }));
+      }
       const supabase = getSupabase();
-      if (!supabase) throw new Error("No hay conexión con el servicio de PALMYRA. Revisa tu conexión y vuelve a intentarlo.");
+      if (!supabase) {
+        return void failWith(describePushFailure({
+          ...pushFacts(),
+          message: "no supabase client",
+        }));
+      }
       let subscription = await registration.pushManager.getSubscription();
 
       if (subscription && companyId && userId) {
@@ -499,12 +558,15 @@ export default function Notifications() {
         if (serverCheckError) {
           // Do not re-enable a potentially expired endpoint if the server state
           // cannot be verified. The user can safely retry when connectivity is back.
-          throw new Error("No se pudo comprobar el estado de la suscripción push. Revisa la conexión y vuelve a intentarlo.");
+          return void failWith(describePushFailure({
+            ...pushFacts(),
+            message: `${errorMessageOf(serverCheckError)} ${serverCheckError?.hint || ""}`,
+          }));
         }
 
         // If the server has no active row for this browser endpoint, it may
         // have expired (HTTP 404/410). Remove the stale browser subscription
-        // and obtain a fresh endpoint rather than re-enabling the dead one.
+        // and obtain a fresh subscription rather than re-enabling the dead one.
         if (serverSubscription?.enabled !== true) {
           try {
             await subscription.unsubscribe();
@@ -515,21 +577,33 @@ export default function Notifications() {
             subscription = null;
           } catch (unsubscribeError) {
             console.warn("[PALMYRA] No se pudo retirar la suscripción push antigua:", unsubscribeError);
-            throw new Error("No se pudo renovar la suscripción push antigua. En los permisos del navegador, elimina la suscripción de PALMYRA y vuelve a activarla.");
+            return void failWith(describePushFailure({
+              ...pushFacts(),
+              message: `expired subscription ${errorMessageOf(unsubscribeError)}`,
+            }));
           }
         }
       }
 
       if (!subscription) {
-        subscription = await registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: decodeVapidKey(vapidPublicKey)
-        });
+        try {
+          subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: decodeVapidKey(vapidPublicKey)
+          });
+        } catch (subscribeError) {
+          return void failWith(describePushFailure({ ...pushFacts(), message: errorMessageOf(subscribeError) }));
+        }
       }
 
       const json = subscription.toJSON();
       const keys = json.keys;
-      if (!json.endpoint || !keys?.p256dh || !keys?.auth) throw new Error("El navegador no devolvió una suscripción push válida.");
+      if (!json.endpoint || !keys?.p256dh || !keys?.auth) {
+        return void failWith(describePushFailure({
+          ...pushFacts(),
+          message: "InvalidStateError: incomplete push subscription",
+        }));
+      }
       const { error: saveError } = await supabase.from("push_subscriptions").upsert({
         company_id: companyId,
         user_id: userId,
@@ -541,7 +615,12 @@ export default function Notifications() {
         last_seen_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }, { onConflict: "endpoint" });
-      if (saveError) throw saveError;
+      if (saveError) {
+        return void failWith(describePushFailure({
+          ...pushFacts(),
+          message: `${errorMessageOf(saveError)} ${saveError?.hint || ""}`,
+        }));
+      }
       const { error: prefError } = await supabase.from("notification_preferences").upsert({
         company_id: companyId,
         user_id: userId,
@@ -549,12 +628,17 @@ export default function Notifications() {
         push_enabled: true,
         updated_at: new Date().toISOString(),
       }, { onConflict: "company_id,user_id" });
-      if (prefError) throw prefError;
+      if (prefError) {
+        return void failWith(describePushFailure({
+          ...pushFacts(),
+          message: `${errorMessageOf(prefError)} ${prefError?.hint || ""}`,
+        }));
+      }
       setPrefs((p) => ({ ...p, push_enabled: true }));
       setPushDeviceStatus("registered");
       pushToast("success", "Dispositivo registrado. PALMYRA puede enviarte avisos a este móvil.");
     } catch (e: any) {
-      setError("No se pudo activar el push. Revisa los permisos del navegador y vuelve a intentarlo.");
+      setError(pushFailureMessage(describePushFailure({ ...pushFacts(), message: errorMessageOf(e) })));
     } finally {
       setPushBusy(false);
     }

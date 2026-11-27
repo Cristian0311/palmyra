@@ -17,7 +17,7 @@ const ExcelJS: typeof ExcelJSImport = ((ExcelJSImport as unknown as { default?: 
 
 import { renderChartSvg, type ChartSpec } from './chartRenderer';
 import { renderChartPng, type RenderedChart } from './chartPng';
-import { downloadGeneratedFile, XLSX_MIME } from '../downloadFile';
+import { downloadGeneratedFile, ExportDownloadError, XLSX_MIME } from '../downloadFile';
 import { FONT_FAMILY, NUM_FMT, PALETTE, SHEET_LAYOUT, reportStamp, safeText, toFiniteNumber } from './theme';
 import type { KpiDefinition } from './analytics';
 import type { ExportCell } from './analytics';
@@ -575,7 +575,10 @@ export async function writeWorkbookBuffer(workbook: Workbook): Promise<Uint8Arra
 export function downloadWorkbookBuffer(buffer: Uint8Array, fileName: string): void {
   // En el APK el contenido viaja por el puente nativo (el DownloadListener no
   // puede leer blob:); en navegador, PWA y escritorio queda el enlace blob:.
-  downloadGeneratedFile(buffer, fileName, XLSX_MIME);
+  // El resultado se propaga como ExportDownloadError para que la pantalla avise
+  // solo cuando el archivo quedó realmente guardado.
+  const outcome = downloadGeneratedFile(buffer, fileName, XLSX_MIME);
+  if (outcome.status !== "saved") throw new ExportDownloadError(outcome);
 }
 
 /** Utilidad para pruebas/servidor: no depende de document. */

@@ -4,6 +4,7 @@ import {
   Supplier, SupplierOrder, InventoryAudit, FiscalConfig, DemandForecast, BankCard, BankTransaction
 } from '../types';
 import type { SyncResult } from '../services/supabaseSync';
+import type { WarehouseDeletionOutcome } from '../lib/teamWarehouses';
 
 export interface AppState {
   // Auth
@@ -36,7 +37,7 @@ export interface AppState {
   setActiveSessionId: (id: string | null) => void;
   addBranch: (branch: Branch) => void;
   updateBranch: (id: string, branch: Partial<Branch>) => void;
-  deleteBranch: (id: string) => void;
+  deleteBranch: (id: string) => Promise<WarehouseDeletionOutcome>;
   
   // Catálogo
   categories: Category[];

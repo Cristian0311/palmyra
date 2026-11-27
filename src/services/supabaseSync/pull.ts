@@ -12,6 +12,7 @@ import { loadSaaSContext } from '../saas';
 import { recordRequest } from '../requestBudget';
 import { loadReturnsWarrantiesQuotesTimePayroll } from './pull/loadOperationalExtras';
 import { mapBranch, mapProduct, mapUser, normalizeSaleItem } from './pull/mappers';
+import { selectOperationalWarehouseRows } from '../../lib/teamWarehouses';
 import { normalizeTransferStatus } from '../localDb/repositories';
 
 // Ventana de arranque: el POS arranca con catálogo + operación reciente.
@@ -295,6 +296,11 @@ async function loadCatalogSections(options: CatalogOptions = {}): Promise<Catalo
   const catalogMs = Date.now() - started;
 
   const warehouses = warehousesR.ok ? (warehousesR.data || []) : [];
+  // Las filas bajas viajan igual: `hidden` necesita contarlas y el histórico
+  // necesita su nombre. Lo que NO puede llegar a la store es un almacén dado de
+  // baja, porque `mapBranch` lo re-proyectaba y resucitaba tras eliminarlo.
+  const retiredWarehouseRows = warehouses.filter((w:any) => w.active === false);
+  const operationalWarehouses = selectOperationalWarehouseRows(warehouses);
   const categories = categoriesR.ok ? (categoriesR.data || []) : [];
   const productRows = productsR.ok ? (productsR.data || []) : [];
   const employeeRows = employeesR.ok ? (employeesR.data || []) : [];
@@ -384,7 +390,7 @@ async function loadCatalogSections(options: CatalogOptions = {}): Promise<Catalo
     ...employeeRows.map((e:any) => mapUser(e, accessRows))
   ];
 
-  const branches = warehouses.map(mapBranch);
+  const branches = operationalWarehouses.map(mapBranch);
 
   const latestRates = new Map<string, number>();
   for (const row of rateRows) {
@@ -437,8 +443,8 @@ async function loadCatalogSections(options: CatalogOptions = {}): Promise<Catalo
   };
 
   const sections: Record<string, BootstrapSectionStatus> = {
-    warehouses: status(warehousesR.ok, 'Almacenes', warehouses.length, catalogMs, {
-      hidden: warehouses.filter((w:any) => w.active === false).length,
+    warehouses: status(warehousesR.ok, 'Almacenes', operationalWarehouses.length, catalogMs, {
+      hidden: retiredWarehouseRows.length,
       error: warehousesR.ok ? undefined : warehousesR.error,
     }),
     categories: status(categoriesR.ok, 'Categorías', categories.length, catalogMs, {

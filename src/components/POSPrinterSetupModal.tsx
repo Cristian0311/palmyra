@@ -1,7 +1,23 @@
 import React from 'react';
-import { Bluetooth, Printer, Usb, X } from 'lucide-react';
+import { Bluetooth, Printer, ShieldCheck, Usb, X } from 'lucide-react';
 import { cn } from '../lib/utils';
-import { printThermalReceipt, disconnectPrinter, disconnectBluetoothPrinter, isThermalPrinterAutoConnectEnabled, setThermalPrinterAutoConnect, getHardwareCapabilities } from '../lib/escpos';
+import {
+  printThermalReceipt,
+  disconnectPrinter,
+  disconnectBluetoothPrinter,
+  isThermalPrinterAutoConnectEnabled,
+  setThermalPrinterAutoConnect,
+  getHardwareCapabilities,
+  resolvePrinterRoute,
+  currentPrinterSurface,
+  connectNativePrinter,
+  closeNativePrinter,
+  listNativeBondedPrinters,
+  readRememberedNativePrinterAddress,
+  rememberNativePrinterAddress,
+  type ThermalPrintMethod
+} from '../lib/escpos';
+import { requestNativeHardwarePermissions } from '../lib/nativeApp';
 
 interface POSPrinterSetupModalProps {
   connectedPrinterName: string | null;
@@ -29,7 +45,16 @@ export default function POSPrinterSetupModal({
   printerWidth = '58mm'
 }: POSPrinterSetupModalProps) {
   const [autoConnect, setAutoConnect] = React.useState(() => isThermalPrinterAutoConnectEnabled());
+  const [nativeBusy, setNativeBusy] = React.useState(false);
+  const [nativeDevices, setNativeDevices] = React.useState<{ address: string; name: string }[]>([]);
+  const [nativeSelected, setNativeSelected] = React.useState(() => readRememberedNativePrinterAddress());
   const capabilities = React.useMemo(() => getHardwareCapabilities(), []);
+  // La decisión de ruta vive en una función pura (resolvePrinterRoute) para que
+  // sea probable sin DOM: aquí solo se pinta su resultado.
+  const routeDecision = React.useMemo(
+    () => resolvePrinterRoute(capabilities, capabilities.nativePrinterBridge === true, currentPrinterSurface()),
+    [capabilities]
+  );
 
   // Escape cierra el panel con el mismo manejador del botón Cerrar.
   React.useEffect(() => {
@@ -42,18 +67,71 @@ export default function POSPrinterSetupModal({
 
   // Capacidad real del dispositivo: la API debe existir y no estar bloqueada
   // por un marco embebido.
-  const bluetoothAvailable = capabilities.bluetoothSupported && !capabilities.inIframe;
-  const serialAvailable = capabilities.serialSupported && !capabilities.inIframe;
-  const directPrintingAvailable = bluetoothAvailable || serialAvailable;
+  const bluetoothAvailable = routeDecision.route === 'web-bluetooth' || (capabilities.bluetoothSupported && !capabilities.inIframe);
+  const serialAvailable = routeDecision.route === 'web-serial' || (capabilities.serialSupported && !capabilities.inIframe);
+  const nativeAvailable = routeDecision.route === 'native-android';
+  const directPrintingAvailable = bluetoothAvailable || serialAvailable || nativeAvailable;
   const capabilityTags: string[] = [];
   if (capabilities.isDesktop) capabilityTags.push('Escritorio PALMYRA');
+  if (nativeAvailable) capabilityTags.push('Impresión directa del APK');
   if (bluetoothAvailable) capabilityTags.push('Bluetooth disponible');
   if (serialAvailable) capabilityTags.push('Puerto USB disponible');
-  const capabilityMessage = capabilities.inIframe
-    ? 'Vista embebida: abre PALMYRA en su propia ventana para usar la impresora térmica.'
-    : capabilityTags.length > 0
-      ? capabilityTags.join(' · ')
-      : 'Este dispositivo no expone impresión térmica directa; usa Imprimir del sistema.';
+  const guidanceLines = directPrintingAvailable ? [] : routeDecision.guidance.slice(0, 3);
+  const capabilityMessage = directPrintingAvailable
+    ? `${routeDecision.headline}: ${capabilityTags.join(' · ')}`
+    : routeDecision.headline;
+
+  const askNativePermissions = async () => {
+    setNativeBusy(true);
+    try {
+      const result = await requestNativeHardwarePermissions();
+      if (result.ok) onSuccess('Permisos de impresión concedidos');
+      else onError(result.code === 'permission_denied'
+        ? 'Android denegó los permisos. Actívalos en Ajustes › Aplicaciones › PALMYRA › Permisos.'
+        : 'No se pudieron pedir los permisos ahora. Reinicia la app e inténtalo de nuevo.');
+    } finally {
+      setNativeBusy(false);
+      setTimeout(() => onSuccess(""), 2500);
+    }
+  };
+
+  const pairNativePrinter = async () => {
+    setNativeBusy(true);
+    try {
+      const connected = await connectNativePrinter();
+      onPrinterConnectedChange(connected.name);
+      onSuccess(`Vinculada: ${connected.name}`);
+      setTimeout(() => onSuccess(""), 2500);
+    } catch (error: any) {
+      onError(error?.message || 'No se pudo vincular la impresora desde Android.');
+      setTimeout(() => onError(""), 4000);
+    } finally {
+      setNativeBusy(false);
+    }
+  };
+
+  /** Lista de impresoras vinculadas en Android: evita que el shell adivine. */
+  const loadNativeDevices = async () => {
+    setNativeBusy(true);
+    try {
+      const found = await listNativeBondedPrinters();
+      setNativeDevices(found);
+      if (!found.length) {
+        onError('Android no reporta ningún dispositivo vinculado. Vincula la impresora en Ajustes › Dispositivos conectados.');
+        setTimeout(() => onError(""), 4000);
+      }
+    } finally {
+      setNativeBusy(false);
+    }
+  };
+
+  const chooseNativePrinter = (device: { address: string; name: string }) => {
+    rememberNativePrinterAddress(device.address);
+    setNativeSelected(device.address);
+    onPrinterConnectedChange(device.name);
+    onSuccess(`Impresora elegida: ${device.name}`);
+    setTimeout(() => onSuccess(""), 2500);
+  };
 
   return (
   <div
@@ -104,6 +182,7 @@ export default function POSPrinterSetupModal({
               onClick={async () => {
                 await disconnectPrinter();
                 await disconnectBluetoothPrinter();
+                await closeNativePrinter();
                 onPrinterConnectedChange(null);
                 onSuccess("Impresora desconectada");
                 setTimeout(() => onSuccess(""), 2000);
@@ -120,9 +199,18 @@ export default function POSPrinterSetupModal({
             "mt-1 w-1.5 h-1.5 rounded-full shrink-0",
             directPrintingAvailable ? "bg-emerald-500" : "bg-amber-500"
           )} />
-          <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500 leading-4">
-            {capabilityMessage}
-          </p>
+          <div className="min-w-0">
+            <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500 leading-4">
+              {capabilityMessage}
+            </p>
+            {guidanceLines.length > 0 && (
+              <ul className="mt-1.5 space-y-1">
+                {guidanceLines.map((line) => (
+                  <li key={line} className="text-[9px] font-semibold leading-4 text-slate-600">• {line}</li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
 
         {printerStatusMsg && (
@@ -148,42 +236,118 @@ export default function POSPrinterSetupModal({
 
         {/* Connection Actions */}
         <div className="space-y-2">
-          <button
-            type="button"
-            disabled={isConnectingPrinter || !bluetoothAvailable}
-            onClick={onPairBluetooth}
-            title={bluetoothAvailable ? undefined : "Web Bluetooth no está disponible en este dispositivo."}
-            className="w-full p-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-between transition-all shadow-md shadow-indigo-100 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <div className="flex items-center gap-2.5">
-              <Bluetooth className="w-4 h-4 text-indigo-200" />
-              <span>1. Vincular Bluetooth BLE</span>
-            </div>
-            <span className="text-[9px] bg-indigo-500/50 px-2 py-0.5 rounded-md text-indigo-100">BLE / Directo</span>
-          </button>
-          {!bluetoothAvailable && (
-            <p className="px-1 text-[9px] font-semibold text-amber-700">
-              Web Bluetooth no está disponible aquí: usa la impresión del sistema.
-            </p>
+          {nativeAvailable && (
+            <>
+              <button
+                type="button"
+                disabled={nativeBusy}
+                onClick={pairNativePrinter}
+                title="Usa el Bluetooth o el USB del teléfono para imprimir directo, sin Web Bluetooth."
+                className="w-full p-3 bg-violet-600 hover:bg-violet-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-between transition-all shadow-md active:scale-95 disabled:opacity-60 disabled:cursor-not-allowed"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Printer className="w-4 h-4 text-violet-200" />
+                  <span>{connectedPrinterName ? 'Reintentar vínculo directo' : '1. Vincular impresora del sistema'}</span>
+                </div>
+                <span className="text-[9px] bg-violet-500/50 px-2 py-0.5 rounded-md text-violet-100">Bluetooth / USB</span>
+              </button>
+              <button
+                type="button"
+                disabled={nativeBusy}
+                onClick={() => void askNativePermissions()}
+                className="w-full p-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-between transition-all active:scale-95 disabled:opacity-60 border border-slate-200"
+              >
+                <div className="flex items-center gap-2.5">
+                  <ShieldCheck className="w-4 h-4 text-slate-500" />
+                  <span>2. Activar permisos de impresión</span>
+                </div>
+                <span className="text-[9px] bg-slate-200 px-2 py-0.5 rounded-md text-slate-600">Android</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={nativeBusy}
+                onClick={() => void loadNativeDevices()}
+                title="Lista lo que Android ya tiene vinculado para elegir la impresora sin adivinar."
+                className="w-full p-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-between transition-all active:scale-95 disabled:opacity-60 border border-slate-200"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Bluetooth className="w-4 h-4 text-slate-500" />
+                  <span>3. Elegir entre las vinculadas</span>
+                </div>
+                <span className="text-[9px] bg-slate-200 px-2 py-0.5 rounded-md text-slate-600">
+                  {nativeDevices.length ? `${nativeDevices.length} lista(s)` : 'Opcional'}
+                </span>
+              </button>
+
+              {nativeDevices.length > 0 && (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-1.5 space-y-1">
+                  {nativeDevices.map(device => (
+                    <button
+                      key={device.address}
+                      type="button"
+                      onClick={() => chooseNativePrinter(device)}
+                      className={cn(
+                        'w-full px-2.5 py-2 rounded-xl text-left text-[11px] font-bold transition-colors flex items-center justify-between gap-2',
+                        nativeSelected === device.address
+                          ? 'bg-violet-600 text-white'
+                          : 'bg-white text-slate-700 hover:bg-violet-50 border border-slate-200'
+                      )}
+                    >
+                      <span className="truncate">{device.name}</span>
+                      <span className={cn('text-[9px] font-mono shrink-0', nativeSelected === device.address ? 'text-violet-100' : 'text-slate-400')}>
+                        {device.address.slice(-8)}
+                      </span>
+                    </button>
+                  ))}
+                  <p className="px-1 pb-0.5 text-[9px] font-semibold text-slate-500">
+                    Se guarda la dirección elegida: el ticket saldrá siempre por esa impresora.
+                  </p>
+                </div>
+              )}
+            </>
           )}
 
-          <button
-            type="button"
-            disabled={isConnectingPrinter || !serialAvailable}
-            onClick={onConnectUsb}
-            title={serialAvailable ? undefined : "La conexión por cable USB/Serie no está disponible en este dispositivo."}
-            className="w-full p-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-between transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-200"
-          >
-            <div className="flex items-center gap-2.5">
-              <Usb className="w-4 h-4 text-slate-500" />
-              <span>2. Conectar por Cable USB</span>
-            </div>
-            <span className="text-[9px] bg-slate-200 px-2 py-0.5 rounded-md text-slate-600">USB / OTG</span>
-          </button>
-          {!serialAvailable && (
-            <p className="px-1 text-[9px] font-semibold text-amber-700">
-              La conexión USB/Serie no está disponible aquí: usa la impresión del sistema.
-            </p>
+          {!nativeAvailable && (
+            <>
+              <button
+                type="button"
+                disabled={isConnectingPrinter || !bluetoothAvailable}
+                onClick={onPairBluetooth}
+                title={bluetoothAvailable ? undefined : routeDecision.guidance[0]}
+                className="w-full p-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-between transition-all shadow-md shadow-indigo-100 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Bluetooth className="w-4 h-4 text-indigo-200" />
+                  <span>1. Vincular Bluetooth BLE</span>
+                </div>
+                <span className="text-[9px] bg-indigo-500/50 px-2 py-0.5 rounded-md text-indigo-100">BLE / Directo</span>
+              </button>
+              {!bluetoothAvailable && (
+                <p className="px-1 text-[9px] font-semibold text-amber-700">
+                  {routeDecision.guidance[0] || 'Este navegador no permite conectar la impresora: usa Imprimir del sistema.'}
+                </p>
+              )}
+
+              <button
+                type="button"
+                disabled={isConnectingPrinter || !serialAvailable}
+                onClick={onConnectUsb}
+                title={serialAvailable ? undefined : routeDecision.guidance[1] || routeDecision.guidance[0]}
+                className="w-full p-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-2xl text-xs font-black uppercase tracking-wider flex items-center justify-between transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-200"
+              >
+                <div className="flex items-center gap-2.5">
+                  <Usb className="w-4 h-4 text-slate-500" />
+                  <span>2. Conectar por Cable USB</span>
+                </div>
+                <span className="text-[9px] bg-slate-200 px-2 py-0.5 rounded-md text-slate-600">USB / OTG</span>
+              </button>
+              {!serialAvailable && (
+                <p className="px-1 text-[9px] font-semibold text-amber-700">
+                  {routeDecision.guidance[1] || routeDecision.guidance[0] || 'El cable USB no está disponible aquí: usa Imprimir del sistema.'}
+                </p>
+              )}
+            </>
           )}
         </div>
 
@@ -204,14 +368,16 @@ export default function POSPrinterSetupModal({
                 ],
                 openDrawer: true,
                 width: printerWidth,
-                onSuccess: (method) => {
-                  onSuccess(`Prueba enviada por ${method === 'bluetooth' ? 'Bluetooth' : 'USB/Serie'}`);
+                onSuccess: (method: ThermalPrintMethod) => {
+                  const label = method === 'bluetooth' ? 'Bluetooth' : method === 'native' ? 'impresión del sistema' : 'USB/Serie';
+                  onSuccess(`Prueba enviada por ${label}`);
                   setTimeout(() => onSuccess(""), 2500);
                 }
               });
               if (!printed) {
-                onError("No hay impresora conectada");
-                setTimeout(() => onError(""), 3000);
+                onError(resolvePrinterRoute(capabilities, capabilities.nativePrinterBridge === true, currentPrinterSurface()).guidance[0]
+                  || 'No hay impresora conectada');
+                setTimeout(() => onError(""), 4000);
               }
             }}
             className="flex-1 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-800 transition-all flex items-center justify-center gap-1.5 active:scale-95"

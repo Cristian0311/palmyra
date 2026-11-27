@@ -52,6 +52,17 @@ let logWrites = 0;
 // puede dejar la ventana en blanco (o solo con el color de fondo). Un POS debe
 // abrir siempre, así que renderizamos por software.
 app.disableHardwareAcceleration();
+// Windows agrupa y muestra los avisos del sistema por AppUserModelID. Sin esto,
+// el centro de actividades etiqueta los avisos como "electron.app.Electron" (o
+// los oculta) y el aviso del POS nunca llega al usuario. El valor debe ser el
+// mismo appId de electron-builder.yml y el del acceso directo NSIS.
+app.setAppUserModelId('com.palmyra.pos');
+
+// Electron trae Web Bluetooth desactivada: sin este switch el renderer no ve
+// `navigator.bluetooth` y el POS responde "Web Bluetooth no está disponible en
+// este navegador". El switch solo enciende la API; quién puede usarla sigue
+// decidido por origen en los manejadores de sesión.
+app.commandLine.appendSwitch('enable-features', 'WebBluetooth');
 
 function logLine(message) {
   const line = `[${new Date().toISOString()}] ${message}`;
@@ -2095,8 +2106,109 @@ function installHardwarePermissionHandlers() {
       }
       callback(allowed);
     });
+    installBluetoothDeviceChooser();
   } catch (error) {
     logLine(`No se pudieron instalar los permisos de hardware: ${messageOf(error)}`);
+  }
+}
+
+const BLUETOOTH_PRINTER_FILE = path.join(DATA_DIR, 'palmyra-printer-bluetooth.json');
+
+/** Nombre de la última impresora elegida; vacío si el POS nunca eligió una. */
+function rememberedBluetoothPrinter() {
+  try {
+    const saved = JSON.parse(fs.readFileSync(BLUETOOTH_PRINTER_FILE, 'utf8'));
+    return typeof saved?.name === 'string' ? saved.name.slice(0, 80) : '';
+  } catch {
+    return '';
+  }
+}
+
+function rememberBluetoothPrinter(name) {
+  if (!name) return;
+  try {
+    fs.writeFileSync(BLUETOOTH_PRINTER_FILE, JSON.stringify({ name, at: new Date().toISOString() }));
+  } catch (error) {
+    logLine(`No se pudo recordar la impresora Bluetooth: ${messageOf(error)}`);
+  }
+}
+
+function looksLikeThermalPrinter(name) {
+  return /printer|impresora|epos|goojprt|xiniao|rp\d{2}|zp|mt-|\/|-t\d/i.test(String(name || ''));
+}
+
+function bluetoothDeviceLabel(device, index) {
+  const name = String(device?.name || '').trim();
+  return (name || `Dispositivo ${index + 1}`).slice(0, 60);
+}
+
+let bluetoothChooserBusy = false;
+
+/**
+ * Elegidor de impresora para Web Bluetooth.
+ *
+ * Chromium pregunta aquí qué dispositivo del escaneo debe entregar a
+ * `navigator.bluetooth.requestDevice()`. Sin manejador la solicitud se cancela y
+ * el POS queda sin impresión Bluetooth en el escritorio. La impresora usada una
+ * vez se recuerda por nombre para que el siguiente ticket salte el diálogo.
+ * Solo se usa el nombre: la id la asigna Chromium en cada escaneo.
+ */
+function installBluetoothDeviceChooser() {
+  try {
+    session.defaultSession.on('select-bluetooth-device', (event, deviceList, callback) => {
+      // preventDefault es obligatorio: si no, Chromium cancela la selección.
+      event.preventDefault();
+      const devices = (Array.isArray(deviceList) ? deviceList : []).filter((d) => d && d.id);
+      if (!devices.length) {
+        logLine('Bluetooth: el escaneo no devolvió dispositivos.');
+        callback('');
+        return;
+      }
+      const remembered = rememberedBluetoothPrinter();
+      const preferred = remembered ? devices.find((d) => String(d.name || '').trim() === remembered) : null;
+      if (preferred) {
+        callback(preferred.id);
+        return;
+      }
+      if (bluetoothChooserBusy) {
+        callback('');
+        return;
+      }
+      const printers = devices.filter((d) => looksLikeThermalPrinter(d.name));
+      const candidates = (printers.length ? printers : devices).slice(0, 6);
+      if (candidates.length === 1) {
+        rememberBluetoothPrinter(String(candidates[0].name || '').trim());
+        callback(candidates[0].id);
+        return;
+      }
+      bluetoothChooserBusy = true;
+      const owner = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
+      dialog
+        .showMessageBox({
+          type: 'question',
+          title: 'Seleccionar impresora',
+          message: '¿Qué impresora térmica quiere usar el Punto de Venta?',
+          buttons: [...candidates.map((d, i) => bluetoothDeviceLabel(d, i)), 'Cancelar'],
+          defaultId: 0,
+          cancelId: candidates.length
+        })
+        .then(({ response }) => {
+          const chosen = candidates[response];
+          if (!chosen) {
+            callback('');
+            return;
+          }
+          rememberBluetoothPrinter(String(chosen.name || '').trim());
+          callback(chosen.id);
+        })
+        .catch(() => callback(''))
+        .finally(() => {
+          bluetoothChooserBusy = false;
+          if (owner) owner.webContents.focus();
+        });
+    });
+  } catch (error) {
+    logLine(`No se pudo instalar el elegidor de Bluetooth: ${messageOf(error)}`);
   }
 }
 
