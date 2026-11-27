@@ -1,26 +1,26 @@
 {
   "v": 1,
-  "version": "1.3.17",
+  "version": "1.3.18",
   "channel": "stable",
-  "releasedAt": "2026-11-26T12:26:53.589Z",
-  "notes": "Inventario en vista escritorio: el SKU, el precio y el stock vuelven a alinearse con la primera línea del nombre. Los nombres largos siguen mostrándose completos, sin cortes.",
+  "releasedAt": "2026-11-27T00:12:39.149Z",
+  "notes": "Licencia: se arregla el cartel de «licencia sin verificar» que aparecía al entrar, con o sin internet. La causa era que el servidor no entregaba la clave pública de licencia, así que ningún equipo podía activarse; ahora se sirve la clave publicada en la app. El aviso solo aparece cuando hay algo que hacer (falta sesión, plan rechazado) y Configuración > Sistema muestra el motivo técnico exacto.\nEnlaces de acceso a empleados: al compartirlos desde el PC o el APK apuntaban a 127.0.0.1 y el empleado veía «se rechazó la conexión». Ahora el enlace usa siempre la dirección pública de PALMYRA (o tu dominio propio si lo tienes). Al abrirlo desde el navegador del teléfono, usa el enlace palmyra:// que muestra la pantalla de acceso.",
   "rollout": 100,
   "artifacts": [
     {
       "platform": "windows",
       "name": "PALMYRA-POS-Setup.exe",
-      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.17/PALMYRA-POS-Setup.exe",
-      "sha256": "310f65e37f86b63ba222095d97fed9fc45b3bb55b4b671c78266d204674c2028",
-      "bytes": 114541376
+      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.18/PALMYRA-POS-Setup.exe",
+      "sha256": "43b3f2dcd3f6d6e1b9433d93da3ca4b4e6344c52328175bbf1b4b2a399ef7fb5",
+      "bytes": 114544640
     },
     {
       "platform": "android",
       "name": "PALMYRA-Android.apk",
-      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.17/PALMYRA-Android.apk",
-      "sha256": "9681dc17acb340e7f8c527b881bcc0f6166588781223e5fee02eea4b855ae06d",
+      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.18/PALMYRA-Android.apk",
+      "sha256": "237e78a3530204f27a9ff007742e816adcd2d39e296257bd61c562d64e80b843",
       "bytes": 2683974
     }
   ],
   "keyId": "palmyra-stable-2026-11",
-  "signature": "4OVA9P09luZJz0p0a41rfQ5Y51_65ZDYtSsPkrgX6dqZWiPV0g-EXKxyXIn-4cjE7GEbeyntjI1znOoObjkPDg"
+  "signature": "0mimNFQe3VaK90QdOCCt-0xofQU-Wbjc66okAmubx_jwz6QdIVi76N1089p2jmlDV9ZAB84dtnV5EzNpUku4LQ"
 }
