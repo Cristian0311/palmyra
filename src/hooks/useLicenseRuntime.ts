@@ -35,10 +35,11 @@ const REFRESH_INTERVAL_MS = 12 * 60 * 60 * 1000;
 const MIN_RETRY_GAP_MS = 30 * 60 * 1000;
 /**
  * Activación pendiente (sin lease o identidad reparada): se reintenta en
- * segundo plano mientras haya red, sin bloquear la interfaz al arrancar.
+ * segundo plano con espera creciente (60 s, 2, 5, 15 y luego cada 30 min).
+ * Sin tope de intentos: un equipo que falló durante una caída del servidor se
+ * activa solo cuando el servicio vuelve, no 12 h después.
  */
-const ACTIVATION_RETRY_MS = 60 * 1000;
-const ACTIVATION_MAX_RETRIES = 5;
+const ACTIVATION_RETRY_DELAYS_MS = [60_000, 120_000, 300_000, 900_000, 1_800_000];
 /**
  * El alcance local (la empresa) se escribe durante el login, que puede terminar
  * justo después de montar la interfaz. Se sondea unos segundos en lugar de
@@ -174,22 +175,26 @@ export function useLicenseRuntime(companyId?: string | null) {
       });
     }
 
-    // Activación pendiente o identidad reparada: reintento acotado en segundo
+    // Activación pendiente o identidad reparada: reintento sin tope en segundo
     // plano (solo con red, sin bloquear la interfaz ni marcar error).
     function scheduleActivationRetry(next: LicenseSnapshot): void {
       if (!alive || retryTimer !== null) return;
       if (!next.pendingActivation && next.mode !== "invalid") return;
-      if (activationRetries >= ACTIVATION_MAX_RETRIES) return;
       if (typeof navigator !== "undefined" && navigator.onLine === false) return;
+      const delay = ACTIVATION_RETRY_DELAYS_MS[Math.min(activationRetries, ACTIVATION_RETRY_DELAYS_MS.length - 1)];
       activationRetries += 1;
       retryTimer = window.setTimeout(() => {
         retryTimer = null;
-        runThrottled(false);
-      }, ACTIVATION_RETRY_MS);
+        // Sin lease no hay nada que conservar: se fuerza la emisión aunque el
+        // runtime tenga el servidor en espera (RENEW_RETRY_MS).
+        runThrottled(false, 0, true);
+      }, delay);
     }
 
     const unsubscribe = current.subscribe((next) => {
       if (alive) setSnapshot(next);
+      // Activado: el siguiente fallo vuelve a empezar por 60 s.
+      if (!next.pendingActivation && next.mode !== "invalid") activationRetries = 0;
       flushIfTampered(next);
       scheduleActivationRetry(next);
     });
@@ -204,7 +209,9 @@ export function useLicenseRuntime(companyId?: string | null) {
     const handleOnline = () => {
       const pending = current.getSnapshot().pendingActivation;
       if (pending) activationRetries = 0;
-      runThrottled(false, pending ? 0 : MIN_RETRY_GAP_MS);
+      // Con activación pendiente se fuerza la emisión: volver la red es la
+      // señal de que el servidor ya puede responder.
+      runThrottled(false, pending ? 0 : MIN_RETRY_GAP_MS, pending);
       // Al volver la red se vacía el buzón sin esperar al siguiente refresco.
       const target = targetCompany();
       if (target) scheduleClockTelemetryFlush(target);

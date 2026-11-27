@@ -37,8 +37,8 @@ import { useReportVisibility } from "../modules/reports/hooks/useReportVisibilit
 import { ReportsHistoryPager } from "../components/reports/ReportsHistoryPager";
 import { getOfflineQueueCount } from "../services/offlineQueue";
 import PlanFeatureGate from "../components/PlanFeatureGate";
-import { canUsePlanFeature } from "../services/planAccess";
-import { loadSaaSContext } from "../services/saas";
+import { decidePlanFeature } from "../services/planAccess";
+import { usePlanCode } from "../hooks/usePlanCode";
 import { getActiveTenant } from "../services/tenant";
 import { loadCompensationSettings } from "../services/team";
 import { printThermalReceipt, format58mmLine } from "../lib/escpos";
@@ -563,13 +563,8 @@ export default function Reports() {
     setPrintSessionId,
   });
 
-  const [planCode, setPlanCode] = useState<string | null>(null);
+  const { planCode, source: planSource } = usePlanCode();
   const [showExcelGate, setShowExcelGate] = useState(false);
-  useEffect(() => {
-    let active = true;
-    void loadSaaSContext().then(ctx => { if (active) setPlanCode(ctx?.subscription?.planCode || null); }).catch(() => { if (active) setPlanCode(null); });
-    return () => { active = false; };
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -626,7 +621,12 @@ export default function Reports() {
       setHistoryLoading(false);
     }
   }, [historyLoading, historyHasMore, store.loadOlderSalesHistory, store.addNotification]);
-  const canExcelExport = canUsePlanFeature(planCode, "excel_exports");
+  // La puerta de pago solo se aplica con un plan conocido que no incluya Excel.
+  // Mientras el plan no se pueda determinar la descarga sigue disponible: los
+  // datos ya están en la sección y el libro se genera en el dispositivo. Un
+  // cliente de Ciudadela no puede perder su Excel por una sesión caducada.
+  const excelGate = decidePlanFeature({ planCode, source: planSource }, "excel_exports");
+  const canExcelExport = excelGate.granted || excelGate.pending;
   useEffect(() => {
     if (canExcelExport) setShowExcelGate(false);
   }, [canExcelExport]);
@@ -776,19 +776,25 @@ export default function Reports() {
         {/* Excel Export Menu */}
         <div className="relative shrink-0" ref={exportMenuRef}>
             <div className="flex items-center h-9 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm shadow-emerald-200 transition-all">
-              <button 
+              <button
                 type="button"
                 onClick={() => canExcelExport ? handleExportFullExcel() : setShowExcelGate(true)}
-                className="btn-compact !bg-transparent !shadow-none hover:!bg-emerald-700 active:scale-95 text-white"
-                title="Exportar todo el reporte completo a Excel (.xlsx) con tablas estructuradas"
+                disabled={isExporting}
+                className="btn-compact !bg-transparent !shadow-none hover:!bg-emerald-700 active:scale-95 text-white disabled:opacity-70 disabled:cursor-wait"
+                title={canExcelExport
+                  ? 'Exportar todo el reporte completo a Excel (.xlsx) con tablas estructuradas'
+                  : 'Las descargas en Excel están disponibles desde Ciudadela'}
               >
                 {exportSuccess ? <Check className="w-3.5 h-3.5" /> : <FileSpreadsheet className="w-3.5 h-3.5" />}
+                {/* Solo se deshabilita mientras se genera el libro: un plan sin
+                    resolver nunca pinta el botón como bloqueado. */}
                 <span>{exportSuccess ? '¡Listo!' : isExporting ? 'Generando…' : 'Excel'}</span>
               </button>
               <button
                 type="button"
                 onClick={() => canExcelExport ? setShowExportMenu(!showExportMenu) : setShowExcelGate(true)}
-                className="px-1.5 py-1.5 border-l border-emerald-500/60 hover:bg-emerald-800 rounded-r-xl transition-colors"
+                disabled={isExporting}
+                className="px-1.5 py-1.5 border-l border-emerald-500/60 hover:bg-emerald-800 rounded-r-xl transition-colors disabled:opacity-70 disabled:cursor-wait"
                 title="Opciones de exportación por sección"
               >
                 <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", showExportMenu && "rotate-180")} />

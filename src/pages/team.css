@@ -739,10 +739,20 @@
 .team-employee-sub{display:flex;align-items:center;flex-wrap:wrap;gap:2px 10px;min-width:0}
 .team-employee-code{color:var(--text-muted);font-weight:700;white-space:nowrap}
 /* Almacenes del trabajador justo bajo el nombre, cada uno con su icono SVG */
-.team-employee-warehouses{display:inline-flex;align-items:center;flex-wrap:wrap;gap:2px 10px;min-width:0}
-.team-employee-warehouse{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:none;color:var(--text-secondary);font-weight:700;white-space:normal;overflow-wrap:break-word}
+.team-employee-warehouses{display:inline-flex;align-items:center;flex-wrap:wrap;gap:2px 10px;min-width:0;position:relative}
+.team-employee-warehouse{display:inline-flex;align-items:center;gap:4px;min-width:0;max-width:min(100%,190px);color:var(--text-secondary);font-weight:700;white-space:normal;overflow-wrap:break-word}
+.team-employee-warehouse>span{min-width:0}
 .team-employee-warehouse svg{flex:0 0 auto;color:#8b5cf6}
 .team-employee-warehouse.is-empty{color:var(--text-muted);font-weight:600}
+.team-employee-warehouse.is-block{display:flex;max-width:none;width:100%;padding:3px 0}
+/* Chip «+N»: resume los almacenes que no caben y abre la burbuja completa. */
+.team-employee-warehouse-more{display:inline-flex;align-items:center;gap:3px;min-height:20px;padding:2px 7px;border-radius:999px;border:1px solid rgba(124,58,237,.24);background:rgba(124,58,237,.08);color:var(--primary);font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.04em;cursor:pointer;white-space:nowrap}
+.team-employee-warehouse-more:hover{border-color:rgba(124,58,237,.5)}
+.dark .team-employee-warehouse-more{background:rgba(124,58,237,.16);border-color:rgba(167,139,250,.35);color:#c4b5fd}
+/* Burbuja de almacenes: hereda palmyra-popover (max-w/max-h ya acotados al
+   viewport + scroll) y se ancla a la fila, nunca fuera de pantalla. */
+.team-employee-warehouse-bubble{position:absolute;left:0;top:calc(100% + 6px);z-index:var(--z-dropdown);display:flex;flex-direction:column;gap:1px;width:min(17rem,calc(100vw - 2rem));padding:8px 10px;text-align:left}
+.team-employee-warehouse-bubble-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px;font-size:8px;font-weight:900;letter-spacing:.1em;text-transform:uppercase;color:var(--text-muted)}
 .team-employee-role{min-width:0;display:flex;align-items:center;justify-content:flex-end;gap:5px;flex-wrap:wrap}
 .team-employee-role>span{font-weight:900;color:#6d3bd2;background:#f3edfb;border:1px solid #e5daf6;border-radius:8px;padding:4px 8px;white-space:nowrap}
 .team-employee-role em{font-style:normal;font-weight:900;text-transform:uppercase;color:#64748b;background:#f1f5f9;border-radius:999px;padding:3px 6px;white-space:nowrap}
@@ -763,6 +773,10 @@
   .team-employee-actions{grid-column:3;grid-row:1/3;align-self:center}
   .team-employee-menu-button{width:44px!important;height:44px!important;border-radius:12px!important}
   .team-employee-sub{gap:2px 8px}
+  /* A 390 px el chip de almacén no puede empujar la fila: se acota y trunca,
+     el nombre completo vive en el title y en la burbuja. */
+  .team-employee-warehouse{max-width:min(100%,150px)}
+  .team-employee-warehouse-bubble{left:auto;right:0;width:min(16rem,calc(100vw - 1.5rem))}
 }
 
 /* Bancos: en móvil mostrar siempre tarjetas completas de dos en dos y continuar en carrusel. */
@@ -1565,12 +1579,14 @@
    Sin anchos fijos: todo w-full + min-w-0, cabe completo a 390 px. */
 .team-emp-modal{
   display:flex;flex-direction:column;min-width:0;
-  max-height:calc(100dvh - 1.5rem);
+  /* El body ya es el único scroll del panel: anidar otro dentro dejaba las
+     tarjetas posteriores a la segunda fila fuera de la vista. */
+  max-height:min(calc(100dvh - 1.5rem),calc(100% - 1.5rem));
   overflow:hidden;
   background:var(--bg-secondary);
 }
 @media(max-width:767px){
-  .team-emp-modal{max-height:calc(100dvh - 1rem);border-radius:1rem}
+  .team-emp-modal{max-height:min(calc(100dvh - 1rem),calc(100% - 1rem));border-radius:1rem}
 }
 .team-emp-head{
   display:flex;align-items:center;gap:10px;flex:none;min-width:0;
@@ -1707,8 +1723,19 @@
   font-size:9px;font-weight:900;text-transform:uppercase;
 }
 
+/* Rejilla de almacenes del modal: una sola columna en móvil (las tarjetas de
+   40 px a dos columnas a 390 px dejaban nombres ilegibles) y tope acotado con
+   scroll propio para que ninguna selección quede inalcanzable. */
+.team-emp-warehouse-grid{
+  display:grid;grid-template-columns:minmax(0,1fr);gap:6px;min-width:0;
+  max-height:min(40dvh, calc(100dvh - 13rem));overflow-y:auto;overscroll-behavior:contain;
+  -webkit-overflow-scrolling:touch;scrollbar-gutter:stable;padding-right:2px;
+}
+@media(min-width:640px){
+  .team-emp-warehouse-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;max-height:min(240px,34dvh,calc(100dvh - 13rem))}
+}
 .team-emp-warehouse{
-  display:flex;align-items:center;gap:7px;min-width:0;min-height:40px;padding:6px 8px;
+  display:flex;align-items:center;gap:7px;min-width:0;min-height:38px;padding:6px 8px;
   border:1px solid var(--border-base);border-radius:12px;background:var(--bg-secondary);cursor:pointer;
   transition:border-color .15s ease,background .15s ease;
 }
@@ -1741,9 +1768,29 @@
 }
 .dark .team-emp-note-warn{color:#f0cf77;background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.18)}
 
+/* Estado de la contraseña POS del trabajador: en edición nunca debe parecer un
+   campo obligatorio vacío por error, así que el estado va como chip explícito. */
+.team-emp-pos-state{
+  display:inline-flex;align-items:center;gap:5px;min-width:0;max-width:100%;
+  padding:3px 8px;border-radius:999px;border:1px solid rgba(217,119,6,.28);
+  background:rgba(217,119,6,.08);color:#8a6d1a;
+  font-size:9px;font-weight:900;letter-spacing:.04em;text-transform:uppercase;line-height:1.35;
+}
+.team-emp-pos-state>svg{flex:none}
+.team-emp-pos-state.is-defined{
+  border-color:rgba(124,58,237,.24);background:rgba(124,58,237,.08);color:var(--primary);
+}
+.team-emp-pos-state.is-typing{
+  border-color:rgba(16,185,129,.28);background:rgba(16,185,129,.1);color:#0f766e;
+}
+.dark .team-emp-pos-state{color:#f0cf77;background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.18)}
+.dark .team-emp-pos-state.is-defined{color:#c4b5fd;background:rgba(124,58,237,.18);border-color:rgba(167,139,250,.32)}
+.dark .team-emp-pos-state.is-typing{color:#6ee7b7;background:rgba(16,185,129,.14);border-color:rgba(16,185,129,.3)}
+
 .team-emp-footer{
   display:flex;flex:none;flex-wrap:wrap;justify-content:flex-end;gap:8px;
   padding:12px 14px;border-top:1px solid var(--border-base);background:var(--bg-secondary);
+  padding-bottom:max(12px,env(safe-area-inset-bottom));
 }
 .team-emp-btn{
   display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 14px;border-radius:12px;

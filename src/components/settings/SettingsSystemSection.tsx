@@ -21,6 +21,7 @@ import { useLicenseRuntime } from "../../hooks/useLicenseRuntime";
 import { applyAndroidUpdate } from "../../services/updates/android";
 import { androidUpdateKindForArtifact, type AppUpdatePhase } from "../../services/updates/runtime";
 import type { LicensePublicMode } from "../../services/license/runtime";
+import { deriveLicenseDisplay } from "../../services/license/licenseDisplay";
 import {
   formatStorageBytes,
   inspectPwaStorageHealth,
@@ -118,50 +119,7 @@ function formatMoment(iso?: string | null): string | null {
   }
 }
 
-function daysUntil(iso: string | undefined, nowMs: number): number | null {
-  if (!iso) return null;
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return null;
-  return Math.floor((date.getTime() - nowMs) / 86_400_000);
-}
-
 type LicenseState = { label: string; tone: Tone };
-
-/**
- * Estado de licencia en palabras. La activación pendiente se distingue de la
- * falta real de licencia: mientras el intento de red siga en vuelo el estado
- * es neutro («Verificando…»), y solo cuando concluye sin lease se dice
- * «Sin licencia». Nunca se miente con un «Activa» sobre una licencia ausente.
- */
-function licenseStateOf(
-  mode: LicensePublicMode,
-  readOnly: boolean,
-  paidThrough: string | undefined,
-  offlineUntil: string | undefined,
-  pendingActivation: boolean,
-  activationSettled: boolean | undefined
-): LicenseState {
-  if (mode === "revoked") return { label: "Licencia retirada", tone: "bad" };
-  if (mode === "expired") return { label: "Vencida", tone: "bad" };
-  if (readOnly) return { label: "Solo lectura", tone: "bad" };
-  // Lease ilegible/alterado: NO bloquea; se repara solo con conexión.
-  if (mode === "invalid") return { label: "Por revisar", tone: "warn" };
-  if (mode === "loading") return { label: "Comprobando…", tone: "idle" };
-  if (pendingActivation) {
-    return activationSettled === true
-      ? { label: "Sin licencia", tone: "warn" }
-      : { label: "Verificando…", tone: "idle" };
-  }
-  if (mode === "free" || mode === "unmanaged") return { label: "Activa", tone: "ok" };
-  if (mode === "grace") return { label: "Periodo de gracia", tone: "warn" };
-  const now = Date.now();
-  const offlineDays = daysUntil(offlineUntil, now);
-  const paidDays = daysUntil(paidThrough, now);
-  const soon =
-    (offlineDays !== null && offlineDays <= 7) ||
-    (paidDays !== null && paidDays <= 7);
-  return soon ? { label: "Por vencer", tone: "warn" } : { label: "Activa", tone: "ok" };
-}
 
 function licenseModeLabel(mode: LicensePublicMode, pendingActivation: boolean): string {
   // Primer arranque del equipo: aún no llega el lease del plan; NO llamar "Gratis".
@@ -186,10 +144,10 @@ function planNameOf(
 ): string {
   if (pendingActivation) return "Por asignar";
   switch (planCode) {
-    case "free": return "Plan Gratis";
-    case "starter": return "Starter";
-    case "growth": return "Growth";
-    case "pro": return "Pro";
+    case "free": return "Gratis";
+    case "starter": return "Oasis";
+    case "growth": return "Caravana";
+    case "pro": return "Ciudadela";
     default: return licenseModeLabel(mode, pendingActivation);
   }
 }
@@ -217,57 +175,6 @@ function paidThroughLabelOf(
   if (pendingActivation) return "—";
   if (mode === "free" || planCode === "free") return "No aplica · no vence";
   return formatDay(paidThrough);
-}
-
-/** Texto del estado, veraz y con la promesa anti-bloqueo. */
-function licenseDetailOf(
-  mode: LicensePublicMode,
-  readOnly: boolean,
-  pendingActivation: boolean,
-  activationSettled: boolean | undefined,
-  activationError: string | undefined,
-  clockWarning: boolean,
-  message: string | undefined
-): string {
-  if (mode === "revoked") {
-    return `${message ?? "Tu licencia fue revocada. Contacta al proveedor."} La app queda en solo lectura; tus datos no se borran.`;
-  }
-  if (mode === "expired") {
-    return "La suscripción venció: la app está en solo lectura. Renueva el plan para volver a operar; tus datos no se borran.";
-  }
-  if (readOnly) {
-    return "Ahora mismo solo puedes consultar y exportar. Renueva el plan para volver a operar con normalidad; tus datos no se borran.";
-  }
-  if (mode === "invalid") {
-    return "La licencia guardada no se pudo verificar. Se repara sola en cuanto haya conexión; mientras tanto sigues operando con normalidad.";
-  }
-  if (mode === "loading") {
-    return "Comprobando la licencia de este equipo…";
-  }
-  if (pendingActivation) {
-    if (activationSettled !== true) {
-      return "Este equipo todavía no tiene licencia emitida; la activación se está verificando. Mientras tanto sigues operando con normalidad.";
-    }
-    // El motivo exacto se muestra aquí (no en el aviso del POS): es lo que
-    // permite distinguir «sin sesión», «plan rechazado» o «sin red» sin tener
-    // que reproducir el caso en otro equipo.
-    const motivo = ` Motivo técnico: ${activationError || "sin-intento"}.`;
-    const error = activationError ?? "";
-    if (error.startsWith("no-session") || error.startsWith("server-rejected:401")) {
-      return `Este equipo no tiene una licencia emitida. Entra con tu usuario o enlace de acceso una vez para activar la licencia comprada; mientras tanto sigues operando con normalidad.${motivo}`;
-    }
-    return `Este equipo todavía no tiene licencia emitida; la activación se reintenta sola en cuanto haya conexión. Mientras tanto sigues operando con normalidad.${motivo}`;
-  }
-  if (mode === "free") {
-    return "Plan Gratis: no requiere pago y no tiene vencimiento. Funciona sin internet de forma indefinida.";
-  }
-  if (mode === "unmanaged") {
-    return "Este equipo aún no tiene un plan asignado. Puedes seguir operando; la licencia se comprueba sola en segundo plano.";
-  }
-  if (clockWarning) {
-    return "La fecha del equipo está atrasada. Ajusta el reloj para que la licencia se evalúe bien; tus datos no se borran.";
-  }
-  return "La licencia se comprueba sola en segundo plano; si vence, la app pasa a solo lectura y tus datos se conservan.";
 }
 
 type BuildInfo = { buildId: string; builtAt: string; version: string } | null;
@@ -329,12 +236,6 @@ function companyPlanPaymentOf(plan: CompanyPlan | null): string | null {
     case "cancelled": return "Cancelado";
     default: return "Sin pago registrado";
   }
-}
-
-function companyPlanPaidThroughOf(plan: CompanyPlan | null): string | null {
-  if (!plan) return null;
-  const end = plan.trialEndsAt || plan.currentPeriodEnd;
-  return end ? formatDay(end) : null;
 }
 
 function companyPlanDetailOf(plan: CompanyPlan | null): string | null {
@@ -735,53 +636,35 @@ export function SettingsSystemSection() {
       });
   }, []);
 
+  // La insignia y el detalle salen SIEMPRE de la evaluación del equipo: son
+  // los mismos datos que alimentan el aviso flotante, así que las dos
+  // superficies no pueden contradecirse. El plan de la nube se muestra aparte,
+  // etiquetado como tal, nunca como la licencia de este equipo.
   const hasLeasePlan = Boolean(license.planCode) && license.mode !== "unmanaged";
-  const licenseState = hasLeasePlan
-    ? licenseStateOf(
-        license.mode,
-        license.readOnly,
-        license.paidThrough,
-        license.offlineUntil,
-        license.pendingActivation,
-        license.activationSettled
-      )
-    : companyPlanStateOf(companyPlan, Date.now());
-  const licenseTone = TONES[licenseState.tone];
-  const planLabel = hasLeasePlan
-    ? planNameOf(license.planCode, license.mode, license.pendingActivation)
-    : companyPlanNameOf(companyPlan) ?? planNameOf(license.planCode, license.mode, license.pendingActivation);
-  const paymentLabel = hasLeasePlan
-    ? paymentLabelOf(license.mode, license.planCode, license.pendingActivation)
-    : companyPlanPaymentOf(companyPlan) ?? paymentLabelOf(license.mode, license.planCode, license.pendingActivation);
-  const paidThroughLabel = hasLeasePlan
-    ? paidThroughLabelOf(license.mode, license.planCode, license.pendingActivation, license.paidThrough)
-    : companyPlanPaidThroughOf(companyPlan) ??
-      paidThroughLabelOf(license.mode, license.planCode, license.pendingActivation, license.paidThrough);
-  const licenseDetail = hasLeasePlan
-    ? licenseDetailOf(
-        license.mode,
-        license.readOnly,
-        license.pendingActivation,
-        license.activationSettled,
-        license.activationError,
-        license.clockWarning,
-        license.message
-      )
-    : companyPlanDetailOf(companyPlan) ??
-      licenseDetailOf(
-        license.mode,
-        license.readOnly,
-        license.pendingActivation,
-        license.activationSettled,
-        license.activationError,
-        license.clockWarning,
-        license.message
-      );
-  const modalityLabel = hasLeasePlan
-    ? licenseModeLabel(license.mode, license.pendingActivation)
-    : companyPlan
-      ? "Nube (plan de la empresa)"
-      : licenseModeLabel(license.mode, license.pendingActivation);
+  const deviceLicense = deriveLicenseDisplay(license, Date.now());
+  const licenseTone = TONES[deviceLicense.tone];
+  const licenseVerified = deviceLicense.verifiedLabel;
+  const planLabel = planNameOf(license.planCode, license.mode, license.pendingActivation);
+  const paymentLabel = paymentLabelOf(license.mode, license.planCode, license.pendingActivation);
+  const paidThroughLabel = paidThroughLabelOf(
+    license.mode,
+    license.planCode,
+    license.pendingActivation,
+    license.paidThrough
+  );
+  // El motivo técnico solo cabe cuando el intento ya terminó sin lease: es lo
+  // que permite distinguir «sin sesión» de «plan rechazado» desde el equipo.
+  const technicalMotive =
+    license.pendingActivation && license.activationSettled === true && license.activationError
+      ? ` Motivo técnico: ${license.activationError}.`
+      : "";
+  const licenseDetail = `${deviceLicense.detail}${technicalMotive}`;
+  const modalityLabel = licenseModeLabel(license.mode, license.pendingActivation);
+  // Plan de la empresa en la nube: contexto informativo, no la licencia del
+  // equipo. Solo se pinta cuando el lease del equipo aún no trae plan propio.
+  const cloudPlan = hasLeasePlan ? null : companyPlan;
+  const cloudState = cloudPlan ? companyPlanStateOf(cloudPlan, Date.now()) : null;
+  const cloudDetail = cloudPlan ? companyPlanDetailOf(cloudPlan) : null;
   const needsSignIn =
     license.pendingActivation === true &&
     license.activationSettled === true &&
@@ -923,9 +806,9 @@ export function SettingsSystemSection() {
         {/* Licencia */}
         <div className="rounded-xl border border-base bg-primary p-3 space-y-2.5 min-w-0">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm font-bold text-primary">Licencia</p>
+            <p className="text-sm font-bold text-primary">Licencia de este equipo</p>
             <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-xs font-bold", licenseTone)}>
-              {licenseState.label}
+              {deviceLicense.label}
             </span>
           </div>
           <dl className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -946,11 +829,37 @@ export function SettingsSystemSection() {
               <dd className="mt-0.5 break-words text-sm font-semibold text-primary">{formatDay(license.offlineUntil)}</dd>
             </div>
             <div className="min-w-0">
+              <dt className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Última verificación</dt>
+              <dd className="mt-0.5 break-words text-sm font-semibold text-primary">
+                {licenseVerified ?? "Aún sin verificar"}
+              </dd>
+            </div>
+            <div className="min-w-0">
               <dt className="text-xs font-bold uppercase tracking-[0.12em] text-muted">Modalidad</dt>
               <dd className="mt-0.5 break-words text-sm font-semibold text-primary">{modalityLabel}</dd>
             </div>
           </dl>
           <p className="text-xs font-medium leading-5 text-muted">{licenseDetail}</p>
+          {cloudPlan && cloudState && (
+            <div className="rounded-xl border border-base bg-secondary p-2.5 min-w-0">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-muted">
+                  Plan de la empresa (nube)
+                </p>
+                <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-xs font-bold", TONES[cloudState.tone])}>
+                  {cloudState.label}
+                </span>
+              </div>
+              <p className="mt-1 break-words text-sm font-semibold text-primary">
+                {[companyPlanNameOf(cloudPlan), companyPlanPaymentOf(cloudPlan)]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+              {cloudDetail && (
+                <p className="mt-1 text-xs font-medium leading-5 text-muted">{cloudDetail}</p>
+              )}
+            </div>
+          )}
           {needsSignIn && (
             <Link
               to="/auth"

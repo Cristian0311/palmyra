@@ -4,6 +4,9 @@ dist-admin/
 dist-desktop/
 dev-dist/
 release/
+# Salida local de electron-builder para pruebas (nunca se publica)
+release-build/
+release-next/
 .env
 .env.*
 !.env.example

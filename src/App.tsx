@@ -23,6 +23,7 @@ import { registerCurrentDevice } from "./services/device";
 import { touchCurrentDevice } from "./services/security";
 import { confirmNativeBoot } from "./lib/nativeApp";
 import { currentAppSurface } from "./lib/appSurface";
+import { storePlanCode } from "./hooks/usePlanCode";
 import InstallRequired from "./components/InstallRequired";
 import { LicenseBanner } from "./components/system/LicenseBanner";
 import AndroidBackupRuntime from "./components/system/AndroidBackupRuntime";
@@ -258,6 +259,12 @@ export default function App() {
           } catch (error) {
             console.warn("[PALMYRA] No se pudo guardar el alcance local; continuamos con la sesión cloud.", error);
           }
+          // Copia del plan contratado, ligada al alcance empresa/usuario recién
+          // validado. Las puertas de funciones (Excel en Inventario y Reportes)
+          // la usan cuando más adelante `loadSaaSContext` falla —sesión caducada,
+          // backend sin suscripción o arranque offline— y dejaría el botón del
+          // cliente con aspecto deshabilitado teniendo el plan pagado.
+          storePlanCode(ctx.subscription?.planCode ?? null);
           useStore.setState({
             currentUser: ctx.user,
             currentBranchId: ctx.warehouseIds[0] || "",

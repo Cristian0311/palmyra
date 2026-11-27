@@ -23,7 +23,7 @@ const INVITE_ERRORS: Record<string, string> = {
   employee_not_found: 'El trabajador no existe en tu empresa.',
   employee_inactive: 'El trabajador está inactivo. Actívalo antes de generar el enlace.',
   employee_role_required: 'Asigna un rol al trabajador antes de generar el enlace.',
-  warehouse_required: 'El trabajador necesita al menos una sucursal activa asignada.'
+  warehouse_required: 'El trabajador necesita al menos una sucursal asignada.'
 };
 
 const REDEEM_ERRORS: Record<string, string> = {
@@ -38,7 +38,7 @@ const REDEEM_ERRORS: Record<string, string> = {
   employee_not_found: 'El trabajador ya no está activo en la empresa.',
   employee_inactive: 'El trabajador ya no está activo en la empresa.',
   company_inactive: 'La cuenta de la empresa no está activa.',
-  warehouse_unavailable: 'El trabajador no tiene sucursales activas asignadas.',
+  warehouse_unavailable: 'El trabajador no tiene sucursales asignadas.',
   role_unavailable: 'El rol del trabajador ya no está disponible.',
   server_not_configured: 'El servicio de acceso no está configurado en el servidor.',
   identity_provision_failed: 'No se pudo preparar la identidad del trabajador. Intenta con un enlace nuevo.',
@@ -95,27 +95,92 @@ export function buildDeviceAccessDeepLink(token: string): string {
   return `palmyra://device-access?token=${encodeURIComponent(token)}`;
 }
 
+/** Caducidad por defecto del enlace de acceso (la que asume la RPC). */
+export const ACCESS_INVITE_DEFAULT_DAYS = 7;
+/** Tope que aplica `create_device_access_invite` en el servidor. */
+export const ACCESS_INVITE_MAX_DAYS = 90;
+/** Opciones del selector, en el mismo orden que el modal de Equipo. */
+export const ACCESS_INVITE_DAY_OPTIONS = [1, 7, 30, 90, 0] as const;
+
+export interface AccessInviteExpiry {
+  /** Días que se envían a la RPC. 0 = sin caducidad (expires_at = infinity). */
+  days: number;
+  /** true cuando el enlace no caduca nunca. */
+  perpetual: boolean;
+  /** «Sin caducidad» · «Válido 1 día» · «Válido 7 días». */
+  label: string;
+  /** Leyenda de la nota del modal, con el aviso de un solo uso. */
+  note: string;
+}
+
+/**
+ * Normaliza la caducidad elegida y produce la etiqueta que usan TODOS los
+ * caminos del enlace de acceso (selector del editor, nota y diálogo del menú de
+ * la fila). Sin este punto único el menú de la fila generaba siempre 7 días y
+ * el diálogo rotulaba «Válido 7 días» aunque la invitación fuera indefinida.
+ */
+export function resolveAccessInviteExpiry(value: number | string | null | undefined): AccessInviteExpiry {
+  const raw = typeof value === 'string' ? value.trim() : value;
+  // Un valor ausente o vacío no es «sin caducidad»: cae al valor por defecto.
+  const parsed = raw === '' || raw === null || raw === undefined ? Number.NaN : Number(raw);
+  const finite = Number.isFinite(parsed) ? parsed : ACCESS_INVITE_DEFAULT_DAYS;
+  const days = finite <= 0 ? 0 : Math.min(ACCESS_INVITE_MAX_DAYS, Math.max(1, Math.round(finite)));
+  const perpetual = days === 0;
+  const label = perpetual ? 'Sin caducidad' : `Válido ${days} ${days === 1 ? 'día' : 'días'}`;
+  return {
+    days,
+    perpetual,
+    label,
+    note: `${label} · un solo uso · personal e intransferible`
+  };
+}
+
+/**
+ * Fecha legible de caducidad del enlace recién generado. `null` cuando no
+ * caduca, para que la interfaz lo diga con palabras y no con una fecha lejana.
+ */
+export function describeAccessInviteExpiry(
+  days: number | string | null | undefined,
+  createdAt: number = Date.now()
+): string {
+  const expiry = resolveAccessInviteExpiry(days);
+  if (expiry.perpetual) return 'Sin caducidad: el enlace no expira';
+  const base = Number.isFinite(createdAt) && createdAt > 0 ? createdAt : Date.now();
+  const date = new Date(base + expiry.days * 86_400_000);
+  return `Caduca el ${date.toLocaleDateString('es-CU')}`;
+}
+
 export async function createDeviceAccessInvite(
   employeeId: string,
-  expiresInDays = 7
-): Promise<{ token: string; link: string }> {
+  expiresInDays: number = ACCESS_INVITE_DEFAULT_DAYS
+): Promise<{ token: string; link: string; days: number }> {
   const supabase = getSupabase();
   if (!supabase) throw new Error('Supabase no está configurado.');
   if (!employeeId) throw new Error('Selecciona un trabajador.');
 
   // expiresInDays <= 0: enlace sin caducidad (tiempo indefinido).
+  const expiry = resolveAccessInviteExpiry(expiresInDays);
   const { data, error } = await supabase.rpc('create_device_access_invite', {
     p_employee_id: employeeId,
-    p_expires_in_days: expiresInDays
+    p_expires_in_days: expiry.days
   });
   if (error) throw new Error(mapInviteError(error.message));
 
   const token = String(data || '');
   if (!token) throw new Error('El servidor no devolvió un token de acceso.');
-  return { token, link: buildDeviceAccessLink(token) };
+  return { token, link: buildDeviceAccessLink(token), days: expiry.days };
 }
 
 async function readRedeemFailure(error: unknown): Promise<{ code: string; message: string }> {
+  // supabase-js solo lanza FunctionsFetchError cuando la petición no llegó al
+  // servidor (red caída o preflight CORS rechazado): no es un fallo del enlace
+  // y el intento no se gastó. Se nombra como causa de red, no como error raro.
+  if ((error as { name?: string } | null)?.name === "FunctionsFetchError") {
+    return {
+      code: "network_error",
+      message: "No se pudo contactar con el servicio de acceso. Revisa la conexión e inténtalo de nuevo."
+    };
+  }
   const response = (error as { context?: Response } | null)?.context;
   let serverMessage = '';
   if (response && typeof response.json === 'function') {

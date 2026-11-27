@@ -12,8 +12,11 @@ import {
   loadPinnedPublicKey,
   savePinnedPublicKey,
   loadStoredDeviceFingerprint,
+  loadVerificationStamp,
+  saveVerificationStamp,
   createIndexedDbLicenseStore,
-  type LicenseKeyValueStore
+  type LicenseKeyValueStore,
+  type LicenseVerificationStamp
 } from "./storage";
 import { importVerifyKey, verifyLeaseForDevice } from "./verify";
 import { applyLicenseClockGuard, setLicenseReadOnly } from "./guard";
@@ -84,6 +87,16 @@ export interface LicenseSnapshot {
    * causa real en lugar de un aviso genérico engañoso.
    */
   activationError?: string;
+  /**
+   * Última verificación que terminó bien, recordada en el equipo (informativo).
+   * Permite mostrar «verificada el <fecha hora> · <plan>» aunque un arranque
+   * posterior no pueda revalidar. NUNCA habilita escrituras por sí sola.
+   */
+  lastVerifiedAt?: string;
+  lastVerifiedPlan?: string;
+  lastVerifiedPaidThrough?: string;
+  lastVerifiedOfflineUntil?: string;
+  lastVerifiedExpiresAt?: string;
 }
 
 export type LicenseFetch = (input: string, init?: RequestInit) => Promise<Response>;
@@ -121,6 +134,12 @@ export interface LicenseRuntimeOptions {
   revokeBaseUrl?: string;
   /** Vigencia de la caché de revocación por leaseId. */
   revocationTtlMs?: number;
+  /**
+   * Clave pública embebida en el build que se pasa al resolver de la clave.
+   * `undefined` = la compilada (`lease-public-key.json`); `null` = desactivarla
+   * solo para pruebas que simulan un equipo sin ninguna clave conocida.
+   */
+  bundledPublicKey?: JsonWebKey | null;
 }
 
 export interface LicenseRuntime {
@@ -225,7 +244,8 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
   const publicKeyResolver = createLicensePublicKeyResolver({
     fetchImpl,
     loadPinned: () => loadPinnedPublicKey(store),
-    savePinned: (jwk) => savePinnedPublicKey(store, jwk)
+    savePinned: (jwk) => savePinnedPublicKey(store, jwk),
+    bundled: options.bundledPublicKey
   });
 
   const listeners = new Set<(snapshot: LicenseSnapshot) => void>();
@@ -239,6 +259,8 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
   let lastRenewAttemptAt = 0;
   let completed = false;
   let disposed = false;
+  /** Recordatorio informativo de la última verificación buena (solo pantalla). */
+  let lastStamp: LicenseVerificationStamp | null = null;
 
   // `rawReadOnly` es la decisión de licencia sin la marca de reloj: así limpiar
   // la manipulación tras resincronizar la hora no deja la app bloqueada.
@@ -256,6 +278,36 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
     return snapshot;
   }
 
+  /**
+   * Campos del sello para las publicaciones que NO traen lease verificado.
+   * Son informativos: el modo y el solo lectura se siguen calculando igual.
+   */
+  function stampFields(): Pick<
+    LicenseSnapshot,
+    | "lastVerifiedAt"
+    | "lastVerifiedPlan"
+    | "lastVerifiedPaidThrough"
+    | "lastVerifiedOfflineUntil"
+    | "lastVerifiedExpiresAt"
+  > {
+    if (!lastStamp) return {};
+    const verifiedAt = new Date(lastStamp.verifiedAtMs);
+    if (!Number.isFinite(verifiedAt.getTime())) return {};
+    return {
+      lastVerifiedAt: verifiedAt.toISOString(),
+      lastVerifiedPlan: lastStamp.planCode,
+      lastVerifiedPaidThrough: lastStamp.paidThrough,
+      lastVerifiedOfflineUntil: lastStamp.offlineUntil,
+      lastVerifiedExpiresAt: lastStamp.expiresAt
+    };
+  }
+
+  /** Guarda el sello tras una evaluación con firma válida (best-effort). */
+  function rememberVerification(company: string, stamp: LicenseVerificationStamp): void {
+    lastStamp = stamp;
+    void saveVerificationStamp(store, company, stamp);
+  }
+
   function publishUnmanaged(atMs: number, reason: string, keyConfigured: boolean): LicenseSnapshot {
     return publish({
       mode: "unmanaged",
@@ -267,7 +319,8 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
       leasePresent: false,
       offlineVerified: false,
       pendingActivation: false,
-      activationSettled: true
+      activationSettled: true,
+      ...stampFields()
     });
   }
 
@@ -485,9 +538,17 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
       snapshot = LOADING_SNAPSHOT;
     }
 
-    // 1) Clave de verificacion: build -> anclada de un arranque anterior -> red.
-    //    El anclaje permite evaluar el lease guardado sin conexion, que es el
-    //    caso normal al reabrir la app (offline-first).
+    // 1) Clave de verificacion: build -> anclada de un arranque anterior -> red
+    //    -> clave embebida en el bundle. El anclaje y la clave embebida permiten
+    //    evaluar el lease guardado sin conexion, que es el caso normal al
+    //    reabrir la app (offline-first).
+    if (companyId) {
+      try {
+        lastStamp = await loadVerificationStamp(store, companyId);
+      } catch {
+        lastStamp = null;
+      }
+    }
     const keyResult = await resolvePublicKey();
     if (keyResult.status === "error") {
       if (completed) return snapshot;
@@ -581,13 +642,14 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
 
     let verification = lease ? await verifyWith(lease, verifyKey) : null;
 
-    // Una clave anclada puede haber rotado: si la firma falla se comprueba la
-    // red una sola vez. Ni el lease ni la evaluacion ya validada se tocan aqui.
+    // Una clave local (anclada o embebida) puede haber rotado: si la firma
+    // falla se comprueba la red una sola vez. Ni el lease ni la evaluacion ya
+    // validada se tocan aqui.
     if (
       lease &&
       verification &&
       !verification.ok &&
-      keyResult.key.source === "pinned" &&
+      keyResult.key.source !== "remote" &&
       isOnline()
     ) {
       const refreshedKey = await publicKeyResolver.refresh();
@@ -665,6 +727,7 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
         reason: tampered && !evaluation.readOnly ? "clock-tampered" : evaluation.reason,
         clockWarning: evaluation.clockWarning || tampered,
         lastCheckedAt: atMs,
+        lastVerifiedAt: new Date(atMs).toISOString(),
         keyConfigured: true,
         leasePresent: true,
         offlineVerified: args.offlineVerified,
@@ -674,6 +737,16 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
       lastValid = next;
       lastValidRawReadOnly = evaluation.readOnly;
       currentLeaseId = args.lease.leaseId;
+      // Solo una firma válida llega aquí: es una verificación real y se recuerda
+      // con fecha y hora para que no se pierda en el próximo arranque.
+      rememberVerification(activeCompany, {
+        verifiedAtMs: atMs,
+        leaseId: args.lease.leaseId,
+        planCode: args.lease.planCode,
+        paidThrough: evaluation.paidThrough,
+        offlineUntil: evaluation.offlineUntil,
+        expiresAt: evaluation.expiresAt
+      });
       return publish(next, evaluation.readOnly);
     };
 
@@ -698,7 +771,8 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
             leasePresent: true,
             offlineVerified: false,
             pendingActivation: false,
-            activationSettled: true
+            activationSettled: true,
+            ...stampFields()
           },
           false
         );
@@ -718,7 +792,8 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
             leasePresent: false,
             offlineVerified: false,
             pendingActivation: true,
-            activationSettled: false
+            activationSettled: false,
+            ...stampFields()
           },
           false
         );
@@ -753,7 +828,8 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
             leasePresent: true,
             offlineVerified: false,
             pendingActivation: false,
-            activationSettled: true
+            activationSettled: true,
+            ...stampFields()
           },
           false
         );

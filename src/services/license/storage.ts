@@ -61,6 +61,13 @@ export const LICENSE_STORE_KEYS = {
    */
   publicKey: "public-key",
   watermark: "clock-watermark",
+  /**
+   * Recordatorio local de la última verificación que tuvo éxito (plan, fechas y
+   * hora). Es INFORMATIVO: no otorga escritura ni sustituye al lease. Sirve para
+   * que el aviso y Configuración puedan decir «verificada el …» aunque un
+   * arranque posterior no pueda volver a leer la nube.
+   */
+  verificationStamp: "verification-stamp",
   /** Telemetría local de manipulación del reloj (acotada, sin datos personales). */
   clockTelemetry: "clock-telemetry"
 };
@@ -1066,5 +1073,97 @@ export async function clearClockTamperEvents(store: LicenseKeyValueStore): Promi
     await withWatermarkLock(store, () => store.delete(LICENSE_STORE_KEYS.clockTelemetry));
   } catch {
     // Silencioso a propósito: la telemetría es best-effort.
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Sello de la última verificación (informativo)                       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Resumen de una verificación que sí terminó bien. Se guarda solo para poder
+ * mostrar «verificada el <fecha hora> · <plan>» y nunca se consulta para decidir
+ * si se puede escribir: esa decisión sale del lease firmado y de la guarda.
+ */
+export interface LicenseVerificationStamp {
+  verifiedAtMs: number;
+  planCode?: string;
+  paidThrough?: string;
+  offlineUntil?: string;
+  expiresAt?: string;
+  leaseId: string;
+}
+
+type StampRecord = Record<string, LicenseVerificationStamp>;
+
+function isStamp(value: unknown): value is LicenseVerificationStamp {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const stamp = value as Record<string, unknown>;
+  return (
+    isFiniteMs(stamp.verifiedAtMs) &&
+    typeof stamp.leaseId === "string" &&
+    stamp.leaseId.trim().length > 0
+  );
+}
+
+function readStampFields(value: Record<string, unknown>): LicenseVerificationStamp {
+  const stamp: LicenseVerificationStamp = {
+    verifiedAtMs: Number(value.verifiedAtMs),
+    leaseId: String(value.leaseId).trim()
+  };
+  for (const field of ["planCode", "paidThrough", "offlineUntil", "expiresAt"] as const) {
+    const raw = value[field];
+    if (field === "planCode") {
+      if (typeof raw === "string" && raw.trim()) stamp[field] = raw.trim();
+    } else if (isIsoDate(raw)) {
+      stamp[field] = raw as string;
+    }
+  }
+  return stamp;
+}
+
+async function readStamps(store: LicenseKeyValueStore): Promise<StampRecord> {
+  const raw = await store.get<unknown>(LICENSE_STORE_KEYS.verificationStamp);
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const record: StampRecord = {};
+  for (const [companyId, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (isStamp(value)) {
+      record[companyId] = readStampFields(value as unknown as Record<string, unknown>);
+    }
+  }
+  return record;
+}
+
+/**
+ * Guarda (o reemplaza) el sello de la empresa. Falla en silencio: es un
+ * recordatorio de pantalla, no una condición de arranque.
+ */
+export async function saveVerificationStamp(
+  store: LicenseKeyValueStore,
+  companyId: string,
+  stamp: LicenseVerificationStamp
+): Promise<void> {
+  if (!isCompanyId(companyId) || !isStamp(stamp)) return;
+  try {
+    await withWatermarkLock(store, async () => {
+      const record = await readStamps(store);
+      record[companyId] = readStampFields(stamp as unknown as Record<string, unknown>);
+      await store.set(LICENSE_STORE_KEYS.verificationStamp, record);
+    });
+  } catch {
+    // Sin sello la app funciona igual: solo falta el recordatorio en pantalla.
+  }
+}
+
+export async function loadVerificationStamp(
+  store: LicenseKeyValueStore,
+  companyId: string
+): Promise<LicenseVerificationStamp | null> {
+  if (!isCompanyId(companyId)) return null;
+  try {
+    const record = await readStamps(store);
+    return record[companyId] ?? null;
+  } catch {
+    return null;
   }
 }

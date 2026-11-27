@@ -11,17 +11,86 @@ import {
   Smartphone
 } from "lucide-react";
 import { Link, useSearchParams } from "react-router-dom";
+import { FunctionsFetchError } from "@supabase/supabase-js";
 import { getSupabase } from "../lib/supabase";
+import { retryDelayMs } from "../lib/http";
 import {
   buildDeviceAccessDeepLink,
   DeviceAccessError,
-  redeemDeviceAccessInvite
+  redeemDeviceAccessInvite,
+  type DeviceAccessCredentials
 } from "../services/deviceAccess";
 import { useDocumentScrollPage } from "../hooks/useDocumentScrollPage";
 
 type Phase = "validating" | "password" | "linking" | "signing-in" | "done" | "error";
 
 const MAX_ATTEMPTS = 5;
+
+/** Espera antes del único reintento automático por fallo de red. */
+const NETWORK_RETRY_DELAY_MS = 700;
+
+/** Mensaje accionable cuando la petición no llegó a salir del equipo. */
+export const ACCESS_UNREACHABLE_MESSAGE =
+  "No se pudo contactar con el servicio de acceso. Revisa la conexión e inténtalo de nuevo.";
+
+export const ACCESS_UNREACHABLE_HINT =
+  "El enlace sigue disponible: no se ha gastado ningún intento.";
+
+/**
+ * Códigos que puede añadir la capa de servicio al traducir un fallo de red.
+ * Se aceptan por si el servicio deja de exponer la clase del SDK.
+ */
+const UNREACHABLE_CODES = new Set([
+  "network_error",
+  "fetch_failed",
+  "functions_fetch_failed",
+  "edge_function_unreachable"
+]);
+
+/**
+ * `supabase.functions.invoke` falla de tres formas distintas: FunctionsFetchError
+ * (la petición nunca llegó: sin red, DNS, CORS/preflight), FunctionsHttpError
+ * (llegó y respondió non-2xx, con el código de negocio) y FunctionsRelayError.
+ * Antes la pantalla mostraba el `message` crudo del SDK, así que un fallo de red
+ * se veía como «Failed to send a request to the Edge Function».
+ */
+export function accessFailureKind(error: unknown): "network" | "server" {
+  if (error instanceof FunctionsFetchError) return "network";
+  const known = error as { name?: string; code?: string; message?: string } | null;
+  if (String(known?.name || "") === "FunctionsFetchError") return "network";
+  if (UNREACHABLE_CODES.has(String(known?.code || "").toLowerCase())) return "network";
+  const message = String(known?.message || "");
+  return /failed to send a request to the edge function|failed to fetch|networkerror|load failed|err_network|err_internet_disconnected/i.test(
+    message
+  )
+    ? "network"
+    : "server";
+}
+
+/**
+ * Un único reintento cuando el canje falla por red. Los errores del servidor
+ * (contraseña incorrecta, enlace usado, etc.) NO se reintentan: el enlace es de
+ * un solo uso y repetir la petición solo agotaría el limitador por IP.
+ */
+export async function redeemWithNetworkRetry(
+  token: string,
+  password: string,
+  deviceName: string,
+  redeem: (
+    token: string,
+    password: string,
+    deviceName: string
+  ) => Promise<DeviceAccessCredentials> = redeemDeviceAccessInvite,
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+): Promise<DeviceAccessCredentials> {
+  try {
+    return await redeem(token, password, deviceName);
+  } catch (error) {
+    if (accessFailureKind(error) !== "network") throw error;
+    await wait(retryDelayMs(1, NETWORK_RETRY_DELAY_MS, 1_200));
+    return redeem(token, password, deviceName);
+  }
+}
 
 const STEPS: Array<{ id: Exclude<Phase, "error" | "password">; label: string }> = [
   { id: "validating", label: "Validando el enlace" },
@@ -56,6 +125,7 @@ export default function DeviceAccess() {
   const [showPassword, setShowPassword] = useState(false);
   const [fullKeyboard, setFullKeyboard] = useState(false);
   const [attempts, setAttempts] = useState(0);
+  const [networkFailure, setNetworkFailure] = useState(false);
   const [busy, setBusy] = useState(false);
   const passwordRef = useRef<HTMLInputElement | null>(null);
   const booted = useRef(false);
@@ -83,23 +153,16 @@ export default function DeviceAccess() {
     return () => window.clearTimeout(timer);
   }, [phase, passwordError]);
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const runActivation = async (value: string) => {
     if (busy) return;
-
-    const value = password.trim();
-    if (!value) {
-      setPasswordError("Escribe la contraseña POS configurada por el administrador.");
-      passwordRef.current?.focus();
-      return;
-    }
 
     setBusy(true);
     setPasswordError("");
+    setNetworkFailure(false);
     setPhase("linking");
 
     try {
-      const credentials = await redeemDeviceAccessInvite(token, value, describeDevice());
+      const credentials = await redeemWithNetworkRetry(token, value, describeDevice());
 
       setPhase("signing-in");
       const supabase = getSupabase();
@@ -126,7 +189,13 @@ export default function DeviceAccess() {
       const code = e instanceof DeviceAccessError ? e.code : "";
       const message = String((e as { message?: string } | null)?.message || "");
 
-      if (code === "pos_password_invalid" || code === "pos_password_required") {
+      if (accessFailureKind(e) === "network") {
+        // No fue un rechazo del servidor: el enlace no se consumió y la
+        // contraseña se conserva para reintentar sin volver a escribirla.
+        setNetworkFailure(true);
+        setError(ACCESS_UNREACHABLE_MESSAGE);
+        setPhase("error");
+      } else if (code === "pos_password_invalid" || code === "pos_password_required") {
         const next = attempts + 1;
         setAttempts(next);
         setPassword("");
@@ -153,6 +222,34 @@ export default function DeviceAccess() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (busy) return;
+
+    const value = password.trim();
+    if (!value) {
+      setPasswordError("Escribe la contraseña POS configurada por el administrador.");
+      passwordRef.current?.focus();
+      return;
+    }
+
+    await runActivation(value);
+  };
+
+  const retryAfterFailure = () => {
+    const kept = password.trim();
+    if (networkFailure && kept) {
+      void runActivation(kept);
+      return;
+    }
+    setError("");
+    setPassword("");
+    setPasswordError("");
+    setAttempts(0);
+    setNetworkFailure(false);
+    setPhase("password");
   };
 
   const stepIndex = PHASE_INDEX[phase];
@@ -189,6 +286,9 @@ export default function DeviceAccess() {
                 <div>
                   <div className="text-sm font-black text-rose-700">No se pudo activar el equipo</div>
                   <p className="text-[11px] text-rose-700/90 mt-1 leading-5">{error}</p>
+                  {networkFailure ? (
+                    <p className="text-[10px] text-rose-700/70 mt-1 leading-4">{ACCESS_UNREACHABLE_HINT}</p>
+                  ) : null}
                 </div>
               </div>
 
@@ -196,16 +296,12 @@ export default function DeviceAccess() {
                 <div className="mt-4 flex flex-col gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      setError("");
-                      setPassword("");
-                      setPasswordError("");
-                      setAttempts(0);
-                      setPhase("password");
-                    }}
-                    className="h-11 rounded-xl bg-[#6535C5] hover:bg-[#4F249D] text-white text-xs font-black"
+                    onClick={retryAfterFailure}
+                    disabled={busy}
+                    className="h-11 rounded-xl bg-[#6535C5] hover:bg-[#4F249D] disabled:opacity-60 text-white text-xs font-black flex items-center justify-center gap-2"
                   >
-                    Reintentar con este enlace
+                    {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                    {networkFailure ? "Reintentar ahora" : "Reintentar con este enlace"}
                   </button>
                 </div>
               ) : null}

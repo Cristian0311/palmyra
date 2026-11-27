@@ -5,7 +5,7 @@ import { loadSaaSContext } from "../services/saas";
 import { canUsePlanFeature, getPlanDisplayName } from "../services/planAccess";
 import EmployeeAvatar from "../components/team/EmployeeAvatar";
 import TeamConfirmDialog from "../components/team/TeamConfirmDialog";
-import { buildDeviceAccessLink, createDeviceAccessInvite } from "../services/deviceAccess";
+import { ACCESS_INVITE_DAY_OPTIONS, ACCESS_INVITE_DEFAULT_DAYS, buildDeviceAccessLink, createDeviceAccessInvite, describeAccessInviteExpiry, resolveAccessInviteExpiry } from "../services/deviceAccess";
 import {
   createEmployeePosSecure,
   loadTeamSnapshot,
@@ -23,6 +23,14 @@ import {
   type TeamSnapshot
 } from "../services/team";
 import { cn, generateId } from "../lib/utils";
+import { describePosPasswordField } from "../lib/teamEmployeeForm";
+import {
+  TEAM_ROSTER_CHIP_LIMIT,
+  formatTeamWarehouseNames,
+  pickAssignableWarehouseIds,
+  planTeamWarehouses,
+  resolveTeamWarehouseSelection,
+} from "../lib/teamWarehouses";
 import { enqueueOfflineItem } from "../services/offlineQueue";
 import "./team.css";
 import OperationsSurface from '../components/OperationsSurface';
@@ -126,8 +134,10 @@ export default function Team() {
   const [formStep, setFormStep] = useState<1 | 2 | 3>(1);
   const [editing, setEditing] = useState<TeamEmployee | null>(null);
   const [menuId, setMenuId] = useState<string | null>(null);
+  // Burbuja de almacenes de la fila: un trabajador abierto a la vez.
+  const [warehousesOpenId, setWarehousesOpenId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<TeamEmployee | null>(null);
-  const [accessInvite, setAccessInvite] = useState<{ employeeId: string; employeeName: string; link: string } | null>(null);
+  const [accessInvite, setAccessInvite] = useState<{ employeeId: string; employeeName: string; link: string; days: number } | null>(null);
   const [accessInviteBusy, setAccessInviteBusy] = useState(false);
   const [accessInviteError, setAccessInviteError] = useState("");
   const [showRoleForm, setShowRoleForm] = useState(false);
@@ -149,7 +159,14 @@ export default function Team() {
   const [formAccessBusy, setFormAccessBusy] = useState(false);
   const [formAccessError, setFormAccessError] = useState('');
   // Caducidad del enlace de acceso: días (1-90) o 0 = sin caducidad.
-  const [accessLinkDays, setAccessLinkDays] = useState(7);
+  const [accessLinkDays, setAccessLinkDays] = useState<number>(ACCESS_INVITE_DEFAULT_DAYS);
+  // La caducidad elegida se recuerda por trabajador: volver a abrir su editor
+  // no debe regresar silenciosamente a los 7 días.
+  const [accessLinkDaysByEmployee, setAccessLinkDaysByEmployee] = useState<Record<string, number>>({});
+  // Enlaces generados en esta sesión. El token es de un solo uso y sólo se
+  // muestra una vez: si se pierde al pulsar «Guardar cambios» el dueño no puede
+  // entregarlo ni comprobar con qué caducidad lo generó.
+  const [generatedAccessInvites, setGeneratedAccessInvites] = useState<Record<string, { link: string; days: number; createdAt: number }>>({});
   // Feedback inmediato del botón «Copiar»: el aviso global queda arriba y en
   // móvil puede pasar desapercibido.
   const [copiedLink, setCopiedLink] = useState(false);
@@ -188,9 +205,22 @@ export default function Team() {
     posPassword: "",
   });
 
-  // La contraseña POS es obligatoria al dar de alta y al convertir un acceso
-  // heredado; en un trabajador que ya opera con POS solo es opcional (cambiarla).
-  const posPasswordRequired = !editing || Boolean(editing.user_id || editing.pending_invitation);
+  // La contraseña POS es obligatoria al dar de alta; en un trabajador existente
+  // el servidor conserva la actual si el campo va vacío, así que el campo se
+  // presenta como cambio opcional con su estado real, nunca como un vacío
+  // obligatorio. La excepción es la invitación pendiente: ese acceso aún no
+  // tiene contraseña POS (se define al convertirlo). `describePosPasswordField`
+  // centraliza esos textos.
+  const typingPosPassword = form.posPassword.trim().length > 0;
+  const posPasswordCopy = useMemo(
+    () => describePosPasswordField({
+      editing: Boolean(editing),
+      typing: typingPosPassword,
+      hasStoredPassword: editing?.pending_invitation ? false : undefined
+    }),
+    [editing, typingPosPassword]
+  );
+  const posPasswordRequired = posPasswordCopy.required;
 
   const refresh = async () => {
     if (!canManageEmployees) { setLoading(false); return; }
@@ -232,8 +262,10 @@ export default function Team() {
         const employeeRole = (nextSnapshot.roles || []).find(role => role.key === "employee") || (nextSnapshot.roles || []).find(role => role.key !== "admin");
         if (employeeRole) setForm(prev => ({ ...prev, roleId: employeeRole.id }));
       }
-      if (!form.warehouseIds.length && nextSnapshot.warehouses[0]) {
-        setForm(prev => ({ ...prev, warehouseIds: [nextSnapshot.warehouses[0].id] }));
+      if (!form.warehouseIds.length) {
+        // Sólo un almacén activo puede ser el principal de un alta nueva.
+        const firstActiveWarehouse = nextSnapshot.warehouses.find(warehouse => warehouse.active);
+        if (firstActiveWarehouse) setForm(prev => ({ ...prev, warehouseIds: [firstActiveWarehouse.id] }));
       }
     } catch (e: any) {
       const fallback = readTeamCache(snapshot?.companyId || context?.companyId);
@@ -310,6 +342,31 @@ export default function Team() {
     [snapshot?.roles, canManageRoles]
   );
 
+  // Almacenes del editor: todos los registrados en la empresa son asignables.
+  // `form.warehouseIds` puede conservar ids de almacenes borrados; se separan
+  // sólo para explicarlos y retirarlos al guardar.
+  const warehouseSelection = useMemo(
+    () => resolveTeamWarehouseSelection(snapshot?.warehouses, form.warehouseIds),
+    [snapshot?.warehouses, form.warehouseIds]
+  );
+  // Ids que se guardan, en el orden elegido (el primero es el principal).
+  const assignableWarehouseIds = useMemo(
+    () => pickAssignableWarehouseIds(warehouseSelection, form.warehouseIds),
+    [warehouseSelection, form.warehouseIds]
+  );
+  const retiredWarehouses = warehouseSelection.retired;
+  const companyHasWarehouses = (snapshot?.warehouses || []).length > 0;
+
+  // Caducidad del enlace de acceso: un único resolvedor alimenta el selector, la
+  // nota del modal y el diálogo del menú de la fila.
+  const selectedAccessExpiry = resolveAccessInviteExpiry(accessLinkDays);
+  const inviteExpiryFor = (employeeId?: string | null) =>
+    resolveAccessInviteExpiry((employeeId ? accessLinkDaysByEmployee[employeeId] : undefined) ?? accessLinkDays);
+  const generatedFormInvite = editing ? generatedAccessInvites[editing.id] : undefined;
+  const generatedFormExpiry = generatedFormInvite
+    ? resolveAccessInviteExpiry(generatedFormInvite.days)
+    : null;
+
   const permissionGroups = useMemo(() => {
     const labels: Record<string, string> = {
       pos: 'Punto de venta', cash: 'Caja y turnos', sales: 'Ventas', inventory: 'Inventario',
@@ -341,12 +398,13 @@ export default function Team() {
     setFormAccessError('');
     setFormAccessBusy(false);
     setCopiedLink(false);
+    const firstActiveWarehouse = (snapshot?.warehouses || []).find(warehouse => warehouse.active);
     setForm({
       fullName: "",
       employeeCode: "",
       baseSalary: "0",
       roleId: availableRoles.find(role => role.key === "employee")?.id || availableRoles[0]?.id || "",
-      warehouseIds: snapshot?.warehouses[0] ? [snapshot.warehouses[0].id] : [],
+      warehouseIds: firstActiveWarehouse ? [firstActiveWarehouse.id] : [],
       posPassword: "",
     });
   };
@@ -479,7 +537,11 @@ export default function Team() {
     setEditing(employee);
     setShowPosPassword(false);
     setFormTab('datos');
-    setFormAccessLink('');
+    // Si en esta sesión ya se generó un enlace para este trabajador, se vuelve a
+    // mostrar con su caducidad real en lugar de un campo vacío y 7 días por defecto.
+    const generated = generatedAccessInvites[employee.id];
+    setFormAccessLink(generated?.link || '');
+    setAccessLinkDays(generated?.days ?? accessLinkDaysByEmployee[employee.id] ?? accessLinkDays);
     setFormAccessError('');
     setFormAccessBusy(false);
     setCopiedLink(false);
@@ -496,6 +558,7 @@ export default function Team() {
     setFormStep(1);
     setShowForm(true);
     setMenuId(null);
+    setWarehousesOpenId(null);
   };
 
   const toggleWarehouse = (warehouseId: string) => {
@@ -518,7 +581,11 @@ export default function Team() {
     if (form.fullName.trim().length < 2) return setError("Escribe el nombre completo.");
     if (!form.employeeCode.trim()) return setError("Escribe un código de empleado.");
     if (!form.roleId) return setError("Selecciona un rol.");
-    if (!form.warehouseIds.length) return setError("Selecciona al menos un almacén.");
+    if (!assignableWarehouseIds.length) {
+      return setError(retiredWarehouses.length
+        ? "Los almacenes asignados ya no existen en la empresa. Selecciona al menos uno de los disponibles."
+        : "Selecciona al menos un almacén.");
+    }
     if (posPasswordRequired && form.posPassword.trim().length < 6) {
       // Si falta la contraseña estando en «Datos», llevamos al trabajador a la
       // pestaña «Acceso» para que vea el campo que debe completar.
@@ -528,6 +595,9 @@ export default function Team() {
     if (!posPasswordRequired && form.posPassword.trim().length > 0 && form.posPassword.trim().length < 6) {
       return setError("La nueva contraseña del POS debe tener al menos 6 caracteres.");
     }
+    // Los ids de almacenes borrados no se envían: la RPC responde `invalid_warehouse`.
+    const warehouseIdsToSave = assignableWarehouseIds;
+    const defaultWarehouseId = warehouseIdsToSave[0] || null;
 
     const offline = typeof navigator !== "undefined" && !navigator.onLine;
     if (!editing && offline) {
@@ -539,15 +609,15 @@ export default function Team() {
           id: localId, user_id: null, employee_code: form.employeeCode.trim(), full_name: form.fullName.trim(),
           login_email: null, base_salary: Number(form.baseSalary) || 0,
           compensation_type: compensationSettings.mode === "sales_percent" ? "sales_percentage" : "fixed_product", sales_percentage: compensationSettings.mode === "sales_percent" ? Number(compensationSettings.percentRate) || 0 : 0, active: true, role_id: form.roleId,
-          role_name: role?.name || "Empleado", role_key: role?.key || "employee", warehouse_ids: [...form.warehouseIds],
-          default_warehouse_id: form.warehouseIds[0] || null,
+          role_name: role?.name || "Empleado", role_key: role?.key || "employee", warehouse_ids: [...warehouseIdsToSave],
+          default_warehouse_id: defaultWarehouseId,
           pending_invitation: null
         };
         // Primero la cola durable: si IndexedDB rechaza la operación, no debe
         // quedar un empleado fantasma visible ni un rechazo sin mensaje.
         await enqueueOfflineItem("employee_create", {
           localEmployeeId: localId, companyId: snapshot.companyId, employeeCode: form.employeeCode.trim(), fullName: form.fullName.trim(),
-          baseSalary: Number(form.baseSalary) || 0, roleId: form.roleId, warehouseIds: [...form.warehouseIds],
+          baseSalary: Number(form.baseSalary) || 0, roleId: form.roleId, warehouseIds: [...warehouseIdsToSave],
           email: "", sendInvite: false, posPassword: form.posPassword.trim()
         }, "employee-create:" + localId);
         const nextSnapshot: TeamSnapshot = { ...snapshot, employees: [localEmployee, ...snapshot.employees] };
@@ -577,8 +647,8 @@ export default function Team() {
           role_id: form.roleId,
           role_name: role?.name || editing.role_name || "Empleado",
           role_key: role?.key || editing.role_key || "employee",
-          warehouse_ids: [...form.warehouseIds],
-          default_warehouse_id: form.warehouseIds[0] || null
+          warehouse_ids: [...warehouseIdsToSave],
+          default_warehouse_id: defaultWarehouseId
         };
         await enqueueOfflineItem("employee_update", {
           companyId: snapshot.companyId,
@@ -588,7 +658,7 @@ export default function Team() {
           fullName: form.fullName.trim(),
           baseSalary: Number(form.baseSalary) || 0,
           roleId: form.roleId,
-          warehouseIds: [...form.warehouseIds],
+          warehouseIds: [...warehouseIdsToSave],
           sendInvite: false,
           email: "",
           posPassword: form.posPassword.trim() || undefined
@@ -619,7 +689,7 @@ export default function Team() {
           fullName: form.fullName,
           baseSalary: Number(form.baseSalary) || 0,
           roleId: form.roleId,
-          warehouseIds: form.warehouseIds,
+          warehouseIds: warehouseIdsToSave,
           posPassword: form.posPassword.trim() || undefined
         });
         setMessage("Empleado actualizado.");
@@ -630,7 +700,7 @@ export default function Team() {
           fullName: form.fullName,
           baseSalary: Number(form.baseSalary) || 0,
           roleId: form.roleId,
-          warehouseIds: form.warehouseIds,
+          warehouseIds: warehouseIdsToSave,
           posPassword: form.posPassword.trim()
         });
         setMessage("Empleado creado con contraseña para el POS. Genera su enlace de acceso cuando lo necesite.");
@@ -747,17 +817,29 @@ export default function Team() {
 
   // Enlace de acceso de un solo uso: el administrador lo genera y lo entrega
   // manualmente (WhatsApp, en mano). No se envía correo ni se crea cuenta web.
+  // Usa la misma caducidad elegida para el trabajador: antes se llamaba sin
+  // argumentos y el menú de la fila generaba siempre 7 días aunque el editor
+  // estuviera configurado «Sin caducidad».
   const openAccessInvite = async (employee: TeamEmployee) => {
     setMenuId(null);
     setAccessInviteError("");
     setCopiedLink(false);
-    setAccessInvite({ employeeId: employee.id, employeeName: employee.full_name, link: "" });
+    const expiry = inviteExpiryFor(employee.id);
+    setAccessInvite({ employeeId: employee.id, employeeName: employee.full_name, link: "", days: expiry.days });
     setAccessInviteBusy(true);
     try {
-      const invite = await createDeviceAccessInvite(employee.id);
+      const invite = await createDeviceAccessInvite(employee.id, expiry.days);
       const link = invite.link || buildDeviceAccessLink(invite.token);
       if (!link) throw new Error("El servidor no devolvió un enlace válido.");
-      setAccessInvite({ employeeId: employee.id, employeeName: employee.full_name, link });
+      setAccessInvite({ employeeId: employee.id, employeeName: employee.full_name, link, days: invite.days });
+      // El editor del mismo trabajador muestra este enlace y su caducidad: el
+      // servidor invalida los enlaces anteriores, así que ambos caminos deben
+      // leer el último generado y no una copia con 7 días.
+      setGeneratedAccessInvites(prev => ({
+        ...prev,
+        [employee.id]: { link, days: invite.days, createdAt: Date.now() }
+      }));
+      setAccessLinkDaysByEmployee(prev => ({ ...prev, [employee.id]: invite.days }));
     } catch (e: any) {
       const detail = String(e?.message || "");
       const offlineOrNetwork = !navigator.onLine || /fetch|network|conexi/i.test(detail);
@@ -787,12 +869,22 @@ export default function Team() {
     setFormAccessError("");
     setCopiedLink(false);
     setFormAccessBusy(true);
+    // Caducidad memorizada para este trabajador, no la de otro ni el 7 fijo.
+    const expiry = inviteExpiryFor(employee.id);
     try {
-      const invite = await createDeviceAccessInvite(employee.id, accessLinkDays);
+      const invite = await createDeviceAccessInvite(employee.id, expiry.days);
       const link = invite.link || buildDeviceAccessLink(invite.token);
       if (!link) throw new Error("El servidor no devolvió un enlace válido.");
       setFormAccessLink(link);
-      addNotification("Enlace de acceso generado. Cópialo y entrégalo al trabajador.", "success");
+      // El enlace se conserva por trabajador: el token es de un solo uso y debe
+      // seguir visible con su caducidad real después de «Guardar cambios».
+      setGeneratedAccessInvites(prev => ({
+        ...prev,
+        [employee.id]: { link, days: invite.days, createdAt: Date.now() }
+      }));
+      // Lo generado manda: el menú de la fila reutiliza esta misma caducidad.
+      setAccessLinkDaysByEmployee(prev => ({ ...prev, [employee.id]: invite.days }));
+      addNotification(`Enlace de acceso generado (${resolveAccessInviteExpiry(invite.days).label}). Cópialo y entrégalo al trabajador.`, "success");
     } catch (e: any) {
       const detail = String(e?.message || "");
       const offlineOrNetwork = (typeof navigator !== "undefined" && !navigator.onLine) || /fetch|network|conexi/i.test(detail);
@@ -817,7 +909,7 @@ export default function Team() {
   }
 
   return (
-    <OperationsSurface className="space-y-5 w-full min-w-0 max-w-[1600px] mx-auto pb-10" onClick={() => setMenuId(null)}>
+    <OperationsSurface className="space-y-5 w-full min-w-0 max-w-[1600px] mx-auto pb-10" onClick={() => { setMenuId(null); setWarehousesOpenId(null); }}>
       <header className="relative overflow-hidden rounded-3xl border border-base bg-secondary p-5 md:p-6">
         <div className="pointer-events-none absolute -right-20 -top-24 h-64 w-64 rounded-full bg-violet-500/10 blur-3xl" aria-hidden="true" />
         <div className="relative flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
@@ -1124,9 +1216,16 @@ export default function Team() {
         ) : filteredEmployees.length ? (
           <div className="divide-y divide-slate-200/70 dark:divide-slate-700/60">
             {filteredEmployees.map(employee => {
-              const warehouseNames = employee.warehouse_ids
-                .map(id => ({ id, name: snapshot?.warehouses.find(w => w.id === id)?.name }))
-                .filter((item): item is { id: string; name: string } => Boolean(item.name));
+              // Los almacenes asignados se resuelven contra la lista de la
+              // empresa y se conservan aunque ya no existan: ocultarlos hacía
+              // creer que el trabajador tenía menos acceso del real.
+              const warehouseNames = employee.warehouse_ids.map(id => {
+                const match = snapshot?.warehouses.find(w => w.id === id);
+                return { id, name: match?.name };
+              });
+              // Con más de tres almacenes la fila se saturaba: se resumen en
+              // chips compactos y la burbuja muestra la lista completa.
+              const rosterWarehouses = planTeamWarehouses(warehouseNames, { inlineLimit: TEAM_ROSTER_CHIP_LIMIT });
               const inShift = employeeInShift(employee);
               const inviteDaysLeft = employee.pending_invitation
                 ? Math.ceil((Date.parse(employee.pending_invitation.expires_at) - Date.now()) / 86400000)
@@ -1147,13 +1246,42 @@ export default function Team() {
                     <div className="team-employee-sub">
                       <span className="team-employee-code">{employee.employee_code}</span>
                       {inShift && <em className="not-italic inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 font-black uppercase tracking-wider text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"><span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />En turno</em>}
-                      <span className="team-employee-warehouses" aria-label={warehouseNames.length ? `Almacenes: ${warehouseNames.map(item => item.name).join(', ')}` : 'Sin almacén asignado'}>
-                        {warehouseNames.length ? warehouseNames.map(item => (
-                          <span key={item.id} className="team-employee-warehouse">
-                            <Warehouse className="h-3.5 w-3.5" aria-hidden="true" />
-                            {item.name}
-                          </span>
-                        )) : (
+                      <span className="team-employee-warehouses" aria-label={warehouseNames.length ? `Almacenes: ${formatTeamWarehouseNames(warehouseNames.map(item => item.name))}` : 'Sin almacén asignado'}>
+                        {warehouseNames.length ? (
+                          <>
+                            {rosterWarehouses.visible.map(item => (
+                              <span key={item.key} className="team-employee-warehouse" title={item.name}>
+                                <Warehouse className="h-3.5 w-3.5" aria-hidden="true" />
+                                <span className="min-w-0 truncate">{item.name}</span>
+                              </span>
+                            ))}
+                            {rosterWarehouses.showToggle && (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setWarehousesOpenId(warehousesOpenId === employee.id ? null : employee.id); }}
+                                aria-expanded={warehousesOpenId === employee.id}
+                                aria-label={`Ver los ${warehouseNames.length} almacenes de ${employee.full_name}`}
+                                title={`${rosterWarehouses.summaryLabel} · ${formatTeamWarehouseNames(warehouseNames.map(item => item.name))}`}
+                                className="team-employee-warehouse team-employee-warehouse-more">
+                                <Warehouse className="h-3 w-3" aria-hidden="true" />+{rosterWarehouses.hiddenCount}
+                              </button>
+                            )}
+                            {warehousesOpenId === employee.id && rosterWarehouses.showToggle && (
+                              <span onClick={e => e.stopPropagation()} className="palmyra-popover team-employee-warehouse-bubble" role="group" aria-label={`Todos los almacenes de ${employee.full_name}`}>
+                                <span className="team-employee-warehouse-bubble-head">
+                                  <span>Almacenes permitidos</span>
+                                  <span className="team-emp-count">{warehouseNames.length}</span>
+                                </span>
+                                {rosterWarehouses.visible.concat(rosterWarehouses.hidden).map(item => (
+                                  <span key={item.key} className="team-employee-warehouse is-block" title={item.name}>
+                                    <Warehouse className="h-3.5 w-3.5" aria-hidden="true" />
+                                    <span className="min-w-0 break-words">{item.name}</span>
+                                  </span>
+                                ))}
+                              </span>
+                            )}
+                          </>
+                        ) : (
                           <span className="team-employee-warehouse is-empty">
                             <Warehouse className="h-3.5 w-3.5" aria-hidden="true" />
                             Sin almacén
@@ -1319,15 +1447,28 @@ export default function Team() {
                 <div className="mt-3">
                   <div className="mb-2 flex items-end justify-between gap-3 min-w-0">
                     <div className="min-w-0"><span className="team-emp-label block">Almacenes permitidos <b>*</b></span><span className="team-emp-help !mt-0.5">Uno o varios almacenes a los que podrá acceder.</span></div>
-                    <span className="team-emp-count">{form.warehouseIds.length} seleccionado{form.warehouseIds.length === 1 ? "" : "s"}</span>
+                    <span className="team-emp-count">{assignableWarehouseIds.length} seleccionado{assignableWarehouseIds.length === 1 ? "" : "s"}</span>
                   </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {(snapshot?.warehouses || []).filter(warehouse => warehouse.active).map(warehouse => {
+                  <div className="team-emp-warehouse-grid">
+                    {warehouseSelection.selectable.map(warehouse => {
                       const selected = form.warehouseIds.includes(warehouse.id);
-                      return <label key={warehouse.id} className={cn("team-emp-warehouse", selected && "is-selected")}><input type="checkbox" checked={selected} onChange={() => toggleWarehouse(warehouse.id)} disabled={busy} className="sr-only" /><Warehouse className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1 truncate text-[11px] sm:text-xs font-bold text-primary">{warehouse.name}</span>{snapshot?.warehouses[0]?.id === warehouse.id && <span className="team-emp-warehouse-main">Principal</span>}<span className={cn("team-emp-check", selected && "is-selected")}>{selected && <Check className="h-3.5 w-3.5" />}</span></label>;
+                      const isMain = warehouse.id === assignableWarehouseIds[0];
+                      return <label key={warehouse.key} className={cn("team-emp-warehouse", selected && "is-selected")}><input type="checkbox" checked={selected} onChange={() => toggleWarehouse(warehouse.id)} disabled={busy} className="sr-only" /><Warehouse className="h-4 w-4 shrink-0" /><span className="min-w-0 flex-1 truncate text-[11px] sm:text-xs font-bold text-primary" title={warehouse.name}>{warehouse.name}</span>{isMain && <span className="team-emp-warehouse-main">Principal</span>}<span className={cn("team-emp-check", selected && "is-selected")}>{selected && <Check className="h-3.5 w-3.5" />}</span></label>;
                     })}
                   </div>
-                  {!(snapshot?.warehouses || []).some(warehouse => warehouse.active) && <div className="team-emp-note"><Warehouse className="h-4 w-4 shrink-0" />No hay almacenes activos disponibles. Crea uno en Configuración antes de asignar acceso.</div>}
+                  {/* Asignados que ya no existen en la empresa: el selector no
+                      puede marcarlos y se retiran al guardar. */}
+                  {retiredWarehouses.length > 0 && (
+                    <div className="team-emp-note team-emp-note-warn" role="note">
+                      <Warehouse className="h-4 w-4 shrink-0" />
+                      <span className="min-w-0">
+                        Asignados que ya no existen en la empresa:{' '}
+                        {retiredWarehouses.map(option => option.name).join(', ')}
+                        . Se retirarán del trabajador al guardar; asigna otro almacén para que conserve acceso al POS.
+                      </span>
+                    </div>
+                  )}
+                  {!companyHasWarehouses && <div className="team-emp-note"><Warehouse className="h-4 w-4 shrink-0" />La empresa no tiene almacenes registrados. Crea uno en Configuración antes de asignar acceso.</div>}
                 </div>
               </section>
               <section id="team-panel-acceso" className={cn("team-emp-section", !accessSectionVisible && "hidden")} data-section="employee-access" aria-hidden={!accessSectionVisible}>
@@ -1339,8 +1480,14 @@ export default function Team() {
                   </div>
                 </div>
                 <div className="team-emp-access">
-                  <label className="team-emp-field"><span className="team-emp-label">{editing ? "Nueva contraseña del POS" : "Contraseña del POS"} <b>{posPasswordRequired ? "*" : ""}</b></span><span className="team-emp-control"><span className="team-emp-control-icon"><LockKeyhole className="h-4 w-4" /></span><input type={showPosPassword ? "text" : "password"} value={form.posPassword} onChange={e => setForm({...form,posPassword:e.target.value})} disabled={busy} className="team-emp-input" placeholder={posPasswordRequired ? "Mínimo 6 caracteres" : "Vacío = conservar la contraseña actual"} autoComplete="new-password" /><button type="button" onClick={() => setShowPosPassword(value => !value)} disabled={busy} aria-label={showPosPassword ? "Ocultar contraseña" : "Mostrar contraseña"} className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted hover:text-primary" title={showPosPassword ? "Ocultar contraseña" : "Mostrar contraseña"}>{showPosPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></span></label>
-                  <p className="team-emp-note"><Info className="h-3.5 w-3.5 shrink-0" />{posPasswordRequired ? "Define una contraseña POS de al menos 6 caracteres; es obligatoria para operar. Puedes verla con el icono del ojo mientras escribes." : "La contraseña actual no se puede recuperar porque se guarda como hash seguro. Déjalo vacío para conservarla o escribe una nueva."}</p>
+                  <label className="team-emp-field"><span className="team-emp-label">{posPasswordCopy.label} <b>{posPasswordCopy.required ? "*" : ""}</b></span><span className="team-emp-control"><span className="team-emp-control-icon"><LockKeyhole className="h-4 w-4" /></span><input type={showPosPassword ? "text" : "password"} value={form.posPassword} onChange={e => setForm({...form,posPassword:e.target.value})} disabled={busy} className="team-emp-input" placeholder={posPasswordCopy.placeholder} autoComplete="new-password" aria-describedby="team-emp-pos-password-state" /><button type="button" onClick={() => setShowPosPassword(value => !value)} disabled={busy} aria-label={showPosPassword ? "Ocultar contraseña" : "Mostrar contraseña"} className="mr-1 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-muted hover:text-primary" title={showPosPassword ? "Ocultar contraseña" : "Mostrar contraseña"}>{showPosPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}</button></span></label>
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5 min-w-0">
+                    <span id="team-emp-pos-password-state" className={cn("team-emp-pos-state", posPasswordCopy.status !== 'missing' && "is-defined", posPasswordCopy.status === 'typing' && "is-typing")}>
+                      <LockKeyhole className="h-3 w-3 shrink-0" aria-hidden="true" />
+                      {posPasswordCopy.statusLabel}
+                    </span>
+                  </div>
+                  <p className="team-emp-note"><Info className="h-3.5 w-3.5 shrink-0" />{posPasswordCopy.helper}</p>
                 </div>
                 {editing && (
                   <div className="team-emp-access mt-2.5">
@@ -1367,16 +1514,20 @@ export default function Team() {
                           <span className="team-emp-control-icon"><Clock className="h-4 w-4" /></span>
                           <select
                             value={accessLinkDays}
-                            onChange={e => setAccessLinkDays(Number(e.target.value))}
+                            onChange={e => {
+                              const nextDays = resolveAccessInviteExpiry(e.target.value).days;
+                              setAccessLinkDays(nextDays);
+                              // La elección queda memorizada para este trabajador:
+                              // el menú de la fila y una nueva apertura la respetan.
+                              if (editing) setAccessLinkDaysByEmployee(prev => ({ ...prev, [editing.id]: nextDays }));
+                            }}
                             disabled={formAccessBusy || busy}
                             className="team-emp-input team-emp-select"
                             aria-label="Caducidad del enlace de acceso"
                           >
-                            <option value={1}>Válido 1 día</option>
-                            <option value={7}>Válido 7 días</option>
-                            <option value={30}>Válido 30 días</option>
-                            <option value={90}>Válido 90 días</option>
-                            <option value={0}>Sin caducidad</option>
+                            {ACCESS_INVITE_DAY_OPTIONS.map(days => (
+                              <option key={days} value={days}>{resolveAccessInviteExpiry(days).label}</option>
+                            ))}
                           </select>
                         </span>
                       </label>
@@ -1393,7 +1544,17 @@ export default function Team() {
                         )}
                       </div>
                     </div>
-                    <p className="team-emp-note team-emp-note-warn"><Clock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {accessLinkDays <= 0 ? "Sin caducidad" : `Válido ${accessLinkDays} ${accessLinkDays === 1 ? "día" : "días"}`} · un solo uso · personal e intransferible</p>
+                    {/* La nota refleja la caducidad del enlace ya generado, no la
+                        del selector: cambiar de opción sin generar otro enlace no
+                        debe hacer creer que el entregado cambió. */}
+                    <p className="team-emp-note team-emp-note-warn"><Clock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {generatedFormExpiry
+                      ? `Enlace generado: ${generatedFormExpiry.note}`
+                      : `Se generará ${selectedAccessExpiry.note}`}{generatedFormExpiry && generatedFormInvite && generatedFormExpiry.days !== selectedAccessExpiry.days
+                        ? ` · el próximo se generará ${selectedAccessExpiry.label.toLowerCase()}`
+                        : ''}</p>
+                    {generatedFormInvite && (
+                      <p className="team-emp-note"><Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />{describeAccessInviteExpiry(generatedFormInvite.days, generatedFormInvite.createdAt)}. El enlace solo se guarda en esta sesión: cópialo antes de cerrarla.</p>
+                    )}
                     <span className="sr-only" aria-live="polite">{copiedLink ? "Enlace de acceso copiado." : ""}</span>
                     {formAccessError && <div className="team-emp-note"><Info className="h-3.5 w-3.5 shrink-0" />{formAccessError}</div>}
                   </div>
@@ -1409,7 +1570,7 @@ export default function Team() {
               ) : (
                 <>
                   <button type="button" onClick={() => formStep === 1 ? setShowForm(false) : setFormStep((formStep-1) as 1|2|3)} className="team-emp-btn team-emp-btn-secondary">{formStep === 1 ? "Cancelar" : <><ChevronLeft className="h-4 w-4" /> Atrás</>}</button>
-                  {formStep < 3 ? <button type="button" disabled={busy || (formStep===1 && (!form.fullName.trim() || !form.employeeCode.trim())) || (formStep===2 && (!form.roleId || !form.warehouseIds.length))} onClick={() => setFormStep((formStep+1) as 1|2|3)} className="team-emp-btn team-emp-btn-primary">Continuar <ChevronRight className="h-4 w-4" /></button> : <button type="submit" disabled={busy || (posPasswordRequired && form.posPassword.trim().length < 6)} className="team-emp-btn team-emp-btn-primary">{busy ? <><RefreshCw className="h-4 w-4 animate-spin" /> Guardando…</> : <><Check className="h-4 w-4" /> Crear trabajador</>}</button>}
+                  {formStep < 3 ? <button type="button" disabled={busy || (formStep===1 && (!form.fullName.trim() || !form.employeeCode.trim())) || (formStep===2 && (!form.roleId || !assignableWarehouseIds.length))} onClick={() => setFormStep((formStep+1) as 1|2|3)} className="team-emp-btn team-emp-btn-primary">Continuar <ChevronRight className="h-4 w-4" /></button> : <button type="submit" disabled={busy || (posPasswordRequired && form.posPassword.trim().length < 6)} className="team-emp-btn team-emp-btn-primary">{busy ? <><RefreshCw className="h-4 w-4 animate-spin" /> Guardando…</> : <><Check className="h-4 w-4" /> Crear trabajador</>}</button>}
                 </>
               )}
             </div>
@@ -1533,7 +1694,7 @@ export default function Team() {
                     <input readOnly value={accessInvite.link} onFocus={e => e.currentTarget.select()} className="mt-1 w-full rounded-xl border border-base bg-primary px-3 py-2.5 text-xs font-bold text-primary outline-none" />
                   </label>
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="inline-flex items-center gap-1.5 text-[11px] font-black text-amber-700 dark:text-amber-300"><Clock className="h-3.5 w-3.5" /> Válido 7 días, un solo uso</p>
+                    <p className="inline-flex items-center gap-1.5 text-[11px] font-black text-amber-700 dark:text-amber-300"><Clock className="h-3.5 w-3.5" /> {resolveAccessInviteExpiry(accessInvite.days).label}, un solo uso</p>
                     <button type="button" onClick={() => void copyAccessLink(accessInvite.link)} className="flex h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-[10px] font-black uppercase tracking-wider text-white shadow-lg shadow-violet-600/20">
                       {copiedLink ? <><Check className="w-4 h-4" /> Copiado</> : <><Copy className="w-4 h-4" /> Copiar</>}
                     </button>

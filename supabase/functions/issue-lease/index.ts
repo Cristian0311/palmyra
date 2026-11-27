@@ -34,7 +34,11 @@ const KEY_ID_RE = /^[A-Za-z0-9._:-]{1,64}$/;
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  // El SDK de Supabase (supabaseFetch) manda `Cache-Control` y `Pragma` en cada
+  // petición; ninguna es cabecera segura para CORS, así que el preflight las
+  // rechazaba y el navegador nunca llegaba a POSTear: por eso jamás se emitió
+  // un lease desde la app. Deben estar en la lista.
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, cache-control, pragma",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Max-Age": "86400"
 };

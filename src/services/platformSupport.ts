@@ -1,7 +1,7 @@
 import { getSupabase } from "../lib/supabase";
 import { recordSupportTicket } from "./supportTicketCounter";
 
-export const DEFAULT_FACEBOOK_URL = "https://www.facebook.com/share/18E6USqhUn/";
+export const DEFAULT_FACEBOOK_URL = "https://www.facebook.com/share/1AAf2Ngtkb/";
 
 // Número oficial de atención. Se usa cuando la configuración de la plataforma
 // aún no tiene un canal guardado, para que ninguna solicitud quede sin destino.

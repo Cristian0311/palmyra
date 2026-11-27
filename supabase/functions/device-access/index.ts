@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { corsHeaders } from "./cors.ts";
 
 /**
  * device-access: canjea un enlace de un solo uso y devuelve credenciales
@@ -26,17 +27,10 @@ import { createClient } from "npm:@supabase/supabase-js@2";
  * Ni la contraseña POS ni la contraseña generada se registran en logs.
  */
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Max-Age": "86400"
-};
-
 function json(data: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { ...corsHeaders, "Content-Type": "application/json", "Cache-Control": "no-store" }
+    headers: { ...corsHeaders(), "Content-Type": "application/json", "Cache-Control": "no-store" }
   });
 }
 
@@ -131,9 +125,40 @@ async function findUserIdByEmail(admin: any, email: string): Promise<string | nu
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    // El preflight refleja las cabeceras pedidas: el cliente del SDK manda
+    // cache-control/pragma en cada llamada y sin ellas el navegador descarta el
+    // POST (supabase-js lo mostraba como FunctionsFetchError).
+    return new Response("ok", {
+      headers: corsHeaders(req.headers.get("access-control-request-headers"), {
+        // El valor depende del preflight: que ninguna caché reutilice uno viejo.
+        Vary: "Access-Control-Request-Headers"
+      })
+    });
+  }
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
+  try {
+    return await redeem(req);
+  } catch (error) {
+    // Sin cabeceras CORS el navegador convierte un 500 en «no se pudo enviar la
+    // petición» y el usuario nunca ve el estado. Se registra solo el tipo/mensaje:
+    // ni el token ni la contraseña POS deben acabar en los logs.
+    console.error(
+      "device-access: fallo no controlado",
+      error instanceof Error ? `${error.name}: ${error.message}` : "desconocido"
+    );
+    return json(
+      {
+        error: "internal_error",
+        message: "No se pudo completar la activación. Inténtalo de nuevo en unos segundos."
+      },
+      500
+    );
+  }
+});
+
+async function redeem(req: Request): Promise<Response> {
   const ip = clientIp(req);
   if (throttleExceeded(ip)) {
     return json(
@@ -324,4 +349,4 @@ Deno.serve(async (req: Request) => {
   }
 
   return json({ email, password: generatedPassword });
-});
+}

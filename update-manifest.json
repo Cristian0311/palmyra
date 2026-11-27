@@ -1,26 +1,26 @@
 {
   "v": 1,
-  "version": "1.3.18",
+  "version": "1.3.19",
   "channel": "stable",
-  "releasedAt": "2026-11-27T00:12:39.149Z",
-  "notes": "Licencia: se arregla el cartel de «licencia sin verificar» que aparecía al entrar, con o sin internet. La causa era que el servidor no entregaba la clave pública de licencia, así que ningún equipo podía activarse; ahora se sirve la clave publicada en la app. El aviso solo aparece cuando hay algo que hacer (falta sesión, plan rechazado) y Configuración > Sistema muestra el motivo técnico exacto.\nEnlaces de acceso a empleados: al compartirlos desde el PC o el APK apuntaban a 127.0.0.1 y el empleado veía «se rechazó la conexión». Ahora el enlace usa siempre la dirección pública de PALMYRA (o tu dominio propio si lo tienes). Al abrirlo desde el navegador del teléfono, usa el enlace palmyra:// que muestra la pantalla de acceso.",
+  "releasedAt": "2026-11-27T03:40:10.147Z",
+  "notes": "Licencia del equipo: Configuración > Sistema muestra el plan real de la nube con su nombre comercial (Ciudadela, Caravana u Oasis), el pago y las fechas. Si la empresa tiene un plan pagado, el equipo se activa solo y deja de quedarse en «sin verificar».\nEquipo: al editar un trabajador se listan todos los almacenes registrados de la empresa y se marca cuáles puede usar; el listado muestra los almacenes asignados en chips compactos con «+N» cuando pasan de tres.\nAlmacenes: se elimina el concepto de «almacén inactivo»; todo almacén registrado por la empresa queda operativo.\nAcceso por dispositivo: se corrige el fallo de red al canjear el enlace de acceso (cabeceras de las funciones en la nube).",
   "rollout": 100,
   "artifacts": [
     {
       "platform": "windows",
       "name": "PALMYRA-POS-Setup.exe",
-      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.18/PALMYRA-POS-Setup.exe",
-      "sha256": "43b3f2dcd3f6d6e1b9433d93da3ca4b4e6344c52328175bbf1b4b2a399ef7fb5",
-      "bytes": 114544640
+      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.19/PALMYRA-POS-Setup.exe",
+      "sha256": "185362af59807ff72c9535ef3c0327f36bf33dc88c39b2074c21046b3c566826",
+      "bytes": 114550996
     },
     {
       "platform": "android",
       "name": "PALMYRA-Android.apk",
-      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.18/PALMYRA-Android.apk",
-      "sha256": "237e78a3530204f27a9ff007742e816adcd2d39e296257bd61c562d64e80b843",
-      "bytes": 2683974
+      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.19/PALMYRA-Android.apk",
+      "sha256": "8d66356b445ba1fd3bc07823bd023526f04e3bc15ba9c5f1d88b2057b8d6b3db",
+      "bytes": 2692166
     }
   ],
   "keyId": "palmyra-stable-2026-11",
-  "signature": "0mimNFQe3VaK90QdOCCt-0xofQU-Wbjc66okAmubx_jwz6QdIVi76N1089p2jmlDV9ZAB84dtnV5EzNpUku4LQ"
+  "signature": "ANBw_YifBB4Du20gEte1lk9Tp33e4UJmFaXuq9Eeu2wvLZAwb3n4vxeGY6cQBD8_k6oV9b9S1bmGNoLnua5Uxw"
 }

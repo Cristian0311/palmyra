@@ -6,6 +6,14 @@
  *   2. Clave anclada de una sesión anterior (TOFU): permite verificar el lease
  *      guardado sin conexión, que es el caso normal al reabrir la app.
  *   3. `GET /license-public-key.json` servida por el mismo origen.
+ *   4. Clave pública embebida en el propio bundle (`lease-public-key.json`).
+ *
+ * El paso 4 es el que blinda el arranque offline: si el servidor no responde,
+ * la ruta 404 o el Service Worker se quedó con una respuesta vieja, el equipo
+ * sigue pudiendo evaluar el lease que ya tiene guardado. Es la MISMA clave
+ * pública que viaja en `public/license-public-key.json` (prueba de deriva en
+ * `tests/unit/license-bundled-key.test.ts`); no añade secretos ni relaja la
+ * firma: un lease solo vale si esta clave (o la remota, si difiere) lo verifica.
  *
  * La resolución nunca lanza: devuelve `missing` si no hay clave y `error` si
  * la red falló sin clave previa ni anclada. El runtime traduce esos estados al
@@ -20,6 +28,8 @@
  * ofrece un resolver de módulo para usos sueltos.
  */
 
+import bundledLeaseKeyJson from "./lease-public-key.json";
+
 export const LICENSE_PUBLIC_KEY_PATH = "/license-public-key.json";
 
 export type LicensePublicKeyFetch = (
@@ -30,8 +40,11 @@ export type LicensePublicKeyFetch = (
 /**
  * `pinned` = clave aceptada en un arranque anterior y guardada en el equipo.
  * Sin ella, un arranque sin red no podría evaluar el lease cacheado.
+ * `bundled` = la misma clave pública compilada en el bundle: última reserva,
+ * para que un 404 de la ruta, una respuesta vieja del Service Worker o un
+ * almacén recién vaciado no dejen de poder evaluar el lease que ya está en disco.
  */
-export type LicensePublicKeySource = "env" | "remote" | "pinned";
+export type LicensePublicKeySource = "env" | "remote" | "pinned" | "bundled";
 
 /** Clave pública ya validada y lista para `importVerifyKey`. */
 export interface LicensePublicKey {
@@ -67,6 +80,12 @@ export interface LicensePublicKeyResolverOptions {
   loadPinned?: () => Promise<JsonWebKey | null>;
   /** Guarda la clave aceptada (entorno o remota) para el siguiente arranque. */
   savePinned?: (jwk: JsonWebKey) => Promise<void>;
+  /**
+   * Clave pública embebida en el build. `undefined` = la compilada en
+   * `lease-public-key.json`; `null` = desactivar la reserva (solo pruebas que
+   * necesitan simular que el equipo no tiene ninguna clave).
+   */
+  bundled?: JsonWebKey | null;
 }
 
 /** EC P-256 con coordenadas presentes. Rechaza claves de otro tipo. */
@@ -135,7 +154,10 @@ function parseEnvKey(raw: string | null): LicensePublicKey | null {
   };
 }
 
-function parseRemotePayload(payload: unknown): LicensePublicKey | null {
+function parseKeyPayload(
+  payload: unknown,
+  source: "remote" | "bundled"
+): LicensePublicKey | null {
   if (!payload || typeof payload !== "object") return null;
   const record = payload as { keyId?: unknown; jwk?: unknown };
   const candidate = isPublicLeaseJwk(record.jwk)
@@ -150,8 +172,18 @@ function parseRemotePayload(payload: unknown): LicensePublicKey | null {
       : typeof (candidate as { kid?: unknown }).kid === "string"
         ? ((candidate as { kid: string }).kid)
         : "";
-  return { jwk: sanitizeJwk(candidate), keyId, source: "remote" };
+  return { jwk: sanitizeJwk(candidate), keyId, source };
 }
+
+/**
+ * Clave pública compilada en la app. Es la misma que sirve el servidor en
+ * `/license-public-key.json` (hay una prueba que falla si las dos fichas
+ * divergen), así que no introduce ningún secreto ni ninguna confianza nueva.
+ */
+export const BUNDLED_LEASE_PUBLIC_KEY: LicensePublicKey | null = parseKeyPayload(
+  bundledLeaseKeyJson,
+  "bundled"
+);
 
 /**
  * Resolver con caché propia. Un fallo de red no se cachea: el siguiente
@@ -220,9 +252,15 @@ export function createLicensePublicKeyResolver(
       return { status: "missing" };
     }
 
-    const key = parseRemotePayload(payload);
+    const key = parseKeyPayload(payload, "remote");
     if (!key) return { status: "missing" };
     return { status: "found", key };
+  }
+
+  function bundledKey(): LicensePublicKey | null {
+    if (options.bundled === null) return null;
+    if (options.bundled !== undefined) return parseKeyPayload(options.bundled, "bundled");
+    return BUNDLED_LEASE_PUBLIC_KEY;
   }
 
   async function resolveOnce(): Promise<LicensePublicKeyResult> {
@@ -246,7 +284,16 @@ export function createLicensePublicKeyResolver(
     if (remote.status === "found") {
       cached = remote.key;
       void persistPinned(remote.key.jwk);
+      return remote;
     }
+
+    // 4. Clave embebida en el bundle: un 404, una respuesta vieja del Service
+    //    Worker o un almacén vacío no pueden hacer que el equipo «olvide» una
+    //    licencia verificada. No se ancla: cuando el servidor responde, su
+    //    clave vuelve a mandar y la rotación sigue funcionando.
+    const bundled = bundledKey();
+    if (bundled) return { status: "found", key: bundled };
+
     return remote;
   }
 

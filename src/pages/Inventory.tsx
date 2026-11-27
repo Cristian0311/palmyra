@@ -25,11 +25,11 @@ import { PrintLabels } from "../components/PrintLabels";
 import { ABCAnalysis } from "../components/ABCAnalysis";
 import { RestockAlerts } from "../components/RestockAlerts";
 import { useBarcodeScanner } from "../hooks/useBarcodeScanner";
-import { loadSaaSContext } from '../services/saas';
 import { getActiveTenant } from '../services/tenant';
 import { loadCompensationSettings } from '../services/team';
 import { pushProductToSupabase } from '../services/supabaseSync';
-import { canUsePlanFeature } from '../services/planAccess';
+import { decidePlanFeature } from '../services/planAccess';
+import { usePlanCode } from '../hooks/usePlanCode';
 import PlanFeatureGate from '../components/PlanFeatureGate';
 import "./team.css";
 
@@ -201,12 +201,12 @@ export default function Inventory() {
   React.useEffect(() => {
     setSelectedItems([]);
   }, [debouncedSearchQuery, selectedBranch, selectedCategory, stockFilter, activeTab]);
-  const [planCode, setPlanCode] = useState<string | null>(null);
-  useEffect(() => {
-    let active = true;
-    void loadSaaSContext().then(ctx => { if (active) setPlanCode(ctx?.subscription?.planCode || null); }).catch(() => { if (active) setPlanCode(null); });
-    return () => { active = false; };
-  }, []);
+  // Plan efectivo (contexto en vivo + snapshot verificado + copia local). La
+  // decisión distingue «este plan no paga Excel» de «todavía no se sabe»: solo
+  // la primera justifica la puerta de pago.
+  const { planCode, source: planSource } = usePlanCode();
+  // Solo mientras hay un libro generándose; se limpia siempre en `finally`.
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [showBatchPriceModal, setShowBatchPriceModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [categoryViewport, setCategoryViewport] = useState({ height: 0, top: 0 });
@@ -706,6 +706,7 @@ export default function Inventory() {
   };
 
   const exportToExcel = async () => {
+    if (isExportingExcel) return;
     const rows = inventoryData.full.map((item: any) => {
       const levels = Array.isArray(item.levels) ? item.levels : [];
       const minFromLevels = levels.reduce((min: number, level: any) => Math.max(min, Number(level.minQuantity) || 0), 0);
@@ -726,6 +727,7 @@ export default function Inventory() {
         status: item.status,
       };
     });
+    setIsExportingExcel(true);
     try {
       const { exportInventoryToExcel } = await import('../utils/excelExport');
       await exportInventoryToExcel(rows, {
@@ -734,13 +736,29 @@ export default function Inventory() {
       });
     } catch (error) {
       console.error('[Inventory] No se pudo exportar el inventario a Excel:', error);
-      addNotification('No se pudo generar el Excel de inventario. Intenta nuevamente.', 'error');
+      // Un fallo del módulo ExcelJS o del puente de descarga no puede quedar
+      // como un botón que no responde: se muestra el motivo real.
+      const detail = error instanceof Error && error.message ? error.message : '';
+      addNotification(
+        'No se pudo generar el Excel de inventario.',
+        'error',
+        detail || 'Revisa el espacio disponible en el dispositivo e inténtalo de nuevo.'
+      );
+    } finally {
+      // Sin este reset el botón quedaba deshabilitado para siempre tras un solo
+      // fallo (por ejemplo, un rechazo del puente nativo del APK).
+      setIsExportingExcel(false);
     }
   };
 
-  const canExcel = canUsePlanFeature(planCode, 'excel_exports');
-  const canLabels = canUsePlanFeature(planCode, 'labels');
-  const canABC = canUsePlanFeature(planCode, 'abc_analysis');
+  // El Excel solo se cierra con un plan conocido que no lo incluya. Mientras el
+  // plan no se pueda determinar, la descarga sigue disponible: los datos ya
+  // están visibles en la sección y la exportación ocurre en el dispositivo.
+  const excelGate = decidePlanFeature({ planCode, source: planSource }, 'excel_exports');
+  const canExcel = excelGate.granted || excelGate.pending;
+  // Etiquetas y ABC sí exigen un plan conocido que las incluya.
+  const canLabels = decidePlanFeature({ planCode, source: planSource }, 'labels').granted;
+  const canABC = decidePlanFeature({ planCode, source: planSource }, 'abc_analysis').granted;
 
   const handleCategorySubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -922,12 +940,20 @@ export default function Inventory() {
             <Plus className="w-3.5 h-3.5 shrink-0" />
             Agregar producto
           </button>
-          <button 
+          <button
             onClick={() => canExcel ? exportToExcel() : setActiveTab('excel')}
-            className="shrink-0 min-h-10 sm:min-h-0 flex items-center gap-1.5 px-2.5 py-1 bg-secondary border border-base text-muted rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-subtle transition-all active:scale-95 whitespace-nowrap"
+            disabled={isExportingExcel}
+            title={canExcel
+              ? 'Descargar el inventario en Excel (.xlsx)'
+              : 'El Excel de inventario está disponible desde Ciudadela'}
+            className="shrink-0 min-h-10 sm:min-h-0 flex items-center gap-1.5 px-2.5 py-1 bg-secondary border border-base text-muted rounded-xl text-[9px] font-black uppercase tracking-wider hover:bg-subtle transition-all active:scale-95 whitespace-nowrap disabled:opacity-60 disabled:cursor-wait"
           >
-            <Download className="w-3 h-3" />
-            <span>{canExcel ? 'Excel' : 'Excel · Ciudadela'}</span>
+            {isExportingExcel
+              ? <RefreshCw className="w-3 h-3 animate-spin" />
+              : <Download className="w-3 h-3" />}
+            {/* Solo se deshabilita mientras se genera el libro: un plan sin
+                resolver nunca pinta el botón como muerto. */}
+            <span>{isExportingExcel ? 'Generando…' : canExcel ? 'Excel' : 'Excel · Ciudadela'}</span>
           </button>
           <button 
             onClick={() => setActiveTab('labels')}

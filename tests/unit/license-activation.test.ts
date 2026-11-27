@@ -108,6 +108,7 @@ test("fallback remoto: lee { keyId, jwk } o un JWK directo y cachea", async () =
 test("nunca lanza: red caída es error, 404 o JSON roto es missing", async () => {
   const offline = createLicensePublicKeyResolver({
     envRaw: null,
+    bundled: null,
     fetchImpl: async () => {
       throw new TypeError("network down");
     }
@@ -116,18 +117,21 @@ test("nunca lanza: red caída es error, 404 o JSON roto es missing", async () =>
 
   const notFound = createLicensePublicKeyResolver({
     envRaw: null,
+    bundled: null,
     fetchImpl: async () => jsonResponse({ error: "not_configured" }, 404)
   });
   assert.deepEqual(await notFound.resolve(), { status: "missing" });
 
   const broken = createLicensePublicKeyResolver({
     envRaw: null,
+    bundled: null,
     fetchImpl: async () => new Response("no-es-json", { status: 200 })
   });
   assert.deepEqual(await broken.resolve(), { status: "missing" });
 
   const wrongShape = createLicensePublicKeyResolver({
     envRaw: null,
+    bundled: null,
     fetchImpl: async () => jsonResponse({ jwk: { kty: "RSA", n: "x", e: "AQAB" } })
   });
   assert.deepEqual(await wrongShape.resolve(), { status: "missing" });

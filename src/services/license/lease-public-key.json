@@ -1,0 +1,10 @@
+{
+  "keyId": "palmyra-lease-2026-11",
+  "jwk": {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": "sEwjvIjOkmCe06PedgISi8Bbt9yMHbo02jyETrap3jk",
+    "y": "Fd61CWrOn9juj9z4-UbW8VScjhfvGXhJi6ifsuChD9c",
+    "kid": "palmyra-lease-2026-11"
+  }
+}

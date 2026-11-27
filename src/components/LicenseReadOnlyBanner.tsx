@@ -64,6 +64,10 @@ export function unverifiedMessage(snapshot: LicenseSnapshot): string | null {
     if (snapshot.reason === "device-key-rotated") {
       return "La identidad de este equipo cambió y la licencia emitida ya no le corresponde. Conéctate a internet y pulsa Renovar para activarla de nuevo; mientras tanto puedes seguir operando. Tus datos no se borran.";
     }
+    // Una verificación buena ya quedó registrada en este equipo (sello
+    // persistido con fecha y hora): el lease ilegible se repara solo y no hay
+    // nada que reprocharle al mostrador. Sin sello, sí se avisa.
+    if (snapshot.lastVerifiedAt) return null;
     return "No pudimos verificar la licencia de este equipo. Puedes seguir operando; renueva para evitar bloqueos. Tus datos no se borran.";
   }
   if (snapshot.mode === "unmanaged" && snapshot.reason === "lease-missing") {

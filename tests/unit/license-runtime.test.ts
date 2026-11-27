@@ -121,7 +121,10 @@ function makeRuntime(args: {
     fetchImpl: args.fetchImpl ?? keyFetch(),
     now: args.now ?? (() => NOW),
     getClient: args.getClient,
-    storageKeyPrefix: args.prefix
+    storageKeyPrefix: args.prefix,
+    // Las pruebas firman con su propia clave: la embebida en el build no debe
+    // participar salvo que una prueba la pase explícitamente.
+    bundledPublicKey: null
   });
 }
 

@@ -7,7 +7,8 @@ const source = (path: string) => readFileSync(join(process.cwd(), path), "utf8")
 
 test("Team creates POS-only employees and issues device access links instead of web invitations", () => {
   const team = source("src/pages/Team.tsx");
-  assert.match(team, /import \{ buildDeviceAccessLink, createDeviceAccessInvite \} from "\.\.\/services\/deviceAccess"/);
+  const deviceAccess = source("src/services/deviceAccess.ts");
+  assert.match(team, /buildDeviceAccessLink, createDeviceAccessInvite, describeAccessInviteExpiry, resolveAccessInviteExpiry \} from "\.\.\/services\/deviceAccess"/);
   assert.match(team, /createDeviceAccessInvite\(/);
   assert.doesNotMatch(team, /sendInvite:\s*Boolean|sendInvite:\s*true/);
   assert.match(team, /sendInvite:\s*false/);
@@ -15,7 +16,11 @@ test("Team creates POS-only employees and issues device access links instead of 
   assert.doesNotMatch(team, /Acceso web del trabajador|Cuenta web/);
   assert.match(team, /createEmployeePosSecure\(/);
   assert.match(team, /showPosPassword \? "text" : "password"/);
-  assert.match(team, /La contraseña actual no se puede recuperar porque se guarda como hash seguro/);
+  // El aviso honesto sobre el hash vive ahora en el helper compartido, que es
+  // el que alimenta etiqueta, placeholder y chip de estado del campo POS.
+  assert.match(team, /describePosPasswordField\(/);
+  assert.match(deviceAccess, /resolveAccessInviteExpiry/);
+  assert.match(source("src/lib/teamEmployeeForm.ts"), /Se guarda como hash seguro y por eso no se puede mostrar/);
 });
 
 test("Team edits are persisted offline and replayed through an explicit queue handler", () => {
