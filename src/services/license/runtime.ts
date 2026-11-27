@@ -777,7 +777,9 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
 
     // 5) Fase de red (mejor esfuerzo, despues de publicar): revocacion y
     //    renovacion. Cualquier fallo conserva el lease guardado y su evaluacion.
-    if (!isOnline()) return concludeActivationIfNeeded(atMs);
+    //    Sin conexión la activación no falló: nunca se intentó. Viaja como
+    //    "offline" para que la UI no la anuncie como «licencia sin verificar».
+    if (!isOnline()) return concludeActivationIfNeeded(atMs, "offline");
 
     if (lease && verification?.ok && (await leaseIsRevoked(lease))) {
       return publishRevoked(lease, atMs);
@@ -806,7 +808,11 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
 
     // Un lease solo se adopta si su firma y su vinculo con el equipo verifican.
     const renewedVerification = await verifyWith(renewed, verifyKey);
-    if (!renewedVerification.ok) return concludeActivationIfNeeded(atMs);
+    if (!renewedVerification.ok) {
+      // El servidor respondió con un lease que no verifica: es un fallo real y
+      // hay que nombrarlo, no dejar el aviso genérico «sin verificar».
+      return concludeActivationIfNeeded(atMs, "signature-invalid");
+    }
     currentLeaseId = renewed.leaseId;
 
     // Reparacion de una marca de agua envenenada: si el reloj del equipo estuvo

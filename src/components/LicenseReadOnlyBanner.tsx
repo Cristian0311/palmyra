@@ -12,6 +12,23 @@ const EXPIRED_TEXT =
 const UNVERIFIED_TEXT =
   "No pudimos verificar la licencia de este equipo: la app está en solo lectura. Renueva o revisa la licencia para seguir vendiendo. Tus datos no se borran.";
 
+/**
+ * Causas de activación sin acción posible para el que está en el mostrador:
+ * sin red, sin cliente, red caída, espera entre reintentos o un fallo del
+ * servidor. La activación se reintenta sola y el estado detallado se ve en
+ * Configuración › Sistema. Anunciarlas con la tarjeta ámbar era el aviso falso
+ * que salía en cada arranque offline-first de un equipo sin lease.
+ */
+const SELF_HEALING_ACTIVATION_ERRORS = [
+  "offline",
+  "network",
+  "no-client",
+  "backoff",
+  "no-lease-response",
+  "server-rejected:429",
+  "server-rejected:5"
+];
+
 function readFlag(key: string): boolean {
   try {
     return typeof sessionStorage !== "undefined" && sessionStorage.getItem(key) === "1";
@@ -28,8 +45,17 @@ function writeFlag(key: string): void {
   }
 }
 
+/**
+ * El equipo no puede activar solo: sin sesión (o con la sesión rechazada) el
+ * botón Renovar no emite un lease. La vía real es entrar en la cuenta.
+ */
+export function activationNeedsSignIn(activationError?: string): boolean {
+  const error = activationError ?? "";
+  return error.startsWith("no-session") || error.startsWith("server-rejected:401");
+}
+
 /** Avisos no bloqueantes: el runtime nunca pone readOnly por estas causas. */
-function unverifiedMessage(snapshot: LicenseSnapshot): string | null {
+export function unverifiedMessage(snapshot: LicenseSnapshot): string | null {
   if (!snapshot.keyConfigured || snapshot.readOnly) return null;
   // Verificado con el lease guardado dentro de la ventana firmada: aunque no
   // haya red, la licencia está verificada y no hay nada que avisar.
@@ -50,7 +76,15 @@ function unverifiedMessage(snapshot: LicenseSnapshot): string | null {
     // es no tener sesión Supabase (arranque offline-first), y el mensaje
     // genérico de «conéctate» era falso cuando el equipo sí tenía internet.
     const activationError = snapshot.activationError ?? "";
-    if (activationError.startsWith("no-session")) {
+    // Primero se descartan las causas que se curan solas: sin ellas el aviso
+    // aparecería en cada arranque offline sin que haya nada que reprocharle al
+    // equipo. Un error desconocido SÍ muestra la tarjeta genérica.
+    if (SELF_HEALING_ACTIVATION_ERRORS.some((prefix) => activationError.startsWith(prefix))) {
+      return null;
+    }
+    // La causa real más común: el equipo opera con alcance local guardado pero
+    // sin sesión Supabase, así que el servidor no puede emitirle un lease.
+    if (activationNeedsSignIn(activationError)) {
       return "Este equipo no tiene una sesión de licencia activa. Conéctate a internet y entra con tu usuario o enlace de acceso una vez para activar la licencia comprada; mientras tanto puedes seguir operando. Tus datos no se borran.";
     }
     if (
@@ -58,9 +92,6 @@ function unverifiedMessage(snapshot: LicenseSnapshot): string | null {
       activationError.startsWith("server-rejected:409")
     ) {
       return "Tu suscripción no pudo activarse en este equipo. Revisa tu plan en Ver planes; mientras tanto puedes seguir operando. Tus datos no se borran.";
-    }
-    if (activationError.startsWith("server-rejected:429")) {
-      return "El servidor de licencias está saturado; se reintentará solo. Puedes seguir operando. Tus datos no se borran.";
     }
     if (activationError.startsWith("signature-invalid")) {
       return "La respuesta del servidor de licencias no se pudo verificar; se reintentará automáticamente. Puedes seguir operando. Tus datos no se borran.";
@@ -146,7 +177,7 @@ export function LicenseReadOnlyBanner() {
                 {renewing ? "Verificando…" : "Renovar"}
                 <ArrowRight className="h-3 w-3" aria-hidden="true" />
               </button>
-              {snapshot.activationError?.startsWith("no-session") ? (
+              {activationNeedsSignIn(snapshot.activationError) ? (
                 // Sin sesión el botón Renovar no puede emitir un lease: la vía
                 // real para desbloquear la activación es entrar en la cuenta.
                 <Link

@@ -1,5 +1,22 @@
 const STORAGE_KEY = "palmyra_local_scope_v1";
 
+/**
+ * Aviso de que el alcance local cambió. Lo consumen los servicios que dependen
+ * de una empresa activa (p. ej. el runtime de licencia) en lugar de adivinarlo
+ * por intervalos: sin este evento, un arranque que monta la interfaz antes de
+ * que la empresa quede escrita se queda evaluando para siempre.
+ */
+export const PALMYRA_LOCAL_SCOPE_EVENT = "palmyra-local-scope-change";
+
+function announceScopeChange(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.dispatchEvent(new Event(PALMYRA_LOCAL_SCOPE_EVENT));
+  } catch {
+    // Sin eventos el consumidor vuelve a su cadencia normal; nunca rompe el login.
+  }
+}
+
 export interface PalmyraLocalScope {
   userId: string;
   companyId: string;
@@ -18,6 +35,7 @@ export function setPalmyraLocalScope(userId: string, companyId: string, offlineS
     offlineSession: offlineSession === undefined ? keepOfflineSession : offlineSession
   };
   localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
+  announceScopeChange();
 }
 
 export function getPalmyraLocalScope(): PalmyraLocalScope | null {
@@ -40,6 +58,7 @@ export function getPalmyraLocalScope(): PalmyraLocalScope | null {
 export function clearPalmyraLocalScope() {
   if (typeof localStorage === "undefined") return;
   try { localStorage.removeItem(STORAGE_KEY); } catch {}
+  announceScopeChange();
 }
 
 export function getPalmyraLocalScopeKey(): string | null {

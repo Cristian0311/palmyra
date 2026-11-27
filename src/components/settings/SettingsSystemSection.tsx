@@ -248,11 +248,15 @@ function licenseDetailOf(
     if (activationSettled !== true) {
       return "Este equipo todavía no tiene licencia emitida; la activación se está verificando. Mientras tanto sigues operando con normalidad.";
     }
+    // El motivo exacto se muestra aquí (no en el aviso del POS): es lo que
+    // permite distinguir «sin sesión», «plan rechazado» o «sin red» sin tener
+    // que reproducir el caso en otro equipo.
+    const motivo = ` Motivo técnico: ${activationError || "sin-intento"}.`;
     const error = activationError ?? "";
-    if (error.startsWith("no-session")) {
-      return "Este equipo no tiene una licencia emitida. Entra con tu usuario o enlace de acceso una vez para activar la licencia comprada; mientras tanto sigues operando con normalidad.";
+    if (error.startsWith("no-session") || error.startsWith("server-rejected:401")) {
+      return `Este equipo no tiene una licencia emitida. Entra con tu usuario o enlace de acceso una vez para activar la licencia comprada; mientras tanto sigues operando con normalidad.${motivo}`;
     }
-    return "Este equipo todavía no tiene licencia emitida; la activación se reintenta sola en cuanto haya conexión. Mientras tanto sigues operando con normalidad.";
+    return `Este equipo todavía no tiene licencia emitida; la activación se reintenta sola en cuanto haya conexión. Mientras tanto sigues operando con normalidad.${motivo}`;
   }
   if (mode === "free") {
     return "Plan Gratis: no requiere pago y no tiene vencimiento. Funciona sin internet de forma indefinida.";

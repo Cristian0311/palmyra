@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import { getSupabase } from "../lib/supabase";
 import { getCachedSaaSContext } from "../services/offlineAuthContext";
-import { getPalmyraLocalScope } from "../services/localScope";
+import {
+  getPalmyraLocalScope,
+  PALMYRA_LOCAL_SCOPE_EVENT
+} from "../services/localScope";
 import {
   createLicenseRuntime,
   type LicenseRuntime,
@@ -36,6 +39,13 @@ const MIN_RETRY_GAP_MS = 30 * 60 * 1000;
  */
 const ACTIVATION_RETRY_MS = 60 * 1000;
 const ACTIVATION_MAX_RETRIES = 5;
+/**
+ * El alcance local (la empresa) se escribe durante el login, que puede terminar
+ * justo después de montar la interfaz. Se sondea unos segundos en lugar de
+ * dejar el aviso «Verificando licencia…» colgado hasta el refresco de 12 h.
+ */
+const STARTUP_PROBE_MS = 4000;
+const STARTUP_PROBE_MAX = 30;
 
 /**
  * Vaciado de la telemetría de reloj desde la interfaz. El encolado real lo hace
@@ -119,33 +129,54 @@ export function useLicenseRuntime(companyId?: string | null) {
 
   useEffect(() => {
     let alive = true;
+    const targetCompany = () => companyId || resolveLicenseCompanyId();
+
     // Un snapshot con aviso de reloj es la señal de F3: se intenta enviar la
     // telemetría pendiente una vez (el runtime la encoló al detectarla).
     const flushIfTampered = (next: LicenseSnapshot) => {
       if (!next.clockWarning && next.reason !== "clock-tampered") return;
-      const target = companyId || resolveLicenseCompanyId();
+      const target = targetCompany();
       if (target) scheduleClockTelemetryFlush(target);
     };
-    // No se bloquea el render mientras carga: el snapshot inicial es 'loading'.
-    let lastRunAt = 0;
-    const runThrottled = (showSpinner: boolean, minGapMs = 0) => {
-      const target = companyId || resolveLicenseCompanyId();
-      if (!target) return;
-      const now = Date.now();
-      if (minGapMs > 0 && lastRunAt > 0 && now - lastRunAt < minGapMs) return;
-      lastRunAt = now;
-      if (showSpinner) setRefreshing(true);
-      void startLicenseRuntime(target).finally(() => {
-        if (alive && showSpinner) setRefreshing(false);
-      });
-    };
 
-    // Activación pendiente o identidad reparada: reintento acotado en segundo
-    // plano (solo con red, sin bloquear la interfaz ni marcar error). Se declara
-    // antes de suscribirse: el runtime puede publicar en el mismo instante.
+    // Primer arranque: el runtime evalúa el lease guardado antes de tocar la
+    // red, así que el estado útil aparece sin esperar a la nube.
+    let lastRunAt = 0;
+    let startupTimer: number | null = null;
+    let startupTries = 0;
     let activationRetries = 0;
     let retryTimer: number | null = null;
-    const scheduleActivationRetry = (next: LicenseSnapshot) => {
+
+    function scheduleStartupProbe(): void {
+      if (!alive || startupTimer !== null || startupTries >= STARTUP_PROBE_MAX) return;
+      startupTries += 1;
+      startupTimer = window.setTimeout(() => {
+        startupTimer = null;
+        runThrottled(false);
+      }, STARTUP_PROBE_MS);
+    }
+
+    function runThrottled(showSpinner: boolean, minGapMs = 0, forceRenew = false): void {
+      const target = targetCompany();
+      // Sin empresa todavía no hay nada que evaluar: se sondea un rato en lugar
+      // de abandonar hasta el siguiente evento de red o el refresco de 12 h.
+      if (!target) {
+        scheduleStartupProbe();
+        return;
+      }
+      const now = Date.now();
+      if (!forceRenew && minGapMs > 0 && lastRunAt > 0 && now - lastRunAt < minGapMs) return;
+      lastRunAt = now;
+      if (showSpinner) setRefreshing(true);
+      const pending = forceRenew ? renewLicenseRuntime(target) : startLicenseRuntime(target);
+      void pending.finally(() => {
+        if (alive && showSpinner) setRefreshing(false);
+      });
+    }
+
+    // Activación pendiente o identidad reparada: reintento acotado en segundo
+    // plano (solo con red, sin bloquear la interfaz ni marcar error).
+    function scheduleActivationRetry(next: LicenseSnapshot): void {
       if (!alive || retryTimer !== null) return;
       if (!next.pendingActivation && next.mode !== "invalid") return;
       if (activationRetries >= ACTIVATION_MAX_RETRIES) return;
@@ -155,7 +186,7 @@ export function useLicenseRuntime(companyId?: string | null) {
         retryTimer = null;
         runThrottled(false);
       }, ACTIVATION_RETRY_MS);
-    };
+    }
 
     const unsubscribe = current.subscribe((next) => {
       if (alive) setSnapshot(next);
@@ -163,32 +194,56 @@ export function useLicenseRuntime(companyId?: string | null) {
       scheduleActivationRetry(next);
     });
 
-    // Primer arranque: el runtime evalúa el lease guardado antes de tocar la
-    // red, así que el estado útil aparece sin esperar a la nube.
     runThrottled(true);
     flushIfTampered(current.getSnapshot());
 
-    const timer = window.setInterval(() => runThrottled(false), REFRESH_INTERVAL_MS);
+    // Cambió el alcance local (login, cambio de empresa): se evalúa de inmediato.
+    const handleScopeChange = () => runThrottled(false);
+    // Volvió la red con una activación pendiente: es el momento de intentar el
+    // lease, no dentro de 30 min.
     const handleOnline = () => {
-      // Volvió la red: reintenta como mucho una vez cada 30 min.
-      runThrottled(false, MIN_RETRY_GAP_MS);
+      const pending = current.getSnapshot().pendingActivation;
+      if (pending) activationRetries = 0;
+      runThrottled(false, pending ? 0 : MIN_RETRY_GAP_MS);
       // Al volver la red se vacía el buzón sin esperar al siguiente refresco.
-      const target = companyId || resolveLicenseCompanyId();
+      const target = targetCompany();
       if (target) scheduleClockTelemetryFlush(target);
     };
     // Un alt-tab no debe multiplicar las llamadas de licencia (F6).
     const handleVisibility = () => {
       if (document.visibilityState === "visible") runThrottled(false, MIN_RETRY_GAP_MS);
     };
+    /**
+     * Una sesión nueva es la única vía para emitir el lease: sin este disparador,
+     * un equipo que arrancó antes de iniciar sesión se quedaba con el aviso
+     * «licencia sin verificar» hasta el refresco de 12 h, aunque ya estuviera
+     * dentro de su cuenta. Solo fuerza cuando falta el lease.
+     */
+    const authSubscription = getSupabase()?.auth?.onAuthStateChange((_event, session) => {
+      if (!session?.access_token) return;
+      if (!current.getSnapshot().pendingActivation) return;
+      activationRetries = 0;
+      runThrottled(false, 0, true);
+    })?.data?.subscription;
+
+    const timer = window.setInterval(() => runThrottled(false), REFRESH_INTERVAL_MS);
     window.addEventListener("online", handleOnline);
+    window.addEventListener(PALMYRA_LOCAL_SCOPE_EVENT, handleScopeChange);
     document.addEventListener("visibilitychange", handleVisibility);
 
     return () => {
       alive = false;
       unsubscribe();
+      try {
+        authSubscription?.unsubscribe?.();
+      } catch {
+        // El cliente puede no tener oyentes registrados; nada que limpiar.
+      }
       window.clearInterval(timer);
       if (retryTimer !== null) window.clearTimeout(retryTimer);
+      if (startupTimer !== null) window.clearTimeout(startupTimer);
       window.removeEventListener("online", handleOnline);
+      window.removeEventListener(PALMYRA_LOCAL_SCOPE_EVENT, handleScopeChange);
       document.removeEventListener("visibilitychange", handleVisibility);
     };
   }, [companyId]);

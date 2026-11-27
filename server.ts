@@ -3,7 +3,7 @@ import path from 'path';
 import os from 'os';
 import dns from 'dns';
 import fs from 'fs/promises';
-import { existsSync } from 'fs';
+import { existsSync, readFileSync } from 'fs';
 import dotenv from 'dotenv';
 import { createExchangeRateProvider } from './src/services/exchangeRateProvider';
 
@@ -1734,25 +1734,39 @@ Responde ESTRICTAMENTE con un objeto JSON:
 
   // Clave pública del lease (ES256). El cliente la pide al mismo origen; la
   // privada vive solo como secreto de la Edge Function y nunca se expone aquí.
+  // La clave pública NO es un secreto: viaja en el build (`license-public-key.json`
+  // en dist/ y en los assets del APK). Si el servidor no tiene la variable de
+  // entorno, se sirve ese archivo. Sin este respaldo, toda instalación nueva se
+  // quedaba sin clave -> sin lease -> licencia siempre «sin verificar».
   app.get('/license-public-key.json', (_req, res) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    const raw = process.env.LEASE_PUBLIC_JWK;
-    if (!raw || !raw.trim()) {
-      res.status(404).json({ error: 'not_configured' });
-      return;
-    }
-    try {
-      const jwk = JSON.parse(raw) as JsonWebKey;
-      if (!jwk || jwk.kty !== 'EC' || jwk.crv !== 'P-256' || !jwk.x || !jwk.y) {
-        res.status(404).json({ error: 'not_configured' });
-        return;
+    const candidates = [process.env.LEASE_PUBLIC_JWK];
+    for (const from of [moduleDir, path.join(moduleDir, 'public')]) {
+      try {
+        candidates.push(readFileSync(path.join(from, 'license-public-key.json'), 'utf8'));
+        break;
+      } catch {
+        // Build sin archivo (dev de Vite): queda solo la variable de entorno.
       }
-      res.status(200).json({ keyId: process.env.LEASE_KEY_ID || '', jwk });
-    } catch {
-      res.status(404).json({ error: 'not_configured' });
     }
+    for (const raw of candidates) {
+      if (!raw || !raw.trim()) continue;
+      try {
+        const parsed = JSON.parse(raw) as { keyId?: unknown; jwk?: JsonWebKey };
+        const jwk = (parsed.jwk || parsed) as JsonWebKey;
+        if (!jwk || jwk.kty !== 'EC' || jwk.crv !== 'P-256' || !jwk.x || !jwk.y) continue;
+        const keyId =
+          process.env.LEASE_KEY_ID ||
+          (typeof parsed.keyId === 'string' ? parsed.keyId : '');
+        res.status(200).json({ keyId, jwk });
+        return;
+      } catch {
+        // Candidato ilegible: se prueba el siguiente.
+      }
+    }
+    res.status(404).json({ error: 'not_configured' });
   });
 
   if (!serveBuiltClient) {
