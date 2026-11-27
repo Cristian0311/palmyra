@@ -1,26 +1,26 @@
 {
   "v": 1,
-  "version": "1.3.19",
+  "version": "1.3.20",
   "channel": "stable",
-  "releasedAt": "2026-11-27T03:40:10.147Z",
-  "notes": "Licencia del equipo: Configuración > Sistema muestra el plan real de la nube con su nombre comercial (Ciudadela, Caravana u Oasis), el pago y las fechas. Si la empresa tiene un plan pagado, el equipo se activa solo y deja de quedarse en «sin verificar».\nEquipo: al editar un trabajador se listan todos los almacenes registrados de la empresa y se marca cuáles puede usar; el listado muestra los almacenes asignados en chips compactos con «+N» cuando pasan de tres.\nAlmacenes: se elimina el concepto de «almacén inactivo»; todo almacén registrado por la empresa queda operativo.\nAcceso por dispositivo: se corrige el fallo de red al canjear el enlace de acceso (cabeceras de las funciones en la nube).",
+  "releasedAt": "2026-11-27T21:30:29.605Z",
+  "notes": "Permisos al entrar: el programa de PC y la app de Android piden avisos, Bluetooth y USB nada más abrir PALMYRA; se corrigió el sello de primer arranque que impedía que apareciera ese aviso.\nImpresión térmica: el APK usa el puente nativo para Bluetooth y USB (con el permiso de Android pedido al entrar) y el programa de PC habilita Web Bluetooth con su selector de dispositivo.\nAvisos del sistema: cuando el push no está disponible en una superficie, el mensaje dice la causa real y dónde desbloquear los permisos, en vez de culpar al navegador.\nExcel: al terminar la descarga aparece un aviso con el nombre del archivo y la carpeta, tanto en Reportes como en Inventario.\nFormularios: al escribir el teléfono o la dirección en Proveedores y en Configuración > Empresa el cursor ya no salta al campo Nombre.\nSincronización: las operaciones rechazadas porque su almacén fue dado de baja explican el motivo en español y se pueden descartar desde el Monitor de Logs.\nAlmacenes: eliminar un almacén informa si la baja se aplicó de verdad y el listado deja de traer de vuelta los almacenes dados de baja.",
   "rollout": 100,
   "artifacts": [
     {
       "platform": "windows",
       "name": "PALMYRA-POS-Setup.exe",
-      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.19/PALMYRA-POS-Setup.exe",
-      "sha256": "185362af59807ff72c9535ef3c0327f36bf33dc88c39b2074c21046b3c566826",
-      "bytes": 114550996
+      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.20/PALMYRA-POS-Setup.exe",
+      "sha256": "67c8e6c138e470ec1602857b501950308e1170676a10af02afe7f8dbd3307749",
+      "bytes": 114578870
     },
     {
       "platform": "android",
       "name": "PALMYRA-Android.apk",
-      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.19/PALMYRA-Android.apk",
-      "sha256": "8d66356b445ba1fd3bc07823bd023526f04e3bc15ba9c5f1d88b2057b8d6b3db",
-      "bytes": 2692166
+      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.20/PALMYRA-Android.apk",
+      "sha256": "1c26694e226dd4472c9bd0fe1814a68e380747b9b0b8b2d822dc9e1734897fe3",
+      "bytes": 2717008
     }
   ],
   "keyId": "palmyra-stable-2026-11",
-  "signature": "ANBw_YifBB4Du20gEte1lk9Tp33e4UJmFaXuq9Eeu2wvLZAwb3n4vxeGY6cQBD8_k6oV9b9S1bmGNoLnua5Uxw"
+  "signature": "mjs8MhFU49GumLVycm5ZKoluqDgKnSRQ87Ti5-tXJpaCEAr-pRBg2hKDlokltfzKvp8DxT1vwM5CnGowEKtjvw"
 }
