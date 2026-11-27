@@ -1,11 +1,15 @@
+// `import.meta.env` solo existe en el build de Vite: fuera de él (pruebas con
+// tsx) es undefined, y leer propiedades directas reventaba el import del módulo.
+const buildEnv = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {};
+
 export const ANDROID_APK_DOWNLOAD =
-  (import.meta.env.VITE_ANDROID_DOWNLOAD_URL as string | undefined)?.trim() || '/download/android';
+  buildEnv.VITE_ANDROID_DOWNLOAD_URL?.trim() || '/download/android';
 
 // Origen público de PALMYRA. Dentro del APK la web se sirve desde
 // 127.0.0.1, así que las descargas y la versión nueva deben pedirse siempre
 // a este origen remoto.
 export const PALMYRA_REMOTE_ORIGIN =
-  (import.meta.env.VITE_APP_ORIGIN as string | undefined)?.trim() || 'https://palmyracrm.onrender.com';
+  buildEnv.VITE_APP_ORIGIN?.trim() || 'https://palmyracrm.onrender.com';
 
 export const REMOTE_APK_DOWNLOAD = `${PALMYRA_REMOTE_ORIGIN}/download/android`;
 

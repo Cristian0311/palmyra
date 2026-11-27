@@ -1,4 +1,5 @@
 import { getSupabase } from '../lib/supabase';
+import { PALMYRA_REMOTE_ORIGIN } from '../lib/install';
 
 export interface DeviceAccessCredentials {
   email: string;
@@ -58,9 +59,35 @@ function mapInviteError(message: string): string {
   return INVITE_ERRORS[code] || `No se pudo generar el enlace de acceso (${code || 'error_desconocido'}).`;
 }
 
+/**
+ * Origen que puede abrir OTRO equipo. En PC/APK la interfaz se sirve desde
+ * 127.0.0.1:<puerto> (o desde una IP de LAN con el hub), así que `window.location.origin`
+ * solo es válido dentro de esta máquina: quien reciba el enlace vería
+ * «127.0.0.1 rechazó la conexión». Se usa el origen público de PALMYRA y solo se
+ * conserva el origen actual cuando es un host público real.
+ */
+function shareableOrigin(): string {
+  if (typeof window === 'undefined') return PALMYRA_REMOTE_ORIGIN;
+  const raw = window.location.origin || '';
+  if (!raw || raw === 'null') return PALMYRA_REMOTE_ORIGIN;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return PALMYRA_REMOTE_ORIGIN;
+    const host = url.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    if (!host) return PALMYRA_REMOTE_ORIGIN;
+    if (host === 'localhost' || host.endsWith('.localhost')) return PALMYRA_REMOTE_ORIGIN;
+    if (host === '0.0.0.0' || host === '::' || /^127\./.test(host)) return PALMYRA_REMOTE_ORIGIN;
+    // Direcciones privadas (10/8, 172.16/12, 192.168/16) y nombres sin dominio.
+    if (/^(10\.|192\.168\.)/.test(host) || /^172\.(1[6-9]|2\d|3[01])\./.test(host)) return PALMYRA_REMOTE_ORIGIN;
+    if (!host.includes('.')) return PALMYRA_REMOTE_ORIGIN;
+    return raw.replace(/\/+$/, '');
+  } catch {
+    return PALMYRA_REMOTE_ORIGIN;
+  }
+}
+
 export function buildDeviceAccessLink(token: string): string {
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
-  return `${origin}/device-access?token=${encodeURIComponent(token)}`;
+  return `${shareableOrigin()}/device-access?token=${encodeURIComponent(token)}`;
 }
 
 /** Esquema propio de la app instalada (PC/APK): palmyra://device-access?token=… */
