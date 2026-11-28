@@ -27,7 +27,6 @@ import {
   CircleDollarSign,
   Landmark,
   Sparkles,
-  ScrollText,
   Lock
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
@@ -69,7 +68,6 @@ const adminNavItems = [
   { name: "Inventario", href: "/inventory", icon: Package, permission: "inventory.manage" },
   { name: "Auditoría", href: "/inventory-audit", icon: ClipboardCheck, permission: "inventory.manage", requiredFeature: "inventory_audit" as PlanFeature },
   { name: "Proveedores", href: "/suppliers", icon: Truck, permission: "suppliers.manage", requiredFeature: "customers_suppliers" as PlanFeature },
-  { name: "CNGL-TEM", href: "/cngl-tem", icon: ScrollText, public: true, badge: "Próximamente" },
   { name: "Bancos", href: "/banks", icon: Landmark, permission: "settings.manage", requiredFeature: "banking" as PlanFeature },
   { name: "Garantías y devoluciones", href: "/returns", icon: ShieldCheck, permission: "pos.access", requiredFeature: "warranty_returns" as PlanFeature },
   { name: "Reportes", href: "/reports", icon: BarChart, permission: "reports.view" },
@@ -827,7 +825,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const navSectionDefinitions = currentUser?.role === "admin"
     ? [
         { label: "Operación", hrefs: ["/", "/pos", "/quotes", "/transfers", "/returns"] },
-        { label: "Gestión", hrefs: ["/customers", "/inventory", "/inventory-audit", "/suppliers", "/cngl-tem"] },
+        { label: "Gestión", hrefs: ["/customers", "/inventory", "/inventory-audit", "/suppliers"] },
         { label: "Finanzas", hrefs: ["/banks", "/reports"] },
         { label: "Administración", hrefs: ["/settings", "/team", "/help-center", "/subscription", "/tutorial", "/exchange-rate"] },
       ]

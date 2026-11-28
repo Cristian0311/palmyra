@@ -409,18 +409,19 @@ async function loadCatalogSections(options: CatalogOptions = {}): Promise<Catalo
     ? settingsR.data.settings
     : null;
   // Sin ajustes remotos no se inventa configuración: `null` deja intacta la local.
+  // `*_config` es el respaldo para las filas que escribió el replay offline antes
+  // de que ese camino usara la clave camelCase que lee el resto del sistema.
   const storeConfig = settingsR.ok
-    ? (settings?.storeConfig || {
+    ? (settings?.storeConfig || settings?.store_config || {
         storeName: companyRow?.name || 'PALMYRA POS',
         address: '',
         phone: '',
         receiptNotes: '',
-        darkMode: false,
-        manualOfflineSync: true
+        darkMode: false
       })
     : null;
   const receiptConfig = settingsR.ok
-    ? (settings?.receiptConfig || {
+    ? (settings?.receiptConfig || settings?.receipt_config || {
         showLogo: false, showAddress: true, showPhone: true, showFooter: true,
         footerText: 'Gracias por su compra.',
         businessName: companyRow?.name || 'PALMYRA POS',

@@ -105,11 +105,17 @@ export interface StoreConfig {
   latitude?: number;
   longitude?: number;
   darkMode?: boolean;
-  manualOfflineSync?: boolean;
   /** Aplica la cotización de elTOQUE cuando supera el umbral configurado. */
   autoRateSync?: boolean;
   /** Diferencia mínima en CUP para aceptar un cambio automático (por defecto 5). */
   autoRateThreshold?: number;
+  /**
+   * Caducidad por defecto de los enlaces de acceso de trabajador, en días
+   * (0 = sin caducidad). Es una preferencia de EMPRESA, no de dispositivo:
+   * mientras vivió en el estado de React cada móvil arrancaba con sus 7 días
+   * y generaba enlaces distintos para el mismo trabajador.
+   */
+  deviceAccessInviteDays?: number;
 }
 
 

@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "./cors.ts";
+import { provisionDeviceAccess } from "./provision.ts";
 
 /**
  * device-access: canjea un enlace de un solo uso y devuelve credenciales
@@ -219,17 +220,18 @@ async function redeem(req: Request): Promise<Response> {
     );
   }
 
-  // 2) Alcance: sucursales activas de la empresa y rol vigente.
+  // 2) Alcance: sucursales y rol vigentes de la empresa.
   const inviteWarehouses: string[] = Array.isArray((verified as any)?.warehouse_ids)
     ? ((verified as any).warehouse_ids as any[]).map((id) => String(id)).filter(Boolean)
     : [];
   let warehouseIds: string[] = [];
   if (inviteWarehouses.length) {
+    // Se valida que la sucursal sea de la empresa, no que esté «activa»: la migración
+    // 20261126120000 eliminó ese concepto y el filtro dejaba fuera enlaces válidos.
     const { data: warehouses } = await admin
       .from("warehouses")
       .select("id")
       .eq("company_id", companyId)
-      .eq("active", true)
       .in("id", inviteWarehouses);
     const valid = new Set(((warehouses || []) as any[]).map((w) => String(w.id)));
     warehouseIds = inviteWarehouses.filter((id) => valid.has(id));
@@ -289,47 +291,21 @@ async function redeem(req: Request): Promise<Response> {
     userId = existingId;
   }
 
-  const { error: profileError } = await admin.from("profiles").upsert(
-    { id: userId, full_name: metadata.full_name, active_company_id: companyId },
-    { onConflict: "id" }
-  );
-  if (profileError) return json({ error: "profile_write_failed" }, 500);
-
-  const { error: membershipError } = await admin.from("company_memberships").upsert(
-    { company_id: companyId, user_id: userId, status: "active", is_owner: false },
-    { onConflict: "company_id,user_id" }
-  );
-  if (membershipError) return json({ error: "membership_write_failed" }, 500);
-
-  await admin.from("user_roles").delete().eq("company_id", companyId).eq("user_id", userId);
-  const { error: roleError } = await admin
-    .from("user_roles")
-    .insert({ user_id: userId, company_id: companyId, role_id: roleId });
-  if (roleError) return json({ error: "role_write_failed" }, 500);
-
-  await admin.from("user_locations").delete().eq("company_id", companyId).eq("user_id", userId);
-  const { error: locationError } = await admin.from("user_locations").insert(
-    warehouseIds.map((warehouseId, index) => ({
-      user_id: userId,
-      company_id: companyId,
-      warehouse_id: warehouseId,
-      is_default: index === 0
-    }))
-  );
-  if (locationError) return json({ error: "location_write_failed" }, 500);
-
-  const { error: employeeWriteError } = await admin
-    .from("employees")
-    .update({
-      user_id: userId,
-      login_email: email,
-      active: true,
-      role_id: roleId,
-      updated_at: new Date().toISOString()
-    })
-    .eq("id", employeeId)
-    .eq("company_id", companyId);
-  if (employeeWriteError) return json({ error: "employee_write_failed" }, 500);
+  const provision = await provisionDeviceAccess({
+    admin,
+    userId,
+    companyId,
+    employeeId,
+    email,
+    fullName: metadata.full_name,
+    roleId,
+    warehouseIds
+  });
+  if (!provision.ok) {
+    // `detail` solo trae códigos de negocio conocidos (nunca SQL): el activador los
+    // traduce a una causa concreta en vez de «no se pudo guardar el perfil».
+    return json({ error: provision.error, detail: provision.detail }, 500);
+  }
 
   // 4) Cierre: claim condicional (otra persona pudo ganar la carrera).
   const nowIso = new Date().toISOString();

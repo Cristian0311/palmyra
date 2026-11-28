@@ -6,7 +6,7 @@
  * operación, una secuencia monotónica por dispositivo (independiente del reloj
  * local) y una lectura única de la salud de la cola.
  */
-import type { OfflineQueueItem } from '../offlineQueueTypes';
+import type { OfflineActionType, OfflineQueueItem } from '../offlineQueueTypes';
 
 export const SYNC_PROTOCOL_VERSION = 2;
 export const OFFLINE_ITEM_SCHEMA_VERSION = 1;
@@ -243,7 +243,7 @@ export function isPermanentSyncRejection(
   return false;
 }
 
-const QUEUE_TYPE_LABELS: Record<string, string> = {
+export const QUEUE_TYPE_LABELS: Record<OfflineActionType, string> = {
   transaction: 'Venta',
   void_transaction: 'Anulación de venta',
   return: 'Devolución',
@@ -273,30 +273,43 @@ const QUEUE_TYPE_LABELS: Record<string, string> = {
   customer: 'Cliente',
   customer_delete: 'Borrado de cliente',
   bank_card: 'Cuenta o tarjeta',
+  bank_card_delete: 'Borrado de cuenta o tarjeta',
   bank_card_balance: 'Saldo bancario',
   bank_transaction: 'Movimiento bancario',
   bank_transaction_delete: 'Borrado de movimiento bancario',
   bank_internal_transfer: 'Transferencia bancaria',
   bank_internal_transfer_delete: 'Borrado de transferencia bancaria',
   branch: 'Sucursal',
+  branch_delete: 'Borrado de sucursal',
   category: 'Categoría',
+  category_delete: 'Borrado de categoría',
   user: 'Usuario',
+  user_delete: 'Borrado de usuario',
   employee_create: 'Alta de empleado',
   employee_update: 'Edición de empleado',
   employee_status: 'Estado de empleado',
   employee_delete: 'Baja de empleado',
+  invitation_revoke: 'Revocar invitación',
   team_role_upsert: 'Rol del equipo',
   team_compensation_settings: 'Compensación del equipo',
   quote: 'Cotización',
+  quote_delete: 'Borrado de cotización',
+  supplier_delete: 'Borrado de proveedor',
   warranty: 'Garantía',
   time_shift: 'Turno de personal',
   currency: 'Moneda',
-  currency_rate: 'Tasa de cambio'
+  currency_rate: 'Tasa de cambio',
+  store_config: 'Configuración de la empresa',
+  receipt_config: 'Configuración del ticket',
+  catalog_config: 'Configuración del catálogo',
+  device_access_revoke: 'Revocar enlace de acceso'
 };
 
 export function describeOfflineQueueType(type: string): string {
   const key = String(type || '');
-  if (QUEUE_TYPE_LABELS[key]) return QUEUE_TYPE_LABELS[key];
+  // Una fila de un bundle viejo puede traer un tipo que ya no está en la unión.
+  const label = QUEUE_TYPE_LABELS[key as OfflineActionType];
+  if (label) return label;
   const readable = key.replace(/_/g, ' ').trim();
   if (!readable) return 'Operación';
   return readable.charAt(0).toUpperCase() + readable.slice(1);

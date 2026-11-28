@@ -43,7 +43,7 @@ const { BASE_ALLOWED_HEADERS, allowedRequestHeaders, corsHeaders } = await impor
 );
 const { ACCESS_UNREACHABLE_HINT, ACCESS_UNREACHABLE_MESSAGE, accessFailureKind, redeemWithNetworkRetry } =
   await import("../../src/pages/DeviceAccess.tsx");
-const { DeviceAccessError } = await import("../../src/services/deviceAccess.ts");
+const { DeviceAccessError, readRedeemFailure } = await import("../../src/services/deviceAccess.ts");
 const { FunctionsFetchError, FunctionsHttpError } = await import("@supabase/supabase-js");
 
 const credentials = { email: "pos-e1@device.palmyra.app", password: "secreta" };
@@ -197,4 +197,72 @@ test("DeviceAccess.tsx nunca muestra el texto crudo del fallo de red", () => {
   // Y se ofrece reintento sin volver a escribir la contraseña.
   assert.ok(source.includes("const retryAfterFailure"));
   assert.ok(source.includes("await redeemWithNetworkRetry(token, value, describeDevice())"));
+});
+
+/**
+ * Regresión del arranque: el paso «validando → contraseña» se programa con un
+ * temporizador. Con una guarda `booted` el segundo paso de StrictMode
+ * (desmontar → montar) cancelaba el timer y no programaba otro, así que el
+ * activador se quedaba en «Validando el enlace» sin campo de contraseña.
+ */
+test("el activador siempre llega al campo de contraseña tras montar", () => {
+  // Solo se mira el código: el comentario de la corrección nombra la guarda que ya no existe.
+  const code = readFileSync("src/pages/DeviceAccess.tsx", "utf8")
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("//"))
+    .join("\n");
+  assert.ok(!/\bbooted\b/.test(code), "no puede haber una guarda que salte el programador del timer");
+  assert.ok(!/useRef\(false\)/.test(code), "el arranque no puede memorizarse en una ref");
+  assert.ok(code.includes('window.setTimeout(() => setPhase("password"), 250)'));
+  assert.ok(code.includes("return () => window.clearTimeout(timer);"));
+});
+
+/**
+ * Regresión de la opacidad: los seis pasos de provisión devolvían
+ * `json({ error: "profile_write_failed" }, 500)` y tiraban el mensaje de Postgres,
+ * así que el dueño leía «No se pudo guardar el perfil del trabajador» sin saber si
+ * era el límite de trabajadores del plan Gratis o una regla de la base. Ahora la
+ * función publica `detail` con códigos de negocio y el cliente lo traduce.
+ */
+function bodyFailure(payload: unknown) {
+  return { context: new Response(JSON.stringify(payload), { status: 500 }) };
+}
+
+test("la causa del motor acompaña al mensaje de provisión", async () => {
+  const profile = await readRedeemFailure(bodyFailure({ error: "profile_write_failed", detail: "invalid_active_company" }));
+  assert.equal(profile.code, "profile_write_failed");
+  assert.match(profile.message, /No se pudo guardar el perfil del trabajador/);
+  assert.match(profile.message, /La cuenta aún no quedó vinculada a la empresa/);
+
+  const limit = await readRedeemFailure(bodyFailure({ error: "employee_write_failed", detail: "plan_employees_limit" }));
+  assert.match(limit.message, /límite de trabajadores de su plan/);
+  assert.match(limit.message, /sube de plan/i);
+});
+
+test("un detalle fuera de la lista blanca no añade texto ni filtra SQL", async () => {
+  const failure = await readRedeemFailure(
+    bodyFailure({ error: "role_write_failed", detail: 'violates foreign key "user_roles_role_id_fkey" on table "public.user_roles"' })
+  );
+  assert.equal(failure.code, "role_write_failed");
+  assert.equal(failure.message, "No se pudo asignar el rol del trabajador.");
+  assert.doesNotMatch(failure.message, /foreign key|user_roles_role_id_fkey|table/i);
+});
+
+test("los códigos nuevos de la edge function tienen mensaje en español", async () => {
+  for (const [code, expected] of [
+    ["warehouse_unavailable", "sucursal"],
+    ["role_unavailable", "rol"],
+    ["lookup_failed", "enlace nuevo"],
+    ["internal_error", "Inténtalo de nuevo"]
+  ] as const) {
+    const failure = await readRedeemFailure(bodyFailure({ error: code }));
+    assert.equal(failure.code, code);
+    assert.match(failure.message, new RegExp(expected, "i"), `${code}: ${failure.message}`);
+  }
+});
+
+test("el cuerpo no JSON no convierte el canje en un error vacío", async () => {
+  const failure = await readRedeemFailure({ context: new Response("<html>502 Bad Gateway</html>", { status: 502 }) });
+  assert.equal(failure.code, "");
+  assert.match(failure.message, /No se pudo canjear el enlace de acceso/);
 });

@@ -128,7 +128,6 @@ export default function DeviceAccess() {
   const [networkFailure, setNetworkFailure] = useState(false);
   const [busy, setBusy] = useState(false);
   const passwordRef = useRef<HTMLInputElement | null>(null);
-  const booted = useRef(false);
 
   useEffect(() => {
     if (!token) {
@@ -141,8 +140,9 @@ export default function DeviceAccess() {
       setError("Supabase no está configurado en este dispositivo. Revisa la conexión e intenta de nuevo.");
       return;
     }
-    if (booted.current) return;
-    booted.current = true;
+    // Sin bandera «booted»: StrictMode desmonta y vuelve a montar el efecto, y una
+    // guarda así cancelaría el temporizador propio y dejaría la pantalla en
+    // «Validando el enlace» para siempre. El cleanup ya garantiza un solo timer.
     const timer = window.setTimeout(() => setPhase("password"), 250);
     return () => window.clearTimeout(timer);
   }, [token]);

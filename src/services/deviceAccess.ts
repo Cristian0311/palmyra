@@ -23,16 +23,17 @@ const INVITE_ERRORS: Record<string, string> = {
   employee_not_found: 'El trabajador no existe en tu empresa.',
   employee_inactive: 'El trabajador está inactivo. Actívalo antes de generar el enlace.',
   employee_role_required: 'Asigna un rol al trabajador antes de generar el enlace.',
-  warehouse_required: 'El trabajador necesita al menos una sucursal asignada.'
+  warehouse_required: 'El trabajador necesita al menos una sucursal asignada.',
+  device_link_exists: 'Este trabajador ya tiene un enlace de acceso activo. Revoquelo para eliminarlo y genera entonces uno nuevo.'
 };
 
 const REDEEM_ERRORS: Record<string, string> = {
   invalid_token: 'El enlace no es válido o pertenece a otra empresa.',
   invite_used: 'Este enlace ya se usó. Pide al propietario que genere uno nuevo.',
   invite_expired: 'El enlace caducó. Pide al propietario que genere uno nuevo.',
-  device_link_invalid: 'El enlace de acceso no es válido. Pide uno nuevo al propietario.',
+  device_link_invalid: 'El enlace de acceso caducó o el propietario lo eliminó. Pide uno nuevo.',
   device_link_used: 'Este enlace ya se usó. Pide uno nuevo al propietario.',
-  device_link_expired: 'El enlace de acceso caducó. Pide uno nuevo al propietario.',
+  device_link_expired: 'Tu enlace de acceso caducó. Pide uno nuevo al propietario.',
   pos_password_required: 'Escribe la contraseña POS configurada por el administrador.',
   pos_password_invalid: 'La contraseña POS no es correcta. Vuelve a intentarlo.',
   employee_not_found: 'El trabajador ya no está activo en la empresa.',
@@ -51,8 +52,35 @@ const REDEEM_ERRORS: Record<string, string> = {
   too_many_attempts: 'Demasiados intentos. Espera un minuto y vuelve a intentarlo.',
   invalid_request: 'El enlace no contiene los datos necesarios.',
   unsupported_action: 'Solicitud de acceso no soportada.',
-  method_not_allowed: 'Método no permitido.'
+  method_not_allowed: 'Método no permitido.',
+  lookup_failed: 'El servidor no pudo leer los datos del trabajador. Genera un enlace nuevo.',
+  internal_error: 'No se pudo completar la activación. Inténtalo de nuevo en unos segundos.'
 };
+
+/**
+ * Causa concreta que la edge function publica en `detail`. Son códigos de negocio
+ * de los triggers de la base (lista blanca en el servidor, nunca SQL ni datos de
+ * otras empresas). Sin ellos el activador decía solo «No se pudo guardar el perfil
+ * del trabajador» y no se distinguía un límite de plan de una regla rota.
+ */
+const REDEEM_DETAILS: Record<string, string> = {
+  invalid_active_company: 'La cuenta aún no quedó vinculada a la empresa.',
+  membership_not_active: 'El vínculo del trabajador con la empresa no está activo.',
+  role_not_found: 'El rol asignado al trabajador ya no existe. Asigna otro rol y genera un enlace nuevo.',
+  role_company_mismatch: 'El rol del enlace pertenece a otra empresa.',
+  warehouse_company_mismatch: 'Alguna sucursal del enlace no pertenece a esta empresa.',
+  cross_company_reference: 'Los datos del trabajador cruzan dos empresas. Genera un enlace nuevo.',
+  plan_employees_limit: 'La empresa llegó al límite de trabajadores de su plan: sube de plan para activar este equipo.',
+  plan_warehouses_limit: 'La empresa llegó al límite de sucursales de su plan.',
+  company_id_immutable: 'La empresa de esta cuenta no se puede cambiar.',
+  company_required: 'La cuenta no tiene una empresa asignada.',
+  company_not_found: 'La empresa del enlace ya no existe.'
+};
+
+/** `detail` -> frase en español. Un valor fuera de la lista blanca se ignora. */
+function describeDetail(value: unknown): string {
+  return REDEEM_DETAILS[String(value || '')] || '';
+}
 
 function mapInviteError(message: string): string {
   const code = String(message || '').trim();
@@ -136,8 +164,10 @@ export function resolveAccessInviteExpiry(value: number | string | null | undefi
 }
 
 /**
- * Fecha legible de caducidad del enlace recién generado. `null` cuando no
- * caduca, para que la interfaz lo diga con palabras y no con una fecha lejana.
+ * Fecha legible de caducidad del enlace recién generado. **Estimación local**:
+ * suma `createdAt + days` sin preguntar al servidor, así que solo se usa cuando
+ * no hay red. Con conexión la etiqueta sale de `describeAccessLink`, que lee el
+ * `expires_at` real de la fila.
  */
 export function describeAccessInviteExpiry(
   days: number | string | null | undefined,
@@ -147,7 +177,106 @@ export function describeAccessInviteExpiry(
   if (expiry.perpetual) return 'Sin caducidad: el enlace no expira';
   const base = Number.isFinite(createdAt) && createdAt > 0 ? createdAt : Date.now();
   const date = new Date(base + expiry.days * 86_400_000);
-  return `Caduca el ${date.toLocaleDateString('es-CU')}`;
+  return `Caduca el ${date.toLocaleDateString('es-CU')} (estimado, sin conectar)`;
+}
+
+/** Enlaces vivos por trabajador que admite el servidor: uno solo. */
+export const ACCESS_INVITE_MAX_PENDING_LINKS = 1;
+
+/**
+ * Enlace de acceso como lo devuelve `list_device_access_links`. Nunca incluye el
+ * token ni su hash: el secreto solo se muestra una vez, en el momento de crearlo.
+ */
+export interface DeviceAccessLink {
+  id: string;
+  createdAt: number;
+  /** `null` = sin caducidad (la fila tiene `expires_at = infinity`). */
+  expiresAt: number | null;
+  usedAt: number | null;
+  usedByDevice: string;
+}
+
+export type AccessLinkStatus = 'used' | 'expired' | 'active';
+
+function toTimestamp(value: unknown): number | null {
+  // PostgREST serializa `infinity` como la cadena 'infinity': `new Date()` de eso
+  // sale Invalid Date, y tratarlo como fecha produciría el año 292278994.
+  if (typeof value === 'string' && /^[-+]?infinity$/i.test(value.trim())) return null;
+  if (value === null || value === undefined || value === '') return null;
+  const parsed = new Date(String(value)).getTime();
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function normalizeLinkRow(row: any): DeviceAccessLink | null {
+  const id = String(row?.id || '');
+  if (!id) return null;
+  return {
+    id,
+    createdAt: toTimestamp(row?.created_at) ?? Date.now(),
+    expiresAt: toTimestamp(row?.expires_at),
+    usedAt: toTimestamp(row?.used_at),
+    usedByDevice: String(row?.used_by_device || '')
+  };
+}
+
+/** Estado real del enlace: usado primero, luego caducado, luego vivo. */
+export function accessLinkStatus(link: DeviceAccessLink, now: number = Date.now()): AccessLinkStatus {
+  if (link.usedAt) return 'used';
+  if (link.expiresAt !== null && link.expiresAt <= now) return 'expired';
+  return 'active';
+}
+
+function formatMoment(value: number): string {
+  return new Date(value).toLocaleString('es-CU', {
+    day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+  });
+}
+
+/** Chip del enlace: «Sin caducidad» · «Caduca 05 dic 2026 16:48» · «Usado …». */
+export function describeAccessLink(link: DeviceAccessLink, now: number = Date.now()): string {
+  const status = accessLinkStatus(link, now);
+  if (status === 'used') return `Usado el ${formatMoment(link.usedAt as number)}`;
+  if (link.expiresAt === null) return 'Sin caducidad';
+  return status === 'expired'
+    ? `Expirado el ${formatMoment(link.expiresAt)}`
+    : `Caduca ${formatMoment(link.expiresAt)}`;
+}
+
+/**
+ * Enlaces vivos de un trabajador, leídos del servidor. La tabla está cerrada por
+ * RLS, así que el único camino es la RPC `SECURITY DEFINER`; devuelve `[]` cuando
+ * el trabajador aún no tiene enlaces.
+ */
+export async function listDeviceAccessLinks(employeeId: string): Promise<DeviceAccessLink[]> {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error('Supabase no está configurado.');
+  if (!employeeId) throw new Error('Selecciona un trabajador.');
+  const { data, error } = await supabase.rpc('list_device_access_links', {
+    p_employee_id: employeeId
+  });
+  if (error) throw new Error(mapInviteError(error.message));
+  const rows = Array.isArray(data) ? data : Array.isArray((data as { links?: unknown[] } | null)?.links)
+    ? (data as { links: unknown[] }).links
+    : [];
+  return rows.map(normalizeLinkRow).filter((link): link is DeviceAccessLink => Boolean(link));
+}
+
+/**
+ * Elimina enlaces pendientes de un trabajador (revocar = eliminar). La RPC también
+ * purga los caducados nunca usados, así que tras esta llamada la lista queda limpia.
+ */
+export async function revokeDeviceAccessLinks(employeeId: string, ids: string[]): Promise<boolean> {
+  const supabase = getSupabase();
+  if (!supabase) throw new Error('Supabase no está configurado.');
+  if (!employeeId) throw new Error('Selecciona un trabajador.');
+  const linkIds = ids.map(id => String(id || '').trim()).filter(Boolean);
+  if (!linkIds.length) return true;
+  const { data, error } = await supabase.rpc('revoke_device_access_links', {
+    p_employee_id: employeeId,
+    p_ids: linkIds
+  });
+  if (error) throw new Error(mapInviteError(error.message));
+  return data !== null && data !== undefined;
 }
 
 export async function createDeviceAccessInvite(
@@ -171,7 +300,8 @@ export async function createDeviceAccessInvite(
   return { token, link: buildDeviceAccessLink(token), days: expiry.days };
 }
 
-async function readRedeemFailure(error: unknown): Promise<{ code: string; message: string }> {
+/** Traduce la respuesta non-2xx de la edge function a código de negocio + causa. */
+export async function readRedeemFailure(error: unknown): Promise<{ code: string; message: string }> {
   // supabase-js solo lanza FunctionsFetchError cuando la petición no llegó al
   // servidor (red caída o preflight CORS rechazado): no es un fallo del enlace
   // y el intento no se gastó. Se nombra como causa de red, no como error raro.
@@ -187,9 +317,10 @@ async function readRedeemFailure(error: unknown): Promise<{ code: string; messag
     try {
       const payload = await response.json();
       const code = String(payload?.error || '');
-      if (REDEEM_ERRORS[code]) return { code, message: REDEEM_ERRORS[code] };
+      const detail = describeDetail(payload?.detail);
+      if (REDEEM_ERRORS[code]) return { code, message: `${REDEEM_ERRORS[code]} ${detail}`.trim() };
       serverMessage = String(payload?.message || '');
-      if (code) return { code, message: serverMessage || 'No se pudo canjear el enlace de acceso.' };
+      if (code) return { code, message: serverMessage || detail || 'No se pudo canjear el enlace de acceso.' };
     } catch {
       // Cuerpo no JSON: caemos al mensaje genérico.
     }

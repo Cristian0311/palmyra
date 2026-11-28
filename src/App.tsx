@@ -98,7 +98,6 @@ const PlatformAdmin = lazyWithRetry(() => import("./pages/PlatformAdmin"));
 const HelpCenter = lazyWithRetry(() => import("./pages/HelpCenter"));
 const Tutorial = lazyWithRetry(() => import("./pages/Tutorial"));
 const ExchangeRate = lazyWithRetry(() => import("./pages/ExchangeRate"));
-const CnglTem = lazyWithRetry(() => import("./pages/CnglTem"));
 
 // La web solo registra, cobra el plan y entrega la descarga. La caja y el resto
 // de la operación viven en la app instalada (Windows o APK). `currentAppSurface()`
@@ -167,7 +166,6 @@ function PageLoading() {
     "/help": "Cargando Centro de atención…",
     "/exchange-rate": "Cargando tasa de cambio…",
     "/help-center": "Cargando Centro de atención…",
-    "/cngl-tem": "Cargando CNGL-TEM…",
     "/invite": "Cargando invitación…",
     "/auth": "Cargando acceso…",
     "/auth/confirm": "Confirmando tu cuenta…",
@@ -649,6 +647,11 @@ export default function App() {
   // verificación de sesión se cuelga, el usuario quedaría viendo un loader
   // infinito después de pulsar «Entrar» o «Crear cuenta».
   const isAuthFlowPath = typeof window !== "undefined" && /^\/auth(\/confirm)?\/?$/i.test(window.location.pathname);
+  // El activador de equipo entra por enlace o por QR escaneado en un teléfono que
+  // puede no tener sesión ni datos cacheados: solo necesita el token y el cliente
+  // de Supabase. Si se queda detrás de «Preparando PALMYRA…», quien escanea nunca
+  // llega a escribir la contraseña.
+  const isDeviceAccessPath = typeof window !== "undefined" && /^\/device-access\/?$/i.test(window.location.pathname);
   const authRouteOpen =
     recoveringPassword ||
     accessState === "signed_out" ||
@@ -679,7 +682,7 @@ export default function App() {
     return earlyLanding;
   }
 
-  if (accessState === "recovering" && !isAuthFlowPath) {
+  if (accessState === "recovering" && !isAuthFlowPath && !isDeviceAccessPath) {
     return (
       <div className="min-h-screen bg-[#F7F5FC] flex items-center justify-center p-5">
         <div className="w-full max-w-md rounded-3xl border border-violet-100 bg-white p-7 text-center shadow-xl">
@@ -692,7 +695,7 @@ export default function App() {
       </div>
     );
   }
-  if (!isAuthFlowPath && (!isInitialized || (authBootstrapping && !currentUser?.id))) {
+  if (!isAuthFlowPath && !isDeviceAccessPath && (!isInitialized || (authBootstrapping && !currentUser?.id))) {
     return (
       <div className="min-h-screen bg-[#F7F5FC] flex items-center justify-center">
         <div className="palmyra-loading-bubble">Preparando PALMYRA… <span className="palmyra-loading-dots">•••</span></div>
@@ -703,7 +706,7 @@ export default function App() {
   // Con un usuario persistido, el router se monta antes de que la verificación
   // cloud termine. Redirigir en "loading" destruía los enlaces profundos
   // (p. ej. /pos o /reports abrían siempre el dashboard): esperamos aquí.
-  if (!isAuthFlowPath && accessState === "loading") {
+  if (!isAuthFlowPath && !isDeviceAccessPath && accessState === "loading") {
     return (
       <div className="min-h-screen bg-[#F7F5FC] flex items-center justify-center">
         <div className="palmyra-loading-bubble">Preparando PALMYRA… <span className="palmyra-loading-dots">•••</span></div>
@@ -762,7 +765,6 @@ export default function App() {
                     <Route path="/help-center" element={<HelpCenter />} />
                     <Route path="/tutorial" element={<Tutorial />} />
                     <Route path="/exchange-rate" element={<ExchangeRate />} />
-                    <Route path="/cngl-tem" element={<CnglTem />} />
                     <Route path="/notifications" element={<Navigate to={NOTIFICATIONS_PATH} replace />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>

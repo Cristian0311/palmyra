@@ -348,6 +348,25 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
       if (error) throw error;
       return true;
     }
+    case 'device_access_revoke': {
+      const employeeId = String(data?.employeeId || '');
+      const linkIds = Array.isArray(data?.linkIds)
+        ? data.linkIds.map((id: unknown) => String(id || '').trim()).filter(Boolean)
+        : [];
+      if (!employeeId || !linkIds.length) throw new PermanentSyncError('Revocación offline de enlaces de acceso sin trabajador o enlaces.');
+      // Expirar es idempotente: la RPC solo toca filas pendientes de la empresa
+      // del solicitante, así que un reintento no vuelve a expirar nada.
+      const { error } = await supabase.rpc('revoke_device_access_links', { p_employee_id: employeeId, p_ids: linkIds });
+      if (error) {
+        // Sin la migración aplicada el servidor no conoce la función: reintentar
+        // no lo cambia, así que se reporta como conflicto definitivo y visible.
+        if (/does not exist|Could not find the function|42883|PGRST201/i.test(String(error.message || ''))) {
+          throw new PermanentSyncError('El servidor todavía no acepta revocar enlaces de acceso. Actualiza PALMYRA y vuelve a intentarlo.');
+        }
+        throw error;
+      }
+      return true;
+    }
     case 'employee_update': {
       const d = data || {};
       if (!d.companyId || !d.employeeId || !d.fullName || !d.employeeCode || !d.roleId || !Array.isArray(d.warehouseIds) || !d.warehouseIds.length) {
@@ -1547,7 +1566,11 @@ async function replayQueueItem(supabase: any, item: OfflineQueueItem): Promise<b
       // Persistimos estos ajustes dentro del registro tenant-scoped de company_settings
       // para que la sincronización offline nunca quede reintentando contra una tabla inexistente.
       const { companyId } = await getActiveTenant();
-      const key = type === 'receipt_config' ? 'receipt_config' : type === 'catalog_config' ? 'catalog_config' : 'store_config';
+      // camelCase, no snake_case: `updateCompanySettings` escribe `storeConfig` y
+      // el pull lee `settings.storeConfig`. Con la clave snake_case el replay
+      // offline guardaba la preferencia en un documento que nadie leía y el
+      // cambio desaparecía al reconectar.
+      const key = type === 'receipt_config' ? 'receiptConfig' : type === 'catalog_config' ? 'catalogConfig' : 'storeConfig';
       const { data: current, error: readError } = await supabase
         .from('company_settings')
         .select('settings')

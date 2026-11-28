@@ -46,6 +46,7 @@ const corsHeaders = {
   "Access-Control-Allow-Methods": "POST, OPTIONS"
 };
 
+/** `status` es número: pasarle `{ status: 401 }` hace que `new Response` lance y el cliente reciba un 500 sin cuerpo. */
 function json(data: Record<string, unknown>, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
@@ -57,7 +58,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
   const authHeader = req.headers.get("Authorization") || "";
-  if (!authHeader.startsWith("Bearer ")) return json({ error: "authentication_required" }, { status: 401 });
+  if (!authHeader.startsWith("Bearer ")) return json({ error: "authentication_required" }, 401);
 
   const body = await req.json().catch(() => ({}));
   const companyId = String(body?.companyId || "");
@@ -65,12 +66,12 @@ Deno.serve(async (req: Request) => {
   const email = String(body?.email || "").trim().toLowerCase();
   const name = String(body?.name || "").trim();
   const token = String(body?.token || "");
-  if (!companyId || !employeeId || !email || !token) return json({ error: "invalid_request" }, { status: 400 });
+  if (!companyId || !employeeId || !email || !token) return json({ error: "invalid_request" }, 400);
 
   const url = Deno.env.get("SUPABASE_URL") || "";
   const publishable = getPublishableKey();
   const secret = getSecretKey();
-  if (!url || !secret) return json({ error: "server_not_configured" }, { status: 500 });
+  if (!url || !secret) return json({ error: "server_not_configured" }, 500);
 
   const userClient = createClient(url, publishable || secret, {
     auth: { autoRefreshToken: false, persistSession: false },
@@ -78,11 +79,11 @@ Deno.serve(async (req: Request) => {
   });
   const { data: callerData, error: callerError } = await userClient.auth.getUser();
   const caller = callerData?.user;
-  if (callerError || !caller) return json({ error: "authentication_required" }, { status: 401 });
+  if (callerError || !caller) return json({ error: "authentication_required" }, 401);
 
   const admin = createClient(url, secret, { auth: { autoRefreshToken: false, persistSession: false } });
   const { data: membership } = await admin.from("company_memberships").select("is_owner,status").eq("company_id", companyId).eq("user_id", caller.id).maybeSingle();
-  if (!membership || membership.status !== "active") return json({ error: "permission_denied" }, { status: 403 });
+  if (!membership || membership.status !== "active") return json({ error: "permission_denied" }, 403);
 
   let allowed = Boolean(membership.is_owner);
   if (!allowed) {
@@ -93,7 +94,7 @@ Deno.serve(async (req: Request) => {
       allowed = Boolean((rp || []).some((r: any) => r.permissions?.key === "employees.manage"));
     }
   }
-  if (!allowed) return json({ error: "permission_denied" }, { status: 403 });
+  if (!allowed) return json({ error: "permission_denied" }, 403);
 
   const tokenHash = await sha256Hex(token.trim());
   const { data: invitation } = await admin.from("company_invitations")
@@ -102,14 +103,14 @@ Deno.serve(async (req: Request) => {
     .eq("email", email).eq("token_hash", tokenHash).eq("status", "pending")
     .maybeSingle();
   if (!invitation || new Date(invitation.expires_at).getTime() <= Date.now()) {
-    return json({ error: "invitation_invalid_or_expired" }, { status: 400 });
+    return json({ error: "invitation_invalid_or_expired" }, 400);
   }
 
   const { data: employee } = await admin.from("employees")
     .select("id,company_id,full_name,active,user_id")
     .eq("id", employeeId).eq("company_id", companyId).maybeSingle();
   if (!employee || employee.active === false || employee.user_id) {
-    return json({ error: "employee_invalid" }, { status: 400 });
+    return json({ error: "employee_invalid" }, 400);
   }
 
   const appUrl = resolveAppUrl(req);
@@ -122,7 +123,7 @@ Deno.serve(async (req: Request) => {
   if (error) {
     const msg = String(error.message || "");
     if (/already.*user|already exists|confirmed/i.test(msg)) return json({ sent: false, reason: "existing_account" });
-    return json({ sent: false, reason: "provider_error" }, { status: 502 });
+    return json({ sent: false, reason: "provider_error" }, 502);
   }
   return json({ sent: true, user_id: data.user?.id || null });
 });

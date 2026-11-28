@@ -1,26 +1,26 @@
 {
   "v": 1,
-  "version": "1.3.21",
+  "version": "1.3.22",
   "channel": "stable",
-  "releasedAt": "2026-11-28T03:38:08.922Z",
-  "notes": "Nuevo Centro Nacional de Gestión Legal Tributaria y Empresarial: la sección CNGL-TEM aparece en Gestión con la etiqueta «Próximamente», un catálogo de 26 entidades cubanas con sus siglas correctas, el contenido que traerá y los enlaces oficiales de Facebook y del canal de WhatsApp.\n\nVentas con fecha retroactiva: Reportes agrupa la venta en el día de negocio elegido, no en el día en que se registró, y esa fecha se conserva al sincronizar entre equipos.\n\nReportes: los detalles de turno y de venta abren siempre, incluso al abrirlos varias veces seguidas.\n\nLicencia: la cuenta ya no pasa a solo lectura tras verificar el plan; el estado se mantiene mientras la licencia sea válida.\n\nFormularios: al enfocar un campo ya no aparece el recuadro externo; solo se resalta el propio campo.\n\nInventario en móvil: la edición masiva muestra la lista completa y la columna de nombre queda alineada con el SKU en la vista de escritorio.\n\nSincronización: las operaciones rechazadas explican el motivo real y se pueden descartar desde el Monitor de Logs.",
+  "releasedAt": "2026-11-28T18:59:32.952Z",
+  "notes": "Equipo · enlaces de acceso: la empresa mantiene un solo enlace activo por trabajador. Al pulsar «Generar enlace» se pregunta por cuánto tiempo (1, 7 o 30 días, o sin caducidad); esa preferencia se guarda en la empresa y se ve igual desde todos los dispositivos. Los enlaces caducados dejan de mostrarse y se eliminan, y el dispositivo que los usaba al volver a entrar recibe el aviso de que su enlace expiró.\n\nEquipo · activación: el enlace y el QR se generan solo cuando se piden. Antes bastaba abrir el diálogo para crear un código nuevo, que invalidaba el del otro teléfono. Si la activación falla, la pantalla ahora dice la causa real (por ejemplo que la empresa llegó al límite de trabajadores de su plan) en lugar del genérico «No se pudo activar el equipo».\n\nSincronización: se eliminó un ajuste invisible que congelaba la cola offline. Mientras estaba activo, las acciones pendientes nunca se enviaban aunque hubiera wifi. Ahora todo lo pendiente se sincroniza al recuperar la conexión, como promete la pantalla de estado.\n\nSincronización: las operaciones de configuración pendientes tienen nombre en español («Configuración de la empresa», «Configuración del ticket», «Revocar enlace de acceso») para saber qué es cada acción sin leer el nombre interno.\n\nSe retira la sección CNGL-TEM.",
   "rollout": 100,
   "artifacts": [
     {
       "platform": "windows",
       "name": "PALMYRA-POS-Setup.exe",
-      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.21/PALMYRA-POS-Setup.exe",
-      "sha256": "35cf29c7c55a6e4d46b52a50eb0f74c709c4e8a713110bc08a32f5409eb89dfe",
-      "bytes": 114594045
+      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.22/PALMYRA-POS-Setup.exe",
+      "sha256": "cb1a401b0ccfba2ed9b240ab675e123221fb66377124e3e23fea755bc54613f0",
+      "bytes": 114588925
     },
     {
       "platform": "android",
       "name": "PALMYRA-Android.apk",
-      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.21/PALMYRA-Android.apk",
-      "sha256": "7ad5b8b30974dff065c9b3f86c00a5dcebf4982246848d84a5e37f193d57ab66",
-      "bytes": 2725198
+      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.22/PALMYRA-Android.apk",
+      "sha256": "53272cfb4ceaf2e08140c8d18818e3ad7e7b3e4774f6c024b49d5bd8ce0b6b0b",
+      "bytes": 2720931
     }
   ],
   "keyId": "palmyra-stable-2026-11",
-  "signature": "GKwBCJ8aACPfAPP8VIeXQ7iuJIH5K7--FB8GGId2iYY73AQYNQOv_D-Z-JUAuJ7l8zxEBX8-u6k_uWEiRtFMdw"
+  "signature": "f7p7kZfOt0RpddlIq1d_d2ESpWajWAJaRD-b-aTuSmJvr8Vnc7VZHR9M_RzomhvIGXxJwwRMbL7OM1czhoESbQ"
 }

@@ -734,15 +734,6 @@ async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
   }
 }
 
-function isManualOfflineSyncEnabled(): boolean {
-  try {
-    const config = useStore.getState().storeConfig;
-    return config?.manualOfflineSync === true;
-  } catch {
-    return false;
-  }
-}
-
 /**
  * Hidrata la cola durable + la copia en memoria y devuelve a `pending` todo lo
  * que quedó en vuelo por un cierre abrupto. Se ejecuta en el arranque, al volver
@@ -799,7 +790,6 @@ export async function resumeOfflineOperations(
   options: { reason?: string } = {}
 ): Promise<OfflineQueueRunResult> {
   await hydrateOfflineQueueForBootWithLog();
-  if (isManualOfflineSyncEnabled()) return idleQueueResult();
   if (typeof navigator !== 'undefined' && !navigator.onLine) return idleQueueResult();
   if (!getOfflineQueueCount()) return idleQueueResult();
   try {
@@ -817,7 +807,6 @@ export async function resumeOfflineOperations(
  */
 export function requestOfflineFlush(reason: string = 'best-effort'): void {
   if (typeof navigator !== 'undefined' && !navigator.onLine) return;
-  if (isManualOfflineSyncEnabled()) return;
   if (!getOfflineQueueCount()) return;
   void processOfflineQueue()
     .catch(error => console.warn('[offlineSync] Vaciado antes de cerrar no confirmado:', reason, error))
@@ -828,7 +817,6 @@ export function initOfflineSyncWatcher(): () => void {
   if (typeof window === 'undefined') return () => {};
   let intervalId: any = null;
   const handleOnline = async () => {
-    if (isManualOfflineSyncEnabled()) return;
     // Chrome can emit 'online' before DNS/TLS/Internet access to Supabase is
     // actually usable. Give the connection a short settling window and probe
     // the REST endpoint before touching the durable queue. El jitter evita que
@@ -897,7 +885,7 @@ export function initOfflineSyncWatcher(): () => void {
   window.addEventListener('pageshow', handlePageShow);
   if (typeof document !== 'undefined') document.addEventListener('visibilitychange', handleVisibilityChange);
   intervalId = setInterval(() => {
-    if (!navigator.onLine || isProcessingQueue || isManualOfflineSyncEnabled()) return;
+    if (!navigator.onLine || isProcessingQueue) return;
     if (getOfflineQueueCount()) {
       processOfflineQueue().catch(() => {}).finally(() => { void refreshOfflineQueueCounts(); });
       return;
@@ -906,7 +894,7 @@ export function initOfflineSyncWatcher(): () => void {
     // ventana, un cambio de alcance o un arranque offline). Releemos el espejo
     // durable antes de dar por hecho que no hay trabajo pendiente.
     void refreshOfflineQueueCounts().then(counts => {
-      if (counts.pending > 0 && !isProcessingQueue && !isManualOfflineSyncEnabled()) {
+      if (counts.pending > 0 && !isProcessingQueue) {
         processOfflineQueue().catch(() => {}).finally(() => { void refreshOfflineQueueCounts(); });
       }
     }).catch(() => {});

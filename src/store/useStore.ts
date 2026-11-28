@@ -99,7 +99,7 @@ export const useStore = create<AppState>()(
     return list.find(c => c.isBase) || list.find(c => c.code === 'CUP') || INITIAL_CURRENCIES[0];
   },
   
-  storeConfig: { storeName: 'PALMYRA', address: '', phone: '', receiptNotes: '¡Gracias por su compra!', darkMode: false, manualOfflineSync: false },
+  storeConfig: { storeName: 'PALMYRA', address: '', phone: '', receiptNotes: '¡Gracias por su compra!', darkMode: false },
   
   updateStoreConfig: (config) => {
     const nextStoreConfig = { ...config, fiscalConfigs: get().fiscalConfigs };

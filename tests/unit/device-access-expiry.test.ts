@@ -59,19 +59,27 @@ test("la RPC recibe la caducidad normalizada y se devuelve al llamador", () => {
   assert.match(deviceAccess, /return \{ token, link: buildDeviceAccessLink\(token\), days: expiry\.days \}/);
 });
 
-test("el editor y el menú de la fila comparten la caducidad elegida", () => {
+test("el editor y el menú de la fila generan por un único camino con la caducidad resuelta", () => {
   const team = source("src/pages/Team.tsx");
-  // Ningún camino puede volver a llamar al servicio sin caducidad explícita.
-  assert.match(team, /createDeviceAccessInvite\(employee\.id, expiry\.days\)/);
+  // Un solo punto de creación compartido por las dos superficies: mientras existía
+  // una ruta por pantalla, cada una llevaba su caducidad en memoria y divergían.
   assert.equal(
-    (team.match(/createDeviceAccessInvite\(employee\.id, expiry\.days\)/g) || []).length,
+    (team.match(/createDeviceAccessInvite\(/g) || []).length,
+    1,
+    "el generador debe ser un handler único llamado desde el editor y el menú"
+  );
+  assert.match(team, /createDeviceAccessInvite\(employee\.id, selectedAccessExpiry\.days\)/);
+  assert.equal(
+    (team.match(/void generateAccessLink\(/g) || []).length,
     2,
-    'editor y menú de la fila deben usar el mismo resolvedor'
+    'ambas superficies llaman al mismo handler'
   );
   assert.doesNotMatch(team, /createDeviceAccessInvite\(employee\.id\)/);
   // El diálogo del menú de la fila no puede rotular siempre 7 días.
   assert.doesNotMatch(team, /Válido 7 días, un solo uso/);
   assert.match(team, /resolveAccessInviteExpiry\(accessInvite\.days\)\.label/);
-  // La opción del selector también sale del resolvedor.
-  assert.match(team, /ACCESS_INVITE_DAY_OPTIONS\.map\(days =>/);
+  // Las opciones del selector viven en AccessLinkDuration, no en cada pantalla.
+  const picker = source("src/components/AccessLinks.tsx");
+  assert.match(picker, /ACCESS_INVITE_DAY_OPTIONS\.map\(option =>/);
+  assert.match(picker, /resolveAccessInviteExpiry\(option\)\.label/);
 });

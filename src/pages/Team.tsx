@@ -5,7 +5,20 @@ import { loadSaaSContext } from "../services/saas";
 import { canUsePlanFeature, getPlanDisplayName } from "../services/planAccess";
 import EmployeeAvatar from "../components/team/EmployeeAvatar";
 import TeamConfirmDialog from "../components/team/TeamConfirmDialog";
-import { ACCESS_INVITE_DAY_OPTIONS, ACCESS_INVITE_DEFAULT_DAYS, buildDeviceAccessLink, createDeviceAccessInvite, describeAccessInviteExpiry, resolveAccessInviteExpiry } from "../services/deviceAccess";
+import AccessQr from "../components/AccessQr";
+import { ACCESS_INVITE_DEFAULT_DAYS, buildDeviceAccessLink, createDeviceAccessInvite, describeAccessInviteExpiry, resolveAccessInviteExpiry } from "../services/deviceAccess";
+// Estado real de los enlaces: la tabla está cerrada por RLS, así que el único
+// camino es la RPC SECURITY DEFINER. `describeAccessLink` saca la etiqueta del
+// `expires_at` de la fila, no de lo que el cliente pidió.
+import {
+  accessLinkStatus,
+  describeAccessLink,
+  listDeviceAccessLinks,
+  revokeDeviceAccessLinks,
+  type DeviceAccessLink
+} from "../services/deviceAccess";
+import AccessLinks, { AccessLinkDuration } from "../components/AccessLinks";
+import { PRODUCT_VERSION } from "../lib/productVersion";
 import {
   createEmployeePosSecure,
   loadTeamSnapshot,
@@ -112,6 +125,12 @@ export default function Team() {
   const currentUser = useStore(state => state.currentUser);
   const addNotification = useStore(state => state.addNotification);
   const cashSessions = useStore(state => state.cashSessions);
+  // La caducidad del enlace es una preferencia de EMPRESA (viaja en
+  // `storeConfig.deviceAccessInviteDays`). Mientras vivió en estado de React,
+  // cada móvil arrancaba con 7 días y los dos generaban enlaces distintos para
+  // el mismo trabajador.
+  const deviceAccessInviteDays = useStore(state => state.storeConfig?.deviceAccessInviteDays);
+  const setDeviceAccessInviteDays = useStore(state => state.setDeviceAccessInviteDays);
   const activeShiftNames = useMemo(() => {
     const map = new Set<string>();
     for (const session of cashSessions || []) {
@@ -137,7 +156,7 @@ export default function Team() {
   // Burbuja de almacenes de la fila: un trabajador abierto a la vez.
   const [warehousesOpenId, setWarehousesOpenId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<TeamEmployee | null>(null);
-  const [accessInvite, setAccessInvite] = useState<{ employeeId: string; employeeName: string; link: string; days: number } | null>(null);
+  const [accessInvite, setAccessInvite] = useState<{ employeeId: string; employeeName: string; link: string; days: number; expiryNote?: string } | null>(null);
   const [accessInviteBusy, setAccessInviteBusy] = useState(false);
   const [accessInviteError, setAccessInviteError] = useState("");
   const [showRoleForm, setShowRoleForm] = useState(false);
@@ -158,15 +177,23 @@ export default function Team() {
   const [formAccessLink, setFormAccessLink] = useState('');
   const [formAccessBusy, setFormAccessBusy] = useState(false);
   const [formAccessError, setFormAccessError] = useState('');
-  // Caducidad del enlace de acceso: días (1-90) o 0 = sin caducidad.
-  const [accessLinkDays, setAccessLinkDays] = useState<number>(ACCESS_INVITE_DEFAULT_DAYS);
-  // La caducidad elegida se recuerda por trabajador: volver a abrir su editor
-  // no debe regresar silenciosamente a los 7 días.
-  const [accessLinkDaysByEmployee, setAccessLinkDaysByEmployee] = useState<Record<string, number>>({});
-  // Enlaces generados en esta sesión. El token es de un solo uso y sólo se
-  // muestra una vez: si se pierde al pulsar «Guardar cambios» el dueño no puede
-  // entregarlo ni comprobar con qué caducidad lo generó.
-  const [generatedAccessInvites, setGeneratedAccessInvites] = useState<Record<string, { link: string; days: number; createdAt: number }>>({});
+  // Caducidad por defecto = la preferencia sincronizada de la empresa. El
+  // selector del editor la escribe al cambiarla, así que ya no hay un valor
+  // guardado «por trabajador» en memoria: eso era justo lo que divergía entre
+  // los dos móviles.
+  const accessLinkDays = resolveAccessInviteExpiry(deviceAccessInviteDays ?? ACCESS_INVITE_DEFAULT_DAYS).days;
+  // Enlaces generados en ESTE dispositivo. El token en claro solo se devuelve al
+  // crearlo y no se puede recuperar; cuántos hay, cuáles caducan y cuáles se
+  // usaron se lee del servidor (`accessLinks`), no de aquí.
+  const [generatedAccessInvites, setGeneratedAccessInvites] = useState<Record<string, { link: string; days: number; createdAt: number; expiryNote?: string }>>({});
+  const [accessLinks, setAccessLinks] = useState<Record<string, DeviceAccessLink[]>>({});
+  const [accessLinksLoading, setAccessLinksLoading] = useState('');
+  const [accessLinksError, setAccessLinksError] = useState('');
+  const [revokingLinksFor, setRevokingLinksFor] = useState('');
+  // Trabajador al que se le está preguntando la duración del enlace. El token no
+  // se cuaja hasta confirmar el tiempo, para que «Generar enlace» no cree enlaces
+  // con una caducidad que el dueño nunca eligió en ese momento.
+  const [linkPickerFor, setLinkPickerFor] = useState('');
   // Feedback inmediato del botón «Copiar»: el aviso global queda arriba y en
   // móvil puede pasar desapercibido.
   const [copiedLink, setCopiedLink] = useState(false);
@@ -357,16 +384,33 @@ export default function Team() {
   const retiredWarehouses = warehouseSelection.retired;
   const companyHasWarehouses = (snapshot?.warehouses || []).length > 0;
 
-  // Caducidad del enlace de acceso: un único resolvedor alimenta el selector, la
-  // nota del modal y el diálogo del menú de la fila.
+  // Caducidad del enlace. `selectedAccessExpiry` es la preferencia de empresa y
+  // es LO ÚNICO que se envía al generar: así los dos dispositivos piden lo mismo.
+  // `inviteExpiryFor` solo rotula: si este equipo ya generó un enlace muestra el
+  // suyo, si no la preferencia.
   const selectedAccessExpiry = resolveAccessInviteExpiry(accessLinkDays);
   const inviteExpiryFor = (employeeId?: string | null) =>
-    resolveAccessInviteExpiry((employeeId ? accessLinkDaysByEmployee[employeeId] : undefined) ?? accessLinkDays);
+    resolveAccessInviteExpiry((employeeId ? generatedAccessInvites[employeeId]?.days : undefined) ?? accessLinkDays);
   const generatedFormInvite = editing ? generatedAccessInvites[editing.id] : undefined;
   const generatedFormExpiry = generatedFormInvite
     ? resolveAccessInviteExpiry(generatedFormInvite.days)
     : null;
-
+  // Etiquetas que salen del servidor cuando se pudo leer la lista; la estimación
+  // local (`describeAccessInviteExpiry`) queda solo como respaldo sin conexión.
+  const accessLinkNote = (employeeId?: string | null) => {
+    const rows = employeeId ? accessLinks[employeeId] : undefined;
+    const live = (rows || []).find(link => accessLinkStatus(link) === 'active');
+    if (live) return describeAccessLink(live);
+    const generated = employeeId ? generatedAccessInvites[employeeId] : undefined;
+    if (generated) return describeAccessInviteExpiry(generated.days, generated.createdAt);
+    return '';
+  };
+  // Un solo enlace vivo por trabajador. Si el servidor ya confirma uno, la
+  // superficie no ofrece generar: hay que revocar y eliminar primero. Con la
+  // lista sin leer (`undefined`, p. ej. sin red) sí se deja intentar, porque el
+  // corte lo da `create_device_access_invite` con `device_link_exists`.
+  const hasLiveLink = (employeeId?: string | null) =>
+    Boolean(employeeId && (accessLinks[employeeId] || []).some(link => accessLinkStatus(link) === 'active'));
   const permissionGroups = useMemo(() => {
     const labels: Record<string, string> = {
       pos: 'Punto de venta', cash: 'Caja y turnos', sales: 'Ventas', inventory: 'Inventario',
@@ -537,11 +581,12 @@ export default function Team() {
     setEditing(employee);
     setShowPosPassword(false);
     setFormTab('datos');
-    // Si en esta sesión ya se generó un enlace para este trabajador, se vuelve a
-    // mostrar con su caducidad real en lugar de un campo vacío y 7 días por defecto.
+    // El token en claro solo existe en el equipo que lo generó; si no, el campo
+    // queda vacío a propósito. La caducidad ya no se re-siembra por trabajador:
+    // sale de la preferencia de empresa, igual en los dos móviles.
     const generated = generatedAccessInvites[employee.id];
     setFormAccessLink(generated?.link || '');
-    setAccessLinkDays(generated?.days ?? accessLinkDaysByEmployee[employee.id] ?? accessLinkDays);
+    setAccessLinksError('');
     setFormAccessError('');
     setFormAccessBusy(false);
     setCopiedLink(false);
@@ -815,39 +860,98 @@ export default function Team() {
     }
   };
 
-  // Enlace de acceso de un solo uso: el administrador lo genera y lo entrega
-  // manualmente (WhatsApp, en mano). No se envía correo ni se crea cuenta web.
-  // Usa la misma caducidad elegida para el trabajador: antes se llamaba sin
-  // argumentos y el menú de la fila generaba siempre 7 días aunque el editor
-  // estuviera configurado «Sin caducidad».
-  const openAccessInvite = async (employee: TeamEmployee) => {
-    setMenuId(null);
-    setAccessInviteError("");
-    setCopiedLink(false);
-    const expiry = inviteExpiryFor(employee.id);
-    setAccessInvite({ employeeId: employee.id, employeeName: employee.full_name, link: "", days: expiry.days });
-    setAccessInviteBusy(true);
+  // Estado real de los enlaces del trabajador, leído de `list_device_access_links`.
+  // UNA llamada por apertura de diálogo o pestaña: nunca por sondeo ni al pintar
+  // la lista de empleados (el presupuesto es de 100 peticiones por dispositivo).
+  const reloadAccessLinks = async (employeeId: string): Promise<DeviceAccessLink[] | null> => {
+    if (!employeeId) return null;
+    setAccessLinksLoading(employeeId);
+    setAccessLinksError("");
     try {
-      const invite = await createDeviceAccessInvite(employee.id, expiry.days);
-      const link = invite.link || buildDeviceAccessLink(invite.token);
-      if (!link) throw new Error("El servidor no devolvió un enlace válido.");
-      setAccessInvite({ employeeId: employee.id, employeeName: employee.full_name, link, days: invite.days });
-      // El editor del mismo trabajador muestra este enlace y su caducidad: el
-      // servidor invalida los enlaces anteriores, así que ambos caminos deben
-      // leer el último generado y no una copia con 7 días.
-      setGeneratedAccessInvites(prev => ({
-        ...prev,
-        [employee.id]: { link, days: invite.days, createdAt: Date.now() }
-      }));
-      setAccessLinkDaysByEmployee(prev => ({ ...prev, [employee.id]: invite.days }));
+      const links = await listDeviceAccessLinks(employeeId);
+      setAccessLinks(prev => ({ ...prev, [employeeId]: links }));
+      return links;
     } catch (e: any) {
       const detail = String(e?.message || "");
-      const offlineOrNetwork = !navigator.onLine || /fetch|network|conexi/i.test(detail);
-      setAccessInviteError(offlineOrNetwork
+      setAccessLinksError(/does not exist|Could not find the function|42883|PGRST201/i.test(detail)
+        ? "Este servidor todavía no puede mostrar el estado de los enlaces. Actualiza PALMYRA e inténtalo de nuevo."
+        : (typeof navigator !== "undefined" && !navigator.onLine)
+          ? "Sin conexión: no se puede verificar cuántos enlaces hay activos."
+          : detail || "No se pudo consultar el estado de los enlaces de acceso.");
+      return null;
+    } finally {
+      setAccessLinksLoading("");
+    }
+  };
+
+  const shouldReadLinks = (employeeId: string) =>
+    !accessLinks[employeeId] && (typeof navigator === "undefined" || navigator.onLine);
+
+  // Pestaña «Acceso» del editor: al entrar es el único momento que consulta.
+  const openAccessTab = (employee: TeamEmployee) => {
+    setFormTab('acceso');
+    if (shouldReadLinks(employee.id)) void reloadAccessLinks(employee.id);
+  };
+
+  // Enlace de acceso de un solo uso: el administrador lo genera y lo entrega
+  // manualmente (WhatsApp, en mano). No se envía correo ni se crea cuenta web.
+  // El diálogo del menú de la fila NO genera nada: solo muestra lo que hay. Un
+  // token nuevo se cuaja exclusivamente tras confirmar el tiempo en el selector,
+  // porque generar al abrir dejaba muerto el enlace del otro móvil.
+  const openAccessDialog = (employee: TeamEmployee) => {
+    setMenuId(null);
+    setAccessInviteError("");
+    setAccessLinksError("");
+    setCopiedLink(false);
+    setLinkPickerFor('');
+    const generated = generatedAccessInvites[employee.id];
+    setAccessInvite({
+      employeeId: employee.id,
+      employeeName: employee.full_name,
+      link: generated?.link || "",
+      days: inviteExpiryFor(employee.id).days,
+      expiryNote: generated?.expiryNote
+    });
+    if (shouldReadLinks(employee.id)) void reloadAccessLinks(employee.id);
+  };
+
+  const generateAccessLink = async (employee: TeamEmployee) => {
+    setFormAccessError("");
+    setAccessInviteError("");
+    setCopiedLink(false);
+    setFormAccessBusy(true);
+    setAccessInviteBusy(true);
+    try {
+      // Se envía el tiempo elegido en este momento, que además queda como
+      // preferencia de empresa para que el otro móvil arranque con el mismo.
+      const invite = await createDeviceAccessInvite(employee.id, selectedAccessExpiry.days);
+      const link = invite.link || buildDeviceAccessLink(invite.token);
+      if (!link) throw new Error("El servidor no devolvió un enlace válido.");
+      // Relameo del estado: la etiqueta sale del `expires_at` real de la fila.
+      const links = await reloadAccessLinks(employee.id);
+      const live = (links || []).find(item => accessLinkStatus(item) === 'active');
+      const expiryNote = live ? describeAccessLink(live) : '';
+      setGeneratedAccessInvites(prev => ({
+        ...prev,
+        [employee.id]: { link, days: invite.days, createdAt: Date.now(), expiryNote }
+      }));
+      if (editing?.id === employee.id) setFormAccessLink(link);
+      setAccessInvite(prev => prev && prev.employeeId === employee.id
+        ? { ...prev, link, days: invite.days, expiryNote }
+        : prev);
+      setLinkPickerFor('');
+      addNotification(`Enlace de acceso generado (${expiryNote || resolveAccessInviteExpiry(invite.days).label}). Cópialo y entrégalo al trabajador.`, "success");
+    } catch (e: any) {
+      const detail = String(e?.message || "");
+      const offlineOrNetwork = (typeof navigator !== "undefined" && !navigator.onLine) || /fetch|network|conexi/i.test(detail);
+      const message = offlineOrNetwork
         ? "No se pudo generar el enlace de acceso. Revisa tu conexión e inténtalo de nuevo."
-        : detail || "No se pudo generar el enlace de acceso. Inténtalo de nuevo.");
+        : detail || "No se pudo generar el enlace de acceso. Inténtalo de nuevo.";
+      setFormAccessError(message);
+      setAccessInviteError(message);
       addNotification("No se pudo generar el enlace de acceso.", "error");
     } finally {
+      setFormAccessBusy(false);
       setAccessInviteBusy(false);
     }
   };
@@ -863,36 +967,48 @@ export default function Team() {
     }
   };
 
-  // Enlace dentro de la pestaña «Acceso» del modal: mismo servicio, pero el
-  // resultado se muestra en línea (sin abrir otra ventana encima del formulario).
-  const generateFormAccessLink = async (employee: TeamEmployee) => {
-    setFormAccessError("");
-    setCopiedLink(false);
-    setFormAccessBusy(true);
-    // Caducidad memorizada para este trabajador, no la de otro ni el 7 fijo.
-    const expiry = inviteExpiryFor(employee.id);
-    try {
-      const invite = await createDeviceAccessInvite(employee.id, expiry.days);
-      const link = invite.link || buildDeviceAccessLink(invite.token);
-      if (!link) throw new Error("El servidor no devolvió un enlace válido.");
-      setFormAccessLink(link);
-      // El enlace se conserva por trabajador: el token es de un solo uso y debe
-      // seguir visible con su caducidad real después de «Guardar cambios».
-      setGeneratedAccessInvites(prev => ({
+  // Revocar = eliminar el enlace del servidor: su token deja de canjear y el hueco
+  // queda libre para generar otro. Sin conexión se encola (mismo contrato que
+  // `invitation_revoke`) y la fila desaparece de la lista al instante.
+  const revokeAccessLinks = async (employee: TeamEmployee, ids: string[]) => {
+    const targets = ids.filter(Boolean);
+    if (!targets.length) return;
+    const dropRows = () => {
+      setAccessLinks(prev => ({
         ...prev,
-        [employee.id]: { link, days: invite.days, createdAt: Date.now() }
+        [employee.id]: (prev[employee.id] || []).filter(link => !targets.includes(link.id))
       }));
-      // Lo generado manda: el menú de la fila reutiliza esta misma caducidad.
-      setAccessLinkDaysByEmployee(prev => ({ ...prev, [employee.id]: invite.days }));
-      addNotification(`Enlace de acceso generado (${resolveAccessInviteExpiry(invite.days).label}). Cópialo y entrégalo al trabajador.`, "success");
+      // El enlace en claro muere con la fila: mostrarlo seguiría invitando a usarlo.
+      setGeneratedAccessInvites(prev => {
+        if (!prev[employee.id]) return prev;
+        const next = { ...prev };
+        delete next[employee.id];
+        return next;
+      });
+      if (editing?.id === employee.id) setFormAccessLink('');
+      setAccessInvite(prev => prev && prev.employeeId === employee.id ? { ...prev, link: '', expiryNote: '' } : prev);
+      setLinkPickerFor(employee.id);
+    };
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      try {
+        await enqueueOfflineItem("device_access_revoke", { employeeId: employee.id, linkIds: targets }, "device-access-revoke:" + employee.id + ":" + generateId("OFF"));
+        dropRows();
+        addNotification("Revocación guardada offline; el enlace se elimina al volver Internet.", "success");
+      } catch (e: any) {
+        addNotification(e?.message || "No se pudo guardar la revocación offline.", "error");
+      }
+      return;
+    }
+    setRevokingLinksFor(employee.id);
+    try {
+      await revokeDeviceAccessLinks(employee.id, targets);
+      dropRows();
+      await reloadAccessLinks(employee.id);
+      addNotification("Enlace de acceso revocado y eliminado. Ya puedes generar otro.", "success");
     } catch (e: any) {
-      const detail = String(e?.message || "");
-      const offlineOrNetwork = (typeof navigator !== "undefined" && !navigator.onLine) || /fetch|network|conexi/i.test(detail);
-      setFormAccessError(offlineOrNetwork
-        ? "No se pudo generar el enlace de acceso. Revisa tu conexión e inténtalo de nuevo."
-        : detail || "No se pudo generar el enlace de acceso. Inténtalo de nuevo.");
+      addNotification(e?.message || "No se pudo revocar el enlace de acceso.", "error");
     } finally {
-      setFormAccessBusy(false);
+      setRevokingLinksFor("");
     }
   };
 
@@ -907,6 +1023,12 @@ export default function Team() {
       </div>
     );
   }
+
+  // El diálogo del menú de la fila necesita el empleado completo para generar y
+  // revocar; buscarlo una vez aquí evita hacerlo dentro del JSX.
+  const accessInviteEmployee = accessInvite
+    ? (snapshot?.employees || []).find(item => item.id === accessInvite.employeeId) || null
+    : null;
 
   return (
     <OperationsSurface className="space-y-5 w-full min-w-0 max-w-[1600px] mx-auto pb-10" onClick={() => { setMenuId(null); setWarehousesOpenId(null); }}>
@@ -1313,7 +1435,7 @@ export default function Team() {
                           <Edit3 className="w-4 h-4" /> Editar empleado
                         </button>
                         {employee.active && (
-                          <button onClick={() => void openAccessInvite(employee)} disabled={accessInviteBusy} className="w-full px-3 py-2 text-left text-xs font-bold text-primary hover:bg-subtle rounded-xl flex items-center gap-2 disabled:opacity-50">
+                          <button onClick={() => openAccessDialog(employee)} className="w-full px-3 py-2 text-left text-xs font-bold text-primary hover:bg-subtle rounded-xl flex items-center gap-2">
                             <Link2 className="w-4 h-4" /> Enlace de acceso
                           </button>
                         )}
@@ -1386,7 +1508,7 @@ export default function Team() {
                   aria-selected={formTab === 'acceso'}
                   aria-controls="team-panel-acceso"
                   className={cn("team-emp-tab", formTab === 'acceso' && "is-active")}
-                  onClick={() => setFormTab('acceso')}
+                  onClick={() => { if (editing) openAccessTab(editing); }}
                   disabled={busy}
                 >
                   <LockKeyhole className="h-3.5 w-3.5 shrink-0" /> Acceso
@@ -1507,35 +1629,34 @@ export default function Team() {
                         </span>
                       </label>
                     )}
-                    <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-end">
-                      <label className="team-emp-field min-w-0 flex-1">
-                        <span className="team-emp-label">Caducidad del enlace</span>
-                        <span className="team-emp-control">
-                          <span className="team-emp-control-icon"><Clock className="h-4 w-4" /></span>
-                          <select
-                            value={accessLinkDays}
-                            onChange={e => {
-                              const nextDays = resolveAccessInviteExpiry(e.target.value).days;
-                              setAccessLinkDays(nextDays);
-                              // La elección queda memorizada para este trabajador:
-                              // el menú de la fila y una nueva apertura la respetan.
-                              if (editing) setAccessLinkDaysByEmployee(prev => ({ ...prev, [editing.id]: nextDays }));
-                            }}
-                            disabled={formAccessBusy || busy}
-                            className="team-emp-input team-emp-select"
-                            aria-label="Caducidad del enlace de acceso"
-                          >
-                            {ACCESS_INVITE_DAY_OPTIONS.map(days => (
-                              <option key={days} value={days}>{resolveAccessInviteExpiry(days).label}</option>
-                            ))}
-                          </select>
-                        </span>
-                      </label>
-                      <div className="flex flex-col gap-2 min-w-0 sm:flex-row">
-                        <button type="button" onClick={() => void generateFormAccessLink(editing)} disabled={formAccessBusy || busy} className="team-emp-btn team-emp-btn-primary">
-                          {formAccessBusy
-                            ? <><RefreshCw className="h-4 w-4 animate-spin" /> Generando…</>
-                            : <><Link2 className="h-4 w-4" /> {formAccessLink ? "Generar otro enlace" : "Generar enlace"}</>}
+                    {/* El QR es el camino corto: el otro equipo escanea y llega al
+                        activador sin teclear una URL larga en el navegador. */}
+                    {formAccessLink && (
+                      <div className="mt-3 flex justify-center sm:justify-start">
+                        <AccessQr value={formAccessLink} size={150} />
+                      </div>
+                    )}
+                    {linkPickerFor === editing.id ? (
+                      <div className="mt-3">
+                        <AccessLinkDuration
+                          days={accessLinkDays}
+                          busy={formAccessBusy || busy}
+                          onPick={option => {
+                            const nextDays = resolveAccessInviteExpiry(option).days;
+                            // Preferencia de empresa: se guarda y se sincroniza. El
+                            // otro móvil arranca con este mismo tiempo.
+                            setDeviceAccessInviteDays(nextDays);
+                          }}
+                          onConfirm={() => void generateAccessLink(editing)}
+                          onCancel={() => setLinkPickerFor('')}
+                        />
+                      </div>
+                    ) : hasLiveLink(editing.id) ? (
+                      <p className="team-emp-note team-emp-note-warn mt-3"><ShieldCheck className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Este trabajador ya tiene un enlace activo. Revócalo y elimínalo abajo para poder generar otro.</p>
+                    ) : (
+                      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <button type="button" onClick={() => { setFormAccessError(''); setLinkPickerFor(editing.id); }} disabled={formAccessBusy || busy} className="team-emp-btn team-emp-btn-primary">
+                          <Link2 className="h-4 w-4" /> {formAccessLink ? "Generar otro enlace" : "Generar enlace"}
                         </button>
                         {formAccessLink && (
                           <button type="button" onClick={() => void copyAccessLink(formAccessLink)} className="team-emp-btn team-emp-btn-secondary">
@@ -1543,18 +1664,25 @@ export default function Team() {
                           </button>
                         )}
                       </div>
-                    </div>
-                    {/* La nota refleja la caducidad del enlace ya generado, no la
-                        del selector: cambiar de opción sin generar otro enlace no
-                        debe hacer creer que el entregado cambió. */}
+                    )}
+                    {/* La nota habla del enlace ya generado. El tiempo del próximo se
+                        pregunta al pulsar «Generar enlace», no se hereda en silencio. */}
                     <p className="team-emp-note team-emp-note-warn"><Clock className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> {generatedFormExpiry
                       ? `Enlace generado: ${generatedFormExpiry.note}`
-                      : `Se generará ${selectedAccessExpiry.note}`}{generatedFormExpiry && generatedFormInvite && generatedFormExpiry.days !== selectedAccessExpiry.days
-                        ? ` · el próximo se generará ${selectedAccessExpiry.label.toLowerCase()}`
-                        : ''}</p>
+                      : `Al generar se pregunta el tiempo (por defecto: ${selectedAccessExpiry.label.toLowerCase()}).`}</p>
                     {generatedFormInvite && (
-                      <p className="team-emp-note"><Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />{describeAccessInviteExpiry(generatedFormInvite.days, generatedFormInvite.createdAt)}. El enlace solo se guarda en esta sesión: cópialo antes de cerrarla.</p>
+                      <p className="team-emp-note"><Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />{accessLinkNote(editing.id) ? `En el servidor: ${accessLinkNote(editing.id)}.` : `${describeAccessInviteExpiry(generatedFormInvite.days, generatedFormInvite.createdAt)} El enlace en claro solo lo ve el equipo que lo generó.`}</p>
                     )}
+                    <div className="mt-3">
+                      <AccessLinks
+                        links={accessLinks[editing.id] ?? null}
+                        loading={accessLinksLoading === editing.id}
+                        revoking={revokingLinksFor === editing.id}
+                        error={accessLinksError}
+                        onRevoke={ids => void revokeAccessLinks(editing, ids)}
+                      />
+                    </div>
+                    <p className="team-emp-note"><Info className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />Este dispositivo tiene PALMYRA {PRODUCT_VERSION}.</p>
                     <span className="sr-only" aria-live="polite">{copiedLink ? "Enlace de acceso copiado." : ""}</span>
                     {formAccessError && <div className="team-emp-note"><Info className="h-3.5 w-3.5 shrink-0" />{formAccessError}</div>}
                   </div>
@@ -1685,20 +1813,61 @@ export default function Team() {
             <div className="space-y-3 p-4 sm:p-5">
               {accessInviteBusy ? (
                 <div className="flex items-center justify-center gap-2 rounded-2xl border border-base bg-subtle p-6 text-xs font-bold text-muted"><RefreshCw className="h-4 w-4 animate-spin" /> Generando enlace…</div>
-              ) : accessInviteError ? (
-                <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-bold leading-5 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300">{accessInviteError}</div>
               ) : (
                 <>
-                  <label className="block min-w-0">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-muted">Enlace de un solo uso</span>
-                    <input readOnly value={accessInvite.link} onFocus={e => e.currentTarget.select()} className="mt-1 w-full rounded-xl border border-base bg-primary px-3 py-2.5 text-xs font-bold text-primary outline-none" />
-                  </label>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="inline-flex items-center gap-1.5 text-[11px] font-black text-amber-700 dark:text-amber-300"><Clock className="h-3.5 w-3.5" /> {resolveAccessInviteExpiry(accessInvite.days).label}, un solo uso</p>
-                    <button type="button" onClick={() => void copyAccessLink(accessInvite.link)} className="flex h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-[10px] font-black uppercase tracking-wider text-white shadow-lg shadow-violet-600/20">
-                      {copiedLink ? <><Check className="w-4 h-4" /> Copiado</> : <><Copy className="w-4 h-4" /> Copiar</>}
-                    </button>
-                  </div>
+                  {accessInviteError && (
+                    <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-xs font-bold leading-5 text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/30 dark:text-rose-300">{accessInviteError}</div>
+                  )}
+                  {/* Lo que hay en el servidor es la verdad: el enlace en claro solo
+                      lo ve el equipo que lo generó, pero el estado se ve desde todos. */}
+                  <AccessLinks
+                    links={accessLinks[accessInvite.employeeId] ?? null}
+                    loading={accessLinksLoading === accessInvite.employeeId}
+                    revoking={revokingLinksFor === accessInvite.employeeId}
+                    error={accessLinksError}
+                    onRevoke={ids => { if (accessInviteEmployee) void revokeAccessLinks(accessInviteEmployee, ids); }}
+                  />
+                  {/* El tiempo se pregunta ANTES de cuajar el token: generar al abrir
+                      mataba el enlace del otro móvil. */}
+                  {linkPickerFor === accessInvite.employeeId && accessInviteEmployee && (
+                    <AccessLinkDuration
+                      days={accessLinkDays}
+                      busy={accessInviteBusy}
+                      onPick={option => {
+                        const nextDays = resolveAccessInviteExpiry(option).days;
+                        // Misma preferencia de empresa que usa el editor: los dos
+                        // móviles arrancan con el mismo tiempo.
+                        setDeviceAccessInviteDays(nextDays);
+                      }}
+                      onConfirm={() => void generateAccessLink(accessInviteEmployee)}
+                      onCancel={() => setLinkPickerFor('')}
+                    />
+                  )}
+                  {accessInvite.link ? (
+                    <>
+                      <label className="block min-w-0">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-muted">Enlace generado en este dispositivo</span>
+                        <input readOnly value={accessInvite.link} onFocus={e => e.currentTarget.select()} className="mt-1 w-full rounded-xl border border-base bg-primary px-3 py-2.5 text-xs font-bold text-primary outline-none" />
+                      </label>
+                      <div className="flex justify-center py-1">
+                        <AccessQr value={accessInvite.link} />
+                      </div>
+                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                        <p className="inline-flex items-center gap-1.5 text-[11px] font-black text-amber-700 dark:text-amber-300"><Clock className="h-3.5 w-3.5" /> {accessInvite.expiryNote || resolveAccessInviteExpiry(accessInvite.days).label}</p>
+                      <button type="button" onClick={() => void copyAccessLink(accessInvite.link)} className="flex h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-[10px] font-black uppercase tracking-wider text-white shadow-lg shadow-violet-600/20">
+                        {copiedLink ? <><Check className="w-4 h-4" /> Copiado</> : <><Copy className="w-4 h-4" /> Copiar</>}
+                      </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="rounded-2xl border border-base bg-subtle p-4 text-[11px] font-bold leading-5 text-muted">
+                      {accessLinks[accessInvite.employeeId]
+                        ? 'El enlace en claro no se recupera: el servidor guarda una huella, no la dirección. Si ya se usó o se revocó, genera uno nuevo.'
+                        : online
+                          ? 'El servidor no confirmó los enlaces de este trabajador: puede que ya tenga uno activo o que todavía no se pueda consultar su estado. Genera uno nuevo y entrégalo en el momento.'
+                          : 'Sin conexión no se puede leer la lista de enlaces. Genera uno nuevo cuando vuelvas a tener Internet.'}
+                    </div>
+                  )}
                 </>
               )}
             </div>
@@ -1706,9 +1875,10 @@ export default function Team() {
               {accessInviteError && (
                 <p className="mr-auto text-[10px] font-bold leading-5 text-muted">Si el problema continúa, verifica tu conexión o contacta a soporte.</p>
               )}
-              {accessInviteError && !accessInviteBusy && (
-                <button type="button" onClick={() => { const target = (snapshot?.employees || []).find(item => item.id === accessInvite.employeeId); if (target) void openAccessInvite(target); }} className="flex h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-[10px] font-black uppercase tracking-wider text-white">
-                  <RefreshCw className="w-4 h-4" /> Reintentar
+              <p className="text-[10px] font-bold leading-5 text-muted sm:mr-auto">Este dispositivo tiene PALMYRA {PRODUCT_VERSION}.</p>
+              {accessInviteEmployee && linkPickerFor !== accessInvite.employeeId && !hasLiveLink(accessInvite.employeeId) && (
+                <button type="button" disabled={accessInviteBusy} onClick={() => { setAccessInviteError(''); setLinkPickerFor(accessInvite.employeeId); }} className="flex h-10 items-center justify-center gap-2 rounded-xl bg-violet-600 px-4 text-[10px] font-black uppercase tracking-wider text-white disabled:opacity-60">
+                  <Link2 className="w-4 h-4" /> {accessInvite.link ? "Generar otro enlace" : "Generar enlace"}
                 </button>
               )}
               <button type="button" onClick={() => setAccessInvite(null)} className="h-10 rounded-xl border border-base bg-subtle px-4 text-[10px] font-black uppercase tracking-wider text-primary">Cerrar</button>

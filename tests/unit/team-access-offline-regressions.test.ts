@@ -10,6 +10,9 @@ test("Team creates POS-only employees and issues device access links instead of 
   const deviceAccess = source("src/services/deviceAccess.ts");
   assert.match(team, /buildDeviceAccessLink, createDeviceAccessInvite, describeAccessInviteExpiry, resolveAccessInviteExpiry \} from "\.\.\/services\/deviceAccess"/);
   assert.match(team, /createDeviceAccessInvite\(/);
+  // El viejo handler del menú cuajaba un token al abrir y era imposible de reintentar.
+  assert.doesNotMatch(team, /openAccessInvite/);
+  assert.match(team, /openAccessDialog\(/);
   assert.doesNotMatch(team, /sendInvite:\s*Boolean|sendInvite:\s*true/);
   assert.match(team, /sendInvite:\s*false/);
   assert.doesNotMatch(team, /createEmployeeWithInvitation/);

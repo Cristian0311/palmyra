@@ -9,7 +9,6 @@ const base: StoreConfig = {
   phone: '+53 51234567',
   receiptNotes: '¡Gracias por su compra!',
   darkMode: false,
-  manualOfflineSync: false,
 };
 
 const clone = (value: StoreConfig): StoreConfig => ({ ...value });

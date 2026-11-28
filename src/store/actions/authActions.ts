@@ -161,7 +161,7 @@ export function createAuthActions(set: StoreSet, get: StoreGet): any {
     if (selected.has('settings')) {
       patch.currencies = INITIAL_CURRENCIES;
       patch.fiscalConfigs = INITIAL_FISCAL_CONFIGS;
-      patch.storeConfig = { storeName: 'PALMYRA', address: 'Calle Principal 123', phone: '+53 51234567', receiptNotes: '¡Gracias por su compra!', darkMode: false, manualOfflineSync: false };
+      patch.storeConfig = { storeName: 'PALMYRA', address: 'Calle Principal 123', phone: '+53 51234567', receiptNotes: '¡Gracias por su compra!', darkMode: false };
     }
 
     patch.cart = []; patch.currentCustomerId = undefined; patch.activeSessionId = null;

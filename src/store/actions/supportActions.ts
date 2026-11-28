@@ -15,6 +15,7 @@ import { getSupabaseCredentials } from '../../lib/supabase';
 import { loadSaaSContext, signInSaaSAccount, signOutSaaSAccount } from '../../services/saas';
 import { getOfflineQueue, enqueueOfflineItem, removeFromOfflineQueue, waitForOfflineQueueReady } from '../../services/offlineQueue';
 import { normalizeSemanticText, areSemanticallyEqual } from '../../utils/textUtils';
+import { resolveAccessInviteExpiry } from '../../services/deviceAccess';
 import { localStateStorage, clearLocalStateStorage, flushLocalStateStorage } from '../../services/localStateStorage';
 import { getPalmyraScopedStorageKey } from '../../services/localScope';
 import { isCloudBusinessSyncAllowed } from '../../services/localPlanMode';
@@ -311,6 +312,21 @@ export function createSupportActions(set: StoreSet, get: StoreGet): any {
     }));
     const full = get().receiptConfig;
     pushReceiptConfigToSupabase(full).catch(() => {});
+  },
+
+  /**
+   * Guarda la caducidad por defecto de los enlaces de acceso como preferencia de
+   * EMPRESA dentro de `storeConfig` (el único documento de empresa que hoy se
+   * escribe, se sincroniza y se lee). Sin esto cada dispositivo arrancaba con 7
+   * días y los dos móviles generaban enlaces distintos para el mismo trabajador.
+   */
+  setDeviceAccessInviteDays: (days) => {
+    const normalized = resolveAccessInviteExpiry(days).days;
+    const nextStoreConfig = { ...get().storeConfig, deviceAccessInviteDays: normalized };
+    set({ storeConfig: nextStoreConfig as any });
+    // pushStoreConfigToSupabase encola 'store_config' si el intento falla, así
+    // que la preferencia sobrevive a un cambio hecho sin conexión.
+    pushStoreConfigToSupabase(nextStoreConfig as any).catch(() => {});
   },
 
   salarySettlements: [],

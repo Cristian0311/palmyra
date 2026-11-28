@@ -173,6 +173,12 @@ export interface AppState {
   receiptConfig: import('../types').ReceiptConfig;
   updateReceiptConfig: (config: Partial<import('../types').ReceiptConfig>) => void;
 
+  /**
+   * Caducidad por defecto de los enlaces de acceso (preferencia de empresa que
+   * viaja dentro de `storeConfig`). 0 = sin caducidad.
+   */
+  setDeviceAccessInviteDays: (days: number) => void;
+
   lastTurnNumber: number;
 
   // Banks Module
