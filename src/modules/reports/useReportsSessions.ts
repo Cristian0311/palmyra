@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import type { CashRegisterSession, Transaction, User } from '../../types';
-import { getLocalDateYMD } from '../../utils/dateUtils';
+import { getLocalDateYMD, normalizeBusinessDateYMD } from '../../utils/dateUtils';
 import { findSessionEmployeeUser } from '../../services/employeeCompensation';
 import { buildSessionTurnLabelMap, persistedTurnNumber } from './utils/sessionTurnLabels';
 
@@ -144,7 +144,8 @@ export function useReportsSessions(params: {
           }
         }
 
-        const sessionDate = getLocalDateYMD(
+        // El día de negocio elegido al cerrar manda sobre la hora de cierre.
+        const sessionDate = normalizeBusinessDateYMD(session.businessDate) || getLocalDateYMD(
           session.closingDate || session.closedAt || session.openedAt
         );
 

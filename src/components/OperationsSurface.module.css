@@ -25,11 +25,18 @@
 }
 .surface button { min-width: 44px; }
 .surface label:has(input[type="checkbox"], input[type="radio"]) { min-height: 44px; }
-.surface :is(button, input, select, textarea, summary, a):focus-visible {
-  outline: 2px solid currentColor !important;
-  outline-offset: 3px;
+/* Foco: un solo resaltado SOBRE el propio control, nunca un cuadro por fuera.
+   Antes estas reglas dibujaban un `outline` de 2 px con `outline-offset: 3px`
+   fuera del campo y, además, un cuadro completo alrededor del <label> que lo
+   contenía (label:has(input:focus-visible)); sumado al anillo de index.css el
+   campo se veía con dos marcos flotantes. Los campos (input/select/textarea)
+   usan solo el marcado compartido de index.css (borde violeta + halo pegado al
+   campo); el resto de controles mantiene un outline visible, pero dibujado
+   DENTRO de su propia caja. */
+.surface :is(summary, a):focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -3px;
 }
-.surface label:has(input:focus-visible) { outline: 2px solid currentColor; outline-offset: 3px; }
 .surface button:disabled { opacity: .5; cursor: not-allowed; }
 .surface :is(td, th) { padding: 12px; }
 .surface td { overflow-wrap: anywhere; }

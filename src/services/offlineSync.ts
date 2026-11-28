@@ -130,7 +130,25 @@ function idleQueueResult(): OfflineQueueRunResult {
  * misma operación en paralelo y duplicar efectos no idempotentes (movimientos
  * de caja, deltas de stock). Web Locks se libera solo si la pestaña muere.
  */
-export async function processOfflineQueue(): Promise<OfflineQueueRunResult> {
+/**
+ * Drenaje en vuelo: el cerrojo real (`isProcessingQueue`) se toma mucho después
+ * de la hidratación, la comprobación de reachability y la verificación de sesión
+ * —todas con awaits—, así que dos disparadores simultáneos (evento `online`,
+ * intervalo de 30 s, botón manual, `pageshow`) cruzaban juntos ese preámbulo y
+ * reproducían la misma RPC. Una sola tarea en vuelo los unifica.
+ */
+let queueRunInFlight: Promise<OfflineQueueRunResult> | null = null;
+
+export function processOfflineQueue(): Promise<OfflineQueueRunResult> {
+  if (queueRunInFlight) return queueRunInFlight;
+  const task = runProcessOfflineQueue().finally(() => {
+    if (queueRunInFlight === task) queueRunInFlight = null;
+  });
+  queueRunInFlight = task;
+  return task;
+}
+
+async function runProcessOfflineQueue(): Promise<OfflineQueueRunResult> {
   await waitForOfflineQueueReady();
   const locks = typeof navigator !== 'undefined' ? (navigator as any).locks : null;
   if (!locks?.request) return processOfflineQueueLocked();
@@ -604,6 +622,8 @@ async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
   for (const item of remainingFromRun) {
     if (!isOfflineQueueItemRemoved(item.id)) finalById.set(item.id, item);
   }
+  // Veredicto de ESTA ejecución para cada operación no confirmada.
+  const verdictById = new Map(remainingFromRun.map(item => [item.id, item]));
 
   for (const [id, current] of currentById) {
     if (isOfflineQueueItemRemoved(id)) continue;
@@ -617,6 +637,26 @@ async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
       current.actionId !== original.actionId ||
       JSON.stringify(current.data) !== JSON.stringify(original.data);
     if (changedDuringRun) {
+      const verdict = verdictById.get(id);
+      if (verdict && (verdict.status === 'failed' || verdict.status === 'conflict')) {
+        // El adaptador de reintentos reencola la MISMA operación que acaba de
+        // fallar: eso no es una edición del usuario, es el eco del fallo. Si
+        // aquí se impone 'pending' sin backoff, la incidencia pierde su causa
+        // y su reposo, y reintenta en cada tick quedando "pendiente sin causa
+        // registrada" para siempre. Se conserva el veredicto con los datos nuevos.
+        finalById.set(id, {
+          ...current,
+          status: verdict.status,
+          retryCount: verdict.retryCount,
+          nextRetryAt: verdict.nextRetryAt,
+          lastError: verdict.lastError,
+          failureReason: verdict.failureReason,
+          failureCode: verdict.failureCode,
+          failureAt: verdict.failureAt,
+          failureKind: verdict.failureKind
+        });
+        continue;
+      }
       // Es una versión más reciente de la operación; no puede considerarse
       // completada por la versión antigua que estaba en vuelo.
       finalById.set(id, { ...current, status: 'pending', nextRetryAt: undefined });
@@ -641,6 +681,17 @@ async function processOfflineQueueLocked(): Promise<OfflineQueueRunResult> {
     }
   } catch (error) {
     console.warn('[offlineSync] No se pudo releer la cola durable antes del commit:', error);
+  }
+
+  // La misma guarda contra la memoria de esta ventana: entre la lectura de la
+  // instantánea y este commit el POS pudo encolar una venta que aún no llegó a
+  // IndexedDB. Como el snapshot reemplaza la cola completa, esa operación se
+  // perdería sin dejar rastro. Lo ya confirmado por esta ejecución está en
+  // `startById`, así que nunca se reinserta.
+  for (const live of getOfflineQueue()) {
+    if (finalById.has(live.id) || startById.has(live.id)) continue;
+    if (isOfflineQueueItemRemoved(live.id)) continue;
+    finalById.set(live.id, live);
   }
 
   const finalQueue = Array.from(finalById.values())

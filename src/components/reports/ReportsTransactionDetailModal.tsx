@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { createPortal } from "react-dom";
 import { CalendarDays, EyeOff, Printer, Trash2, TrendingUp, X } from "lucide-react";
 import { ticketDisplay } from "../../lib/documentCodes";
+import { saleBusinessDateYMD } from "../../modules/reports/utils/reportDateFilter";
+import { formatBusinessDateLabel } from "../../utils/dateUtils";
 import type { Product, Transaction, User } from "../../types";
 
 type Props = {
@@ -106,7 +108,9 @@ export function ReportsTransactionDetailModal({
                   ?.name || "Sucursal"}
               </p>
               <p className="text-[9px] sm:text-[10px] font-bold text-muted tabular-nums">
-                {new Date(transaction.date).toLocaleString("es-CU", { timeZone: 'America/Havana', day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                {formatBusinessDateLabel(saleBusinessDateYMD(transaction)) || new Date(transaction.date).toLocaleDateString("es-CU", { timeZone: 'America/Havana', day: "2-digit", month: "2-digit", year: "numeric" })}
+                {' · '}
+                {new Date(transaction.date).toLocaleTimeString("es-CU", { timeZone: 'America/Havana', hour: '2-digit', minute: '2-digit' })}
               </p>
             </div>
           </div>

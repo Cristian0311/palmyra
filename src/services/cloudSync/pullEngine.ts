@@ -127,6 +127,7 @@ export function createCloudPull(options: CloudPullOptions): CloudPull {
 
   let resolvedCompanyId = options.companyId ? options.companyId.trim() : "";
   let inflight: Promise<PullOutcome> | null = null;
+  let inflightIsFull = false;
 
   function time(): number {
     try {
@@ -291,12 +292,28 @@ export function createCloudPull(options: CloudPullOptions): CloudPull {
   }
 
   function pullOnce(request: { manual?: boolean; full?: boolean } = {}): Promise<PullOutcome> {
+    const manual = request.manual === true;
+    const full = request.full === true;
     // Una sola descarga en vuelo: dos llamadas simultáneas comparten resultado.
-    if (inflight) return inflight;
-    const task = run(request.manual === true, request.full === true);
+    if (inflight) {
+      // Excepción deliberada: una petición COMPLETA no puede absorberse con un
+      // lote incremental, o la autocuración del arranque quedaría satisfecha con
+      // una página y el catálogo seguiría vacío hasta reiniciar el equipo.
+      if (!full || inflightIsFull) return inflight;
+      return track(inflight.catch(() => null).then(() => run(true, true)), true);
+    }
+    return track(run(manual, full), full);
+  }
+
+  /** Registra la única descarga en vuelo y la libera en ambos caminos. */
+  function track(task: Promise<PullOutcome>, isFull: boolean): Promise<PullOutcome> {
     inflight = task;
+    inflightIsFull = isFull;
     const release = (): void => {
-      if (inflight === task) inflight = null;
+      if (inflight === task) {
+        inflight = null;
+        inflightIsFull = false;
+      }
     };
     void task.then(release, release);
     return task;

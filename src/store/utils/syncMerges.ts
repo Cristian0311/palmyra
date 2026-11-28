@@ -1,4 +1,27 @@
 import { normalizeSemanticText } from "../../utils/textUtils";
+import { normalizeBusinessDateYMD } from "../../utils/dateUtils";
+
+/**
+ * El día de negocio vive en el turno (metadata remota). Una venta sin
+ * `businessDate` propio hereda la de su turno para que cualquier equipo vea
+ * la fecha retroactiva elegida al arquear y no el día de captura.
+ */
+export function applySessionBusinessDate<T extends { sessionId?: string; businessDate?: string }>(
+  transactions: T[],
+  sessions: Array<{ id: string; businessDate?: string }>
+): T[] {
+  const sessionYmdById = new Map<string, string>();
+  for (const session of sessions) {
+    const ymd = normalizeBusinessDateYMD(session.businessDate);
+    if (ymd) sessionYmdById.set(String(session.id), ymd);
+  }
+  if (!sessionYmdById.size) return transactions;
+  return transactions.map(tx => {
+    if (!tx.sessionId) return tx;
+    const ymd = sessionYmdById.get(String(tx.sessionId));
+    return ymd && tx.businessDate !== ymd ? { ...tx, businessDate: ymd } : tx;
+  });
+}
 
 export function mergeById<T extends { id: string }>(
   remote: T[] | undefined,
@@ -30,6 +53,10 @@ export function mergeUnique<T extends Record<string, any>>(
   const idKey = options?.idKey || "id";
   const semanticKeys =
     options?.semanticKeys || (options?.semanticDedupe ? ["name"] : []);
+  // Se normalizan a string: la cola guarda ids tal como los escribió el formulario.
+  const protectedIds = options?.offlineIds
+    ? new Set(Array.from(options.offlineIds, (id) => String(id)))
+    : null;
 
   const map = new Map<string | number, T>();
   const semanticMap = new Map<string, string | number>();
@@ -50,6 +77,12 @@ export function mergeUnique<T extends Record<string, any>>(
   });
 
   (remote || []).forEach((item) => {
+    const localItem = map.get(item[idKey]);
+
+    // Una fila encolada todavía no la confirmó el servidor: un snapshot viejo no
+    // puede pisarla ni borrar su clave semántica, o el alta offline se pierde.
+    if (localItem && protectedIds?.has(String(item[idKey]))) return;
+
     const semanticKey = getSemanticKey(item);
     if (semanticKey) {
       const existingId = semanticMap.get(semanticKey);
@@ -61,7 +94,6 @@ export function mergeUnique<T extends Record<string, any>>(
 
     // A local closed session must not be reopened by a stale cloud snapshot.
     if (item.status === "open") {
-      const localItem = map.get(item[idKey]);
       if (localItem && localItem.status === "closed") {
         map.set(item[idKey], {
           ...item,

@@ -1,4 +1,5 @@
 import type { ExcelExportData } from './types';
+import { normalizeBusinessDateYMD } from '../dateUtils';
 import { completedSales } from './summarySheet';
 
 function formatMoneyLabel(amount: number, currencyCode: string): string {
@@ -40,7 +41,12 @@ export function generateSalesSheet(data: ExcelExportData): any[][] {
 
   // Solo ventas completadas vigentes: los ajustes de auditoría y los tickets
   // anulados viven en sus propias hojas para que los totales reconcilien.
-  const sales = completedSales(data).slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  // El orden sigue el día de negocio (auditoría: instante de creación).
+  const sales = completedSales(data).slice().sort((a, b) => {
+    const business = (normalizeBusinessDateYMD(b.businessDate) || '').localeCompare(normalizeBusinessDateYMD(a.businessDate) || '');
+    if (business !== 0) return business;
+    return new Date(b.date).getTime() - new Date(a.date).getTime();
+  });
 
   for (const transaction of sales) {
     const branchName = branchById.get(transaction.branchId)?.name || 'Sucursal Principal';
@@ -51,7 +57,10 @@ export function generateSalesSheet(data: ExcelExportData): any[][] {
       ? `Turno ${session.turnNumber ? `#${session.turnNumber}` : session.id}`
       : transaction.sessionId || 'Sin turno';
 
-    const date = new Date(transaction.date);
+    // La exportación fecha cada ticket con el día de negocio elegido en caja.
+    // Se construye al mediodía UTC para que el serial de Excel no cambie de día.
+    const businessYMD = normalizeBusinessDateYMD(transaction.businessDate);
+    const date = businessYMD ? new Date(`${businessYMD}T12:00:00Z`) : new Date(transaction.date);
     const safeDate = Number.isNaN(date.getTime()) ? null : date;
 
     let cashPaidInBase = 0;

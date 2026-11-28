@@ -868,7 +868,9 @@ export default function POS() {
         // Sin override de expectedBalance: closeSession calcula y graba el
         // esperado con la función unificada para que coincida con el RPC.
         sessionMeta || {},
-        companyCompensation
+        companyCompensation,
+        // Día de negocio elegido en el arqueo, como calendario puro (YYYY-MM-DD).
+        sessionClosingDate
       );
 
       if (!confirmed) {

@@ -155,6 +155,14 @@ const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 /** Renueva cuando falten menos de 24 h para el tope absoluto del lease. */
 const RENEW_BEFORE_MS = DAY_MS;
+/**
+ * Margen con el que se acepta que un lease firmado por el servidor empiece a
+ * valer «ahora mismo». Cubre el retraso de la petición (el lease se emite
+ * DURANTE la pasada) y la diferencia normal entre el reloj del equipo y el del
+ * servidor. Es acotado a propósito: un lease que empieza mucho más adelante
+ * sigue siendo «todavía no vigente».
+ */
+const LEASE_START_SKEW_MS = 5 * 60 * 1000;
 /** Un lease con más de 12 h de antigüedad se renueva al volver a tener sesión. */
 const LEASE_MAX_AGE_MS = 12 * HOUR_MS;
 /** Evita martillar issue-lease mientras el servidor responda con error. */
@@ -252,6 +260,8 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
   let snapshot: LicenseSnapshot = LOADING_SNAPSHOT;
   let inFlight: Promise<LicenseSnapshot> | null = null;
   let companyId: string | null = null;
+  /** Empresa pedida mientras otra pasada seguía en vuelo; se evalúa al liberar. */
+  let pendingCompanyId: string | null = null;
   let currentLeaseId: string | null = null;
   let lastValid: LicenseSnapshot | null = null;
   /** Solo lectura decidido por la evaluación, sin la marca de reloj. */
@@ -377,6 +387,29 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
     return null;
   }
 
+  /**
+   * JWT de la sesión para `revoke-lease` (desplegado con `verify_jwt = true`).
+   * Sin sesión no hay token: la consulta devuelve 401 y la revocación falla
+   * abierta, igual que antes, sin lanzar ni registrar el token.
+   */
+  async function revocationAccessToken(): Promise<string | null> {
+    let client: LicenseRuntimeClient | null = null;
+    try {
+      client = getClient();
+    } catch {
+      return null;
+    }
+    if (!client) return null;
+    try {
+      const result = await client.auth.getSession();
+      const session = result?.data?.session as { access_token?: unknown } | null;
+      const token = session?.access_token;
+      return typeof token === "string" && token.trim() ? token.trim() : null;
+    } catch {
+      return null;
+    }
+  }
+
   async function leaseIsRevoked(lease: SignedLease | null): Promise<boolean> {
     if (!lease) return false;
     try {
@@ -384,7 +417,8 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
         fetchImpl,
         baseUrl: revocationBaseUrl(),
         now,
-        ttlMs: options.revocationTtlMs
+        ttlMs: options.revocationTtlMs,
+        accessToken: await revocationAccessToken()
       });
       return result.revoked;
     } catch {
@@ -665,15 +699,18 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
 
     // La guarda de reloj se aplica en toda evaluacion, incluso sin lease: una
     // hora retrocedida no debe habilitar escrituras ni alargar la ventana.
+    // `nowMs` es el instante que se está evaluando: tras la fase de red no es el
+    // inicio de la pasada, porque un lease puede haberse emitido entretanto.
     const applyClockGuard = async (
       evaluationReadOnly: boolean,
       serverAnchorMs?: number | null,
-      offlineUntilMs?: number | null
+      offlineUntilMs?: number | null,
+      nowMs: number = atMs
     ) => {
       try {
         return await applyLicenseClockGuard(store, {
           companyId: activeCompany,
-          nowMs: atMs,
+          nowMs,
           evaluationReadOnly,
           serverAnchorMs: serverAnchorMs ?? null,
           offlineUntilMs
@@ -688,9 +725,21 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
       watermarkMs: number | null;
       offlineVerified: boolean;
     }): Promise<LicenseSnapshot> => {
+      // Instante de evaluación. `atMs` se leyó antes de la fase de red, así que
+      // un lease emitido DURANTE esta pasada (renovación) lleva `notBefore`
+      // posterior a `atMs`: evaluarlo con la hora anterior lo declaraba «todavía
+      // no vigente» y el plan ya verificado pasaba a solo lectura veinte
+      // segundos después, sin causa real. Se evalúa en el momento de la
+      // comprobación y nunca antes de que el propio lease empiece a valer; el
+      // margen acota cuánto «futuro» se acepta.
+      const notBeforeMs = Date.parse(args.lease.notBefore);
+      const evaluatedAtMs =
+        Number.isFinite(notBeforeMs) && notBeforeMs > atMs
+          ? Math.min(notBeforeMs, atMs + LEASE_START_SKEW_MS)
+          : atMs;
       const evaluation = evaluateLease({
         lease: args.lease,
-        nowMs: atMs,
+        nowMs: evaluatedAtMs,
         watermarkMs: args.watermarkMs,
         devicePublicKeyFp: identity.fingerprint,
         signatureValid: true
@@ -701,13 +750,14 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
       const clock = await applyClockGuard(
         evaluation.readOnly,
         Number.isFinite(anchorMs) ? anchorMs : null,
-        Number.isFinite(offlineUntilRaw) ? offlineUntilRaw : null
+        Number.isFinite(offlineUntilRaw) ? offlineUntilRaw : null,
+        evaluatedAtMs
       );
       const tampered = Boolean(clock?.tampered);
 
       const advanced = nextWatermark({
         previousMs: args.watermarkMs,
-        nowMs: atMs,
+        nowMs: evaluatedAtMs,
         serverTimeMs: Number.isFinite(anchorMs) ? anchorMs : null
       });
       try {
@@ -726,8 +776,8 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
         expiresAt: evaluation.expiresAt,
         reason: tampered && !evaluation.readOnly ? "clock-tampered" : evaluation.reason,
         clockWarning: evaluation.clockWarning || tampered,
-        lastCheckedAt: atMs,
-        lastVerifiedAt: new Date(atMs).toISOString(),
+        lastCheckedAt: evaluatedAtMs,
+        lastVerifiedAt: new Date(evaluatedAtMs).toISOString(),
         keyConfigured: true,
         leasePresent: true,
         offlineVerified: args.offlineVerified,
@@ -740,7 +790,7 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
       // Solo una firma válida llega aquí: es una verificación real y se recuerda
       // con fecha y hora para que no se pierda en el próximo arranque.
       rememberVerification(activeCompany, {
-        verifiedAtMs: atMs,
+        verifiedAtMs: evaluatedAtMs,
         leaseId: args.lease.leaseId,
         planCode: args.lease.planCode,
         paidThrough: evaluation.paidThrough,
@@ -941,8 +991,14 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
 
   function refresh(input?: { companyId?: string; forceRenew?: boolean }): Promise<LicenseSnapshot> {
     if (disposed) return Promise.resolve(snapshot);
+    const requested = typeof input?.companyId === "string" && input.companyId ? input.companyId : null;
     if (inFlight) {
-      if (input?.companyId) companyId = input.companyId;
+      // Reasignar `companyId` a secas dejaría a la empresa nueva el veredicto de
+      // la anterior: `runRefresh` solo reinventa el estado por empresa cuando él
+      // mismo detecta el cambio, y una tarea ya en vuelo pasó ese punto hace
+      // rato (líneas 552-563). Se pospone una pasada nueva; la UI se actualiza
+      // cuando esa pasada publique.
+      if (requested && requested !== companyId) pendingCompanyId = requested;
       return inFlight;
     }
     inFlight = runRefresh(input)
@@ -952,6 +1008,11 @@ export function createLicenseRuntime(options: LicenseRuntimeOptions = {}): Licen
       })
       .finally(() => {
         inFlight = null;
+        const pending = pendingCompanyId;
+        pendingCompanyId = null;
+        if (pending && pending !== companyId && !disposed) {
+          void refresh({ companyId: pending });
+        }
       });
     return inFlight;
   }

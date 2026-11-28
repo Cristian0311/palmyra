@@ -195,9 +195,18 @@ export default function Reports() {
     setSelectedDirectTxModal(null);
   };
 
+  // El detalle del turno se abre guardando el turno elegido (id + instantánea),
+  // no solo el id. Así una sincronización que reemplace `cashSessions` entre el
+  // clic y el render no puede dejar el modal vacío: siempre hay un registro que
+  // mostrar, y el id sigue permitiendo refrescar los datos en vivo.
   const openSessionDetail = (sessionId: string, origin: 'sales' | 'payroll' | 'sessions') => {
+    const snapshot = sessionById.get(sessionId) || null;
+    if (!snapshot) {
+      addNotification('No se pudo abrir el detalle: este turno ya no está disponible en el equipo. Actualiza los reportes e inténtalo de nuevo.', 'warning');
+      return;
+    }
     setSessionDetailOrigin(origin);
-    setExpandedSession(sessionId);
+    setExpandedSession({ id: sessionId, snapshot });
   };
 
   const handleVoidTransaction = (transaction: import('../types').Transaction) => {
@@ -250,7 +259,7 @@ export default function Reports() {
   const [movementTypeFilter, setMovementTypeFilter] = useState<'all' | 'expense' | 'income'>('all');
   const [movementCurrencyFilter, setMovementCurrencyFilter] = useState<string>('all');
   const [selectedDiscrepancyDetailSession, setSelectedDiscrepancyDetailSession] = useState<CashRegisterSession | null>(null);
-  const [expandedSession, setExpandedSession] = useState<string | null>(null);
+  const [expandedSession, setExpandedSession] = useState<{ id: string; snapshot: CashRegisterSession } | null>(null);
   const [sessionDetailOrigin, setSessionDetailOrigin] = useState<'sales' | 'payroll' | 'sessions'>('sales');
   const [sessionFilter, setSessionFilter] = useState<'all' | 'today' | 'yesterday' | 'custom'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'open' | 'closed' | 'cancelled'>('all');
@@ -321,6 +330,7 @@ export default function Reports() {
     sortSessionsByTurn,
     closedSessions,
     filteredSessions,
+    reconciledSessions,
   } = useReportsSessions({
     cashSessions,
     transactions,
@@ -334,6 +344,17 @@ export default function Reports() {
   });
 
   const filteredCashSessions = filteredSessions;
+
+  // Los listados de Reportes se pintan desde `reconciledSessions` (turnos del
+  // store + turnos recuperados a partir de sus ventas), no desde el array crudo
+  // del store. El detalle debe resolver contra ESA misma fuente: si resuelve
+  // contra `store.cashSessions`, un turno recuperado —o cualquier turno que una
+  // sincronización en segundo plano quite del store mientras el modal se abre—
+  // no se encuentra y el detalle no se muestra.
+  const sessionById = useMemo(
+    () => new Map(reconciledSessions.map(session => [session.id, session])),
+    [reconciledSessions],
+  );
 
   // Exportar debe respetar el mismo periodo que muestran las pestañas. Las
   // liquidaciones y los movimientos bancarios se exportaban completos y el
@@ -652,8 +673,11 @@ export default function Reports() {
   const printSession = cashSessions.find(s => s.id === printSessionId);
   const printPayrollItem = printSession ? payrollList.find(p => p.sessionId === printSession.id) : null;
   const printBranch = printSession ? branches.find(b => b.id === printSession.branchId) : null;
+  // Resolución del turno abierto: datos en vivo si el turno sigue en la lista
+  // conciliada; si la sincronización lo reemplazó, se conserva la instantánea
+  // del clic para que el modal nunca quede vacío.
   const expandedSessionRecord = expandedSession
-    ? cashSessions.find(s => s.id === expandedSession) || null
+    ? sessionById.get(expandedSession.id) || expandedSession.snapshot
     : null;
 
   const expandedSessionTickets = useMemo(
@@ -735,12 +759,27 @@ export default function Reports() {
       if (ok) {
         setShiftVoidTarget(null);
         setShiftVoidReason('');
-        setExpandedSession(current => (current === shiftVoidTarget.id ? null : current));
+        setExpandedSession(current => (current?.id === shiftVoidTarget.id ? null : current));
       }
     } finally {
       setIsVoidingShift(false);
     }
   };
+
+  // Los modales de detalle diferidos muestran su carga: con `fallback={null}`
+  // un clic en «Detalle» parecía no hacer nada hasta que llegaba el fragmento.
+  const detailModalFallback = (
+    <div
+      className="palmyra-overlay z-[var(--z-confirm)] flex items-center justify-center p-4"
+      role="status"
+      aria-live="polite"
+    >
+      <span className="inline-flex items-center gap-2 rounded-xl border border-base bg-secondary px-4 py-2.5 text-[11px] font-black uppercase tracking-wider text-secondary shadow-lg">
+        <Loader2 size={14} className="animate-spin" aria-hidden="true" />
+        Cargando detalle…
+      </span>
+    </div>
+  );
 
   return (
     <div className="reportes-page space-y-3 sm:space-y-4 animate-in fade-in duration-300 w-full min-w-0 max-w-[1400px] mx-auto pb-12 overflow-x-hidden">
@@ -1707,7 +1746,7 @@ export default function Reports() {
 
       {/* Modal: Detalle de Transferencia entre Sucursales */}
       {selectedTransferModal && (
-        <Suspense fallback={null}>
+        <Suspense fallback={detailModalFallback}>
           <ReportsSelectedTransferModal {...{ branches, selectedTransferModal, setSelectedTransferModal }} />
         </Suspense>
       )}
@@ -1827,14 +1866,14 @@ export default function Reports() {
 
       {/* Modal: Detalle y Auditoría de Descuadre y Cierre Forzado */}
       {selectedDiscrepancyDetailSession && (
-        <Suspense fallback={null}>
+        <Suspense fallback={detailModalFallback}>
           <ReportsDiscrepancyDetailModal {...{ addNotification, baseCurrency, branches, currencies, currentUser: store.currentUser, formatMoney, getSessionDiscrepancyInfo, handlePrintDiscrepancyTicket, handlePrintShiftTicket, selectedDiscrepancyDetailSession, sessionTurnMap, setSelectedDiscrepancyDetailSession, transactions, updateCashSession, users }} />
         </Suspense>
       )}
 
       {/* Modal: Detalle de Movimiento de Caja (Egreso / Ingreso) */}
       {selectedMovementDetail && (
-        <Suspense fallback={null}>
+        <Suspense fallback={detailModalFallback}>
           <ReportsMovementDetailModal {...{ baseCurrency, currencies, formatMoney, handlePrintCashMovementTicket, onSaveCorrection: handleSaveMovementCorrection, selectedMovementDetail, setSelectedMovementDetail }} />
         </Suspense>
       )}

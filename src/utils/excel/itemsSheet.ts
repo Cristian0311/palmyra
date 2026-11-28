@@ -1,4 +1,5 @@
 import type { ExcelExportData } from './types';
+import { normalizeBusinessDateYMD } from '../dateUtils';
 import { reportLineTotal, resolveUnitCost } from '../../modules/reports/utils/reportSalesSummary';
 
 export function generateItemsSoldDetailSheet(data: ExcelExportData): any[][] {
@@ -48,17 +49,24 @@ export function generateItemsSoldDetailSheet(data: ExcelExportData): any[][] {
   const sales = (data.transactions || [])
     .filter(transaction => transaction?.status === 'completed' && !transaction.deletedAt && !String(transaction.notes || '').startsWith('AJUSTE_'))
     .slice()
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    .sort((a, b) => {
+      const business = (normalizeBusinessDateYMD(b.businessDate) || '').localeCompare(normalizeBusinessDateYMD(a.businessDate) || '');
+      if (business !== 0) return business;
+      return new Date(b.date).getTime() - new Date(a.date).getTime();
+    });
 
   for (const transaction of sales) {
     const branchName = branchById.get(transaction.branchId)?.name || 'Sucursal Principal';
     const seller = userById.get(transaction.userId)?.name || transaction.cashierName || 'Cajero';
     const customer = transaction.customerId ? customerById.get(transaction.customerId) : undefined;
-    const date = new Date(transaction.date);
+    // Día de negocio elegido en caja; mediodía UTC para no cambiar de día.
+    const businessYMD = normalizeBusinessDateYMD(transaction.businessDate);
+    const date = businessYMD ? new Date(`${businessYMD}T12:00:00Z`) : new Date(transaction.date);
     const safeDate = Number.isNaN(date.getTime()) ? null : date;
-    const timeStr = Number.isNaN(date.getTime())
+    const createdAt = new Date(transaction.date);
+    const timeStr = Number.isNaN(createdAt.getTime())
       ? ''
-      : date.toLocaleTimeString('es-CU', { hour: '2-digit', minute: '2-digit' });
+      : createdAt.toLocaleTimeString('es-CU', { hour: '2-digit', minute: '2-digit' });
 
     const items = transaction.items || [];
     // Un solo recorrido por ticket: antes cada línea recalculaba todas las

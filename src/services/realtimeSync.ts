@@ -44,6 +44,27 @@ let cleanupRuntime: (() => void) | null = null;
 /** Generación de suscripción: invalida callbacks de un canal ya retirado. */
 let subscriberGeneration = 0;
 let cloudChannel: any = null;
+/** Cliente que creó el canal vivo: sin él, `cleanupRuntime` no podía cerrarlo. */
+let cloudChannelClient: any = null;
+
+/**
+ * Retira el canal de nube en vuelo. Asignar `cloudChannel = null` sin llamar
+ * `removeChannel` dejaba el websocket conectado (y reintentando de por vida)
+ * después de desconectar o desmontar la consola.
+ */
+function detachCloudChannel(): void {
+  const channel = cloudChannel;
+  const client = cloudChannelClient;
+  cloudChannel = null;
+  cloudChannelClient = null;
+  subscriberGeneration += 1;
+  if (!channel) return;
+  try {
+    void Promise.resolve(client?.removeChannel(channel)).catch(() => undefined);
+  } catch {
+    // Un cliente ya cerrado no debe tumbar el desmontaje.
+  }
+}
 
 function warnNetworkOnly(message: string, error?: unknown) {
   if (isBrowserOffline() || isTransientNetworkError(error)) return;
@@ -194,16 +215,21 @@ export function subscribePlanApprovalRealtime(options: PlanApprovalRealtimeOptio
       warnNetworkOnly('[PALMYRA] Realtime de aprobación de planes: ' + status);
     } else if (status === 'CLOSED' && cloudChannel === channel) {
       cloudChannel = null;
+      cloudChannelClient = null;
     }
   });
 
   cloudChannel = channel;
+  cloudChannelClient = supabase;
 
   return () => {
     if (closed) return;
     closed = true;
     subscriberGeneration += 1;
-    if (cloudChannel === channel) cloudChannel = null;
+    if (cloudChannel === channel) {
+      cloudChannel = null;
+      cloudChannelClient = null;
+    }
     void Promise.resolve(supabase.removeChannel(channel)).catch(() => undefined);
   };
 }
@@ -223,10 +249,7 @@ export function initMultiDeviceRealtimeSync(): () => void {
     };
     const onOffline = () => {
       // Sin conexión no hay nada que escuchar en la nube; el hub LAN sigue.
-      if (cloudChannel) {
-        subscriberGeneration += 1;
-        cloudChannel = null;
-      }
+      detachCloudChannel();
     };
 
     window.addEventListener('online', onOnline);
@@ -236,8 +259,7 @@ export function initMultiDeviceRealtimeSync(): () => void {
     cleanupRuntime = () => {
       window.removeEventListener('online', onOnline);
       window.removeEventListener('offline', onOffline);
-      subscriberGeneration += 1;
-      cloudChannel = null;
+      detachCloudChannel();
       bootstrappedTenantKey = '';
       bootstrapInFlight = null;
     };

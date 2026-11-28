@@ -61,6 +61,8 @@ type StoreGet = () => AppState;
 export const BOOTSTRAP_COOLDOWN_MS = 10 * 60 * 1000;
 
 let bootstrapInFlight: Promise<boolean> | null = null;
+/** Sincronización completa en vuelo: dos llamadas no deben aplicar snapshots cruzados. */
+let syncInFlight: Promise<SyncResult> | null = null;
 let historyCursor: string | null = null;
 let historyExhausted = false;
 
@@ -425,6 +427,12 @@ async function requestFullCloudPull(companyId: string, options?: BootstrapAction
       console.info('[PALMYRA] Autocuración: no hay motor de descarga completo activo; se reintentará en el próximo arranque.');
       return false;
     }
+    // Un lote que terminó en fallo NO curó nada: marcarla como intentada dejaba
+    // el catálogo vacío hasta reiniciar la app.
+    if (outcome?.status === 'failed') {
+      console.warn('[PALMYRA] Autocuración: la descarga completa falló; se reintentará en el próximo arranque.', outcome?.error || 'sin detalle.');
+      return false;
+    }
     return true;
   } catch (error) {
     console.warn('[PALMYRA] Autocuración: la descarga completa falló.', error);
@@ -616,13 +624,15 @@ async function runBootstrap(set: StoreSet, get: StoreGet, options?: BootstrapAct
 
       // 3) Autocuración: ámbito local vacío + nube con filas → pull completo.
       if (needsFullCatalogPull(before, data, report) && !selfHealDoneFor.has(companyId)) {
-        selfHealDoneFor.add(companyId);
         console.info(
           `[PALMYRA] Autocuración: el catálogo local de ${companyId} estaba vacío y la nube tiene ` +
           `${data.products?.length || 0} productos / ${data.categories?.length || 0} categorías / ${data.branches?.length || 0} almacenes. ` +
           'Se fuerza una descarga completa sin cursores.'
         );
-        await requestFullCloudPull(companyId, options);
+        // Se marca SOLO si la descarga ocurrió de verdad: con el motor aún sin
+        // registrar (null) o con el lote fallido, marcarla cancelaba el
+        // reintento y dejaba el equipo entero sin catálogo hasta reiniciar.
+        if (await requestFullCloudPull(companyId, options)) selfHealDoneFor.add(companyId);
       }
 
       return report.ok || anySection;
@@ -831,29 +841,40 @@ export function createSyncActions(set: StoreSet, get: StoreGet): any {
 
 
   syncWithSupabase: async () => {
-    set({ isSyncing: true });
-    try {
-      const { data, result } = await pullAllFromSupabase();
-      if (result.success && data) {
-        set((state) => ({
-          ...buildSupabaseSyncState(data, state),
-          lastSyncTime: new Date().toISOString(),
-          syncResult: result,
-          isSyncing: false
-        }));
-      } else {
-        set({ isSyncing: false, syncResult: result });
+    // El botón manual, el `online`, el tick del runner y la pantalla de salud
+    // podían lanzar dos lecturas a la vez: ambas ponían `isSyncing` y ganaba la
+    // que terminara último, no la más reciente. Se comparte la tarea en vuelo.
+    if (syncInFlight) return syncInFlight;
+    const task = (async (): Promise<SyncResult> => {
+      set({ isSyncing: true });
+      try {
+        const { data, result } = await pullAllFromSupabase();
+        if (result.success && data) {
+          set((state) => ({
+            ...buildSupabaseSyncState(data, state),
+            lastSyncTime: new Date().toISOString(),
+            syncResult: result,
+            isSyncing: false
+          }));
+        } else {
+          set({ isSyncing: false, syncResult: result });
+        }
+        if (result.success) {
+          recordSyncMoment('pull');
+          get().reconcileBankBalances().catch(() => {});
+        }
+        return result;
+      } catch (e: any) {
+        const errRes: SyncResult = { success: false, message: e?.message || 'Error al sincronizar con Supabase' };
+        set({ isSyncing: false, syncResult: errRes });
+        return errRes;
       }
-      if (result.success) {
-        recordSyncMoment('pull');
-        get().reconcileBankBalances().catch(() => {});
-      }
-      return result;
-    } catch (e: any) {
-      const errRes: SyncResult = { success: false, message: e?.message || 'Error al sincronizar con Supabase' };
-      set({ isSyncing: false, syncResult: errRes });
-      return errRes;
-    }
+    })();
+    syncInFlight = task;
+    void task.finally(() => {
+      if (syncInFlight === task) syncInFlight = null;
+    });
+    return task;
   },
   };
 }

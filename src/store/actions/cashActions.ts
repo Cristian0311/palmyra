@@ -17,6 +17,7 @@ import { loadCompensationSettings } from '../../services/team';
 import { loadSaaSContext, signInSaaSAccount, signOutSaaSAccount } from '../../services/saas';
 import { getOfflineQueue, enqueueOfflineItem, removeFromOfflineQueue, waitForOfflineQueueReady } from '../../services/offlineQueue';
 import { normalizeSemanticText, areSemanticallyEqual } from '../../utils/textUtils';
+import { getLocalDateYMD, normalizeBusinessDateYMD } from '../../utils/dateUtils';
 import { localStateStorage, clearLocalStateStorage, flushLocalStateStorage } from '../../services/localStateStorage';
 import { getPalmyraScopedStorageKey } from '../../services/localScope';
 import { setCanonicalInventoryQuantity, validateTransferStock } from '../utils/inventoryTransforms';
@@ -42,6 +43,55 @@ type StoreSet = (
   partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)
 ) => void;
 type StoreGet = () => AppState;
+
+/**
+ * Resuelve la fecha de negocio del arqueo/cierre como un día de calendario
+ * (`YYYY-MM-DD`). Si la pantalla envía el valor del input se usa tal cual; si
+ * no, se deriva del instante de cierre con el mismo criterio cubano de Reportes.
+ */
+function resolveSessionBusinessDate(explicit: string | undefined, closingDate: string): string {
+  return normalizeBusinessDateYMD(explicit) || getLocalDateYMD(closingDate);
+}
+
+/**
+ * Estampa la fecha de negocio elegida en las ventas del turno. `date` sigue
+ * siendo el instante de creación (auditoría); Reportes agrupa por `businessDate`.
+ */
+function stampBusinessDateOnSales(
+  transactions: Transaction[],
+  targetIds: Set<string>,
+  businessDate: string,
+): Transaction[] {
+  if (!businessDate || !targetIds.size) return transactions;
+  return transactions.map(tx =>
+    targetIds.has(String(tx.id)) && tx.businessDate !== businessDate
+      ? { ...tx, businessDate }
+      : tx
+  );
+}
+
+/**
+ * Las ventas del turno que todavía están en la cola durable deben viajar con la
+ * misma fecha de negocio. `enqueueOfflineItem` fusiona el payload existente, así
+ * que solo se añade `businessDate` sin perder la operación original.
+ */
+async function stampQueuedSalesBusinessDate(
+  transactions: Transaction[],
+  businessDate: string,
+): Promise<void> {
+  if (!businessDate || !transactions.length) return;
+  const ids = new Set(transactions.map(tx => String(tx.id)));
+  const queued = getOfflineQueue().filter(item =>
+    item.type === 'transaction' && ids.has(String(item.data?.id || item.actionId))
+  );
+  for (const item of queued) {
+    try {
+      await enqueueOfflineItem('transaction', { businessDate }, item.actionId);
+    } catch (error) {
+      console.warn('[cashSession] No se pudo actualizar la fecha de negocio de una venta en cola:', error);
+    }
+  }
+}
 
 async function flushPendingCashOperationsForSession(sessionId: string): Promise<boolean> {
   const pending = getOfflineQueue()
@@ -160,10 +210,14 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
     await flushLocalStateStorage();
     return true;
   },
-  closeSession: async (sessionId, closingBalances, workerName, closingDate, discrepancyDeduction, sessionMeta, compensationOverride) => {
+  closeSession: async (sessionId, closingBalances, workerName, closingDate, discrepancyDeduction, sessionMeta, compensationOverride, businessDate) => {
     const finalClosingDate = closingDate || new Date().toISOString();
     const session = get().cashSessions.find(s => s.id === sessionId);
     if (!session) return false;
+    // Fecha de negocio elegida por el cajero al cuadrar la caja. Es la que
+    // Reportes usa para agrupar, filtrar y etiquetar la venta; el instante de
+    // creación (`date`) queda solo como auditoría.
+    const businessDateYMD = resolveSessionBusinessDate(businessDate, finalClosingDate);
 
     // Nunca cerrar remotamente mientras exista una venta/liquidación de este
     // turno todavía pendiente en la cola durable. En offline el cierre sí se
@@ -201,6 +255,9 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
            new Date(t.date).getTime() <= closingTime))
     );
     const user = findSessionEmployeeUser(session, get().users, workerName);
+    // Todas las ventas del turno comparten el día de negocio del arqueo.
+    const sessionSaleIds = new Set(sessionTxs.map(tx => String(tx.id)));
+    await stampQueuedSalesBusinessDate(sessionTxs, businessDateYMD);
 
     let compensation = compensationOverride || null;
     if (!compensation && typeof navigator !== 'undefined' && navigator.onLine && isCloudBusinessSyncAllowed()) {
@@ -250,6 +307,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       ...session,
       expectedBalance: expectedCashBase,
       closedAt: finalClosingDate,
+      businessDate: businessDateYMD,
       status: 'closed' as 'closed',
       closingBalances: closingBalances || [],
       workerName: settlement.userName,
@@ -301,6 +359,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
         }
         set((state) => ({
           cashSessions: (state.cashSessions || []).map(s => s.id === sessionId ? updatedSession : s),
+          transactions: stampBusinessDateOnSales(state.transactions || [], sessionSaleIds, businessDateYMD),
           salarySettlements: [
             ...(state.salarySettlements || []).filter(st => st.sessionId !== sessionId),
             ...(shouldPersistSalary ? [{ ...settlement, id: res.data?.settlement_id || settlement.id }] : [])
@@ -313,6 +372,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
         console.warn("[closeSession] El cierre no pudo completarse en línea; se conserva localmente y queda durable para reintento:", err);
         set((state) => ({
           cashSessions: (state.cashSessions || []).map(s => s.id === sessionId ? updatedSession : s),
+          transactions: stampBusinessDateOnSales(state.transactions || [], sessionSaleIds, businessDateYMD),
           salarySettlements: [...(state.salarySettlements || []).filter(st => st.sessionId !== sessionId), settlement],
           cart: []
         }));
@@ -327,6 +387,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
 
     set((state) => ({
       cashSessions: (state.cashSessions || []).map(s => s.id === sessionId ? updatedSession : s),
+      transactions: stampBusinessDateOnSales(state.transactions || [], sessionSaleIds, businessDateYMD),
       salarySettlements: [...(state.salarySettlements || []).filter(st => st.sessionId !== sessionId), settlement],
       cart: []
     }));
@@ -420,6 +481,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       openedAt: newOpenedAt,
       closedAt: shiftByDelta(session.closedAt),
       closingDate: shiftByDelta(session.closingDate),
+      businessDate: newDateYMD,
       movements: (session.movements || []).map(m => ({
         ...m,
         date: shiftByDelta(m.date) || m.date
@@ -436,7 +498,9 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
         : (tx.branchId === session.branchId && Number.isFinite(txTime) && txTime >= oldOpenMs && txTime <= oldCloseTime);
       if (!isLinked) return tx;
       affectedTxIds.add(tx.id);
-      return { ...tx, sessionId: session.id, date: shiftByDelta(tx.date) || tx.date };
+      // La fecha de negocio corregida manda en Reportes; `date` se desplaza
+      // para conservar la coherencia con el created_at remoto del turno.
+      return { ...tx, sessionId: session.id, businessDate: newDateYMD, date: shiftByDelta(tx.date) || tx.date };
     });
 
     const updatedSalarySettlements = (state.salarySettlements || []).map(st =>
@@ -457,6 +521,24 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       warranties: updatedWarranties
     });
     await flushLocalStateStorage();
+
+    // La fecha nueva debe quedar también en la metadata del turno: es el
+    // único campo remoto que Reportes de otros equipos puede leer para
+    // agrupar las ventas en el día retroactivo. Se encola como snapshot
+    // para que un fallo de red no pierda la corrección.
+    const metadataActionId = `cash-snapshot:${sessionId}`;
+    void (async () => {
+      try {
+        await enqueueOfflineItem('cash_session', { ...updatedSession, __operation: 'snapshot' }, metadataActionId);
+        const synced = await pushCashSessionMetadataToSupabase(updatedSession);
+        if (synced) removeFromOfflineQueueByAction('cash_session', metadataActionId);
+        else {
+          get().addNotification('La fecha se cambió, pero el día de negocio del turno quedó pendiente de sincronizar.', 'warning');
+        }
+      } catch (error) {
+        console.warn('[CashSession] La corrección de fecha quedó en cola para reintento:', error);
+      }
+    })();
     return true;
   },
   joinOpenSession: (sessionId, userId, workerName) => {
@@ -588,11 +670,12 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
     return get().addInformationalSoldProductToSession(sessionId, itemData, affectStock, true);
   },
 
-  forceCloseSessionFromReports: async (sessionId, closingBalances, closingDate, notes) => {
+  forceCloseSessionFromReports: async (sessionId, closingBalances, closingDate, notes, businessDate) => {
     const session = get().cashSessions.find(s => s.id === sessionId);
     if (!session) return { success: false };
 
     const finalClosingDate = closingDate || new Date().toISOString();
+    const businessDateYMD = resolveSessionBusinessDate(businessDate, finalClosingDate);
     const finalBalances = closingBalances && closingBalances.length > 0
       ? closingBalances
       : session.closingBalances && session.closingBalances.length > 0
@@ -610,6 +693,8 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
           new Date(t.date).getTime() <= new Date(finalClosingDate).getTime()))
     );
     const user = findSessionEmployeeUser(session, get().users);
+    const sessionSaleIds = new Set(sessionTxs.map(tx => String(tx.id)));
+    await stampQueuedSalesBusinessDate(sessionTxs, businessDateYMD);
     let compensation = null;
     if (navigator.onLine && isCloudBusinessSyncAllowed()) {
       try {
@@ -668,6 +753,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       expectedBalance: expectedCashBase,
       status: 'closed',
       closedAt: finalClosingDate,
+      businessDate: businessDateYMD,
       closingDate: finalClosingDate,
       closingBalances: finalBalances,
       ...(discrepancyDetails.length > 0
@@ -701,6 +787,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
         }
         set(state => ({
           cashSessions: state.cashSessions.map(s => s.id === sessionId ? updatedSession : s),
+          transactions: stampBusinessDateOnSales(state.transactions || [], sessionSaleIds, businessDateYMD),
           salarySettlements: [
             ...(state.salarySettlements || []).filter(st => st.sessionId !== sessionId),
             ...(shouldPersistSalary ? [{ ...settlement, id: res.data?.settlement_id || settlement.id }] : [])
@@ -711,6 +798,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
       } catch (err) {
         set(state => ({
           cashSessions: state.cashSessions.map(s => s.id === sessionId ? updatedSession : s),
+          transactions: stampBusinessDateOnSales(state.transactions || [], sessionSaleIds, businessDateYMD),
           salarySettlements: [...(state.salarySettlements || []).filter(st => st.sessionId !== sessionId), settlement]
         }));
         await flushLocalStateStorage();
@@ -721,6 +809,7 @@ export function createCashActions(set: StoreSet, get: StoreGet): any {
 
     set(state => ({
       cashSessions: state.cashSessions.map(s => s.id === sessionId ? updatedSession : s),
+      transactions: stampBusinessDateOnSales(state.transactions || [], sessionSaleIds, businessDateYMD),
       salarySettlements: [...(state.salarySettlements || []).filter(st => st.sessionId !== sessionId), settlement]
     }));
     // Sin conexión o plan Gratis: el cierre ya quedó encolado ('cash-close:…'),

@@ -55,34 +55,6 @@ import {
 
 // --- Definición del Store ---
 
-async function refreshInventoryBranchesFromSupabase(branchIds: string[]): Promise<boolean> {
-  const ids = Array.from(new Set(branchIds.filter(Boolean)));
-  if (!ids.length) return true;
-  try {
-    const results = await Promise.all(ids.map(id => pullBranchInventoryFromSupabase(id)));
-    if (results.some(result => !result.success)) return false;
-
-    const byKey = new Map<string, InventoryLevel>();
-    useStore.getState().inventory.forEach(item => {
-      if (!ids.includes(item.branchId)) {
-        byKey.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
-      }
-    });
-
-    for (const result of results) {
-      for (const item of result.inventory) {
-        byKey.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
-      }
-    }
-
-    useStore.setState({ inventory: Array.from(byKey.values()) });
-    return true;
-  } catch (error) {
-    console.warn('[inventory] No se pudo refrescar el inventario canónico de las sucursales:', error);
-    return false;
-  }
-}
-
 
 
 

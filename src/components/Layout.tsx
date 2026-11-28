@@ -27,6 +27,7 @@ import {
   CircleDollarSign,
   Landmark,
   Sparkles,
+  ScrollText,
   Lock
 } from "lucide-react";
 import React, { useState, useEffect, useRef } from "react";
@@ -68,6 +69,7 @@ const adminNavItems = [
   { name: "Inventario", href: "/inventory", icon: Package, permission: "inventory.manage" },
   { name: "Auditoría", href: "/inventory-audit", icon: ClipboardCheck, permission: "inventory.manage", requiredFeature: "inventory_audit" as PlanFeature },
   { name: "Proveedores", href: "/suppliers", icon: Truck, permission: "suppliers.manage", requiredFeature: "customers_suppliers" as PlanFeature },
+  { name: "CNGL-TEM", href: "/cngl-tem", icon: ScrollText, public: true, badge: "Próximamente" },
   { name: "Bancos", href: "/banks", icon: Landmark, permission: "settings.manage", requiredFeature: "banking" as PlanFeature },
   { name: "Garantías y devoluciones", href: "/returns", icon: ShieldCheck, permission: "pos.access", requiredFeature: "warranty_returns" as PlanFeature },
   { name: "Reportes", href: "/reports", icon: BarChart, permission: "reports.view" },
@@ -825,7 +827,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const navSectionDefinitions = currentUser?.role === "admin"
     ? [
         { label: "Operación", hrefs: ["/", "/pos", "/quotes", "/transfers", "/returns"] },
-        { label: "Gestión", hrefs: ["/customers", "/inventory", "/inventory-audit", "/suppliers"] },
+        { label: "Gestión", hrefs: ["/customers", "/inventory", "/inventory-audit", "/suppliers", "/cngl-tem"] },
         { label: "Finanzas", hrefs: ["/banks", "/reports"] },
         { label: "Administración", hrefs: ["/settings", "/team", "/help-center", "/subscription", "/tutorial", "/exchange-rate"] },
       ]
@@ -1045,6 +1047,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                   const requiredPlanName = getPlanDisplayName(requiredCode);
                   const planVisual = getPlanVisual(requiredCode);
                   const comingSoon = Boolean((item as any).comingSoon);
+                  const badge = (item as { badge?: string }).badge;
                   return (
                     <NavLink
                       key={item.href}
@@ -1109,6 +1112,18 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                                 {!locked && comingSoon && (
                                   <span className="inline-flex shrink-0 rounded-full border border-rose-200 bg-rose-50 px-1.5 py-[1px] text-[7px] font-black uppercase leading-tight tracking-tight text-rose-700 dark:border-rose-900/60 dark:bg-rose-950/40 dark:text-rose-300">
                                     Próximamente
+                                  </span>
+                                )}
+                                {!locked && badge && (
+                                  <span
+                                    className={cn(
+                                      "inline-flex shrink-0 rounded-full border px-1.5 py-[1px] text-[7px] font-black uppercase leading-tight tracking-tight",
+                                      active
+                                        ? "border-white/30 bg-white/15 text-white"
+                                        : "border-violet-200 bg-violet-50 text-[#5B2DBA] dark:border-violet-900/60 dark:bg-violet-950/40 dark:text-violet-300"
+                                    )}
+                                  >
+                                    {badge}
                                   </span>
                                 )}
                               </span>

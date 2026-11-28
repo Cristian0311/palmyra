@@ -12,6 +12,8 @@ import {
 import { cn } from "../../lib/utils";
 import { ticketDisplay } from "../../lib/documentCodes";
 import { getSessionTurnLabel } from "../../modules/reports/utils/sessionTurnLabels";
+import { saleBusinessDateYMD } from "../../modules/reports/utils/reportDateFilter";
+import { formatBusinessDateLabel } from "../../utils/dateUtils";
 import type { CashRegisterSession, Transaction, User } from "../../types";
 
 type PayrollRow = {
@@ -111,7 +113,7 @@ export function ReportsSalesTab({
       switch (sortState.key) {
         case "ticket": return (tx.ticketNumber || tx.id).toLocaleLowerCase();
         case "type": return tx.status;
-        case "date": return new Date(tx.date || 0).getTime() || 0;
+        case "date": return new Date(tx.businessDate ? `${saleBusinessDateYMD(tx)}T12:00:00Z` : tx.date || 0).getTime() || 0;
         case "worker": return (tx.cashierName || worker?.name || "").toLocaleLowerCase();
         case "branch": return (branches.find(branch => branch.id === tx.branchId)?.name || "").toLocaleLowerCase();
         case "items": return (tx.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
@@ -155,8 +157,9 @@ export function ReportsSalesTab({
           session,
           sequentialTurn: getSessionTurnLabel(session, sessionTurnMap),
           statusLabel: session.status === "open" ? "Abierto" : session.status === "cancelled" ? "Cancelado" : "Cerrado",
-          // La fecha/hora visible debe coincidir con el día cubano usado por el filtro.
-          dateLabel: dateToDisplay.toLocaleDateString("es-CU", { timeZone: 'America/Havana', day: "2-digit", month: "2-digit", year: "numeric" }),
+          // La fecha/hora visible debe coincidir con el día de negocio del cierre.
+          dateLabel: formatBusinessDateLabel(session.businessDate) ||
+            dateToDisplay.toLocaleDateString("es-CU", { timeZone: 'America/Havana', day: "2-digit", month: "2-digit", year: "numeric" }),
           timeLabel: dateToDisplay.toLocaleTimeString("es-CU", { timeZone: 'America/Havana', hour: "2-digit", minute: "2-digit" }) + (session.status === "open" ? " (En curso)" : ""),
           branchName: branches.find((branch) => branch.id === session.branchId)?.name || "Sucursal Principal",
           workerName: session.workerName || users.find((user) => user.id === session.userId)?.name || "Vendedor",
@@ -172,12 +175,16 @@ export function ReportsSalesTab({
     () =>
       displayedTransactions.map((tx) => {
         const dateObj = new Date(tx.date);
+        const businessDate = saleBusinessDateYMD(tx);
         return {
           tx,
           branchName: branches.find((branch) => branch.id === tx.branchId)?.name || "Sucursal",
           workerName: tx.cashierName || users.find((user) => user.id === tx.userId)?.name || "Vendedor",
           totalItems: (tx.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0),
-          dateLabel: dateObj.toLocaleDateString("es-CU", { timeZone: 'America/Havana', day: "2-digit", month: "2-digit", year: "numeric" }),
+          // La fecha visible es la de negocio elegida en caja (timezone-safe);
+          // la hora sigue siendo el instante de creación del ticket.
+          dateLabel: formatBusinessDateLabel(businessDate) ||
+            dateObj.toLocaleDateString("es-CU", { timeZone: 'America/Havana', day: "2-digit", month: "2-digit", year: "numeric" }),
           timeLabel: dateObj.toLocaleTimeString("es-CU", { timeZone: 'America/Havana', hour: "2-digit", minute: "2-digit" }),
           isHidden: hiddenReportIds.includes(tx.id),
         };
@@ -535,12 +542,13 @@ export function ReportsSalesTab({
                       <td className="px-3 py-2 whitespace-nowrap">
                         <div className="flex items-center gap-1 text-[11px] font-bold text-primary">
                           <span>
-                            {dateObj.toLocaleDateString("es-CU", {
-                              timeZone: 'America/Havana',
-                              day: "2-digit",
-                              month: "2-digit",
-                              year: "numeric",
-                            })}
+                            {formatBusinessDateLabel(saleBusinessDateYMD(tx)) ||
+                              dateObj.toLocaleDateString("es-CU", {
+                                timeZone: 'America/Havana',
+                                day: "2-digit",
+                                month: "2-digit",
+                                year: "numeric",
+                              })}
                           </span>
                           <span className="text-[9px] font-mono text-muted">
                             {dateObj.toLocaleTimeString("es-CU", {

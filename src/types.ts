@@ -126,7 +126,16 @@ export interface Transaction {
   userId: string; // The user who processed the transaction
   sellerEmployeeIds?: string[]; // IDs of employees involved in the sale for commission splitting
   cashierName?: string; // Explicit name of the cashier/seller for the shift
+  /** Creation instant (ISO). Audit field only: reports must not date sales with it. */
   date: string;
+  /**
+   * Business date chosen by the cashier when squaring/closing the register,
+   * as a plain calendar date (`YYYY-MM-DD`). It is the single source of truth
+   * for report grouping, date filters and the ticket's displayed date, and it
+   * is timezone-free: `2026-11-25` never shifts a day on any device.
+   * When absent (legacy tickets) reports fall back to the creation instant.
+   */
+  businessDate?: string;
   subtotal?: number; // In base currency (CUP)
   tax?: number; // In base currency
   discount?: number;
@@ -212,6 +221,8 @@ export interface CashRegisterSession {
   branchId: string;
   openedAt: string;
   closedAt?: string;
+  /** Business date chosen at closing (`YYYY-MM-DD`); source of truth for reports. */
+  businessDate?: string;
   openingBalance: number;
   openingAmount?: number;
   closingBalances?: Payment[];

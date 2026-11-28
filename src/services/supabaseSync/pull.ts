@@ -738,6 +738,11 @@ async function loadSales(branchId?: string, limit = 500, cashSessionIds?: string
       userId,
       cashierName: employeeNames.get(s.employee_id) || undefined,
       date: s.created_at,
+      // Día de negocio elegido al arquear (solo los turnos cerrados con fecha
+      // retroactiva lo llevan). Reportes agrupa por este campo.
+      businessDate: typeof s.metadata?.businessDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.metadata.businessDate)
+        ? s.metadata.businessDate
+        : undefined,
       subtotal,
       tax,
       discount,
@@ -895,6 +900,9 @@ async function loadCashSessions(branchId?: string, options: CashSessionOptions =
     branchId:registerMap.get(s.cash_register_id)?.warehouse_id || '',
     openedAt:s.opened_at,
     closedAt:s.closed_at || undefined,
+    businessDate:typeof s.metadata?.businessDate === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(s.metadata.businessDate)
+      ? s.metadata.businessDate
+      : undefined,
     openingBalance:Number(s.opening_amount)||0,
     openingAmount:Number(s.opening_amount)||0,
     status:s.status || 'open',

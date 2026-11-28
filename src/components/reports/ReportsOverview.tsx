@@ -3,6 +3,8 @@ import { AlertTriangle, ArrowRight, BarChart3, Coins, Package, Receipt, Trending
 import type { Transaction } from "../../types";
 import type { ReportSalesSummary } from "../../modules/reports/utils/reportSalesSummary";
 import { ticketDisplay } from "../../lib/documentCodes";
+import { saleBusinessDateYMD } from "../../modules/reports/utils/reportDateFilter";
+import { formatBusinessDateLabel } from "../../utils/dateUtils";
 import { ReportsStatBubbles } from "./ReportsStatBubbles";
 
 type Props = {
@@ -145,13 +147,18 @@ export function ReportsOverview({ summary, formatMoney, onOpenSales, onOpenTrans
                   {recent.map(tx => {
                     const units = (tx.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
                     const when = new Date(tx.date);
+                    const businessDay = formatBusinessDateLabel(saleBusinessDateYMD(tx));
                     return (
                       <tr key={tx.id} className="hover:bg-subtle/60">
                         <td className="px-3 py-1.5 font-mono text-[9px] font-black text-rose-700 dark:text-rose-300">{ticketDisplay(tx.ticketNumber, tx.id)}</td>
                         <td className="whitespace-nowrap px-3 py-1.5 text-[9px] font-bold text-secondary">
-                          {Number.isFinite(when.getTime())
-                            ? when.toLocaleString('es-CU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-                            : '-'}
+                          {businessDay
+                            ? `${businessDay} ${Number.isFinite(when.getTime())
+                              ? when.toLocaleTimeString('es-CU', { timeZone: 'America/Havana', hour: '2-digit', minute: '2-digit' })
+                              : ''}`.trim()
+                            : (Number.isFinite(when.getTime())
+                              ? when.toLocaleString('es-CU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                              : '-')}
                         </td>
                         <td className="whitespace-nowrap px-3 py-1.5 text-[9px] font-bold text-secondary">{units} uds ({(tx.items || []).length} líneas)</td>
                         <td className="whitespace-nowrap px-3 py-1.5 text-right text-[10px] font-black tabular-nums text-primary">{formatMoney(tx.total)}</td>
@@ -177,6 +184,7 @@ export function ReportsOverview({ summary, formatMoney, onOpenSales, onOpenTrans
               {recent.map(tx => {
                 const units = (tx.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0), 0);
                 const when = new Date(tx.date);
+                const businessDay = formatBusinessDateLabel(saleBusinessDateYMD(tx));
                 return (
                   <li key={tx.id} className="flex items-center gap-2 px-3 py-2">
                     <div className="min-w-0 flex-1">
@@ -184,9 +192,13 @@ export function ReportsOverview({ summary, formatMoney, onOpenSales, onOpenTrans
                         {ticketDisplay(tx.ticketNumber, tx.id)}
                       </p>
                       <p className="truncate text-[9px] font-bold text-secondary">
-                        {Number.isFinite(when.getTime())
-                          ? when.toLocaleString('es-CU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-                          : '-'}
+                        {businessDay
+                          ? `${businessDay} ${Number.isFinite(when.getTime())
+                            ? when.toLocaleTimeString('es-CU', { timeZone: 'America/Havana', hour: '2-digit', minute: '2-digit' })
+                            : ''}`.trim()
+                          : (Number.isFinite(when.getTime())
+                            ? when.toLocaleString('es-CU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                            : '-')}
                         {' '}· {units} uds ({(tx.items || []).length} líneas)
                       </p>
                     </div>

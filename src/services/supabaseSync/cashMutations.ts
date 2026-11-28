@@ -4,6 +4,7 @@ import type { OfflineActionType } from '../offlineQueue';
 import { getActiveTenant, getEmployeeForIdentity } from '../tenant';
 import type { CashRegisterSession } from '../../types';
 import { round6 } from '../cash/expectedCash';
+import { normalizeBusinessDateYMD } from '../../utils/dateUtils';
 
 async function onlineClient() {
   const supabase = getSupabase();
@@ -197,6 +198,10 @@ export async function pushCashSessionMetadataToSupabase(session:CashRegisterSess
     const supabase=await onlineClient();
     const {companyId}=await getActiveTenant(true);
     const metadata={
+      // El día de negocio elegido al arquear viaja con el turno: sin esta
+      // columna en la tabla, es la única vía para que otro equipo agrupe las
+      // ventas en la fecha retroactiva y no en la de captura.
+      businessDate:normalizeBusinessDateYMD(session.businessDate)||null,
       closingBalances:session.closingBalances||[],
       expectedBalance:Number.isFinite(Number(session.expectedBalance))?Number(session.expectedBalance):null,
       isForcedClose:Boolean(session.isForcedClose),

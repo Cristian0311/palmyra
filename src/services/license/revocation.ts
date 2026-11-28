@@ -27,6 +27,12 @@ export interface CheckLeaseRevocationOptions {
   now?: () => number;
   /** Vigencia de la caché por leaseId. 0 desactiva la caché. */
   ttlMs?: number;
+  /**
+   * JWT del usuario autenticado. `revoke-lease` se despliega con
+   * `verify_jwt = true`, así que sin token la pasarela responde 401 y la
+   * revocación queda inoperativa (el cliente falla abierto).
+   */
+  accessToken?: string | null;
 }
 
 /** Una revocación se puede cachear un rato: no cambia de un minuto a otro. */
@@ -42,9 +48,18 @@ interface RevocationCacheEntry {
 
 const cache = new Map<string, RevocationCacheEntry>();
 
+/**
+ * Consultas en vuelo por leaseId. Varios refrescos de licencia simultáneos
+ * (arranque, evento online, temporizador) deben compartir un único GET: sin esto
+ * cada refresco repetía la misma petición y, mientras el endpoint devolvía 401,
+ * se multiplicaban los errores en el log de la plataforma.
+ */
+const inflight = new Map<string, Promise<LeaseRevocationResult>>();
+
 /** Limpia la caché de revocaciones (pruebas, cambio de entorno). */
 export function resetLeaseRevocationCache(): void {
   cache.clear();
+  inflight.clear();
 }
 
 function trimBase(base: string): string {
@@ -110,41 +125,47 @@ function parseRevocationPayload(payload: unknown): LeaseRevocationResult {
 }
 
 /**
- * Consulta si el lease fue revocado. Nunca lanza: cualquier fallo (red,
- * respuesta inválida, fecha corrupta) se resuelve como «no revocado».
+ * Clave publicable para la cabecera `apikey`: la pasarela de funciones la exige
+ * junto al JWT. Sin entorno (Node, pruebas) devuelve null y se omite la cabecera.
  */
-export async function checkLeaseRevocation(
-  lease: SignedLease | null,
-  options: CheckLeaseRevocationOptions = {}
+function resolveRevocationApiKey(): string | null {
+  try {
+    const env = (
+      import.meta as ImportMeta & { env?: { VITE_SUPABASE_ANON_KEY?: unknown } }
+    ).env;
+    const key = env?.VITE_SUPABASE_ANON_KEY;
+    if (typeof key === "string" && key.trim()) return key.trim();
+  } catch {
+    // Sin import.meta.env se omite la cabecera.
+  }
+  return null;
+}
+
+async function requestRevocation(
+  leaseId: string,
+  baseUrl: string,
+  options: CheckLeaseRevocationOptions,
+  atMs: number,
+  ttlMs: number
 ): Promise<LeaseRevocationResult> {
   const notRevoked: LeaseRevocationResult = { revoked: false };
-  if (!lease || typeof lease.leaseId !== "string" || lease.leaseId.trim() === "") {
-    return notRevoked;
-  }
-
-  const now = options.now ?? (() => Date.now());
-  const atMs = safeNow(now);
-  const ttlMs =
-    typeof options.ttlMs === "number" && Number.isFinite(options.ttlMs)
-      ? Math.max(0, options.ttlMs)
-      : LEASE_REVOCATION_TTL_MS;
-
-  const cached = cache.get(lease.leaseId);
-  if (cached && atMs < cached.expiresAt) return cached.result;
-
-  const baseUrl = resolveRevocationBaseUrl(options.baseUrl);
-  if (!baseUrl) return notRevoked;
-
   const fetchImpl: RevocationFetch =
     options.fetchImpl ?? ((input, init) => fetch(input, init));
-  const url = `${baseUrl}/revoke-lease?leaseId=${encodeURIComponent(lease.leaseId)}`;
+  const url = `${baseUrl}/revoke-lease?leaseId=${encodeURIComponent(leaseId)}`;
+
+  const headers: Record<string, string> = { Accept: "application/json" };
+  const apiKey = resolveRevocationApiKey();
+  if (apiKey) headers.apikey = apiKey;
+  const accessToken =
+    typeof options.accessToken === "string" ? options.accessToken.trim() : "";
+  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
 
   let response: Response;
   try {
     response = await fetchImpl(url, {
       method: "GET",
       cache: "no-store",
-      headers: { Accept: "application/json" }
+      headers
     });
   } catch {
     // Falla abierto: sin red no hay evidencia de revocación.
@@ -161,8 +182,49 @@ export async function checkLeaseRevocation(
   }
 
   const result = parseRevocationPayload(payload);
+  // Un fallo (red, 401, cuerpo inválido) nunca se cachea: podría ocultar una
+  // revocación real durante todo el TTL.
   if (ttlMs > 0) {
-    cache.set(lease.leaseId, { result, expiresAt: atMs + ttlMs });
+    cache.set(leaseId, { result, expiresAt: atMs + ttlMs });
   }
   return result;
+}
+
+/**
+ * Consulta si el lease fue revocado. Nunca lanza: cualquier fallo (red,
+ * respuesta inválida, fecha corrupta) se resuelve como «no revocado».
+ */
+export async function checkLeaseRevocation(
+  lease: SignedLease | null,
+  options: CheckLeaseRevocationOptions = {}
+): Promise<LeaseRevocationResult> {
+  const notRevoked: LeaseRevocationResult = { revoked: false };
+  if (!lease || typeof lease.leaseId !== "string" || lease.leaseId.trim() === "") {
+    return notRevoked;
+  }
+  const leaseId = lease.leaseId;
+
+  const now = options.now ?? (() => Date.now());
+  const atMs = safeNow(now);
+  const ttlMs =
+    typeof options.ttlMs === "number" && Number.isFinite(options.ttlMs)
+      ? Math.max(0, options.ttlMs)
+      : LEASE_REVOCATION_TTL_MS;
+
+  const cached = cache.get(leaseId);
+  if (cached && atMs < cached.expiresAt) return cached.result;
+
+  const pending = inflight.get(leaseId);
+  if (pending) return pending;
+
+  const baseUrl = resolveRevocationBaseUrl(options.baseUrl);
+  if (!baseUrl) return notRevoked;
+
+  const task = requestRevocation(leaseId, baseUrl, options, atMs, ttlMs);
+  inflight.set(leaseId, task);
+  const release = (): void => {
+    if (inflight.get(leaseId) === task) inflight.delete(leaseId);
+  };
+  void task.then(release, release);
+  return task;
 }

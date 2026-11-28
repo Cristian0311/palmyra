@@ -131,7 +131,8 @@ export default function ReportsCloseSessionModal({
         sessionToCloseModal.id,
         balancesArray,
         finalClosingDate,
-        sessionClosingNotesInput
+        sessionClosingNotesInput,
+        sessionClosingDateInput || undefined
       );
 
       if (res.success) {

@@ -101,6 +101,7 @@ export function createCloudSyncRunner(options: CloudSyncRunnerOptions): CloudSyn
   let running = false;
   let timer: unknown = null;
   let inflight: Promise<CloudSyncTickResult> | null = null;
+  let inflightIsManual = false;
   let onlineWindow: OnlineWindow | null = null;
   let lastStatus: CloudSyncRunnerStatus | null = null;
 
@@ -255,12 +256,25 @@ export function createCloudSyncRunner(options: CloudSyncRunnerOptions): CloudSyn
   }
 
   function execute(manual: boolean, full = false): Promise<CloudSyncTickResult> {
-    if (inflight) return inflight;
-    const task = runTick(manual, full);
+    // Un tick en vuelo se comparte... salvo que lo nuevo sea MANUAL: el
+    // automático puede haberse cortado por cadencia o por presupuesto y haberse
+    // saltado la descarga; heredarlo dejaba el botón sin ningún efecto.
+    if (inflight) {
+      if (!manual || inflightIsManual) return inflight;
+      return track(inflight.catch(() => null).then(() => runTick(true, full)), true);
+    }
+    return track(runTick(manual, full), manual);
+  }
+
+  /** Registra el único tick en vuelo y lo libera en ambos caminos. */
+  function track(task: Promise<CloudSyncTickResult>, isManual: boolean): Promise<CloudSyncTickResult> {
     inflight = task;
-    // Se libera en ambos caminos; los llamadores conservan su resultado.
+    inflightIsManual = isManual;
     const release = (): void => {
-      if (inflight === task) inflight = null;
+      if (inflight === task) {
+        inflight = null;
+        inflightIsManual = false;
+      }
     };
     void task.then(release, release);
     return task;

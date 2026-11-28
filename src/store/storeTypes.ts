@@ -96,7 +96,7 @@ export interface AppState {
   // Caja
   cashSessions: CashRegisterSession[];
   openSession: (session: CashRegisterSession) => Promise<boolean>;
-  closeSession: (sessionId: string, closingBalances: import('../types').Payment[], workerName?: string, closingDate?: string, discrepancyDeduction?: number, sessionMeta?: Partial<CashRegisterSession>, compensationOverride?: { mode: 'fixed_product' | 'sales_percent'; percentRate: number }) => Promise<boolean>;
+  closeSession: (sessionId: string, closingBalances: import('../types').Payment[], workerName?: string, closingDate?: string, discrepancyDeduction?: number, sessionMeta?: Partial<CashRegisterSession>, compensationOverride?: { mode: 'fixed_product' | 'sales_percent'; percentRate: number }, businessDate?: string) => Promise<boolean>;
   updateCashSession: (id: string, updates: Partial<CashRegisterSession>) => void;
   cancelSession: (sessionId: string, reason?: string, password?: string) => Promise<boolean>;
   updateCashSessionDateCascade: (sessionId: string, newDateYMD: string) => Promise<boolean>;
@@ -124,7 +124,7 @@ export interface AppState {
     currencyCode?: string;
     variantLabel?: string;
   }, affectStock?: boolean) => Promise<{ success: boolean; transactionId?: string }>;
-  forceCloseSessionFromReports: (sessionId: string, closingBalances?: import('../types').Payment[], closingDate?: string, notes?: string) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
+  forceCloseSessionFromReports: (sessionId: string, closingBalances?: import('../types').Payment[], closingDate?: string, notes?: string, businessDate?: string) => Promise<{ success: boolean; pending?: boolean; error?: string }>;
 
   // Garantías
   warranties: import('../types').Warranty[];

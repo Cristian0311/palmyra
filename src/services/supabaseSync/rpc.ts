@@ -2,6 +2,7 @@ import { getSupabase } from '../../lib/supabase';
 import { getActiveTenant, getEmployeeForIdentity } from '../tenant';
 import type { CashRegisterSession, Transaction, SalarySettlement, InventoryTransfer } from '../../types';
 import { resolveSaleEmployeeAttributionId } from '../employeeCompensation';
+import { normalizeBusinessDateYMD } from '../../utils/dateUtils';
 import {
   summarizeTransferBatch,
   type TransferBatchFailure,
@@ -252,7 +253,8 @@ export async function callProcessTransactionRPC(tx:Transaction){
       ncfType: tx.ncfType || null,
       subtotal: Number(tx.subtotal) || 0,
       changeGiven: Number(tx.changeGiven) || 0,
-      sellerEmployeeIds: tx.sellerEmployeeIds || []
+      sellerEmployeeIds: tx.sellerEmployeeIds || [],
+      businessDate: normalizeBusinessDateYMD(tx.businessDate) || null
     };
 
     // sales tiene RLS activo y no se debe actualizar directamente desde el

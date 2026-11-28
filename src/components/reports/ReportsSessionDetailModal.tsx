@@ -7,6 +7,8 @@ import { ticketDisplay } from "../../lib/documentCodes";
 import {
   getCompletedTransactionsForSession,
 } from "../../modules/reports/utils/reportSessionCalculations";
+import { saleBusinessDateYMD } from "../../modules/reports/utils/reportDateFilter";
+import { formatBusinessDateLabel } from "../../utils/dateUtils";
 import { summarizeReportSales } from "../../modules/reports/utils/reportSalesSummary";
 
 type DiscrepancyInfo = {
@@ -124,7 +126,7 @@ export function ReportsSessionDetailModal({
                 {session.workerName || 'Vendedor'} · {session.openedAt ? havana(session.openedAt) : 'Sin apertura'}
               </p>
               <p className="mt-0.5 text-[9px] font-bold text-muted tabular-nums">
-                Cierre: {havana(session.closedAt || session.closingDate)}
+                Cierre: {formatBusinessDateLabel(session.businessDate) || havana(session.closedAt || session.closingDate)}
               </p>
             </div>
           </div>
@@ -191,7 +193,11 @@ export function ReportsSessionDetailModal({
                         <p className="truncate text-[10px] sm:text-[11px] font-black uppercase tracking-tight text-primary" title={`Ticket ${ticketDisplay(tx.ticketNumber, tx.id)}`}>
                           Ticket {ticketDisplay(tx.ticketNumber, tx.id)}
                         </p>
-                        <p className="text-[9px] font-bold uppercase text-muted tabular-nums">{havanaTime(tx.date)} · {tx.items?.length || 0} productos</p>
+                        <p className="text-[9px] font-bold uppercase text-muted tabular-nums">
+                          {formatBusinessDateLabel(saleBusinessDateYMD(tx))
+                            ? `${formatBusinessDateLabel(saleBusinessDateYMD(tx))} · ${havanaTime(tx.date)}`
+                            : havana(tx.date)} · {tx.items?.length || 0} productos
+                        </p>
                       </div>
                       <span className="shrink-0 text-[10px] sm:text-[11px] font-black text-primary tabular-nums">{formatMoney(tx.total)}</span>
                     </div>

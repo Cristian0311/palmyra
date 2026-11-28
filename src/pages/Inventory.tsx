@@ -1218,7 +1218,11 @@ export default function Inventory() {
       {activeTab === 'restock' && <RestockAlerts />}
 
       {activeTab === 'bulk' && (
-        <div className="inventory-bulk-panel flex-1 min-h-0 bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-base overflow-hidden animate-in fade-in zoom-in-95 duration-300 flex flex-col">
+        <div className="inventory-bulk-panel max-md:flex-none md:flex-1 bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-base overflow-hidden animate-in fade-in zoom-in-95 duration-300 flex flex-col">
+          {/* En el teléfono, encabezado + KPIs + filtros + categorías + pestañas se llevan
+              ~690 px de 767, y «flex-1 min-h-0» con overflow-hidden dejaba el panel en 20 px:
+              los productos estaban renderizados pero invisibles. Abajo el panel mide su
+              contenido y scrollea la página; desde md recupera el scroll interno de escritorio. */}
           <div className="p-4 border-b border-base bg-slate-50/50 dark:bg-slate-800/50 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shrink-0">
             <div className="flex items-center gap-4">
               <div>

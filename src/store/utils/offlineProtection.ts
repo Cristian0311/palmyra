@@ -7,6 +7,7 @@
  */
 import type { OfflineQueueItem } from '../../services/offlineQueueTypes';
 import type { InventoryLevel } from '../../types';
+import { keepLocalBusinessDate } from './replaceRemoteRecords';
 
 type QueueLike = Pick<OfflineQueueItem, 'type' | 'data'>;
 
@@ -241,7 +242,7 @@ export function mergeBranchOperationalData(params: {
   for (const item of remote.transactions || []) {
     const id = String(item.id);
     if (pendingTransactionIds.has(id) && transactionMap.has(id)) continue;
-    transactionMap.set(id, item);
+    transactionMap.set(id, keepLocalBusinessDate(item, transactionMap.get(id)));
   }
 
   const sessionMap = new Map<string, any>();
@@ -251,7 +252,7 @@ export function mergeBranchOperationalData(params: {
     const localSession = sessionMap.get(id);
     const remoteReopensClosed = localSession?.status === 'closed' && item?.status === 'open';
     if (localSession && (pendingCashSessionIds.has(id) || remoteReopensClosed)) continue;
-    sessionMap.set(id, item);
+    sessionMap.set(id, keepLocalBusinessDate(item, localSession));
   }
 
   const transferMap = new Map<string, any>();

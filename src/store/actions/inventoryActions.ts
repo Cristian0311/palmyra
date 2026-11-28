@@ -1,7 +1,6 @@
 import type { Branch, Category, Product, InventoryLevel, CartItem, Transaction, ReturnItem, Currency, Customer, CashRegisterSession, User, PendingOrder, SalarySettlement, InventoryTransfer, Warranty, CashMovement, Supplier, SupplierOrder, InventoryAudit, FiscalConfig, DemandForecast, BankCard, BankTransaction } from '../../types';
 import type { AppState } from '../storeTypes';
 import {
-  pullBranchInventoryFromSupabase,
   pushProductToSupabase,
   deleteProductFromSupabase,
   reconcileInventoryToSupabase,
@@ -23,6 +22,7 @@ import { enqueueOfflineItem, getOfflineQueue, removeFromOfflineQueue } from '../
 import { removeFromOfflineQueueByAction } from '../../services/offlineQueue/outboxUtils';
 import { generateId } from '../../lib/utils';
 import { setCanonicalInventoryQuantity, validateTransferStock } from '../utils/inventoryTransforms';
+import { refreshInventoryBranchesFromSupabase } from '../utils/refreshBranchInventory';
 import { buildLocalCompletedSalePatch } from '../utils/localCompletedSale';
 import { normalizeSemanticText } from '../../utils/textUtils';
 import { getActiveTenant } from '../../services/tenant';
@@ -33,21 +33,6 @@ type StoreSet = (
   partial: Partial<AppState> | ((state: AppState) => Partial<AppState>)
 ) => void;
 type StoreGet = () => AppState;
-
-
-async function refreshInventoryBranchesFromSupabase(set: StoreSet, get: StoreGet, branchIds: string[]): Promise<boolean> {
-  const ids = Array.from(new Set(branchIds.filter(Boolean)));
-  if (!ids.length) return true;
-  try {
-    const results = await Promise.all(ids.map(id => pullBranchInventoryFromSupabase(id)));
-    if (results.some(result => !result.success)) return false;
-    const byKey = new Map<string, InventoryLevel>();
-    get().inventory.forEach(item => { if (!ids.includes(item.branchId)) byKey.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item); });
-    for (const result of results) for (const item of result.inventory) byKey.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
-    set({ inventory: Array.from(byKey.values()) });
-    return true;
-  } catch { return false; }
-}
 
 export type TransferResolutionMode = 'receive' | 'cancel';
 

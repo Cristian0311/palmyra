@@ -98,6 +98,7 @@ const PlatformAdmin = lazyWithRetry(() => import("./pages/PlatformAdmin"));
 const HelpCenter = lazyWithRetry(() => import("./pages/HelpCenter"));
 const Tutorial = lazyWithRetry(() => import("./pages/Tutorial"));
 const ExchangeRate = lazyWithRetry(() => import("./pages/ExchangeRate"));
+const CnglTem = lazyWithRetry(() => import("./pages/CnglTem"));
 
 // La web solo registra, cobra el plan y entrega la descarga. La caja y el resto
 // de la operación viven en la app instalada (Windows o APK). `currentAppSurface()`
@@ -166,6 +167,7 @@ function PageLoading() {
     "/help": "Cargando Centro de atención…",
     "/exchange-rate": "Cargando tasa de cambio…",
     "/help-center": "Cargando Centro de atención…",
+    "/cngl-tem": "Cargando CNGL-TEM…",
     "/invite": "Cargando invitación…",
     "/auth": "Cargando acceso…",
     "/auth/confirm": "Confirmando tu cuenta…",
@@ -760,6 +762,7 @@ export default function App() {
                     <Route path="/help-center" element={<HelpCenter />} />
                     <Route path="/tutorial" element={<Tutorial />} />
                     <Route path="/exchange-rate" element={<ExchangeRate />} />
+                    <Route path="/cngl-tem" element={<CnglTem />} />
                     <Route path="/notifications" element={<Navigate to={NOTIFICATIONS_PATH} replace />} />
                     <Route path="*" element={<Navigate to="/" replace />} />
                   </Routes>

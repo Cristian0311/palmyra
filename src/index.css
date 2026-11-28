@@ -164,12 +164,16 @@ body {
   .border-base { border-color: var(--border-base); }
   .border-subtle { border-color: var(--border-subtle); }
 
-  /* Interactive Elements */
+  /* Interactive Elements
+     Campos: al enfocar SOLO se marca el propio campo (borde violeta + halo
+     pegado al borde, sin outline ni separación que dibuje un cuadro por fuera).
+     `outline-hidden` deja el outline solo para modo alto contraste, así que el
+     foco sigue siendo perceptible sin el cuadro del navegador. */
   input, textarea, select {
     background-color: var(--bg-secondary);
     border: 1px solid var(--border-base);
     color: var(--text-primary);
-    @apply outline-none transition-all focus:ring-2 focus:ring-violet-500/20 focus:border-violet-500;
+    @apply outline-hidden transition-all focus:ring-2 focus:ring-violet-500/25 focus:border-violet-500;
     -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
   }
@@ -179,8 +183,10 @@ body {
     border-color: var(--border-base);
   }
 
+  /* Botones: un solo anillo pegado al borde. Con ring-offset se abría un hueco
+     y, junto al outline del navegador, se leía como un segundo cuadro. */
   button:focus-visible {
-    @apply ring-2 ring-rose-500 ring-offset-2 dark:ring-offset-slate-950;
+    @apply outline-hidden ring-2 ring-rose-500;
   }
 }
 

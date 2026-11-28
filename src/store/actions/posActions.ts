@@ -18,7 +18,8 @@ import { setCanonicalInventoryQuantity } from '../utils/inventoryTransforms';
 import { generateId, generateReadableId } from '../../lib/utils';
 import { normalizeSemanticText } from '../../utils/textUtils';
 import { getActiveTenant } from '../../services/tenant';
-import { pushWarrantyToSupabase, callCancelSessionRPC, pullBranchInventoryFromSupabase } from '../../services/supabaseSync';
+import { pushWarrantyToSupabase, callCancelSessionRPC } from '../../services/supabaseSync';
+import { refreshInventoryBranchesFromSupabase } from '../utils/refreshBranchInventory';
 import { flushLocalStateStorage } from '../../services/localStateStorage';
 import { isCloudBusinessSyncAllowed } from '../../services/localPlanMode';
 import { mirrorCompletedSale, mirrorSaleVoid } from '../../services/localDb/posWriteThrough';
@@ -53,19 +54,6 @@ function applyCancelledShiftPatch(
     voidPatch = buildLocalVoidTransactionsPatch(state, sales, audit, { reverseBank: false });
   }
   set({ ...voidPatch, ...purgeCancelledShift(state, sessionId, sales.map(sale => sale.id)) });
-}
-
-async function refreshInventoryBranchesFromSupabase(set: StoreSet, get: StoreGet, branchIds: string[]): Promise<boolean> {  const ids = Array.from(new Set(branchIds.filter(Boolean)));
-  if (!ids.length) return true;
-  try {
-    const results = await Promise.all(ids.map(id => pullBranchInventoryFromSupabase(id)));
-    if (results.some(result => !result.success)) return false;
-    const byKey = new Map<string, any>();
-    get().inventory.forEach(item => { if (!ids.includes(item.branchId)) byKey.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item); });
-    for (const result of results) for (const item of result.inventory) byKey.set(`${item.productId}:${item.branchId}:${item.variantLabel || ''}`, item);
-    set({ inventory: Array.from(byKey.values()) });
-    return true;
-  } catch { return false; }
 }
 
 /**

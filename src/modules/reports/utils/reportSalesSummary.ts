@@ -1,5 +1,5 @@
 import type { Product, Transaction } from '../../../types';
-import { matchesReportDateFilter, type ReportDateFilter } from './reportDateFilter';
+import { matchesReportSaleDateFilter, saleBusinessDateYMD, type ReportDateFilter } from './reportDateFilter';
 
 export function filterReportTransactions(transactions: Transaction[], filters: {
   branchId: string; workerId: string; workerAliases?: string[]; date: string; period: ReportDateFilter;
@@ -18,8 +18,13 @@ export function filterReportTransactions(transactions: Transaction[], filters: {
   return transactions.filter(tx =>
     (filters.branchId === 'all' || tx.branchId === filters.branchId) &&
     matchesWorker(tx) &&
-    matchesReportDateFilter(tx.date, filters.date, filters.period, now)
-  ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    // La fecha de negocio elegida en caja manda sobre la hora de creación.
+    matchesReportSaleDateFilter(tx, filters.date, filters.period, now)
+  ).sort((a, b) => {
+    const business = saleBusinessDateYMD(b).localeCompare(saleBusinessDateYMD(a));
+    if (business !== 0) return business;
+    return new Date(b.date).getTime() - new Date(a.date).getTime();
+  });
 }
 
 export function isReportSale(tx: Transaction) {

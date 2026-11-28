@@ -1,26 +1,26 @@
 {
   "v": 1,
-  "version": "1.3.20",
+  "version": "1.3.21",
   "channel": "stable",
-  "releasedAt": "2026-11-27T21:30:29.605Z",
-  "notes": "Permisos al entrar: el programa de PC y la app de Android piden avisos, Bluetooth y USB nada más abrir PALMYRA; se corrigió el sello de primer arranque que impedía que apareciera ese aviso.\nImpresión térmica: el APK usa el puente nativo para Bluetooth y USB (con el permiso de Android pedido al entrar) y el programa de PC habilita Web Bluetooth con su selector de dispositivo.\nAvisos del sistema: cuando el push no está disponible en una superficie, el mensaje dice la causa real y dónde desbloquear los permisos, en vez de culpar al navegador.\nExcel: al terminar la descarga aparece un aviso con el nombre del archivo y la carpeta, tanto en Reportes como en Inventario.\nFormularios: al escribir el teléfono o la dirección en Proveedores y en Configuración > Empresa el cursor ya no salta al campo Nombre.\nSincronización: las operaciones rechazadas porque su almacén fue dado de baja explican el motivo en español y se pueden descartar desde el Monitor de Logs.\nAlmacenes: eliminar un almacén informa si la baja se aplicó de verdad y el listado deja de traer de vuelta los almacenes dados de baja.",
+  "releasedAt": "2026-11-28T03:38:08.922Z",
+  "notes": "Nuevo Centro Nacional de Gestión Legal Tributaria y Empresarial: la sección CNGL-TEM aparece en Gestión con la etiqueta «Próximamente», un catálogo de 26 entidades cubanas con sus siglas correctas, el contenido que traerá y los enlaces oficiales de Facebook y del canal de WhatsApp.\n\nVentas con fecha retroactiva: Reportes agrupa la venta en el día de negocio elegido, no en el día en que se registró, y esa fecha se conserva al sincronizar entre equipos.\n\nReportes: los detalles de turno y de venta abren siempre, incluso al abrirlos varias veces seguidas.\n\nLicencia: la cuenta ya no pasa a solo lectura tras verificar el plan; el estado se mantiene mientras la licencia sea válida.\n\nFormularios: al enfocar un campo ya no aparece el recuadro externo; solo se resalta el propio campo.\n\nInventario en móvil: la edición masiva muestra la lista completa y la columna de nombre queda alineada con el SKU en la vista de escritorio.\n\nSincronización: las operaciones rechazadas explican el motivo real y se pueden descartar desde el Monitor de Logs.",
   "rollout": 100,
   "artifacts": [
     {
       "platform": "windows",
       "name": "PALMYRA-POS-Setup.exe",
-      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.20/PALMYRA-POS-Setup.exe",
-      "sha256": "67c8e6c138e470ec1602857b501950308e1170676a10af02afe7f8dbd3307749",
-      "bytes": 114578870
+      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.21/PALMYRA-POS-Setup.exe",
+      "sha256": "35cf29c7c55a6e4d46b52a50eb0f74c709c4e8a713110bc08a32f5409eb89dfe",
+      "bytes": 114594045
     },
     {
       "platform": "android",
       "name": "PALMYRA-Android.apk",
-      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.20/PALMYRA-Android.apk",
-      "sha256": "1c26694e226dd4472c9bd0fe1814a68e380747b9b0b8b2d822dc9e1734897fe3",
-      "bytes": 2717008
+      "url": "https://github.com/Cristian0311/palmyra/releases/download/v1.3.21/PALMYRA-Android.apk",
+      "sha256": "7ad5b8b30974dff065c9b3f86c00a5dcebf4982246848d84a5e37f193d57ab66",
+      "bytes": 2725198
     }
   ],
   "keyId": "palmyra-stable-2026-11",
-  "signature": "mjs8MhFU49GumLVycm5ZKoluqDgKnSRQ87Ti5-tXJpaCEAr-pRBg2hKDlokltfzKvp8DxT1vwM5CnGowEKtjvw"
+  "signature": "GKwBCJ8aACPfAPP8VIeXQ7iuJIH5K7--FB8GGId2iYY73AQYNQOv_D-Z-JUAuJ7l8zxEBX8-u6k_uWEiRtFMdw"
 }

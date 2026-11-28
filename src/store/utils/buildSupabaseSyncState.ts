@@ -2,7 +2,7 @@ import type { AppState } from "../storeTypes";
 import type { InventoryLevel } from "../../types";
 import { getOfflineQueue } from "../../services/offlineQueue";
 import { replaceRemoteRecords } from "./replaceRemoteRecords";
-import { mergeUnique } from "./syncMerges";
+import { mergeUnique, applySessionBusinessDate } from "./syncMerges";
 import { collectPendingInventoryKeys } from "./offlineProtection";
 
 type SyncSnapshot = any;
@@ -19,7 +19,7 @@ export function buildSupabaseSyncState(
 // --- 1. Sucursales ---
 const offlineQueueSnapshot = getOfflineQueue();
 const offlineQueuedBranchItems = offlineQueueSnapshot.filter(i => i.type === 'branch');
-const offlineQueuedBranchIds = new Set(offlineQueuedBranchItems.map(i => i.data.id));
+const offlineQueuedBranchIds = new Set(offlineQueuedBranchItems.map(i => i.data?.id).filter(Boolean));
 const offlineDeletedBranchIds = new Set(offlineQueueSnapshot.filter(i => i.type === 'branch_delete').map(i => i.data?.id).filter(Boolean));
 
 const mergedBranches = mergeUnique(data.branches, state.branches || [], { offlineIds: offlineQueuedBranchIds });
@@ -42,10 +42,10 @@ if (!nextBranchId || !validBranchIds.has(nextBranchId)) {
 
 // --- 2. Transacciones ---
 const offlineQueuedTxIds = new Set(
-  getOfflineQueue().filter(i => i.type === 'transaction' || i.type === 'void_transaction').map(i => i.data.id)
+  getOfflineQueue().filter(i => i.type === 'transaction' || i.type === 'void_transaction').map(i => String(i.data?.id || '')).filter(Boolean)
 );
 const offlinePendingTxIds = new Set(
-  (state.transactions || []).filter((tx: any) => tx.offlinePending === true).map((tx: any) => tx.id)
+  (state.transactions || []).filter((tx: any) => tx.offlinePending === true).map((tx: any) => String(tx.id || '')).filter(Boolean)
 );
 const mergedTransactionsRaw = replaceRemoteRecords(
   data.transactions,
@@ -58,16 +58,20 @@ const mergedTransactionsRaw = replaceRemoteRecords(
 // causa de que un ticket apareciera en Reportes y luego desapareciera.
 // Supabase sigue siendo la autoridad: cuando llega el mismo ID remoto,
 // mergeUnique lo reemplaza con la versión del servidor.
-const mergedTransactions = mergedTransactionsRaw;
 
 // --- 3. Sesiones ---
 const offlineQueuedSessionIds = new Set(
-  getOfflineQueue().filter(i => i.type === 'cash_session').map(i => i.data.id)
+  getOfflineQueue().filter(i => i.type === 'cash_session').map(i => String(i.data?.id || '')).filter(Boolean)
 );
 const mergedCashSessionsRaw = replaceRemoteRecords(data.cashSessions, state.cashSessions || [], offlineQueuedSessionIds);
 const mergedCashSessions = Array.isArray(data.cashSessions) && data.cashSessions.length > 0
-  ? mergedCashSessionsRaw.filter(cs => data.cashSessions.some((ss: any) => ss.id === cs.id) || offlineQueuedSessionIds.has(cs.id))
+  ? mergedCashSessionsRaw.filter(cs => data.cashSessions.some((ss: any) => ss.id === cs.id) || offlineQueuedSessionIds.has(String(cs.id)))
   : mergedCashSessionsRaw;
+
+// La fecha de negocio vive en el turno (metadata remota). Una venta sin
+// `businessDate` propio hereda la de su turno para que otro equipo vea la
+// fecha retroactiva elegida al arquear y no el día de captura.
+const mergedTransactions = applySessionBusinessDate(mergedTransactionsRaw, mergedCashSessions);
 
 // --- 4. Clientes ---
 const customerQueue = getOfflineQueue();
@@ -88,11 +92,11 @@ const mergedCustomers = replaceRemoteRecords(data.customers, state.customers || 
 
 // --- 5. Devoluciones ---
 const offlineQueuedReturnIds = new Set(
-  getOfflineQueue().filter(i => i.type === 'return' || i.type === 'return_complete').map(i => i.data.id)
+  getOfflineQueue().filter(i => i.type === 'return' || i.type === 'return_complete').map(i => String(i.data?.id || '')).filter(Boolean)
 );
 const mergedReturnsRaw = replaceRemoteRecords(data.returns, state.returns || [], offlineQueuedReturnIds);
 const mergedReturns = Array.isArray(data.returns) && data.returns.length > 0
-  ? mergedReturnsRaw.filter(r => data.returns.some((sr: any) => sr.id === r.id) || offlineQueuedReturnIds.has(r.id))
+  ? mergedReturnsRaw.filter(r => data.returns.some((sr: any) => sr.id === r.id) || offlineQueuedReturnIds.has(String(r.id)))
   : mergedReturnsRaw;
 
 // --- 6. Inventario (Deduplicación por combinación única) ---

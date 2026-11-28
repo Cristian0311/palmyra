@@ -17,7 +17,10 @@ import {
 } from "../services/cloudSync/stores";
 import { getRuntimeDriver } from "../services/localDb/runtimeDriver";
 import type { LocalDbDriver } from "../services/localDb/contract";
-import { getPalmyraLocalScope } from "../services/localScope";
+import {
+  getPalmyraLocalScope,
+  PALMYRA_LOCAL_SCOPE_EVENT
+} from "../services/localScope";
 
 /**
  * Sincronización con la nube en la app instalada.
@@ -116,17 +119,31 @@ export function useCloudSync(companyId?: string | null): UseCloudSyncResult {
     statusListener = (next) => {
       if (mounted.current) setStatus(next);
     };
-    const target = companyId || getPalmyraLocalScope()?.companyId || "";
-    if (!target) {
-      return () => {
-        mounted.current = false;
-        statusListener = null;
-      };
+    let disposed = false;
+    // El alcance puede escribirse DESPUÉS de montar la interfaz (arranque
+    // offline, cambio de empresa sin remontar el Layout). Sin escuchar el
+    // evento, el planificador quedaría inerte toda la sesión.
+    const ensureForScope = () => {
+      if (disposed) return;
+      const target = companyId || getPalmyraLocalScope()?.companyId || "";
+      if (!target) {
+        // Cierre de sesión: el runner de la empresa anterior ya no debe sincronizar.
+        stopActive();
+        return;
+      }
+      void startFor(target);
+    };
+    ensureForScope();
+    if (typeof window !== "undefined") {
+      window.addEventListener(PALMYRA_LOCAL_SCOPE_EVENT, ensureForScope);
     }
-    void startFor(target);
     return () => {
+      disposed = true;
       mounted.current = false;
       statusListener = null;
+      if (typeof window !== "undefined") {
+        window.removeEventListener(PALMYRA_LOCAL_SCOPE_EVENT, ensureForScope);
+      }
       stopActive();
     };
   }, [companyId]);
